@@ -2396,6 +2396,7 @@ struct pt_expr_info
 #define PT_EXPR_INFO_OR_DERIVED_EXPENSIVE 33554432	/* 0x2000000, an OR-derived restriction with a conjunct costlier
 							 * than a column-vs-constant compare; kept only when an index
 							 * adopts it */
+#define PT_EXPR_INFO_LOB_DIRECT_INSERT 67108864	/* 0x4000000, streaming LOB source is direct INSERT/UPDATE target */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
@@ -3829,6 +3830,7 @@ struct parser_node
   {
     unsigned recompile:1;	/* the statement should be recompiled - used for plan cache */
     unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
+    unsigned cannot_prepare_only_internal_lob_file:1;	/* file source is the only prepare blocker */
     unsigned partition_pruned:1;	/* partition pruning takes place */
     unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
     unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */

@@ -277,6 +277,189 @@ static int pt_check_range_partition_strict_increasing (PARSER_CONTEXT * parser, 
 						       PT_NODE * part_next, PT_NODE * column_dt);
 static int pt_coerce_partition_value_with_data_type (PARSER_CONTEXT * parser, PT_NODE * value, PT_NODE * data_type);
 static int pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param);
+static bool pt_is_direct_internal_lob_dml_source (PARSER_CONTEXT * parser, PT_TYPE_ENUM target_type,
+						  const PT_NODE * source);
+
+static PT_NODE *
+pt_internal_lob_find_host_var (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node != NULL && node->node_type == PT_HOST_VAR)
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  else
+    {
+      *continue_walk = PT_CONTINUE_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_internal_lob_source_has_host_var () - Does this direct source value depend on a host variable?
+ *   return: true if a host variable appears anywhere below arg
+ *   parser(in):
+ *   arg(in): the source argument subtree
+ *
+ * Note:
+ *   A direct Internal LOB source is folded during prepare by
+ *   pt_fold_internal_lob_direct_source_values (), which evaluates the subtree and replaces it with
+ *   the resulting constant.  A host variable is not bound yet at that point, so the subtree would
+ *   evaluate to NULL and the bound value would be discarded without any error.  Such a source must
+ *   not take the direct path; the ordinary path evaluates it after binding.
+ */
+static bool
+pt_internal_lob_source_has_host_var (PARSER_CONTEXT * parser, PT_NODE * arg)
+{
+  PT_NODE *save_next;
+  bool found = false;
+
+  if (arg == NULL)
+    {
+      return false;
+    }
+
+  /* walk the argument alone; its siblings belong to the enclosing list */
+  save_next = arg->next;
+  arg->next = NULL;
+  (void) parser_walk_tree (parser, arg, pt_internal_lob_find_host_var, &found, NULL, NULL);
+  arg->next = save_next;
+
+  return found;
+}
+
+/*
+ * pt_is_internal_lob_file_source_expr () - Is this argument itself a direct file-source expression?
+ *   return: true if arg is a *_FROM_FILE Internal LOB source expression
+ *   arg(in): the argument subtree
+ *
+ * Note:
+ *   A file-source argument carries a string-literal path that can be folded at prepare time, so a
+ *   CFILE_TO_CLOB/BFILE_TO_BLOB wrapping such an argument may still take the direct source path.
+ */
+static bool
+pt_is_internal_lob_file_source_expr (const PT_NODE * arg)
+{
+  if (arg == NULL || arg->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  return arg->info.expr.op == PT_BFILE_FROM_FILE || arg->info.expr.op == PT_CFILE_FROM_FILE
+    || arg->info.expr.op == PT_BLOB_FROM_FILE || arg->info.expr.op == PT_CLOB_FROM_FILE;
+}
+
+static bool
+pt_is_direct_internal_lob_dml_source (PARSER_CONTEXT * parser, PT_TYPE_ENUM target_type, const PT_NODE * source)
+{
+  PT_NODE *arg1;
+
+  if (source == NULL || source->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  arg1 = (PT_NODE *) source->info.expr.arg1;
+  if (pt_internal_lob_source_has_host_var (parser, arg1))
+    {
+      return false;
+    }
+
+  if (target_type == PT_TYPE_CLOB)
+    {
+      if (source->info.expr.op == PT_CLOB_FROM_FILE)
+	{
+	  return true;
+	}
+      if (source->info.expr.op == PT_CFILE_TO_CLOB)
+	{
+	  return pt_is_const_expr_node (arg1) || pt_is_internal_lob_file_source_expr (arg1);
+	}
+      return source->info.expr.op == PT_CHAR_TO_CLOB && pt_is_const_expr_node (arg1);
+    }
+
+  if (target_type == PT_TYPE_BLOB)
+    {
+      if (source->info.expr.op == PT_BLOB_FROM_FILE)
+	{
+	  return true;
+	}
+      if (source->info.expr.op == PT_BFILE_TO_BLOB)
+	{
+	  return pt_is_const_expr_node (arg1) || pt_is_internal_lob_file_source_expr (arg1);
+	}
+      return (source->info.expr.op == PT_BIT_TO_BLOB || source->info.expr.op == PT_CHAR_TO_BLOB)
+	&& pt_is_const_expr_node (arg1);
+    }
+
+  return false;
+}
+
+typedef struct internal_lob_prepare_check INTERNAL_LOB_PREPARE_CHECK;
+struct internal_lob_prepare_check
+{
+  int direct_source_depth;
+  bool saw_file_source;
+  bool saw_uncovered_file_source;
+};
+
+static PT_NODE *
+pt_check_internal_lob_prepare_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  INTERNAL_LOB_PREPARE_CHECK *check = (INTERNAL_LOB_PREPARE_CHECK *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (pt_is_internal_lob_direct_source_expr (node))
+    {
+      check->direct_source_depth++;
+    }
+
+  if (node->node_type == PT_EXPR
+      && (node->info.expr.op == PT_BLOB_FROM_FILE || node->info.expr.op == PT_CLOB_FROM_FILE
+	  || node->info.expr.op == PT_BFILE_FROM_FILE || node->info.expr.op == PT_CFILE_FROM_FILE))
+    {
+      check->saw_file_source = true;
+      if (check->direct_source_depth == 0)
+	{
+	  check->saw_uncovered_file_source = true;
+	}
+    }
+  return node;
+}
+
+static PT_NODE *
+pt_check_internal_lob_prepare_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  INTERNAL_LOB_PREPARE_CHECK *check = (INTERNAL_LOB_PREPARE_CHECK *) arg;
+
+  if (pt_is_internal_lob_direct_source_expr (node))
+    {
+      check->direct_source_depth--;
+    }
+  return node;
+}
+
+static void
+pt_allow_direct_internal_lob_file_dml_prepare (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  INTERNAL_LOB_PREPARE_CHECK check = { 0, false, false };
+
+  if (statement == NULL || !statement->flag.cannot_prepare_only_internal_lob_file)
+    {
+      return;
+    }
+
+  (void) parser_walk_tree (parser, statement, pt_check_internal_lob_prepare_pre, &check,
+			   pt_check_internal_lob_prepare_post, &check);
+  if (check.saw_file_source && !check.saw_uncovered_file_source)
+    {
+      statement->flag.cannot_prepare = 0;
+      statement->flag.cannot_prepare_only_internal_lob_file = 0;
+    }
+}
 
 /* pt_combine_compatible_info () - combine two cinfo into cinfo1
  *   return: true if compatible, else false
@@ -1053,21 +1236,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       arg_type = arg1->type_enum;
     }
 
-  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP) && arg_type != cast_type)
-    {
-      bool implicit_lob_cast_allowed =
-	((PT_IS_CHAR_STRING_TYPE (arg_type) && cast_type == PT_TYPE_CLOB)
-	 || (arg_type == PT_TYPE_CLOB && PT_IS_CHAR_STRING_TYPE (cast_type))
-	 || (PT_IS_BIT_STRING_TYPE (arg_type) && cast_type == PT_TYPE_BLOB)
-	 || (arg_type == PT_TYPE_BLOB && PT_IS_BIT_STRING_TYPE (cast_type)));
-
-      if ((PT_IS_LOBFILE_TYPE (arg_type) || PT_IS_LOBFILE_TYPE (cast_type)
-	   || PT_IS_LOB_TYPE (arg_type) || PT_IS_LOB_TYPE (cast_type)) && !implicit_lob_cast_allowed)
-	{
-	  cast_is_valid = PT_CAST_INVALID;
-	}
-    }
-
   switch (arg_type)
     {
     case PT_TYPE_INTEGER:
@@ -1214,25 +1382,8 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_CLOB:
       switch (cast_type)
 	{
-	case PT_TYPE_BLOB:
-	case PT_TYPE_BIT:
-	case PT_TYPE_VARBIT:
-	case PT_TYPE_DATE:
-	case PT_TYPE_TIME:
-	case PT_TYPE_TIMESTAMP:
-	case PT_TYPE_TIMESTAMPTZ:
-	case PT_TYPE_TIMESTAMPLTZ:
-	case PT_TYPE_DATETIME:
-	case PT_TYPE_DATETIMETZ:
-	case PT_TYPE_DATETIMELTZ:
-	  if (arg_type == PT_TYPE_CLOB)
-	    {
-	      cast_is_valid = PT_CAST_INVALID;
-	    }
-	  break;
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -1272,7 +1423,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	case PT_TYPE_CFILE:
-	case PT_TYPE_CLOB:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -1345,7 +1495,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_CLOB:
 	case PT_TYPE_CFILE:
 	case PT_TYPE_ENUMERATION:
 	  break;
@@ -11033,6 +11182,39 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	      break;
 	    }
 	}
+
+      /* Flag streaming LOB source nodes that are the direct value for an internal LOB column before
+       * pt_semantic_type () runs constant folding.  Only these direct INSERT values may produce streaming markers. */
+      if (node != NULL && node->info.insert.value_clauses != NULL)
+	{
+	  PT_NODE *value_clause;
+
+	  for (value_clause = node->info.insert.value_clauses; value_clause != NULL; value_clause = value_clause->next)
+	    {
+	      PT_NODE *ins_attr = node->info.insert.attr_list;
+	      PT_NODE *ins_val;
+
+	      if (value_clause->info.node_list.list_type != PT_IS_VALUE)
+		{
+		  continue;
+		}
+	      ins_val = value_clause->info.node_list.list;
+
+	      for (; ins_attr != NULL && ins_val != NULL; ins_attr = ins_attr->next, ins_val = ins_val->next)
+		{
+		  if (!PT_IS_LOB_TYPE (ins_attr->type_enum) || ins_val->node_type != PT_EXPR)
+		    {
+		      continue;
+		    }
+		  if (pt_is_direct_internal_lob_dml_source (parser, ins_attr->type_enum, ins_val))
+		    {
+		      PT_EXPR_INFO_SET_FLAG (ins_val, PT_EXPR_INFO_LOB_DIRECT_INSERT);
+		    }
+		}
+	    }
+	}
+      pt_allow_direct_internal_lob_file_dml_prepare (parser, node);
+
       /* semantic check value clause for SELECT and INSERT subclauses */
       if (node)
 	{
@@ -11398,6 +11580,36 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
        * might have to perform some coercions on the replaced names. */
       node = pt_replace_names_in_update_values (parser, node);
 
+      /* Flag streaming LOB source nodes that are the direct RHS of an assignment to an internal LOB column
+       * before pt_semantic_type () runs constant folding. */
+      if (node != NULL)
+	{
+	  PT_NODE *upd_assign;
+
+	  for (upd_assign = node->info.update.assignment; upd_assign != NULL; upd_assign = upd_assign->next)
+	    {
+	      PT_NODE *lhs;
+	      PT_NODE *rhs;
+
+	      if (!PT_IS_ASSIGN_NODE (upd_assign))
+		{
+		  continue;
+		}
+
+	      lhs = upd_assign->info.expr.arg1;
+	      rhs = upd_assign->info.expr.arg2;
+	      if (lhs == NULL || rhs == NULL || !PT_IS_LOB_TYPE (lhs->type_enum) || rhs->node_type != PT_EXPR)
+		{
+		  continue;
+		}
+	      if (pt_is_direct_internal_lob_dml_source (parser, lhs->type_enum, rhs))
+		{
+		  PT_EXPR_INFO_SET_FLAG (rhs, PT_EXPR_INFO_LOB_DIRECT_INSERT);
+		}
+	    }
+	}
+      pt_allow_direct_internal_lob_file_dml_prepare (parser, node);
+
       node = pt_semantic_type (parser, node, info);
 
       if (node != NULL && node->info.update.order_by != NULL)
@@ -11545,6 +11757,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       pt_init_assignments_helper (parser, &ea, node->info.merge.update.assignment);
       while ((t_node = pt_get_next_assignment (&ea)) != NULL)
 	{
+	  PT_NODE *rhs = ea.rhs;
+
 	  entity = pt_find_spec_in_statement (parser, node, t_node);
 
 	  if (entity == NULL)
@@ -11558,6 +11772,13 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    {
 	      PT_ERRORm (parser, t_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_MERGE_CANT_AFFECT_SOURCE_TABLE);
 	      break;
+	    }
+	  if (rhs != NULL && rhs->node_type == PT_EXPR && PT_IS_LOB_TYPE (t_node->type_enum))
+	    {
+	      if (pt_is_direct_internal_lob_dml_source (parser, t_node->type_enum, rhs))
+		{
+		  PT_EXPR_INFO_SET_FLAG (rhs, PT_EXPR_INFO_LOB_DIRECT_INSERT);
+		}
 	    }
 	}
       if (pt_has_error (parser))
@@ -11590,7 +11811,25 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    {
 	      break;
 	    }
+
+	  /* Flag direct Internal LOB sources in the MERGE INSERT clause before pt_semantic_type () can fold them. */
+	  if (node->info.merge.insert.value_clauses != NULL
+	      && node->info.merge.insert.value_clauses->info.node_list.list_type == PT_IS_VALUE)
+	    {
+	      PT_NODE *ins_attr = node->info.merge.insert.attr_list;
+	      PT_NODE *ins_val = node->info.merge.insert.value_clauses->info.node_list.list;
+
+	      for (; ins_attr != NULL && ins_val != NULL; ins_attr = ins_attr->next, ins_val = ins_val->next)
+		{
+		  if (PT_IS_LOB_TYPE (ins_attr->type_enum) && ins_val->node_type == PT_EXPR
+		      && pt_is_direct_internal_lob_dml_source (parser, ins_attr->type_enum, ins_val))
+		    {
+		      PT_EXPR_INFO_SET_FLAG (ins_val, PT_EXPR_INFO_LOB_DIRECT_INSERT);
+		    }
+		}
+	    }
 	}
+      pt_allow_direct_internal_lob_file_dml_prepare (parser, node);
 
       node = pt_semantic_type (parser, node, info);
 
@@ -17598,7 +17837,7 @@ pt_get_assignments (PT_NODE * node, bool * dblinked)
 PT_NODE *
 pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert)
 {
-  PT_NODE *assignment, *spec, *lhs;
+  PT_NODE *assignment, *spec, *lhs, *rhs;
   if (insert == NULL || insert->node_type != PT_INSERT)
     {
       return insert;
@@ -17635,6 +17874,14 @@ pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert)
 	  assert (false);
 	  PT_INTERNAL_ERROR (parser, "semantic");
 	  return NULL;
+	}
+      rhs = assignment->info.expr.arg2;
+      if (rhs != NULL && rhs->node_type == PT_EXPR && PT_IS_LOB_TYPE (lhs->type_enum))
+	{
+	  if (pt_is_direct_internal_lob_dml_source (parser, lhs->type_enum, rhs))
+	    {
+	      PT_EXPR_INFO_SET_FLAG (rhs, PT_EXPR_INFO_LOB_DIRECT_INSERT);
+	    }
 	}
       if (lhs->info.name.spec_id != spec->info.spec.id)
 	{
