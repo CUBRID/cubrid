@@ -909,9 +909,7 @@ jobs:
             | { grep -P '/([^/]+)/cases/\1\.sh$' || :; } \
             | sed "s#^$TC_DIR/#cubrid-testcases-private-ex/#" \
             | sort > /tmp/all.list
-          # Re-run what the source run left unhandled: its failures, and the share of
-          # any shard that died whole. failed.list is <shard>\t<shell/...>; align the
-          # prefix. Published whether or not this is a re-run -- collect's guard reads them.
+          # failed.list is <shard>\t<shell/...>; align the prefix.
           want=0; unrun=0; short=0
           if [ -n "$RERUN_FROM" ]; then
             src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
@@ -943,10 +941,8 @@ jobs:
               echo "  A re-run may only re-run the failures of the same commit. Use /run all."
               exit 1
             fi
-            # failed.list is built from test-shell.xml, so a shard that died whole is
-            # absent from it: it published no XML. Re-running failed.list alone would
-            # leave that share unrun and still end green, because every guard measures
-            # a run against its own split. Carry the share over here.
+            # A shard that died whole published no test-shell.xml, so failed.list
+            # cannot see its cases and a re-run of that list alone would end green.
             srcdir="$CI_ROOT/runs/$RERUN_FROM"
             : > /tmp/unrun.list
             for f in "$srcdir"/shards/*.list; do
@@ -954,22 +950,19 @@ jobs:
               i=$(basename "$f" .list)
               st="$srcdir/results/$i/test_status.data"
               if [ ! -f "$st" ]; then
-                # The suite never ran there, so the whole share is unrun. The file
-                # already carries the repo prefix want.list uses.
-                cat "$f" >> /tmp/unrun.list
+                cat "$f" >> /tmp/unrun.list   # already carries want.list's repo prefix
                 continue
               fi
-              # It ran, but handled fewer than it was given. Nothing records which
-              # ones were left, so they can be counted and never named.
+              # Handled fewer than it was given. Nothing records which were left, so
+              # they can be counted and never named.
               a=$(wc -l < "$f")
               h=$(awk -F= '/total_executed_case_count/ {e=$2+0}
                            /total_skip_case_count/     {k=$2+0}
                            END {print e + k + 0}' "$st")
               [ "$a" -gt "$h" ] && short=$((short + a - h))
             done
-            # plan.tsv names every shard the split made. A share file that is gone
-            # takes its case names with it, so those can only be counted too --
-            # without this, a lost share file would let this re-run pass in silence.
+            # A share file that is gone takes its case names with it; plan.tsv is the
+            # only remaining record that those cases existed.
             if [ -f "$srcdir/plan.tsv" ]; then
               while IFS=$'\t' read -r si scnt _; do
                 [ -n "$si" ] || continue
@@ -1127,9 +1120,7 @@ jobs:
               rm -f "$rundir/shards/00.list"
               ;;
             kill-shard)
-              # The other two take the share away, so there is nothing left to carry
-              # into a re-run. This one leaves it whole and kills the shard before it
-              # reads anything -- the shape a pod that dies at the hook layer leaves.
+              # The other two take the share away, leaving a re-run nothing to carry.
               echo "::warning::sabotage=kill-shard, shard 00 will die with its share intact. shard 00 must fail"
               : > "$rundir/shards/00.kill"
               ;;
@@ -1228,9 +1219,8 @@ jobs:
           set -eo pipefail
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/shard-${IDX}.tsv"
 
-          # sabotage=kill-shard. Here, not in a step of its own: dying in the first
-          # step with the share untouched is the shape a pod lost at the hook layer
-          # leaves, and what the re-run has to carry.
+          # Dying here, before the share is read, is the shape a pod lost at the hook
+          # layer leaves.
           if [ -f "$RUNDIR/shards/${IDX}.kill" ]; then
             echo "::error::sabotage=kill-shard: shard ${IDX} is dying on purpose, with its share intact"
             exit 1
@@ -1607,9 +1597,7 @@ jobs:
           tcread_n=$(find "$RUNDIR/results" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
           echo "shard: planned $planned / published $done_n / build provenance $read_n / tc provenance $tcread_n"
 
-          # Cases a shard that died whole never ran. They reach no test-shell.xml, so
-          # the failure list below cannot see them; without this count the summary
-          # would offer no way to get them run.
+          # These reach no test-shell.xml, so the failure list below cannot see them.
           unrun_n=0
           dead_n=0
           : > /tmp/dead_shards.list
@@ -2120,11 +2108,9 @@ jobs:
             echo "::error::$FAIL_SUM failed"
             rc=1
           fi
-          # A re-run replaces the source run's commit status, so it must not be able
-          # to report green over cases the source never handled. The share of a shard
-          # that died whole is carried over by plan and is covered by the checks
-          # above. What cannot be carried is a shard that ran and stopped early:
-          # nothing records which of its cases were left, so they can only be counted.
+          # A re-run replaces the source run's commit status, so it must not go green
+          # over cases nothing can name. A dead shard's share is carried by plan; this
+          # is what is left.
           if [ -n "$RERUN_FROM" ] && [ "${RERUN_SHORT:-0}" -gt 0 ]; then
             echo "::error::run $RERUN_FROM left $RERUN_SHORT cases assigned but never handled, and nothing names them"
             echo "  This re-run could not carry them, so it cannot stand in for that run. Use /run shell."
