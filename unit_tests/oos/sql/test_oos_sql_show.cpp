@@ -41,6 +41,39 @@ oos_debug_counters bridge_oos_debug_counters_get ();
 
 namespace
 {
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  enum class write_failure
+  {
+    owner_allocation, record_allocation, request_allocation, vfid_lookup, partial_batch, heap_insert
+  };
+
+  static void
+  arm_write_failure (write_failure failure)
+  {
+    switch (failure)
+      {
+      case write_failure::owner_allocation:
+	heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation::owner);
+	break;
+      case write_failure::record_allocation:
+	heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation::record);
+	break;
+      case write_failure::request_allocation:
+	heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation::requests);
+	break;
+      case write_failure::vfid_lookup:
+	heap_oos_test_fail_before_vfid_lookup_once ();
+	break;
+      case write_failure::partial_batch:
+	oos_test_fail_insert_many_after_publications (1);
+	break;
+      case write_failure::heap_insert:
+	heap_oos_test_fail_heap_insert_once ();
+	break;
+      }
+  }
+#endif
+
   enum show_heap_oos_column
   {
     COL_TABLE_NAME = 0,
@@ -878,7 +911,8 @@ TEST_F (OosSqlShow, LoaderQueueRetainsClearedInputsAndRollsBackBulkFailure)
 	    {
 	      for (auto boundary :
 		   {
-			   heap_prepared_row_allocation::owner, heap_prepared_row_allocation::record
+			   heap_prepared_row_allocation::owner, heap_prepared_row_allocation::record,
+			   heap_prepared_row_allocation::requests
 		   })
 		{
 		  heap_prepared_row failed;
@@ -1007,22 +1041,16 @@ TEST_F (OosSqlShow, AllocationAndStorageFailureLeaveNextInsertUsable)
 {
   ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT PRIMARY KEY, payload BIT VARYING, payload2 BIT VARYING)"), 0);
   ASSERT_EQ (db_commit_transaction (), NO_ERROR);
-  for (int boundary = 0; boundary < 4; ++boundary)
+  for (auto boundary :
+       {
+	       write_failure::owner_allocation, write_failure::record_allocation,
+	       write_failure::request_allocation, write_failure::vfid_lookup,
+	       write_failure::partial_batch, write_failure::heap_insert
+       })
     {
-      if (boundary == 3)
-	{
-	  oos_test_fail_insert_many_after_publications (1);
-	}
-      else if (boundary == 2)
-	{
-	  heap_oos_test_fail_before_vfid_lookup_once ();
-	}
-      else
-	{
-	  heap_prepared_row_test_fail_allocation_once (boundary == 0 ? heap_prepared_row_allocation::owner
-	      : heap_prepared_row_allocation::record);
-	}
+      arm_write_failure (boundary);
       EXPECT_LT (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, REPEAT(X'AB', 8192), REPEAT(X'EF', 8192))"), 0);
+      EXPECT_TRUE (thread_get_thread_entry_info ()->oos_oids.empty ());
       ASSERT_EQ (db_abort_transaction (), NO_ERROR);
       int count = -1;
       ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes", &count), NO_ERROR);
@@ -1221,23 +1249,16 @@ TEST_F (OosSqlShow, DuplicateProbeFailuresLeaveNextWriteUsable)
 			   "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
       ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(1, X'AB', X'CD')"), 0);
       ASSERT_EQ (db_commit_transaction (), NO_ERROR);
-      for (int boundary = 0; boundary < 4; ++boundary)
+      for (auto boundary :
+	   {
+		   write_failure::owner_allocation, write_failure::record_allocation,
+		   write_failure::request_allocation, write_failure::vfid_lookup,
+		   write_failure::partial_batch
+	   })
 	{
 	  SCOPED_TRACE (replace);
-	  SCOPED_TRACE (boundary);
-	  if (boundary == 3)
-	    {
-	      oos_test_fail_insert_many_after_publications (1);
-	    }
-	  else if (boundary == 2)
-	    {
-	      heap_oos_test_fail_before_vfid_lookup_once ();
-	    }
-	  else
-	    {
-	      heap_prepared_row_test_fail_allocation_once (boundary == 0 ? heap_prepared_row_allocation::owner
-		  : heap_prepared_row_allocation::record);
-	    }
+	  SCOPED_TRACE (static_cast<int> (boundary));
+	  arm_write_failure (boundary);
 	  const char *sql = replace
 			    ? "REPLACE INTO t_oos_show_part VALUES(1, REPEAT(X'EF', 8192), REPEAT(X'01', 8192))"
 			    : "INSERT INTO t_oos_show_part VALUES(1, REPEAT(X'EF', 8192), REPEAT(X'01', 8192)) "
@@ -1531,23 +1552,16 @@ TEST_F (OosSqlShow, UpdateFailureClearsPublicationAndRollsBackBothDestinations)
 	       1, 11
        })
     {
-      for (int boundary = 0; boundary < 4; ++boundary)
+      for (auto boundary :
+	   {
+		   write_failure::owner_allocation, write_failure::record_allocation,
+		   write_failure::request_allocation, write_failure::vfid_lookup,
+		   write_failure::partial_batch
+	   })
 	{
 	  SCOPED_TRACE (target);
-	  SCOPED_TRACE (boundary);
-	  if (boundary == 3)
-	    {
-	      oos_test_fail_insert_many_after_publications (1);
-	    }
-	  else if (boundary == 2)
-	    {
-	      heap_oos_test_fail_before_vfid_lookup_once ();
-	    }
-	  else
-	    {
-	      heap_prepared_row_test_fail_allocation_once (boundary == 0 ? heap_prepared_row_allocation::owner
-		  : heap_prepared_row_allocation::record);
-	    }
+	  SCOPED_TRACE (static_cast<int> (boundary));
+	  arm_write_failure (boundary);
 	  char sql[512];
 	  snprintf (sql, sizeof (sql), "UPDATE t_oos_show_part SET id = %d, "
 		    "a = REPEAT(X'EF', 8192), b = REPEAT(X'01', 8192)", target);
@@ -1643,6 +1657,78 @@ TEST_F (OosSqlShow, NonpartitionedUpdateChecksForeignKeysAfterFinalization)
 			       "AND payload = CAST(REPEAT(X'EF', 8192) AS BIT VARYING)", &matches), NO_ERROR);
   EXPECT_EQ (matches, 1);
   ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_yes"), 0);
+}
+
+TEST_F (OosSqlShow, RollbackPreservesMultiChunkValuesAndLiveOwnership)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT PRIMARY KEY, a BIT VARYING, b BIT VARYING) "
+		       "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES "
+		       "(1, CAST(REPEAT('AB',50000) AS BIT VARYING), CAST(REPEAT('CD',6000) AS BIT VARYING)), "
+		       "(2, CAST(REPEAT('EF',50000) AS BIT VARYING), CAST(REPEAT('01',6000) AS BIT VARYING))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  const char *queries[] = { "SHOW HEAP OOS OF t_oos_show_part", "SHOW HEAP OOS OF t_oos_show_part__p__p0",
+			    "SHOW HEAP OOS OF t_oos_show_part__p__p1"
+			  };
+  int original_chunks[3];
+  for (int i = 0; i < 3; ++i)
+    {
+      DB_QUERY_RESULT *stats = nullptr;
+      ASSERT_EQ (show_heap_oos_query (queries[i], &stats), NO_ERROR);
+      ASSERT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &original_chunks[i]), NO_ERROR);
+      db_query_end (stats);
+    }
+  ASSERT_EQ (original_chunks[0], 0);
+  ASSERT_GT (original_chunks[1], 4);
+  ASSERT_EQ (original_chunks[2], 0);
+  for (bool duplicate :
+       {
+	       false, true
+       })
+    {
+      SCOPED_TRACE (duplicate);
+      if (duplicate)
+	{
+	  EXPECT_LT (exec_sql ("UPDATE t_oos_show_part SET id=2, a=CAST(REPEAT('23',50000) AS BIT VARYING) "
+			       "WHERE id=1"), 0);
+	}
+      else
+	{
+	  ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET id=11, a=CAST(REPEAT('23',50000) AS BIT VARYING) "
+			       "WHERE id=1"), 0);
+	  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(12, CAST(REPEAT('45',50000) AS BIT VARYING), NULL)"), 0);
+	}
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE "
+				   "(id=1 AND a=CAST(REPEAT('AB',50000) AS BIT VARYING) "
+				   "AND b=CAST(REPEAT('CD',6000) AS BIT VARYING)) OR "
+				   "(id=2 AND a=CAST(REPEAT('EF',50000) AS BIT VARYING) "
+				   "AND b=CAST(REPEAT('01',6000) AS BIT VARYING))", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 2);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 2);
+      for (int i = 0; i < 3; ++i)
+	{
+	  DB_QUERY_RESULT *stats = nullptr;
+	  ASSERT_EQ (show_heap_oos_query (queries[i], &stats), NO_ERROR);
+	  ASSERT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &matches), NO_ERROR);
+	  EXPECT_EQ (matches, original_chunks[i]);
+	  db_query_end (stats);
+	}
+      /* The next ordinary operation must reset the previous successful write's publication. */
+      ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(3, X'AB', NULL)"), 0);
+      EXPECT_TRUE (thread_get_thread_entry_info ()->oos_oids.empty ());
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+    }
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(12, CAST(REPEAT('67',50000) AS BIT VARYING), NULL)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p1 "
+			       "WHERE id=12 AND a=CAST(REPEAT('67',50000) AS BIT VARYING) AND b IS NULL",
+			       &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
 }
 
 int

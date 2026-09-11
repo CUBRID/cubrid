@@ -90,6 +90,8 @@ extern SCAN_CODE heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, cons
 /* One-shot failure seam immediately before the OOS VFID lookup owned by the heap insert wrapper. */
 extern void heap_oos_test_fail_before_vfid_lookup_once ();
 extern void heap_oos_test_disarm_fail_before_vfid_lookup ();
+/* Reject one complete OOS record at heap insertion, after its value chains exist. */
+extern void heap_oos_test_fail_heap_insert_once ();
 #endif
 
 /* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS

@@ -13392,6 +13392,13 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 /* *INDENT-OFF* */
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 static std::atomic<int> heap_Prepared_row_fail_allocation { 0 };
+static std::atomic<bool> heap_Oos_fail_heap_insert { false };
+
+void
+heap_oos_test_fail_heap_insert_once ()
+{
+  heap_Oos_fail_heap_insert.store (true);
+}
 
 void
 heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation boundary)
@@ -13704,6 +13711,10 @@ heap_prepared_row::prepare_internal (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO
       const int n_variable = attr_info->last_classrepr->n_variable;
       char *bound = OR_GET_BOUND_BITS (buf.buffer, n_variable, attr_info->last_classrepr->fixed_length);
       char *cursor = bound + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - n_variable);
+      if (heap_prepared_row_allocation_failed (3))
+        {
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
       owner.requests.reserve (owner.columns.size ());
       for (size_t i = 0; i < owner.columns.size (); ++i)
         {
@@ -25030,6 +25041,17 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   assert (context->type == HEAP_OPERATION_INSERT);
   assert (context->recdes_p != NULL);
   assert (!HFID_IS_NULL (&context->hfid));
+
+  /* *INDENT-OFF* */
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (context->recdes_p->type != REC_ASSIGN_ADDRESS && heap_recdes_contains_oos (context->recdes_p)
+      && heap_Oos_fail_heap_insert.exchange (false))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+#endif
+  /* *INDENT-ON* */
 
   context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
