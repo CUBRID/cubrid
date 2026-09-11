@@ -12795,26 +12795,6 @@ heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * 
 }
 
 /*
- * heap_attrinfo_transform_to_disk_except_lob () -
- *                           Transform to disk an attribute information
- *                           kind of instance. Do not create lob.
- *   return: SCAN_CODE
- *           (Either of S_SUCCESS, S_DOESNT_FIT,
- *                      S_ERROR)
- *   attr_info(in/out): The attribute information structure
- *   old_recdes(in): where the object's disk format is deposited
- *   new_recdes(in):
- *
- * Note: Transform the object represented by attr_info to disk format
- */
-SCAN_CODE
-heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					    RECDES * old_recdes, record_descriptor * new_recdes)
-{
-  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_EXCLUDE_LOB);
-}
-
-/*
  * heap_attrinfo_transform_header_to_disk ()
  *   return: SCAN_CODE
  *           (Either of S_SUCCESS, S_DOESNT_FIT,
