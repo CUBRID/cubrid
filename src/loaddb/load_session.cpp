@@ -23,11 +23,17 @@
 #include "load_session.hpp"
 
 #include "load_driver.hpp"
+#include "heap_file.h"
 #include "load_server_loader.hpp"
 #include "load_worker_manager.hpp"
+#include "object_primitive.h"
 #include "resource_shared_pool.hpp"
+#include "session.h"
 #include "xserver_interface.h"
 
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <sstream>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -38,6 +44,8 @@ namespace cubload
   void init_driver (driver *driver, session &session);
 
   bool invoke_parser (driver *driver, const batch &batch_);
+
+  int internal_lob_payload_file_reader (void *ctx, char *buf, int buf_size, int *nread);
 
 }
 
@@ -85,6 +93,29 @@ namespace cubload
     driver->get_object_loader ().destroy ();
 
     return parser_result == 0;
+  }
+
+  int
+  internal_lob_payload_file_reader (void *ctx, char *buf, int buf_size, int *nread)
+  {
+    FILE *file = (FILE *) ctx;
+    size_t read_size;
+
+    if (file == NULL || buf == NULL || buf_size < 0 || nread == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    read_size = fread (buf, 1, (size_t) buf_size, file);
+    if (ferror (file))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    *nread = (int) read_size;
+    return NO_ERROR;
   }
 
   /*
@@ -246,6 +277,8 @@ namespace cubload
     , m_collected_stats ()
     , m_driver (NULL)
     , m_temp_task (NULL)
+    , m_internal_lob_next_token (1)
+    , m_internal_lob_payloads ()
   {
     worker_manager_register_session (*this);
 
@@ -298,6 +331,16 @@ namespace cubload
 
   session::~session ()
   {
+    for (auto &it : m_internal_lob_payloads)
+      {
+	if (it.second.file != NULL)
+	  {
+	    fclose (it.second.file);
+	    it.second.file = NULL;
+	  }
+      }
+    m_internal_lob_payloads.clear ();
+
     delete m_driver;
 
     worker_manager_unregister_session (*this);
@@ -529,6 +572,169 @@ namespace cubload
   session::set_client_type (int client_type)
   {
     m_load_client_type.store (client_type);
+  }
+
+  int
+  session::internal_lob_payload_begin (class_id clsid, char type, DB_BIGINT data_length, DB_BIGINT bit_length,
+				       INT64 &token)
+  {
+    internal_lob_payload payload;
+
+    token = 0;
+    if (clsid <= 0 || (type != 'B' && type != 'C') || data_length < 0 || bit_length < 0
+	|| (type == 'C' && bit_length != 0)
+	|| (type == 'B' && !internal_lob_is_valid_blob_bit_length (data_length, bit_length)))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    payload.file = tmpfile ();
+    if (payload.file == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    payload.clsid = clsid;
+    payload.type = type;
+    payload.data_length = data_length;
+    payload.bit_length = bit_length;
+
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    token = m_internal_lob_next_token++;
+    m_internal_lob_payloads[token] = payload;
+    return NO_ERROR;
+  }
+
+  int
+  session::internal_lob_payload_append (INT64 token, const char *data, int data_size)
+  {
+    if (token <= 0 || data_size < 0 || (data == NULL && data_size > 0))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    auto found = m_internal_lob_payloads.find (token);
+    if (found == m_internal_lob_payloads.end () || found->second.file == NULL || found->second.complete
+	|| found->second.received > found->second.data_length - data_size)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    if (data_size > 0 && fwrite (data, 1, (size_t) data_size, found->second.file) != (size_t) data_size)
+      {
+	(void) fclose (found->second.file);
+	m_internal_lob_payloads.erase (found);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    found->second.received += data_size;
+    return NO_ERROR;
+  }
+
+  int
+  session::internal_lob_payload_end (INT64 token)
+  {
+    if (token <= 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    auto found = m_internal_lob_payloads.find (token);
+    if (found == m_internal_lob_payloads.end () || found->second.file == NULL
+	|| found->second.received != found->second.data_length)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    if (fflush (found->second.file) != 0 || fseek (found->second.file, 0, SEEK_SET) != 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    found->second.complete = true;
+    return NO_ERROR;
+  }
+
+  int
+  session::internal_lob_payload_abort (INT64 token)
+  {
+    if (token <= 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    std::unique_lock<std::mutex> ulock (m_mutex);
+    auto found = m_internal_lob_payloads.find (token);
+    if (found == m_internal_lob_payloads.end ())
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    if (found->second.file != NULL)
+      {
+	(void) fclose (found->second.file);
+      }
+    m_internal_lob_payloads.erase (found);
+    return NO_ERROR;
+  }
+
+  int
+  session::internal_lob_payload_make_value (cubthread::entry &thread_ref, class_id clsid, const char *token_data,
+      size_t token_len, DB_TYPE expected_type, DB_BIGINT max_length,
+      DB_VALUE *value)
+  {
+    std::string token_string;
+    char *endptr = NULL;
+    long long parsed_token;
+    const class_entry *cls_entry = NULL;
+    INTERNAL_LOB_LOCATOR locator;
+    int error;
+
+    (void) max_length;
+
+    if (token_data == NULL || token_len == 0 || value == NULL || (expected_type != DB_TYPE_BLOB
+	&& expected_type != DB_TYPE_CLOB))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    token_string.assign (token_data, token_len);
+    parsed_token = strtoll (token_string.c_str (), &endptr, 10);
+    if (endptr == token_string.c_str () || *endptr != '\0' || parsed_token <= 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    cls_entry = m_class_registry.get_class_entry (clsid);
+    if (cls_entry == NULL)
+      {
+	error = ER_GENERIC_ERROR;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	return error;
+      }
+
+    error = session_internal_lob_upload_consume (&thread_ref, (INT64) parsed_token, &cls_entry->get_class_oid (),
+	    expected_type, &locator);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    return internal_lob_make_adopt_locator_db_value (value, expected_type, locator);
   }
 
   void
