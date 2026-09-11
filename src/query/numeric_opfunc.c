@@ -319,6 +319,14 @@ static int numeric_sum_acc_add_rounded (SUM_ACC * acc, const DB_VALUE * val_dbv)
 /* the addition exceeds the accumulator's capacity, so the caller retries with numeric_sum_acc_add_rounded () */
 #define SUM_ACC_NUMERIC_CAPACITY (1)
 
+/* 10^40 (41 digits) as a big-endian 3-word coefficient
+ *   0x1DULL               =                   29 * 2^128 = 9868188640707215440437863615521278132224
+ *   0x6329F1C35CA4BFABULL =  7145508105175220139 * 2^64  =  131811359292784559548736661559783194624
+ *   0xB9F5610000000000ULL                                =                     13399722918938673152
+ *                                                        = 10000000000000000000000000000000000000000 */
+static const uint64_t _gv_numeric_sum_acc_pow10_max_prec[SUM_ACC_NUMERIC_WORDS] =
+  { 0x1DULL, 0x6329F1C35CA4BFABULL, 0xB9F5610000000000ULL };
+
 /*
  * numeric_is_negative () -
  *   return: true, false
@@ -4308,8 +4316,9 @@ numeric_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other)
  * numeric_sum_acc_add_core () - accumulate a NUMERIC coefficient into the
  *                               running sum
  *   return: NO_ERROR, or SUM_ACC_NUMERIC_CAPACITY when the aligned value or
- *           the sum does not fit the accumulator's 3-word coefficient (the
- *           accumulator is untouched)
+ *           the sum does not fit the accumulator's 3-word coefficient, or the
+ *           sum has more than DB_MAX_NUMERIC_PRECISION digits (the accumulator
+ *           is untouched)
  *   acc(in/out)   : active accumulator
  *   val_words(in) : coefficient of the value (3 words); not modified
  *   val_scale(in) : scale of the value
@@ -4327,6 +4336,7 @@ numeric_sum_acc_add_core (SUM_ACC * acc, const uint64_t * val_words, int val_sca
   uint64_t aligned_words[SUM_ACC_NUMERIC_WORDS];
   uint64_t sum_words[SUM_ACC_NUMERIC_WORDS];
   const uint64_t *acc_words = acc->v.words;
+  bool sum_neg = acc->is_negative;
   int diff = val_scale - acc->scale;
 
   if (diff != 0)
@@ -4355,10 +4365,17 @@ numeric_sum_acc_add_core (SUM_ACC * acc, const uint64_t * val_words, int val_sca
   else
     {
       (void) float_numeric_sub (val_words, acc_words, sum_words, SUM_ACC_NUMERIC_WORDS);
-      acc->is_negative = val_neg;
+      sum_neg = val_neg;
+    }
+
+  /* round at the 41-digit boundary for consistency with binary operations */
+  if (float_numeric_operation_compare (sum_words, _gv_numeric_sum_acc_pow10_max_prec, SUM_ACC_NUMERIC_WORDS) >= 0)
+    {
+      return SUM_ACC_NUMERIC_CAPACITY;
     }
 
   memcpy (acc->v.words, sum_words, sizeof (sum_words));
+  acc->is_negative = sum_neg;
   if (diff > 0)
     {
       acc->scale = val_scale;
