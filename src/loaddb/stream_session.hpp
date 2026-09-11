@@ -42,12 +42,25 @@
  * factory case -- the transport stays unchanged. */
 enum STREAM_KIND
 {
-  STREAM_KIND_COPY = 0		/* room for STREAM_KIND_LOB, etc. */
+  STREAM_KIND_COPY = 0,
+  STREAM_KIND_INTERNAL_LOB = 1,
+  /*
+   * COPY-style Internal LOB DML execution. Unlike STREAM_KIND_INTERNAL_LOB,
+   * this session owns the target DML and reports affected rows at finish(); it
+   * never returns an upload token for a second request.
+   */
+  STREAM_KIND_INTERNAL_LOB_DML = 2
 };
 
-/* Result reported by finish(). The 64-bit count is interpreted by the binding:
- * rows_loaded for COPY, bytes written for internal-LOB. 64-bit so a 4GB LOB
- * value fits (CBRD-26780 wire length widening). */
+enum INTERNAL_LOB_STREAM_TYPE
+{
+  INTERNAL_LOB_STREAM_TYPE_BLOB = 0,
+  INTERNAL_LOB_STREAM_TYPE_CLOB = 1
+};
+
+/* Result reported by finish(). COPY and DML-owning streams return affected
+ * rows. STREAM_KIND_INTERNAL_LOB is a transitional upload-token consumer and
+ * must not be used by new Internal LOB input paths. */
 struct stream_result
 {
   std::int64_t count;

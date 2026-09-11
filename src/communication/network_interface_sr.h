@@ -227,6 +227,15 @@ extern void sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, c
 extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void soos_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_stream_open (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_stream_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_stream_close (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_stream_purge_tran (int tran_index);
+extern void sloaddb_internal_lob_upload_begin (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sloaddb_internal_lob_upload_append (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sloaddb_internal_lob_upload_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sloaddb_internal_lob_upload_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -252,6 +261,7 @@ extern void ssession_destroy_load_session (THREAD_ENTRY * thread_p, void *sessio
 extern void sstream_from_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_send_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_abort (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

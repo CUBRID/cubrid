@@ -28,6 +28,7 @@
 
 #include "dbtype_def.h"
 #include "load_session.hpp"
+#include "internal_lob_file.hpp"
 #include "query_list.h"
 #include "query_manager.h"
 #include "system_parameter.h"
@@ -94,6 +95,17 @@ extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_sessi
 
 extern int session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p);
 extern int session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr));
+extern bool session_has_internal_lob_dml_stream (THREAD_ENTRY * thread_p);
+extern void session_abort_stream_session (THREAD_ENTRY * thread_p);
+extern int session_internal_lob_dml_consume (THREAD_ENTRY * thread_p, int slot, const OID * class_oid,
+					     DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator);
+extern int session_internal_lob_upload_begin (THREAD_ENTRY * thread_p, DB_TYPE type, DB_BIGINT data_length,
+					      DB_BIGINT logical_length, INT64 * token);
+extern int session_internal_lob_upload_append (THREAD_ENTRY * thread_p, INT64 token, const char *data, int data_size);
+extern int session_internal_lob_upload_end (THREAD_ENTRY * thread_p, INT64 token);
+extern int session_internal_lob_upload_abort (THREAD_ENTRY * thread_p, INT64 token);
+extern int session_internal_lob_upload_consume (THREAD_ENTRY * thread_p, INT64 token, const OID * class_oid,
+						DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator);
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
@@ -101,4 +113,5 @@ extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void session_destroy_load_session (THREAD_ENTRY * thread_p, void *session);
+extern void session_destroy_stream_session (THREAD_ENTRY * thread_p, void *session);
 #endif /* _SESSION_H_ */
