@@ -300,6 +300,17 @@ static GETOPT_LONG ua_Optimize_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Calibrate_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {CALIBRATE_CLASS_NAME_S, {ARG_STRING}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Calibrate_Option[] = {
+  {CALIBRATE_CLASS_NAME_L, 1, 0, CALIBRATE_CLASS_NAME_S},
+  {0, 0, 0, 0}
+};
+
 static UTIL_ARG_MAP ua_Install_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {INSTALL_SERVER_NAME_S, {ARG_STRING}, {0}},
@@ -977,6 +988,7 @@ static UTIL_MAP ua_Utility_Map[] = {
   {LOCKDB, CS_ONLY, 1, UTIL_OPTION_LOCKDB, "lockdb", ua_Lock_Option, ua_Lock_Option_Map},
   {KILLTRAN, CS_ONLY, 1, UTIL_OPTION_KILLTRAN, "killtran", ua_Killtran_Option, ua_Killtran_Option_Map},
   {OPTIMIZEDB, SA_ONLY, 1, UTIL_OPTION_OPTIMIZEDB, "optimizedb", ua_Optimize_Option, ua_Optimize_Option_Map},
+  {CALIBRATEDB, SA_ONLY, 1, UTIL_OPTION_CALIBRATEDB, "calibratedb", ua_Calibrate_Option, ua_Calibrate_Option_Map},
   {INSTALLDB, SA_ONLY, 1, UTIL_OPTION_INSTALLDB, "installdb", ua_Install_Option, ua_Install_Option_Map},
   {DIAGDB, SA_ONLY, 1, UTIL_OPTION_DIAGDB, "diagdb", ua_Diag_Option, ua_Diag_Option_Map},
   {CLEANFILEDB, SA_CS, 1, UTIL_OPTION_CLEANFILEDB, "cleanfiledb", ua_Filemgr_Option, ua_Filemgr_Option_Map},
