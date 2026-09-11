@@ -266,6 +266,9 @@ namespace cubthread
       bool interrupted;		/* is this request/transaction interrupted ? */
       std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
+      bool force_latch_wait;	/* while true, page latches ignore the transaction's no-wait setting. set only
+				 * around the disk manager's volume header and sector table fixes; see
+				 * pgbuf_set_force_latch_wait () for why this lives here and not in LOG_TDES. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;
 
@@ -279,6 +282,7 @@ namespace cubthread
 
       struct log_zip *log_zip_undo;
       struct log_zip *log_zip_redo;
+      struct log_zip *log_unzip_undo;	/* reader side: decompressing an undo image back out */
       char *log_data_ptr;
       int log_data_length;
 

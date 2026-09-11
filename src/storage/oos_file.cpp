@@ -1453,7 +1453,7 @@ oos_reclaim_clear_all_states (void)
 static void
 oos_reclaim_sample_horizon (THREAD_ENTRY *thread_p, LOG_LSA &horizon_out)
 {
-  const LOG_LSA append_lsa_at_sample = *log_get_append_lsa ();
+  const LOG_LSA append_lsa_at_sample = log_get_append_lsa ();
 
   LSA_SET_NULL (&horizon_out);
   logtb_find_smallest_lsa (thread_p, &horizon_out);
