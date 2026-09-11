@@ -282,7 +282,7 @@ class DelayedStream:
                             line = responses.readline(4097)
                             assert line.endswith(b'\n') and len(line) <= 4096
                             raw.extend(line)
-                            assert len(raw) <= 67108864
+                            assert len(raw) <= 1073741824
                             frame = json.loads(line)
                             self.frames.append(frame)
                             client.sendall(line)

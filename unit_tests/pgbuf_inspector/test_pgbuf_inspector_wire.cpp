@@ -669,7 +669,7 @@ TEST_CASE ("Whole-scan accounting includes unknown frames and the footer", "[pgb
   const std::string footer = counted_footer (0, 0) + "\n";
   for (std::size_t total :
        {
-	       67108863, 67108864, 67108865
+	       1073741823, 1073741824, 1073741825
        })
     {
       INFO (total);
@@ -689,8 +689,8 @@ TEST_CASE ("Whole-scan accounting includes unknown frames and the footer", "[pgb
 	  remaining -= size;
 	}
       REQUIRE (ok);
-      REQUIRE (scan.feed (footer) == (total <= 67108864));
-      REQUIRE (scan.published () == (total <= 67108864));
+      REQUIRE (scan.feed (footer) == (total <= 1073741824));
+      REQUIRE (scan.published () == (total <= 1073741824));
     }
 }
 

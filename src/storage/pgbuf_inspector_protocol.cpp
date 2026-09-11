@@ -586,7 +586,7 @@ namespace cubpgbuf
 	}
       if (m_phase == phase::SCAN)
 	{
-	  if (line.size () > 67108864 - m_scan_bytes)
+	  if (line.size () > 1073741824 - m_scan_bytes)
 	    {
 	      return false;
 	    }

@@ -83,7 +83,7 @@ All limits are binary byte counts that include the terminating line feed.
 | Page frame (`page`) | at most 4,096 bytes |
 | Handshake frame (`server_hello`) | at most 65,536 bytes |
 | JSON nesting depth | at most 16, counting the frame object itself as depth 1 and each nested object or array as one more |
-| Whole scan, header through footer | at most 64 MiB (67,108,864 bytes) |
+| Whole scan, header through footer | at most 1 GiB (1,073,741,824 bytes) |
 | Slots visited per scan | at most 65,536 |
 | Page frames emitted per scan | at most 65,536 |
 

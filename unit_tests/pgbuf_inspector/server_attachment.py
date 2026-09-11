@@ -104,7 +104,7 @@ def attach(volume_path=None):
                     line = stream.readline(4097)
                     assert line and line.endswith(b"\n") and len(line) <= 4096, line
                     total += len(line)
-                    assert total <= 64 * 1024 * 1024
+                    assert total <= 1024 * 1024 * 1024
                     frame = json.loads(line)
                     assert frame["incarnation"] == hello["incarnation"]
                     frames.append(frame)

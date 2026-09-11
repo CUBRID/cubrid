@@ -157,8 +157,8 @@ Reproduce the same recipes in a consumer's independent tests:
   those values with zero records; reject only 65,537.
 - Between the complete example's header and a zero-record footer, repeat
   unknown control frames padded up to 4,096 bytes, shortening the last frames
-  so the total header-through-footer byte count is 67,108,863 / 67,108,864 /
-  67,108,865. Accept / accept / reject at the footer. These unknown frames count
+  so the total header-through-footer byte count is 1,073,741,823 / 1,073,741,824 /
+  1,073,741,825. Accept / accept / reject at the footer. These unknown frames count
   bytes but cannot increase record_count or establish residency.
 
 These generators exercise the production verifier and preserve a bounded

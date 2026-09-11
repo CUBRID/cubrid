@@ -46,7 +46,7 @@ optional monitoring wrappers, so observation does not change their counters.
 ## Bounds and cancellation
 
 The daemon streams a bounded queue per client (at most 64 KiB) and retains no
-whole capture. Limits are 65,536 visited slots and emitted records, 64 MiB total
+whole capture. Limits are 65,536 visited slots and emitted records, 1 GiB total
 framed scan bytes, 4 KiB per record/control frame including newline, and depth 16.
 A maximum control-frame allowance is reserved for the footer before admitting
 each record. Limits may yield partial results; reaching a cap at full traversal

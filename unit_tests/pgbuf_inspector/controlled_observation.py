@@ -128,7 +128,7 @@ class Observation:
         while True:
             frame, line = self.frame(4096, started + 2)
             raw.extend(line)
-            assert len(raw) <= 67108864
+            assert len(raw) <= 1073741824
             assert frame["incarnation"] == self.hello["incarnation"]
             assert frame["scan_seq"] == header["scan_seq"]
             frames.append(frame)
