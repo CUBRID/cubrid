@@ -41,6 +41,7 @@
 
 // forward declarations
 struct log_tdes;
+class log_prior_inflight_holder;
 
 typedef struct log_crumb LOG_CRUMB;
 struct log_crumb
@@ -75,6 +76,15 @@ struct log_append_info
   int vdes;			/* Volume descriptor of active log */
   std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
   /* todo - not really belonging here. should be part of page buffer. */
+  /* Record-aligned watermark: everything strictly below it has left the prior list, so logpb_fetch_page ()
+   * reaches it. Exclusive, because the drain publishes append_lsa after copying a record and that is where
+   * the next one goes - a record at exactly copied_lsa is still staged. Every comparison against it is
+   * therefore inclusive on this side, as logpb_fetch_page () has always been.
+   * Published (release) by the drain and by LOG_RESET_APPEND_LSA (), read (acquire) by readers running
+   * ahead of the flush. Invariant copied_lsa <= append_lsa - lagging only sends a caller through the
+   * LOG_CS re-check, while running ahead makes one skip a drain it needed, so this is a store, never a
+   * max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other. */
+  std::atomic<LOG_LSA> copied_lsa;
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
 
@@ -85,6 +95,8 @@ struct log_append_info
 
   LOG_LSA get_nxio_lsa () const;
   void set_nxio_lsa (const LOG_LSA &next_io_lsa);
+  LOG_LSA get_copied_lsa () const;
+  void set_copied_lsa (const LOG_LSA &copied);
 };
 
 typedef struct log_prior_node LOG_PRIOR_NODE;
@@ -104,6 +116,10 @@ struct log_prior_node
   char *udata;
   int rlength;
   char *rdata;
+
+  /* Non-NULL while registered in the in-flight window (log_prior_inflight.hpp). Holds the node for epoch
+   * reclamation, and tells the drain to retire it instead of freeing it. */
+  log_prior_inflight_holder *inflight_holder;
 
   LOG_PRIOR_NODE *next;
 };
@@ -163,6 +179,9 @@ void log_append_init_zip ();
 void log_append_final_zip ();
 extern LOG_ZIP *log_append_get_zip_undo (THREAD_ENTRY *thread_p);
 extern LOG_ZIP *log_append_get_zip_redo (THREAD_ENTRY *thread_p);
+/* Reader side, for decompressing an undo image back out. Its own buffer rather than the two above, which
+ * the same thread may still be holding a compressed record in while it appends. */
+extern LOG_ZIP *log_append_get_unzip_undo (THREAD_ENTRY *thread_p);
 
 // todo - move to header of log page buffer
 size_t logpb_get_memsize ();
