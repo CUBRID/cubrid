@@ -27,10 +27,14 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <fstream>
+#include <string>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 #if defined (WINDOWS)
 #include <io.h>
 #else
@@ -46,6 +50,7 @@
 #include "elo.h"
 #include "environment_variable.h"
 #include "execute_schema.h"
+#include "heap_file.h"
 #include "intl_support.h"
 #include "language_support.h"
 #include "load_db_value_converter.hpp"
@@ -76,6 +81,10 @@
 using namespace cubload;
 
 const std::size_t LDR_MAX_ARGS = 32;
+
+static bool ldr_internal_lob_sidecar_loaded = false;
+static bool ldr_internal_lob_sidecar_available = false;
+static internal_lob_sidecar_map ldr_internal_lob_sidecar;
 
 /* filter out ignorable errid */
 #define FILTER_OUT_ERR_INTERNAL(err, expr)                              \
@@ -478,6 +487,8 @@ static int ldr_destroy (LDR_CONTEXT *context, int err);
 static int ldr_init (load_args *args);
 static void ldr_init_driver ();
 static int ldr_final (void);
+static int ldr_internal_lob_sidecar_load (const std::string &object_file);
+static void ldr_internal_lob_sidecar_clear ();
 
 /* Statistics updating/retrieving functions */
 static void ldr_stats (int *errors, int64_t *objects, int *defaults, int64_t *lastcommit, int *fails);
@@ -564,11 +575,14 @@ static int ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, S
 static int ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_str_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_str_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+static int ldr_internal_lob_ref_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+static int ldr_internal_lob_ref_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+
 static int ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
@@ -895,6 +909,7 @@ error_exit:
 	  case LDR_XSTR:
 	  case LDR_ELO_INT:
 	  case LDR_ELO_EXT:
+	  case LDR_INTERNAL_LOB_REF:
 	  case LDR_SYS_USER:
 	  case LDR_SYS_CLASS:
 	  {
@@ -1911,6 +1926,64 @@ is_internal_class (DB_OBJECT *class_)
   return (ml_find (internal_classes, class_));
 }
 
+static void
+ldr_internal_lob_sidecar_clear ()
+{
+  ldr_internal_lob_sidecar.clear ();
+  ldr_internal_lob_sidecar_loaded = false;
+  ldr_internal_lob_sidecar_available = false;
+}
+
+static int
+ldr_internal_lob_sidecar_load (const std::string &object_file)
+{
+  int error;
+
+  ldr_internal_lob_sidecar_clear ();
+  ldr_internal_lob_sidecar_loaded = true;
+
+  error = load_internal_lob_sidecar (object_file, ldr_internal_lob_sidecar, ldr_internal_lob_sidecar_available);
+  if (error != NO_ERROR)
+    {
+      /* The value-level handler only reports the offending token, which says nothing about why the
+       * sidecar was rejected (a charset mismatch, for instance). Surface the real message. */
+      display_error (0);
+    }
+  return error;
+}
+
+struct ldr_internal_lob_sidecar_stream_context
+{
+  const internal_lob_sidecar_entry *entry = NULL;
+  DB_BIGINT offset = 0;              /* bytes consumed from the sidecar payload */
+};
+
+/*
+ * Hands the sidecar payload to the LOB writer as a straight pass-through. A charset mismatch is
+ * rejected earlier (internal_lob_sidecar_check_charset), so no transcoding happens here.
+ */
+static int
+ldr_internal_lob_sidecar_stream_reader (void *ctx, DB_BIGINT offset, char *buf, int size)
+{
+  ldr_internal_lob_sidecar_stream_context *stream_ctx = (ldr_internal_lob_sidecar_stream_context *) ctx;
+  int nread = 0;
+  int error;
+
+  if (stream_ctx == NULL || stream_ctx->entry == NULL || buf == NULL || size <= 0 || offset < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  error = internal_lob_sidecar_read_raw_chunk (*stream_ctx->entry, offset, buf, size, &nread);
+  if (error == NO_ERROR && nread != size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+  return error;
+}
+
 /*
  *                         LEXER ACTION ROUTINES
  *
@@ -2887,8 +2960,8 @@ static int
 ldr_str_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
 {
   int err = NO_ERROR;
+  int char_count = 0;
   DB_VALUE val;
-  int max_char_length = att->domain->precision;
 
   db_make_null (&val);
 
@@ -2899,18 +2972,144 @@ ldr_str_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
    * absolute LOB size limit (att->domain->precision == DB_MAX_LOB_PRECISION),
    * so apply a plain bound check.
    */
-  if (max_char_length <= 0 || max_char_length > DB_MAX_LOB_PRECISION)
-    {
-      max_char_length = DB_MAX_LOB_PRECISION;
-    }
-
-  if (len > (size_t) max_char_length)
+  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
+  if (char_count > att->domain->precision)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CLOB));
       CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CLOB, str);
     }
 
-  CHECK_ERR (err, db_make_clob (&val, max_char_length, str, (int) len));
+  CHECK_ERR (err, db_make_clob (&val, att->domain->precision, str, (int) len));
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  db_value_clear (&val);
+  return err;
+}
+
+static int
+ldr_internal_lob_ref_make_value (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att,
+				 DB_TYPE expected_type, DB_VALUE *val)
+{
+  int err = NO_ERROR;
+  char token_type;
+  char expected_token_type;
+  std::string key;
+  auto found = ldr_internal_lob_sidecar.end ();
+  int max_length;
+  INTERNAL_LOB_LOCATOR locator;
+  OID *class_oid = NULL;
+  ldr_internal_lob_sidecar_stream_context stream_ctx;
+  DB_BIGINT bit_length = -1;
+
+  db_make_null (val);
+  OID_SET_NULL (&locator.oid);
+  locator.length = 0;
+
+  if (str == NULL || len < 3 || str[1] != '|')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      CHECK_PARSE_ERR (err, ER_FAILED, context, expected_type, str);
+    }
+
+  token_type = str[0];
+  expected_token_type = (expected_type == DB_TYPE_BLOB) ? 'B' : 'C';
+  if (token_type != expected_token_type)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, expected_type, str);
+    }
+
+  if (!ldr_internal_lob_sidecar_loaded)
+    {
+      CHECK_PARSE_ERR (err, ldr_internal_lob_sidecar_load (context->args->object_file), context,
+		       expected_type, str);
+    }
+
+  if (!ldr_internal_lob_sidecar_available)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      CHECK_PARSE_ERR (err, ER_FAILED, context, expected_type, str);
+    }
+
+  key.assign (str + 2, len - 2);
+  found = ldr_internal_lob_sidecar.find (key);
+  if (found == ldr_internal_lob_sidecar.end () || found->second.type != token_type)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      CHECK_PARSE_ERR (err, ER_FAILED, context, expected_type, str);
+    }
+
+  max_length = att->domain->precision;
+  if (max_length <= 0 || max_length > DB_MAX_LOB_PRECISION)
+    {
+      max_length = DB_MAX_LOB_PRECISION;
+    }
+
+  if (expected_type == DB_TYPE_CLOB)
+    {
+      if (found->second.data_length > (DB_BIGINT) max_length)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CLOB));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CLOB, str);
+	}
+    }
+  else
+    {
+      if (found->second.bit_length > max_length)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BLOB));
+	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BLOB, str);
+	}
+
+      bit_length = found->second.bit_length;
+    }
+
+  class_oid = WS_OID (context->cls);
+  if (class_oid == NULL || OID_ISNULL (class_oid) || OID_ISTEMP (class_oid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      CHECK_PARSE_ERR (err, ER_FAILED, context, expected_type, str);
+    }
+
+  /* The resolved locator is assigned through the workspace, whose memory representation drops the
+   * value marker; tell locator force to re-read such records so the heap sink writes a stub. */
+  thread_get_thread_entry_info ()->internal_lob_adopts_locators = true;
+
+  stream_ctx.entry = &found->second;
+  stream_ctx.offset = 0;
+  /* Only text payloads are transcoded; BLOB bytes are the value itself. */
+  CHECK_ERR (err,
+	     heap_internal_lob_insert_stream (thread_get_thread_entry_info (), class_oid,
+		 ldr_internal_lob_sidecar_stream_reader, &stream_ctx, found->second.data_length, bit_length,
+		 &locator));
+  CHECK_ERR (err, internal_lob_make_adopt_locator_db_value (val, expected_type, locator));
+
+error_exit:
+  return err;
+}
+
+static int
+ldr_internal_lob_ref_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
+{
+  int err = NO_ERROR;
+  DB_VALUE val;
+
+  CHECK_ERR (err, ldr_internal_lob_ref_make_value (context, str, len, att, DB_TYPE_BLOB, &val));
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  db_value_clear (&val);
+  return err;
+}
+
+static int
+ldr_internal_lob_ref_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
+{
+  int err = NO_ERROR;
+  DB_VALUE val;
+
+  CHECK_ERR (err, ldr_internal_lob_ref_make_value (context, str, len, att, DB_TYPE_CLOB, &val));
   CHECK_ERR (err, ldr_generic (context, &val));
 
 error_exit:
@@ -3020,20 +3219,8 @@ ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUT
   size_t dest_size;
   char *bstring = NULL;
   DB_VALUE val;
-  int max_bit_length = att->domain->precision;
 
   db_make_null (&val);
-
-  if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
-    {
-      max_bit_length = DB_MAX_LOB_PRECISION;
-    }
-
-  if (len > (size_t) max_bit_length)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BLOB));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BLOB, str);
-    }
 
   dest_size = (len + 7) / 8;
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
@@ -3044,7 +3231,7 @@ ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUT
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BLOB, str);
     }
 
-  CHECK_ERR (err, db_make_blob (&val, max_bit_length, bstring, (int) len));
+  CHECK_ERR (err, db_make_blob (&val, DB_MAX_LOB_PRECISION, bstring, (int) len));
 
   /* val takes ownership of this piece of memory */
   val.need_clear = true;
@@ -3171,20 +3358,8 @@ ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUT
   size_t dest_size;
   char *bstring = NULL;
   DB_VALUE val;
-  int max_bit_length = att->domain->precision;
 
   db_make_null (&val);
-
-  if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
-    {
-      max_bit_length = DB_MAX_LOB_PRECISION;
-    }
-
-  if (len > (size_t) max_bit_length / 4)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BLOB));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BLOB, str);
-    }
 
   dest_size = (len + 1) / 2;
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
@@ -3195,7 +3370,7 @@ ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUT
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BLOB, str);
     }
 
-  CHECK_ERR (err, db_make_blob (&val, max_bit_length, bstring, (int) len * 4));
+  CHECK_ERR (err, db_make_blob (&val, DB_MAX_LOB_PRECISION, bstring, (int) len * 4));
 
   /* val takes ownership of this piece of memory */
   val.need_clear = true;
@@ -5565,10 +5740,12 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
     case DB_TYPE_BLOB:
       attdesc->setter[LDR_BSTR] = &ldr_bstr_db_blob;
       attdesc->setter[LDR_XSTR] = &ldr_xstr_db_blob;
+      attdesc->setter[LDR_INTERNAL_LOB_REF] = &ldr_internal_lob_ref_db_blob;
       break;
 
     case DB_TYPE_CLOB:
       attdesc->setter[LDR_STR] = &ldr_str_db_clob;
+      attdesc->setter[LDR_INTERNAL_LOB_REF] = &ldr_internal_lob_ref_db_clob;
       break;
 
     case DB_TYPE_BFILE:
@@ -6406,6 +6583,12 @@ ldr_init (load_args *args)
       return er_errid ();
     }
 
+  if (ldr_internal_lob_sidecar_load (args->object_file) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
   idmap_init ();
 
   if (otable_init ())
@@ -6510,6 +6693,7 @@ ldr_final (void)
   idmap_final ();
   otable_final ();
   ldr_mop_tempoid_maps_final ();
+  ldr_internal_lob_sidecar_clear ();
 
   return shutdown_error;
 }

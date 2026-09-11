@@ -34,6 +34,9 @@
 #include "string_opfunc.h"
 #include "chartype.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* It is not required for the keywords to be alphabetically sorted, as they
  * will be sorted when needed. See pt_find_keyword.
  */
@@ -81,6 +84,7 @@ static KEYWORD_RECORD keywords[] = {
   {BIT_XOR, "BIT_XOR", 1},
   {BFILE_, "BFILE", 0},
   {BLOB_, "BLOB", 0},
+  {CLOB_, "CLOB", 0},
   {BOOLEAN_, "BOOLEAN", 0},
   {BOTH_, "BOTH", 0},
   {BREADTH, "BREADTH", 0},
@@ -105,9 +109,8 @@ static KEYWORD_RECORD keywords[] = {
   {CLASS, "CLASS", 0},
   {CLASSES, "CLASSES", 0},
   {CFILE_, "CFILE", 0},
-  {CLOB_, "CLOB", 0},
   {CLOB_TO_CHAR, "CLOB_TO_CHAR", 1},
-  {CFILE_TO_CHAR, "CFILE_TO_CHR", 1},
+  {CFILE_TO_CHAR, "CFILE_TO_CHAR", 1},
   {CLOSE, "CLOSE", 1},
   {COALESCE, "COALESCE", 0},
   {COLLATE, "COLLATE", 0},
@@ -127,6 +130,12 @@ static KEYWORD_RECORD keywords[] = {
   {CONSTRAINTS, "CONSTRAINTS", 0},
   {CONTINUE, "CONTINUE", 0},
   {CONVERT, "CONVERT", 0},
+  {COPY_, "COPY", 0},
+  {CSV_, "CSV", 0},
+  {DELIMITER_, "DELIMITER", 0},
+  {QUOTE_, "QUOTE", 0},
+  {HEADER_, "HEADER", 0},
+  {BULK_, "BULK", 0},
   {CORRESPONDING, "CORRESPONDING", 0},
   {COST, "COST", 1},
   {COUNT, "COUNT", 0},
@@ -217,6 +226,7 @@ static KEYWORD_RECORD keywords[] = {
   {FORCE, "FORCE", 1},
   {FORCE_OUTLINE, "FORCE_OUTLINE", 1},
   {FOREIGN, "FOREIGN", 0},
+  {FORMAT_, "FORMAT", 0},
   {FOUND, "FOUND", 0},
   {FROM, "FROM", 0},
   {FULL, "FULL", 0},
@@ -523,6 +533,7 @@ static KEYWORD_RECORD keywords[] = {
   {STATEMENT, "STATEMENT", 1},
   {STATISTICS, "STATISTICS", 0},
   {STATUS, "STATUS", 1},
+  {STDIN_, "STDIN", 0},
   {STDDEV, "STDDEV", 1},
   {STDDEV_POP, "STDDEV_POP", 1},
   {STDDEV_SAMP, "STDDEV_SAMP", 1},

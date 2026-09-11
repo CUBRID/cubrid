@@ -2737,7 +2737,7 @@ locator_fun_get_all_mops (MOP class_mop, DB_FETCH_MODE purpose, int (*fun) (MOBJ
        */
       error_code =
 	locator_fetch_all (hfid, &lock, fetch_version_type, class_oid, &nobjects, &nfetched, &last_oid,
-			   &fetch_area, 1, -1, -1);
+			   &fetch_area, 1, -1, -1, false);
       if (error_code != NO_ERROR)
 	{
 	  /* There was a failure. Was the transaction aborted ? */
@@ -7057,7 +7057,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 		{
 		  /*
 		   * OOS insert records must be forced together with the following heap insert/update record.
-		   * The server uses the OID produced by LC_FLUSH_INSERT_OOS to rewrite the OOS placeholder
+		   * The server uses the OID produced by the OOS/Internal LOB insert operation to rewrite the placeholder
 		   * in the heap record within the same xlocator_repl_force call.
 		   */
 		  int minsize = mflush->copy_area->length + (required_length - mflush->recdes.area_size) + DB_PAGESIZE;
@@ -7117,6 +7117,16 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       COPY_OID (&mflush->obj->class_oid, &repl_obj->class_oid);
       HFID_SET_NULL (&mflush->obj->hfid);
       OID_SET_NULL (&mflush->obj->oid);
+      if (LC_IS_FLUSH_INSERT_OOS (repl_obj->operation))
+	{
+	  /* A non-null pageid temporarily carries the typed OOS attribute id and volid the REPL_OOS_FLAG_* bits
+	   * across this private copy area. NULL_ATTRID keeps the exact legacy layout for pre-upgrade records. */
+	  if (repl_obj->oos_attrid != NULL_ATTRID)
+	    {
+	      mflush->obj->oid.pageid = repl_obj->oos_attrid;
+	      mflush->obj->oid.volid = (short) repl_obj->oos_flags;
+	    }
+	}
 
       mflush->obj->length = mflush->recdes.length + key_length;
       mflush->obj->offset = CAST_BUFLEN (obj_start_p - mflush->copy_area->mem);
@@ -7132,7 +7142,7 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
       mflush->recdes.area_size -= round_length + sizeof (*(mflush->obj));
 
       mflush->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (mflush->obj);
-      pending_oos_insert = (repl_obj->operation == LC_FLUSH_INSERT_OOS);
+      pending_oos_insert = LC_IS_FLUSH_INSERT_OOS (repl_obj->operation);
       ws_free_repl_obj (repl_obj);
     }
 

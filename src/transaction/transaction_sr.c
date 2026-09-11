@@ -39,6 +39,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "server_support.h"
+#include "session.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -79,6 +80,10 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
    */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* A stream session (internal LOB DML / upload) still open here belongs to a statement that never reached
+   * END; drop it while its savepoint is still valid instead of letting it leak into the next transaction. */
+  session_abort_stream_session (thread_p);
 
 #ifndef CCI_XA
   /* dblink transaction commit first */
@@ -132,6 +137,9 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 
   /* Execute some few remaining actions before the log manager is notified of the commit */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* Same as in xtran_server_commit: an open stream session must not outlive its transaction. */
+  session_abort_stream_session (thread_p);
 
   /* dblink transaction abort first */
   (void) qmgr_check_dblink_trans (thread_p, true);

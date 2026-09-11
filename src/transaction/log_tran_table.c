@@ -1591,6 +1591,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->oos_insert_lsa_queue.clear ();
+  tdes->oos_repl_lob_chains.clear ();
   tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
@@ -1682,6 +1683,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->oos_insert_lsa_queue.clear ();
+  tdes->oos_repl_lob_chains.clear ();
   tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
@@ -4091,11 +4093,15 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
     }
 
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
+  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ()
+      || thread_p->type == TT_LOADDB)
     {
-      /* No self-lock during boot/recovery or for system/vacuum transactions: they never run lock_unlock_all, so
-       * the entry would leak and block later waiters keyed on this MVCCID; and no concurrent waiter exists there
-       * to serialize with. Shared by both entry points (the choke-point wrapper and the heap-site ensure). */
+      /* No self-lock during boot/recovery, for system/vacuum transactions, or on a loaddb worker: they never run
+       * lock_unlock_all, so the entry would leak and block later waiters keyed on this MVCCID; and no concurrent
+       * waiter exists there to serialize with. A loaddb worker is lock-free by design (see the TT_LOADDB assertion
+       * in lock_internal_perform_lock_object) and must never enter the lock manager -- creating an internal LOB OOS
+       * file during load reaches this choke point, so it has to be skipped here. Shared by both entry points (the
+       * choke-point wrapper and the heap-site ensure). */
       return NO_ERROR;
     }
 

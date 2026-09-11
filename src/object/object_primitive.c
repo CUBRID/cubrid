@@ -41,6 +41,7 @@
 #include "compressor.hpp"
 #include "numeric_opfunc.h"
 #include "mem_block.hpp"
+#include "internal_lob_marker.h"
 #include "object_representation.h"
 #include "set_object.h"
 #include "string_buffer.hpp"
@@ -138,6 +139,23 @@ extern unsigned int db_on_server;
 
 #define BITS_IN_BYTE			8
 #define BITS_TO_BYTES(bit_cnt)		(((bit_cnt) + 7) / 8)
+
+/*
+ * Internal LOB marker envelopes carry a marked DB_VALUE (locator, pending source, stream token, ...) through the
+ * generic CHAR/VARCHAR/CLOB and VARBIT/BLOB disk primitives: heap records of LOB columns, list-file tuples and
+ * constant images.  Every readval of those primitives peeks for an envelope first.
+ *
+ * The char envelope header byte is 0x0f, which a normal string with a 15-byte payload also writes as its size
+ * prefix; the varbit envelope reuses the 0xff extended-length prefix with an impossible (negative) bit length.
+ * A header byte alone therefore never identifies an envelope: the peek additionally requires a valid marker word,
+ * a payload length that fits the buffer and the INTERNAL_LOB_MARKER_PAYLOAD_PREFIX text at the start of the
+ * payload, and the reader re-validates all of it before it allocates anything.
+ */
+#define MR_INTERNAL_LOB_CHAR_MARKER_HEADER ((unsigned char) 0x0f)
+#define MR_INTERNAL_LOB_VARBIT_EXTENDED_MARKER 0xff
+#define MR_INTERNAL_LOB_VARBIT_MARKER_LENGTH (-26914)
+#define MR_INTERNAL_LOB_CHAR_MARKER_HEADER_SIZE (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE)
+#define MR_INTERNAL_LOB_VARBIT_MARKER_HEADER_SIZE (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE)
 
 #define IS_FLOATING_PRECISION(prec) \
   ((prec) == TP_FLOATING_PRECISION_VALUE)
@@ -10412,7 +10430,8 @@ mr_cmpval_resultset (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int 
 
 
 /*
- * Shared constructor for the CHAR/VARCHAR/CLOB primitives below.
+ * Internal LOB marker envelope helpers, shared by the CHAR/VARCHAR/CLOB and
+ * VARBIT/BLOB primitives below.
  */
 static inline int
 mr_make_char_or_varchar (DB_VALUE * value, DB_TYPE type, int precision, const char *str, int size,
@@ -10431,6 +10450,521 @@ mr_make_char_or_varchar (DB_VALUE * value, DB_TYPE type, int precision, const ch
     {
       return db_make_varchar (value, precision, str, size, codeset, collation);
     }
+}
+
+static bool
+mr_internal_lob_marker_is_valid (int marker)
+{
+  return marker == DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR || marker == DB_VALUE_INTERNAL_LOB_MARKER_FILE_SOURCE
+    || marker == DB_VALUE_INTERNAL_LOB_MARKER_PENDING || marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM
+    || marker == DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD || marker == DB_VALUE_INTERNAL_LOB_MARKER_DML_SLOT;
+}
+
+static int
+mr_internal_lob_marker_from_value (const DB_VALUE * value)
+{
+  int marker = db_value_get_internal_lob_marker (value);
+
+  return mr_internal_lob_marker_is_valid (marker) ? marker : DB_VALUE_INTERNAL_LOB_MARKER_NONE;
+}
+
+static int
+mr_internal_lob_put_int_unaligned (OR_BUF * buf, int value)
+{
+  char int_buf[OR_INT_SIZE];
+
+  OR_PUT_INT (int_buf, value);
+  return or_put_data (buf, int_buf, OR_INT_SIZE);
+}
+
+static int
+mr_internal_lob_get_int_unaligned (OR_BUF * buf, int *value)
+{
+  char int_buf[OR_INT_SIZE];
+  int rc;
+
+  rc = or_get_data (buf, int_buf, OR_INT_SIZE);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  *value = OR_GET_INT (int_buf);
+  return NO_ERROR;
+}
+
+static int
+mr_internal_lob_marked_char_length (const DB_VALUE * value, int align)
+{
+  int payload_size = db_get_string_size (value);
+  int len;
+
+  if (payload_size < 0)
+    {
+      return 0;
+    }
+
+  len = MR_INTERNAL_LOB_CHAR_MARKER_HEADER_SIZE + payload_size;
+  if (align == INT_ALIGNMENT)
+    {
+      len += OR_BYTE_SIZE;
+      len = DB_ALIGN (len, INT_ALIGNMENT);
+    }
+
+  return len;
+}
+
+static int
+mr_internal_lob_write_marked_char (OR_BUF * buf, const DB_VALUE * value, int marker, int align)
+{
+  const char *payload = db_get_string (value);
+  int payload_size = db_get_string_size (value);
+  int rc;
+
+  if (payload == NULL || payload_size < 0)
+    {
+      return ER_FAILED;
+    }
+
+  rc = or_put_byte (buf, MR_INTERNAL_LOB_CHAR_MARKER_HEADER);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = mr_internal_lob_put_int_unaligned (buf, marker);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = mr_internal_lob_put_int_unaligned (buf, payload_size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = or_put_data (buf, payload, payload_size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (align == INT_ALIGNMENT)
+    {
+      rc = or_put_byte (buf, 0);
+      if (rc == NO_ERROR)
+	{
+	  rc = or_put_align32 (buf);
+	}
+    }
+
+  return rc;
+}
+
+/*
+ * mr_internal_lob_buf_remaining () - bytes left in buf from ptr to endptr; INT_MAX when the buffer has no known end
+ *				      (or_init () with length <= 0 installs OR_INFINITE_POINTER as endptr).
+ */
+static int
+mr_internal_lob_buf_remaining (const OR_BUF * buf)
+{
+  ptrdiff_t remaining;
+
+  if (buf->endptr == (char *) OR_INFINITE_POINTER)
+    {
+      return INT_MAX;
+    }
+  if (buf->endptr < buf->ptr)
+    {
+      return 0;
+    }
+  remaining = buf->endptr - buf->ptr;
+  return remaining > INT_MAX ? INT_MAX : (int) remaining;
+}
+
+/*
+ * mr_internal_lob_payload_is_envelope () - decide whether payload_size bytes at payload are a marker text; false also
+ *					    when the payload would run past the remaining bytes of the buffer.
+ */
+static bool
+mr_internal_lob_payload_is_envelope (const char *payload, int payload_size, int remaining)
+{
+  if (payload_size < INTERNAL_LOB_MARKER_PAYLOAD_PREFIX_LEN || payload_size > remaining)
+    {
+      return false;
+    }
+
+  return memcmp (payload, INTERNAL_LOB_MARKER_PAYLOAD_PREFIX, INTERNAL_LOB_MARKER_PAYLOAD_PREFIX_LEN) == 0;
+}
+
+static bool
+mr_internal_lob_peek_marked_char (OR_BUF * buf)
+{
+  int marker;
+  int payload_size;
+  int remaining;
+
+  if (buf == NULL || buf->ptr + MR_INTERNAL_LOB_CHAR_MARKER_HEADER_SIZE > buf->endptr
+      || (unsigned char) OR_GET_BYTE (buf->ptr) != MR_INTERNAL_LOB_CHAR_MARKER_HEADER)
+    {
+      return false;
+    }
+
+  marker = OR_GET_INT (buf->ptr + OR_BYTE_SIZE);
+  if (!mr_internal_lob_marker_is_valid (marker))
+    {
+      return false;
+    }
+
+  /* 0x0f is also the size prefix of a plain 15-byte string, so the marker word alone is not proof; the payload must
+   * be a marker text that fits the buffer. */
+  payload_size = OR_GET_INT (buf->ptr + OR_BYTE_SIZE + OR_INT_SIZE);
+  remaining = mr_internal_lob_buf_remaining (buf);
+  if (remaining != INT_MAX)
+    {
+      remaining -= MR_INTERNAL_LOB_CHAR_MARKER_HEADER_SIZE;
+    }
+  return mr_internal_lob_payload_is_envelope (buf->ptr + MR_INTERNAL_LOB_CHAR_MARKER_HEADER_SIZE, payload_size,
+					      remaining);
+}
+
+static int
+mr_internal_lob_read_marked_char (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				  char *copy_buf, int copy_buf_len, int align, DB_TYPE type)
+{
+  char *start = buf->ptr;
+  char *payload = NULL;
+  char *new_ = NULL;
+  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
+  int payload_size = 0;
+  int precision;
+  int rc;
+  int header_byte;
+
+  (void) copy;
+
+  rc = NO_ERROR;
+  header_byte = or_get_byte (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if ((unsigned char) header_byte != MR_INTERNAL_LOB_CHAR_MARKER_HEADER)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+      return ER_FAILED;
+    }
+  rc = mr_internal_lob_get_int_unaligned (buf, &marker);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = mr_internal_lob_get_int_unaligned (buf, &payload_size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if (!mr_internal_lob_marker_is_valid (marker)
+      || !mr_internal_lob_payload_is_envelope (buf->ptr, payload_size, mr_internal_lob_buf_remaining (buf)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+      return ER_FAILED;
+    }
+
+  if (value == NULL)
+    {
+      rc = or_advance (buf, payload_size);
+    }
+  else
+    {
+      if (copy_buf != NULL && copy_buf_len >= payload_size + 1)
+	{
+	  new_ = copy_buf;
+	}
+      else
+	{
+	  new_ = (char *) db_private_alloc (NULL, payload_size + 1);
+	}
+      if (new_ == NULL)
+	{
+	  return ER_FAILED;
+	}
+      rc = or_get_data (buf, new_, payload_size);
+      if (rc != NO_ERROR)
+	{
+	  if (new_ != copy_buf)
+	    {
+	      db_private_free_and_init (NULL, new_);
+	    }
+	  return rc;
+	}
+      new_[payload_size] = '\0';
+      payload = new_;
+
+      precision = (domain != NULL) ? domain->precision
+	: ((type == DB_TYPE_CLOB) ? DB_MAX_LOB_PRECISION : DB_MAX_VARCHAR_PRECISION);
+      rc = mr_make_char_or_varchar (value, type, precision, payload, payload_size,
+				    (domain != NULL) ? TP_DOMAIN_CODESET (domain) : LANG_SYS_CODESET,
+				    (domain != NULL) ? TP_DOMAIN_COLLATION (domain) : LANG_SYS_COLLATION);
+      if (rc != NO_ERROR)
+	{
+	  if (new_ != copy_buf)
+	    {
+	      db_private_free_and_init (NULL, new_);
+	    }
+	  return rc;
+	}
+      value->need_clear = (new_ != copy_buf) ? true : false;
+      value->data.ch.medium.length = payload_size;
+      db_value_mark_internal_lob (value, marker);
+    }
+
+  if (rc == NO_ERROR && align == INT_ALIGNMENT)
+    {
+      rc = or_advance (buf, OR_BYTE_SIZE);
+      if (rc == NO_ERROR)
+	{
+	  rc = or_get_align32 (buf);
+	}
+    }
+  if (rc == NO_ERROR && size != -1)
+    {
+      int pad = size - (int) (buf->ptr - start);
+      if (pad > 0)
+	{
+	  rc = or_advance (buf, pad);
+	}
+    }
+
+  return rc;
+}
+
+static int
+mr_internal_lob_marked_varbit_length (const DB_VALUE * value, int align)
+{
+  int bit_length = db_get_string_length (value);
+  int len;
+
+  if (bit_length < 0)
+    {
+      return 0;
+    }
+
+  len = MR_INTERNAL_LOB_VARBIT_MARKER_HEADER_SIZE + BITS_TO_BYTES (bit_length);
+  if (align == INT_ALIGNMENT)
+    {
+      len = DB_ALIGN (len, INT_ALIGNMENT);
+    }
+
+  return len;
+}
+
+static int
+mr_internal_lob_write_marked_varbit (OR_BUF * buf, const DB_VALUE * value, int marker, int align)
+{
+  const char *payload = db_get_string (value);
+  int bit_length = db_get_string_length (value);
+  int payload_size;
+  int rc;
+
+  if (payload == NULL || bit_length < 0)
+    {
+      return ER_FAILED;
+    }
+
+  payload_size = BITS_TO_BYTES (bit_length);
+  rc = or_put_byte (buf, MR_INTERNAL_LOB_VARBIT_EXTENDED_MARKER);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = mr_internal_lob_put_int_unaligned (buf, MR_INTERNAL_LOB_VARBIT_MARKER_LENGTH);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = mr_internal_lob_put_int_unaligned (buf, marker);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = mr_internal_lob_put_int_unaligned (buf, bit_length);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = or_put_data (buf, payload, payload_size);
+  if (rc == NO_ERROR && align == INT_ALIGNMENT)
+    {
+      rc = or_put_align32 (buf);
+    }
+
+  return rc;
+}
+
+static bool
+mr_internal_lob_peek_marked_varbit (OR_BUF * buf)
+{
+  int marker_length;
+  int marker;
+  int bit_length;
+  int remaining;
+
+  if (buf == NULL || buf->ptr + MR_INTERNAL_LOB_VARBIT_MARKER_HEADER_SIZE > buf->endptr
+      || (unsigned char) OR_GET_BYTE (buf->ptr) != MR_INTERNAL_LOB_VARBIT_EXTENDED_MARKER)
+    {
+      return false;
+    }
+
+  marker_length = OR_GET_INT (buf->ptr + OR_BYTE_SIZE);
+  marker = OR_GET_INT (buf->ptr + OR_BYTE_SIZE + OR_INT_SIZE);
+  if (marker_length != MR_INTERNAL_LOB_VARBIT_MARKER_LENGTH || !mr_internal_lob_marker_is_valid (marker))
+    {
+      return false;
+    }
+
+  bit_length = OR_GET_INT (buf->ptr + OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE);
+  if (bit_length < 0)
+    {
+      return false;
+    }
+  remaining = mr_internal_lob_buf_remaining (buf);
+  if (remaining != INT_MAX)
+    {
+      remaining -= MR_INTERNAL_LOB_VARBIT_MARKER_HEADER_SIZE;
+    }
+  return mr_internal_lob_payload_is_envelope (buf->ptr + MR_INTERNAL_LOB_VARBIT_MARKER_HEADER_SIZE,
+					      BITS_TO_BYTES (bit_length), remaining);
+}
+
+static int
+mr_internal_lob_read_marked_varbit (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
+				    char *copy_buf, int copy_buf_len, int align, DB_TYPE type)
+{
+  char *start = buf->ptr;
+  char *new_ = NULL;
+  int header_byte;
+  int marker_length;
+  int marker;
+  int bit_length;
+  int payload_size;
+  int precision;
+  int rc = NO_ERROR;
+
+  (void) copy;
+
+  header_byte = or_get_byte (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if ((unsigned char) header_byte != MR_INTERNAL_LOB_VARBIT_EXTENDED_MARKER)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+      return ER_FAILED;
+    }
+  rc = mr_internal_lob_get_int_unaligned (buf, &marker_length);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = mr_internal_lob_get_int_unaligned (buf, &marker);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = mr_internal_lob_get_int_unaligned (buf, &bit_length);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if (marker_length != MR_INTERNAL_LOB_VARBIT_MARKER_LENGTH || !mr_internal_lob_marker_is_valid (marker)
+      || bit_length < 0
+      || !mr_internal_lob_payload_is_envelope (buf->ptr, BITS_TO_BYTES (bit_length),
+					       mr_internal_lob_buf_remaining (buf)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_CORRUPTED, 0);
+      return ER_FAILED;
+    }
+
+  payload_size = BITS_TO_BYTES (bit_length);
+  if (value == NULL)
+    {
+      rc = or_advance (buf, payload_size);
+    }
+  else
+    {
+      if (copy_buf != NULL && copy_buf_len >= payload_size + 1)
+	{
+	  new_ = copy_buf;
+	}
+      else
+	{
+	  new_ = (char *) db_private_alloc (NULL, payload_size + 1);
+	}
+      if (new_ == NULL)
+	{
+	  return ER_FAILED;
+	}
+      rc = or_get_data (buf, new_, payload_size);
+      if (rc != NO_ERROR)
+	{
+	  if (new_ != copy_buf)
+	    {
+	      db_private_free_and_init (NULL, new_);
+	    }
+	  return rc;
+	}
+      new_[payload_size] = '\0';
+
+      if (domain != NULL)
+	{
+	  precision = domain->precision;
+	}
+      else if (type == DB_TYPE_BLOB)
+	{
+	  precision = DB_MAX_LOB_PRECISION;
+	}
+      else
+	{
+	  precision = DB_MAX_VARBIT_PRECISION;
+	}
+
+      if (type == DB_TYPE_BLOB)
+	{
+	  rc = db_make_blob (value, precision, (DB_CONST_C_BIT) new_, bit_length);
+	}
+      else if (type == DB_TYPE_BIT)
+	{
+	  rc = db_make_bit (value, precision, (DB_CONST_C_BIT) new_, bit_length);
+	}
+      else
+	{
+	  rc = db_make_varbit (value, precision, (DB_CONST_C_BIT) new_, bit_length);
+	}
+      if (rc != NO_ERROR)
+	{
+	  if (new_ != copy_buf)
+	    {
+	      db_private_free_and_init (NULL, new_);
+	    }
+	  return rc;
+	}
+      value->need_clear = (new_ != copy_buf) ? true : false;
+      db_value_mark_internal_lob (value, marker);
+    }
+
+  if (rc == NO_ERROR && align == INT_ALIGNMENT)
+    {
+      rc = or_get_align32 (buf);
+    }
+  if (rc == NO_ERROR && size != -1)
+    {
+      int pad = size - (int) (buf->ptr - start);
+      if (pad > 0)
+	{
+	  rc = or_advance (buf, pad);
+	}
+    }
+
+  return rc;
 }
 
 /*
@@ -10822,6 +11356,7 @@ mr_setval_string_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_
 {
   int error = NO_ERROR;
   int src_precision, src_length;
+  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
   const char *src_str;
   char *new_, *new_compressed_buf;
 
@@ -10852,6 +11387,7 @@ mr_setval_string_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_
     }
   else
     {
+      marker = mr_internal_lob_marker_from_value (src);
       /* Get information from the value. */
       src_precision = db_value_precision (src);
       src_length = db_get_string_size (src);
@@ -10911,6 +11447,11 @@ mr_setval_string_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_
 		  dest->data.ch.info.compressed_need_clear = true;
 		}
 	    }
+	}
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  db_value_mark_internal_lob (dest, marker);
 	}
 
       dest->data.ch.medium.length = src->data.ch.medium.length;
@@ -10994,6 +11535,13 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
     }
   else
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_marked_char_length (value, align);
+	}
+
       /* Test and try compression. */
       if (!DB_TRIED_COMPRESSION (value))
 	{
@@ -11054,6 +11602,13 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
   if (value != NULL && !db_value_is_null (value))
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_write_marked_char (buf, value, marker, align);
+	}
+
       str = db_get_string (value);
       src_length = db_get_string_size (value);	/* size in bytes */
       if (src_length <= 0)
@@ -11127,6 +11682,11 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     {
       if (size == -1)
 	{
+	  if (mr_internal_lob_peek_marked_char (buf))
+	    {
+	      return mr_internal_lob_read_marked_char (buf, NULL, domain, size, copy, copy_buf, copy_buf_len, align,
+						       type);
+	    }
 	  rc = or_skip_varchar (buf, align);
 	}
       else if (size)
@@ -11150,6 +11710,11 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  if (mr_internal_lob_peek_marked_char (buf))
+    {
+      return mr_internal_lob_read_marked_char (buf, value, domain, size, copy, copy_buf, copy_buf_len, align, type);
     }
 
   /* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
@@ -11268,6 +11833,11 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
     {
       if (size == -1)
 	{
+	  if (mr_internal_lob_peek_marked_char (buf))
+	    {
+	      return mr_internal_lob_read_marked_char (buf, NULL, domain, size, copy, copy_buf, copy_buf_len,
+						       align, type);
+	    }
 	  rc = or_skip_varchar (buf, align);
 	}
       else if (size)
@@ -11301,6 +11871,11 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  if (mr_internal_lob_peek_marked_char (buf))
+    {
+      return mr_internal_lob_read_marked_char (buf, value, domain, size, copy, copy_buf, copy_buf_len, align, type);
     }
 
 /* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
@@ -12117,6 +12692,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
+  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
   const char *src_str;
   char *new_, *new_compressed_buf;
 
@@ -12131,6 +12707,7 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
+      marker = mr_internal_lob_marker_from_value (src);
       /* Get information from the value. */
       src_precision = DB_GET_STRING_PRECISION (src);
       if (src_precision == 0)
@@ -12195,6 +12772,11 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	}
 
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  db_value_mark_internal_lob (dest, marker);
+	}
+
       dest->data.ch.medium.length = src->data.ch.medium.length;
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
     }
@@ -12249,6 +12831,13 @@ mr_lengthval_char_internal (DB_VALUE * value, int disk, int align)
     }
   else
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_marked_char_length (value, align);
+	}
+
       /* CHAR(N) keeps trailing-space padding up to the precision.  
        * Pad before compression so the disk image (and its length) reflect the padded data.
        * Floating precision means a literal, which is not padded 
@@ -12342,6 +12931,13 @@ mr_writeval_char_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
   if (value != NULL && !db_value_is_null (value))
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_write_marked_char (buf, value, marker, align);
+	}
+
       str = db_get_string (value);
       src_length = db_get_string_size (value);	/* size in bytes */
       if (src_length < 0)
@@ -12450,6 +13046,11 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
     {
       if (disk_size == -1)
 	{
+	  if (mr_internal_lob_peek_marked_char (buf))
+	    {
+	      return mr_internal_lob_read_marked_char (buf, NULL, domain, disk_size, copy, copy_buf, copy_buf_len,
+						       align, DB_TYPE_CHAR);
+	    }
 	  rc = or_skip_varchar (buf, align);
 	}
       else if (disk_size)
@@ -12472,6 +13073,12 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  if (mr_internal_lob_peek_marked_char (buf))
+    {
+      return mr_internal_lob_read_marked_char (buf, value, domain, disk_size, copy, copy_buf, copy_buf_len, align,
+					       DB_TYPE_CHAR);
     }
 
   /* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
@@ -13941,6 +14548,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length, src_bit_length;
+  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
   char *new_;
   const char *src_str;
 
@@ -13955,6 +14563,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
+      marker = mr_internal_lob_marker_from_value (src);
       /* Get information from the value. */
       src_precision = db_value_precision (src);
       src_length = db_get_string_size (src);
@@ -13980,6 +14589,10 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      db_make_varbit (dest, src_precision, new_, src_bit_length);
 	      dest->need_clear = true;
 	    }
+	}
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE && error == NO_ERROR)
+	{
+	  db_value_mark_internal_lob (dest, marker);
 	}
     }
 
@@ -14032,6 +14645,13 @@ mr_lengthval_varbit_internal (DB_VALUE * value, int disk, int align)
   len = 0;
   if (value != NULL && db_get_string (value) != NULL)
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_marked_varbit_length (value, align);
+	}
+
       bit_length = db_get_string_length (value);	/* size in bits */
 
       if (align == INT_ALIGNMENT)
@@ -14056,6 +14676,13 @@ mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
   if (value != NULL && (str = db_get_string (value)) != NULL)
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_write_marked_varbit (buf, value, marker, align);
+	}
+
       src_bit_length = db_get_string_length (value);	/* size in bits */
 
       if (align == INT_ALIGNMENT)
@@ -14095,6 +14722,11 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     {
       if (size == -1)
 	{
+	  if (mr_internal_lob_peek_marked_varbit (buf))
+	    {
+	      return mr_internal_lob_read_marked_varbit (buf, NULL, domain, size, copy, copy_buf, copy_buf_len, align,
+							 DB_TYPE_VARBIT);
+	    }
 	  rc = or_skip_varbit (buf, align);
 	}
       else
@@ -14118,6 +14750,11 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	{
 	  /* its NULL */
 	  db_value_domain_init (value, DB_TYPE_VARBIT, precision, 0);
+	}
+      else if (mr_internal_lob_peek_marked_varbit (buf))
+	{
+	  rc = mr_internal_lob_read_marked_varbit (buf, value, domain, size, copy, copy_buf, copy_buf_len, align,
+						   DB_TYPE_VARBIT);
 	}
       else if (!copy)
 	{
@@ -16125,6 +16762,7 @@ mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length, src_bit_length;
+  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
   char *new_;
   const char *src_str;
 
@@ -16139,6 +16777,7 @@ mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
+      marker = mr_internal_lob_marker_from_value (src);
       /* Get information from the value. */
       src_precision = db_value_precision (src);
       src_length = db_get_string_size (src);
@@ -16164,6 +16803,10 @@ mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      db_make_blob (dest, src_precision, new_, src_bit_length);
 	      dest->need_clear = true;
 	    }
+	}
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE && error == NO_ERROR)
+	{
+	  db_value_mark_internal_lob (dest, marker);
 	}
     }
 
@@ -16198,6 +16841,13 @@ mr_lengthval_blob_internal (DB_VALUE * value, int disk, int align)
   len = 0;
   if (value != NULL && db_get_string (value) != NULL)
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_marked_varbit_length (value, align);
+	}
+
       bit_length = db_get_string_length (value);	/* size in bits */
 
       if (align == INT_ALIGNMENT)
@@ -16222,6 +16872,13 @@ mr_writeval_blob_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
   if (value != NULL && (str = db_get_string (value)) != NULL)
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_write_marked_varbit (buf, value, marker, align);
+	}
+
       src_bit_length = db_get_string_length (value);	/* size in bits */
 
       if (align == INT_ALIGNMENT)
@@ -16252,6 +16909,11 @@ mr_readval_blob_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
     {
       if (size == -1)
 	{
+	  if (mr_internal_lob_peek_marked_varbit (buf))
+	    {
+	      return mr_internal_lob_read_marked_varbit (buf, NULL, domain, size, copy, copy_buf, copy_buf_len, align,
+							 DB_TYPE_BLOB);
+	    }
 	  rc = or_skip_varbit (buf, align);
 	}
       else
@@ -16275,6 +16937,11 @@ mr_readval_blob_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	{
 	  /* its NULL */
 	  db_value_domain_init (value, DB_TYPE_BLOB, precision, 0);
+	}
+      else if (mr_internal_lob_peek_marked_varbit (buf))
+	{
+	  rc = mr_internal_lob_read_marked_varbit (buf, value, domain, size, copy, copy_buf, copy_buf_len, align,
+						   DB_TYPE_BLOB);
 	}
       else if (!copy)
 	{

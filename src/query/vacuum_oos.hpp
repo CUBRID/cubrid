@@ -52,13 +52,15 @@ struct vacuum_oos_vfid_memo
   bool valid = false;		/* false until the first successful lookup */
   VFID heap_vfid;		/* key; meaningful only when valid */
   VFID oos_vfid;		/* value; meaningful only when valid (VFID_NULL = "no OOS file") */
+  VFID internal_lob_vfid;	/* value; the heap's internal LOB file (VFID_NULL = "no internal LOB file") */
 };
 
 extern int vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
     const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo);
 extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
-    PGSLOTID slotid, INT16 record_type, VFID *oos_vfid);
-extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
+    PGSLOTID slotid, INT16 record_type, VFID *oos_vfid, bool already_resolved);
+extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
+    const VFID *internal_lob_vfid, const OID *class_oid, const RECDES *record,
     VACUUM_OOS_TOUCHED_PAGES *touched_pages_out);
 extern int vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
     VACUUM_OOS_TOUCHED_PAGES *touched_pages);

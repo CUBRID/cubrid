@@ -32,6 +32,7 @@
 #include "file_manager.h"
 #include "heap_file.h"
 #include "heap_show_scan_context.hpp"
+#include "internal_lob_file.hpp"
 #include "log_impl.h"
 #include "object_representation.h"
 #include "oos_file.hpp"
@@ -496,6 +497,22 @@ heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 }
 
 /*
+ * heap_oos_attr_is_internal_lob () - Is this attribute's OOS inline stub an Internal LOB locator?
+ *
+ * An Internal LOB stores its payload as a chunk chain in the class' FILE_INTERNAL_LOB file.  Its stub
+ * has the same layout and the same length semantics as any other OOS stub, but the attribute layer must
+ * hand a BLOB/CLOB out as a locator, not as payload bytes: a record holds a locator for those types.
+ * The grouped reader therefore leaves it to the per-attribute reader, which builds the locator value.
+ */
+static bool
+heap_oos_attr_is_internal_lob (const HEAP_ATTRVALUE *value)
+{
+  const OR_ATTRIBUTE *attrepr = value->read_attrepr;
+
+  return attrepr != NULL && TP_IS_LOB_TYPE (attrepr->type);
+}
+
+/*
  * heap_oos_read_grouped_payloads () - Prefetch requested OOS-marked attributes of one record
  *   through a single grouped oos_read_many() call when at least two requested attributes are OOS-backed.
  *
@@ -522,6 +539,10 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
   for (i = 0; i < attr_info->num_values; i++)
     {
+      if (heap_oos_attr_is_internal_lob (&attr_info->values[i]))
+	{
+	  continue;
+	}
       if (heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]) != NULL)
 	{
 	  requested_oos_count++;
@@ -553,9 +574,9 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
       OID oos_oid;
       DB_BIGINT oos_len;
 
-      if (inline_ptr == NULL)
+      if (inline_ptr == NULL || heap_oos_attr_is_internal_lob (&attr_info->values[i]))
 	{
-	  continue;		/* not OOS here: the per-attribute reader handles it */
+	  continue;		/* not grouped-readable here: the per-attribute reader handles it */
 	}
 
       error = heap_oos_parse_inline_ref (recdes, inline_ptr, &oos_oid, &oos_len);
@@ -615,6 +636,9 @@ heap_oos_begin_insert_publication (THREAD_ENTRY *thread_p)
     }
 
   thread_p->oos_oids.clear ();
+  /* The per-OID attribute id and destination kind are tracked in lock step with oos_oids. */
+  thread_p->oos_attrids.clear ();
+  thread_p->oos_is_internal_lob.clear ();
   tdes->oos_insert_lsa_queue.clear ();
   return S_SUCCESS;
 }
@@ -645,7 +669,7 @@ heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
       return S_ERROR;
     }
 #endif
-  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true, false))
     {
       return S_ERROR;
     }
@@ -706,37 +730,41 @@ int
 heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
 			      const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx)
 {
-  std::vector<OID> old_oos_oids;
-  std::vector<OID> new_oos_oids;
+  HEAP_OOS_REFERENCE_VECTOR old_oos_references;
+  HEAP_OOS_REFERENCE_VECTOR new_oos_references;
   VFID oos_vfid;
+  VFID internal_lob_vfid;
   int error_code;
 
-  error_code = heap_recdes_get_oos_oids (old_recdes, old_oos_oids);
+  VFID_SET_NULL (&oos_vfid);
+  VFID_SET_NULL (&internal_lob_vfid);
+
+  error_code = heap_recdes_get_oos_references (thread_p, &context->class_oid, old_recdes, old_oos_references);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       er_log_debug (ARG_FILE_LINE,
-		    "SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_oids(old) failed"
+		    "SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_references(old) failed"
 		    " (hfid=%d|%d, oid=%d|%d|%d, old_rec_len=%d).",
 		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 		    context->oid.volid, context->oid.pageid, context->oid.slotid, old_recdes->length);
       return error_code;
     }
-  if (old_oos_oids.empty ())
+  if (old_oos_references.empty ())
     {
       return NO_ERROR;
     }
 
   if (new_recdes != NULL)
     {
-      /* heap_recdes_get_oos_oids returns NO_ERROR with an empty vector when the new record has no
+      /* heap_recdes_get_oos_references returns NO_ERROR with an empty vector when the new record has no
        * OOS — no heap_recdes_contains_oos guard needed. */
-      error_code = heap_recdes_get_oos_oids (new_recdes, new_oos_oids);
+      error_code = heap_recdes_get_oos_references (thread_p, &context->class_oid, new_recdes, new_oos_references);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  er_log_debug (ARG_FILE_LINE,
-			"SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_oids(new) failed"
+			"SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_references(new) failed"
 			" (hfid=%d|%d, oid=%d|%d|%d, new_rec_len=%d).",
 			op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 			context->oid.volid, context->oid.pageid, context->oid.slotid, new_recdes->length);
@@ -744,32 +772,62 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 	}
     }
 
-  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+  for (const HEAP_OOS_REFERENCE &old_reference : old_oos_references)
     {
-      er_log_debug (ARG_FILE_LINE,
-		    "SA_MODE eager OOS cleanup (%s): OOS flag set but no OOS VFID found for hfid %d|%d"
-		    " (oid=%d|%d|%d).",
-		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
-		    context->oid.volid, context->oid.pageid, context->oid.slotid);
-      assert_release (false);
-      return ER_FAILED;
-    }
-
-  for (const OID &old_oid : old_oos_oids)
-    {
-      if (oos_oid_in_vector (new_oos_oids, &old_oid))
+      bool is_still_referenced = false;
+      for (const HEAP_OOS_REFERENCE &new_reference : new_oos_references)
+	{
+	  if (OID_EQ (&old_reference.oid, &new_reference.oid))
+	    {
+	      is_still_referenced = true;
+	      break;
+	    }
+	}
+      if (is_still_referenced)
 	{
 	  /* Same physical OOS referenced by both old and new recdes; keep it. */
 	  continue;
 	}
-      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+
+      if (TP_IS_LOB_TYPE (old_reference.type))
+	{
+	  INTERNAL_LOB_LOCATOR locator = { old_reference.oid, 0 };
+	  if (VFID_ISNULL (&internal_lob_vfid)
+	      && !heap_internal_lob_find_vfid (thread_p, &context->hfid, &internal_lob_vfid, false))
+	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  error_code = ER_GENERIC_ERROR;
+		}
+	      return error_code;
+	    }
+	  if (internal_lob_decode_disk_length (locator, old_reference.disk_length) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  error_code = internal_lob_delete (thread_p, internal_lob_vfid, locator);
+	}
+      else
+	{
+	  if (VFID_ISNULL (&oos_vfid))
+	    {
+	      if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false, false) || VFID_ISNULL (&oos_vfid))
+		{
+		  ASSERT_ERROR ();
+		  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+		}
+	    }
+	  error_code = oos_delete (thread_p, oos_vfid, old_reference.oid);
+	}
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  er_log_debug (ARG_FILE_LINE,
-			"SA_MODE eager OOS cleanup (%s): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			"SA_MODE eager OOS cleanup (%s): delete(type=%d, oid=%d|%d|%d) failed"
 			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
-			op_ctx, VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
+			op_ctx, old_reference.type, OID_AS_ARGS (&old_reference.oid),
 			VFID_AS_ARGS (&context->hfid.vfid),
 			context->oid.volid, context->oid.pageid, context->oid.slotid);
 	  return error_code;
@@ -847,7 +905,7 @@ heap_oos_next_scan (THREAD_ENTRY *thread_p, int cursor, DB_VALUE **out_values, i
   VFID_SET_NULL (&stats.oos_vfid);
 
   VFID_SET_NULL (&oos_vfid);
-  if (!heap_oos_find_vfid (thread_p, hfid_p, &oos_vfid, false))
+  if (!heap_oos_find_vfid (thread_p, hfid_p, &oos_vfid, false, false))
     {
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;

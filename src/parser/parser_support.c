@@ -61,6 +61,7 @@
 #include "dbtype.h"
 #include "parser_allocator.hpp"
 #include "execute_schema.h"
+#include "internal_lob_marker.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4783,6 +4784,158 @@ pt_to_null_ordering (PT_NODE * sort_spec)
   return S_NULLS_LAST;
 }
 
+bool
+pt_is_internal_lob_direct_source_expr (const PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_EXPR || !(node->info.expr.flag & PT_EXPR_INFO_LOB_DIRECT_INSERT))
+    {
+      return false;
+    }
+
+  return node->info.expr.op == PT_BLOB_FROM_FILE || node->info.expr.op == PT_CLOB_FROM_FILE
+    || node->info.expr.op == PT_BFILE_TO_BLOB || node->info.expr.op == PT_CFILE_TO_CLOB
+    || node->info.expr.op == PT_BIT_TO_BLOB || node->info.expr.op == PT_CHAR_TO_BLOB
+    || node->info.expr.op == PT_CHAR_TO_CLOB;
+}
+
+int
+pt_fold_internal_lob_direct_source_values (PARSER_CONTEXT * parser, PT_NODE ** values)
+{
+  PT_NODE **link;
+
+  if (values == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  for (link = values; *link != NULL; link = &(*link)->next)
+    {
+      PT_NODE *source = *link;
+      PT_NODE *value_node;
+      PT_NODE *host_var;
+      PT_NODE *save_next;
+      DB_VALUE value;
+      int marker;
+      int error = NO_ERROR;
+
+      if (!pt_is_internal_lob_direct_source_expr (source))
+	{
+	  continue;
+	}
+
+      db_make_null (&value);
+      pt_evaluate_tree (parser, source, &value, 1);
+      if (pt_has_error (parser))
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  pr_clear_value (&value);
+	  return error;
+	}
+
+      marker = db_value_get_internal_lob_marker (&value);
+
+      value_node = pt_dbval_to_value (parser, &value);
+      pr_clear_value (&value);
+      if (value_node == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      save_next = source->next;
+      source->next = NULL;
+      parser_free_tree (parser, source);
+      value_node->next = NULL;
+      host_var = pt_rewrite_to_auto_param (parser, value_node);
+      if (host_var == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  db_value_mark_internal_lob (&parser->host_variables[host_var->info.host_var.index], marker);
+	}
+      host_var->next = save_next;
+      *link = host_var;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_fold_internal_lob_direct_source_assignments () - Evaluate direct Internal LOB source assignment RHS values.
+ *
+ * The evaluated DB_VALUE is immediately auto-parameterized.  This is required for qualified MERGE assignment LHS
+ * nodes, which are not handled by the generic assignment auto-parameterizer.  Query execution can then replace the
+ * host value with an Internal LOB DML slot and send its bytes in the same DML-owning COPY-style stream.
+ */
+int
+pt_fold_internal_lob_direct_source_assignments (PARSER_CONTEXT * parser, PT_NODE * assignments)
+{
+  PT_NODE *assign;
+
+  for (assign = assignments; assign != NULL; assign = assign->next)
+    {
+      PT_NODE *rhs;
+      PT_NODE *value_node;
+      PT_NODE *host_var;
+      PT_NODE *save_next;
+      DB_VALUE value;
+      int marker;
+      int error = NO_ERROR;
+
+      if (!PT_IS_ASSIGN_NODE (assign))
+	{
+	  continue;
+	}
+
+      rhs = assign->info.expr.arg2;
+      if (!pt_is_internal_lob_direct_source_expr (rhs))
+	{
+	  continue;
+	}
+
+      db_make_null (&value);
+      pt_evaluate_tree (parser, rhs, &value, 1);
+      if (pt_has_error (parser))
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  pr_clear_value (&value);
+	  return error;
+	}
+
+      marker = db_value_get_internal_lob_marker (&value);
+
+      value_node = pt_dbval_to_value (parser, &value);
+      pr_clear_value (&value);
+      if (value_node == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      save_next = rhs->next;
+      rhs->next = NULL;
+      parser_free_tree (parser, rhs);
+      value_node->next = NULL;
+      host_var = pt_rewrite_to_auto_param (parser, value_node);
+      if (host_var == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  db_value_mark_internal_lob (&parser->host_variables[host_var->info.host_var.index], marker);
+	}
+      host_var->next = save_next;
+      assign->info.expr.arg2 = host_var;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * pt_create_param_for_value () - Creates a PT_NODE to be used as a host
  *                                variable that replaces an existing value
@@ -4918,6 +5071,7 @@ pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination)
 {
   destination->flag.recompile = source->flag.recompile;
   destination->flag.cannot_prepare = source->flag.cannot_prepare;
+  destination->flag.cannot_prepare_only_internal_lob_file = source->flag.cannot_prepare_only_internal_lob_file;
   destination->flag.si_datetime = source->flag.si_datetime;
   destination->flag.si_tran_id = source->flag.si_tran_id;
 }

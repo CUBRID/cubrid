@@ -32,10 +32,12 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdio>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace cubload
@@ -126,6 +128,15 @@ namespace cubload
       void set_client_type (int client_type);
       int get_client_type ();
 
+      int internal_lob_payload_begin (class_id clsid, char type, DB_BIGINT data_length, DB_BIGINT bit_length,
+				      INT64 &token);
+      int internal_lob_payload_append (INT64 token, const char *data, int data_size);
+      int internal_lob_payload_end (INT64 token);
+      int internal_lob_payload_abort (INT64 token);
+      int internal_lob_payload_make_value (cubthread::entry &thread_ref, class_id clsid, const char *token_data,
+					   size_t token_len, DB_TYPE expected_type, DB_BIGINT max_length,
+					   DB_VALUE *value);
+
       template<typename... Args>
       void append_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
@@ -157,6 +168,20 @@ namespace cubload
       driver *m_driver;
 
       cubthread::entry_task *m_temp_task;
+
+      struct internal_lob_payload
+      {
+	class_id clsid = NULL_CLASS_ID;
+	char type = '\0';
+	DB_BIGINT data_length = 0;
+	DB_BIGINT bit_length = -1;
+	DB_BIGINT received = 0;
+	bool complete = false;
+	FILE *file = NULL;
+      };
+
+      INT64 m_internal_lob_next_token;
+      std::unordered_map<INT64, internal_lob_payload> m_internal_lob_payloads;
   };
 
 } // namespace cubload

@@ -99,6 +99,7 @@
 #include "dbtype.h"
 #include "cnv.h"
 #include "flashback.h"
+#include "internal_lob_file.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -6676,6 +6677,10 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
       type = "RVREPL_OOS_INSERT";
       dump_function = log_repl_data_dump;
       break;
+    case RVREPL_INTERNAL_LOB_INSERT:
+      type = "RVREPL_INTERNAL_LOB_INSERT";
+      dump_function = log_repl_data_dump;
+      break;
     case RVREPL_DUMMY_OOS_RECORD:
       type = "RVREPL_DUMMY_OOS_RECORD";
       dump_function = log_repl_data_dump;
@@ -12810,6 +12815,21 @@ cdc_check_if_schema_changed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
   return or_rep_id (recdes) != attr_info->last_classrepr->id;
 }
 
+/*
+ * cdc_internal_lob_hex_size_overflows_int () - An internal LOB is packed into the CDC log info as its
+ *   materialized content (hex for BLOB, chars for CLOB).  That size is accumulated and used as an int
+ *   buffer length, so a value at/above 2 GiB (BLOB ~1 GiB) makes the int cast wrap negative: the buffer
+ *   size then either fails a giant malloc or, worse, wraps back positive and undersizes the buffer the
+ *   content is copied into.  The size and the packer both call this to fall back to a NULL column for
+ *   such a value instead of corrupting the whole entry.  (Streaming large LOBs into CDC without full
+ *   materialization is a separate design change.)
+ */
+static bool
+cdc_internal_lob_hex_size_overflows_int (DB_BIGINT hex_size)
+{
+  return hex_size < 0 || hex_size > (DB_BIGINT) INT_MAX - MAX_ALIGNMENT;
+}
+
 static int
 cdc_get_attribute_size (DB_VALUE * value)
 {
@@ -12844,16 +12864,46 @@ cdc_get_attribute_size (DB_VALUE * value)
 	break;
       }
     case DB_TYPE_BLOB:
-      /* internal BLOB is stored inline like a bit string; see cdc_put_bit_string_to_loginfo */
-      size = ((db_get_string_length (value) + 3) / 4) + 3;
+      /* An internal BLOB is packed as its materialized OOS content (see
+       * cdc_put_value_to_loginfo), so size the hex string from the content's
+       * bit length carried in the locator, not from the locator descriptor. */
+      {
+	INTERNAL_LOB_LOCATOR blob_locator;
+
+	if (internal_lob_db_value_is_locator (value, &blob_locator))
+	  {
+	    DB_BIGINT hex_size = ((blob_locator.length + 3) / 4) + 3;
+	    /* Oversized: packed as NULL (or_pack_string (NULL) == OR_INT_SIZE). */
+	    size = cdc_internal_lob_hex_size_overflows_int (hex_size) ? OR_INT_SIZE : (int) hex_size;
+	  }
+	else
+	  {
+	    size = ((db_get_string_length (value) + 3) / 4) + 3;
+	  }
+      }
       break;
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       size = db_get_string_size (value);
       break;
     case DB_TYPE_CLOB:
-      /* internal CLOB is stored inline like a character string; see cdc_put_value_to_loginfo */
-      size = db_get_string_size (value);
+      /* An internal CLOB is packed as its materialized OOS content (see
+       * cdc_put_value_to_loginfo), so size it from the content's byte length
+       * carried in the locator, not from the locator descriptor. */
+      {
+	INTERNAL_LOB_LOCATOR clob_locator;
+
+	if (internal_lob_db_value_is_locator (value, &clob_locator))
+	  {
+	    /* Oversized: packed as NULL (or_pack_string (NULL) == OR_INT_SIZE). */
+	    size =
+	      cdc_internal_lob_hex_size_overflows_int (clob_locator.length) ? OR_INT_SIZE : (int) clob_locator.length;
+	  }
+	else
+	  {
+	    size = db_get_string_size (value);
+	  }
+      }
       break;
     case DB_TYPE_TIME:
       /* precision in data types related to DATE/TIME means the size the string converted from the date/time data */
@@ -13923,12 +13973,61 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 	}
       break;
     case DB_TYPE_BLOB:
-      /* internal BLOB is stored inline like a bit string */
-      error_status = cdc_put_bit_string_to_loginfo (new_value, &ptr);
-      if (error_status != NO_ERROR)
-	{
-	  return error_status;
-	}
+      /* An internal BLOB is stored inline as an OOS locator, not as the bytes
+       * themselves. Materialize the locator so CDC carries the actual content
+       * instead of the locator descriptor string. */
+      {
+	INTERNAL_LOB_LOCATOR blob_locator;
+	DB_VALUE blob_content;
+	DB_VALUE *blob_packed = new_value;
+	bool blob_is_locator = internal_lob_db_value_is_locator (new_value, &blob_locator);
+
+	db_make_null (&blob_content);
+	if (blob_is_locator && cdc_internal_lob_hex_size_overflows_int (((blob_locator.length + 3) / 4) + 3))
+	  {
+	    /* Too large to materialize into an int-sized CDC buffer; emit NULL so the rest of the row still
+	     * flows instead of failing the whole extraction (cdc_get_attribute_size sized this as NULL). */
+	    cdc_log ("cdc_put_value_to_loginfo : internal BLOB too large for CDC (%lld bits), emitted as NULL",
+		     (long long) blob_locator.length);
+	    func_type = 7;
+	    ptr = or_pack_int (ptr, func_type);
+	    ptr = or_pack_string (ptr, NULL);
+	    *data_ptr = ptr;
+	    return NO_ERROR;
+	  }
+	if (blob_is_locator)
+	  {
+	    error_status =
+	      internal_lob_read_db_value (thread_get_thread_entry_info (), blob_locator, DB_TYPE_BLOB, &blob_content,
+					  NULL);
+	    if (error_status != NO_ERROR)
+	      {
+		/* CDC reads the chain long after the DML ran. A rolled-back or already vacuumed LOB may have had its
+		 * OOS pages reclaimed and reused by then, so the locator no longer resolves. That is not a failure of
+		 * the log stream: emit NULL for this column and keep extracting. */
+		cdc_log ("cdc_put_value_to_loginfo : internal BLOB content is gone (error %d), emitted as NULL",
+			 error_status);
+		er_clear ();
+		db_value_clear (&blob_content);
+		func_type = 7;
+		ptr = or_pack_int (ptr, func_type);
+		ptr = or_pack_string (ptr, NULL);
+		*data_ptr = ptr;
+		return NO_ERROR;
+	      }
+	    blob_packed = &blob_content;
+	  }
+
+	error_status = cdc_put_bit_string_to_loginfo (blob_packed, &ptr);
+	if (blob_is_locator)
+	  {
+	    db_value_clear (&blob_content);
+	  }
+	if (error_status != NO_ERROR)
+	  {
+	    return error_status;
+	  }
+      }
       break;
     case DB_TYPE_CHAR:
       func_type = 7;
@@ -13942,10 +14041,75 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_string (ptr, db_get_string (new_value));
       break;
     case DB_TYPE_CLOB:
-      /* internal CLOB is stored inline like a character string */
-      func_type = 7;
-      ptr = or_pack_int (ptr, func_type);
-      ptr = or_pack_string (ptr, db_get_string (new_value));
+      /* An internal CLOB is stored inline as an OOS locator, not as the
+       * characters themselves. Materialize the locator so CDC carries the
+       * actual content instead of the locator descriptor string. */
+      {
+	INTERNAL_LOB_LOCATOR clob_locator;
+	DB_VALUE clob_content;
+	bool clob_is_locator = internal_lob_db_value_is_locator (new_value, &clob_locator);
+
+	func_type = 7;
+	ptr = or_pack_int (ptr, func_type);
+
+	if (clob_is_locator && cdc_internal_lob_hex_size_overflows_int (clob_locator.length))
+	  {
+	    /* Too large to materialize into an int-sized CDC buffer; emit NULL (func_type already packed). */
+	    cdc_log ("cdc_put_value_to_loginfo : internal CLOB too large for CDC (%lld bytes), emitted as NULL",
+		     (long long) clob_locator.length);
+	    ptr = or_pack_string (ptr, NULL);
+	    *data_ptr = ptr;
+	    return NO_ERROR;
+	  }
+	if (clob_is_locator)
+	  {
+	    int clob_len;
+	    char *clob_buf;
+
+	    db_make_null (&clob_content);
+	    error_status =
+	      internal_lob_read_db_value (thread_get_thread_entry_info (), clob_locator, DB_TYPE_CLOB, &clob_content,
+					  NULL);
+	    if (error_status != NO_ERROR)
+	      {
+		/* Same as the BLOB case: the chain may have been reclaimed since the DML; emit NULL instead of
+		 * failing the whole extraction. func_type was already packed above. */
+		cdc_log ("cdc_put_value_to_loginfo : internal CLOB content is gone (error %d), emitted as NULL",
+			 error_status);
+		er_clear ();
+		db_value_clear (&clob_content);
+		ptr = or_pack_string (ptr, NULL);
+		*data_ptr = ptr;
+		return NO_ERROR;
+	      }
+
+	    /* The materialized CLOB buffer is not NUL-terminated, but or_pack_string* copies
+	     * length + 1 bytes expecting a terminator. Pack a NUL-terminated copy of the exact
+	     * content length so no trailing byte from an adjacent buffer leaks into the value. */
+	    clob_len = (int) clob_locator.length;
+	    clob_buf = (char *) db_private_alloc (NULL, (size_t) clob_len + 1);
+	    if (clob_buf == NULL)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) clob_len + 1);
+		db_value_clear (&clob_content);
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+	    if (clob_len > 0)
+	      {
+		memcpy (clob_buf, db_get_string (&clob_content), (size_t) clob_len);
+	      }
+	    clob_buf[clob_len] = '\0';
+
+	    ptr = or_pack_string_with_length (ptr, clob_buf, clob_len);
+
+	    db_private_free_and_init (NULL, clob_buf);
+	    db_value_clear (&clob_content);
+	  }
+	else
+	  {
+	    ptr = or_pack_string (ptr, db_get_string (new_value));
+	  }
+      }
       break;
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:

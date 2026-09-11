@@ -112,36 +112,6 @@ extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
 extern int yylex(void);
 
-#if defined(SA_MODE)
-     /*
-     ** DBG_TRACE_LEVEL is specified by referring to the following.
-     ** 0: No displayed on the screen
-     ** 1: Words extracted from csql_lexer are displayed on the screen
-     ** 2: Display the contents of application of grammar rules in csql_grammar on the screen
-     ** 3: Expression of both 1 and 2 above
-     */
-#    define DBG_TRACE_LEVEL      0
-#endif
-
-#if (DBG_TRACE_LEVEL == 1 || DBG_TRACE_LEVEL == 3)
-#    define DBG_PRINT_TOKEN(token)            fprintf(stdout, " *** Token) [%s]\n", token);
-#    define DBG_PRINT_STRING(pre, str, post)  fprintf(stdout, " *** Token) [%s%s%s]\n", pre, str, post);
-#    define DBG_PRINT_TOKEN_END()             fprintf(stdout, "\n");
-#else
-#    define DBG_PRINT_TOKEN(token)
-#    define DBG_PRINT_STRING(pre, str, post)
-#    define DBG_PRINT_TOKEN_END()
-#endif
-
-#if (DBG_TRACE_LEVEL == 2 || DBG_TRACE_LEVEL == 3)
-#    define DBG_TRACE_GRAMMAR(rule_head, rule_components) do {                            \
-                fprintf(stdout, " *** Rule) " #rule_head "::= "  #rule_components "\n");  \
-                fflush(stdout);                                                           \
-        } while(0)
-#else
-#    define DBG_TRACE_GRAMMAR(rule_head, rule_components)
-#endif
-
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
@@ -198,18 +168,6 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_INVISIBLE	(0x200)
 #define COLUMN_CONSTRAINT_STORAGE	(0x400)
 
-#ifdef PARSER_DEBUG
-#define DBG_PRINT printf("rule matched at line: %d\n", __LINE__);
-#define PRINT_(a) printf(a)
-#define PRINT_1(a, b) printf(a, b)
-#define PRINT_2(a, b, c) printf(a, b, c)
-#else
-#define DBG_PRINT
-#define PRINT_(a)
-#define PRINT_1(a, b)
-#define PRINT_2(a, b, c)
-#endif
-
 #define STACK_SIZE	128
 
 struct _s_passwd{
@@ -254,6 +212,8 @@ static bool parser_si_tran_id = false;
 
 /* check the condition that the statment is not able to be prepared */
 static bool parser_cannot_prepare = false;
+static bool parser_has_internal_lob_file_prepare_blocker = false;
+static bool parser_has_other_prepare_blocker = false;
 
 /* check the condition that the result of a query is not able to be cached */
 static bool parser_cannot_cache = false;
@@ -1012,6 +972,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> limit_options
 %type <node> opt_upd_del_limit_clause
 %type <node> truncate_stmt
+%type <node> copy_stmt
+%type <number> copy_format
+%type <c4> opt_copy_csv_option_list
+%type <c4> copy_csv_option_list
+%type <c4> copy_csv_option
 %type <node> do_stmt
 %type <node> on_duplicate_key_update
 %type <node> opt_attr_ordering_info
@@ -1217,6 +1182,12 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token CONSTRAINTS
 %token CONTINUE
 %token CONVERT
+%token COPY_
+%token CSV_
+%token DELIMITER_
+%token QUOTE_
+%token HEADER_
+%token BULK_
 %token CORRESPONDING
 %token COUNT
 %token CREATE
@@ -1284,6 +1255,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token FLOAT_
 %token For
 %token FOREIGN
+%token FORMAT_
 %token FOUND
 %token FROM
 %token FULL
@@ -1448,6 +1420,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SQLSTATE
 %token SQLWARNING
 %token STATISTICS
+%token STDIN_
 %token String
 %token SUBCLASS
 %token SUBSET
@@ -1974,6 +1947,9 @@ stmt
 			    node->flag.si_datetime = (parser_si_datetime == true) ? 1 : 0;
 			    node->flag.si_tran_id = (parser_si_tran_id == true) ? 1 : 0;
 			    node->flag.cannot_prepare = (parser_cannot_prepare == true) ? 1 : 0;
+			    node->flag.cannot_prepare_only_internal_lob_file =
+			      (parser_cannot_prepare && parser_has_internal_lob_file_prepare_blocker
+			       && !parser_has_other_prepare_blocker) ? 1 : 0;
 			  }
 
 			parser_restore_si_datetime ();
@@ -2047,6 +2023,8 @@ stmt_
 	| transaction_stmt
 		{ $$ = $1; }
 	| truncate_stmt
+		{ $$ = $1; }
+	| copy_stmt
 		{ $$ = $1; }
 	| merge_stmt
 		{ $$ = $1; }
@@ -4445,6 +4423,116 @@ opt_owner_clause
 as_or_to
 	: AS
 	| TO
+	;
+
+copy_stmt
+	: COPY_ class_spec_without_server_name opt_attr_list FROM STDIN_ WITH '(' FORMAT_ copy_format opt_copy_csv_option_list ')'
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_COPY);
+			if (node)
+			  {
+			    container_4 opt = $10;
+			    PT_NODE *delim = CONTAINER_AT_0 (opt);
+			    PT_NODE *quote = CONTAINER_AT_1 (opt);
+			    PT_NODE *bulk = CONTAINER_AT_2 (opt);
+			    PT_NODE *hdr = CONTAINER_AT_3 (opt);
+
+			    node->info.copy.table_name = $2;
+			    node->info.copy.column_list = $3;
+			    node->info.copy.direction = 0;	/* FROM */
+			    node->info.copy.format = $9;	/* 0 = BINARY, 1 = CSV */
+			    node->info.copy.fmt.csv.delimiter = 0;
+			    node->info.copy.fmt.csv.quote = 0;
+			    node->info.copy.fmt.csv.header = 0;
+			    node->info.copy.bulk = 0;
+			    if (bulk != NULL)
+			      {
+				node->info.copy.bulk = 1;
+			      }
+
+			    if (delim != NULL && delim->info.value.data_value.str != NULL
+				&& delim->info.value.data_value.str->length >= 1)
+			      {
+				node->info.copy.fmt.csv.delimiter = delim->info.value.data_value.str->bytes[0];
+			      }
+			    if (quote != NULL && quote->info.value.data_value.str != NULL
+				&& quote->info.value.data_value.str->length >= 1)
+			      {
+				node->info.copy.fmt.csv.quote = quote->info.value.data_value.str->bytes[0];
+			      }
+			    if (hdr != NULL)
+			      {
+				node->info.copy.fmt.csv.header = 1;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+copy_format
+	: BINARY
+		{{ $$ = 0; }}
+	| CSV_
+		{{ $$ = 1; }}
+	;
+
+opt_copy_csv_option_list
+	: /* empty */
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, NULL);
+			$$ = ctn;
+		}}
+	| ',' copy_csv_option_list
+		{{
+			$$ = $2;
+		}}
+	;
+
+copy_csv_option_list
+	: copy_csv_option
+		{{
+			$$ = $1;
+		}}
+	| copy_csv_option_list ',' copy_csv_option
+		{{
+			container_4 a = $1;
+			container_4 b = $3;
+			if (CONTAINER_AT_0 (b) != NULL) a.c1 = CONTAINER_AT_0 (b);
+			if (CONTAINER_AT_1 (b) != NULL) a.c2 = CONTAINER_AT_1 (b);
+			if (CONTAINER_AT_2 (b) != NULL) a.c3 = CONTAINER_AT_2 (b);
+			if (CONTAINER_AT_3 (b) != NULL) a.c4 = CONTAINER_AT_3 (b);
+			$$ = a;
+		}}
+	;
+
+copy_csv_option
+	: DELIMITER_ char_string_literal
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, $2, NULL, NULL, NULL);
+			$$ = ctn;
+		}}
+	| BULK_		/* applies to all formats (not CSV-specific) — enables bulk-load mode */
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, FROM_NUMBER (1), NULL);
+			$$ = ctn;
+		}}
+	| QUOTE_ char_string_literal
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, $2, NULL, NULL);
+			$$ = ctn;
+		}}
+	| HEADER_
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, FROM_NUMBER (1));	/* flag */
+			$$ = ctn;
+		}}
 	;
 
 truncate_stmt
@@ -8840,6 +8928,7 @@ call_stmt
 			  }
 
 			parser_cannot_prepare = true;
+			parser_has_other_prepare_blocker = true;
 			parser_cannot_cache = true;
 
 			$$ = node;
@@ -16034,6 +16123,16 @@ reserved_func
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| CFILE_TO_CHAR
+		{ push_msg(MSGCAT_SYNTAX_INVALID_CLOB_TO_CHAR); }
+	  '(' expression_ opt_using_charset ')'
+		{ pop_msg(); }
+		{{
+			PT_NODE *node = parser_make_expression (this_parser, PT_CFILE_TO_CHAR, $4, $5, NULL);
+			PICE (node);
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| CLOB_TO_CHAR
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CLOB_TO_CHAR); }
 	  '(' expression_ opt_using_charset ')'
@@ -16043,20 +16142,7 @@ reserved_func
 			PICE (node);
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
-	| CFILE_TO_CHAR
-		{ push_msg(MSGCAT_SYNTAX_INVALID_CFILE_TO_CHAR); }
-	  '(' expression_ opt_using_charset ')'
-		{ pop_msg(); }
-		{{ DBG_TRACE_GRAMMAR(reserved_func, | CFILE_TO_CHAR '(' expression_ opt_using_charset ')' );
-
-			PT_NODE *node = parser_make_expression (this_parser, PT_CFILE_TO_CHAR, $4, $5, NULL);
-			PICE (node);
-			$$ = node;
-			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
-
-		DBG_PRINT}}
+		}}
 	| CAST
 		{ push_msg(MSGCAT_SYNTAX_INVALID_CAST); }
 	  '(' expression_ AS of_cast_data_type ')'
@@ -17548,6 +17634,7 @@ generic_function_id
 			      }
 
 			    parser_cannot_prepare = true;
+			    parser_has_other_prepare_blocker = true;
 			    parser_cannot_cache = true;
 			  }
 
@@ -19353,26 +19440,21 @@ primitive_type
 			  {
 			    parser_free_node (this_parser, coll_node);
 			  }
-
-		DBG_PRINT}}
+		}}
 	| BFILE_ opt_internal_external
-		{{ DBG_TRACE_GRAMMAR(primitive_type, | BFILE_ opt_internal_external );
-
+		{{
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BFILE), NULL);
 			$$ = ctn;
-
-		DBG_PRINT}}
+		}}
 	| CFILE_ opt_internal_external
-		{{ DBG_TRACE_GRAMMAR(primitive_type, | CFILE_ opt_internal_external );
-
+		{{
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CFILE), NULL);
 			$$ = ctn;
-
-		DBG_PRINT}}
-	| BLOB_ opt_internal_external
-		{{ DBG_TRACE_GRAMMAR(primitive_type, | BLOB_ opt_internal_external );
+		}}
+	| BLOB_
+		{{
 
 			/* BLOB: inline storage capped at DB_MAX_LOB_PRECISION (1 GiB).
 			 * codeset / collation slots are not used — mirrors BFILE/CFILE.
@@ -19387,9 +19469,9 @@ primitive_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), dt);
 			$$ = ctn;
 
-		DBG_PRINT}}
-	| CLOB_ opt_internal_external
-		{{ DBG_TRACE_GRAMMAR(primitive_type, | CLOB_ opt_internal_external );
+		}}
+	| CLOB_
+		{{
 
 			/* CLOB: inline storage capped at DB_MAX_LOB_PRECISION (1 GiB).
 			 * codeset / collation slots are not used — mirrors BFILE/CFILE.
@@ -19403,6 +19485,7 @@ primitive_type
 			  }
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), dt);
 			$$ = ctn;
+
 		}}
 	| class_name opt_identity
 		{{
@@ -20737,11 +20820,11 @@ identifier
 	| CALLER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CACHE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CAPACITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CFILE_TO_CHAR          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CHARACTER_SET_         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CHARSET                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CHR                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CLOB_TO_CHAR           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
-	| CFILE_TO_CHAR          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CLOSE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COLLATION              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COLUMNS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -22966,18 +23049,26 @@ parser_restore_si_tran_id ()
 }
 
 static int parser_cannot_prepare_saved;
+static int parser_has_internal_lob_file_prepare_blocker_saved;
+static int parser_has_other_prepare_blocker_saved;
 
 static void
 parser_save_and_set_cannot_prepare (bool value)
 {
   parser_cannot_prepare_saved = parser_cannot_prepare;
+  parser_has_internal_lob_file_prepare_blocker_saved = parser_has_internal_lob_file_prepare_blocker;
+  parser_has_other_prepare_blocker_saved = parser_has_other_prepare_blocker;
   parser_cannot_prepare = value;
+  parser_has_internal_lob_file_prepare_blocker = false;
+  parser_has_other_prepare_blocker = value;
 }
 
 static void
 parser_restore_cannot_prepare ()
 {
   parser_cannot_prepare = parser_cannot_prepare_saved;
+  parser_has_internal_lob_file_prepare_blocker = parser_has_internal_lob_file_prepare_blocker_saved;
+  parser_has_other_prepare_blocker = parser_has_other_prepare_blocker_saved;
 }
 
 static int parser_wjc_stack_default[STACK_SIZE];
@@ -24225,6 +24316,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	}
       parser_cannot_cache = true;
       parser_cannot_prepare = true;
+      parser_has_other_prepare_blocker = true;
       return parser_make_expression (this_parser, key->op, NULL, NULL, NULL);
 
     case PT_SYS_GUID:
@@ -24889,9 +24981,11 @@ parser_keyword_func (const char *name, PT_NODE * args)
                 }
 	    }
 
-	  /* Those two functions should be evaluated at the compile time */
+	  /* File sources remain compile-time expressions unless semantic analysis proves that every source is the direct
+	   * value of an Internal LOB DML target. */
 	  parser_cannot_cache = true;
 	  parser_cannot_prepare = true;
+	  parser_has_internal_lob_file_prepare_blocker = true;
 	  node = parser_make_expression (this_parser, key->op, a1, a2, NULL);
 
 	  if (a1->node_type != PT_VALUE || a1->type_enum != PT_TYPE_CHAR)
