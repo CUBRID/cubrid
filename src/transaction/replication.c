@@ -289,9 +289,10 @@ repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid)
  *
  * NOTE:insert a replication log info to the transaction descriptor (tdes)
  */
-int
-repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
-		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
+static int
+repl_log_insert_internal (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
+			  LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info,
+			  int oos_attrid, int oos_flags)
 {
   int tran_index;
   LOG_TDES *tdes;
@@ -300,6 +301,10 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
   char *class_name = NULL;
   char *ptr;
   int error = NO_ERROR, strlen;
+  bool is_oos_repl = (rcvindex == RVREPL_OOS_INSERT || rcvindex == RVREPL_INTERNAL_LOB_INSERT
+		      || rcvindex == RVREPL_DUMMY_OOS_RECORD);
+
+  assert (!is_oos_repl || oos_attrid != NULL_ATTRID);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -391,6 +396,10 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
       repl_rec->length = OR_INT_SIZE;	/* packed_key_value_size */
       repl_rec->length += or_packed_string_length (class_name, &strlen);
       repl_rec->length += OR_VALUE_ALIGNED_SIZE (key_dbvalue);
+      if (is_oos_repl)
+	{
+	  repl_rec->length += 3 * OR_INT_SIZE;	/* metadata magic, target attrid and REPL_OOS_FLAG_* */
+	}
 
       ptr = (char *) malloc (repl_rec->length);
       if (ptr == NULL)
@@ -414,6 +423,15 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 
       ptr = or_pack_string_with_length (ptr, class_name, strlen);
       ptr = or_pack_mem_value (ptr, key_dbvalue, &packed_key_len);
+      if (is_oos_repl)
+	{
+	  ptr = or_pack_int (ptr, REPL_OOS_METADATA_MAGIC);
+	  ptr = or_pack_int (ptr, oos_attrid);
+	  ptr = or_pack_int (ptr, oos_flags);
+	  /* OR_VALUE_ALIGNED_SIZE includes spare alignment capacity. Trim it so the metadata trailer is
+	   * unambiguous; legacy appliers ignore the extra trailer after the packed key. */
+	  repl_rec->length = CAST_BUFLEN (ptr - repl_rec->repl_data);
+	}
 
       /* fill the length of disk image of pk */
       or_pack_int (ptr_to_packed_key_value_size, packed_key_len);
@@ -457,6 +475,7 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
 	}
       break;
     case RVREPL_OOS_INSERT:
+    case RVREPL_INTERNAL_LOB_INSERT:
     case RVREPL_DUMMY_OOS_RECORD:
       if (!tdes->oos_insert_lsa_queue.is_empty ())
 	{
@@ -507,6 +526,32 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
     }
 
   return error;
+}
+
+int
+repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
+		 LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info)
+{
+  return repl_log_insert_internal (thread_p, class_oid, inst_oid, log_type, rcvindex, key_dbvalue, repl_info,
+				   NULL_ATTRID, 0);
+}
+
+int
+repl_log_insert_oos (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid,
+		     LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_info, int attrid, int oos_flags)
+{
+  assert (rcvindex == RVREPL_OOS_INSERT || rcvindex == RVREPL_INTERNAL_LOB_INSERT
+	  || rcvindex == RVREPL_DUMMY_OOS_RECORD);
+
+  if ((rcvindex != RVREPL_OOS_INSERT && rcvindex != RVREPL_INTERNAL_LOB_INSERT
+       && rcvindex != RVREPL_DUMMY_OOS_RECORD) || attrid == NULL_ATTRID)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REPL_ERROR, 1, "invalid typed OOS replication metadata");
+      return ER_REPL_ERROR;
+    }
+
+  return repl_log_insert_internal (thread_p, class_oid, inst_oid, LOG_REPLICATION_DATA, rcvindex, key_dbvalue,
+				   repl_info, attrid, oos_flags);
 }
 
 /*
