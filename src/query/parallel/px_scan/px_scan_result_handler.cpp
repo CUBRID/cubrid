@@ -37,6 +37,7 @@
 #include "expr_compile.h"
 #include "query_aggregate.hpp"
 #include "xasl_aggregate.hpp"
+#include "numeric_opfunc.h"	// SUM_ACC word accumulator
 #include "object_domain.h"
 #include "query_executor.h"
 #include "px_scan_trace_handler.hpp"
@@ -930,6 +931,12 @@ namespace parallel_scan
 			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 			return false;
 		      }
+
+		    /* The serial path's marking does not reach a worker's own XASL copy.
+		     * Mark it here, once per worker, like the domain resolve above. */
+		    qexec_mark_aggregate_operand_expressions (tl.xasl);
+		    /* Sharing needs the resolved accumulator domains, so it is linked here. */
+		    qdata_link_shared_accumulators (tl.xasl->proc.buildlist.g_agg_list);
 		  }
 		if (qexec_hash_gby_agg_tuple_public (thread_p, tl.xasl, tl.vd->xasl_state, &tl.tpl_buf,
 						     & (tl.writer_result_p->tpl_descr), tl.writer_result_p, &output_tuple) != NO_ERROR)
@@ -1422,6 +1429,9 @@ namespace parallel_scan
   template <FUNC_CODE F>
   bool result_handler<RESULT_TYPE::BUILDVALUE_OPT>::initialize_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node)
   {
+    /* execution-only field, not part of the stream, so initialize it here */
+    agg_node->accumulator.sum_acc.is_active = false;
+
     if constexpr (F == PT_COUNT_STAR)
       {
 	agg_node->accumulator.curr_cnt = 0;
@@ -1749,6 +1759,42 @@ namespace parallel_scan
 	      }
 	    acc_dom->value2_dom = &tp_Null_domain;
 	  }
+	/* Supported types use the word accumulator, as on the serial path.
+	 * Each worker owns its accumulator; finalize_node () merges it through
+	 * qdata_aggregate_accumulator_to_accumulator (). acc->value retains the
+	 * first value so its domain information is preserved.
+	 */
+	if (SUM_ACC_IS_AGG_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (db_value_p)))
+	  {
+	    if (acc->curr_cnt < 1)
+	      {
+		pr_clear_value (acc->value);
+		if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+
+	    /* No seed source: this worker-local accumulator never leaves memory, so
+	     * acc->value cannot contain a partial sum not already in the word state.
+	     */
+	    if (qdata_sum_acc_accumulate (&acc->sum_acc, acc->curr_cnt < 1, NULL, db_value_p) != NO_ERROR)
+	      {
+		return false;
+	      }
+
+	    acc->curr_cnt++;
+	    return true;
+	  }
+
+	/* guard: an unsupported type must not arrive while the accumulator is active */
+	if (acc->sum_acc.is_active)
+	  {
+	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    return false;
+	  }
+
 	if (acc->curr_cnt < 1)
 	  {
 	    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
@@ -1770,9 +1816,6 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    /* per-row add for an operand the compiled program did not evaluate (the caller
-	     * runs the resolved accumulate kernel for compiled SUM/AVG operands, see the hook);
-	     * the serial path rounds per row in the same case */
 	    if (qdata_add_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
 	      {
 		return false;
@@ -2107,6 +2150,15 @@ namespace parallel_scan
 	  {
 	    return false;
 	  }
+
+	if (tl_xasl_p->proc.buildvalue.agg_domains_resolved)
+	  {
+	    /* Sharing needs the resolved accumulator domains, so it is linked here once
+	     * per worker. Any rows accumulated into a sharer before resolution are
+	     * overwritten during propagation; this only adds work, not a correctness issue.
+	     */
+	    qdata_link_shared_accumulators (tl_xasl_p->proc.buildvalue.agg_list);
+	  }
       }
 
     /* compiled operand-evaluation program (expr_compile.h), the same lazy per-execution
@@ -2146,6 +2198,15 @@ namespace parallel_scan
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
 	AGGREGATE_ACCUMULATOR *acc = &agg_node->accumulator;
+
+	if (acc->shared_from > 0)
+	  {
+	    /* The sum is accumulated by an earlier aggregate and copied here at finalize
+	     * time (qdata_propagate_shared_accumulators ()). Skipping this also avoids
+	     * fetching the operand below.
+	     */
+	    continue;
+	  }
 
 	if (agg_node->function == PT_COUNT_STAR)
 	  {
@@ -2189,29 +2250,6 @@ namespace parallel_scan
 	      {
 		return false;
 	      }
-	  }
-
-	if (prog_root >= 0 && agg_node->acc_kernel != NULL
-	    && (agg_node->function == PT_SUM || agg_node->function == PT_AVG)
-	    && agg_node->accumulator_domain.value_dom != NULL
-	    && agg_node->accumulator_domain.value_dom != &tp_Null_domain)
-	  {
-	    /* SUM/AVG of a compiled operand: the same accumulate kernel the serial
-	     * qdata_evaluate_aggregate_list () resolved for this aggregate.  A NUMERIC sum then
-	     * accumulates exactly (deferred carry, sum_state) on the worker and is rounded once
-	     * when write_finalize () merges it into the coordinator's accumulator
-	     * (qdata_aggregate_accumulator_to_accumulator () flushes the state), so the
-	     * parallel result matches the serial and the hash GROUP BY paths beyond
-	     * DB_MAX_NUMERIC_PRECISION digits of running sum.  The kernel skips NULL and
-	     * counts the row itself; a worker whose domain is still unresolved keeps the
-	     * per-row path below, which resolves it from the value. */
-	    if (qdata_acc_kernel_run (thread_p, agg_node, acc, db_value_p) != NO_ERROR)
-	      {
-		m_err_messages_p->move_top_error_message_to_this ();
-		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		return false;
-	      }
-	    continue;
 	  }
 
 	if (DB_IS_NULL (db_value_p))

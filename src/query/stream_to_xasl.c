@@ -5994,8 +5994,6 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   aggregate->operand_prog_state = 0;
   aggregate->operand_prog_base = -1;
   aggregate->operand_prog_share_spec = NULL;
-  aggregate->acc_kernel = NULL;
-  aggregate->accumulator.sum_state = NULL;
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
@@ -6003,6 +6001,9 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
+  /* execution-only fields are not part of the stream, so initialize them here */
+  aggregate->accumulator.shared_from = 0;
+  aggregate->accumulator.sum_acc.is_active = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

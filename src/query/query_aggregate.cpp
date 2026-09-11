@@ -121,6 +121,86 @@ qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_l
   return NO_ERROR;
 }
 
+/* Word-domain evaluation of NUMERIC-only {+,-,*} aggregate operand trees.
+ * Arithmetic is implemented in numeric_opfunc.c (NUMERIC_AGG_EXPR_VAL); this
+ * path only walks the operand tree. Division and unsupported shapes fall back
+ * to the legacy DB_VALUE path.
+ *
+ * Leaves use numeric_agg_expr_from_dbv (), shared with
+ * fetch_agg_expr_eval_numeric (), so both entry points accept the same types.
+ * Bare integer leaves do not occur: type checking wraps integers in T_CAST_WRAP
+ * for NUMERIC operators, so the integer case is handled at the wrap.
+ */
+
+static bool
+qdata_agg_expr_eval_numeric (const REGU_VARIABLE *regu, NUMERIC_AGG_EXPR_VAL *out)
+{
+  ARITH_TYPE *arith;
+  NUMERIC_AGG_EXPR_VAL left, right;
+
+  switch (regu->type)
+    {
+    case TYPE_CONSTANT:
+      return numeric_agg_expr_from_dbv (regu->value.dbvalptr, out);
+    case TYPE_DBVAL:
+      return numeric_agg_expr_from_dbv (&regu->value.dbval, out);
+    case TYPE_INARITH:
+      break;
+    default:
+      return false;
+    }
+
+  arith = regu->value.arithptr;
+  if (arith == NULL)
+    {
+      return false;
+    }
+
+  if (arith->opcode == T_CAST_WRAP && arith->rightptr != NULL)
+    {
+      /* Absorb the wrapped integer when its value can be read directly
+       * (a constant or an inline value). Without thread context, leaves that
+       * require fetching return false and fall back to fetch_agg_expr_eval_numeric (). */
+      switch (arith->rightptr->type)
+	{
+	case TYPE_CONSTANT:
+	  return numeric_agg_expr_from_int_dbv (arith->rightptr->value.dbvalptr, out);
+	case TYPE_DBVAL:
+	  return numeric_agg_expr_from_int_dbv (&arith->rightptr->value.dbval, out);
+	default:
+	  return false;
+	}
+    }
+
+  switch (arith->opcode)
+    {
+    case T_ADD:
+    case T_SUB:
+    case T_MUL:
+      break;
+    default:
+      /* division falls back to the legacy path */
+      return false;
+    }
+
+  if (arith->leftptr == NULL || arith->rightptr == NULL)
+    {
+      return false;
+    }
+
+  if (!qdata_agg_expr_eval_numeric (arith->leftptr, &left) || !qdata_agg_expr_eval_numeric (arith->rightptr, &right))
+    {
+      return false;
+    }
+
+  if (arith->opcode == T_MUL)
+    {
+      return numeric_agg_expr_mul (&left, &right, out);
+    }
+
+  return numeric_agg_expr_add (&left, &right, arith->opcode == T_SUB, out);
+}
+
 /*
  * qdata_initialize_aggregate_list () -
  *   return: NO_ERROR, or ER_code
@@ -148,8 +228,9 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
 	}
 
       /* CAUTION : if modify initializing ACC's value then should change qdata_alloc_agg_hvalue() */
-      qdata_numeric_sum_discard (&agg_p->accumulator);
+      /* shared_from is not reset: links last the whole execution, and this runs at every sort-path group start */
       agg_p->accumulator.curr_cnt = 0;
+      agg_p->accumulator.sum_acc.is_active = false;
       if (db_value_domain_init (agg_p->accumulator.value, DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value),
 				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
 	{
@@ -210,12 +291,6 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
   TP_DOMAIN *double_domain;
   int error = NO_ERROR;
 
-  /* a deferred NUMERIC sum on either side must be materialized before merging */
-  if (qdata_numeric_sum_flush (acc) != NO_ERROR || qdata_numeric_sum_flush (new_acc) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
   switch (func_type)
     {
     case PT_GROUPBY_NUM:
@@ -231,6 +306,39 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
     case PT_AGG_BIT_XOR:
     case PT_AVG:
     case PT_SUM:
+      if (new_acc->sum_acc.is_active)
+	{
+	  if (acc->sum_acc.is_active)
+	    {
+	      if (qdata_sum_acc_merge (&acc->sum_acc, &new_acc->sum_acc) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      /* curr_cnt is summed after the switch */
+	      break;
+	    }
+
+	  if (acc->curr_cnt < 1)
+	    {
+	      /* acc->value is not the running sum in this mode, but clone it so
+	       * its domain matches what finalize will write back. */
+	      acc->sum_acc = new_acc->sum_acc;
+	      pr_clear_value (acc->value);
+	      if (pr_clone_value (new_acc->value, acc->value) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      break;
+	    }
+
+	  /* acc has no word state: its partial came back from a spill file as a
+	   * plain DB_VALUE (the words do not fit the list file columns). Finalize
+	   * the source too and merge value to value below. */
+	  if (qdata_sum_acc_finalize (&new_acc->sum_acc, new_acc->value) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
       // these functions only affect acc.value and new_acc can be treated as an ordinary value
       error =
 	      qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
@@ -483,19 +591,38 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 
     case PT_AVG:
     case PT_SUM:
+    {
+      /* whether the accumulator takes this value's type */
+      bool use_sum_acc = SUM_ACC_IS_AGG_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (value));
+
       if (acc->curr_cnt < 1)
 	{
 	  copy_operator = true;
 	}
-      else
+      else if (!use_sum_acc)
 	{
-	  /* values are added up in acc.value */
+	  if (acc->sum_acc.is_active)
+	    {
+	      /* guard: an unsupported type must not arrive while the accumulator is active */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	      return ER_FAILED;
+	    }
+	  /* unsupported types keep the per-row add into acc->value */
 	  if (qdata_add_dbval (acc->value, value, acc->value, domain->value_dom) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
 	}
-      break;
+
+      /* supported types accumulate through the accumulator, the first value included */
+      if (use_sum_acc
+	  && qdata_sum_acc_accumulate (&acc->sum_acc, acc->curr_cnt < 1, acc->value, value) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+    break;
 
     case PT_STDDEV:
     case PT_STDDEV_POP:
@@ -626,306 +753,150 @@ qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubx
   return NO_ERROR;
 }
 
-/* deferred-carry NUMERIC sum: the accumulator's sum_state wraps the numeric state
- * together with the target accumulator domain so every flush site is self-contained */
-typedef struct qdata_sum_state_holder QDATA_SUM_STATE_HOLDER;
-struct qdata_sum_state_holder
-{
-  NUMERIC_SUM_STATE *state;
-  tp_domain *value_dom;
-};
-
 /*
- * qdata_numeric_sum_flush () - materialize a pending deferred NUMERIC sum into
- *				acc->value (mirror: per-row adds + the trailing domain
- *				coercion), then drop the state
+ * qdata_agg_is_plain_sum_avg () - is this a plain SUM/AVG over one operand?
+ *   return: true if the aggregate may take the fast path in
+ *           qdata_evaluate_aggregate_list ()
+ *
+ * Rejects DISTINCT, aggregate ORDER BY, multiple operands, and other functions;
+ * these remain on the general per-function path.
+ *
+ * flag.min_max_optimized is checked only by the assert below, not by the test.
+ * It is set only by pt_optimize_min_max_list () for PT_MIN/PT_MAX and cleared
+ * elsewhere, so SUM/AVG cannot carry it.
  */
-int
-qdata_numeric_sum_flush (cubxasl::aggregate_accumulator *acc)
+static inline bool
+qdata_agg_is_plain_sum_avg (const cubxasl::aggregate_list_node *agg_p)
 {
-  QDATA_SUM_STATE_HOLDER *holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
-  int error;
+  assert (!agg_p->flag.min_max_optimized || (agg_p->function != PT_SUM && agg_p->function != PT_AVG));
 
-  if (holder == NULL)
-    {
-      return NO_ERROR;
-    }
-  acc->sum_state = NULL;
-
-  pr_clear_value (acc->value);
-  error = numeric_sum_state_result (holder->state, acc->value);
-  if (error == NO_ERROR)
-    {
-      error = expr_coerce_result_to_domain (acc->value, holder->value_dom);
-    }
-  numeric_sum_state_free (holder->state);
-  free_and_init (holder);
-  return (error == NO_ERROR) ? NO_ERROR : ER_FAILED;
+  return ((agg_p->function == PT_SUM || agg_p->function == PT_AVG)
+	  && agg_p->operands != NULL && agg_p->operands->next == NULL
+	  && agg_p->option != Q_DISTINCT && agg_p->sort_list == NULL);
 }
 
 /*
- * qdata_numeric_sum_discard () - drop a pending deferred sum without materializing
+ * qdata_agg_may_share_accumulator () - can this aggregate take part in accumulator sharing?
+ *   return: true for a plain SUM/AVG over a single referenced value or arithmetic expression
+ */
+static inline bool
+qdata_agg_may_share_accumulator (const cubxasl::aggregate_list_node *agg_p)
+{
+  /* qdata_agg_is_plain_sum_avg () also guarantees operands != NULL.
+   * Keep agg_optimized as a runtime check: it can skip aggregate evaluation,
+   * leaving no accumulator for a sharer to copy. TYPE_INARITH compatibility
+   * is checked by qdata_agg_share_args_equal (). */
+  return (qdata_agg_is_plain_sum_avg (agg_p) && !agg_p->flag.agg_optimized
+	  && (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_INARITH)
+	  && agg_p->accumulator_domain.value_dom != NULL);
+}
+
+/*
+ * qdata_agg_share_args_equal () - do two aggregate arguments carry the identical
+ *                                 value on every row?
+ *   return: true when the regu trees are structurally the same computation
+ *
+ * Compares the trees conservatively, position by position. Constants must
+ * reference the same DB_VALUE; arithmetic nodes must use the same whitelisted
+ * operator with pairwise-equal operands in the same order. Domains must also
+ * match at every node so both sides coerce identically. Functions, casts,
+ * predicates, extra operands, and commutative reorderings compare unequal.
+ * The comparison matches pt_aggregate_arg_eq ()'s structural semantics used for
+ * GROUP BY argument deduplication.
+ *
+ * T_DIV is allowed because sharing only avoids duplicate evaluation; it does
+ * not depend on whether the accumulator uses the fast path or the fallback.
+ */
+static bool
+qdata_agg_share_args_equal (const regu_variable_node *arg, const regu_variable_node *other)
+{
+  if (arg == NULL || other == NULL)
+    {
+      return false;
+    }
+
+  if (arg->type != other->type || arg->domain != other->domain)
+    {
+      return false;
+    }
+
+  switch (arg->type)
+    {
+    case TYPE_CONSTANT:
+      return (arg->value.dbvalptr != NULL && arg->value.dbvalptr == other->value.dbvalptr);
+
+    case TYPE_INARITH:
+    {
+      const ARITH_TYPE *arith = arg->value.arithptr;
+      const ARITH_TYPE *other_arith = other->value.arithptr;
+
+      if (arith == NULL || other_arith == NULL || arith->opcode != other_arith->opcode
+	  || arith->domain != other_arith->domain || arith->pred != NULL || other_arith->pred != NULL
+	  || arith->thirdptr != NULL || other_arith->thirdptr != NULL)
+	{
+	  return false;
+	}
+
+      switch (arith->opcode)
+	{
+	case T_ADD:
+	case T_SUB:
+	case T_MUL:
+	case T_DIV:
+	  break;
+	default:
+	  return false;
+	}
+
+      return (qdata_agg_share_args_equal (arith->leftptr, other_arith->leftptr)
+	      && qdata_agg_share_args_equal (arith->rightptr, other_arith->rightptr));
+    }
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * qdata_link_shared_accumulators () - let SUM and AVG over the same argument
+ *                                     share one accumulator
+ *   agg_list(in/out): aggregate list of the query
+ *
+ * SUM and AVG over the same argument accumulate the same sum, so the later
+ * aggregate can reuse the earlier one's accumulator instead of accumulating
+ * the value again. It records the owner's index and copies the accumulated
+ * state at finalization before completing its own result.
+ *
+ * Aggregates share only when they compute the identical value on every row
+ * (qdata_agg_share_args_equal ()), are plain SUM or AVG, and use the same
+ * accumulator domain. The domains must already be resolved before this runs.
  */
 void
-qdata_numeric_sum_discard (cubxasl::aggregate_accumulator *acc)
+qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
 {
-  QDATA_SUM_STATE_HOLDER *holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
+  cubxasl::aggregate_list_node *agg_p, *acc_owner_p;
+  int index, acc_owner_index;
 
-  if (holder != NULL)
+  for (agg_p = agg_list, index = 0; agg_p != NULL; agg_p = agg_p->next, index++)
     {
-      acc->sum_state = NULL;
-      numeric_sum_state_free (holder->state);
-      free_and_init (holder);
-    }
-}
+      agg_p->accumulator.shared_from = 0;
 
-/*
- * Per-row accumulate kernels (resolved in qdata_agg_operand_prog_compile () below).
- * A kernel replaces the interpreted per-row tail for ONE aggregate whose single operand
- * the compiled program already evaluated: the operand vector, its deep copy and the
- * accumulate dispatch are all skipped.  Every kernel MIRRORS that tail exactly: the
- * NULL elimination (no accumulation, no tuple count), the accumulate semantics and
- * error propagation, and the unconditional tuple count increment after accumulating.
- */
-typedef int (*QDATA_ACC_KERNEL_FN) (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
-				    cubxasl::aggregate_accumulator *acc, DB_VALUE *value);
-
-static int
-qdata_acc_kernel_generic (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
-			  cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
-{
-  int error;
-
-  if (DB_IS_NULL (value))
-    {
-      return NO_ERROR;
-    }
-  error = qdata_aggregate_value_to_accumulator (thread_p, acc, &agg_p->accumulator_domain, agg_p->function,
-	  agg_p->domain, value, false);
-  acc->curr_cnt++;
-  return error;
-}
-
-/*
- * SUM/AVG over a BIGINT accumulator: mirror of qdata_add_dbval () BIGINT x BIGINT.  The
- * trailing domain coercion is skipped -- tp_value_cast_internal () returns straight away
- * for a same-type non-parameterized domain when source and destination are the same value.
- */
-static int
-qdata_acc_kernel_sum_bigint (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
-			     cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
-{
-  DB_BIGINT bi1, bi2, result;
-
-  if (DB_IS_NULL (value))
-    {
-      return NO_ERROR;
-    }
-  if (acc->curr_cnt < 1 || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_BIGINT
-      || DB_VALUE_DOMAIN_TYPE (acc->value) != DB_TYPE_BIGINT)
-    {
-      /* first row (copy semantics) or a type the fast path does not cover */
-      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
-    }
-
-  bi1 = db_get_bigint (acc->value);
-  bi2 = db_get_bigint (value);
-  /* Add and test in one builtin.  Computing the wrapped sum first is signed overflow,
-   * which the optimizer may assume never happens and then drop the test that follows it;
-   * the verdict is the one qdata_add_bigint () reaches, and the arithmetic kernels in
-   * expr_compile.c already use the same OR_*_OVERFLOW forms. */
-  if (OR_ADD_OVERFLOW (bi1, bi2, &result))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-      acc->curr_cnt++;
-      return ER_FAILED;
-    }
-  db_make_bigint (acc->value, result);
-  acc->curr_cnt++;
-  return NO_ERROR;
-}
-
-/* SUM/AVG over a DOUBLE accumulator: mirror of qdata_add_dbval () DOUBLE x DOUBLE */
-static int
-qdata_acc_kernel_sum_double (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
-			     cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
-{
-  double result;
-
-  if (DB_IS_NULL (value))
-    {
-      return NO_ERROR;
-    }
-  if (acc->curr_cnt < 1 || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_DOUBLE
-      || DB_VALUE_DOMAIN_TYPE (acc->value) != DB_TYPE_DOUBLE)
-    {
-      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
-    }
-
-  result = db_get_double (acc->value) + db_get_double (value);
-  if (OR_CHECK_DOUBLE_OVERFLOW (result))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-      acc->curr_cnt++;
-      return ER_FAILED;
-    }
-  db_make_double (acc->value, result);
-  acc->curr_cnt++;
-  return NO_ERROR;
-}
-
-/*
- * SUM/AVG over a NUMERIC accumulator: mirror of qdata_add_dbval () NUMERIC x NUMERIC
- * including the trailing coercion into the accumulator domain (NUMERIC is parameterized,
- * so the coercion is NOT a no-op and stays)
- */
-static int
-qdata_acc_kernel_sum_numeric (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
-			      cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
-{
-  QDATA_SUM_STATE_HOLDER *holder;
-
-  if (DB_IS_NULL (value))
-    {
-      return NO_ERROR;
-    }
-  if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC)
-    {
-      if (qdata_numeric_sum_flush (acc) != NO_ERROR)
+      if (!qdata_agg_may_share_accumulator (agg_p))
 	{
-	  acc->curr_cnt++;
-	  return ER_FAILED;
+	  continue;
 	}
-      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
-    }
 
-  holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
-  if (holder == NULL)
-    {
-      /* deferred-carry accumulation: the state absorbs every row (including the
-       * first) and one numeric_sum_state_result () at a flush point replaces the
-       * per-row digit-scan/round/pack/coerce of the interpreted path */
-      int prec, scale;
-
-      if (acc->curr_cnt >= 1)
+      for (acc_owner_p = agg_list, acc_owner_index = 0; acc_owner_p != agg_p;
+	   acc_owner_p = acc_owner_p->next, acc_owner_index++)
 	{
-	  /* a materialized partial sum already sits in acc->value (e.g. after a merge
-	   * or spill): keep the generic per-row path for this accumulator */
-	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+	  if (acc_owner_p->accumulator.shared_from == 0 && qdata_agg_may_share_accumulator (acc_owner_p)
+	      && acc_owner_p->accumulator_domain.value_dom == agg_p->accumulator_domain.value_dom
+	      && qdata_agg_share_args_equal (&acc_owner_p->operands->value, &agg_p->operands->value))
+	    {
+	      agg_p->accumulator.shared_from = acc_owner_index + 1;
+	      break;
+	    }
 	}
-      db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
-      holder = (QDATA_SUM_STATE_HOLDER *) malloc (sizeof (QDATA_SUM_STATE_HOLDER));
-      if (holder == NULL)
-	{
-	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
-	}
-      holder->state = numeric_sum_state_alloc (scale);
-      if (holder->state == NULL)
-	{
-	  free_and_init (holder);
-	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
-	}
-      holder->value_dom = agg_p->accumulator_domain.value_dom;
-      acc->sum_state = holder;
-    }
-
-  if (!numeric_sum_state_accumulate (holder->state, value))
-    {
-      /* unexpected input scale: materialize what we have and fall back for this row */
-      if (qdata_numeric_sum_flush (acc) != NO_ERROR)
-	{
-	  acc->curr_cnt++;
-	  return ER_FAILED;
-	}
-      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
-    }
-  acc->curr_cnt++;
-  return NO_ERROR;
-}
-
-/*
- * qdata_acc_kernel_run () - accumulate one row through the kernel resolved for agg_p
- *   (the parallel BUILDVALUE_OPT hook shares the serial per-row tail this way, so the
- *   deferred NUMERIC sum and the typed SUM kernels give the same result on both paths)
- */
-int
-qdata_acc_kernel_run (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
-		      cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
-{
-  assert (agg_p->acc_kernel != NULL);
-  return ((QDATA_ACC_KERNEL_FN) agg_p->acc_kernel) (thread_p, agg_p, acc, value);
-}
-
-/*
- * qdata_acc_kernel_name () - display name of an accumulate kernel for SQL trace
- */
-const char *
-qdata_acc_kernel_name (const void *kernel)
-{
-  if (kernel == (const void *) qdata_acc_kernel_generic)
-    {
-      return "generic";
-    }
-  if (kernel == (const void *) qdata_acc_kernel_sum_bigint)
-    {
-      return "sum_bigint";
-    }
-  if (kernel == (const void *) qdata_acc_kernel_sum_double)
-    {
-      return "sum_double";
-    }
-  if (kernel == (const void *) qdata_acc_kernel_sum_numeric)
-    {
-      return "sum_numeric";
-    }
-  return "?";
-}
-
-/*
- * qdata_acc_kernel_resolve () - the accumulate kernel for one aggregate the program
- *				 covers, or NULL to keep the interpreted tail
- *
- * NULL for: multiple operands, DISTINCT or sorted input (list file path), optimized
- * MIN/MAX (early-termination block), and any function whose per-row tail does more
- * than plain accumulation.
- */
-static QDATA_ACC_KERNEL_FN
-qdata_acc_kernel_resolve (cubxasl::aggregate_list_node *agg_p)
-{
-  if (agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL || agg_p->flag.min_max_optimized)
-    {
-      return NULL;
-    }
-  if (agg_p->operands == NULL || agg_p->operands->next != NULL)
-    {
-      return NULL;
-    }
-  if (agg_p->accumulator_domain.value_dom == NULL)
-    {
-      return NULL;
-    }
-
-  switch (agg_p->function)
-    {
-    case PT_SUM:
-    case PT_AVG:
-      switch (TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom))
-	{
-	case DB_TYPE_BIGINT:
-	  return qdata_acc_kernel_sum_bigint;
-	case DB_TYPE_DOUBLE:
-	  return qdata_acc_kernel_sum_double;
-	case DB_TYPE_NUMERIC:
-	  return qdata_acc_kernel_sum_numeric;
-	default:
-	  return qdata_acc_kernel_generic;
-	}
-    case PT_MIN:
-    case PT_MAX:
-    case PT_COUNT:
-      return qdata_acc_kernel_generic;
-    default:
-      return NULL;
     }
 }
 
@@ -994,9 +965,9 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
 	  /* an index-boundary MIN/MAX (min_max_optimized) is_ended after its first row and
 	   * the per-row loop skips it -- operand fetch included -- from then on; keep it on
 	   * the interpreted path so the program never evaluates an operand the interpreter
-	   * would not.  Nothing is lost: qdata_acc_kernel_resolve () gives it no kernel, and
-	   * such a list is MIN/MAX-only (pt_set_access_spec_for_aggregation ()) over a scan
-	   * the executor stops after one or two rows, where compiling would only cost. */
+	   * would not.  Nothing is lost: such a list is MIN/MAX-only
+	   * (pt_set_access_spec_for_aggregation ()) over a scan the executor stops after one
+	   * or two rows, where compiling would only cost. */
 	  participates = !agg_p->flag.agg_optimized && !agg_p->flag.min_max_optimized;
 	  break;
 	default:
@@ -1005,7 +976,6 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
 	}
 
       agg_p->operand_prog_base = -1;
-      agg_p->acc_kernel = NULL;
       if (!participates)
 	{
 	  continue;
@@ -1064,20 +1034,10 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
   agg_list_p->operand_prog_idx = idx;
   agg_list_p->operand_prog_state = 1;
 
-  /* resolve per-aggregate accumulate kernels: only an aggregate whose single operand the
-   * program actually covers may bypass the interpreted per-row tail */
-  bool any_kernel = false;
-  for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
-    {
-      if (agg_p->operand_prog_base >= 0 && idx[agg_p->operand_prog_base] >= 0)
-	{
-	  agg_p->acc_kernel = (void *) qdata_acc_kernel_resolve (agg_p);
-	  any_kernel = any_kernel || (agg_p->acc_kernel != NULL);
-	}
-    }
-
-  /* a step-less program that also resolved no kernel does nothing for anybody */
-  if (!any_kernel && prog->n_steps == 0)
+  /* a program that computes nothing (every covered operand is a plain column or a wired
+   * constant) does nothing the fast path's own peek does not: the accumulator
+   * (SUM_ACC, query_sum_accumulator.h) reads such an operand in place */
+  if (prog->n_compute == 0 && prog->n_shared == 0)
     {
       expr_prog_free (prog);
       free_and_init (idx);
@@ -1147,6 +1107,13 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  continue;
 	}
 
+      if (accumulator->shared_from > 0)
+	{
+	  /* An earlier aggregate accumulates this same sum.
+	   * The state is copied from it at finalize time. */
+	  continue;
+	}
+
       if (agg_p->function == PT_COUNT_STAR)
 	{
 	  /* increment and continue */
@@ -1177,18 +1144,88 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  continue;
 	}
 
-      if (agg_p->acc_kernel != NULL && operand_prog != NULL)
+      /* Fast path for a plain SUM/AVG over one operand. It has two layers.
+       *
+       *   outer, any type -- peek the operand and pass it to
+       *                      qdata_aggregate_value_to_accumulator (), avoiding
+       *                      the per-row DB_VALUE vector.
+       *   inner, NUMERIC  -- evaluate the expression in the word domain and defer
+       *                      rounding and packing to finalization.
+       *
+       * The outer layer preserves the general path's semantics: a plain SUM/AVG
+       * reaches the same qdata_aggregate_value_to_accumulator () call. Other
+       * aggregate-specific branches are excluded by qdata_agg_is_plain_sum_avg ().
+       *
+       * The inner layer is tried per row. A NUMERIC expression may fall back for one
+       * row (division, a non-NUMERIC leaf, or overflow) and fuse again on the next.
+       */
+      if (qdata_agg_is_plain_sum_avg (agg_p))
 	{
-	  /* the program evaluated this aggregate's single operand for the row already;
-	   * accumulate straight from the program cell -- no operand vector, no deep copy */
-	  DB_VALUE *cell_value =
-		  expr_prog_value (operand_prog, agg_list_p->operand_prog_idx[agg_p->operand_prog_base]);
+	  DB_VALUE *peek_val = NULL;
+	  int prog_root = (operand_prog != NULL && agg_p->operand_prog_base >= 0)
+	    ? agg_list_p->operand_prog_idx[agg_p->operand_prog_base] : -1;
 
-	  error = ((QDATA_ACC_KERNEL_FN) agg_p->acc_kernel) (thread_p, agg_p, accumulator, cell_value);
+	  if (prog_root >= 0)
+	    {
+	      /* The compiled operand program (expr_compile.h) evaluated this operand for the
+	       * row already, together with every other operand of the list (shared
+	       * sub-expressions once, the scan filter's values reused): read its cell.  The
+	       * value then takes the same accumulator path as a peeked operand below. */
+	      peek_val = expr_prog_value (operand_prog, prog_root);
+	    }
+	  else
+	    {
+	      if (accumulator->sum_acc.is_active && accumulator->sum_acc.sum_type == DB_TYPE_NUMERIC
+		  && agg_p->operands->value.type == TYPE_INARITH)
+		{
+		  NUMERIC_AGG_EXPR_VAL cv;
+
+		  if (qdata_agg_expr_eval_numeric (&agg_p->operands->value, &cv))
+		    {
+		      if (numeric_sum_acc_add_expr_val (&accumulator->sum_acc, &cv) != NO_ERROR)
+			{
+			  return ER_FAILED;
+			}
+
+		      accumulator->curr_cnt++;
+		      continue;
+		    }
+		}
+
+	      /* Peek the operand instead of copying it. For a marked arithmetic
+	       * expression this also runs the fused evaluation in fetch_peek_arith (). */
+	      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, val_desc_p, NULL, NULL, NULL, &peek_val) !=
+		  NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
+	  if (DB_IS_NULL (peek_val))
+	    {
+	      continue;
+	    }
+
+	  if (accumulator->sum_acc.is_active
+	      && accumulator->sum_acc.sum_type == sum_acc_agg_sum_type_for (DB_VALUE_DOMAIN_TYPE (peek_val)))
+	    {
+	      if (qdata_sum_acc_add_dbv (&accumulator->sum_acc, peek_val) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+
+	      accumulator->curr_cnt++;
+	      continue;
+	    }
+
+	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+		  agg_p->function, agg_p->domain, peek_val, false);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
+
+	  accumulator->curr_cnt++;
 	  continue;
 	}
 
@@ -1815,6 +1852,69 @@ cleanup:
 }
 
 /*
+ * qdata_agg_node_at () - nth node of an aggregate list
+ *   return: the node, or NULL if the list is shorter
+ */
+static cubxasl::aggregate_list_node *
+qdata_agg_node_at (cubxasl::aggregate_list_node *agg_list, int index)
+{
+  while (agg_list != NULL && index > 0)
+    {
+      agg_list = agg_list->next;
+      index--;
+    }
+
+  return agg_list;
+}
+
+/*
+ * qdata_propagate_shared_accumulators () - propagate accumulated sums to aggregates
+ *                                          that share them
+ *   return: NO_ERROR, or ER_code
+ *   agg_list(in/out): aggregate list of the query
+ *
+ * Must run before finalization: AVG finalization transforms the sum into an
+ * average, so a sharing SUM must receive its own copy of the accumulated state.
+ * Each sharing aggregate gets a copy here and is finalized independently.
+ */
+static int
+qdata_propagate_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
+{
+  cubxasl::aggregate_list_node *agg_p, *acc_owner_p;
+
+  for (agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
+    {
+      if (agg_p->accumulator.shared_from <= 0)
+	{
+	  continue;
+	}
+
+      acc_owner_p = qdata_agg_node_at (agg_list, agg_p->accumulator.shared_from - 1);
+      if (acc_owner_p == NULL)
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  return ER_FAILED;
+	}
+
+      agg_p->accumulator.curr_cnt = acc_owner_p->accumulator.curr_cnt;
+      agg_p->accumulator.sum_acc = acc_owner_p->accumulator.sum_acc;
+      if (!acc_owner_p->accumulator.sum_acc.is_active)
+	{
+	  /* The owner's accumulator never went active, so whatever was
+	   * accumulated lives in its value. Copy that too. */
+	  pr_clear_value (agg_p->accumulator.value);
+	  if (pr_clone_value (acc_owner_p->accumulator.value, agg_p->accumulator.value) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * qdata_finalize_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in)       : Aggregate expression node list
@@ -1843,13 +1943,10 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   OR_BUF buf;
   double dbl;
 
-  /* materialize deferred NUMERIC sums before any accumulator value is consumed */
-  for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
+  error = qdata_propagate_shared_accumulators (agg_list_p);
+  if (error != NO_ERROR)
     {
-      if (qdata_numeric_sum_flush (&agg_p->accumulator) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      return error;
     }
 
   db_make_null (&sqr_val);
@@ -1883,6 +1980,17 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  /* nothing to do with groupby_num() */
 	  continue;
+	}
+
+      /* Turn the word accumulator into acc->value once, before any consumer
+       * (AVG's division below, domain casts) reads it. This is the single rounding point. */
+      if ((agg_p->function == PT_SUM || agg_p->function == PT_AVG) && agg_p->accumulator.sum_acc.is_active)
+	{
+	  error = qdata_sum_acc_finalize (&agg_p->accumulator.sum_acc, agg_p->accumulator.value);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	}
 
       if (agg_p->function == PT_CUME_DIST)
@@ -2679,11 +2787,15 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
     {
       value->accumulators[i].value = pr_make_value ();
       value->accumulators[i].value2 = pr_make_value ();
-      value->accumulators[i].sum_state = NULL;	/* raw allocation: must not inherit garbage */
+      value->accumulators[i].sum_acc.is_active = false;
+      value->accumulators[i].shared_from = 0;
     }
   /* initialize accumulators.value */
   for (i = 0, agg_p = g_agg_list; agg_p != NULL; agg_p = agg_p->next, i++)
     {
+      /* accumulator sharing was decided per query; each group's array inherits it */
+      value->accumulators[i].shared_from = agg_p->accumulator.shared_from;
+
       /* CAUTION : if modify initializing ACC's value then should change qdata_initialize_aggregate_list() */
       if (agg_p->function == PT_GROUPBY_NUM)
 	{
@@ -2729,8 +2841,6 @@ qdata_free_agg_hvalue (cubthread::entry *thread_p, aggregate_hash_value *value)
     {
       for (i = 0; i < value->func_count; i++)
 	{
-	  qdata_numeric_sum_discard (&value->accumulators[i]);
-
 	  if (value->accumulators[i].value != NULL)
 	    {
 	      pr_free_value (value->accumulators[i].value);
@@ -2991,15 +3101,10 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
 
       if (agg_list->function != PT_GROUPBY_NUM)
 	{
-	  /* a deferred NUMERIC sum must be materialized before its value is copied;
-	   * the destination accumulator cannot carry a pending state either. A failed
-	   * flush (overflow at materialization) must not degrade into copying the
-	   * already-cleared value as if it were the sum. */
-	  if (qdata_numeric_sum_flush (&value->accumulators[i]) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  qdata_numeric_sum_discard (&agg_list->accumulator);
+	  /* Restore the group's word accumulator and its sharing link from the
+	   * hash entry. Finalize and propagation read them from this list. */
+	  agg_list->accumulator.sum_acc = value->accumulators[i].sum_acc;
+	  agg_list->accumulator.shared_from = value->accumulators[i].shared_from;
 
 	  if (copy_vals)
 	    {
@@ -3074,13 +3179,41 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
       tuple_size += qdata_get_tuple_value_size_from_dbval (key->values[i]);
     }
 
+  /* Propagate shared sums before flattening, exactly like
+   * qdata_propagate_shared_accumulators () does before finalization. */
   for (i = 0; i < value->func_count; i++)
     {
-      /* a deferred NUMERIC sum must be materialized before its value is serialized */
-      if (qdata_numeric_sum_flush (&value->accumulators[i]) != NO_ERROR)
+      int acc_owner = value->accumulators[i].shared_from - 1;
+
+      if (acc_owner < 0 || acc_owner >= value->func_count)
 	{
-	  return ER_FAILED;
+	  continue;
 	}
+
+      value->accumulators[i].curr_cnt = value->accumulators[acc_owner].curr_cnt;
+      value->accumulators[i].sum_acc = value->accumulators[acc_owner].sum_acc;
+      if (!value->accumulators[acc_owner].sum_acc.is_active)
+	{
+	  pr_clear_value (value->accumulators[i].value);
+	  if (pr_clone_value (value->accumulators[acc_owner].value, value->accumulators[i].value) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  for (i = 0; i < value->func_count; i++)
+    {
+      /* A spilled partial travels as a plain DB_VALUE. Flatten the word
+       * accumulator into it first (this rounds once at the spill boundary). */
+      if (value->accumulators[i].sum_acc.is_active)
+	{
+	  if (qdata_sum_acc_flatten_for_spill (&value->accumulators[i].sum_acc, value->accumulators[i].value) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+
       list_id->tpl_descr.f_valp[col++] = value->accumulators[i].value;
       list_id->tpl_descr.f_valp[col++] = value->accumulators[i].value2;
 

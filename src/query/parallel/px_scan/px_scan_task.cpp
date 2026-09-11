@@ -462,6 +462,12 @@ namespace parallel_scan
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
 				    m_scan_id,
 				    elapsed_time);
+	/* a worker evaluates the SPs of if_pred, and of outptr_list in list-merge mode; carry that
+	 * back or the FUNC line would report the leader's share alone */
+	m_trace_handler->add_sp_stats (perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_CALL_EVALS),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_EVAL_TIME_10USEC),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_FETCHES),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_IOREADS));
 	perfmon_destroy_parallel_stats (&thread_ref);
       }
     m_result_handler->write_finalize (&thread_ref);
@@ -618,6 +624,12 @@ namespace parallel_scan
 	  }
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
+
+    /* The agg-expr marking is a run-time decision and is not inherited by XASL
+     * clones. Re-derive it here for each worker; FETCH_ALL_CONST and FETCH_NOT_CONST
+     * must not be carried across, and the fixed query shape yields the same result.
+     */
+    qexec_mark_aggregate_operand_expressions (m_xasl);
 
     m_scan_id = &m_xasl->spec_list->s_id;
     /* this worker's clone scans its own spec and projects/aggregates its own rows */

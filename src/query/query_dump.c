@@ -3798,9 +3798,11 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 	    {
 	      if (agg->operand_prog_base >= 0)
 		{
-		  fprintf (fp, "%*cagg[%d]: %s\n", indent + 2, ' ', i,
-			   (agg->acc_kernel != NULL) ? qdata_acc_kernel_name (agg->acc_kernel)
-			   : "interpreted accumulate");
+		  int root = agg_list->operand_prog_idx[agg->operand_prog_base];
+
+		  fprintf (fp, "%*cagg[%d]: %s%s\n", indent + 2, ' ',
+			   i, (root >= 0) ? "operand from program" : "operand interpreted",
+			   (agg->accumulator.shared_from > 0) ? ", shares the owner's accumulator" : "");
 		}
 	    }
 	  expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);

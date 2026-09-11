@@ -24,6 +24,7 @@
 #define _XASL_AGGREGATE_HPP_
 
 #include "dbtype_def.h"
+#include "query_sum_accumulator.h"
 #include "storage_common.h"
 
 // forward definitions
@@ -66,18 +67,10 @@ namespace cubxasl
     db_value *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
     INT64 curr_cnt;			/* current number of items */
 
-    /* deferred-carry NUMERIC SUM/AVG accumulation (NUMERIC_SUM_STATE *, server runtime
-     * only, never serialized).  While non-NULL it holds the pending sum INSTEAD of
-     * value; every consumer of value materializes it first through
-     * qdata_numeric_sum_flush () (finalize, accumulator merge, hash spill, clear).
-     *
-     * Declared next to curr_cnt because the per-row accumulate kernels read value,
-     * curr_cnt and sum_state together: keeping the three adjacent holds them in one
-     * cache line instead of spilling sum_state past the trailing flags. */
-    void *sum_state;
-
     bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
     bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
+    SUM_ACC sum_acc;	        /* word accumulator for NUMERIC SUM/AVG */
+    int shared_from;		/* 1 + index of the accumulator owner; 0 = no sharing (zero-init safe) */
   };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -120,9 +113,6 @@ namespace cubxasl
     int *operand_prog_idx;	/* program root index per operand ordinal or -1; head only */
     int operand_prog_state;	/* 0 = untried, 1 = active, 2 = disabled; head only */
     int operand_prog_base;	/* THIS node's first ordinal in operand_prog_idx, or -1 */
-    void *acc_kernel;		/* QDATA_ACC_KERNEL_FN (query_aggregate.cpp) accumulating this
-				 * node straight from its program cell, or NULL for the
-				 * interpreted tail; resolved with the program */
     void *operand_prog_share_spec;	/* head only: the node's only heap scan (ACCESS_SPEC_TYPE *) whose
 					 * compiled data filter may serve operand values, or NULL
 					 * (qexec_set_expr_share_spec ()); runtime only */
