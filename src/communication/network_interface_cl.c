@@ -8814,7 +8814,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
   int req_error, status = ER_FAILED;
   OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply;
   char *ptr;
 
@@ -8832,7 +8832,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
       ptr = or_unpack_int (ptr, &stat_info->leafs);
       ptr = or_unpack_int (ptr, &stat_info->pages);
       ptr = or_unpack_int (ptr, &stat_info->height);
-      ptr = or_unpack_int (ptr, &stat_info->keys);
+      ptr = or_unpack_int64 (ptr, &stat_info->keys);
 
       assert_release (stat_info->leafs > 0);
       assert_release (stat_info->pages > 0);
