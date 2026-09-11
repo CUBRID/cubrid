@@ -74,11 +74,34 @@ static int stats_compare_utime (DB_UTIME * utime1, DB_UTIME * utime2);
 static int stats_compare_datetime (DB_DATETIME * datetime1_p, DB_DATETIME * datetime2_p);
 static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 #endif
+static INT64 stats_double_to_int64 (double value);
 static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_oid, const char *class_name,
 						OID * partitions, int count, bool with_fullscan,
 						CLASS_ATTR_NDV * class_attr_ndv);
 static int stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan,
 					     CLASS_ATTR_NDV * class_attr_ndv, STATS_NDV_SKETCH_SET ** out_ndv_sketches);
+
+/*
+ * stats_double_to_int64 () - store a partition accumulator (double) into an INT64 statistic
+ *   return: the value saturated to [0, DB_BIGINT_MAX]
+ *   value(in): accumulated count
+ *
+ * Note: converting a double outside the target range to an integer is undefined behaviour,
+ *       so saturate instead of casting blindly. (CBRD-27140)
+ */
+static INT64
+stats_double_to_int64 (double value)
+{
+  if (value <= 0.0)
+    {
+      return 0;
+    }
+  if (value >= (double) DB_BIGINT_MAX)
+    {
+      return DB_BIGINT_MAX;
+    }
+  return (INT64) value;
+}
 
 /*
  * xstats_update_statistics () -  Updates the statistics for the objects
@@ -352,13 +375,14 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
 	    }
 	  else
 	    {
-	      int hp = 0, ho = 0, ha = 0;
+	      int hp = 0, ha = 0;
+	      INT64 ho = 0;
 	      if (heap_get_num_objects (thread_p, &(cls_info_p->ci_hfid), &hp, &ho, &ha) == NO_ERROR)
 		{
 		  rs_total_rows = ho;
 		}
 	    }
-	  cls_info_p->ci_tot_objects = (int) MIN (rs_total_rows, INT_MAX);
+	  cls_info_p->ci_tot_objects = rs_total_rows;
 	}
       else
 	{
@@ -368,7 +392,7 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
 	    {
 	      goto error;
 	    }
-	  cls_info_p->ci_tot_objects = (int) MIN (rs_total_rows, INT_MAX);
+	  cls_info_p->ci_tot_objects = rs_total_rows;
 	}
     }
 
@@ -615,12 +639,12 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	{
 	  tot_key_info_size += or_packed_domain_size (btree_stats_p->key_type, 0);
 	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-	  tot_key_info_size += (btree_stats_p->pkeys_size * OR_INT_SIZE);	/* pkeys[] */
+	  tot_key_info_size += (btree_stats_p->pkeys_size * OR_INT64_SIZE);	/* pkeys[] */
 	}
     }
 
   size = (OR_INT_SIZE		/* time_stamp of CLS_INFO */
-	  + OR_INT_SIZE		/* tot_objects of CLS_INFO */
+	  + OR_INT64_SIZE	/* tot_objects of CLS_INFO */
 	  + OR_INT_SIZE		/* tot_pages of CLS_INFO */
 	  + OR_INT_SIZE		/* n_attrs from DISK_REPR */
 	  + (OR_INT_SIZE	/* id of DISK_ATTR */
@@ -633,7 +657,7 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	    + OR_INT_SIZE	/* leafs of BTREE_STATS */
 	    + OR_INT_SIZE	/* pages of BTREE_STATS */
 	    + OR_INT_SIZE	/* height of BTREE_STATS */
-	    + OR_INT_SIZE	/* keys of BTREE_STATS */
+	    + OR_INT64_SIZE	/* keys of BTREE_STATS */
 	    + OR_INT_SIZE	/* dedup_idx of BTREE_STATS *//* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    + OR_INT_SIZE	/* does the BTREE_STATS correspond to a function index */
 	   ) * tot_n_btstats);	/* total number of indexes */
@@ -654,8 +678,8 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
   assert (cls_info_p->ci_tot_pages >= 0);
 
   /* use statistics info */
-  OR_PUT_INT (buf_p, cls_info_p->ci_tot_objects);	/* #objects */
-  buf_p += OR_INT_SIZE;
+  OR_PUT_INT64 (buf_p, &cls_info_p->ci_tot_objects);	/* #objects */
+  buf_p += OR_INT64_SIZE;
 
   OR_PUT_INT (buf_p, MAX (cls_info_p->ci_tot_pages, 1));	/* #pages */
   buf_p += OR_INT_SIZE;
@@ -709,8 +733,8 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 	  OR_PUT_INT (buf_p, btree_stats_p->has_function);
 	  buf_p += OR_INT_SIZE;
 
-	  OR_PUT_INT (buf_p, btree_stats_p->keys);
-	  buf_p += OR_INT_SIZE;
+	  OR_PUT_INT64 (buf_p, &btree_stats_p->keys);
+	  buf_p += OR_INT64_SIZE;
 
 	  OR_PUT_INT (buf_p, btree_stats_p->dedup_idx);
 	  buf_p += OR_INT_SIZE;
@@ -742,8 +766,8 @@ xstats_get_statistics_from_server (THREAD_ENTRY * thread_p, OID * class_id_p, un
 		  btree_stats_p->pkeys[k] = btree_stats_p->keys;
 		}
 
-	      OR_PUT_INT (buf_p, btree_stats_p->pkeys[k]);
-	      buf_p += OR_INT_SIZE;
+	      OR_PUT_INT64 (buf_p, &btree_stats_p->pkeys[k]);
+	      buf_p += OR_INT64_SIZE;
 	    }
 	}			/* for (j = 0, ...) */
     }
@@ -999,7 +1023,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
   tloc = (time_t) class_stats->time_stamp;
   fprintf (fpp, " Timestamp: %s", ctime (&tloc));
   fprintf (fpp, " Total Pages in Class Heap: %d\n", class_stats->heap_num_pages);
-  fprintf (fpp, " Total Objects: %d\n", class_stats->heap_num_objects);
+  fprintf (fpp, " Total Objects: %lld\n", (long long) class_stats->heap_num_objects);
   fprintf (fpp, " Number of attributes: %d\n", class_stats->n_attrs);
 
   for (i = 0; i < class_stats->n_attrs; i++)
@@ -1140,7 +1164,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	{
 	  BTREE_STATS *bt_statsp = &class_stats->attr_stats[i].bt_stats[j];
 	  fprintf (fpp, "        BTID: { %d , %d }\n", bt_statsp->btid.vfid.volid, bt_statsp->btid.vfid.fileid);
-	  fprintf (fpp, "        Cardinality: %d (", bt_statsp->keys);
+	  fprintf (fpp, "        Cardinality: %lld (", (long long) bt_statsp->keys);
 
 	  prefix = "";
 	  assert (bt_statsp->pkeys_size <= BTREE_STATS_PKEYS_NUM);
@@ -1148,7 +1172,7 @@ stats_dump_class_statistics (CLASS_STATS * class_stats, FILE * fpp)
 	  int pkeys_size = (bt_stats_p->dedup_idx >= 0) ? bt_stats_p->dedup_idx : bt_stats_p->pkeys_size;
 	  for (k = 0; k < pkeys_size; k++)
 	    {
-	      fprintf (fpp, "%s%d", prefix, bt_statsp->pkeys[k]);
+	      fprintf (fpp, "%s%lld", prefix, (long long) bt_statsp->pkeys[k]);
 	      prefix = ",";
 	    }
 
@@ -1510,8 +1534,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
       sum[btree_iter].height = ceil (sum[btree_iter].height / partitions_count);
     }
 
-  /* parent row count = exact sum of partition row counts (clamped to the catalog's int field) */
-  cls_info_p->ci_tot_objects = (int) MIN (rs_part_total, INT_MAX);
+  /* parent row count = exact sum of partition row counts */
+  cls_info_p->ci_tot_objects = rs_part_total;
 
   /* put new statistics */
   btree_iter = 0;
@@ -1548,14 +1572,14 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	  btree_stats_p->leafs = sum[btree_iter].leafs;
 	  btree_stats_p->pages = sum[btree_iter].pages;
 	  btree_stats_p->height = sum[btree_iter].height;	/* average height */
-	  btree_stats_p->keys = sum[btree_iter].keys;
+	  btree_stats_p->keys = stats_double_to_int64 (sum[btree_iter].keys);
 
 	  assert (sum[btree_iter].pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  for (m = 0; m < sum[btree_iter].pkeys_size; m++)
 	    {
 	      if (sum[btree_iter].pkeys[m] != 0)
 		{
-		  btree_stats_p->pkeys[m] = sum[btree_iter].pkeys[m];
+		  btree_stats_p->pkeys[m] = stats_double_to_int64 (sum[btree_iter].pkeys[m]);
 		}
 	    }
 	  btree_iter++;
