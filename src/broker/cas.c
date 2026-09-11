@@ -455,6 +455,17 @@ cas_cleanup_session (void)
 	}
     }
 
+  if (cas_shutdown_signo)
+    {
+      /*
+       * Shutting down due to a signal.
+       * Leaves the server-side session intact so the client can restore it upon 
+       * reconnecting to another CAS; cas_final() disconnects without sending 
+       * a session termination request to the server.
+       */
+      return;
+    }
+
   if (cas_main_fn_ret != FN_KEEP_SESS)
     {
       ux_end_session ();
@@ -702,12 +713,13 @@ conn_retry:
 	    ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
 	  }
 
-	if (fn_ret != FN_KEEP_SESS)
+	/* On a shutdown signal, keep the session on the server alone. See cas_cleanup_session (). */
+	if (fn_ret != FN_KEEP_SESS && !cas_shutdown_signo)
 	  {
 	    ux_end_session ();
 	  }
 
-	if (as_info->reset_flag == TRUE || is_xa_prepared ())
+	if ((as_info->reset_flag == TRUE || is_xa_prepared ()) && !cas_shutdown_signo)
 	  {
 	    ux_database_shutdown (true);
 	    as_info->reset_flag = FALSE;
