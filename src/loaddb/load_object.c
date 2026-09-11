@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <string.h>
 #if defined(WINDOWS)
 #include <io.h>
 #else
@@ -48,7 +49,9 @@
 #include "server_interface.h"
 #include "load_object.h"
 #include "db_value_printer.hpp"
+#include "internal_lob_marker.h"
 #include "network_interface_cl.h"
+#include "oid.h"
 #include "printer.hpp"
 
 #include "message_catalog.h"
@@ -58,23 +61,232 @@
 #endif
 
 #define MIGRATION_CHUNK 4096
+#define LOAD_INTERNAL_LOB_LOCATOR_PREFIX "@internal_lob:"
 static char migration_buffer[MIGRATION_CHUNK];
 
 static int object_disk_size (DESC_OBJ * obj, int *offset_size_ptr);
 static void put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size);
 static void put_attributes (OR_BUF * buf, DESC_OBJ * obj);
 static void get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
-			      bool is_unloaddb);
+			      DESC_OOS_POLICY oos_policy);
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
 static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag,
-			  int offset_size, bool is_unloaddb);
+			  int offset_size, DESC_OOS_POLICY oos_policy);
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
+
+static int desc_get_var_table_raw_offset (char *var_table, int index, int offset_size);
+static int desc_format_internal_lob_locator (const OID * oid, DB_BIGINT logical_length, char *buf, size_t buf_size);
+static int desc_read_internal_lob_locator (OR_BUF * buf, DB_VALUE * value, DB_TYPE lob_type);
+static int desc_keep_oos_stub (OR_BUF * buf, DESC_OBJ * obj, int value_index);
+static bool desc_obj_has_oos_stub (const DESC_OBJ * obj);
 
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 				int copy_buf_len, DB_TYPE type);
 #endif
+
+static int
+desc_get_var_table_raw_offset (char *var_table, int index, int offset_size)
+{
+  char *offset_ptr = OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size);
+
+  if (offset_size == OR_BYTE_SIZE)
+    {
+      return OR_GET_BYTE (offset_ptr);
+    }
+  else if (offset_size == OR_SHORT_SIZE)
+    {
+      return OR_GET_SHORT (offset_ptr);
+    }
+  else
+    {
+      assert (offset_size == OR_INT_SIZE);
+      return OR_GET_INT (offset_ptr);
+    }
+}
+
+static unsigned long long
+desc_internal_lob_mix_u64 (unsigned long long value)
+{
+  value ^= value >> 33;
+  value *= 0xff51afd7ed558ccdULL;
+  value ^= value >> 33;
+  value *= 0xc4ceb9fe1a85ec53ULL;
+  value ^= value >> 33;
+  return value;
+}
+
+static unsigned long long
+desc_internal_lob_locator_token (const OID * oid, DB_BIGINT logical_length)
+{
+  unsigned long long token = 0x26914cbfd15cafe1ULL;
+
+  token ^= (unsigned long long) (unsigned short) oid->volid;
+  token = desc_internal_lob_mix_u64 (token);
+  token ^= (unsigned long long) (unsigned int) oid->pageid;
+  token = desc_internal_lob_mix_u64 (token);
+  token ^= (unsigned long long) (unsigned short) oid->slotid;
+  token = desc_internal_lob_mix_u64 (token);
+  token ^= (unsigned long long) logical_length;
+  token = desc_internal_lob_mix_u64 (token);
+  token ^= 0x10c07edULL;
+  token = desc_internal_lob_mix_u64 (token);
+
+  return token == 0 ? 1 : token;
+}
+
+static int
+desc_format_internal_lob_locator (const OID * oid, DB_BIGINT logical_length, char *buf, size_t buf_size)
+{
+  unsigned long long token = desc_internal_lob_locator_token (oid, logical_length);
+
+  return snprintf (buf, buf_size, LOAD_INTERNAL_LOB_LOCATOR_PREFIX "%d|%d|%d:%lld:%016llx",
+		   (int) oid->volid, (int) oid->pageid, (int) oid->slotid, (long long) logical_length, token);
+}
+
+static int
+desc_read_internal_lob_locator (OR_BUF * buf, DB_VALUE * value, DB_TYPE lob_type)
+{
+  OR_BUF locator_buf;
+  OID locator_oid;
+  DB_BIGINT disk_length;
+  DB_BIGINT logical_length;
+  char stack_buf[128];
+  char *locator_buf_string = NULL;
+  int locator_len;
+  int err;
+  int rc = NO_ERROR;
+
+  if (buf->ptr + OR_OOS_INLINE_SIZE > buf->endptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
+      return ER_TF_BUFFER_UNDERFLOW;
+    }
+
+  or_init (&locator_buf, buf->ptr, OR_OOS_INLINE_SIZE);
+  or_get_oid (&locator_buf, &locator_oid);
+  disk_length = or_get_bigint (&locator_buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  or_advance (buf, OR_OOS_INLINE_SIZE);
+
+  if (disk_length < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  logical_length = disk_length;
+
+  locator_len = desc_format_internal_lob_locator (&locator_oid, logical_length, stack_buf, sizeof (stack_buf));
+  if (locator_len <= 0 || locator_len >= (int) sizeof (stack_buf))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  locator_buf_string = (char *) db_private_alloc (NULL, (size_t) locator_len + 1);
+  if (locator_buf_string == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  memcpy (locator_buf_string, stack_buf, (size_t) locator_len + 1);
+
+  if (lob_type == DB_TYPE_CLOB)
+    {
+      err = db_make_clob (value, DB_MAX_LOB_PRECISION, locator_buf_string, locator_len);
+    }
+  else if (lob_type == DB_TYPE_BLOB)
+    {
+      err = db_make_blob (value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) locator_buf_string, locator_len * 8);
+    }
+  else
+    {
+      err = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+    }
+
+  if (err != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, locator_buf_string);
+      return err;
+    }
+
+  value->need_clear = true;
+  db_value_mark_internal_lob (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR);
+  return NO_ERROR;
+}
+
+/*
+ * desc_keep_oos_stub () - Take the stored OOS inline stub of one attribute as it is, so that
+ *   desc_obj_to_disk () can write it back unchanged.
+ *
+ * return	    : NO_ERROR, ER_TF_BUFFER_UNDERFLOW when the record ends inside the stub
+ * buf (in/out)	    : record being read; advanced past the stub
+ * obj (in/out)	    : object descriptor collecting the stubs
+ * value_index (in) : position of the attribute in obj->values
+ *
+ * Note: the payload is neither read nor re-encoded.  For a BLOB/CLOB the record holds a locator,
+ *       not content, so payload bytes are not a value of that type and cannot survive a
+ *       decode/encode round trip.  Keeping the stub also spares an ordinary OOS attribute the
+ *       needless trip through memory.
+ */
+static int
+desc_keep_oos_stub (OR_BUF * buf, DESC_OBJ * obj, int value_index)
+{
+  if (obj->oos_stubs == NULL || obj->oos_stub_valid == NULL || value_index < 0 || value_index >= obj->count)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (buf->ptr + OR_OOS_INLINE_SIZE > buf->endptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
+      return ER_TF_BUFFER_UNDERFLOW;
+    }
+
+  memcpy (obj->oos_stubs + (size_t) value_index * OR_OOS_INLINE_SIZE, buf->ptr, OR_OOS_INLINE_SIZE);
+  obj->oos_stub_valid[value_index] = true;
+  or_advance (buf, OR_OOS_INLINE_SIZE);
+
+  /* The value stays NULL: nothing reads it, and put_attributes () writes the stub in its place. */
+  db_make_null (&obj->values[value_index]);
+
+  return NO_ERROR;
+}
+
+/*
+ * desc_obj_has_oos_stub () - Does this object carry at least one stored OOS inline stub?
+ *
+ * return   : true when the record to be written needs the record-level OOS flag
+ * obj (in) : object descriptor
+ */
+static bool
+desc_obj_has_oos_stub (const DESC_OBJ * obj)
+{
+  int i;
+
+  if (obj->oos_stub_valid == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < obj->count; i++)
+    {
+      if (obj->oos_stub_valid[i])
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
 
 /*
  * make_desc_obj - Makes an object descriptor for a particular class.
@@ -93,6 +305,8 @@ make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size)
     {
       return NULL;
     }
+  obj->oos_stub_valid = NULL;
+  obj->oos_stubs = NULL;
   if (class_ == NULL)
     {
       return obj;
@@ -117,6 +331,19 @@ make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size)
       obj->atts = (SM_ATTRIBUTE **) malloc (sizeof (SM_ATTRIBUTE *) * class_->att_count);
       if (obj->atts == NULL)
 	{
+	  free_and_init (obj->values);
+	  free_and_init (obj);
+	  return NULL;
+	}
+
+      /* DESC_OOS_KEEP_STUB readers fill these; the other policies leave them all false. */
+      obj->oos_stub_valid = (bool *) calloc ((size_t) class_->att_count, sizeof (bool));
+      obj->oos_stubs = (char *) calloc ((size_t) class_->att_count, OR_OOS_INLINE_SIZE);
+      if (obj->oos_stub_valid == NULL || obj->oos_stubs == NULL)
+	{
+	  free_and_init (obj->oos_stub_valid);
+	  free_and_init (obj->oos_stubs);
+	  free_and_init (obj->atts);
 	  free_and_init (obj->values);
 	  free_and_init (obj);
 	  return NULL;
@@ -208,6 +435,14 @@ desc_free (DESC_OBJ * obj)
     {
       free (obj->atts);
     }
+  if (obj->oos_stub_valid != NULL)
+    {
+      free (obj->oos_stub_valid);
+    }
+  if (obj->oos_stubs != NULL)
+    {
+      free (obj->oos_stubs);
+    }
 
   free_and_init (obj);
 }
@@ -244,7 +479,12 @@ re_check:
 	    }
 	  if (i < obj->count)
 	    {
-	      if (att->type->variable_p)
+	      if (obj->oos_stub_valid != NULL && obj->oos_stub_valid[i])
+		{
+		  /* written back as the stored stub, not as a value */
+		  size += OR_OOS_INLINE_SIZE;
+		}
+	      else if (att->type->variable_p)
 		{
 		  size += pr_data_writeval_disk_size (&obj->values[i]);
 		}
@@ -314,9 +554,14 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
 		}
 	    }
 	  len = 0;
+	  bool is_oos_stub = (i < obj->count && obj->oos_stub_valid != NULL && obj->oos_stub_valid[i]);
 	  if (i < obj->count)
 	    {
-	      if (att->type->variable_p)
+	      if (is_oos_stub)
+		{
+		  len = OR_OOS_INLINE_SIZE;
+		}
+	      else if (att->type->variable_p)
 		{
 		  len = pr_data_writeval_disk_size (&obj->values[i]);
 		}
@@ -339,7 +584,9 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
 		  len = tp_domain_disk_size (att->domain);
 		}
 	    }
-	  or_put_offset_internal (buf, offset, offset_size);
+	  /* The stub is identified by OR_VAR_BIT_OOS on its own offset entry, exactly as the server
+	   * stores it; readers mask the flag off with OR_GET_VAR_OFFSET. */
+	  or_put_offset_internal (buf, is_oos_stub ? OR_SET_VAR_OOS (offset) : offset, offset_size);
 	  offset += len;
 	}
       or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (offset), offset_size);
@@ -450,7 +697,11 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
       for (i = 0; i < obj->count && obj->atts[i] != att; i++);
       if (i < obj->count)
 	{
-	  if (!DB_IS_NULL (&obj->values[i]))
+	  if (obj->oos_stub_valid != NULL && obj->oos_stub_valid[i])
+	    {
+	      or_put_data (buf, obj->oos_stubs + (size_t) i * OR_OOS_INLINE_SIZE, OR_OOS_INLINE_SIZE);
+	    }
+	  else if (!DB_IS_NULL (&obj->values[i]))
 	    {
 	      pr_data_writeval (buf, &obj->values[i]);
 	    }
@@ -524,6 +775,11 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
   /* offset size */
   OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
   repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS);
+  if (desc_obj_has_oos_stub (obj))
+    {
+      /* the record-level summary flag the OOS readers test with OR_RECORD_HAS_OOS */
+      repid_bits |= (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS);
+    }
   or_put_int (buf, repid_bits);
   or_put_int (buf, 0);		/* CHN, fixed size */
   or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
@@ -567,15 +823,16 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
  */
 static void
 get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
-		  bool is_unloaddb)
+		  DESC_OOS_POLICY oos_policy)
 {
   SM_ATTRIBUTE *att;
   int *vars = NULL;
-  int i, j, offset, offset2, pad;
+  int *raw_vars = NULL;
+  int i, j, raw_offset2, pad;
   char *bits, *start;
-  int rc = NO_ERROR;
-  bool do_copy = is_unloaddb ? false : true;
+  bool do_copy = (oos_policy == DESC_OOS_TEXT_LOCATOR) ? false : true;
   int zvar[32];
+  int zraw[32];
 
   /* need nicer way to store these */
   if (class_->variable_count)
@@ -583,23 +840,34 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       if (class_->variable_count <= DIM (zvar))
 	{
 	  vars = zvar;
+	  raw_vars = zraw;
 	}
       else
 	{
 	  vars = (int *) malloc (sizeof (int) * class_->variable_count);
-	  if (vars == NULL)
+	  raw_vars = (int *) malloc (sizeof (int) * class_->variable_count);
+	  if (vars == NULL || raw_vars == NULL)
 	    {
+	      if (vars != NULL)
+		{
+		  free_and_init (vars);
+		}
+	      if (raw_vars != NULL)
+		{
+		  free_and_init (raw_vars);
+		}
 	      return;
 	    }
 	}
       /* get the offsets relative to the end of the header (beginning of variable table) */
-      offset = or_get_offset_internal (buf, &rc, offset_size);
+      char *var_table = buf->ptr;
       for (i = 0; i < class_->variable_count; i++)
 	{
-	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
-	  vars[i] = offset2 - offset;
-	  offset = offset2;
+	  raw_vars[i] = desc_get_var_table_raw_offset (var_table, i, offset_size);
+	  raw_offset2 = desc_get_var_table_raw_offset (var_table, i + 1, offset_size);
+	  vars[i] = OR_GET_VAR_OFFSET (raw_offset2) - OR_GET_VAR_OFFSET (raw_vars[i]);
 	}
+      or_advance (buf, OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, offset_size));
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 
@@ -648,7 +916,21 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	{
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 	  DB_TYPE att_type_id = att->type->get_id ();
-	  if (is_unloaddb && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (att_type_id))
+	  if (oos_policy == DESC_OOS_KEEP_STUB && OR_IS_OOS (raw_vars[j]))
+	    {
+	      if (desc_keep_oos_stub (buf, obj, i) != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+	  else if (oos_policy == DESC_OOS_TEXT_LOCATOR && OR_IS_OOS (raw_vars[j]) && TP_IS_LOB_TYPE (att_type_id))
+	    {
+	      if (desc_read_internal_lob_locator (buf, &obj->values[i], att_type_id) != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+	  else if (oos_policy == DESC_OOS_TEXT_LOCATOR && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (att_type_id))
 	    {
 	      data_readval_string (buf, &obj->values[i], att->domain, vars[j], false, obj->dbvalue_buf_ptr[i].buf,
 				   obj->dbvalue_buf_ptr[i].buf_size, att_type_id);
@@ -660,9 +942,14 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	    }
 	}
 
+    cleanup:
       if (vars != zvar)
 	{
 	  free (vars);
+	}
+      if (raw_vars != zraw)
+	{
+	  free_and_init (raw_vars);
 	}
     }
 }
@@ -704,20 +991,21 @@ find_current_attribute (SM_CLASS * class_, int id)
  */
 static void
 get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
-	      bool is_unloaddb)
+	      DESC_OOS_POLICY oos_policy)
 {
   SM_REPRESENTATION *oldrep;
   SM_REPR_ATTRIBUTE *rat, *found;
   SM_ATTRIBUTE *att;
   const PR_TYPE *type;
   int *vars = NULL;
-  int i, offset, offset2, total, bytes, att_index, padded_size, fixed_size;
+  int *raw_vars = NULL;
+  int i, raw_offset2, total, bytes, att_index, padded_size, fixed_size;
   SM_ATTRIBUTE **attmap = NULL;
   char *bits, *start;
-  int rc = NO_ERROR;
   int storage_order;
-  bool do_copy = is_unloaddb ? false : true;
+  bool do_copy = (oos_policy == DESC_OOS_TEXT_LOCATOR) ? false : true;
   int zvar[32];
+  int zraw[32];
 
   oldrep = classobj_find_representation (class_, repid);
   if (oldrep == NULL)
@@ -729,26 +1017,29 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
   if (oldrep->variable_count)
     {
       /* need nicer way to store these */
-      if (class_->variable_count <= DIM (zvar))
+      if (oldrep->variable_count <= DIM (zvar))
 	{
 	  vars = zvar;
+	  raw_vars = zraw;
 	}
       else
 	{
 	  vars = (int *) malloc (sizeof (int) * oldrep->variable_count);
-	  if (vars == NULL)
+	  raw_vars = (int *) malloc (sizeof (int) * oldrep->variable_count);
+	  if (vars == NULL || raw_vars == NULL)
 	    {
 	      goto abort_on_error;
 	    }
 	}
       /* compute the variable offsets relative to the end of the header (beginning of variable table) */
-      offset = or_get_offset_internal (buf, &rc, offset_size);
+      char *var_table = buf->ptr;
       for (i = 0; i < oldrep->variable_count; i++)
 	{
-	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
-	  vars[i] = offset2 - offset;
-	  offset = offset2;
+	  raw_vars[i] = desc_get_var_table_raw_offset (var_table, i, offset_size);
+	  raw_offset2 = desc_get_var_table_raw_offset (var_table, i + 1, offset_size);
+	  vars[i] = OR_GET_VAR_OFFSET (raw_offset2) - OR_GET_VAR_OFFSET (raw_vars[i]);
 	}
+      or_advance (buf, OR_VAR_TABLE_SIZE_INTERNAL (oldrep->variable_count, offset_size));
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 
@@ -841,7 +1132,21 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	  storage_order = attmap[att_index]->storage_order;
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 	  DB_TYPE type_id = type->get_id ();
-	  if (is_unloaddb && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (type_id))
+	  if (oos_policy == DESC_OOS_KEEP_STUB && OR_IS_OOS (raw_vars[i]))
+	    {
+	      if (desc_keep_oos_stub (buf, obj, storage_order) != NO_ERROR)
+		{
+		  goto abort_on_error;
+		}
+	    }
+	  else if (oos_policy == DESC_OOS_TEXT_LOCATOR && OR_IS_OOS (raw_vars[i]) && TP_IS_LOB_TYPE (type_id))
+	    {
+	      if (desc_read_internal_lob_locator (buf, &obj->values[storage_order], type_id) != NO_ERROR)
+		{
+		  goto abort_on_error;
+		}
+	    }
+	  else if (oos_policy == DESC_OOS_TEXT_LOCATOR && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (type_id))
 	    {
 	      data_readval_string (buf, &obj->values[storage_order], rat->domain, vars[i], false,
 				   obj->dbvalue_buf_ptr[storage_order].buf,
@@ -887,6 +1192,10 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
     {
       free (vars);
     }
+  if (raw_vars && raw_vars != zraw)
+    {
+      free_and_init (raw_vars);
+    }
 
   obj->updated_flag = 1;
   return;
@@ -900,6 +1209,10 @@ abort_on_error:
     {
       free (vars);
     }
+  if (raw_vars && raw_vars != zraw)
+    {
+      free_and_init (raw_vars);
+    }
 }
 
 /*
@@ -912,7 +1225,7 @@ abort_on_error:
  *    obj(out): object descriptor
  */
 int
-desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj, bool is_unloaddb)
+desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj, DESC_OOS_POLICY oos_policy)
 {
   OR_BUF orep, *buf;
   int repid;
@@ -942,6 +1255,13 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
   or_init (buf, record->data, record->length);
   obj->classop = classop;
   char mvcc_flags;
+
+  /* The descriptor is reused for every record of the class, so last record's stubs must not leak. */
+  if (obj->oos_stub_valid != NULL)
+    {
+      memset (obj->oos_stub_valid, 0, sizeof (bool) * (size_t) obj->count);
+    }
+
   /* offset size */
   offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
   /* in case of MVCC, repid_bits contains MVCC flags */
@@ -968,11 +1288,11 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
   bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
   if (repid == class_->repid)
     {
-      get_desc_current (buf, class_, obj, bound_bit_flag, offset_size, is_unloaddb);
+      get_desc_current (buf, class_, obj, bound_bit_flag, offset_size, oos_policy);
     }
   else
     {
-      get_desc_old (buf, class_, repid, obj, bound_bit_flag, offset_size, is_unloaddb);
+      get_desc_old (buf, class_, repid, obj, bound_bit_flag, offset_size, oos_policy);
     }
 
   pr_Inhibit_oid_promotion = save;
