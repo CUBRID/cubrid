@@ -1270,6 +1270,10 @@ jobs:
   shard:
     name: "shard ${{ matrix.i }}"
     needs: plan
+    # The same override plan carries, and for the same reason: success() is false
+    # for a failed job anywhere behind this one, so a red release leg would skip
+    # every shard even though plan ran and published the split.
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     # 50 privileged pods running testcase code; testcases arrive via the App token.
     permissions: {}
     runs-on: cubrid-arc
