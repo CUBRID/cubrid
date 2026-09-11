@@ -158,7 +158,11 @@ env:
   #               repo is on the node (/ro); the public one only on the volume,
   #               where the seed CronJob refreshes it hourly
   #   unit        what one line of a shard's share file holds, and so what the
-  #               split moves around: one case, or one top-level directory
+  #               split moves around: one case, or one top-level directory.
+  #               A re-run always selects by case, whatever this says
+  #   case_glob   find -path pattern that names one case file
+  #   case_filter perl regex a case path must also match; shell alone has one,
+  #               because there a case is <name>/cases/<name>.sh
   #   share_mode  prune   = the shard gets the whole tree and deletes the rest
   #               publish = plan publishes the tree, the shard copies its share.
   #                         Which is the only affordable way for 17k cases whose
@@ -172,6 +176,7 @@ env:
         "xml_src": "result/shell/current_runtime_logs",
         "verdict_src": "test_status.data",
         "unit": "case", "share_mode": "prune", "par_default": "50",
+        "case_glob": "*/cases/*.sh", "case_filter": "/([^/]+)/cases/\\1\\.sh$",
         "exclude": "_25_unstable", "status_ctx": "gha-ci: test_shell"
       },
       "sql": {
@@ -181,6 +186,7 @@ env:
         "xml_src": "sql/result",
         "verdict_src": "summary_info",
         "unit": "dir", "share_mode": "publish", "par_default": "10",
+        "case_glob": "*/cases/*.sql", "case_filter": "",
         "exclude": "", "status_ctx": "gha-ci: test_sql"
       },
       "medium": {
@@ -190,6 +196,7 @@ env:
         "xml_src": "sql/result",
         "verdict_src": "summary_info",
         "unit": "dir", "share_mode": "publish", "par_default": "1",
+        "case_glob": "*/cases/*.sql", "case_filter": "",
         "exclude": "", "status_ctx": "gha-ci: test_medium"
       }
     }
@@ -204,6 +211,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       pull-requests: read # the head SHA of the commented PR
+      actions: read # a re-run reads the source run's jobs to learn which suites failed
     # Only the comment path needs an author check -- it is the one event anyone with
     # read access can raise. Same author set as comment_trigger.yml; CONTRIBUTOR is
     # refused. push and workflow_dispatch already require write access, and
@@ -312,11 +320,27 @@ jobs:
               # to comment_trigger.yml. The run id comes from the comment collect posts.
               if [[ "$req" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
                 rerun="${BASH_REMATCH[1]}"
-                # Re-running failures is a shell-only path: it reads failed.list, which
-                # only the shell suite writes. CircleCI has no such path for sql either.
-                sel=shell
+                # Which suites to re-run is not in the comment, and this job cannot
+                # read the run directory. The source run's job names carry it --
+                # `shard <suite> <index>`. A suite whose shards all passed has
+                # nothing to carry, so it is left alone and its status untouched.
+                runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/${rerun}/jobs?per_page=100" \
+                  --jq '.jobs[] | select(.name | startswith("shard ")) | [.conclusion, .name] | @tsv') || {
+                  echo "::error::could not read the jobs of run ${rerun}"; exit 1; }
+                known=$(jq -r 'keys | join("|")' <<<"$SUITES")
+                sel=$(printf '%s\n' "$runjobs" \
+                  | awk -F'\t' -v k="^(${known})$" \
+                        '$1 != "success" {split($2, a, " "); if (a[2] ~ k) print a[2]}' \
+                  | sort -u)
+                if [ -z "$sel" ]; then
+                  echo "::error::run ${rerun} left no failed shard to re-run"
+                  echo "  Either every shard passed, or that run is older than per-suite"
+                  echo "  shard names. For a full run use /run shell, /run sql or /run all."
+                  emit run false
+                  exit 0
+                fi
                 test_run=true
-                echo "comment: re-run only the failures of run ${rerun}"
+                echo "comment: re-run the failures of run ${rerun} / suites: $(echo $sel)"
               # Regex must stay identical to comment_trigger.yml: one syntax to learn.
               elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
                 for w in $req; do
@@ -780,10 +804,6 @@ jobs:
       build_run_id: ${{ steps.build.outputs.build_run_id }}
       ctp_sha: ${{ steps.tc.outputs.ctp_sha }}
       ctp_branch: ${{ steps.tc.outputs.ctp_branch }}
-      rerun_want: ${{ steps.split.outputs.rerun_want }}
-      rerun_unrun: ${{ steps.split.outputs.rerun_unrun }}
-      rerun_short: ${{ steps.split.outputs.rerun_short }}
-      rerun_gone: ${{ steps.split.outputs.rerun_gone }}
 
     steps:
       - name: Validate inputs
@@ -811,12 +831,6 @@ jobs:
           esac
           if [ -n "$IN_RERUN" ] && [[ ! "$IN_RERUN" =~ ^[0-9]{1,20}$ ]]; then
             echo "::error::rerun_from must be a run id (integer)"; exit 1
-          fi
-          # Re-running failures goes to one shard, the way CircleCI's "rerun only
-          # failed tests" does. Failures are few, and 50 pods for three cases is waste.
-          if [ -n "$IN_RERUN" ]; then
-            echo "rerun_from=$IN_RERUN: pinning parallelism to 1"
-            IN_PAR=1
           fi
           echo "suites=$SUITES_RUN / parallelism=${IN_PAR:-(suite default)} / limit=$IN_LIMIT"
           echo "sabotage=$IN_SAB / rerun_from=${IN_RERUN:-(none)}"
@@ -1014,9 +1028,21 @@ jobs:
 
           rundir="$CI_ROOT/runs/${GITHUB_RUN_ID}"
           : > /tmp/matrix.jsonl
-          # Only the shell suite has a re-run path, and gate pins the suite list to it
-          # when one is asked for, so these stay zero for every other request.
-          want=0; unrun=0; short=0; gone=0
+
+          # Every case of a suite, repo-prefixed and sorted. The glob and the extra
+          # filter are the suite's own: a shell case is <name>/cases/<name>.sh, an
+          # sql case is any .sql under a cases/ directory.
+          find_cases() {   # <suite> <path> -> absolute case paths
+            local g f
+            g=$(attr "$1" case_glob); f=$(attr "$1" case_filter)
+            # No match is grep exit 1, and pipefail would kill the step here --
+            # taking the "no cases at all" diagnostic below out of reach.
+            find "$2" -path "$g" 2>/dev/null \
+              | { [ -z "$f" ] && cat || { grep -P "$f" || :; }; }
+          }
+          list_cases() {   # <suite> <repo> <root> -> repo-prefixed, sorted
+            find_cases "$1" "$3" | sed "s#^$WORKDIR/$2/#$2/#" | sort
+          }
 
           for suite in $SUITES_RUN; do
             repo=$(attr "$suite" tc_repo)
@@ -1024,9 +1050,15 @@ jobs:
             excl=$(attr "$suite" exclude)
             mode=$(attr "$suite" share_mode)
             par="${PAR:-$(attr "$suite" par_default)}"
+            # Re-running case-level failures goes to one shard, the way CircleCI's
+            # "rerun only failed tests" does: failures are few and 50 pods for three
+            # cases is waste. A directory unit is not few -- one can hold 3,000 cases
+            # -- so it keeps the suite's own width and the clamp below cuts the rest.
+            if [ -n "$RERUN_FROM" ] && [ "$unit" = case ]; then par=1; fi
             dir="$WORKDIR/$repo"
             root="$dir/$suite"
             out="$rundir/$suite"
+            want=0; unrun=0; short=0; gone=0
             echo "=== $suite: unit=$unit share=$mode parallelism=$par"
 
             # Must be removed after the checkout: `reset --hard` restores it.
@@ -1036,12 +1068,7 @@ jobs:
             # case count each one brings so the guards can still count cases.
             case "$unit" in
               case)
-                # No match is grep exit 1, and pipefail would kill the step here --
-                # taking the "no cases at all" diagnostic below out of reach.
-                find "$root" -path '*/cases/*.sh' 2>/dev/null \
-                  | { grep -P '/([^/]+)/cases/\1\.sh$' || :; } \
-                  | sed "s#^$dir/#$repo/#" \
-                  | sort > /tmp/all.list
+                list_cases "$suite" "$repo" "$root" > /tmp/all.list
                 ;;
               dir)
                 # The same glob CircleCI splits for sql and medium: the top-level
@@ -1083,25 +1110,35 @@ jobs:
                 echo "  A re-run may only re-run the failures of the same commit. Use /run all."
                 exit 1
               fi
-              # A shard that died whole published no test-shell.xml, so failed.list
+              # A shard that died whole published no result file, so failed.list
               # cannot see its cases and a re-run of that list alone would end green.
               srcdir="$CI_ROOT/runs/$RERUN_FROM/$suite"
+              vsrc=$(attr "$suite" verdict_src)
               : > /tmp/unrun.list
-              for f in "$srcdir"/shards/*.list; do
-                [ -f "$f" ] || continue
-                i=$(basename "$f" .list)
-                st="$srcdir/results/$i/$(attr "$suite" verdict_src)"
+              for sf in "$srcdir"/shards/*.list; do
+                [ -f "$sf" ] || continue
+                i=$(basename "$sf" .list)
+                # plan.tsv is the only record of how many cases a share covered, and
+                # for a directory share that is not the line count.
+                a=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$srcdir/plan.tsv")
+                st="$srcdir/results/$i/$vsrc"
                 if [ ! -f "$st" ]; then
-                  cat "$f" >> /tmp/unrun.list   # already carries the repo prefix
+                  cat "$sf" >> /tmp/unrun.list   # already carries the repo prefix
+                  unrun=$((unrun + ${a:-0}))
                   continue
                 fi
                 # Handled fewer than it was given. Nothing records which were left, so
                 # they can be counted and never named.
-                a=$(wc -l < "$f")
-                h=$(awk -F= '/total_executed_case_count/ {e=$2+0}
-                             /total_skip_case_count/     {k=$2+0}
-                             END {print e + k + 0}' "$st")
-                [ "$a" -gt "$h" ] && short=$((short + a - h))
+                case "$vsrc" in
+                  test_status.data)
+                    h=$(awk -F= '/total_executed_case_count/ {e=$2+0}
+                                 /total_skip_case_count/     {k=$2+0}
+                                 END {print e + k + 0}' "$st") ;;
+                  *)
+                    # One line per case it reached, whatever the verdict on it.
+                    h=$(grep -cE ':(n?ok)?[[:space:]]+[0-9]+ms$' "$st" || :) ;;
+                esac
+                [ "${a:-0}" -gt "$h" ] && short=$((short + a - h))
               done
               # A share file that is gone takes its case names with it; plan.tsv is the
               # only remaining record that those cases existed.
@@ -1112,9 +1149,14 @@ jobs:
                   short=$((short + scnt))
                 done < "$srcdir/plan.tsv"
               fi
-              unrun=$(wc -l < /tmp/unrun.list)
-
               cut -f2 "$src" | sed "s#^#$repo/#" > /tmp/want.list
+              # A failure names a case; the unit that has to run again is whatever
+              # this suite splits by. sql and medium split by top-level directory
+              # because a case is not yet known to be safe to run on its own --
+              # CUBRIDQA-1523. Re-running the directory keeps a case in its order.
+              if [ "$unit" = dir ]; then
+                sed -i "s#^\($repo/$suite/[^/]*\)/.*#\1#" /tmp/want.list
+              fi
               cat /tmp/unrun.list >> /tmp/want.list
               sort -u -o /tmp/want.list /tmp/want.list
               want=$(wc -l < /tmp/want.list)
@@ -1131,10 +1173,10 @@ jobs:
               sort -u /tmp/unrun.list > /tmp/unrun.sorted
               gone=$(comm -23 /tmp/unrun.sorted /tmp/all.list | wc -l)
               if [ "$gone" -gt 0 ]; then
-                echo "::warning::$gone of the $unrun unrun cases are no longer in the tree"
+                echo "::warning::$gone of the ${unit}s a dead shard held are no longer in the tree"
                 comm -23 /tmp/unrun.sorted /tmp/all.list | sed 's/^/  gone: /'
               fi
-              echo "re-running: $got of the $want cases from run $RERUN_FROM are still in the tree"
+              echo "re-running: $got of the $want ${unit}s from run $RERUN_FROM are still in the tree"
               if [ "$got" -ne "$want" ]; then
                 echo "::warning::$((want - got)) are not in the tree now (deleted or renamed)"
                 comm -23 /tmp/want.list <(sort /tmp/sel.list) | sed 's/^/  missing: /'
@@ -1152,8 +1194,7 @@ jobs:
               awk '{printf "%s\t1\n", $0}' /tmp/sel.list > /tmp/units.tsv
             else
               while read -r u; do
-                printf '%s\t%d\n' "$u" \
-                  "$(find "$dir/${u#"$repo/"}" -path '*/cases/*.sql' 2>/dev/null | wc -l)"
+                printf '%s\t%d\n' "$u" "$(find_cases "$suite" "$dir/${u#"$repo/"}" | wc -l)"
               done < /tmp/sel.list > /tmp/units.tsv
             fi
             nunit=$(wc -l < /tmp/units.tsv)
@@ -1163,7 +1204,7 @@ jobs:
             # Zero from a re-run and zero from a broken glob have different causes.
             if [ "$nunit" -eq 0 ]; then
               if [ -n "$RERUN_FROM" ]; then
-                echo "::error::nothing to run: none of the $want cases run $RERUN_FROM left unhandled can be run now"
+                echo "::error::nothing to run: none of the $want ${unit}s run $RERUN_FROM left unhandled can be run now"
                 echo "  That run had $unrun unrun and $(wc -l < "$src") failed. Use /run $suite for a full run."
               else
                 echo "::error::no cases at all: the glob matched nothing. Check the testcase tree"
@@ -1280,13 +1321,13 @@ jobs:
 
             mkdir -p "$out/shards" "$out/results"
             for i in $(seq 0 $((par - 1))); do
-              f=$(printf "%02d.list" "$i")
+              n=$(printf "%02d" "$i")
               # Fewer units than shards is a bug, not a normal state. Refuse it here.
-              if [ ! -f "/tmp/shards/$f" ]; then
+              if [ ! -f "/tmp/shards/$n.list" ]; then
                 echo "::error::no units assigned to shard $i of $suite. Is parallelism($par) larger than the unit count($nunit)?"
                 exit 1
               fi
-              cp "/tmp/shards/$f" "$out/shards/$f"
+              cp "/tmp/shards/$n.list" "$out/shards/$n.list"
               printf '{"suite":"%s","i":"%02d"}\n' "$suite" "$i" >> /tmp/matrix.jsonl
             done
             cp /tmp/plan.tsv "$out/plan.tsv"
@@ -1299,6 +1340,10 @@ jobs:
               echo "timed=$timed"
               echo "tc_sha='$(cat "/tmp/tc.$repo.sha")'"
               echo "tc_branch='$(cat "/tmp/tc.$repo.branch")'"
+              # Per suite, because a re-run now covers every suite that failed.
+              echo "rerun_unrun=$unrun"
+              echo "rerun_short=$short"
+              echo "rerun_gone=$gone"
             } > "$out/split.meta"
 
             # Ticket 56's machine, built here first: 17k cases on a GlusterFS seed
@@ -1337,10 +1382,6 @@ jobs:
           {
             echo "matrix=$matrix"
             echo "rundir=$rundir"
-            echo "rerun_want=$want"
-            echo "rerun_unrun=$unrun"
-            echo "rerun_short=$short"
-            echo "rerun_gone=$gone"
           } >> "$GITHUB_OUTPUT"
           echo
           echo "published: $rundir"
@@ -1442,6 +1483,8 @@ jobs:
             echo "VERDICT_SRC=$(attr verdict_src)"
             echo "SHARE_MODE=$(attr share_mode)"
             echo "EXCLUDE=$(attr exclude)"
+            echo "CASE_GLOB=$(attr case_glob)"
+            echo "CASE_FILTER=$(attr case_filter)"
             echo "SUITE_DIR=$RUNDIR/$SUITE"
             echo "STAMP=$STAMPS/shard-$SUITE-$IDX.tsv"
           } >> "$GITHUB_ENV"
@@ -1658,6 +1701,14 @@ jobs:
           set -eo pipefail
           f="$SUITE_DIR/shards/${IDX}.list"
 
+          # The same rule plan counted by, so "cases left" and "expected" are
+          # comparable. No match is grep exit 1, which pipefail would turn fatal.
+          count_cases() {
+            find "$TC_DIR/$SUITE" -path "$CASE_GLOB" 2>/dev/null \
+              | { [ -z "$CASE_FILTER" ] && cat || { grep -P "$CASE_FILTER" || :; }; } \
+              | wc -l
+          }
+
           if [ "$SHARE_MODE" = prune ]; then
             [ -z "$EXCLUDE" ] || rm -rf "$TC_DIR/$SUITE/$EXCLUDE"
 
@@ -1672,7 +1723,7 @@ jobs:
               | { grep -v -F -f /tmp/keep_dirs.list || :; } \
               | xargs -r rm -rf
 
-            left=$(find "$TC_DIR/$SUITE" -path '*/cases/*.sh' 2>/dev/null | grep -Pc '/([^/]+)/cases/\1\.sh$' || echo 0)
+            left=$(count_cases)
           else
             src="$RUNDIR/tc/$SUITE"
             [ -d "$src" ] || { echo "::error::plan published no testcases: $src"; exit 1; }
@@ -1687,7 +1738,7 @@ jobs:
             done < "$f"
             echo "units copied: $MINE_UNITS"
 
-            left=$(find "$TC_DIR/$SUITE" -path '*/cases/*.sql' 2>/dev/null | wc -l)
+            left=$(count_cases)
           fi
 
           echo "cases left: $left (expected: $MINE_N)"
@@ -2047,10 +2098,6 @@ jobs:
           CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
           CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}   # names the source run in the summary
-          RERUN_WANT: ${{ needs.plan.outputs.rerun_want }}
-          RERUN_UNRUN: ${{ needs.plan.outputs.rerun_unrun }}
-          RERUN_SHORT: ${{ needs.plan.outputs.rerun_short }}
-          RERUN_GONE: ${{ needs.plan.outputs.rerun_gone }}
           C_QUEUE: ${{ steps.clock.outputs.queue }}
           C_BUILD: ${{ steps.clock.outputs.build }}
           C_PLAN: ${{ steps.clock.outputs.plan }}
@@ -2065,7 +2112,7 @@ jobs:
             repo=$(attr "$suite" tc_repo)
             vsrc=$(attr "$suite" verdict_src)
             d="$RUNDIR/$suite"
-            . "$d/split.meta"          # total, units, par, timed, tc_sha, tc_branch
+            . "$d/split.meta"          # total, units, par, timed, tc_*, rerun_*
             echo "=================================================="
             echo "=== $suite: $total cases in $units units over $par shards"
 
@@ -2217,13 +2264,14 @@ jobs:
                 done
                 ;;
               summary_info)
-                # judge_sqlresult reads the same lines; the path is absolute, so cut
-                # it back to the repo-relative shape the share lists use.
+                # judge_sqlresult reads the same lines. The path is absolute; cut it
+                # back to the repo-relative shape the shell suite's XML already has,
+                # because plan puts the repo prefix back when it reads this file.
                 for st in "$d"/results/*/summary_info; do
                   [ -f "$st" ] || continue
                   i=$(basename "$(dirname "$st")")
                   { grep -E ':nok[[:space:]]+[0-9]+ms$' "$st" || :; } \
-                    | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/#$repo/#" \
+                    | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" \
                     | awk -v shard="$i" '{printf "%s\t%s\n", shard, $0}' >> /tmp/failed.list
                 done
                 ;;
@@ -2263,9 +2311,9 @@ jobs:
               if [ -n "$RERUN_FROM" ]; then
                 echo "> **Only what run \`$RERUN_FROM\` left unhandled was re-run. This is not a full run.**"
                 echo ">"
-                echo "> carried over: $RERUN_WANT cases — its failures, plus $RERUN_UNRUN that never ran because a shard died whole."
-                [ "${RERUN_SHORT:-0}" -eq 0 ] || echo "> **$RERUN_SHORT more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
-                [ "${RERUN_GONE:-0}" -eq 0 ] || echo "> **$RERUN_GONE of those that never ran are no longer in the tree, so this run cannot pass.**"
+                echo "> carried over: $total cases in $units unit(s) — its failures, plus $rerun_unrun cases that never ran because a shard died whole."
+                [ "${rerun_short:-0}" -eq 0 ] || echo "> **$rerun_short more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
+                [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of those that never ran are no longer in the tree, so this run cannot pass.**"
                 echo ">"
                 echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
                 echo
@@ -2349,9 +2397,7 @@ jobs:
                 awk '{print "- `" $0 "`"}' /tmp/dead_shards.list
                 echo
               fi
-              # The re-run path reads failed.list, which only the shell suite writes
-              # in a shape gate accepts; the others have no such path in CircleCI either.
-              if [ "$vsrc" = test_status.data ] && { [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; }; then
+              if [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; then
                 # The CTP branch has to ride along, or the re-run silently takes develop.
                 rerun_cmd="/run rerun $GITHUB_RUN_ID"
                 [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
@@ -2411,13 +2457,13 @@ jobs:
             # A re-run replaces the source run's commit status, so it must not go green
             # over cases nothing can name. A dead shard's share is carried by plan; this
             # is what is left.
-            if [ -n "$RERUN_FROM" ] && [ "${RERUN_SHORT:-0}" -gt 0 ]; then
-              echo "::error::run $RERUN_FROM left $RERUN_SHORT cases assigned but never handled, and nothing names them"
+            if [ -n "$RERUN_FROM" ] && [ "${rerun_short:-0}" -gt 0 ]; then
+              echo "::error::run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them"
               echo "  This re-run could not carry them, so it cannot stand in for that run. Use /run $suite."
               srb=1
             fi
-            if [ -n "$RERUN_FROM" ] && [ "${RERUN_GONE:-0}" -gt 0 ]; then
-              echo "::error::$RERUN_GONE cases that never ran in run $RERUN_FROM are no longer in the tree"
+            if [ -n "$RERUN_FROM" ] && [ "${rerun_gone:-0}" -gt 0 ]; then
+              echo "::error::$rerun_gone cases that never ran in run $RERUN_FROM are no longer in the tree"
               echo "  A renamed case has to run under its new name, and nothing was ever recorded"
               echo "  about these. Use /run $suite."
               srb=1
@@ -2434,7 +2480,8 @@ jobs:
             # On the volume too, so the cleanup step below reads one file per suite
             # instead of three outputs it would have to name suite by suite.
             echo "$v" > "$d/verdict"
-            unset total units par timed tc_sha tc_branch shard_max shard_med shard_span shard_n srb
+            unset total units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
+                  shard_max shard_med shard_span shard_n
           done
 
           echo
