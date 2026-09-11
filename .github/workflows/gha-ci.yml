@@ -703,6 +703,7 @@ jobs:
       rerun_want: ${{ steps.split.outputs.rerun_want }}
       rerun_unrun: ${{ steps.split.outputs.rerun_unrun }}
       rerun_short: ${{ steps.split.outputs.rerun_short }}
+      rerun_gone: ${{ steps.split.outputs.rerun_gone }}
 
     steps:
       - name: Validate inputs
@@ -910,7 +911,7 @@ jobs:
             | sed "s#^$TC_DIR/#cubrid-testcases-private-ex/#" \
             | sort > /tmp/all.list
           # failed.list is <shard>\t<shell/...>; align the prefix.
-          want=0; unrun=0; short=0
+          want=0; unrun=0; short=0; gone=0
           if [ -n "$RERUN_FROM" ]; then
             src="$CI_ROOT/runs/$RERUN_FROM/failed.list"
             if [ ! -f "$src" ]; then
@@ -984,6 +985,14 @@ jobs:
             # Keep only what is in the tree now; cases deleted since are dropped.
             grep -xF -f /tmp/want.list /tmp/all.list > /tmp/cases.list || : > /tmp/cases.list
             got=$(wc -l < /tmp/cases.list)
+            # A failed case that is gone is ambiguous -- deleting it can be the fix.
+            # One that never ran is not: nothing was ever recorded about it.
+            sort -u /tmp/unrun.list > /tmp/unrun.sorted
+            gone=$(comm -23 /tmp/unrun.sorted /tmp/all.list | wc -l)
+            if [ "$gone" -gt 0 ]; then
+              echo "::warning::$gone of the $unrun unrun cases are no longer in the tree"
+              comm -23 /tmp/unrun.sorted /tmp/all.list | sed 's/^/  gone: /'
+            fi
             echo "re-running: $got of the $want cases from run $RERUN_FROM are still in the tree"
             if [ "$got" -ne "$want" ]; then
               echo "::warning::$((want - got)) are not in the tree now (deleted or renamed)"
@@ -1136,6 +1145,7 @@ jobs:
             echo "rerun_want=$want"
             echo "rerun_unrun=$unrun"
             echo "rerun_short=$short"
+            echo "rerun_gone=$gone"
           } >> "$GITHUB_OUTPUT"
           echo
           echo "published: $rundir"
@@ -1917,6 +1927,7 @@ jobs:
           RERUN_WANT: ${{ needs.plan.outputs.rerun_want }}
           RERUN_UNRUN: ${{ needs.plan.outputs.rerun_unrun }}
           RERUN_SHORT: ${{ needs.plan.outputs.rerun_short }}
+          RERUN_GONE: ${{ needs.plan.outputs.rerun_gone }}
           C_QUEUE: ${{ steps.clock.outputs.clock_queue }}
           C_BUILD: ${{ steps.clock.outputs.clock_build }}
           C_PLAN: ${{ steps.clock.outputs.clock_plan }}
@@ -1955,6 +1966,7 @@ jobs:
               echo ">"
               echo "> carried over: $RERUN_WANT cases — its failures, plus $RERUN_UNRUN that never ran because a shard died whole."
               [ "${RERUN_SHORT:-0}" -eq 0 ] || echo "> **$RERUN_SHORT more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
+              [ "${RERUN_GONE:-0}" -eq 0 ] || echo "> **$RERUN_GONE of those that never ran are no longer in the tree, so this run cannot pass.**"
               echo ">"
               echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
               echo
@@ -2114,6 +2126,12 @@ jobs:
           if [ -n "$RERUN_FROM" ] && [ "${RERUN_SHORT:-0}" -gt 0 ]; then
             echo "::error::run $RERUN_FROM left $RERUN_SHORT cases assigned but never handled, and nothing names them"
             echo "  This re-run could not carry them, so it cannot stand in for that run. Use /run shell."
+            rc=1
+          fi
+          if [ -n "$RERUN_FROM" ] && [ "${RERUN_GONE:-0}" -gt 0 ]; then
+            echo "::error::$RERUN_GONE cases that never ran in run $RERUN_FROM are no longer in the tree"
+            echo "  A renamed case has to run under its new name, and nothing was ever recorded"
+            echo "  about these. Use /run shell."
             rc=1
           fi
           [ "$rc" -eq 0 ] && echo "completed with no failures."
