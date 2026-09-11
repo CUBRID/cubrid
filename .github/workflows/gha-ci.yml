@@ -2,9 +2,9 @@
 # Replaces the CircleCI jobs build + build_debug + download-build + test_shell.
 # Both stay live during the migration, so one /run comment can be compared.
 #
-# Trigger, and what each one runs. A commit builds nothing by itself: asking for the
-# tests is what asks for the build, so the run that tests a commit is the one that
-# builds it.
+# Trigger, and what each one runs. A pull request builds nothing on its own: asking
+# for the tests is what asks for the build, so the run that tests a commit is the one
+# that builds it. push still builds what it merges or pushes.
 #
 #   issue_comment  /run shell | all    build, then the shell suite on the debug build
 #   push develop, feature/**           build only. develop also writes the ccache
@@ -125,6 +125,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
+  # The two checks build_status posts and status_pending marks pending. Defined here
+  # so the pair cannot drift apart: a context that differs between the two jobs is a
+  # required check left pending for good. Quoted, or the colon makes them a mapping.
+  CTX_BUILD_RELEASE: "gha-ci: build (release)"
+  CTX_BUILD_DEBUG: "gha-ci: build (debug)"
   CI_ROOT: /home/gha-ci
   CI_BUILD_ROOT: /home/gha-ci/builds
   TIMINGS: /home/gha-ci/timings/shell.tsv
@@ -323,10 +328,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SHA: ${{ needs.gate.outputs.sha }}
-          # Quoted: the colon would otherwise make these a YAML mapping.
-          C_RELEASE: "gha-ci: build (release)"
-          C_DEBUG: "gha-ci: build (debug)"
-          C_SHELL: "gha-ci: test_shell"
+          C_SHELL: "gha-ci: test_shell" # quoted: the colon would make it a mapping
         run: |
           set -eo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -349,8 +351,8 @@ jobs:
               exit 1
             fi
           }
-          pending "$C_RELEASE" "release build running"
-          pending "$C_DEBUG" "debug build running"
+          pending "$CTX_BUILD_RELEASE" "release build running"
+          pending "$CTX_BUILD_DEBUG" "debug build running"
           pending "$C_SHELL" "shell suite running"
           echo "pending posted on ${SHA}"
 
@@ -661,11 +663,9 @@ jobs:
   build_status:
     name: build status
     needs: [gate, build]
-    # Not success(), because a red build is what the required check exists to show.
-    # !cancelled() rather than always(), the way plan and collect read it: a run this
-    # run's group superseded has nothing to say about this build, and the run that
-    # replaced it posts its own pending and its own verdict. Under always() the dead
-    # run's failure can land after that verdict and leave a passing build red.
+    # !cancelled(), the way plan and collect read it: a superseded run has nothing to
+    # say about this build, and under always() its failure can land after the verdict
+    # of the run that replaced it and leave a passing build red.
     if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -675,15 +675,9 @@ jobs:
     steps:
       - name: Post each build leg to the head commit
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }} # curl below, and gh reads it too
           REPO: ${{ github.repository }}
           SHA: ${{ needs.gate.outputs.sha }}
-          # Quoted: the colon would otherwise make these a YAML mapping. Neither is
-          # the check run `build (release)`; a different string is what keeps the two
-          # apart in the required list.
-          C_RELEASE: "gha-ci: build (release)"
-          C_DEBUG: "gha-ci: build (debug)"
         run: |
           set -eo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -693,18 +687,23 @@ jobs:
           # needs.build.result is the whole matrix: one leg failing would take the
           # other down with it. The legs are read back by job name instead -- the
           # jobs API returns the most recent execution of each one, so re-running a
-          # single leg still reports the other correctly.
-          leg() { # mode
-            gh api --paginate "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/jobs" \
-              --jq ".jobs[] | select(.name == \"build ($1)\") | .conclusion"
-          }
+          # single leg still reports the other correctly. Read once, and separately
+          # from the mapping below: a request that fails must not reach a check as a
+          # red build.
+          legs=$(gh api --paginate "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/jobs" \
+            --jq '.jobs[] | select(.name | startswith("build (")) | [.name, .conclusion] | @tsv') || {
+            echo "::error::could not read the jobs of this run; posting nothing"; exit 1; }
+          printf 'jobs API:\n%s\n' "$legs"
 
-          missing=0
-          post() { # context, mode, conclusion
-            case "$3" in
+          bad=0
+          post() { # context, mode
+            conc=$(printf '%s\n' "$legs" | awk -F'\t' -v n="build ($2)" '$1 == n {print $2}')
+            case "$conc" in
               success) state=success; desc="$2 build passed" ;;
-              '')      state=failure; desc="no $2 build job in this run"; missing=1 ;;
-              *)       state=failure; desc="$2 build $3 -- see the run" ;;
+              # Red rather than silent, and loud: a renamed build job would otherwise
+              # leave the check unanswered for good.
+              '')      state=failure; desc="no $2 build job in this run"; bad=1 ;;
+              *)       state=failure; desc="$2 build $conc -- see the run" ;;
             esac
             jq -n --arg s "$state" --arg c "$1" --arg d "$desc" \
               --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
@@ -715,20 +714,19 @@ jobs:
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
               -d @/tmp/st.json)
-            echo "$1 -> $state (conclusion ${3:-none}, HTTP $code)"
+            echo "$1 -> $state (conclusion ${conc:-none}, HTTP $code)"
             if [ "$code" != "201" ]; then
               echo "::error::could not post the status: $1"
               jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
-              exit 1
+              # No exit: the other context must still get its answer.
+              bad=1
             fi
           }
 
-          post "$C_RELEASE" release "$(leg release)"
-          post "$C_DEBUG" debug "$(leg debug)"
+          post "$CTX_BUILD_RELEASE" release
+          post "$CTX_BUILD_DEBUG" debug
+          [ "$bad" = 0 ] || exit 1
           echo "posted on ${SHA}"
-          # Red, not silent: a renamed build job would leave the checks unanswered.
-          [ "$missing" = 0 ] || {
-            echo "::error::the jobs API named no build leg -- this query is stale"; exit 1; }
 
   plan:
     name: plan
