@@ -3584,7 +3584,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val, outer_card;
+  double guessed_result_cardinality, limit_val, outer_card, required_card;
 
   inner = planp->plan_un.join.inner;
 
@@ -3624,16 +3624,24 @@ qo_nljoin_cost (QO_PLAN * planp)
 
       if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
-	  planp->limit_nljoin_guessed_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
-	  guessed_result_cardinality = MIN (planp->limit_nljoin_guessed_card, (outer->info)->cardinality);
+	  /* outer rows required to satisfy the LIMIT; the outer scan cannot read more rows than it has */
+	  required_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
+	  guessed_result_cardinality = MIN (required_card, (outer->info)->cardinality);
+	  /* rows this join emits (shown as card, handed to the next join level): the query stops at the
+	   * LIMIT, and when the outer is exhausted first it is what the rows read actually produce
+	   * (rows read * plan_card/outer_card). */
+	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
+	  planp->limit_nljoin_guessed_card =
+	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
 	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
 	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
-	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
+	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card),
+	   * and never more than the LIMIT since the query stops there. */
 	  planp->limit_nljoin_guessed_card =
-	    MAX (1.0, guessed_result_cardinality * ((planp->info)->cardinality / outer_card));
+	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
       else
 	{
@@ -7566,11 +7574,11 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
 /*
  * qo_get_term_hit_prob () -
  *
- * hit_prob = min(1, ndv(tail) / ndv(head))
+ * hit_prob = min(1, ndv(tail after its filters) / ndv(head))
  *
- * Although filters may reduce data, NDV cannot be adjusted
- * accurately. To avoid biased estimation, we conservatively
- * assume the original NDV relationship is maintained.
+ * The NDV of a side's join key is reduced by that side's own
+ * search conditions with qo_estimate_ndv (), the same estimate
+ * GROUP BY uses for the number of groups after filtering.
  */
 static void
 qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
@@ -7581,6 +7589,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
   int seg_idx;
   QO_SEGMENT *head_seg = NULL, *tail_seg = NULL;
   INT64 head_ndv = 1, tail_ndv = 1;
+  double head_ndv_eff, tail_ndv_eff;
 
   *out_head_factor = 1.0;
   *out_tail_factor = 1.0;
@@ -7627,8 +7636,23 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
       return;
     }
 
-  *out_head_factor = MIN (1.0, (double) tail_ndv / (double) head_ndv);
-  *out_tail_factor = MIN (1.0, (double) head_ndv / (double) tail_ndv);
+  /* Distinct join-key values that survive each side's own search conditions: the NDV shrinks the way
+   * qo_estimate_ndv () models it for GROUP BY, and stays as is when there is no filter
+   * (cardinality == total_rows). The denominator keeps the full NDV: it is the domain the outer
+   * row's value is drawn from. */
+  head_ndv_eff = qo_estimate_ndv (head_info->total_rows, head_info->cardinality, (double) head_ndv);
+  tail_ndv_eff = qo_estimate_ndv (tail_info->total_rows, tail_info->cardinality, (double) tail_ndv);
+  if (head_ndv_eff <= 0.0)
+    {
+      head_ndv_eff = (double) head_ndv;
+    }
+  if (tail_ndv_eff <= 0.0)
+    {
+      tail_ndv_eff = (double) tail_ndv;
+    }
+
+  *out_head_factor = MIN (1.0, tail_ndv_eff / (double) head_ndv);
+  *out_tail_factor = MIN (1.0, head_ndv_eff / (double) tail_ndv);
 }
 
 static void
