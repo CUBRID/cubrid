@@ -36,6 +36,7 @@
 #include "connection_worker.hpp"
 
 #include <array>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -671,10 +672,6 @@ css_send_response_buffers_to_client (CSS_CONN_ENTRY *conn, unsigned int eid, int
 					     std::size_t first_retained_buffer,
 					     std::function<void ()> &&deleter, int wait_time)
 {
-  std::array<NET_HEADER, 4> header {};
-  std::array<cubbase::span<std::byte>, cubconn::connection::worker::MAX_DIRECT_PACKET_COUNT> packet;
-  std::array<bool, cubconn::connection::worker::MAX_DIRECT_PACKET_COUNT> retain_packet {};
-  std::size_t packet_count = 0;
   int transaction_id;
   int invalidate_snapshot;
   int header_db_error;
@@ -682,7 +679,7 @@ css_send_response_buffers_to_client (CSS_CONN_ENTRY *conn, unsigned int eid, int
 
   assert (conn != NULL);
   assert (buffers != NULL && buffer_sizes != NULL);
-  assert (buffer_count > 0 && buffer_count <= header.size ());
+  assert (buffer_count > 0 && buffer_count <= 4);
   assert (first_retained_buffer <= buffer_count);
 
   r = rmutex_lock (NULL, &conn->rmutex);
@@ -701,24 +698,129 @@ css_send_response_buffers_to_client (CSS_CONN_ENTRY *conn, unsigned int eid, int
   transaction_id = conn->get_tran_index ();
   invalidate_snapshot = conn->invalidate_snapshot;
   header_db_error = conn->db_error;
+
+  if (wait_time != 0)
+    {
+      /* wait_time is only ever requested by a rare diagnostic dump loop, never
+       * the query-response hot path this queue exists for, and the queue has
+       * no wait protocol for SEND_PACKET -- send synchronously here, exactly
+       * as this function did before it queued responses, instead of teaching
+       * the queue to wait for a caller that does not need async dispatch. */
+      std::array<NET_HEADER, 4> header {};
+      std::array<cubbase::span<std::byte>, cubconn::connection::worker::MAX_DIRECT_PACKET_COUNT> packet;
+      std::array<bool, cubconn::connection::worker::MAX_DIRECT_PACKET_COUNT> retain_packet {};
+      std::size_t packet_count = 0;
+
+      for (std::size_t index = 0; index < buffer_count; index++)
+	{
+	  assert (buffer_sizes[index] >= 0);
+	  assert (buffer_sizes[index] == 0 || buffers[index] != NULL);
+	  css_set_net_header (&header[index], packet_type, 0, CSS_RID_FROM_EID (eid), buffer_sizes[index],
+			      transaction_id, invalidate_snapshot, header_db_error);
+	  packet[packet_count] = { reinterpret_cast<std::byte *> (&header[index]), sizeof (NET_HEADER) };
+	  retain_packet[packet_count++] = false;
+	  packet[packet_count] = { reinterpret_cast<std::byte *> (buffers[index]),
+				   static_cast<std::size_t> (buffer_sizes[index]) };
+	  retain_packet[packet_count++] = deleter && index >= first_retained_buffer;
+	}
+
+      r = rmutex_unlock (NULL, &conn->rmutex);
+      assert (r == NO_ERROR);
+
+      return cubconn::connection::worker::send_packet (conn, packet.data (), packet_count, retain_packet.data (),
+						       std::move (deleter), wait_time);
+    }
+
+  cubconn::connection::worker::message request;
+  std::vector<NET_HEADER *> owned_headers;
+  std::vector<std::byte *> owned_bodies;
+
+  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
+  request.conn = conn;
+
+  /* Buffers must outlive this call -- header is always copied (stack-local);
+   * body is copied unless the caller's deferred deleter still guarantees it survives. */
   for (std::size_t index = 0; index < buffer_count; index++)
     {
+      NET_HEADER *mem_header;
       assert (buffer_sizes[index] >= 0);
       assert (buffer_sizes[index] == 0 || buffers[index] != NULL);
-      css_set_net_header (&header[index], packet_type, 0, CSS_RID_FROM_EID (eid), buffer_sizes[index],
+
+      mem_header = new NET_HEADER {};
+      css_set_net_header (mem_header, packet_type, 0, CSS_RID_FROM_EID (eid), buffer_sizes[index],
 			  transaction_id, invalidate_snapshot, header_db_error);
-      packet[packet_count] = { reinterpret_cast<std::byte *> (&header[index]), sizeof (NET_HEADER) };
-      retain_packet[packet_count++] = false;
-      packet[packet_count] = { reinterpret_cast<std::byte *> (buffers[index]),
-			       static_cast<std::size_t> (buffer_sizes[index]) };
-      retain_packet[packet_count++] = deleter && index >= first_retained_buffer;
+      owned_headers.push_back (mem_header);
+      request.send_data.push_back ({ reinterpret_cast<std::byte *> (mem_header), sizeof (NET_HEADER) });
+
+      if (deleter && index >= first_retained_buffer)
+	{
+	  request.send_data.push_back ({ reinterpret_cast<std::byte *> (buffers[index]),
+					 static_cast<std::size_t> (buffer_sizes[index]) });
+	}
+      else if (buffer_sizes[index] > 0)
+	{
+	  std::byte *copy = new std::byte[buffer_sizes[index]];
+	  std::memcpy (copy, buffers[index], buffer_sizes[index]);
+	  owned_bodies.push_back (copy);
+	  request.send_data.push_back ({ copy, static_cast<std::size_t> (buffer_sizes[index]) });
+	}
+      else
+	{
+	  request.send_data.push_back ({ nullptr, 0 });
+	}
     }
 
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
 
-  return cubconn::connection::worker::send_packet (conn, packet.data (), packet_count, retain_packet.data (),
-						   std::move (deleter), wait_time);
+  request.send_deleter =
+    [owned_headers = std::move (owned_headers), owned_bodies = std::move (owned_bodies),
+     deleter = std::move (deleter)] () noexcept
+  {
+    for (NET_HEADER *h : owned_headers)
+      {
+	delete h;
+      }
+    for (std::byte *b : owned_bodies)
+      {
+	delete[] b;
+      }
+    if (deleter)
+      {
+	deleter ();
+      }
+  };
+
+  /* lock to access worker and context */
+  r = rmutex_lock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
+
+  if (conn->worker == nullptr || conn->context == nullptr)
+    {
+      /* unlock */
+      r = rmutex_unlock (NULL, &conn->cmutex);
+      assert (r == NO_ERROR);
+
+      request.send_deleter ();
+      return NO_ERROR;
+    }
+
+  request.ctx = reinterpret_cast<cubconn::connection::context *> (conn->context);
+  request.id = request.ctx->m_id;
+
+  auto func = [conn] () noexcept
+  {
+    /* unlock */
+    rmutex_unlock (NULL, &conn->cmutex);
+  };
+
+  if (!conn->worker->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request), func,
+					 wait_time))
+    {
+      return INTERNAL_CSS_ERROR;
+    }
+
+  return NO_ERROR;
 }
 
 unsigned int
@@ -956,8 +1058,8 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
 unsigned int
 css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
-  NET_HEADER header = DEFAULT_HEADER_DATA;
-  cubbase::span<std::byte> packet;
+  cubconn::connection::worker::message request;
+  NET_HEADER *mem_header;
   unsigned short flags = 0;
   int transaction_id;
   int invalidate_snapshot;
@@ -981,9 +1083,10 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
   db_error = conn->db_error;
   in_method = conn->in_method;
 
-  header.type = htonl (ABORT_TYPE);
-  header.request_id = htonl (CSS_RID_FROM_EID (eid));
-  header.transaction_id = htonl (transaction_id);
+  mem_header = new NET_HEADER DEFAULT_HEADER_DATA;
+  mem_header->type = htonl (ABORT_TYPE);
+  mem_header->request_id = htonl (CSS_RID_FROM_EID (eid));
+  mem_header->transaction_id = htonl (transaction_id);
   if (invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
@@ -992,17 +1095,55 @@ css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
     {
       flags |= NET_HEADER_FLAG_METHOD_MODE;
     }
-  header.flags = htons (flags);
-  header.db_error = htonl (db_error);
+  mem_header->flags = htons (flags);
+  mem_header->db_error = htonl (db_error);
 
   css_remove_unexpected_packets (conn, CSS_RID_FROM_EID (eid));
 
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
 
-  packet = { reinterpret_cast<std::byte *> (&header), sizeof (header) };
+  /* Queued through the same path as ordinary responses -- an ABORT sent
+   * inline could otherwise reach the wire ahead of a still-queued response
+   * for the same rid. */
+  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
+  request.conn = conn;
+  request.send_data.push_back ({ reinterpret_cast<std::byte *> (mem_header), sizeof (NET_HEADER) });
+  request.send_deleter = [mem_header] () noexcept
+  {
+    delete mem_header;
+  };
 
-  return cubconn::connection::worker::send_packet (conn, &packet, 1, nullptr, std::function<void ()> (), 0);
+  /* lock to access worker and context */
+  r = rmutex_lock (NULL, &conn->cmutex);
+  assert (r == NO_ERROR);
+
+  if (conn->worker == nullptr || conn->context == nullptr)
+    {
+      /* unlock */
+      r = rmutex_unlock (NULL, &conn->cmutex);
+      assert (r == NO_ERROR);
+
+      request.send_deleter ();
+      return NO_ERROR;
+    }
+
+  request.ctx = reinterpret_cast<cubconn::connection::context *> (conn->context);
+  request.id = request.ctx->m_id;
+
+  auto func = [conn] () noexcept
+  {
+    /* unlock */
+    rmutex_unlock (NULL, &conn->cmutex);
+  };
+
+  if (!conn->worker->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request), func,
+					 0))
+    {
+      return INTERNAL_CSS_ERROR;
+    }
+
+  return NO_ERROR;
 }
 // *INDENT-ON*
 

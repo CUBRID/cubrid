@@ -122,6 +122,8 @@ namespace cubconn::connection
 	HANDOFF_CLIENT, /* lazy queue */
 	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
+
+	SEND_PACKET,
 	RELEASE_PACKET,
 
 	TYPE_COUNT
@@ -161,6 +163,12 @@ namespace cubconn::connection
 
 	  /* RELEASE_PACKET */
 	  std::byte *packet;
+
+	  /* SEND_PACKET    */
+	  std::vector<cubbase::span<std::byte>> send_data;
+
+	  /* SEND_PACKET    */
+	  std::function<void ()> send_deleter;
 
 	  /* HANDOFF_CLIENT */
 	  worker *worker_ptr;
@@ -324,6 +332,7 @@ namespace cubconn::connection
       bool validate_message_generation (const message &item, context *ctx) const;
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
+      bool handle_message_queue_send_packet (message &item);
       bool handle_message_queue_release_packet (message &item);
 
       bool handle_message_queue_new_client (message &item);

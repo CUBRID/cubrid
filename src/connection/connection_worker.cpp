@@ -1286,6 +1286,71 @@ retry:
     return true;
   }
 
+  bool worker::handle_message_queue_send_packet (message &item)
+  {
+    context *ctx;
+    int r;
+
+    assert (item.conn);
+
+    r = rmutex_lock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
+
+    ctx = reinterpret_cast<context *> (item.conn->context);
+    if (ctx == nullptr)
+      {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
+	if (item.send_deleter)
+	  {
+	    item.send_deleter ();
+	  }
+
+	er_log_conn (__FILE__, __LINE__,
+		     "connection::worker->handle_message_queue_send_packet: context is already cleared for conn = %p\n",
+		     static_cast<void *> (item.conn));
+	return true;
+      }
+
+    if (!this->validate_message_generation (item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
+	if (item.send_deleter)
+	  {
+	    item.send_deleter ();
+	  }
+
+	return true;
+      }
+    if (this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
+      {
+	/* item has been moved into the successor's queue; do not touch it again */
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
+	return true;
+      }
+
+    r = rmutex_unlock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
+
+    /* already owned -- have send_packet reference it, not copy it again. */
+    assert (item.send_data.size () <= MAX_DIRECT_PACKET_COUNT);
+    std::array<bool, MAX_DIRECT_PACKET_COUNT> retain {};
+    for (std::size_t i = 0; i < item.send_data.size (); i++)
+      {
+	retain[i] = true;
+      }
+
+    worker::send_packet (item.conn, item.send_data.data (), item.send_data.size (), retain.data (),
+			 std::move (item.send_deleter), 0);
+
+    return true;
+  }
+
   bool worker::handle_message_queue_release_packet (message &item)
   {
     context *ctx;
@@ -1660,6 +1725,7 @@ respond:
 	/* HANDOFF_CLIENT  */ { &worker::handle_message_queue_handoff_client,	statistics::worker::MQ_HANDOFF_CLIENT },
 	/* TAKEOVER_CLIENT */ { &worker::handle_message_queue_takeover_client,	statistics::worker::MQ_TAKEOVER_CLIENT },
 	/* SHUTDOWN_CLIENT */ { &worker::handle_message_queue_shutdown_client,	statistics::worker::MQ_SHUTDOWN_CLIENT },
+	/* SEND_PACKET	   */ { &worker::handle_message_queue_send_packet,	statistics::worker::MQ_SEND_PACKET },
 	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET }
       }
     };
@@ -1668,7 +1734,7 @@ respond:
 
     static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
     static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
-    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 9, "this must be modified");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 10, "this must be modified");
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
@@ -2416,6 +2482,13 @@ respond:
 		this->wakeup_blocked_worker (std::move (request.ctx->m_send.m_blocker));
 		css_free_conn (request.ctx->m_conn);
 		m_parent->retire_context (request.ctx);
+		break;
+
+	      case message_type::SEND_PACKET:
+		if (request.send_deleter)
+		  {
+		    request.send_deleter ();
+		  }
 		break;
 
 	      case message_type::START:
