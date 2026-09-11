@@ -1291,13 +1291,14 @@ jobs:
             done
             cp /tmp/plan.tsv "$out/plan.tsv"
             cp /tmp/sel.list "$out/cases.list"
+            # Quoted, because shard and collect both source this file.
             {
               echo "total=$total"
               echo "units=$nunit"
               echo "par=$par"
               echo "timed=$timed"
-              echo "tc_sha=$(cat "/tmp/tc.$repo.sha")"
-              echo "tc_branch=$(cat "/tmp/tc.$repo.branch")"
+              echo "tc_sha='$(cat "/tmp/tc.$repo.sha")'"
+              echo "tc_branch='$(cat "/tmp/tc.$repo.branch")'"
             } > "$out/split.meta"
 
             # Ticket 56's machine, built here first: 17k cases on a GlusterFS seed
@@ -2019,10 +2020,11 @@ jobs:
               }')"
             sh_span=""
             [ -n "$first_start" ] && [ -n "$last_end" ] && sh_span=$((last_end - first_start))
+            # Quoted: the values read `12s (0.2m)`, and the summary step sources this.
             {
-              echo "shard_max=$(fmt "$sh_max")"
-              echo "shard_med=$(fmt "$sh_med")"
-              echo "shard_span=$(fmt "$sh_span")"
+              echo "shard_max='$(fmt "$sh_max")'"
+              echo "shard_med='$(fmt "$sh_med")'"
+              echo "shard_span='$(fmt "$sh_span")'"
               echo "shard_n=$sh_n"
             } > "/tmp/clock.$suite"
             echo "$suite: longest $(fmt "$sh_max") / median $(fmt "$sh_med") / span $(fmt "$sh_span") / $sh_n shards"
