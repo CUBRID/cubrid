@@ -357,6 +357,7 @@ struct lf_hash_table_iterator
 extern void lf_hash_create_iterator (LF_HASH_TABLE_ITERATOR * iterator, LF_TRAN_ENTRY * tran_entry,
 				     LF_HASH_TABLE * table);
 extern void *lf_hash_iterate (LF_HASH_TABLE_ITERATOR * it);
+extern void lf_hash_iterate_restart (LF_HASH_TABLE_ITERATOR * it);
 
 #if defined (UNITTEST_LF)
 extern void lf_reset_counters (void);
@@ -372,8 +373,8 @@ class lf_hash_table_cpp
 
     lf_hash_table_cpp ();
 
-    void init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
-               lf_entry_descriptor &edes);
+    int init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
+              lf_entry_descriptor &edes);
     void destroy ();
 
     T *find (lf_tran_entry *t_entry, Key &key);
@@ -440,20 +441,17 @@ lf_hash_table_cpp<Key, T>::lf_hash_table_cpp ()
 }
 
 template <class Key, class T>
-void
+int
 lf_hash_table_cpp<Key, T>::init (lf_tran_system &transys, int hash_size, int freelist_block_count,
                                  int freelist_block_size, lf_entry_descriptor &edesc)
 {
-  if (lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys) != NO_ERROR)
+  /* both answer ER_OUT_OF_VIRTUAL_MEMORY and both used to be swallowed by an assert (false) here */
+  int error_code = lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys);
+  if (error_code != NO_ERROR)
     {
-      assert (false);
-      return;
+      return error_code;
     }
-  if (lf_hash_init (&m_hash, &m_freelist, hash_size, &edesc) != NO_ERROR)
-    {
-      assert (false);
-      return;
-    }
+  return lf_hash_init (&m_hash, &m_freelist, hash_size, &edesc);
 }
 
 template <class Key, class T>
@@ -672,11 +670,7 @@ template <class Key, class T>
 void
 lf_hash_table_cpp<Key, T>::iterator::restart ()
 {
-  m_iter.bucket_index = -1;
-  if (m_iter.tran_entry->transaction_id != LF_NULL_TRANSACTION_ID)
-    {
-      lf_tran_end_with_mb (m_iter.tran_entry);
-    }
+  lf_hash_iterate_restart (&m_iter);
   m_crt_val = NULL;
 }
 

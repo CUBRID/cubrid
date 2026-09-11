@@ -24,6 +24,7 @@
 #define _LOCKFREE_HASHMAP_HPP_
 
 #include "error_code.h"
+#include "error_manager.h"
 #include "lock_free.h"                        // for lf_entry_descriptor
 #include "lockfree_address_marker.hpp"
 #include "lockfree_freelist.hpp"
@@ -47,8 +48,8 @@ namespace lockfree
       hashmap ();
       ~hashmap ();
 
-      void init (tran::system &transys, size_t hash_size, size_t freelist_block_size, size_t freelist_block_count,
-		 lf_entry_descriptor &edesc);
+      int init (tran::system &transys, size_t hash_size, size_t freelist_block_size, size_t freelist_block_count,
+		lf_entry_descriptor &edesc);
       void destroy ();
 
       T *find (tran::index tran_index, Key &key);
@@ -80,24 +81,24 @@ namespace lockfree
     private:
       using address_type = address_marker<T>;
 
-      // wrap T with on_reclaim functionality based on edesc.f_uninit
-      struct freelist_node_data
+      // The entry used to be wrapped in a { T m_entry; lf_entry_descriptor *m_edesc; } so that the freelist,
+      // which knows nothing of entry descriptors, could reach f_uninit through the node. That put the same
+      // pointer on every node of the table - a hundred thousand copies of one address in the object lock
+      // resource table. The freelist takes this as a policy instead, and holds one copy.
+      struct entry_uninit
       {
-	T m_entry;
 	lf_entry_descriptor *m_edesc;
 
-	freelist_node_data () = default;
-	~freelist_node_data () = default;
-
-	void on_reclaim ()
+	void operator() (T &t) const
 	{
 	  if (m_edesc->f_uninit != NULL)
 	    {
-	      (void) m_edesc->f_uninit (&m_entry);
+	      (void) m_edesc->f_uninit (&t);
 	    }
 	}
       };
-      using freelist_type = freelist<freelist_node_data>;
+
+      using freelist_type = freelist<T, entry_uninit>;
       using free_node_type = typename freelist_type::free_node;
 
       freelist_type *m_freelist;
@@ -131,14 +132,21 @@ namespace lockfree
       pthread_mutex_t *get_pthread_mutexp (T *p);
 
       free_node_type *to_free_node (T *p);
+    public:
+      // What actually sits on a bucket chain, for anything that reports footprint. Exposed because a
+      // hand-written mirror of this layout drifts: one carried an owner pointer for a while after the real
+      // node stopped having one.
+      static constexpr size_t get_chain_node_size ()
+      {
+	return sizeof (free_node_type);
+      }
+    private:
       T *from_free_node (free_node_type *fn);
       void save_temporary (tran::descriptor &tdes, T *&p);
-      T *claim_temporary (tran::descriptor &tdes);
       T *freelist_claim (tran::descriptor &tdes);
       void freelist_retire (tran::descriptor &tdes, T *&p);
 
       void safeguard_use_mutex_or_tran_started (const tran::descriptor &tdes, const pthread_mutex_t *mtx);
-      void start_tran_if_not_started (tran::descriptor &tdes);
       void start_tran_force (tran::descriptor &tdes);
       void promote_tran_force (tran::descriptor &tdes);
       void end_tran_if_started (tran::descriptor &tdes);
@@ -153,7 +161,7 @@ namespace lockfree
       T *&get_bucket (Key &key);
       tran::descriptor &get_tran_descriptor (tran::index tran_index);
 
-      void list_find (tran::index tran_index, T *list_head, Key &key, int *behavior_flags, T *&found_node);
+      void list_find (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags, T *&found_node);
       bool list_insert_internal (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags,
 				 T *&found_node);
       bool list_delete (tran::index tran_index, T *&list_head, Key &key, T *locked_entry, int *behavior_flags);
@@ -166,7 +174,7 @@ namespace lockfree
 
       static constexpr std::ptrdiff_t free_node_offset_of_data (free_node_type fn)
       {
-	return ((char *) (&fn.get_data ().m_entry)) - ((char *) (&fn));
+	return ((char *) (&fn.get_data ())) - ((char *) (&fn));
       }
   }; // class hashmap
 
@@ -257,22 +265,47 @@ namespace lockfree
   }
 
   template <class Key, class T>
-  void
+  int
   hashmap<Key, T>::init (tran::system &transys, size_t hash_size, size_t freelist_block_size,
 			 size_t freelist_block_count, lf_entry_descriptor &edesc)
   {
-    m_freelist = new freelist_type (transys, freelist_block_size, freelist_block_count);
+    // nothrow and checked, both because lf_hash_init () answered ER_OUT_OF_VIRTUAL_MEMORY for these arrays
+    // (lock_free.c:1927-1946) and because a throw here unwinds through C callers - xcache_initialize (),
+    // spage_boot (), catalog_initialize () - which cannot unwind, so it arrives as std::terminate.
+    m_freelist = new (std::nothrow) freelist_type (transys, freelist_block_size, freelist_block_count,
+	entry_uninit { &edesc });
+    if (m_freelist == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (freelist_type));
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
+    // the freelist knows nothing of entry descriptors, so hand it CBRD-24474's cap
+    m_freelist->set_max_alloc_count (edesc.max_alloc_cnt > 0
+				     ? (size_t) edesc.max_alloc_cnt : std::numeric_limits<size_t>::max ());
 
     m_edesc = &edesc;
-
     m_size = hash_size;
-    m_buckets = new T *[m_size] ();
 
-    m_backbuffer = new T *[m_size] ();
+    m_buckets = new (std::nothrow) T *[m_size] ();
+    m_backbuffer = new (std::nothrow) T *[m_size] ();
+    if (m_buckets == NULL || m_backbuffer == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (sizeof (T *) * m_size));
+	delete [] m_buckets;
+	m_buckets = NULL;
+	delete [] m_backbuffer;
+	m_backbuffer = NULL;
+	delete m_freelist;
+	m_freelist = NULL;
+	m_size = 0;
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
+
     for (size_t i = 0; i < m_size; i++)
       {
 	m_backbuffer[i] = address_type::set_adress_mark (NULL);
       }
+    return NO_ERROR;
   }
 
   template <class Key, class T>
@@ -469,7 +502,14 @@ namespace lockfree
   size_t
   hashmap<Key, T>::get_hash (Key &key) const
   {
-    return m_edesc->f_hash (&key, (int) m_size);
+    size_t hash_value = m_edesc->f_hash (&key, (int) m_size);
+    if (hash_value >= m_size)
+      {
+	// lf_hash_find () and friends rejected an out-of-range hash instead of indexing the bucket array with it
+	assert (false);
+	return 0;
+      }
+    return hash_value;
   }
 
   template <class Key, class T>
@@ -544,15 +584,17 @@ namespace lockfree
   hashmap<Key, T>::from_free_node (free_node_type *fn)
   {
     assert (fn != NULL);
-    return &fn->get_data ().m_entry;
+    return &fn->get_data ();
   }
 
   template <class Key, class T>
   typename hashmap<Key, T>::freelist_type::free_node *
   hashmap<Key, T>::to_free_node (T *p)
   {
-    // not nice, but necessary until we fully refactor lockfree hashmap
-    const std::ptrdiff_t off = free_node_offset_of_data (free_node_type ());
+    // not nice, but necessary until we fully refactor lockfree hashmap.
+    // static because obtaining the offset needs an instance, and building one constructs and destroys a whole T
+    // - a pthread_mutex_init/destroy pair for xasl_cache_ent - on a path taken by every retire.
+    static const std::ptrdiff_t off = free_node_offset_of_data (free_node_type ());
     char *cp = (char *) p;
     cp -= off;
     return (free_node_type *) cp;
@@ -565,13 +607,6 @@ namespace lockfree
     tran::reclaimable_node *fn = to_free_node (p);
     tdes.save_reclaimable (fn);
     p = NULL;
-  }
-
-  template <class Key, class T>
-  T *
-  hashmap<Key, T>::claim_temporary (tran::descriptor &tdes)
-  {
-    return from_free_node (reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ()));
   }
 
   template <class Key, class T>
@@ -664,7 +699,10 @@ namespace lockfree
   {
     ct_stat_type::autotimer stat_autotimer (m_stat_claim, m_active_stats);
     T *claimed = NULL;
-    free_node_type *fn = reinterpret_cast<free_node_type *> (tdes.pull_saved_reclaimable ());
+    // static_cast, not reinterpret_cast: this is a downcast along a real inheritance edge, so the compiler
+    // computes the offset. reinterpret_cast happened to work only because reclaimable_node is the sole
+    // non-virtual first base and the offset is zero.
+    free_node_type *fn = static_cast<free_node_type *> (tdes.pull_saved_reclaimable ());
     bool is_local_tran = false;
 
     if (!tdes.is_tran_started ())
@@ -675,15 +713,33 @@ namespace lockfree
     if (fn == NULL)
       {
 	fn = m_freelist->claim (tdes);
-	assert (fn != NULL);
-	// make sure m_edesc is initialized
-	fn->get_data ().m_edesc = m_edesc;
-
-	claimed = from_free_node (fn);
-	// call f_init
-	if (m_edesc->f_init != NULL)
+	if (fn == NULL)
 	  {
-	    m_edesc->f_init (claimed);
+	    // out of memory. lf_freelist_alloc_block () raised this before answering NULL
+	    // (lock_free.c:640-646) and the callers are written to find it: xcache_new_entry () runs
+	    // ASSERT_ERROR_AND_SET (xasl_cache.c:1574-1578), which assert (false)s and degrades to ER_FAILED
+	    // when nothing is set. Raised here rather than in alloc_list (): a short block there is not yet a
+	    // failure - claim () goes on to force_alloc_block () - and the freelist is generic code with no
+	    // business in the error manager.
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (free_node_type));
+	    if (is_local_tran)
+	      {
+		tdes.end_tran ();
+	      }
+	    return NULL;
+	  }
+	claimed = from_free_node (fn);
+	if (m_edesc->f_init != NULL && m_edesc->f_init (claimed) != NO_ERROR)
+	  {
+	    // lf_freelist_claim () answered NULL here. dropping the answer published a half-initialized entry -
+	    // fpcache_entry_init () leaves clone_stack NULL. retire rather than leak: the node may still be the
+	    // stale head of a concurrent pop, so it has to go back through the epoch.
+	    m_freelist->retire (tdes, *fn);
+	    if (is_local_tran)
+	      {
+		tdes.end_tran ();
+	      }
+	    return NULL;
 	  }
       }
     else
@@ -711,13 +767,6 @@ namespace lockfree
 
     /* If we use mutex, we have a mutex locked. */
     assert (!m_edesc->using_mutex || mtx != NULL);
-  }
-
-  template <class Key, class T>
-  void
-  hashmap<Key, T>::start_tran_if_not_started (tran::descriptor &tdes)
-  {
-    tdes.start_tran ();   // same result if it was started or not
   }
 
   template <class Key, class T>
@@ -810,7 +859,7 @@ namespace lockfree
 
   template <class Key, class T>
   void
-  hashmap<Key, T>::list_find (tran::index tran_index, T *list_head, Key &key, int *behavior_flags, T *&entry)
+  hashmap<Key, T>::list_find (tran::index tran_index, T *&list_head, Key &key, int *behavior_flags, T *&entry)
   {
     tran::descriptor &tdes = get_tran_descriptor (tran_index);
     T *curr = NULL;
@@ -819,6 +868,10 @@ namespace lockfree
     /* by default, not found */
     entry = NULL;
 
+    // before the head is read, never after: list_head is the bucket slot, and a head loaded outside the
+    // transaction can be unlinked, retired and reclaimed while this thread is invisible to
+    // compute_min_active_tranid (). lf_list_find () takes the slot by address for the same reason and reads it
+    // at :1247, after lf_tran_start_with_mb (). Taking it by value here dropped that ordering.
     tdes.start_tran ();
     bool restart_search = true;
 
@@ -1041,7 +1094,13 @@ namespace lockfree
 		    assert (!LF_LIST_BF_IS_FLAG_SET (behavior_flags, LF_LIST_BF_INSERT_GIVEN));
 
 		    entry = freelist_claim (tdes);
-		    assert (entry != NULL);
+		    if (entry == NULL)
+		      {
+			// out of memory. lf_list_insert_internal () ended the transaction and returned ER_FAILED,
+			// which reached the caller as "not inserted"; same end state here.
+			end_tran_force (tdes);
+			return false;
+		      }
 
 		    /* set it's key */
 		    if (m_edesc->f_key_copy (&key, get_keyp (entry)) != NO_ERROR)
@@ -1415,10 +1474,19 @@ namespace lockfree
   void
   hashmap<Key, T>::iterator::restart ()
   {
+    if (m_curr != NULL && m_hashmap != NULL && m_hashmap->m_edesc->using_mutex)
+      {
+	// iterate () locked this entry and unlocks it on the way past; dropping m_curr below would leak it
+	m_hashmap->unlock_entry (*m_curr);
+      }
     if (m_tdes->is_tran_started ())
       {
 	m_tdes->end_tran();
       }
+    // the bucket index must reset too, as lf_hash_table_cpp::iterator::restart () does. left behind, iterate ()
+    // resumes at the next bucket - silently skipping everything already walked, which is exactly what callers
+    // restart to re-scan - and ends a transaction the caller already ended.
+    m_bucket_index = INVALID_INDEX;
     m_curr = NULL;
   }
 

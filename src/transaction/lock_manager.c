@@ -1281,9 +1281,13 @@ lock_initialize_object_lock_structures (void)
   const int obj_hash_size = (int) MAX (lk_Gl.config.initial_object_locks, MIN (scaled_buckets, LK_OBJ_HASH_SIZE_MAX));
 
   lk_Obj_lock_res_desc.max_alloc_cnt = lock_escalation;
-  lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
-			       lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
-			       lk_Obj_lock_res_desc);
+  if (lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
+				   lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
+				   lk_Obj_lock_res_desc) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return ER_FAILED;
+    }
 
   obj_lock_entry_desc.max_alloc_cnt = lock_escalation;
   if (lf_freelist_init (&lk_Gl.obj_free_entry_list, lk_Gl.config.object_entry_block_count,
