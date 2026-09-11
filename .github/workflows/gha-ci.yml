@@ -2,14 +2,11 @@
 # Replaces the CircleCI jobs build + build_debug + download-build + test_shell.
 # Both stay live during the migration, so one /run comment can be compared.
 #
-# Trigger, and what each one runs. A pull request builds only what it asks to test.
+# Trigger, and what each one runs.
 #
 #   issue_comment  /run shell | all    build, then the shell suite on the debug build
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; tests always run
-#
-# A comment run's check runs land on the default branch head, so the pull request
-# gets its build as the commit statuses build_status posts.
 #
 # Any request that runs the suite takes an optional trailing testtools=<branch> --
 # `/run shell testtools=fix/x` or the dispatch input -- and then CTP comes from that
@@ -19,8 +16,7 @@
 # Which copy of this file runs differs by trigger. issue_comment has no ref of its
 # own and always reads the DEFAULT BRANCH, so /run does nothing until this is merged.
 # workflow_dispatch runs the copy in the ref it is given, and appears in the UI only
-# once the default branch carries the file. push runs the pushed commit's copy. No
-# trigger reads the copy a pull request proposes: change this file on a fork.
+# once the default branch carries the file. push runs the pushed commit's copy.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
@@ -118,8 +114,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
-  # One definition for two jobs: a pending and a verdict spelling the context
-  # differently never resolve. Quoted, or the colon makes them a mapping.
   CTX_BUILD_RELEASE: "gha-ci: build (release)"
   CTX_BUILD_DEBUG: "gha-ci: build (debug)"
   CI_ROOT: /home/gha-ci
@@ -647,13 +641,13 @@ jobs:
             tail -60 "$f"
           fi
 
-  # The build verdict on the head commit, which a comment run's check runs never
-  # reach. GitHub-hosted: statuses: write stays off the build pod.
+  # A comment run's check runs land on the default branch head, never on the
+  # pull request, so the build verdict reaches it as a commit status instead.
   build_status:
     name: build status
     needs: [gate, build]
-    # !cancelled(), as plan and collect read it: under always() a superseded run's
-    # failure can land after the verdict of the run that replaced it.
+    # !cancelled(), as plan and collect read it, and unlike status: under always() a
+    # superseded run's failure can land after the verdict that replaced it.
     if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -672,9 +666,8 @@ jobs:
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
 
-          # needs.build.result is the whole matrix, so the legs come by name; the jobs
-          # API answers with the latest execution of each. Read once and apart from
-          # the mapping: a failed request must not reach a check as a red build.
+          # needs.build.result is the whole matrix, so the legs come by name. Read
+          # apart from the mapping: a failed query must not post as a red build.
           legs=$(gh api --paginate "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/jobs" \
             --jq '.jobs[] | select(.name | startswith("build (")) | [.name, .conclusion] | @tsv') || {
             echo "::error::could not read the jobs of this run; posting nothing"; exit 1; }
@@ -1253,8 +1246,8 @@ jobs:
   shard:
     name: "shard ${{ matrix.i }}"
     needs: plan
-    # success() is false for a failed job anywhere behind this one, so a red release
-    # leg would skip every shard even though plan published the split.
+    # success() is false for a failed job anywhere behind this one: without this a
+    # red release leg skips all 50 shards, though plan published the split.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     # 50 privileged pods running testcase code; testcases arrive via the App token.
     permissions: {}
