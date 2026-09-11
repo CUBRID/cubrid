@@ -133,7 +133,8 @@ typedef enum
   MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT = 47,
   MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME = 48,
   MSGCAT_UTIL_GENERIC_EMPTY_HOSTS_CONF = 49,
-  MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND = 50
+  MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND = 50,
+  MSGCAT_UTIL_GENERIC_CLASS_IS_VCLASS = 51
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -1833,6 +1834,7 @@ extern "C"
   extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
   extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
   extern int utility_check_class_name (const char *class_name);
+  extern int utility_check_class_is_vclass (const char *class_name);
 
   extern FILE *fopen_ex (const char *filename, const char *type);
 

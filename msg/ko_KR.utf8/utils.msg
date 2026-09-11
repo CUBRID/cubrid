@@ -284,6 +284,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     acl         <status|reload> [게이트웨이 이름]\n
 46 owner_name의 길이는 %1$d 미만이어야 하고 class_name의 길이는 %2$d 바이트 미만이어야 합니다.\n
 47 테이블 이름('%1$s')을 owner_name.class_name 형식으로 입력하십시오.\n
+51 "%1$s"은(는) 뷰입니다. 이 작업은 테이블을 대상으로 합니다.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 경고: -t 옵션은 독립 실행 모드에서는 무시 됩니다.\n
