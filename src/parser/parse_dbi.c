@@ -43,6 +43,7 @@
 #include "string_opfunc.h"
 #include "set_object.h"
 #include "intl_support.h"
+#include "internal_lob_marker.h"
 #include "virtual_object.h"
 #include "object_primitive.h"
 #include "object_template.h"
@@ -1169,11 +1170,13 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
   if (value->node_type == PT_HOST_VAR && value->info.host_var.var_type == PT_HOST_IN)
     {
       DB_DOMAIN *hv_dom;
+      int internal_lob_marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
 
       db_value = pt_host_var_db_value (parser, value);
 
       if (db_value)
 	{
+	  internal_lob_marker = db_value_get_internal_lob_marker (db_value);
 	  if (value->type_enum != PT_TYPE_NONE && value->type_enum != PT_TYPE_NULL && value->type_enum != PT_TYPE_MAYBE
 	      && value->type_enum != PT_TYPE_NUMERIC
 	      && value->type_enum != PT_TYPE_CHAR && value->type_enum != PT_TYPE_VARCHAR
@@ -1275,6 +1278,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	  return NULL;
 	}
 
+      if (internal_lob_marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  db_value_mark_internal_lob (db_value, internal_lob_marker);
+	}
       return db_value;
     }
   else if (value->node_type == PT_NAME && value->info.name.meta_class == PT_PARAMETER)
