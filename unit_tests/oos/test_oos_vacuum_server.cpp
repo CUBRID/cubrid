@@ -19,11 +19,11 @@
 /*
  * test_oos_vacuum_server.cpp - SERVER_MODE tests for actual vacuum OOS code paths
  *
- * Exercises the real vacuum_heap_oos_delete_within_sysop() -> heap_recdes_get_oos_oids() ->
+ * Exercises the real vacuum_heap_oos_delete_within_sysop() -> heap_recdes_get_oos_references() ->
  * oos_delete() code path by crafting minimal heap RECDES with OOS inline data
  * and calling vacuum_heap_oos_delete_within_sysop() directly.
  *
- * Also tests heap_recdes_get_oos_oids() and heap_recdes_contains_oos()
+ * Also tests heap_recdes_get_oos_references() and heap_recdes_contains_oos()
  * directly for OOS OID extraction from crafted heap records.
  */
 
@@ -165,7 +165,7 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesContainsOos)
 }
 
 // ============================================================================
-// TC-V2: heap_recdes_get_oos_oids extracts single OOS OID
+// TC-V2: heap_recdes_get_oos_references extracts single OOS OID
 // ============================================================================
 TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsSingle)
 {
@@ -189,18 +189,20 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsSingle)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  /* Extract OOS OIDs via the function vacuum relies on */
-  OID_VECTOR extracted;
-  err = heap_recdes_get_oos_oids (&heap_rec, extracted);
+  /* Extract OOS references via the function vacuum relies on. Without an owner class every reference stays
+   * untyped (DB_TYPE_NULL), which callers treat as an ordinary OOS record. */
+  HEAP_OOS_REFERENCE_VECTOR extracted;
+  err = heap_recdes_get_oos_references (thread_p, nullptr, &heap_rec, extracted);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ ((int) extracted.size (), 1);
-  ASSERT_EQ (extracted[0].pageid, oos_oid.pageid);
-  ASSERT_EQ (extracted[0].slotid, oos_oid.slotid);
-  ASSERT_EQ (extracted[0].volid, oos_oid.volid);
+  ASSERT_EQ (extracted[0].oid.pageid, oos_oid.pageid);
+  ASSERT_EQ (extracted[0].oid.slotid, oos_oid.slotid);
+  ASSERT_EQ (extracted[0].oid.volid, oos_oid.volid);
+  ASSERT_EQ (extracted[0].type, DB_TYPE_NULL);
 }
 
 // ============================================================================
-// TC-V3: heap_recdes_get_oos_oids extracts multiple OOS OIDs
+// TC-V3: heap_recdes_get_oos_references extracts multiple OOS OIDs
 // ============================================================================
 TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsMultiple)
 {
@@ -228,16 +230,16 @@ TEST_F (OosVacuumCodePathServer, HeapRecdesGetOosOidsMultiple)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  OID_VECTOR extracted;
-  err = heap_recdes_get_oos_oids (&heap_rec, extracted);
+  HEAP_OOS_REFERENCE_VECTOR extracted;
+  err = heap_recdes_get_oos_references (thread_p, nullptr, &heap_rec, extracted);
   ASSERT_EQ (err, NO_ERROR);
   ASSERT_EQ ((int) extracted.size (), 2);
-  ASSERT_EQ (extracted[0].pageid, oid1.pageid);
-  ASSERT_EQ (extracted[0].slotid, oid1.slotid);
-  ASSERT_EQ (extracted[0].volid, oid1.volid);
-  ASSERT_EQ (extracted[1].pageid, oid2.pageid);
-  ASSERT_EQ (extracted[1].slotid, oid2.slotid);
-  ASSERT_EQ (extracted[1].volid, oid2.volid);
+  ASSERT_EQ (extracted[0].oid.pageid, oid1.pageid);
+  ASSERT_EQ (extracted[0].oid.slotid, oid1.slotid);
+  ASSERT_EQ (extracted[0].oid.volid, oid1.volid);
+  ASSERT_EQ (extracted[1].oid.pageid, oid2.pageid);
+  ASSERT_EQ (extracted[1].oid.slotid, oid2.slotid);
+  ASSERT_EQ (extracted[1].oid.volid, oid2.volid);
 }
 
 // ============================================================================
@@ -269,7 +271,8 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, nullptr /* internal_lob_vfid */,
+	nullptr /* class_oid */, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* OOS record must be gone */
@@ -316,7 +319,8 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, nullptr /* internal_lob_vfid */,
+	nullptr /* class_oid */, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All 3 OOS records must be gone */
@@ -371,7 +375,8 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, nullptr /* internal_lob_vfid */,
+	nullptr /* class_oid */, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Multi-chunk OOS must be fully gone */
@@ -409,7 +414,8 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, nullptr);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, nullptr /* internal_lob_vfid */,
+	nullptr /* class_oid */, &heap_rec, nullptr);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES after {};
@@ -497,7 +503,8 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	  err = build_heap_recdes_with_oos ({old_oid}, {oos_len}, heap_rec);
 	  ASSERT_EQ (err, NO_ERROR);
 
-	  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &touched_pages);
+	  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, nullptr /* internal_lob_vfid */,
+		nullptr /* class_oid */, &heap_rec, &touched_pages);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  recdes_free_data_area (&heap_rec);
@@ -608,7 +615,8 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
   VACUUM_OOS_TOUCHED_PAGES touched_pages;
-  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, &heap_rec, &touched_pages);
+  err = vacuum_heap_oos_delete_within_sysop (thread_p, &oos_vfid, nullptr /* internal_lob_vfid */,
+	nullptr /* class_oid */, &heap_rec, &touched_pages);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All N OOS records must be gone */
