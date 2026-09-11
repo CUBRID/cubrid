@@ -2,13 +2,18 @@
 # Replaces the CircleCI jobs build + build_debug + download-build + test_shell.
 # Both stay live during the migration, so one /run comment can be compared.
 #
-# Trigger, and what each one runs. Same shape as the CircleCI baseline, where the
-# test parameters default to false so the automatic path builds only.
+# Trigger, and what each one runs. A commit builds nothing by itself: asking for the
+# tests is what asks for the build, so the run that tests a commit is the one that
+# builds it.
 #
-#   pull_request opened, synchronize   build only
 #   issue_comment  /run shell | all    build, then the shell suite on the debug build
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; tests always run
+#
+# A pull request sees the build as the commit statuses `gha-ci: build (release)` and
+# `gha-ci: build (debug)`, which build_status posts. A comment run's check runs land
+# on the default branch head and not on the pull request head, so those statuses are
+# the only build result a pull request can carry.
 #
 # Any request that runs the suite takes an optional trailing testtools=<branch> --
 # `/run shell testtools=fix/x` or the dispatch input -- and then CTP comes from that
@@ -18,17 +23,17 @@
 # Which copy of this file runs differs by trigger. issue_comment has no ref of its
 # own and always reads the DEFAULT BRANCH, so /run does nothing until this is merged.
 # workflow_dispatch runs the copy in the ref it is given, and appears in the UI only
-# once the default branch carries the file. push runs the pushed commit's copy, and
-# pull_request the copy the pull request proposes -- which is why it may build and
-# never test.
+# once the default branch carries the file. push runs the pushed commit's copy. No
+# trigger reads the copy a pull request proposes, so a change to this file is tried
+# out on a fork or by dispatch, never by opening the pull request.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
 #   pod template   shareProcessNamespace, or the shell tests hang instead of
 #                  failing; privileged, or the overlay mount fails;
 #                  imagePullPolicy Always, or nodes keep a stale image
-#   job hook       ALLOWED_EVENTS must list pull_request, issue_comment, push
-#                  and workflow_dispatch
+#   job hook       ALLOWED_EVENTS must list issue_comment, push and
+#                  workflow_dispatch
 #
 # Decisions, measurements and the ccache/path contract: CUBRIDQA-1526, and
 # roles/arc/README.md in circleci-k8s-ansible.
@@ -36,13 +41,9 @@
 name: gha-ci
 
 on:
-  # Builds only. A fork PR runs its own copy of this file, so nothing here may
-  # reach a test job -- the repository setting "Require approval for all external
-  # contributors" is what keeps an outsider's PR off these runners.
-  pull_request:
-    types: [opened, synchronize]
-    branches: [develop, 'feature/**']
   # Which comments wake this is decided by the gate job; it cannot be narrowed here.
+  # No trigger here reaches a runner from a fork: the gate refuses every author
+  # association but OWNER, MEMBER and COLLABORATOR.
   issue_comment:
     types: [created, edited]
   # Post-merge build. Only develop refreshes the ccache.
@@ -107,8 +108,6 @@ concurrency:
   group: >-
     gha-ci-${{ github.event_name == 'push'
     && format('push-{0}', github.sha)
-    || github.event_name == 'pull_request'
-    && format('pr-{0}-build', github.event.pull_request.number)
     || github.event_name == 'workflow_dispatch'
     && format('dispatch-{0}', inputs.sha)
     || github.event.issue.pull_request != null
@@ -136,7 +135,7 @@ env:
   ARTIFACT_URL_BASE: http://192.168.1.48:30080
 
 jobs:
-  # All four triggers become one shape: every job below reads needs.gate.outputs and
+  # All three triggers become one shape: every job below reads needs.gate.outputs and
   # never looks at the event, so adding a trigger means editing this job only.
   # GitHub-hosted, so the permission decision lands before a runner is claimed.
   gate:
@@ -147,8 +146,7 @@ jobs:
       pull-requests: read # the head SHA of the commented PR
     # Only the comment path needs an author check -- it is the one event anyone with
     # read access can raise. Same author set as comment_trigger.yml; CONTRIBUTOR is
-    # refused. push and workflow_dispatch already require write access, and
-    # pull_request is gated by the repository's fork-approval setting.
+    # refused. push and workflow_dispatch already require write access.
     if: >-
       ${{ github.event_name != 'issue_comment'
       || (github.event.issue.pull_request != null
@@ -175,10 +173,6 @@ jobs:
           EV: ${{ github.event_name }}
           BODY: ${{ github.event.comment.body }}
           ISSUE: ${{ github.event.issue.number }}
-          # pull_request: the head SHA, not the merge commit -- that is what the PR
-          # proposes, and it is the same value the comment path resolves to.
-          PR_NUM: ${{ github.event.pull_request.number }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_SHA: ${{ github.sha }}
           REF: ${{ github.ref }}
           IN_SHA: ${{ inputs.sha }}
@@ -203,12 +197,6 @@ jobs:
           test_run=false; pr=''; ns='pr'; cache_write=false
 
           case "$EV" in
-            pull_request)
-              sha="$PR_HEAD"
-              pr="$PR_NUM"
-              echo "pull_request: PR #${pr} / head ${sha} / build only"
-              ;;
-
             push)
               sha="$PUSH_SHA"
               # develop is the only ref that refreshes the shared ccache and lands in
@@ -275,7 +263,7 @@ jobs:
               sha=$(printf '%s' "$pull" | cut -f1)
               base=$(printf '%s' "$pull" | cut -f2)
               echo "comment: base branch ${base}"
-              # Same range as the pull_request trigger's branches: filter. release/11.x
+              # Same range as the push trigger's branches: filter. release/11.x
               # builds against a different toolchain, so this image cannot test it.
               case "$base" in
                 develop|feature/*) ;;
@@ -318,9 +306,10 @@ jobs:
           emit testtools "$tt"
           echo "resolved: event=$EV test=$test_run namespace=$ns ccache_write=$cache_write"
 
-  # The check ticket 28 makes required. Posted from here and not from collect: that
-  # job runs in a pod that can be evicted, and statuses: write must not reach a
-  # runner that executes testcase code.
+  # The three checks a pull request carries, pending from the earliest point the
+  # answer is unknown. Posted from here and not from build or collect: those run in a
+  # pod that can be evicted, and statuses: write must not reach a runner that
+  # executes testcase code.
   status_pending:
     name: status (pending)
     needs: gate
@@ -334,28 +323,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SHA: ${{ needs.gate.outputs.sha }}
-          CONTEXT: "gha-ci: test_shell"
+          # Quoted: the colon would otherwise make these a YAML mapping.
+          C_RELEASE: "gha-ci: build (release)"
+          C_DEBUG: "gha-ci: build (debug)"
+          C_SHELL: "gha-ci: test_shell"
         run: |
           set -eo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
-          jq -n --arg c "$CONTEXT" \
-            --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
-            '{state:"pending", context:$c, target_url:$u, description:"shell suite running"}' \
-            > /tmp/st.json
-          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
-            -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
-            -d @/tmp/st.json)
-          echo "HTTP $code"
-          if [ "$code" != "201" ]; then
-            echo "::error::could not post the pending status"
-            jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
-            exit 1
-          fi
+          pending() { # context, description
+            jq -n --arg c "$1" --arg d "$2" \
+              --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              '{state:"pending", context:$c, target_url:$u, description:$d}' > /tmp/st.json
+            code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+              -d @/tmp/st.json)
+            echo "$1 -> pending (HTTP $code)"
+            if [ "$code" != "201" ]; then
+              echo "::error::could not post the pending status: $1"
+              jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
+              exit 1
+            fi
+          }
+          pending "$C_RELEASE" "release build running"
+          pending "$C_DEBUG" "debug build running"
+          pending "$C_SHELL" "shell suite running"
           echo "pending posted on ${SHA}"
 
   # Both modes of the CircleCI baseline, which differ only in the build argument and
@@ -551,8 +547,8 @@ jobs:
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
 
           # The reuse decision is 8 to 40 minutes old by now, and a duplicate run on
-          # the same SHA -- push feature/** and pull_request synchronize both fire on
-          # one commit -- publishes into this very path. Reading the sentinel again
+          # the same SHA -- a push to feature/** and a /run comment naming the same
+          # commit -- publishes into this very path. Reading the sentinel again
           # saves the 700MB staging copy when the other run is already done. It does
           # NOT decide the race: see the rename below.
           if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] \
@@ -657,6 +653,79 @@ jobs:
             echo "=== last 60 lines of build.log ==="
             tail -60 "$f"
           fi
+
+  # The build result the pull request can see. A comment run posts its check runs on
+  # the default branch head, so `build (release)` never lands on the head commit;
+  # this job puts the same verdict there as a commit status instead. GitHub-hosted
+  # like the two status jobs: statuses: write stays off the build pod.
+  build_status:
+    name: build status
+    needs: [gate, build]
+    # always(), not success(): a red build is what the required check exists to show.
+    if: ${{ always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      statuses: write
+      actions: read # the per-leg conclusion, below
+    steps:
+      - name: Post each build leg to the head commit
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.gate.outputs.sha }}
+          # Quoted: the colon would otherwise make these a YAML mapping. Neither is
+          # the check run `build (release)`; a different string is what keeps the two
+          # apart in the required list.
+          C_RELEASE: "gha-ci: build (release)"
+          C_DEBUG: "gha-ci: build (debug)"
+        run: |
+          set -eo pipefail
+          if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
+          fi
+
+          # needs.build.result is the whole matrix: one leg failing would take the
+          # other down with it. The legs are read back by job name instead -- the
+          # jobs API returns the most recent execution of each one, so re-running a
+          # single leg still reports the other correctly.
+          leg() { # mode
+            gh api --paginate "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/jobs" \
+              --jq ".jobs[] | select(.name == \"build ($1)\") | .conclusion"
+          }
+
+          missing=0
+          post() { # context, mode, conclusion
+            case "$3" in
+              success)   state=success; desc="$2 build passed" ;;
+              cancelled) state=failure; desc="run was superseded or cancelled" ;;
+              '')        state=failure; desc="no $2 build job in this run"; missing=1 ;;
+              *)         state=failure; desc="$2 build $3 -- see the run" ;;
+            esac
+            jq -n --arg s "$state" --arg c "$1" --arg d "$desc" \
+              --arg u "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              '{state:$s, context:$c, target_url:$u, description:$d}' > /tmp/st.json
+            code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' -X POST \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/statuses/${SHA}" \
+              -d @/tmp/st.json)
+            echo "$1 -> $state (conclusion ${3:-none}, HTTP $code)"
+            if [ "$code" != "201" ]; then
+              echo "::error::could not post the status: $1"
+              jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
+              exit 1
+            fi
+          }
+
+          post "$C_RELEASE" release "$(leg release)"
+          post "$C_DEBUG" debug "$(leg debug)"
+          echo "posted on ${SHA}"
+          # Red, not silent: a renamed build job would leave the checks unanswered.
+          [ "$missing" = 0 ] || {
+            echo "::error::the jobs API named no build leg -- this query is stale"; exit 1; }
 
   plan:
     name: plan
@@ -923,7 +992,7 @@ jobs:
                 echo "  Pruned 7 days after the run, or never a gha-ci run at all."
               elif [ ! -d "$rd/results" ]; then
                 echo "::error::run $RERUN_FROM never ran the shell suite: no $rd/results"
-                echo "  A pull_request run builds only. Take the id from the 'current run' row"
+                echo "  A push run builds only. Take the id from the 'current run' row"
                 echo "  of a run that ran the suite, not from 'built by run'."
               else
                 echo "::error::run $RERUN_FROM ran the suite but published no failure list"
