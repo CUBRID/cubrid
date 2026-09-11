@@ -380,6 +380,60 @@ namespace cubstorage
     return result;
   }
 
+  bool
+  bestspace::shard::update_freespace (VPID vpid, std::uint16_t freespace, std::size_t &entry_index)
+  {
+    std::size_t i;
+    bool found;
+
+    found = false;
+    for (i = 0; i < ENTRIES_PER_SHARD; i++)
+      {
+	if (update_freespace_at (i, vpid, freespace))
+	  {
+	    entry_index = i;
+	    found = true;
+	  }
+      }
+
+    return found;
+  }
+
+  bool
+  bestspace::shard::update_freespace_at (std::size_t entry_index, VPID vpid, std::uint16_t freespace)
+  {
+    L1 expected, desired;
+    VPID entry_vpid;
+
+    assert (entry_index < ENTRIES_PER_SHARD);
+
+    while (true)
+      {
+	expected = m_L1[entry_index].load ();
+	entry_vpid = expected.get_vpid ();
+
+	if (!VPID_EQ (&entry_vpid, &vpid))
+	  {
+	    return false;
+	  }
+
+	if (expected.get_freespace () == freespace)
+	  {
+	    return true;
+	  }
+
+	desired = expected;
+	desired.set_freespace (freespace);
+
+	// the caller must hold the page's write latch, so the freespace it records is the page's current value
+	if (m_L1[entry_index].compare_exchange_strong (expected, desired))
+	  {
+	    L2_update (entry_index / L2_FANOUT, entry_index % L2_FANOUT);
+	    return true;
+	  }
+      }
+  }
+
   void
   bestspace::shard::add_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen)
   {
@@ -1225,7 +1279,22 @@ namespace cubstorage
     return m_size;
   }
 
-  void
+  bool
+  bestspace::candidate_queue::update_if_exist (bestspace_entry candidate)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    if (!remove_if_exist (candidate))
+      {
+	return false;
+      }
+
+    insert (candidate);
+    m_max_freespace.store (m_array[m_size - 1].freespace, std::memory_order_release);
+    return true;
+  }
+
+  bool
   bestspace::candidate_queue::remove_if_exist (bestspace_entry &candidate)
   {
     int i;
@@ -1237,9 +1306,11 @@ namespace cubstorage
 	  {
 	    std::memmove (m_array.data () + i, m_array.data () + i + 1, sizeof (bestspace_entry) * (m_size - i - 1));
 	    m_size--;
-	    break;
+	    return true;
 	  }
       }
+
+    return false;
   }
 
   void
@@ -1409,11 +1480,7 @@ namespace cubstorage
 
     // strategy
     consume_size = static_cast<int> (size) + SPAGE_SLOT_SIZE;
-    needed_size = consume_size + m_unfill_space;
-    if (needed_size > heap_nonheader_page_capacity ())
-      {
-	needed_size = consume_size;
-      }
+    needed_size = get_needed_size (consume_size);
     if (m_distributed_insert)
       {
 	shard = static_cast<std::size_t> (thread_ref.index) % m_shards.size ();
@@ -1483,6 +1550,63 @@ namespace cubstorage
 	  }
       }
     return tier::FS8;
+  }
+
+  int
+  bestspace::get_needed_size (int consume_size) const
+  {
+    int needed_size = consume_size + m_unfill_space;
+
+    // a record that cannot fit above the unfill reservation still gets a page
+    if (needed_size > heap_nonheader_page_capacity ())
+      {
+	return consume_size;
+      }
+    return needed_size;
+  }
+
+  void
+  bestspace::update_freespace (VPID vpid, std::uint16_t freespace, int &l1_pos)
+  {
+    bestspace_entry candidate;
+    std::size_t i, entry_index;
+
+    candidate.freespace = freespace;
+    candidate.volid = vpid.volid;
+    candidate.pageid = vpid.pageid;
+    m_candidates.update_if_exist (candidate);
+
+    if (l1_pos >= 0)
+      {
+	i = static_cast<std::size_t> (l1_pos) / ENTRIES_PER_SHARD;
+	entry_index = static_cast<std::size_t> (l1_pos) % ENTRIES_PER_SHARD;
+	if (i < m_shards.size () && m_shards[i].update_freespace_at (entry_index, vpid, freespace))
+	  {
+	    return;
+	  }
+	l1_pos = -1;		// unknown; the sweep below re-learns the position
+      }
+
+    for (i = 0; i < m_shards.size (); i++)
+      {
+	entry_index = 0;
+	if (m_shards[i].update_freespace (vpid, freespace, entry_index))
+	  {
+	    l1_pos = static_cast<int> (i * ENTRIES_PER_SHARD + entry_index);
+	  }
+      }
+  }
+
+  void
+  bestspace::add_estimates (cubthread::entry &thread_ref, int num_pages, std::uint64_t recs_num,
+			    std::uint64_t recs_sumlen)
+  {
+    std::size_t shard;
+
+    // any shard may take the count -- get_estimates () sums them all.
+    // find ()'s rule is reused so the count lands on the shard this thread already works on
+    shard = m_distributed_insert ? static_cast<std::size_t> (thread_ref.index) % m_shards.size () : 0;
+    m_shards[shard].add_estimates (num_pages, recs_num, recs_sumlen);
   }
 
   void
