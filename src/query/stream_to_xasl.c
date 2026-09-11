@@ -4184,6 +4184,8 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   outptr_list->eval_prog_idx = NULL;
   outptr_list->eval_prog_state = 0;
   outptr_list->eval_prog_defer = 0;
+  outptr_list->eval_prog_dom_any = false;
+  outptr_list->eval_prog_dom_stamp = 0;
   outptr_list->eval_prog_row_ready = false;
   outptr_list->eval_prog_share_spec = NULL;
 

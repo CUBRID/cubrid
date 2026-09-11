@@ -137,6 +137,12 @@ struct valptr_list_node
   /* rows this list has waited for the plan's DB_TYPE_VARIABLE domains to be resolved by the
    * interpreted path before compiling (expr_compile.h, EXPR_DOMAIN_DEFER_ROWS) */
   int eval_prog_defer;
+  /* a covered column whose plan domain is DB_TYPE_VARIABLE exists, so the program must
+   * resolve that domain from its own result once per execution (the clone restores
+   * DB_TYPE_VARIABLE at every execution end) */
+  bool eval_prog_dom_any;
+  /* the execution (query id) whose domains are already resolved */
+  unsigned long long eval_prog_dom_stamp;
   /* the program already holds the current row: set when the tuple-descriptor pass asks its
    * caller to retry through qdata_copy_valptr_list_to_tuple (), consumed by the very next
    * use of the list so that copy does not evaluate the same row a second time (see

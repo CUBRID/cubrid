@@ -2070,6 +2070,19 @@ expr_scan_operand_type (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
  * address), and its type is taken from the bound value instead.
  ******************************************************************************/
 
+/* The result domain of a node the plan could not type (an expression over a host variable)
+ * is resolved per execution: fetch_peek_arith () evaluates it with a NULL domain -- so no
+ * result coercion -- and then sets the node's domain from the result, and the clone puts
+ * DB_TYPE_VARIABLE back when the execution ends (qexec_clear_regu_var ()).  A compiled step
+ * for such a node therefore carries no domain either: it must not coerce where the
+ * interpreter does not, and a domain resolved while compiling belongs to one execution's
+ * first row, not to every later one. */
+static bool
+expr_regu_domain_per_execution (const REGU_VARIABLE * regu)
+{
+  return (regu != NULL && regu->original_domain != NULL && TP_DOMAIN_TYPE (regu->original_domain) == DB_TYPE_VARIABLE);
+}
+
 static bool
 expr_regu_domain_unresolved_walk (const REGU_VARIABLE * regu, int depth)
 {
@@ -3776,7 +3789,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	   * whose type the kernel already produces (tp_value_cast_internal returns straight
 	   * away when desired_type == original_type, !is_parameterized and src == dest), so
 	   * skip the call; NUMERIC is parameterized (precision/scale) and keeps it */
-	  step->domain = (rtype == DB_TYPE_NUMERIC) ? regu->domain : NULL;
+	  step->domain = ((rtype == DB_TYPE_NUMERIC && !expr_regu_domain_per_execution (regu)) ? regu->domain : NULL);
 	  step->regu = regu;
 	  step->out = (DB_VALUE *) 1;	/* owned slot */
 	  bctx->n_slots++;
