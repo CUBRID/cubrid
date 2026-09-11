@@ -15494,7 +15494,10 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  goto err_exit;
 	}
 
-      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      /* this scope operates on context, so alloc through it rather than parser.
+       * blocks added to context's string_blocks move to parser's own list
+       * after do_prepare_select, for parser_free_parser() to free later. */
+      stmt->sub_host_var_index = (int *) parser_alloc (&context, var_count * sizeof (int));
       if (stmt->sub_host_var_index == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
@@ -15546,6 +15549,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   save_flag = stmt->info.query.is_subquery;
 
   err = do_prepare_select (&context, stmt);
+
+  /* move blocks context added into parser's own list to avoid leaking them. */
+  parser->string_blocks = context.string_blocks;
 
   /* restore the flag */
   stmt->info.query.is_subquery = save_flag;
@@ -22566,7 +22572,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 	    {
 	      goto err;
 	    }
-	  /* check if user is creator or DBA  */
+	  /* check if user is the owner, a member of the owning group, or a DBA */
 	  if (au_is_server_authorized_user (&values[1]))
 	    {
 	      rec_cnt++;
@@ -22586,7 +22592,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
       if (rec_cnt == 0)
 	{
-	  error = ER_DBLINK_SERVER_ALTER_NOT_ALLOWED;	// ER_DBLINK_CANNOT_UPDATE_SERVER
+	  /* Treat "exists but not authorized" as missing - a distinct error would tell the caller that
+	   * this name is taken in another user's schema. The duplicate-name checks read a miss as "this
+	   * name is free", which holds because pt_check_server_owners () has authorized the caller for
+	   * the owner they look up. Query name resolution is what still arrives here unauthorized. */
+	  error = ER_DBLINK_SERVER_NOT_FOUND;
 	}
     }
 

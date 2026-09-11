@@ -50,11 +50,35 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 /*
- * this should be big enough for "largish" select statements to print.
- * It is sized at 8192 less enough to let it fit in 2 blocks with some
- * overhead for malloc headers plus string block header.
+ * Byte size of the header fields in front of a block's string area, alignment padding included.
+ * The field list mirrors struct parser_string_block below; the static_assert under the struct catches drift.
  */
-#define STRINGS_PER_BLOCK (8192-(4*sizeof(long)+sizeof(char *)+40))
+#define STRING_BLOCK_OVERHEAD \
+  DB_ALIGN (sizeof (PARSER_STRING_BLOCK *)	/* the next pointer */ \
+	    + 3 * sizeof (int),	/* last_string_start, last_string_end, block_end */ \
+	    sizeof (double))	/* padded up to where the double-aligned union starts */
+
+/*
+ * Byte size of a default block's string area.
+ * Sized so the whole block struct is exactly 8KB.
+ * This should be big enough for "largish" select statements to print.
+ */
+#define STRING_BLOCK_DEFAULT_SIZE (8192-STRING_BLOCK_OVERHEAD)
+
+/*
+ * How many of the newest blocks an allocation checks before taking a new one.
+ * A full scan grows with the statement and rarely finds room: a block that refused one request
+ * keeps refusing the similar ones that follow. The newest few still catch a smaller request
+ * fitting a recent block's tail.
+ */
+#define STRING_BLOCK_SCAN_LIMIT 8
+
+/*
+ * Bytes an oversized block reserves past its one large string.
+ * It lets later appends extend that string in place instead of relocating it.
+ */
+#define LARGE_STRING_APPEND_RESERVE 1001
+
 #define HASH_NUMBER 128
 #define NODES_PER_BLOCK 256
 
@@ -74,20 +98,27 @@ struct parser_node_free_list
   int parser_id;
 };
 
-typedef struct parser_string_block PARSER_STRING_BLOCK;
 struct parser_string_block
 {
   PARSER_STRING_BLOCK *next;
-  int parser_id;
   int last_string_start;
   int last_string_end;
   int block_end;
   union aligned
   {
     double dummy;
-    char chars[STRINGS_PER_BLOCK];
+    char chars[STRING_BLOCK_DEFAULT_SIZE];
   } u;
 };
+
+/* the exact 8KB holds only while STRING_BLOCK_OVERHEAD's field list matches the struct */
+static_assert (sizeof (PARSER_STRING_BLOCK) == 8192, "a default string block must be exactly 8KB");
+
+/* the last string placed in the block */
+#define PT_STRBLK_LAST_STRING(b) (&(b)->u.chars[(b)->last_string_start])
+
+/* bytes still available after the block's last string, for extending it in place */
+#define PT_STRBLK_AVAILABLE_SIZE(b) ((b)->block_end - (b)->last_string_end)
 
 /* Global reserved name table including info for each reserved name */
 PT_RESERVED_NAME pt_Reserved_name_table[] = {
@@ -190,22 +221,23 @@ static pthread_mutex_t parser_id_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static PARSER_NODE_BLOCK *parser_Node_blocks[HASH_NUMBER];
 static PARSER_NODE_FREE_LIST *parser_Node_free_lists[HASH_NUMBER];
-static PARSER_STRING_BLOCK *parser_String_blocks[HASH_NUMBER];
 
 static int parser_id = 1;
 
 static PT_NODE *parser_create_node_block (const PARSER_CONTEXT * parser);
 static void pt_free_node_blocks (const PARSER_CONTEXT * parser);
-static PARSER_STRING_BLOCK *parser_create_string_block (const PARSER_CONTEXT * parser, const int length);
-static void pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * string_to_free);
-static PARSER_STRING_BLOCK *pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string);
-static char *pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
+static PARSER_STRING_BLOCK *parser_create_string_block (PARSER_CONTEXT * parser, const int length);
+static void pt_free_one_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block);
+static PARSER_STRING_BLOCK *pt_find_block_by_last_string (const PARSER_CONTEXT * parser, const char *old_string);
+static PARSER_STRING_BLOCK *pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length,
+							    const int align);
+static char *pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 				   const int wrap_with_single_quote);
-static PARSER_VARCHAR *pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
-					    const char *new_tail, const int new_tail_length);
+static PARSER_VARCHAR *pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const char *new_tail,
+					    const int new_tail_length);
 static int pt_register_parser (const PARSER_CONTEXT * parser);
 static void pt_unregister_parser (const PARSER_CONTEXT * parser);
-static void pt_free_string_blocks (const PARSER_CONTEXT * parser);
+static void pt_free_string_blocks (PARSER_CONTEXT * parser);
 
 /*
  * pt_create_node_block () - creates a new block of nodes, links the block
@@ -367,77 +399,57 @@ pt_free_node_blocks (const PARSER_CONTEXT * parser)
 }
 
 /*
- * parser_create_string_block () - reates a new block of strings, links the block
- * on the hash list for the parser, and returns the block
+ * parser_create_string_block () - creates a new block of strings, links the block
+ * on the parser's own list, and returns the block
  *   return:
  *   parser(in):
  *   length(in):
  */
 static PARSER_STRING_BLOCK *
-parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
+parser_create_string_block (PARSER_CONTEXT * parser, const int length)
 {
-  int idhash;
   PARSER_STRING_BLOCK *block;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
+  size_t alloc_size;
+  int block_end;
 
-  if (length < (int) STRINGS_PER_BLOCK)
+  if (length < (int) STRING_BLOCK_DEFAULT_SIZE)
     {
-      block = (PARSER_STRING_BLOCK *) malloc (sizeof (PARSER_STRING_BLOCK));
-      if (!block)
-	{
-	  if (parser->jmp_env_active)
-	    {
-	      /* long jump back to routine that set up the jump env for clean up and run down. */
-	      longjmp (((PARSER_CONTEXT *) parser)->jmp_env, 1);
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (PARSER_STRING_BLOCK));
-	      return NULL;
-	    }
-	}
-      block->block_end = STRINGS_PER_BLOCK - 1;
+      alloc_size = sizeof (PARSER_STRING_BLOCK);
+      block_end = STRING_BLOCK_DEFAULT_SIZE - 1;
     }
   else
     {
-      /* This is an unusually large string. Allocate a special block for it, with space for one string, plus some space
-       * for appending to. */
-      block = (PARSER_STRING_BLOCK *) malloc (sizeof (PARSER_STRING_BLOCK) + (length + 1001 - STRINGS_PER_BLOCK));
-      if (!block)
-	{
-	  if (parser->jmp_env_active)
-	    {
-	      /* long jump back to routine that set up the jump env for clean up and run down. */
-	      longjmp (((PARSER_CONTEXT *) parser)->jmp_env, 1);
-	    }
-	  else
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (sizeof (PARSER_STRING_BLOCK) + (length + 1001 - STRINGS_PER_BLOCK)));
-	      return NULL;
-	    }
-	}
-      block->block_end = CAST_BUFLEN (length + 1001 - 1);
+      /* This is an unusually large string.
+       * Allocate a special block for it, with space for one string, plus some space for appending to. */
+      /* the header alone plus the string area this block wants */
+      alloc_size = STRING_BLOCK_OVERHEAD + (length + LARGE_STRING_APPEND_RESERVE);
+      block_end = CAST_BUFLEN (length + LARGE_STRING_APPEND_RESERVE - 1);
     }
 
-  /* remember which parser allocated this block */
-  block->parser_id = parser->id;
+  block = (PARSER_STRING_BLOCK *) malloc (alloc_size);
+  if (!block)
+    {
+      if (parser->jmp_env_active)
+	{
+	  /* long jump back to routine that set up the jump env for clean up and run down. */
+	  longjmp (parser->jmp_env, 1);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+	  return NULL;
+	}
+    }
+
+  block->block_end = block_end;
   block->last_string_start = -1;
   block->last_string_end = -1;
   block->u.chars[0] = 0;
 
-  /* link blocks on the hash list for this id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  block->next = parser_String_blocks[idhash];
-  parser_String_blocks[idhash] = block;
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
+  /* link on the parser's own list, newest first.
+   * The newest block is the one with room, so the allocation scan usually stops at the first node. */
+  block->next = parser->string_blocks;
+  parser->string_blocks = block;
 
   return block;
 }
@@ -458,34 +470,14 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
  * 	copy_of_foo = pt_create_string(parser, strlen(foo));
  */
 void *
-parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align)
+parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const int align)
 {
-  int idhash;
   PARSER_STRING_BLOCK *block;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
-
-  /* find free string list for for this id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  block = parser_String_blocks[idhash];
-  while (block != NULL
-	 && (block->parser_id != parser->id
-	     || ((block->block_end - block->last_string_end) < (length + (align - 1) + 1))))
-    {
-      block = block->next;
-    }
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-
+  block = pt_find_available_string_block (parser, length, align);
   if (block == NULL)
     {
-      block = parser_create_string_block (parser, length + (align - 1) + 1);
+      block = parser_create_string_block (parser, length);
       if (block == NULL)
 	{
 	  return NULL;
@@ -493,86 +485,91 @@ parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, 
     }
 
   /* set start to the aligned length */
-  block->last_string_start = CAST_BUFLEN ((block->last_string_end + (align - 1) + 1) & ~(align - 1));
+  block->last_string_start = CAST_BUFLEN (DB_ALIGN (block->last_string_end + 1, align));
   block->last_string_end = CAST_BUFLEN (block->last_string_start + length);
-  block->u.chars[block->last_string_start] = 0;
+  *PT_STRBLK_LAST_STRING (block) = 0;
 
-  return &block->u.chars[block->last_string_start];
+  return PT_STRBLK_LAST_STRING (block);
 }
 
 
 /*
- * pt_free_a_string_block() - finds a string block, removes it from
- * 			    the hash table linked list frees the memory
+ * pt_free_one_string_block() - finds a string block, removes it from
+ * 			    the parser's own list and frees the memory
  *   return:
  *   parser(in):
- *   string_to_free(in):
+ *   block(in):
  */
 static void
-pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * string_to_free)
+pt_free_one_string_block (PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * block)
 {
-  PARSER_STRING_BLOCK **previous_string;
-  PARSER_STRING_BLOCK *string;
-  int idhash;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
+  PARSER_STRING_BLOCK **prev;
+  PARSER_STRING_BLOCK *curr;
 
-  /* find string holding old_string for for this parse_id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  previous_string = &parser_String_blocks[idhash];
-  string = *previous_string;
-  while (string != string_to_free)
+  /* unlink from the parser's own list */
+  prev = &parser->string_blocks;
+  curr = *prev;
+  while (curr != NULL && curr != block)
     {
-      previous_string = &string->next;
-      string = *previous_string;
+      prev = &curr->next;
+      curr = *prev;
     }
 
-  if (string)
+  if (curr)
     {
-      *previous_string = string->next;
-      free_and_init (string);
+      *prev = curr->next;
+      free_and_init (curr);
     }
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
 }
 
 /*
- * pt_find_string_block () - finds a string block from same parser that
- * 			    has oldstring as its last string
+ * pt_find_block_by_last_string () - finds the block on the parser's own list
+ * 			    whose last string is old_string
  *   return:
  *   parser(in):
  *   old_string(in):
  */
 static PARSER_STRING_BLOCK *
-pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
+pt_find_block_by_last_string (const PARSER_CONTEXT * parser, const char *old_string)
 {
-  PARSER_STRING_BLOCK *string;
-  int idhash;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
+  PARSER_STRING_BLOCK *block;
 
-  /* find string holding old_string for for this parse_id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  string = parser_String_blocks[idhash];
-  while (string != NULL
-	 && (string->parser_id != parser->id || &(string->u.chars[string->last_string_start]) != old_string))
+  /* the parser's own list; the block being appended to is almost always the
+   * newest, so this usually stops at the first node */
+  block = parser->string_blocks;
+  while (block != NULL && PT_STRBLK_LAST_STRING (block) != old_string)
     {
-      string = string->next;
+      block = block->next;
     }
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
 
-  return string;
+  return block;
+}
+
+/*
+ * pt_find_available_string_block () - scans the newest few blocks of the parser's own
+ * list for one whose aligned placement of a new string stays within the block
+ *   return: a block with enough available bytes, or NULL if none of the scanned blocks fits
+ *   parser(in):
+ *   length(in): length of the string to place
+ *   align(in): alignment the placement will round up to
+ */
+static PARSER_STRING_BLOCK *
+pt_find_available_string_block (const PARSER_CONTEXT * parser, const int length, const int align)
+{
+  PARSER_STRING_BLOCK *candidate;
+  int scanned;
+
+  /* the list holds only this parser's blocks, newest first */
+  for (candidate = parser->string_blocks, scanned = 0;
+       candidate != NULL && scanned < STRING_BLOCK_SCAN_LIMIT; candidate = candidate->next, scanned++)
+    {
+      if (DB_ALIGN (candidate->last_string_end + 1, align) + length <= candidate->block_end)
+	{
+	  return candidate;
+	}
+    }
+
+  return NULL;
 }
 
 /*
@@ -591,7 +588,7 @@ pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
  * The given old_string is OVERWRITTEN.
  */
 static char *
-pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
+pt_append_string_for (PARSER_CONTEXT * parser, const char *old_string, const char *new_tail,
 		      const int wrap_with_single_quote)
 {
   PARSER_STRING_BLOCK *string;
@@ -599,7 +596,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, con
   int new_tail_length;
 
   /* here, you know you have two non-NULL pointers */
-  string = pt_find_string_block (parser, old_string);
+  string = pt_find_block_by_last_string (parser, old_string);
   new_tail_length = strlen (new_tail);
   if (wrap_with_single_quote)
     {
@@ -608,7 +605,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, con
 
   /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
-  if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
+  if ((string == NULL) || (PT_STRBLK_AVAILABLE_SIZE (string) < new_tail_length))
     {
       s = (char *) parser_allocate_string_buffer (parser, strlen (old_string) + new_tail_length, sizeof (char));
       if (s == NULL)
@@ -633,7 +630,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, con
 	  && string->last_string_start == 0)
 	{
 	  /* old_string is the only contents of string, free it. */
-	  pt_free_a_string_block (parser, string);
+	  pt_free_one_string_block (parser, string);
 	}
     }
   else
@@ -652,7 +649,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, con
 	  strcpy (s, new_tail);
 	}
       string->last_string_end += new_tail_length;
-      s = &string->u.chars[string->last_string_start];
+      s = PT_STRBLK_LAST_STRING (string);
     }
 
   return s;
@@ -677,7 +674,7 @@ pt_append_string_for (const PARSER_CONTEXT * parser, const char *old_string, con
  * or parser_free_strings.
  */
 static PARSER_VARCHAR *
-pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const char *new_tail,
+pt_append_bytes_for (PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, const char *new_tail,
 		     const int new_tail_length)
 {
   PARSER_STRING_BLOCK *string;
@@ -689,11 +686,11 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
     }
 
   /* here, you know you have two non-NULL pointers */
-  string = pt_find_string_block (parser, (char *) old_string);
+  string = pt_find_block_by_last_string (parser, (char *) old_string);
 
   /* if we did not find old_string at the end of a string buffer, or if there is not room to concatenate the tail, copy
    * both to new string */
-  if ((string == NULL) || ((string->block_end - string->last_string_end) < new_tail_length))
+  if ((string == NULL) || (PT_STRBLK_AVAILABLE_SIZE (string) < new_tail_length))
     {
       s = (char *) parser_allocate_string_buffer (parser,
 						  offsetof (PARSER_VARCHAR,
@@ -717,7 +714,7 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
 	  && string->last_string_start == 0)
 	{
 	  /* old_string is the only contents of string, free it. */
-	  pt_free_a_string_block (parser, string);
+	  pt_free_one_string_block (parser, string);
 	}
     }
   else
@@ -730,7 +727,7 @@ pt_append_bytes_for (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string,
       old_string->bytes[old_string->length] = 0;	/* nul terminate */
 
       string->last_string_end += (int) new_tail_length;
-      s = &string->u.chars[string->last_string_start];
+      s = PT_STRBLK_LAST_STRING (string);
     }
 
   return old_string;
@@ -956,7 +953,8 @@ parser_alloc (const PARSER_CONTEXT * parser, const int length)
 
   void *pointer;
 
-  pointer = parser_allocate_string_buffer (parser, length + sizeof (long), sizeof (double));
+  /* the public API stays const for its callers; the block list this fills is the parser's own */
+  pointer = parser_allocate_string_buffer ((PARSER_CONTEXT *) parser, length + sizeof (long), sizeof (double));
   if (pointer)
     memset (pointer, 0, length);
 
@@ -990,7 +988,8 @@ pt_append_string (const PARSER_CONTEXT * parser, const char *old_string, const c
     }
   else if (old_string == NULL)
     {
-      s = (char *) parser_allocate_string_buffer (parser, strlen (new_tail), sizeof (char));
+      /* the public API stays const for its callers; the block list this fills is the parser's own */
+      s = (char *) parser_allocate_string_buffer ((PARSER_CONTEXT *) parser, strlen (new_tail), sizeof (char));
       if (s == NULL)
 	{
 	  return NULL;
@@ -999,7 +998,7 @@ pt_append_string (const PARSER_CONTEXT * parser, const char *old_string, const c
     }
   else
     {
-      s = pt_append_string_for (parser, old_string, new_tail, false);
+      s = pt_append_string_for ((PARSER_CONTEXT *) parser, old_string, new_tail, false);
     }
 
   return s;
@@ -1021,6 +1020,7 @@ pt_append_bytes (const PARSER_CONTEXT * parser, PARSER_VARCHAR * old_string, con
 
   if (old_string == NULL)
     {
+      /* the public API stays const for its callers; the block list this fills is the parser's own */
       old_string =
 	(PARSER_VARCHAR *) parser_allocate_string_buffer ((PARSER_CONTEXT *) parser, offsetof (PARSER_VARCHAR, bytes),
 							  sizeof (long));
@@ -1123,42 +1123,19 @@ pt_get_varchar_length (const PARSER_VARCHAR * string)
  *   parser(in):
  */
 static void
-pt_free_string_blocks (const PARSER_CONTEXT * parser)
+pt_free_string_blocks (PARSER_CONTEXT * parser)
 {
-  int idhash;
   PARSER_STRING_BLOCK *block;
-  PARSER_STRING_BLOCK **previous_block;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
-  /* unlink blocks on the hash list for this id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  previous_block = &parser_String_blocks[idhash];
-  block = *previous_block;
-
+  /* the whole list is this parser's; free it outright */
+  block = parser->string_blocks;
   while (block != NULL)
     {
-      if (block->parser_id == parser->id)
-	{
-	  /* remove it from list, and free it */
-	  *previous_block = block->next;
-	  free_and_init (block);
-	}
-      else
-	{
-	  /* keep it, and move to next block pointer */
-	  previous_block = &block->next;
-	}
-      /* re-establish invariant */
-      block = *previous_block;
+      PARSER_STRING_BLOCK *next = block->next;
+      free_and_init (block);
+      block = next;
     }
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
+  parser->string_blocks = NULL;
 }
 
 

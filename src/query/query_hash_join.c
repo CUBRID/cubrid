@@ -4688,14 +4688,10 @@ hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * mana
   assert (manager->px_worker_stats != NULL);
 
   /* immutable */
-  static const int offsets[] = {
-    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset
-  };
+  const int *offsets = NULL;
 
   task_cnt = manager->num_parallel_threads;
-  stats_cnt = sizeof (offsets) / sizeof (offsets[0]);
+  offsets = perfmon_get_parallel_merged_offsets (&stats_cnt);
 
   for (task_index = 0; task_index < task_cnt; task_index++)
     {
