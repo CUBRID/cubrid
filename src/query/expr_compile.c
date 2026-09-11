@@ -1783,7 +1783,13 @@ expr_literal_same (const DB_VALUE * a, const DB_VALUE * b)
     case DB_TYPE_DOUBLE:
       return memcmp (&a->data.d, &b->data.d, sizeof (double)) == 0;
     case DB_TYPE_NUMERIC:
+      /* A NUMERIC value keeps its sign in the numeric header, NOT in the magnitude buffer
+       * db_locate_numeric () points at (see DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE and
+       * numeric_coerce_num_to_num (), which carries the sign as its own argument).
+       * Comparing only the buffer made 1.5 and -1.5 the same literal, so "n * 1.5,
+       * n * -1.5" shared one step and returned the first column's value twice. */
       return DB_VALUE_PRECISION (a) == DB_VALUE_PRECISION (b) && DB_VALUE_SCALE (a) == DB_VALUE_SCALE (b)
+	&& (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (a) ? 1 : 0) == (DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (b) ? 1 : 0)
 	&& memcmp (db_locate_numeric (a), db_locate_numeric (b), DB_NUMERIC_BUF_SIZE) == 0;
     case DB_TYPE_DATE:
       return *db_get_date (a) == *db_get_date (b);
