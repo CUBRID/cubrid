@@ -173,6 +173,8 @@ struct expr_build_ctx
     int child1, child2, child3;	/* child cell indexes, -1 when absent */
     int cell;
     int guard;			/* the guard the cell is published under (see guards[]); 0 = always */
+    bool commutable;		/* a + b / a * b whose operands are both evaluated on every row: the
+				 * entry also serves the operand-swapped node (expr_cse_find_commuted ()) */
   } cse[EXPR_MAX_STEPS];
   int n_cse;
 
@@ -1670,8 +1672,61 @@ expr_cse_add (EXPR_BUILD_CTX * bctx, const void *id, int opcode, int c1, int c2,
       bctx->cse[bctx->n_cse].child3 = c3;
       bctx->cse[bctx->n_cse].cell = cell;
       bctx->cse[bctx->n_cse].guard = guard;
+      bctx->cse[bctx->n_cse].commutable = false;
       bctx->n_cse++;
     }
+}
+
+/* Commutation.  a + b and b + a (a * b and b * a) compute the same bits for every operand
+ * type the arithmetic arm compiles -- integer and NUMERIC arithmetic is exact before the
+ * rounding step, and IEEE 754 addition and multiplication are commutative -- so a node may
+ * read the cell of its operand-swapped twin.  Not when either side is evaluated
+ * conditionally: "a + b / c" skips b / c for a NULL a while "b / c + a" always computes it
+ * (fetch_peek_arith () fetches the right operand only for a non-NULL left one), so the two
+ * differ in whether a failing b / c raises.  Only entries whose both operands run on every
+ * row are marked commutable (see the arithmetic arm), and only a node whose own right side
+ * is eager may take one.  Associativity is not applied: NUMERIC (a + b) + c and a + (b + c)
+ * round differently. */
+static bool
+expr_arith_commutative (OPERATOR_TYPE opcode)
+{
+  return opcode == T_ADD || opcode == T_MUL;
+}
+
+static int
+expr_cse_find_commuted (EXPR_BUILD_CTX * bctx, int opcode, int c1, int c2, int c3)
+{
+  int i;
+
+  for (i = 0; i < bctx->n_cse; i++)
+    {
+      if (bctx->cse[i].id == NULL && bctx->cse[i].opcode == opcode && bctx->cse[i].commutable
+	  && bctx->cse[i].child1 == c2 && bctx->cse[i].child2 == c1 && bctx->cse[i].child3 == c3
+	  && (bctx->cse[i].guard == 0 || bctx->cse[i].guard == bctx->cur_guard))
+	{
+	  return bctx->cse[i].cell;
+	}
+    }
+  return -1;
+}
+
+/* the result domain of the step that publishes cell (NULL when the step carries none);
+ * a commuted twin may share a NUMERIC cell only when the plan gave both nodes the same
+ * precision and scale (it does -- the result domain of + and * is symmetric in its operands --
+ * but the trailing coercion writes the first node's domain, so verify) */
+static TP_DOMAIN *
+expr_cell_step_domain (const EXPR_BUILD_CTX * bctx, int cell)
+{
+  int i;
+
+  for (i = 0; i < bctx->n_steps; i++)
+    {
+      if ((int) (intptr_t) bctx->steps[i].out_cell == cell && bctx->steps[i].out != NULL)
+	{
+	  return bctx->steps[i].domain;
+	}
+    }
+  return NULL;
 }
 
 /* Inline literals are immutable, so two literal nodes carrying the same value of the same
@@ -3569,6 +3624,18 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    {
 	      return cell;
 	    }
+	  if (!lazy && expr_arith_commutative (arith->opcode))
+	    {
+	      /* the operand-swapped twin, when both nodes evaluate both operands on every row */
+	      cell = expr_cse_find_commuted (bctx, arith->opcode, c1, c2, (int) rtype);
+	      if (cell >= 0
+		  && (rtype != DB_TYPE_NUMERIC
+		      || tp_domain_match (expr_cell_step_domain (bctx, cell), regu->domain, TP_EXACT_MATCH)))
+		{
+		  return cell;
+		}
+	      cell = -1;
+	    }
 	  /* the operand mix is known now: bind the family-specific kernel */
 	  kernel = expr_arith_kernel (arith->opcode, rtype, numeric_pure);
 	  step = expr_new_step_with_cell (bctx, kernel, &cell);
@@ -3603,6 +3670,11 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      check->jump_to = node_idx + 2;
 	    }
 	  expr_cse_add (bctx, NULL, arith->opcode, c1, c2, (int) rtype, cell, bctx->cur_guard);
+	  if (!lazy && expr_arith_commutative (arith->opcode) && bctx->n_cse > 0
+	      && bctx->cse[bctx->n_cse - 1].cell == cell)
+	    {
+	      bctx->cse[bctx->n_cse - 1].commutable = true;
+	    }
 	  *compiled_something = true;
 	  return cell;
 	}
