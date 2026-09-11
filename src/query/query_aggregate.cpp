@@ -918,7 +918,10 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
  * for one binding and not another), so a link is never taken from an earlier execution's
  * program.  Like the regu-based link it needs the accumulator domains resolved.
  *
- * The caller is the serial path (qdata_evaluate_aggregate_list ()).  The parallel BUILDVALUE_OPT hook must NOT link by cell: its
+ * Callers: qdata_evaluate_aggregate_list () (first evaluation of an execution) and the
+ * BUILDVALUE end-of-execution link site in query_executor.c, where develop's
+ * qdata_link_shared_accumulators () resets every link right before finalize and the cell
+ * links must be re-derived (from the same program the rows used).  The parallel BUILDVALUE_OPT hook must NOT link by cell: its
  * write_finalize () merges a worker's accumulators into the coordinator's without
  * propagating shared sums first, and the coordinator (no program) would not know the link.
  * The parallel hash GROUP BY worker is fine: its partial groups leave through

@@ -15488,6 +15488,11 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (buildvalue->agg_list != NULL)
     {
       qdata_link_shared_accumulators (buildvalue->agg_list);
+      /* that reset every link; the ones the compiled operand program derived on this
+       * execution's first evaluation (same cell => same value on every row) are re-derived
+       * from the same, verified program, so the aggregates that skipped accumulating as
+       * sharers receive their owner's sum at finalize (expr_compile.h) */
+      qdata_link_shared_accumulators_by_cell (buildvalue->agg_list);
     }
 
   if (buildvalue->agg_list && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false) != NO_ERROR)
