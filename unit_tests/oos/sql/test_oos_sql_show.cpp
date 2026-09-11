@@ -28,6 +28,11 @@
 
 #include "test_oos_sql_common.hpp"
 
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+void bridge_oos_debug_counters_reset ();
+oos_debug_counters bridge_oos_debug_counters_get ();
+#endif
+
 namespace
 {
   enum show_heap_oos_column
@@ -640,6 +645,328 @@ TEST_F (OosSqlShow, ConstraintFailureAfterOosAllowsNextInsert)
 			       "(id = 1 AND payload = CAST(REPEAT(X'AB', 8192) AS BIT VARYING)) OR "
 			       "(id = 2 AND payload = CAST(REPEAT(X'EF', 8192) AS BIT VARYING))", &matches), NO_ERROR);
   EXPECT_EQ (matches, 2);
+}
+
+TEST_F (OosSqlShow, DuplicateProbesDoNotPersistCandidateValues)
+{
+  for (bool replace :
+       {
+	       true, false
+       })
+    {
+      SCOPED_TRACE (replace ? "REPLACE" : "ON DUPLICATE KEY UPDATE");
+      const char *ddl = replace
+			? "CREATE TABLE t_oos_show_part (k VARCHAR(80) PRIMARY KEY, payload BIT VARYING) "
+			"PARTITION BY RANGE(k) (PARTITION p0 VALUES LESS THAN ('m'), "
+			"PARTITION p1 VALUES LESS THAN MAXVALUE)"
+			: "CREATE TABLE t_oos_show_part (k VARCHAR(80) STORAGE FORCE_OUTLINE PRIMARY KEY, "
+			"payload BIT VARYING) PARTITION BY RANGE(k) (PARTITION p0 VALUES LESS THAN ('m'), "
+			"PARTITION p1 VALUES LESS THAN MAXVALUE)";
+      ASSERT_GE (exec_sql (ddl), 0);
+      const char *sql = replace
+			? "REPLACE INTO t_oos_show_part VALUES('abcdefghijklmnopqrst', REPEAT(X'AB', 8192))"
+			: "INSERT INTO t_oos_show_part VALUES('abcdefghijklmnopqrst', REPEAT(X'AB', 8192)) "
+			"ON DUPLICATE KEY UPDATE payload = REPEAT(X'CD', 8192)";
+      for (int attempt = 0; attempt < 2; ++attempt)
+	{
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+	  bridge_oos_debug_counters_reset ();
+#endif
+	  EXPECT_EQ (exec_sql (sql), attempt == 0 ? 1 : 2);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+	  EXPECT_EQ (bridge_oos_debug_counters_get ().insert_many_requests, replace ? 1U : 2U);
+#endif
+	  DB_QUERY_RESULT *stats = nullptr;
+	  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part", &stats), NO_ERROR);
+	  int count = -1;
+	  EXPECT_EQ (get_int_column (stats, COL_HAS_OOS_FILE, &count), NO_ERROR);
+	  EXPECT_EQ (count, 0) << "A duplicate probe must not create a root-owned OOS file";
+	  db_query_end (stats);
+	  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_part__p__p0", &stats), NO_ERROR);
+	  EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &count), NO_ERROR);
+	  EXPECT_EQ (count, replace ? 1 : 2);
+	  db_query_end (stats);
+	  const char *readback = !replace && attempt == 1
+				 ? "SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrst' "
+				 "AND payload = CAST(REPEAT(X'CD', 8192) AS BIT VARYING)"
+				 : "SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrst' "
+				 "AND payload = CAST(REPEAT(X'AB', 8192) AS BIT VARYING)";
+	  ASSERT_EQ (fetch_single_int (readback, &count), NO_ERROR);
+	  EXPECT_EQ (count, 1);
+	}
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_part"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
+}
+
+TEST_F (OosSqlShow, DuplicateProbesReadCompositeKeys)
+{
+  for (bool replace :
+       {
+	       true, false
+       })
+    {
+      SCOPED_TRACE (replace ? "REPLACE" : "ON DUPLICATE KEY UPDATE");
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (a VARCHAR(100) STORAGE FORCE_OUTLINE, "
+			   "b INT, payload BIT VARYING, UNIQUE(a, b))"), 0);
+      const char *sql = replace
+			? "REPLACE INTO t_oos_show_yes VALUES('abcdefghijklmnopqrst', 1, REPEAT(X'AB', 8192))"
+			: "INSERT INTO t_oos_show_yes VALUES('abcdefghijklmnopqrst', 1, REPEAT(X'AB', 8192)) "
+			"ON DUPLICATE KEY UPDATE payload = REPEAT(X'CD', 8192)";
+      ASSERT_EQ (exec_sql (sql), 1) << db_error_string (1);
+      if (!replace)
+	{
+	  ASSERT_EQ (exec_sql (sql), 2) << db_error_string (1);
+	}
+      DB_QUERY_RESULT *stats = nullptr;
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &stats), NO_ERROR);
+      int count = -1;
+      EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &count), NO_ERROR);
+      EXPECT_EQ (count, 2);
+      db_query_end (stats);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_yes"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
+}
+
+TEST_F (OosSqlShow, DuplicateProbesPreserveFunctionIndexesAndCompressedCompositeKeys)
+{
+  for (bool replace :
+       {
+	       true, false
+       })
+    {
+      for (int kind = 0; kind < 3; ++kind)
+	{
+	  SCOPED_TRACE (replace);
+	  SCOPED_TRACE (kind);
+	  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (a VARCHAR(8000) STORAGE FORCE_OUTLINE, "
+			       "b INT DEFAULT 1, payload BIT VARYING)"), 0);
+	  ASSERT_GE (exec_sql ("CREATE UNIQUE INDEX probe_idx ON t_oos_show_yes(a, b)"), 0);
+	  if (kind < 2)
+	    {
+	      ASSERT_GE (exec_sql (kind == 0 ? "CREATE INDEX function_idx ON t_oos_show_yes(LOWER(a))"
+				   : "CREATE INDEX function_idx ON t_oos_show_yes(LOWER(a), b)"), 0);
+	    }
+	  const char *sql = replace
+			    ? "REPLACE INTO t_oos_show_yes(a, payload) VALUES(REPEAT('Ab', 2000), REPEAT(X'AB', 8192))"
+			    : "INSERT INTO t_oos_show_yes(a, payload) VALUES(REPEAT('Ab', 2000), REPEAT(X'AB', 8192)) "
+			    "ON DUPLICATE KEY UPDATE payload = REPEAT(X'CD', 8192)";
+	  ASSERT_EQ (exec_sql (sql), 1) << db_error_string (1);
+	  if (!replace)
+	    {
+	      ASSERT_EQ (exec_sql (sql), 2) << db_error_string (1);
+	    }
+	  int count = -1;
+	  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE a = REPEAT('Ab', 2000) "
+				       "AND b = 1", &count), NO_ERROR);
+	  EXPECT_EQ (count, 1);
+	  DB_QUERY_RESULT *stats = nullptr;
+	  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &stats), NO_ERROR);
+	  EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &count), NO_ERROR);
+	  EXPECT_EQ (count, 2);
+	  db_query_end (stats);
+	  ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_yes"), 0);
+	  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+	}
+    }
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+TEST_F (OosSqlShow, AbandonedDuplicateCandidateDoesNotWriteOos)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT PRIMARY KEY, payload BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, X'AB')"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  /* The candidate needs OOS, but the actual UPDATE stays inline. A pending failure at the OOS
+   * storage boundary must survive the probe and fire on the next real OOS write. */
+  heap_oos_test_fail_before_vfid_lookup_once ();
+  EXPECT_EQ (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, REPEAT(X'CD', 40000)) "
+		       "ON DUPLICATE KEY UPDATE payload = X'EF'"), 2);
+  DB_QUERY_RESULT *stats = nullptr;
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &stats), NO_ERROR);
+  int count = -1;
+  EXPECT_EQ (get_int_column (stats, COL_HAS_OOS_FILE, &count), NO_ERROR);
+  EXPECT_EQ (count, 0);
+  db_query_end (stats);
+  EXPECT_LT (exec_sql ("INSERT INTO t_oos_show_yes VALUES(2, REPEAT(X'AB', 8192))"), 0);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id = 1 AND payload = X'AB'", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+  ASSERT_EQ (exec_sql ("INSERT INTO t_oos_show_yes VALUES(2, REPEAT(X'CD', 40000))"), 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id = 2 "
+			       "AND payload = CAST(REPEAT(X'CD', 40000) AS BIT VARYING)", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+}
+
+TEST_F (OosSqlShow, DuplicateProbeFailuresLeaveNextWriteUsable)
+{
+  for (bool replace :
+       {
+	       true, false
+       })
+    {
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT PRIMARY KEY, a BIT VARYING, b BIT VARYING) "
+			   "PARTITION BY RANGE(id) (PARTITION p0 VALUES LESS THAN(10), "
+			   "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+      ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES(1, X'AB', X'CD')"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      for (int boundary = 0; boundary < 4; ++boundary)
+	{
+	  SCOPED_TRACE (replace);
+	  SCOPED_TRACE (boundary);
+	  if (boundary == 3)
+	    {
+	      oos_test_fail_insert_many_after_publications (1);
+	    }
+	  else if (boundary == 2)
+	    {
+	      heap_oos_test_fail_before_vfid_lookup_once ();
+	    }
+	  else
+	    {
+	      heap_prepared_row_test_fail_allocation_once (boundary == 0 ? heap_prepared_row_allocation::owner
+		  : heap_prepared_row_allocation::record);
+	    }
+	  const char *sql = replace
+			    ? "REPLACE INTO t_oos_show_part VALUES(1, REPEAT(X'EF', 8192), REPEAT(X'01', 8192))"
+			    : "INSERT INTO t_oos_show_part VALUES(1, REPEAT(X'EF', 8192), REPEAT(X'01', 8192)) "
+			    "ON DUPLICATE KEY UPDATE a = REPEAT(X'23', 8192), b = REPEAT(X'45', 8192)";
+	  EXPECT_LT (exec_sql (sql), 0);
+	  auto *thread_p = thread_get_thread_entry_info ();
+	  EXPECT_TRUE (thread_p->oos_oids.empty ());
+	  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+	  int count = -1;
+	  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE id = 1 AND a = X'AB' "
+				       "AND b = X'CD'", &count), NO_ERROR);
+	  EXPECT_EQ (count, 1);
+	  for (const char *query :
+	       { "SHOW HEAP OOS OF t_oos_show_part", "SHOW HEAP OOS OF t_oos_show_part__p__p0"
+	       })
+	    {
+	      DB_QUERY_RESULT *stats = nullptr;
+	      ASSERT_EQ (show_heap_oos_query (query, &stats), NO_ERROR);
+	      EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &count), NO_ERROR);
+	      EXPECT_EQ (count, 0);
+	      db_query_end (stats);
+	    }
+	  ASSERT_EQ (exec_sql (sql), 2) << db_error_string (1);
+	  const char *readback = replace
+				 ? "SELECT COUNT(*) FROM t_oos_show_part WHERE a = CAST(REPEAT(X'EF', 8192) AS BIT VARYING)"
+				 : "SELECT COUNT(*) FROM t_oos_show_part WHERE a = CAST(REPEAT(X'23', 8192) AS BIT VARYING)";
+	  ASSERT_EQ (fetch_single_int (readback, &count), NO_ERROR);
+	  EXPECT_EQ (count, 1);
+	  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+	}
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_part"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
+}
+#endif
+
+TEST_F (OosSqlShow, DuplicateProbesPreserveLobValuesAndRollback)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_no (c CLOB)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_no VALUES(CHAR_TO_CLOB('source'))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  for (bool replace :
+       {
+	       true, false
+       })
+    {
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT PRIMARY KEY, c CLOB STORAGE FORCE_OUTLINE, "
+			   "payload BIT VARYING)"), 0);
+      ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, CHAR_TO_CLOB('original'), X'AB')"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      const char *sql = replace
+			? "REPLACE INTO t_oos_show_yes SELECT 1, c, REPEAT(X'CD', 40000) FROM t_oos_show_no"
+			: "INSERT INTO t_oos_show_yes SELECT 1, c, REPEAT(X'CD', 40000) FROM t_oos_show_no "
+			"ON DUPLICATE KEY UPDATE c = CHAR_TO_CLOB('updated'), payload = REPEAT(X'EF', 40000)";
+      ASSERT_EQ (exec_sql (sql), 2) << db_error_string (1);
+      int count = -1;
+      ASSERT_EQ (fetch_single_int (replace
+				   ? "SELECT COUNT(*) FROM t_oos_show_yes WHERE CLOB_TO_CHAR(c) = 'source'"
+				   : "SELECT COUNT(*) FROM t_oos_show_yes WHERE CLOB_TO_CHAR(c) = 'updated'", &count), NO_ERROR);
+      EXPECT_EQ (count, 1);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE CLOB_TO_CHAR(c) = 'original'", &count),
+		 NO_ERROR);
+      EXPECT_EQ (count, 1);
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_no WHERE CLOB_TO_CHAR(c) = 'source'", &count), NO_ERROR);
+      EXPECT_EQ (count, 1);
+      ASSERT_EQ (exec_sql (sql), 2) << db_error_string (1);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_yes"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
+}
+
+TEST_F (OosSqlShow, ReplaceProbeReadsOutlinedCandidateAgainstInlineExistingKey)
+{
+  /* Keep the old key inline: standalone DELETE's baseline eager cleanup precedes index-key
+   * reading for already-outlined old keys. Only the new candidate uses FORCE_OUTLINE here. */
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (k VARCHAR(80), b INT, payload BIT VARYING, UNIQUE(k, b))"), 0);
+  ASSERT_EQ (exec_sql ("INSERT INTO t_oos_show_yes VALUES('abcdefghijklmnopqrst', 1, X'AB')"), 1);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_GE (exec_sql ("ALTER TABLE t_oos_show_yes MODIFY k VARCHAR(80) STORAGE FORCE_OUTLINE"), 0);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  bridge_oos_debug_counters_reset ();
+#endif
+  ASSERT_EQ (exec_sql ("REPLACE INTO t_oos_show_yes VALUES('abcdefghijklmnopqrst', 1, REPEAT(X'CD', 8192))"), 2)
+      << db_error_string (1);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  EXPECT_EQ (bridge_oos_debug_counters_get ().insert_many_requests, 2U);
+#endif
+  int count = -1;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE k = 'abcdefghijklmnopqrst' AND b = 1 "
+			       "AND payload = CAST(REPEAT(X'CD', 8192) AS BIT VARYING)", &count), NO_ERROR);
+  EXPECT_EQ (count, 1);
+}
+
+TEST_F (OosSqlShow, DuplicateProbesPreserveMultipleUniqueConstraintsAndForeignKeys)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_no (id INT PRIMARY KEY)"), 0);
+  ASSERT_EQ (exec_sql ("INSERT INTO t_oos_show_no VALUES(1)"), 1);
+  for (bool replace :
+       {
+	       true, false
+       })
+    {
+      SCOPED_TRACE (replace);
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT PRIMARY KEY, k VARCHAR(80) UNIQUE, "
+			   "ref_id INT REFERENCES t_oos_show_no(id), payload BIT VARYING)"), 0);
+      ASSERT_EQ (exec_sql ("INSERT INTO t_oos_show_yes VALUES(1, 'a', 1, X'AB'), (2, 'b', 1, X'CD')"), 2);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      const char *invalid = replace
+			    ? "REPLACE INTO t_oos_show_yes VALUES(1, 'b', 9, REPEAT(X'EF', 8192))"
+			    : "INSERT INTO t_oos_show_yes VALUES(1, 'a', 1, REPEAT(X'EF', 8192)) "
+			    "ON DUPLICATE KEY UPDATE ref_id = 9, payload = REPEAT(X'23', 8192)";
+      EXPECT_LT (exec_sql (invalid), 0);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      int count = -1;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE "
+				   "(id = 1 AND k = 'a' AND payload = X'AB') OR "
+				   "(id = 2 AND k = 'b' AND payload = X'CD')", &count), NO_ERROR);
+      EXPECT_EQ (count, 2);
+      DB_QUERY_RESULT *stats = nullptr;
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &stats), NO_ERROR);
+      EXPECT_EQ (get_int_column (stats, COL_OOS_NUM_RECS, &count), NO_ERROR);
+      EXPECT_EQ (count, 0);
+      db_query_end (stats);
+      const char *valid = replace
+			  ? "REPLACE INTO t_oos_show_yes VALUES(1, 'b', 1, REPEAT(X'EF', 8192))"
+			  : "INSERT INTO t_oos_show_yes VALUES(1, 'a', 1, REPEAT(X'EF', 8192)) "
+			  "ON DUPLICATE KEY UPDATE payload = REPEAT(X'23', 8192)";
+      ASSERT_EQ (exec_sql (valid), replace ? 3 : 2) << db_error_string (1);
+      ASSERT_EQ (fetch_single_int (replace
+				   ? "SELECT COUNT(*) FROM t_oos_show_yes WHERE id = 1 AND k = 'b' "
+				   "AND payload = CAST(REPEAT(X'EF', 8192) AS BIT VARYING)"
+				   : "SELECT COUNT(*) FROM t_oos_show_yes WHERE id = 1 AND k = 'a' "
+				   "AND payload = CAST(REPEAT(X'23', 8192) AS BIT VARYING)", &count), NO_ERROR);
+      EXPECT_EQ (count, 1);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_yes"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
 }
 
 TEST_F (OosSqlShow, UpdateMovementAllocatesOnlyAtDestination)
