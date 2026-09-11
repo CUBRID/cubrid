@@ -462,6 +462,7 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
   TRAN_STATE expected_state;
   LOG_RECTYPE complete_type;
   char new_state;
+  bool has_xa_unsupported = false;
 #ifdef SERVER_MODE
   DBLINK_2PC_COMPLETION *completion = NULL;
   int wait_msec;
@@ -538,9 +539,48 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
       new_state = (*decision) ? DBLINK_2PC_STATE_COMMIT : DBLINK_2PC_STATE_ABORT;
       /* P3: Crash after (2) before (4) UPDATE state - recovery: daemon ABORT then DELETE */
       FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4, 0);
+
+      /* Remove the rows of participants settled with a plain end-tran during send_prepare
+       * (committed on success, rolled back on abort).  No XA-prepared branch exists on
+       * them, so a leftover row would only make recovery deliver an undeliverable XA
+       * decision.  A system operation makes the removal permanent regardless of the local
+       * commit/abort outcome, mirroring the sysop used for the 'P' inserts above.
+       * More than one participant can be marked here, because this loop runs even when
+       * send_prepare refused the transaction: it refuses only after marking every
+       * XA-incapable participant it found.  Clear all of them, not just the first.
+       * has_xa_unsupported keeps that single sysop no matter how many are marked; a
+       * transaction with none never reaches the body, so it pays nothing. */
+      for (i = 0; i < tdes->coord->num_particps; i++)
+	{
+	  if (!participants[i].xa_unsupported)
+	    {
+	      continue;
+	    }
+	  if (!has_xa_unsupported)
+	    {
+	      log_sysop_start (thread_p);
+	      has_xa_unsupported = true;
+	    }
+	  error = dblink_global_tran_delete_row (thread_p, tdes->gtrid, participants[i].conn_handle);
+	  if (error != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      *state = log_abort_local (thread_p, tdes, false);
+	      return error;
+	    }
+	}
+      if (has_xa_unsupported)
+	{
+	  log_sysop_commit (thread_p);
+	}
+
       /* Update _db_global_tran state based on decision */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
+	  if (participants[i].xa_unsupported)
+	    {
+	      continue;
+	    }
 	  error = dblink_global_tran_update_state (thread_p, tdes->gtrid, participants[i].conn_handle, new_state);
 	  if (error != NO_ERROR)
 	    {
@@ -579,9 +619,21 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
        * completion simply means we do not wait - the daemon still delivers, as it does today. */
       completion = dblink_2pc_completion_create (tdes->coord->num_particps);
 #endif
-      /* Enqueue one entry per participant for daemon (only failed participants are retried) */
+      /* Enqueue one entry per participant for daemon (only failed participants are retried).
+       * Participants settled with a plain end-tran have no XA branch to deliver a decision
+       * to (their _db_global_tran rows were already removed above) - skip them. */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
+	  if (participants[i].xa_unsupported)
+	    {
+#ifdef SERVER_MODE
+	      /* No XA decision is coming for it, so nothing else would settle its share
+	       * of the wait below. */
+	      dblink_2pc_completion_ref (completion);
+	      dblink_2pc_completion_settle (completion);
+#endif
+	      continue;
+	    }
 #ifdef SERVER_MODE
 	  dblink_2pc_completion_ref (completion);
 	  if (dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i], completion) != NO_ERROR)
