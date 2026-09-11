@@ -7110,6 +7110,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   int packed_key_value_len;
   HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
+  bool row_topop_active = false;
 
   thread_p->oos_oids.clear ();
 
@@ -7165,9 +7166,20 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  HFID_COPY (&prev_hfid, &obj->hfid);
 	}
 
-      error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
-      if (error_code != NO_ERROR)
+      /* OOS items and their following heap row are one atomic apply operation. */
+      if (!row_topop_active)
 	{
+	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  row_topop_active = true;
+	}
+      else if (!LC_IS_FLUSH_INSERT (obj->operation) && !LC_IS_FLUSH_UPDATE (obj->operation))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
 	  goto exit_on_error;
 	}
 
@@ -7265,10 +7277,12 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  num_continue_on_error++;
 
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
+	  row_topop_active = false;
 	}
-      else
+      else if (obj->operation != LC_FLUSH_INSERT_OOS)
 	{
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
+	  row_topop_active = false;
 	}
       pr_clear_value (&key_value);
 
@@ -7276,6 +7290,14 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	{
 	  thread_p->oos_oids.clear ();
 	}
+    }
+
+  if (row_topop_active)
+    {
+      /* The copy-area producer must not split an OOS group from its heap row. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error_code = ER_GENERIC_ERROR;
+      goto exit_on_error;
     }
 
   if (force_scancache != NULL)
@@ -7308,6 +7330,10 @@ exit_on_error:
       locator_end_force_scan_cache (thread_p, force_scancache);
     }
 
+  if (row_topop_active)
+    {
+      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
+    }
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
   return error_code;
@@ -8255,7 +8281,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	  if (heap_recdes_contains_oos (recdes))
+	  /* DELETE carries only the key; its old OOS values are not insert publications. */
+	  if (is_insert && heap_recdes_contains_oos (recdes))
 	    {
 	      // insert oos replication log
 	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
