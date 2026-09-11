@@ -171,6 +171,8 @@ namespace cubxasl
     void *scan_prog;
     int scan_prog_state;	/* 0 = not tried yet, 1 = active, 2 = keep the interpreted path */
     unsigned int scan_prog_gen;	/* bumped on every compile; consumers sharing its slots record it */
+    int scan_prog_defer;	/* rows waited for the plan's DB_TYPE_VARIABLE domains to be resolved
+				 * by the interpreted path (expr_compile.h, EXPR_DOMAIN_DEFER_ROWS) */
 
     void clear_xasl ();
   };

@@ -216,6 +216,20 @@ extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VAR
 					   val_descr * vd, bool allow_fallback_roots, bool allow_wired_only,
 					   bool only_compute_roots, int *root_idx_out, const void *share_spec);
 
+/* Number of rows a consumer may wait for the plan's DB_TYPE_VARIABLE domains to be
+ * resolved by the interpreted path before it compiles with whatever it has.  One row is
+ * enough for an operand that is not NULL on the first row; the rest of the budget covers a
+ * few leading NULLs. */
+#define EXPR_DOMAIN_DEFER_ROWS 4
+
+/* true when a computing node under this root still carries an unresolved (DB_TYPE_VARIABLE)
+ * result domain, which the interpreted path fixes in place on the row it first evaluates
+ * the node.  A consumer that sees this defers its compile by a row (up to
+ * EXPR_DOMAIN_DEFER_ROWS) rather than declining for the whole execution, so an expression
+ * over a host variable is compiled instead of being left interpreted. */
+extern bool expr_regu_domain_unresolved (const REGU_VARIABLE * regu);
+extern bool expr_pred_domain_unresolved (const PRED_EXPR * pr, int depth);
+
 /* true when the program's recorded host-variable type signature matches vd.  Walks every
  * bound value, so consumers call it through expr_prog_signature_ok () below rather than
  * per row. */

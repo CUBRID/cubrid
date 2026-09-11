@@ -427,12 +427,29 @@ qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_li
   int n = 0, k;
   EXPR_PROG *prog;
 
-  valptr_list_p->eval_prog_state = 2;	/* disabled unless everything below succeeds */
-
   if (valptr_list_p->valptr_cnt <= 0 || valptr_list_p->valptr_cnt > (int) DIM (roots))
     {
+      valptr_list_p->eval_prog_state = 2;
       return;
     }
+
+  /* An expression over a host variable has no resolved result domain until the interpreted
+   * path evaluates it once (expr_compile.h).  Leave the state untried so this row runs
+   * interpreted and the next one compiles against the domain the interpreter resolved,
+   * instead of declining the whole list for the execution. */
+  if (valptr_list_p->eval_prog_defer < EXPR_DOMAIN_DEFER_ROWS)
+    {
+      for (reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next)
+	{
+	  if (expr_regu_domain_unresolved (&reg_var_p->value))
+	    {
+	      valptr_list_p->eval_prog_defer++;
+	      return;
+	    }
+	}
+    }
+
+  valptr_list_p->eval_prog_state = 2;	/* disabled unless everything below succeeds */
 
   for (reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next)
     {
@@ -531,6 +548,9 @@ qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_lis
 	   * whose slots it reads was recompiled: recompile */
 	  qdata_free_valptr_list_prog (thread_p, valptr_list_p);
 	  valptr_list_p->eval_prog_state = 0;
+	  /* a recompile starts its own deferral budget: the domains this execution resolves
+	   * are the ones the new program must be specialized for */
+	  valptr_list_p->eval_prog_defer = 0;
 	  qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
 	  prog = (valptr_list_p->eval_prog_state == 1) ? (EXPR_PROG *) valptr_list_p->eval_prog : NULL;
 	}

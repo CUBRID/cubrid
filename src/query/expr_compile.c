@@ -2018,13 +2018,140 @@ expr_pred_generic_cmp_type (DB_TYPE type)
 
 /* the static type of a scan-filter operand: its plan-time domain, or UNKNOWN */
 static DB_TYPE
-expr_scan_operand_type (const REGU_VARIABLE * regu)
+expr_scan_operand_type (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 {
-  if (regu == NULL || regu->domain == NULL)
+  if (regu == NULL)
+    {
+      return DB_TYPE_UNKNOWN;
+    }
+  if (regu->type == TYPE_POS_VALUE && bctx != NULL && bctx->vd != NULL && regu->value.val_pos < bctx->vd->dbval_cnt)
+    {
+      /* A host variable's regu carries no resolved domain: the plan leaves it
+       * DB_TYPE_VARIABLE and the interpreted fetch of a TYPE_POS_VALUE never resolves one
+       * either (it only publishes the bound value's address).  Its type is therefore the
+       * bound value's -- the same source expr_leaf_type () uses for the arithmetic
+       * compiler -- and the tree records it in its signature, so an execution that binds
+       * another type recompiles (expr_scan_pred_signature_ok ()).  Within one execution a
+       * drifting operand is still caught per row by the leaf's type guard, which is always
+       * armed for a TYPE_POS_VALUE side. */
+      return DB_VALUE_DOMAIN_TYPE (&bctx->vd->dbval_ptr[regu->value.val_pos]);
+    }
+  if (regu->domain == NULL)
     {
       return DB_TYPE_UNKNOWN;
     }
   return TP_DOMAIN_TYPE (regu->domain);
+}
+
+/******************************************************************************
+ * deferring a compile until the plan's variable domains are resolved
+ *
+ * The optimizer cannot type an expression over a host variable: the bound type is unknown
+ * when the plan is built, so the node's result domain stays DB_TYPE_VARIABLE.  The
+ * interpreted path resolves it in place on the first row that evaluates the node
+ * (fetch_peek_arith () -> tp_domain_resolve_value ()), and the clone puts the original
+ * domain back when the execution ends (qexec_clear_regu_var ()).
+ *
+ * The compiler picks its kernels from that domain, so before this it could only decline --
+ * and a declined list stays declined for the whole execution, which left every projection
+ * and data filter that mentions a host variable on the interpreted path.  A consumer that
+ * meets an unresolved domain now defers by a row instead: after one interpreted row the
+ * domain is exactly the one the interpreter chose, and the program is specialized for it.
+ * The aggregate operands already got that order for free -- qexec_resolve_domains_for_
+ * aggregation () fetches the operand interpreted before the first compile.
+ *
+ * The deferral is bounded: a node the rows never reach (a branch of a CASE, an operand that
+ * is NULL on every row read so far) would otherwise be retried for ever, so after
+ * EXPR_DOMAIN_DEFER_ROWS attempts the consumer compiles with what it has -- which declines
+ * exactly as it did before -- and stops asking.
+ *
+ * A host-variable leaf is deliberately not counted as unresolved: its domain stays
+ * DB_TYPE_VARIABLE for ever (the TYPE_POS_VALUE fetch only publishes the bound value's
+ * address), and its type is taken from the bound value instead.
+ ******************************************************************************/
+
+static bool
+expr_regu_domain_unresolved_walk (const REGU_VARIABLE * regu, int depth)
+{
+  const ARITH_TYPE *arith;
+
+  if (regu == NULL || depth > 32)
+    {
+      return false;
+    }
+  switch (regu->type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	{
+	  return true;
+	}
+      arith = regu->value.arithptr;
+      if (arith == NULL)
+	{
+	  return false;
+	}
+      return (expr_regu_domain_unresolved_walk (arith->leftptr, depth + 1)
+	      || expr_regu_domain_unresolved_walk (arith->rightptr, depth + 1)
+	      || expr_regu_domain_unresolved_walk (arith->thirdptr, depth + 1));
+
+    case TYPE_FUNC:
+      {
+	REGU_VARIABLE_LIST op;
+
+	if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	  {
+	    return true;
+	  }
+	for (op = (regu->value.funcp != NULL) ? regu->value.funcp->operand : NULL; op != NULL; op = op->next)
+	  {
+	    if (expr_regu_domain_unresolved_walk (&op->value, depth + 1))
+	      {
+		return true;
+	      }
+	  }
+	return false;
+      }
+
+    default:
+      return false;
+    }
+}
+
+bool
+expr_regu_domain_unresolved (const REGU_VARIABLE * regu)
+{
+  return expr_regu_domain_unresolved_walk (regu, 0);
+}
+
+bool
+expr_pred_domain_unresolved (const PRED_EXPR * pr, int depth)
+{
+  if (pr == NULL || depth > 32)
+    {
+      return false;
+    }
+  switch (pr->type)
+    {
+    case T_PRED:
+      return (expr_pred_domain_unresolved (pr->pe.m_pred.lhs, depth + 1)
+	      || expr_pred_domain_unresolved (pr->pe.m_pred.rhs, depth + 1));
+
+    case T_NOT_TERM:
+      return expr_pred_domain_unresolved (pr->pe.m_not_term, depth + 1);
+
+    case T_EVAL_TERM:
+      if (pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
+	{
+	  return false;
+	}
+      return (expr_regu_domain_unresolved_walk (pr->pe.m_eval_term.et.et_comp.lhs, depth + 1)
+	      || expr_regu_domain_unresolved_walk (pr->pe.m_eval_term.et.et_comp.rhs, depth + 1));
+
+    default:
+      return false;
+    }
 }
 
 /* a term the compiler leaves alone: the interpreted evaluator runs the original subtree,
@@ -2210,8 +2337,8 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	    return expr_scan_pred_interp_leaf (pr, false);
 	  }
 
-	t1 = expr_scan_operand_type (et->lhs);
-	t2 = expr_scan_operand_type (et->rhs);
+	t1 = expr_scan_operand_type (bctx, et->lhs);
+	t2 = expr_scan_operand_type (bctx, et->rhs);
 	db_make_null (&pinned);
 	if (t1 != t2 && t1 != DB_TYPE_UNKNOWN && t2 != DB_TYPE_UNKNOWN && et->rhs->type == TYPE_DBVAL
 	    && !DB_IS_NULL (&et->rhs->value.dbval))

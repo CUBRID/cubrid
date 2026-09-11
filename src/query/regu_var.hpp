@@ -134,6 +134,9 @@ struct valptr_list_node
   void *eval_prog;		/* EXPR_PROG * */
   int *eval_prog_idx;		/* program root index per column, or -1 */
   int eval_prog_state;		/* 0 = untried, 1 = active, 2 = disabled */
+  /* rows this list has waited for the plan's DB_TYPE_VARIABLE domains to be resolved by the
+   * interpreted path before compiling (expr_compile.h, EXPR_DOMAIN_DEFER_ROWS) */
+  int eval_prog_defer;
   /* the program already holds the current row: set when the tuple-descriptor pass asks its
    * caller to retry through qdata_copy_valptr_list_to_tuple (), consumed by the very next
    * use of the list so that copy does not evaluate the same row a second time (see
