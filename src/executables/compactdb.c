@@ -426,8 +426,12 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
   desc_obj = make_desc_obj (class_ptr, -1);
   while (nobjects != nfetched)
     {
+      /* Ask for the stored record: an OOS-backed attribute arrives as its inline stub and is written
+       * back unchanged (DESC_OOS_KEEP_STUB).  Expanding it here would be wrong for a BLOB/CLOB - the
+       * record holds a locator, so payload bytes are not a value of that type - and needless for an
+       * ordinary OOS attribute, which would only be materialized to be re-encoded. */
       if (locator_fetch_all (hfid, &lock, LC_FETCH_MVCC_VERSION, class_oid, &nobjects, &nfetched, &last_oid,
-			     &fetch_area, 1, -1, -1) == NO_ERROR)
+			     &fetch_area, 1, -1, -1, true) == NO_ERROR)
 	{
 	  if (fetch_area != NULL)
 	    {
@@ -439,7 +443,7 @@ process_class (THREAD_ENTRY * thread_p, DB_OBJECT * class_, bool verbose_flag)
 		  class_objects++;
 		  total_objects++;
 		  LC_RECDES_TO_GET_ONEOBJ (fetch_area, obj, &recdes);
-		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj, false) == NO_ERROR)
+		  if (desc_disk_to_obj (class_, class_ptr, &recdes, desc_obj, DESC_OOS_KEEP_STUB) == NO_ERROR)
 		    {
 		      process_object (thread_p, desc_obj, &obj->oid, verbose_flag);
 		    }
