@@ -1350,6 +1350,28 @@ jobs:
             fi
           fi
 
+          # A PL server OOM leaves jvmheapdump.hprof in the mounted CUBRID's log dir.
+          # Check always, not just on failure: the dump proves an OOM even if CTP did
+          # not flag a case, and the pod is torn down seconds from here. Same 1 GiB cap
+          # as cores -- 50 shards share one volume.
+          dumps="$CUBRID_DIR/log"
+          if [ -d "$dumps" ]; then
+            find "$dumps" -maxdepth 1 -type f -name '*.hprof' -print | while read -r hp; do
+              sz=$(stat -c '%s' "$hp")
+              # Every shard writes the same fixed name (pl_sr_jvm.cpp: jvmheapdump.hprof),
+              # so qualify by shard: the dumps stay unique and self-identifying once they
+              # are gathered out of their per-shard results/<IDX>/ dirs.
+              name="shard-${IDX}-$(basename "$hp")"
+              printf 'shard=%s\tfile=%s\tbytes=%s\n' "$IDX" "$name" "$sz" >> "$out/jvm_heapdump.marker"
+              if [ "$sz" -le 1073741824 ]; then
+                cp -f "$hp" "$out/$name" || echo "::warning::could not copy $name"
+                echo "::warning::JVM heap dump kept as $name ($((sz / 1048576)) MB): PL server OOM on shard $IDX"
+              else
+                echo "::warning::JVM heap dump $(basename "$hp") is $((sz / 1048576)) MB, over the 1 GiB cap: recorded, not copied"
+              fi
+            done
+          fi
+
           # Marks that the shard got this far. Without it collect counts it as dead.
           printf 'idx=%s\nassigned=%s\nctp_rc=%s\n' \
             "$IDX" "$MINE_N" "${CTP_RC}" > "$out/shard.done"
@@ -1848,6 +1870,21 @@ jobs:
               echo "### No failed cases"
             fi
             echo
+            # PL server OOM leaves a jvmheapdump.hprof; each shard that saw one wrote a
+            # marker. Surface it here -- an OOM is not an ordinary case failure.
+            hpmark=$(cat "$RUNDIR"/results/*/jvm_heapdump.marker 2>/dev/null || true)
+            if [ -n "$hpmark" ]; then
+              hpn=$(printf '%s\n' "$hpmark" | grep -c . || true)
+              echo "### ⚠ JVM heap dump detected ($hpn)"
+              echo
+              echo "The PL server hit an OutOfMemoryError and wrote a heap dump. Any \`.hprof\` under the"
+              echo "1 GiB cap is kept under the Artifacts link below (pruned 7 days after the run)."
+              echo
+              echo "| shard | file | bytes |"
+              echo "|---|---|---|"
+              printf '%s\n' "$hpmark" | awk -F'\t' 'NF{delete v; for(i=1;i<=NF;i++){split($i,kv,"=");v[kv[1]]=kv[2]} printf "| %s | `%s` | %s |\n", v["shard"], v["file"], v["bytes"]}'
+              echo
+            fi
             echo "---"
             # Next to the published build, not under the run directory: a reused
             # build outlives the run that made it. debug is what the suite mounted.
