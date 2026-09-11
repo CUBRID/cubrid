@@ -88,15 +88,7 @@ class TransactionFixture(LoaderFixture):
         for name in ("cubrid", "cub_server", "csql"):
             resolved = shutil.which(name)
             assert resolved and Path(resolved).resolve() == (installation / "bin" / name).resolve(), (name, resolved, installation)
-        runtime = self.path / "runtime"
-        runtime.mkdir()
-        writable = {"var", "log", "tmp", "databases", "conf"}
-        for child in installation.iterdir():
-            if child.name not in writable:
-                (runtime / child.name).symlink_to(child)
-        for name in writable:
-            (runtime / name).mkdir()
-        self.env["CUBRID"] = str(runtime)
+        self.isolate_runtime(installation)
         # Isolate transaction/recovery ownership from the independent baseline
         # rollback-vacuum defect. This runner does not claim vacuum verification.
         with Path(self.env["CUBRID_CONF_FILE"]).open("a") as out:

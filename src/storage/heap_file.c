@@ -14542,8 +14542,10 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 	}
       else
 	{
+	  /* *INDENT-OFF* */
 	  error = prepared != NULL ? prepared->read_value (atts[i], &value)
 	    : heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
+	  /* *INDENT-ON* */
 	  if (error == NO_ERROR)
 	    {
 	      if (!DB_IS_NULL (&value))
@@ -15106,7 +15108,9 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	  for (int key_i = 0; key_i < n_atts; ++key_i)
 	    {
 	      DB_VALUE value;
+	      /* *INDENT-OFF* */
 	      int error = prepared->read_value (index->atts[key_i], &value);
+	      /* *INDENT-ON* */
 	      if (error != NO_ERROR)
 		{
 		  pr_clear_value (&value);

@@ -45,6 +45,18 @@ class LoaderFixture:
         self.sequence = 0
         print(f"fixture: {self.path}", flush=True)
 
+    def isolate_runtime(self, installation):
+        """Keep node locks and utility logs private while sharing installed binaries."""
+        runtime = self.path / "runtime"
+        runtime.mkdir()
+        writable = {"var", "log", "tmp", "databases", "conf"}
+        for child in installation.iterdir():
+            if child.name not in writable:
+                (runtime / child.name).symlink_to(child)
+        for name in writable:
+            (runtime / name).mkdir()
+        self.env["CUBRID"] = str(runtime)
+
     def run(self, label, args, success=True):
         with (self.path / f"{label}.log").open("w") as log:
             result = subprocess.run(args, cwd=self.path, env=self.env, stdout=log,

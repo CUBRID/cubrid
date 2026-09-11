@@ -40,15 +40,7 @@ class ReplicationFixture:
         # database registry. Give each node a private view of the same binaries.
         installation = Path(os.environ["CUBRID"])
         for node in (self.source, self.replica):
-            runtime = node.path / "runtime"
-            runtime.mkdir()
-            writable = {"var", "log", "tmp", "databases", "conf"}
-            for child in installation.iterdir():
-                if child.name not in writable:
-                    (runtime / child.name).symlink_to(child)
-            for name in writable:
-                (runtime / name).mkdir()
-            node.env["CUBRID"] = str(runtime)
+            node.isolate_runtime(installation)
 
     def launch(self, node, name, args):
         with (node.path / (name + ".log")).open("w") as out:
