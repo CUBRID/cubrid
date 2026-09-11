@@ -788,7 +788,6 @@ namespace cubxasl
 	return nullptr;
       }
 
-    /* TODO: unsupported */
     dest->sig = spawn (src->sig);
 
     dest->args = spawn (src->args);
@@ -800,9 +799,12 @@ namespace cubxasl
   PL_SIGNATURE_TYPE *
   spawner::spawn (const PL_SIGNATURE_TYPE *src)
   {
-    /* TODO: unsupported */
-    assert_release_error (src == nullptr);
-    return nullptr;
+    /* No copy: the workers share the caller's signature. Every user reads it only
+     * (executor holds a const reference and invoke_java copies what it sends), the
+     * object is already shared across executions by the xcache clone, and only the
+     * owning thread's !for_parallel_aptr clear pass deletes it, after all spawned
+     * copies are gone. Not registered in the cache, so the spawner never frees it. */
+    return const_cast<PL_SIGNATURE_TYPE *> (src);
   }
 
   VAL_LIST *

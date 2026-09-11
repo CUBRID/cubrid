@@ -315,7 +315,8 @@ metadata_of_heap_header (SHOW_ONLY_ALL flag)
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
-    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_INTEGER, ARG_REQUIRED}	/* SHOWSTMT_SCAN_MODE */
   };
 
   static SHOWSTMT_METADATA md_only = {
@@ -362,7 +363,8 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
-    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_INTEGER, ARG_REQUIRED}	/* SHOWSTMT_SCAN_MODE */
   };
 
   static SHOWSTMT_METADATA md_only = {
@@ -519,9 +521,12 @@ metadata_of_job_queues (void)
 {
   static const SHOWSTMT_COLUMN cols[] = {
     {"Jobq_index", "int"},
-    {"Num_total_workers", "int"},
-    {"Num_busy_workers", "int"},
-    {"Num_connection_workers", "int"}
+    {"Num_request_concurrency_total", "int"},
+    {"Num_request_concurrency_target", "int"},
+    {"Num_request_concurrency_busy", "int"},
+    {"Num_request_worker_total", "int"},
+    {"Num_request_worker_target", "int"},
+    {"Num_request_worker_busy", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
@@ -839,7 +844,11 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  parser_append_node (partition_node, show_args_node);
+  /* Insert the partition type in front of the scan mode, so that the server always sees the
+   * arguments as [class_name, partition_type, scan_mode] and a request without a scan mode
+   * (an older client) simply falls back to the default. */
+  partition_node->next = show_args_node->next;
+  show_args_node->next = partition_node;
 
   return node;
 }
