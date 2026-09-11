@@ -6324,39 +6324,21 @@ compare_driver (const void *first, const void *second, void *arg)
     }
   else
     {
-      OR_BUF buf_val1, buf_val2;
-      DB_VALUE val1, val2;
+      /* The sort record key is written by data_writeval (), so data_cmpdisk () is the matching reader.
+       * The index_ family is a different byte layout, for the key image on a b+tree page. */
+      assert (tp_valid_indextype (TP_DOMAIN_TYPE (key_type)));
 
-      or_init (&buf_val1, mem1, -1);
-      or_init (&buf_val2, mem2, -1);
+      c = key_type->type->data_cmpdisk (mem1, mem2, key_type, 0, 1, NULL);
 
-      if (key_type->type->data_readval (&buf_val1, &val1, key_type, -1, false, NULL, 0) != NO_ERROR)
+      /* for single-column desc index */
+      if (key_type->is_desc)
 	{
-	  assert (false);
-	  return DB_UNK;
-	}
-
-      if (key_type->type->data_readval (&buf_val2, &val2, key_type, -1, false, NULL, 0) != NO_ERROR)
-	{
-	  assert (false);
-	  return DB_UNK;
-	}
-
-      c = btree_compare_key (&val1, &val2, key_type, 0, 1, NULL);
-
-      /* Clear the values if it is required */
-      if (DB_NEED_CLEAR (&val1))
-	{
-	  pr_clear_value (&val1);
-	}
-
-      if (DB_NEED_CLEAR (&val2))
-	{
-	  pr_clear_value (&val2);
+	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
 	}
     }
 
-  assert (c == DB_LT || c == DB_EQ || c == DB_GT);
+  /* the sort engine reads DB_UNK (-2) as "less than", which would silently break the order */
+  assert_release (c == DB_LT || c == DB_EQ || c == DB_GT);
 
   /* compare OID for non-unique index */
   if (c == DB_EQ)
