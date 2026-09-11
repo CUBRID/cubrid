@@ -345,6 +345,8 @@ static void sort_px_free_shard_inputs (SORT_PX_MERGE_INPUT ** shard_inputs, int 
 static void sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 static BT_LOAD_PX_OUTCOME sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 							SORT_PARAM * sort_param, int parallel_num);
+static void sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, int parallel_num,
+				       bool keep_result_run);
 
 /*
  * sort_spage_initialize () - Initialize a slotted page
@@ -1400,6 +1402,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   /* for parallel sort */
   SORT_PARAM *px_sort_param = NULL;
+  bool px_runs_handed_over = false;
 #if defined(SERVER_MODE)
   pthread_mutex_t px_mtx;	/* px_status mutex */
   pthread_cond_t complete_cond;	/* complete condition */
@@ -1440,6 +1443,14 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 
   sort_param->limit = limit;
   sort_param->tot_tempfiles = 0;
+
+  /* the cleanup path reads these, and the allocations below can jump to it */
+  sort_param->px_type = parallel_type;
+  sort_param->px_extra_arg = px_extra_arg;
+  sort_param->px_sector_scan = NULL;
+  sort_param->px_error_published = false;
+  sort_param->px_parallel_num = 1;
+  sort_param->px_worker_manager = NULL;
 
   /* initialize memory allocable fields */
   for (i = 0; i < SORT_MAX_TOT_FILES; i++)
@@ -1520,10 +1531,6 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->tmp_file_pgs = MAX (1, sort_param->tmp_file_pgs);
 
   sort_param->tde_encrypted = includes_tde_class;
-  sort_param->px_type = parallel_type;
-  sort_param->px_extra_arg = px_extra_arg;
-  sort_param->px_sector_scan = NULL;
-  sort_param->px_error_published = false;
 
   tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
 
@@ -1603,6 +1610,12 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	  goto cleanup;
 	}
 
+      /* the workers are joined and every file but their result runs is dead. Retire before
+       * sort_merge_queue_setup_ctx () reuses the worker parameters and overwrites temp[]. */
+      sort_retire_px_temp_files (thread_p, px_sort_param, sort_param->px_parallel_num, true);
+
+      /* the merge queue / shard build own (and retire) the worker runs from here on */
+      px_runs_handed_over = true;
       error = sort_end_parallelism (thread_p, px_sort_param, sort_param);
       if (error != NO_ERROR)
 	{
@@ -1630,9 +1643,17 @@ cleanup:
 #if defined(SERVER_MODE)
   if (sort_param->px_parallel_num > 1)
     {
-      for (int i = 0; i < sort_param->px_parallel_num; i++)
+      if (!px_runs_handed_over)
 	{
-	  sort_return_used_resources (thread_p, &px_sort_param[i], PX_THREAD_IN_PARALLEL);
+	  sort_retire_px_temp_files (thread_p, px_sort_param, sort_param->px_parallel_num, false);
+	}
+
+      if (px_sort_param != NULL)
+	{
+	  for (int i = 0; i < sort_param->px_parallel_num; i++)
+	    {
+	      sort_return_used_resources (thread_p, &px_sort_param[i], PX_THREAD_IN_PARALLEL);
+	    }
 	}
 
       sort_return_used_resources (thread_p, sort_param, PX_MAIN_IN_PARALLEL);
@@ -6882,6 +6903,53 @@ sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   assert (sort_param->put_fn != NULL);
   sort_param->px_result_file_idx = 0;
   return sort_put_result_from_tmpfile (thread_p, sort_param, 0);
+}
+
+/*
+ * sort_retire_px_temp_files () - Retire the temp files the workers still hold
+ *   return: void
+ *   px_sort_param(in/out): worker parameters
+ *   parallel_num(in): number of workers
+ *   keep_result_run(in): keep each worker's result run, which the merge queue takes over
+ *
+ * Note: Call this only while the workers still own their runs. Once sort_end_parallelism () has
+ *       handed them over, a run may sit in the merge queue or in the main parameters and retiring
+ *       it here would retire it twice.
+ */
+static void
+sort_retire_px_temp_files (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, int parallel_num, bool keep_result_run)
+{
+  int i, k;
+
+  if (px_sort_param == NULL)
+    {
+      return;
+    }
+
+  for (i = 0; i < parallel_num; i++)
+    {
+      for (k = 0; k < px_sort_param[i].tot_tempfiles; k++)
+	{
+	  if (keep_result_run && k == px_sort_param[i].px_result_file_idx)
+	    {
+	      continue;
+	    }
+	  if (px_sort_param[i].temp[k].volid == NULL_VOLID)
+	    {
+	      continue;
+	    }
+
+	  if (file_temp_retire (thread_p, &px_sort_param[i].temp[k]) != NO_ERROR)
+	    {
+	      /* keep the identifier: file_temp_retire () already took the file off the transaction list */
+	      ASSERT_ERROR ();
+	      continue;
+	    }
+
+	  VFID_SET_NULL (&px_sort_param[i].temp[k]);
+	  file_find_nth_cursor_reset (&px_sort_param[i].temp_cursor[k]);
+	}
+    }
 }
 
 /*
