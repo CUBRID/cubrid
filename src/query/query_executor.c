@@ -1227,6 +1227,9 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    {
 	      /* Sharing needs the resolved accumulator domains, so it is linked here. */
 	      qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list);
+	      /* a clone that kept its compiled operand program from an earlier execution
+	       * (expr_compile.h) also shares operands the program evaluates into one cell */
+	      qdata_link_shared_accumulators_by_cell (xasl->proc.buildlist.g_agg_list);
 	    }
 	}
 
@@ -1341,6 +1344,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  /* Sharing needs the resolved accumulator domains, so it is linked here. */
 		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list);
+		  qdata_link_shared_accumulators_by_cell (xasl->proc.buildvalue.agg_list);
 		}
 	    }
 
@@ -15503,6 +15507,7 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   if (buildvalue->agg_list != NULL)
     {
       qdata_link_shared_accumulators (buildvalue->agg_list);
+      qdata_link_shared_accumulators_by_cell (buildvalue->agg_list);
     }
 
   if (buildvalue->agg_list && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false) != NO_ERROR)

@@ -901,6 +901,75 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
 }
 
 /*
+ * qdata_link_shared_accumulators_by_cell () - extend accumulator sharing to operands the
+ *                                             compiled operand program evaluates into the
+ *                                             same cell
+ *   agg_list(in/out): aggregate list of the query (head carries the program)
+ *
+ * qdata_link_shared_accumulators () compares the operand regu trees, so SUM (a + b) and
+ * AVG (b + a), or two operands whose literals are distinct plan nodes with the same value,
+ * accumulate separately.  The compiled program (expr_compile.h) has already resolved such
+ * operands to one cell -- common sub-expressions once, commuted operands, literals by value
+ * -- and a root cell holds the operand's value for the row unconditionally, so two plain
+ * SUM/AVG whose roots are the same cell compute the identical value on every row and may
+ * share exactly like regu-equal ones.  Only adds links; runs after the program exists (the
+ * first row of the first execution, and every later execution start of a clone that kept
+ * its program) and, like the regu-based link, needs the accumulator domains resolved.
+ *
+ * Callers are the serial paths (qdata_evaluate_aggregate_list (), the executor's
+ * execution-start link sites).  The parallel BUILDVALUE_OPT hook must NOT link by cell: its
+ * write_finalize () merges a worker's accumulators into the coordinator's without
+ * propagating shared sums first, and the coordinator (no program) would not know the link.
+ * The parallel hash GROUP BY worker is fine: its partial groups leave through
+ * qdata_save_agg_htable_to_list (), which propagates shared sums before flattening.
+ */
+void
+qdata_link_shared_accumulators_by_cell (cubxasl::aggregate_list_node *agg_list)
+{
+  cubxasl::aggregate_list_node *agg_p, *acc_owner_p;
+  EXPR_PROG *prog;
+  int index, acc_owner_index, root, owner_root;
+
+  if (agg_list == NULL || agg_list->operand_prog_state != 1 || agg_list->operand_prog == NULL
+      || agg_list->operand_prog_idx == NULL)
+    {
+      return;
+    }
+  prog = (EXPR_PROG *) agg_list->operand_prog;
+
+  for (agg_p = agg_list, index = 0; agg_p != NULL; agg_p = agg_p->next, index++)
+    {
+      if (agg_p->accumulator.shared_from != 0 || agg_p->operand_prog_base < 0
+	  || !qdata_agg_may_share_accumulator (agg_p))
+	{
+	  continue;
+	}
+      root = agg_list->operand_prog_idx[agg_p->operand_prog_base];
+      if (root < 0)
+	{
+	  continue;
+	}
+
+      for (acc_owner_p = agg_list, acc_owner_index = 0; acc_owner_p != agg_p;
+	   acc_owner_p = acc_owner_p->next, acc_owner_index++)
+	{
+	  if (acc_owner_p->accumulator.shared_from != 0 || acc_owner_p->operand_prog_base < 0
+	      || !qdata_agg_may_share_accumulator (acc_owner_p)
+	      || acc_owner_p->accumulator_domain.value_dom != agg_p->accumulator_domain.value_dom)
+	    {
+	      continue;
+	    }
+	  owner_root = agg_list->operand_prog_idx[acc_owner_p->operand_prog_base];
+	  if (owner_root >= 0 && prog->root_cells[owner_root] == prog->root_cells[root])
+	    {
+	      agg_p->accumulator.shared_from = acc_owner_index + 1;
+	      break;
+	    }
+	}
+    }
+}
+
+/*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in): aggregate expression node list
@@ -1063,12 +1132,14 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   cubxasl::aggregate_percentile_info *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
   EXPR_PROG *operand_prog = NULL;
+  bool compiled_now = false;
 
   if (agg_list_p != NULL)
     {
       if (agg_list_p->operand_prog_state == 0)
 	{
 	  qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	  compiled_now = true;
 	}
       if (agg_list_p->operand_prog_state == 1)
 	{
@@ -1084,7 +1155,15 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      agg_list_p->operand_prog_state = 0;
 	      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
 	      operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
+	      compiled_now = true;
 	    }
+	}
+      if (compiled_now)
+	{
+	  /* the program now says which operands are one and the same cell: let SUM/AVG over
+	   * them share an accumulator (a hash GROUP BY entry created before this row keeps its
+	   * own links and accumulates such a pair separately -- correct, just not shared) */
+	  qdata_link_shared_accumulators_by_cell (agg_list_p);
 	}
       /* every participating operand of the row is evaluated here, before any aggregate
        * accumulates; see qdata_agg_operand_prog_compile () for why and for the error
