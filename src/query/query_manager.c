@@ -1483,7 +1483,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  if (cached_result)
 	    {
 	      /* found the cached result */
-	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	      if (server_cache_time_p != NULL)
+		{
+		  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+		}
 	    }
 	}
     }
@@ -1667,7 +1670,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  /* record list cache entry into the query entry for qfile_end_use_of_list_cache_entry() */
 	  query_p->list_ent = list_cache_entry_p;
 
-	  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	  if (server_cache_time_p != NULL)
+	    {
+	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	    }
 	}
     }
 

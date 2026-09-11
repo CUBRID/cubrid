@@ -57,6 +57,7 @@
 #include "parser_allocator.hpp"
 #include "tde.h"
 #include "jsp_cl.h"
+#include "xasl.h"
 
 #include <malloc.h>
 
@@ -961,6 +962,21 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
     }
 
   *new_node = *old_node;
+
+  /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
+  new_node->xasl_id = NULL;
+  if (old_node->xasl_id != NULL)
+    {
+      new_node->xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID));
+      if (new_node->xasl_id == NULL)
+	{
+	  PT_ERRORmf (parser, old_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (XASL_ID));
+	  return NULL;
+	}
+
+      XASL_ID_SET_NULL (new_node->xasl_id);
+      XASL_ID_COPY (new_node->xasl_id, old_node->xasl_id);
+    }
 
   /* if node is copied from another parser context, deepcopy string contents */
   if (old_node->parser_id != parser->id)

@@ -15713,6 +15713,19 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
       free (host_variables);
     }
 
+  /* server already cached the result (RESULT_CACHE_REQUIRED); this only triggers that, does not read rows back. */
+  if (list_id != NULL)
+    {
+      cursor_free_self_list_id (list_id);
+    }
+
+  /* only unpins this query from the cache entry; the entry is not cleared and stays for reuse.
+   * skipping this leaks a query entry per call, exhausting max_query_per_tran and raising ER_QM_QENTRY_RUNOUT. */
+  if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+    {
+      qmgr_end_query (query_id);
+    }
+
   if (err == ER_QPROC_RESULT_CACHE_INVALID)
     {
       /* retry the statement once */
