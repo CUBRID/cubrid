@@ -2,18 +2,14 @@
 # Replaces the CircleCI jobs build + build_debug + download-build + test_shell.
 # Both stay live during the migration, so one /run comment can be compared.
 #
-# Trigger, and what each one runs. A pull request builds nothing on its own: asking
-# for the tests is what asks for the build, so the run that tests a commit is the one
-# that builds it. push still builds what it merges or pushes.
+# Trigger, and what each one runs. A pull request builds only what it asks to test.
 #
 #   issue_comment  /run shell | all    build, then the shell suite on the debug build
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; tests always run
 #
-# A pull request sees the build as the commit statuses `gha-ci: build (release)` and
-# `gha-ci: build (debug)`, which build_status posts. A comment run's check runs land
-# on the default branch head and not on the pull request head, so those statuses are
-# the only build result a pull request can carry.
+# A comment run's check runs land on the default branch head, so the pull request
+# gets its build as the commit statuses build_status posts.
 #
 # Any request that runs the suite takes an optional trailing testtools=<branch> --
 # `/run shell testtools=fix/x` or the dispatch input -- and then CTP comes from that
@@ -24,8 +20,7 @@
 # own and always reads the DEFAULT BRANCH, so /run does nothing until this is merged.
 # workflow_dispatch runs the copy in the ref it is given, and appears in the UI only
 # once the default branch carries the file. push runs the pushed commit's copy. No
-# trigger reads the copy a pull request proposes, so a change to this file is tried
-# out on a fork or by dispatch, never by opening the pull request.
+# trigger reads the copy a pull request proposes: change this file on a fork.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
@@ -42,8 +37,6 @@ name: gha-ci
 
 on:
   # Which comments wake this is decided by the gate job; it cannot be narrowed here.
-  # No trigger here reaches a runner from a fork: the gate refuses every author
-  # association but OWNER, MEMBER and COLLABORATOR.
   issue_comment:
     types: [created, edited]
   # Post-merge build. Only develop refreshes the ccache.
@@ -125,9 +118,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 env:
-  # The two checks build_status posts and status_pending marks pending. Defined here
-  # so the pair cannot drift apart: a context that differs between the two jobs is a
-  # required check left pending for good. Quoted, or the colon makes them a mapping.
+  # One definition for two jobs: a pending and a verdict spelling the context
+  # differently never resolve. Quoted, or the colon makes them a mapping.
   CTX_BUILD_RELEASE: "gha-ci: build (release)"
   CTX_BUILD_DEBUG: "gha-ci: build (debug)"
   CI_ROOT: /home/gha-ci
@@ -311,10 +303,9 @@ jobs:
           emit testtools "$tt"
           echo "resolved: event=$EV test=$test_run namespace=$ns ccache_write=$cache_write"
 
-  # The three checks a pull request carries, pending from the earliest point the
-  # answer is unknown. Posted from here and not from build or collect: those run in a
-  # pod that can be evicted, and statuses: write must not reach a runner that
-  # executes testcase code.
+  # The three checks a pull request carries. Posted from here and not from build or
+  # collect: those run in a pod that can be evicted, and statuses: write must not
+  # reach a runner that executes testcase code.
   status_pending:
     name: status (pending)
     needs: gate
@@ -328,7 +319,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SHA: ${{ needs.gate.outputs.sha }}
-          C_SHELL: "gha-ci: test_shell" # quoted: the colon would make it a mapping
+          C_SHELL: "gha-ci: test_shell"
         run: |
           set -eo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
@@ -656,16 +647,13 @@ jobs:
             tail -60 "$f"
           fi
 
-  # The build result the pull request can see. A comment run posts its check runs on
-  # the default branch head, so `build (release)` never lands on the head commit;
-  # this job puts the same verdict there as a commit status instead. GitHub-hosted
-  # like the two status jobs: statuses: write stays off the build pod.
+  # The build verdict on the head commit, which a comment run's check runs never
+  # reach. GitHub-hosted: statuses: write stays off the build pod.
   build_status:
     name: build status
     needs: [gate, build]
-    # !cancelled(), the way plan and collect read it: a superseded run has nothing to
-    # say about this build, and under always() its failure can land after the verdict
-    # of the run that replaced it and leave a passing build red.
+    # !cancelled(), as plan and collect read it: under always() a superseded run's
+    # failure can land after the verdict of the run that replaced it.
     if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -675,7 +663,7 @@ jobs:
     steps:
       - name: Post each build leg to the head commit
         env:
-          GITHUB_TOKEN: ${{ github.token }} # curl below, and gh reads it too
+          GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
@@ -684,12 +672,9 @@ jobs:
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
 
-          # needs.build.result is the whole matrix: one leg failing would take the
-          # other down with it. The legs are read back by job name instead -- the
-          # jobs API returns the most recent execution of each one, so re-running a
-          # single leg still reports the other correctly. Read once, and separately
-          # from the mapping below: a request that fails must not reach a check as a
-          # red build.
+          # needs.build.result is the whole matrix, so the legs come by name; the jobs
+          # API answers with the latest execution of each. Read once and apart from
+          # the mapping: a failed request must not reach a check as a red build.
           legs=$(gh api --paginate "repos/${REPO}/actions/runs/${GITHUB_RUN_ID}/jobs" \
             --jq '.jobs[] | select(.name | startswith("build (")) | [.name, .conclusion] | @tsv') || {
             echo "::error::could not read the jobs of this run; posting nothing"; exit 1; }
@@ -700,8 +685,6 @@ jobs:
             conc=$(printf '%s\n' "$legs" | awk -F'\t' -v n="build ($2)" '$1 == n {print $2}')
             case "$conc" in
               success) state=success; desc="$2 build passed" ;;
-              # Red rather than silent, and loud: a renamed build job would otherwise
-              # leave the check unanswered for good.
               '')      state=failure; desc="no $2 build job in this run"; bad=1 ;;
               *)       state=failure; desc="$2 build $conc -- see the run" ;;
             esac
@@ -718,8 +701,7 @@ jobs:
             if [ "$code" != "201" ]; then
               echo "::error::could not post the status: $1"
               jq -r '.message // .' /tmp/resp.json 2>/dev/null | head -3
-              # No exit: the other context must still get its answer.
-              bad=1
+              bad=1 # no exit: the other context still needs its answer
             fi
           }
 
@@ -1271,9 +1253,8 @@ jobs:
   shard:
     name: "shard ${{ matrix.i }}"
     needs: plan
-    # The same override plan carries, and for the same reason: success() is false
-    # for a failed job anywhere behind this one, so a red release leg would skip
-    # every shard even though plan ran and published the split.
+    # success() is false for a failed job anywhere behind this one, so a red release
+    # leg would skip every shard even though plan published the split.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     # 50 privileged pods running testcase code; testcases arrive via the App token.
     permissions: {}
