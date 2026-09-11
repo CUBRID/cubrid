@@ -21,6 +21,7 @@
  */
 
 #include <algorithm>
+#include <cstdio>
 #include <utility>
 
 #include "heap_prepared_row.hpp"
@@ -931,6 +932,12 @@ TEST_F (OosSqlShow, LoaderQueueRetainsClearedInputsAndRollsBackBulkFailure)
 	  heap_attrinfo_clear_dbvalues (&attrs);
 	}
       heap_attrinfo_end (thread_p, &attrs);
+      std::size_t retained = rows.capacity () * sizeof (heap_prepared_row);
+      for (const auto &row : rows)
+	{
+	  retained += row.retained_bytes ();
+	}
+      std::printf ("prepared queue rows=%zu payload_per_row=%zu retained=%zu\n", rows.size (), payload.size (), retained);
       HEAP_SCANCACHE cache;
       ASSERT_EQ (heap_scancache_start_modify (thread_p, &cache, &hfid, &class_oid, MULTI_ROW_INSERT, nullptr), NO_ERROR);
       int force_count = 0;
@@ -962,6 +969,56 @@ TEST_F (OosSqlShow, LoaderQueueRetainsClearedInputsAndRollsBackBulkFailure)
 				   "payload=CAST(REPEAT('AB',50000) AS BIT VARYING)", &matches), NO_ERROR);
       EXPECT_EQ (matches, 64);
       ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+    }
+}
+
+TEST_F (OosSqlShow, PreparationMemoryAndMoveAssignmentPreserveValues)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+  ASSERT_NE (cls, nullptr);
+  OID class_oid = *db_identifier (cls);
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_info (thread_p, &class_oid, &hfid, nullptr, nullptr), NO_ERROR);
+  ATTR_ID id_attr = db_attribute_id (db_get_attribute (cls, "id"));
+  DB_ATTRIBUTE *payload_attr = db_get_attribute (cls, "payload");
+  for (int size :
+       {
+	       32, 4000, 50000
+       })
+    {
+      heap_prepared_row destination;
+      {
+	HEAP_CACHE_ATTRINFO attrs;
+	ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+	DB_VALUE value;
+	db_make_int (&value, size);
+	ASSERT_EQ (heap_attrinfo_set (nullptr, id_attr, &value, &attrs), NO_ERROR);
+	std::string payload (size, static_cast<char> (0xab));
+	db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), size * 8);
+	ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (payload_attr), &value, &attrs), NO_ERROR);
+	ASSERT_EQ (destination.prepare (thread_p, &attrs), NO_ERROR);
+	heap_prepared_row replacement;
+	ASSERT_EQ (replacement.prepare (thread_p, &attrs), NO_ERROR);
+	heap_attrinfo_end (thread_p, &attrs);
+	db_value_clear (&value);
+	/* Replace an occupied owner, then destroy the displaced owner and all input buffers. */
+	destination = std::move (replacement);
+      }
+      const std::size_t prepared_bytes = destination.retained_bytes ();
+      ASSERT_EQ (destination.finalize (thread_p, &class_oid), NO_ERROR);
+      EXPECT_EQ (destination.retained_bytes (), prepared_bytes);
+      std::printf ("preparation payload=%d retained=%zu final_record=%d\n", size, prepared_bytes,
+		   destination.record ()->length);
+      HEAP_OPERATION_CONTEXT context;
+      heap_create_insert_context (&context, &hfid, &class_oid, destination.record (), nullptr);
+      ASSERT_EQ (heap_insert_logical (thread_p, &context, nullptr), NO_ERROR);
+      int matches = 0;
+      std::string sql = "SELECT COUNT(*) FROM t_oos_show_yes WHERE id=" + std::to_string (size)
+			+ " AND payload=CAST(REPEAT('AB'," + std::to_string (size) + ") AS BIT VARYING)";
+      ASSERT_EQ (fetch_single_int (sql.c_str (), &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
     }
 }
 
