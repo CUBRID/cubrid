@@ -1491,9 +1491,6 @@ jobs:
     # success() is false for a failed job anywhere behind this one: without this a
     # red release leg skips every shard, though plan published the split.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
-    # success() is false for a failed job anywhere behind this one: without this a
-    # red release leg skips all 50 shards, though plan published the split.
-    if: ${{ !cancelled() && needs.plan.result == 'success' }}
     # 50 privileged pods running testcase code; testcases arrive via the App token.
     permissions: {}
     runs-on: cubrid-arc
