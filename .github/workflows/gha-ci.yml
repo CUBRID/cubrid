@@ -1050,11 +1050,17 @@ jobs:
             excl=$(attr "$suite" exclude)
             mode=$(attr "$suite" share_mode)
             par="${PAR:-$(attr "$suite" par_default)}"
-            # Re-running case-level failures goes to one shard, the way CircleCI's
-            # "rerun only failed tests" does: failures are few and 50 pods for three
-            # cases is waste. A directory unit is not few -- one can hold 3,000 cases
-            # -- so it keeps the suite's own width and the clamp below cuts the rest.
-            if [ -n "$RERUN_FROM" ] && [ "$unit" = case ]; then par=1; fi
+            # Every re-run goes to one shard, whatever the suite's width. That is a
+            # runner-pool decision, not a speed one: a re-run spread over the suite's
+            # width holds that many runners and pushes back the start of the first
+            # full run of every other pull request. A longer re-run is the accepted
+            # cost. The known downside is that the one runner is held for longer,
+            # because the lanes are not separated.
+            #
+            # Bounded, and measured: the sql suite's ten shards were 56.5m of runner
+            # time for 17,459 cases, 35.6m of it test work. Re-running every unit on
+            # one shard is therefore about 38m, against a 120m shard timeout.
+            if [ -n "$RERUN_FROM" ]; then par=1; fi
             dir="$WORKDIR/$repo"
             root="$dir/$suite"
             out="$rundir/$suite"
