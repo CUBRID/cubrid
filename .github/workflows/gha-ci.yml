@@ -75,7 +75,7 @@ on:
         default: ""
         type: string
       sabotage:
-        description: "Break the split on purpose to check the guards: none | empty-shard | lose-shard"
+        description: "Break the split on purpose to check the guards: none | empty-shard | lose-shard | kill-shard"
         required: false
         default: "none"
         type: string
@@ -722,8 +722,8 @@ jobs:
             echo "::error::limit must be an integer"; exit 1
           fi
           case "$IN_SAB" in
-            none|empty-shard|lose-shard) ;;
-            *) echo "::error::sabotage must be none|empty-shard|lose-shard"; exit 1 ;;
+            none|empty-shard|lose-shard|kill-shard) ;;
+            *) echo "::error::sabotage must be none|empty-shard|lose-shard|kill-shard"; exit 1 ;;
           esac
           if [ -n "$IN_RERUN" ] && [[ ! "$IN_RERUN" =~ ^[0-9]{1,20}$ ]]; then
             echo "::error::rerun_from must be a run id (integer)"; exit 1
@@ -1116,6 +1116,13 @@ jobs:
               echo "::warning::sabotage=lose-shard, deleting shard 00's share file. shard 00 must fail"
               rm -f "$rundir/shards/00.list"
               ;;
+            kill-shard)
+              # The other two take the share away, so there is nothing left to carry
+              # into a re-run. This one leaves it whole and kills the shard before it
+              # reads anything -- the shape a pod that dies at the hook layer leaves.
+              echo "::warning::sabotage=kill-shard, shard 00 will die with its share intact. shard 00 must fail"
+              : > "$rundir/shards/00.kill"
+              ;;
           esac
 
           # --- matrix ---
@@ -1210,6 +1217,14 @@ jobs:
         run: |
           set -eo pipefail
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/shard-${IDX}.tsv"
+
+          # sabotage=kill-shard. Here, not in a step of its own: dying in the first
+          # step with the share untouched is the shape a pod lost at the hook layer
+          # leaves, and what the re-run has to carry.
+          if [ -f "$RUNDIR/shards/${IDX}.kill" ]; then
+            echo "::error::sabotage=kill-shard: shard ${IDX} is dying on purpose, with its share intact"
+            exit 1
+          fi
 
           # Without shareProcessNamespace, PID 1 never reaps the double-forked server,
           # so `cubrid server stop` waits forever and the job hangs to the timeout.
