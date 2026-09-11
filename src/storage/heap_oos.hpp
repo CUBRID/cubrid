@@ -66,8 +66,12 @@ extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_
 
 /* Grouped lazy OOS Resolve for heap_attrinfo_read_dbvalues (heap_file.c dispatches into it). */
 
-/* Parse an OOS-marked variable attribute's inline reference [OID (8B) | full_length (8B)]. */
-extern int heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid, DB_BIGINT *oos_len);
+/* Parse the OOS inline stub [OID (8B) | full_length (8B) | identity stamp (8B)] of OOS-marked variable
+ * attribute `location` into the chain reference oos_read consumes and the value's full length. The
+ * attribute's field is checked to be exactly one stub inside the record before any of it is read
+ * (CBRD-26950). */
+extern int heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oos_ref,
+				      DB_BIGINT *oos_len);
 
 /* Prefetch requested OOS-marked attributes of an OOS-bearing record through a single oos_read_many()
  * when grouped Resolve applies. The caller filters non-OOS records before entering this helper.
@@ -92,9 +96,23 @@ extern void heap_oos_test_fail_before_vfid_lookup_once ();
 extern void heap_oos_test_disarm_fail_before_vfid_lookup ();
 #endif
 
-/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS
- * records referenced by old_recdes and not referenced by new_recdes (NULL = delete all). */
+/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS value
+ * chains referenced by old_recdes and not referenced by new_recdes (NULL = delete all). A reference
+ * whose target is gone or reused (deallocated or retyped head page, empty head slot, identity stamp
+ * mismatch) is skipped: the DML completes and the error stack stays clean. Skips are reported once per
+ * call as a notification in the server error log, naming how many chains were skipped and describing
+ * the first. A stamp-matching non-head target and operational failures are errors (CBRD-26950). */
 extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
     const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx);
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+/* Observability of the skipped-cleanup diagnostic: how many notifications heap_oos_delete_unreferenced
+ * emitted since the last reset, and the first outcome (-1 when none) and chain count (0 when none) the
+ * last one carried. */
+extern int heap_oos_test_skipped_cleanup_notifications ();
+extern int heap_oos_test_last_skipped_cleanup_outcome ();
+extern int heap_oos_test_last_skipped_cleanup_count ();
+extern void heap_oos_test_reset_skipped_cleanup_diagnostics ();
+#endif
 
 #endif /* _HEAP_OOS_HPP_ */

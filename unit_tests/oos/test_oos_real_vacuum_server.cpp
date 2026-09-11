@@ -77,7 +77,7 @@ int bridge_oos_get_max_chunk_size_within_page ();
 
 static const int HEAP_HDR_SIZE = 8;	/* OR_MVCC_REP_SIZE + OR_CHN_SIZE */
 static const int VOT_ENTRY_SZ = 4;	/* OR_INT_SIZE (4-byte offset mode) */
-static const int OOS_INLINE_SZ = 16;	/* OR_OID_SIZE + OR_BIGINT_SIZE */
+static const int OOS_INLINE_SZ = OR_OOS_INLINE_SIZE;	/* OID + length + identity stamp */
 static const int MVCC_HEADER_SPARE = 2 * OR_MVCCID_SIZE;
 
 static int
@@ -89,7 +89,7 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
   assert (n_oos > 0);
   assert ((int) oos_lengths.size () == n_oos);
 
-  const int vot_bytes = n_oos * VOT_ENTRY_SZ;
+  const int vot_bytes = (n_oos + 1) * VOT_ENTRY_SZ;	/* one entry per attribute plus the terminator */
   const int data_bytes = n_oos * OOS_INLINE_SZ;
   const int total = HEAP_HDR_SIZE + vot_bytes + data_bytes;
 
@@ -111,20 +111,19 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
 
   /* 2. CHN = 0 (already zeroed) */
 
-  /* 3. VOT entries — each stores (offset_from_vot_start | flags) */
+  /* 3. VOT entries — each stores (offset_from_vot_start | flags); the terminator entry after the last
+   * attribute carries OR_VAR_BIT_LAST_ELEMENT and points at the end of the variable area, as the heap
+   * writer lays the table out */
   char *vot = base + HEAP_HDR_SIZE;
   for (int i = 0; i < n_oos; i++)
     {
-      int offset = vot_bytes + i * OOS_INLINE_SZ;
-      int flags = OR_VAR_BIT_OOS;
-      if (i == n_oos - 1)
-	{
-	  flags |= OR_VAR_BIT_LAST_ELEMENT;
-	}
-      OR_PUT_INT (vot + i * VOT_ENTRY_SZ, offset | flags);
+      OR_PUT_INT (vot + i * VOT_ENTRY_SZ, OR_SET_VAR_OOS (vot_bytes + i * OOS_INLINE_SZ));
     }
+  OR_PUT_INT (vot + n_oos * VOT_ENTRY_SZ, OR_SET_VAR_LAST_ELEMENT (vot_bytes + n_oos * OOS_INLINE_SZ));
 
-  /* 4. OOS inline data: OID (8b) + length (8b) per column */
+  /* 4. OOS inline stub: OID (8b) + length (8b) + identity stamp (8b) per column. Every caller in
+   * this file embeds OIDs of really inserted chunks, so the true stamp is always readable
+   * (CBRD-26950). */
   char *oos_data = vot + vot_bytes;
   for (int i = 0; i < n_oos; i++)
     {
@@ -132,6 +131,16 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
       OR_PUT_OID (slot, &oos_oids[i]);
       INT64 len = oos_lengths[i];
       OR_PUT_BIGINT (slot + OR_OID_SIZE, &len);
+
+      LOG_LSA identity_stamp = NULL_LSA;
+      int stamp_err = oos_get_identity_stamp (thread_p, oos_oids[i], &identity_stamp);
+      if (stamp_err != NO_ERROR)
+	{
+	  recdes_free_data_area (&rec_out);
+	  return stamp_err;
+	}
+      INT64 packed_identity_stamp = oos_pack_identity_stamp (identity_stamp);
+      OR_PUT_BIGINT (slot + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
     }
 
   return NO_ERROR;

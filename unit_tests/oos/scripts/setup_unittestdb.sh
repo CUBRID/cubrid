@@ -19,7 +19,7 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-source "$script_dir/oos_unittestdb_common.sh"
+source "$script_dir/oos_db_common.sh"
 
 oos_require_env
 
@@ -43,7 +43,7 @@ fi
 
 oos_remove_fixture_sections "$conf"
 
-if oos_database_exists; then
+if oos_database_exists "$OOS_UNITTESTDB_NAME"; then
   exit 0
 fi
 
@@ -51,6 +51,6 @@ mkdir -p "$CUBRID_DATABASES"
 cp "$conf" "$backup"
 oos_append_fixture_section "$conf"
 
-mkdir -p "$(oos_unittestdb_dir)"
+mkdir -p "$(oos_database_dir "$OOS_UNITTESTDB_NAME")"
 cubrid createdb --db-volume-size=20M --log-volume-size=20M "$OOS_UNITTESTDB_NAME" en_US.utf8 \
-  -F "$(oos_unittestdb_dir)"
+  -F "$(oos_database_dir "$OOS_UNITTESTDB_NAME")"

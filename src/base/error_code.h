@@ -1787,7 +1787,9 @@
 
 #define ER_HEAP_OOS_INVALID_ARGUMENT                -1385
 
-#define ER_LAST_ERROR                               -1386
+#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1386
+
+#define ER_LAST_ERROR                               -1387
 
 
 

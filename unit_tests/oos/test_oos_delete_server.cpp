@@ -97,7 +97,7 @@ TEST (OosDeleteServerTest, OosDeleteBasic)
   int free_before = get_free_space_of_oid_page (oid);
   ASSERT_GE (free_before, 0);
 
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int free_after = get_free_space_of_oid_page (oid);
@@ -126,7 +126,7 @@ TEST (OosDeleteServerTest, OosDeleteThenReadFails)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_out {};
@@ -177,7 +177,7 @@ TEST (OosDeleteServerTest, OosDeleteMultiChunk)
   ASSERT_GE (head_free_before, 0);
   ASSERT_GE (next_free_before, 0);
 
-  err = oos_delete (thread_p, oos_vfid, head_oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, head_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int head_free_after = get_free_space_of_oid_page (head_oid);
@@ -220,7 +220,7 @@ TEST (OosDeleteServerTest, OosUpdatePattern)
 
   ASSERT_NE (old_oid.slotid, new_oid.slotid);
 
-  err = oos_delete (thread_p, oos_vfid, old_oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, old_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* new record must still be readable and unchanged */
@@ -280,7 +280,7 @@ TEST (OosDeleteServerTest, OosDeleteRestoresFreeSpace)
   int free_after_second_insert = get_free_space_of_oid_page (target_oid);
   ASSERT_LT (free_after_second_insert, free_after_first_insert);
 
-  err = oos_delete (thread_p, oos_vfid, target_oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, target_oid);
   ASSERT_EQ (err, NO_ERROR);
 
   int free_after_delete = get_free_space_of_oid_page (target_oid);
@@ -319,7 +319,7 @@ TEST (OosDeleteServerTest, OosDeleteLarge160KBMultiChunk)
   ASSERT_STREQ (rec_check.data, rec_in.data);
   recdes_free_data_area (&rec_check);
 
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES rec_after {};
@@ -364,7 +364,7 @@ TEST (OosDeleteServerTest, OosDeleteSlotBecomesUnknown)
     ASSERT_NE (type_before, REC_UNKNOWN);
   }
 
-  err = oos_delete (thread_p, oos_vfid, oid);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
   /* after deletion: slot becomes REC_UNKNOWN */
@@ -378,6 +378,93 @@ TEST (OosDeleteServerTest, OosDeleteSlotBecomesUnknown)
     INT16 type_after = spage_get_record_type (page_ptr, oid.slotid);
     ASSERT_EQ (type_after, REC_UNKNOWN);
   }
+}
+
+// ============================================================================
+// TC: identity-checked delete under SERVER_MODE (CBRD-26950)
+// ============================================================================
+TEST (OosDeleteServerTest, OosDeleteStampMismatchAndGoneHeadAreCleanNoOps)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  RECDES rec_in {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("Survives a stale delete", rec_in), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_free (&rec_in, recdes_free_data_area);
+
+  OID oid = OID_INITIALIZER;
+  oos_chain_ref live;
+  ASSERT_EQ (oos_insert (thread_p, oos_vfid, oos_buffer (rec_in.data, (std::size_t) rec_in.length), oid,
+			 &live.identity_stamp), NO_ERROR);
+  live.head_oid = oid;
+
+  /* wrong stamp: successful no-op, chunk untouched, error stack clean, no candidate */
+  oos_chain_ref stale = live;
+  stale.identity_stamp = LOG_LSA (live.identity_stamp.pageid + 1, (std::int16_t) live.identity_stamp.offset);
+  std::vector<VPID> emptied;
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_TRUE (emptied.empty ());
+
+  RECDES rec_out {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_out), NO_ERROR);
+  ASSERT_STREQ (rec_out.data, rec_in.data);
+  recdes_free_data_area (&rec_out);
+
+  /* right stamp: reclaimed */
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, live, &emptied), NO_ERROR);
+  RECDES rec_gone {};
+  ASSERT_NE (test_oos_utils::oos_read_with_alloc (thread_p, oid, rec_gone), NO_ERROR);
+  if (rec_gone.data != nullptr)
+    {
+      recdes_free_data_area (&rec_gone);
+    }
+  er_clear ();
+
+  /* gone head: a block-retry replay is a successful no-op with a clean error stack */
+  const std::size_t candidates = emptied.size ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, live, &emptied), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+  EXPECT_EQ (emptied.size (), candidates);
+}
+
+TEST (OosDeleteServerTest, OosDeleteStaleReferenceAfterSlotReuseKeepsLiveChain)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  RECDES rec_old {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("Dead row's value chain", rec_old), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_old (&rec_old, recdes_free_data_area);
+
+  oos_chain_ref stale;
+  ASSERT_EQ (oos_insert (thread_p, oos_vfid, oos_buffer (rec_old.data, (std::size_t) rec_old.length), stale.head_oid,
+			 &stale.identity_stamp), NO_ERROR);
+
+  /* first reclaim; the slot is free again */
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale), NO_ERROR);
+
+  /* a live row's same-size insert reuses the freed slot */
+  RECDES rec_new {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes ("Live row's value chain", rec_new), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_new (&rec_new, recdes_free_data_area);
+
+  oos_chain_ref live;
+  ASSERT_EQ (oos_insert (thread_p, oos_vfid, oos_buffer (rec_new.data, (std::size_t) rec_new.length), live.head_oid,
+			 &live.identity_stamp), NO_ERROR);
+  ASSERT_TRUE (OID_EQ (&live.head_oid, &stale.head_oid)) << "the scenario requires physical slot reuse";
+  ASSERT_FALSE (LSA_EQ (&live.identity_stamp, &stale.identity_stamp));
+
+  /* a block retry replays the stale reference: no-op, live chain untouched */
+  er_clear ();
+  ASSERT_EQ (oos_delete (thread_p, oos_vfid, stale), NO_ERROR);
+  EXPECT_EQ (er_errid (), NO_ERROR);
+
+  RECDES rec_out {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, live.head_oid, rec_out), NO_ERROR);
+  ASSERT_STREQ (rec_out.data, rec_new.data);
+  recdes_free_data_area (&rec_out);
 }
 
 int

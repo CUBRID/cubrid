@@ -462,8 +462,11 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
 #define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
 
-/* OOS inline size: OOS OID (8 bytes) + OOS length (8 bytes) */
-#define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE)
+/* OOS inline stub: head OOS OID (8 bytes) + full length (8 bytes) + identity stamp (8 bytes).
+ * The identity stamp is a LOG_LSA packed into one bigint (oos_pack_identity_stamp, oos_file.hpp)
+ * so the stub stays 8-byte aligned at 24 bytes (CBRD-26950). */
+#define OR_OOS_IDENTITY_STAMP_SIZE OR_BIGINT_SIZE
+#define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE + OR_OOS_IDENTITY_STAMP_SIZE)
 
 /* variable offset */
 
