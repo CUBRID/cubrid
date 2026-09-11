@@ -406,7 +406,7 @@ static CT_ATTR ct_index_atts[] = {
   {"filter_expression", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"have_function", NULL_ATTRID, DB_TYPE_INTEGER},
   {"status", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"referential_index", NULL_ATTRID, DB_TYPE_OBJECT},
+  {"referential_class", NULL_ATTRID, DB_TYPE_OBJECT},
   {"delete_rule", NULL_ATTRID, DB_TYPE_INTEGER},
   {"update_rule", NULL_ATTRID, DB_TYPE_INTEGER},
   {"referential_match_option", NULL_ATTRID, DB_TYPE_INTEGER},
