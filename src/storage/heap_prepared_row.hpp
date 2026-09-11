@@ -43,6 +43,8 @@ class heap_prepared_row
     int read_value (OR_ATTRIBUTE *attribute, DB_VALUE *value) const;
     int finalize (THREAD_ENTRY *thread_p, const OID *destination);
     RECDES *record ();
+    /* Owned allocation sizes, including payloads retained outside the compact record. */
+    std::size_t retained_bytes () const noexcept;
 
   private:
     int prepare_internal (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,

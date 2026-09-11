@@ -5001,7 +5001,15 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
       if (!OID_ISNULL (&superclass_oid))
 	{
-	  granted = lock_subclass (thread_p, &real_class_oid, &superclass_oid, IX_LOCK, LK_UNCOND_LOCK);
+	  /* Loader workers borrow destination BU locks acquired by their session. */
+	  if (has_BU_lock && lock_has_lock_on_object (&real_class_oid, oid_Root_class_oid, BU_LOCK))
+	    {
+	      granted = LK_GRANTED;
+	    }
+	  else
+	    {
+	      granted = lock_subclass (thread_p, &real_class_oid, &superclass_oid, IX_LOCK, LK_UNCOND_LOCK);
+	    }
 	  if (granted != LK_GRANTED)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -14126,10 +14134,10 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }
 
-// *INDENT-OFF*
+/* *INDENT-OFF* */
 int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-			    const std::vector<record_descriptor> &recdes, int has_index, int op_type,
+			    std::vector<heap_prepared_row> &recdes, int has_index, int op_type,
 			    HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
 			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk)
 {
@@ -14152,12 +14160,42 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
   *force_count = 0;
 
+  /* Only nonpartitioned destinations use page bulk logging. Routing and HA
+   * publication are handled row by row by the loader. Finalize all payloads
+   * before allocating/fixing a bulk heap page: OOS lookup fixes the heap header
+   * and must never run while a preallocated heap data page is latched. */
+  assert (pruning_type == DB_NOT_PARTITIONED_CLASS && HA_DISABLED ());
+  scan_cache->cache_last_fix_page = false;
+  if (scan_cache->page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr, &scan_cache->page_watcher);
+    }
+  try
+    {
+      recdes_array.reserve (recdes.size ());
+      heap_pages_array.reserve (recdes.size ());
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+              recdes.size () * (sizeof (RECDES) + sizeof (VPID)));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (auto &row : recdes)
+    {
+      error_code = row.finalize (thread_p, class_oid);
+      if (error_code != NO_ERROR)
+        {
+          return error_code;
+        }
+    }
+
   // Take into account the unfill factor of the heap file.
   heap_max_page_size = heap_nonheader_page_capacity () * (1.0f - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
 
   for (size_t i = 0; i < recdes.size (); i++)
     {
-      local_record = recdes[i].get_recdes ();
+      local_record = *recdes[i].record ();
       // Loop until we insert all records.
 
       if (heap_is_big_length (local_record.length))
@@ -14277,7 +14315,7 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 
   return false;
 }
-// *INDENT-ON*
+/* *INDENT-ON* */
 
 void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
