@@ -42,10 +42,16 @@
 #include <sys/wait.h>
 #include <stdarg.h>
 #include <sys/time.h>
+#include <fcntl.h>
+#include <pthread.h>
 #endif
 
 static T_CMD_RESULT *new_cmd_result (void);
 static void close_all_fds (int init_fd);
+
+#if !defined(WINDOWS)
+static void *_reap_child_async (void *arg);
+#endif
 
 #if defined(WINDOWS)
 static int is_master_start ();
@@ -106,41 +112,61 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file, char
   GetStartupInfo (&start_info);
   start_info.wShowWindow = SW_HIDE;
 
+  /*
+   * mirrors the POSIX side: if a redirect the caller explicitly asked for
+   * can't be set up, fail the whole call instead of silently running the
+   * child with whatever fds it inherited.
+   */
   if (stdin_file)
     {
       hStdIn = CreateFile (stdin_file, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdIn != INVALID_HANDLE_VALUE)
+      if (hStdIn == INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdInput = hStdIn;
-	  inherit_flag = TRUE;
+	  return -1;
 	}
+      SetHandleInformation (hStdIn, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+      start_info.dwFlags = STARTF_USESTDHANDLES;
+      start_info.hStdInput = hStdIn;
+      inherit_flag = TRUE;
     }
   if (stdout_file)
     {
       hStdOut =
 	CreateFile (stdout_file, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdOut != INVALID_HANDLE_VALUE)
+      if (hStdOut == INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdOutput = hStdOut;
-	  inherit_flag = TRUE;
+	  if (hStdIn != INVALID_HANDLE_VALUE)
+	    {
+	      CloseHandle (hStdIn);
+	    }
+	  return -1;
 	}
+      SetHandleInformation (hStdOut, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+      start_info.dwFlags = STARTF_USESTDHANDLES;
+      start_info.hStdOutput = hStdOut;
+      inherit_flag = TRUE;
     }
   if (stderr_file)
     {
       hStdErr =
 	CreateFile (stderr_file, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
 		    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hStdErr != INVALID_HANDLE_VALUE)
+      if (hStdErr == INVALID_HANDLE_VALUE)
 	{
-	  SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
-	  start_info.dwFlags = STARTF_USESTDHANDLES;
-	  start_info.hStdError = hStdErr;
-	  inherit_flag = TRUE;
+	  if (hStdIn != INVALID_HANDLE_VALUE)
+	    {
+	      CloseHandle (hStdIn);
+	    }
+	  if (hStdOut != INVALID_HANDLE_VALUE)
+	    {
+	      CloseHandle (hStdOut);
+	    }
+	  return -1;
 	}
+      SetHandleInformation (hStdErr, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+      start_info.dwFlags = STARTF_USESTDHANDLES;
+      start_info.hStdError = hStdErr;
+      inherit_flag = TRUE;
     }
 
   res =
@@ -185,6 +211,26 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file, char
     }
 }
 #else
+/*
+ * _reap_child_async () - blocks in waitpid () for exactly one child.
+ *
+ * run_child ()'s non-blocking (wait_flag == 0)
+ * one thread's blocking call can flip it out from under
+ * another thread's non-blocking one (or vice versa)
+ */
+static void *
+_reap_child_async (void *arg)
+{
+  int *pid_ptr = (int *) arg;
+  int pid = *pid_ptr;
+
+  free (pid_ptr);
+
+  while (waitpid (pid, NULL, 0) < 0 && errno == EINTR)
+    ;
+  return NULL;
+}
+
 int
 run_child (const char *const argv[], int wait_flag, const char *stdin_file, char *stdout_file, char *stderr_file,
 	   int *exit_status)
@@ -194,49 +240,55 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file, char
   if (exit_status != NULL)
     *exit_status = 0;
 
-  if (wait_flag)
-    signal (SIGCHLD, SIG_DFL);
-  else
-    signal (SIGCHLD, SIG_IGN);
   pid = fork ();
   if (pid == 0)
     {
-      FILE *fp;
+      int fd;
 
       close_all_fds (3);
 
       if (stdin_file != NULL)
 	{
-	  fp = fopen (stdin_file, "r");
-	  if (fp != NULL)
+	  fd = open (stdin_file, O_RDONLY);
+	  if (fd >= 0)
 	    {
-	      dup2 (fileno (fp), 0);
-	      fclose (fp);
+	      dup2 (fd, 0);
+	      close (fd);
+	    }
+	  else
+	    {
+	      _exit (126);
 	    }
 	}
       if (stdout_file != NULL)
 	{
-	  unlink (stdout_file);
-	  fp = fopen (stdout_file, "w");
-	  if (fp != NULL)
+	  fd = open (stdout_file, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0666);
+	  if (fd >= 0)
 	    {
-	      dup2 (fileno (fp), 1);
-	      fclose (fp);
+	      dup2 (fd, 1);
+	      close (fd);
+	    }
+	  else
+	    {
+	      _exit (126);
 	    }
 	}
       if (stderr_file != NULL)
 	{
-	  unlink (stderr_file);
-	  fp = fopen (stderr_file, "w");
-	  if (fp != NULL)
+	  fd = open (stderr_file, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0666);
+	  if (fd >= 0)
 	    {
-	      dup2 (fileno (fp), 2);
-	      fclose (fp);
+	      dup2 (fd, 2);
+	      close (fd);
+	    }
+	  else
+	    {
+	      _exit (126);
 	    }
 	}
 
       execv ((const char *) argv[0], (char *const *) argv);
-      exit (0);
+      _exit (127);		/* when execv () failed, just _exit () immediately */
     }
 
   if (pid < 0)
@@ -245,13 +297,44 @@ run_child (const char *const argv[], int wait_flag, const char *stdin_file, char
   if (wait_flag)
     {
       int status = 0;
-      waitpid (pid, &status, 0);
+      int wait_rc;
+
+      while ((wait_rc = waitpid (pid, &status, 0)) < 0 && errno == EINTR)
+	;
+      if (wait_rc < 0)
+	{
+	  return -1;
+	}
       if (exit_status != NULL)
 	*exit_status = status;
       return 0;
     }
   else
     {
+      pthread_t reaper;
+      int *reap_pid = (int *) malloc (sizeof (int));
+
+      if (reap_pid != NULL)
+	{
+	  *reap_pid = pid;
+	  if (pthread_create (&reaper, NULL, _reap_child_async, reap_pid) == 0)
+	    {
+	      pthread_detach (reaper);
+	    }
+	  else
+	    {
+	      free (reap_pid);
+	      while (waitpid (pid, NULL, 0) < 0 && errno == EINTR)
+		;
+	    }
+	}
+      else
+	{
+	  /* couldn't even allocate the pid holder - fall back to reaping
+	   * it right here rather than leaking a zombie forever */
+	  while (waitpid (pid, NULL, 0) < 0 && errno == EINTR)
+	    ;
+	}
       return pid;
     }
 }
