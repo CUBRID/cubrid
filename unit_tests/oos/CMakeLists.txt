@@ -130,8 +130,13 @@ add_subdirectory(sql)
 
 # Exercise the actual SA loader and CSQL workspace routes, which in-process SQL tests do not cover.
 # Like the database setup fixture, this test requires an installed CUBRID on PATH.
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_test(NAME test_oos_workspace_cli
-  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_workspace_oos.py"
-)
-set_tests_properties(test_oos_workspace_cli PROPERTIES RUN_SERIAL TRUE TIMEOUT 240)
+option(UNIT_TEST_OOS_WORKSPACE_CLI "Enable the OOS workspace CLI regression (requires Python 3.7+)" OFF)
+if(UNIT_TEST_OOS_WORKSPACE_CLI)
+  find_package(Python3 3.7 REQUIRED COMPONENTS Interpreter)
+  add_test(NAME test_oos_workspace_cli
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_workspace_oos.py"
+  )
+  set_tests_properties(test_oos_workspace_cli PROPERTIES RUN_SERIAL TRUE TIMEOUT 240)
+else()
+  message(STATUS "OOS workspace CLI regression disabled; enable with -DUNIT_TEST_OOS_WORKSPACE_CLI=ON")
+endif()
