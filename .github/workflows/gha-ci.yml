@@ -967,6 +967,16 @@ jobs:
                            END {print e + k + 0}' "$st")
               [ "$a" -gt "$h" ] && short=$((short + a - h))
             done
+            # plan.tsv names every shard the split made. A share file that is gone
+            # takes its case names with it, so those can only be counted too --
+            # without this, a lost share file would let this re-run pass in silence.
+            if [ -f "$srcdir/plan.tsv" ]; then
+              while IFS=$'\t' read -r si scnt _; do
+                [ -n "$si" ] || continue
+                [ -f "$srcdir/shards/$si.list" ] && continue
+                short=$((short + scnt))
+              done < "$srcdir/plan.tsv"
+            fi
             unrun=$(wc -l < /tmp/unrun.list)
 
             cut -f2 "$src" | sed 's#^#cubrid-testcases-private-ex/#' > /tmp/want.list
