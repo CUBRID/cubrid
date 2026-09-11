@@ -297,6 +297,8 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static bool stmt_result_set_holds_cursor (char stmt_type);
+static bool call_returns_cursor (const T_PREPARE_CALL_INFO * call_info);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -1245,7 +1247,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
     {
-      srv_handle->has_result_set = true;
+      srv_handle->has_result_set = stmt_result_set_holds_cursor (srv_handle->q_result->stmt_type);
 
       if (srv_handle->is_holdable == true)
 	{
@@ -1572,7 +1574,10 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
       if (has_stmt_result_set (q_result->stmt_type) == true)
 	{
-	  srv_handle->has_result_set = true;
+	  if (stmt_result_set_holds_cursor (q_result->stmt_type))
+	    {
+	      srv_handle->has_result_set = true;
+	    }
 
 	  if (srv_handle->is_holdable == true)
 	    {
@@ -1798,7 +1803,10 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
-  srv_handle->has_result_set = true;
+  /* the return value and the out arguments already went into net_buf above, so the client needs no
+   * further request unless the call handed back a cursor.  only that case has to keep the
+   * transaction open for fetch_call (). */
+  srv_handle->has_result_set = call_returns_cursor (call_info);
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
@@ -1809,6 +1817,14 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
     {
       srv_handle->q_result->is_holdable = true;
       as_info->num_holdable_results++;
+    }
+
+  /* the client may still call fetch_call () for the return value and the out arguments, and that needs
+   * this handle.  a commit keeps the handle only while statement pooling is on or the handle is
+   * holdable; otherwise ux_end_tran_cleanup () frees it, so leave the commit to fetch_call (). */
+  if ((as_info->cur_statement_pooling || srv_handle->is_holdable) && do_commit_after_execute (*srv_handle))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   if (value_list)
@@ -9260,6 +9276,14 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
       net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
     }
 
+  /* everything the client asked for is in net_buf and fetch_end_flag says nothing is left, so the
+   * auto-commit ux_execute_call () had to skip can be done now.  a call that handed back a cursor keeps
+   * has_result_set set: that cursor is a server side query a commit would close. */
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->has_result_set == false)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
   return 0;
 }
 
@@ -10459,6 +10483,68 @@ do_commit_after_execute (const t_srv_handle & server_handle)
     {
       return true;
     }
+}
+
+//
+// stmt_result_set_holds_cursor () - check whether a statement's result set keeps a cursor that an
+//                                   auto-commit right after execute would invalidate.
+//
+// return         : true to leave the commit to the client, false otherwise
+// stmt_type (in) : statement type
+//
+// Note: has_stmt_result_set () answers a different question -- whether the handle can be fetched from --
+//       and is also the gate of ux_fetch (), so it must keep reporting true for CUBRID_STMT_CALL.
+//       A CALL cannot return a cursor here: jsp_cl rejects a RESULTSET return with
+//       ER_SP_CANNOT_RETURN_RESULTSET outside the CCI_PREPARE_CALL path, so the result is a single
+//       materialized DB_VALUE and committing right after execute cannot invalidate it.
+//
+static bool
+stmt_result_set_holds_cursor (char stmt_type)
+{
+  if (stmt_type == CUBRID_STMT_CALL)
+    {
+      return false;
+    }
+
+  return has_stmt_result_set (stmt_type);
+}
+
+//
+// call_returns_cursor () - check whether a CALL executed through ux_execute_call () returned a cursor.
+//
+// return         : true if the return value or an out argument holds a RESULTSET, false otherwise
+// call_info (in) : call info holding the return value and the out arguments
+//
+// Note: only the CCI_PREPARE_CALL path may return a cursor (see jsp_is_prepare_call ()). Such a cursor is
+//       a server side query that a commit would close, so the transaction must stay open for it.
+//
+static bool
+call_returns_cursor (const T_PREPARE_CALL_INFO * call_info)
+{
+  DB_VALUE *val;
+  int i;
+
+  val = (DB_VALUE *) call_info->dbval_ret;
+  if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+    {
+      return true;
+    }
+
+  if (call_info->dbval_args == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      val = ((DB_VALUE **) call_info->dbval_args)[i];
+      if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 static int

@@ -537,7 +537,10 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   net_arg_get_str (&param_mode, &param_mode_size, argv[arg_idx++]);
   if (prepared_srv_h_id != NULL)
     {
-      if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
+      /* CUBRID_STMT_CALL returns a single materialized value; shipping it with the execute reply lets
+       * ux_fetch () close the cursor and commit right away, the way a SELECT already does. */
+      if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT
+	  || srv_handle->q_result->stmt_type == CUBRID_STMT_CALL)
 	{
 	  fetch_flag = 1;
 	}
