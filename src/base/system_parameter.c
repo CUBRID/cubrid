@@ -818,7 +818,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
-// #endregion 
+#define PRM_NAME_MASTER_BIND_ADDRESS "master_bind_address"
+
+// #endregion
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -5539,6 +5541,17 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_MASTER_BIND_ADDRESS,
+   PRM_NAME_MASTER_BIND_ADDRESS,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   PRM_STRING,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.str = NULL}},
+   {false, {.str = (char *) ""}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
