@@ -381,6 +381,11 @@ extern "C"
   extern void csql_killtran (const char *argument);
 
   extern char *csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * csql_arg);
+  extern bool csql_db_value_is_internal_lob_locator (DB_VALUE * value, char *lob_type, const char **locator,
+						     int *locator_len, DB_BIGINT * data_len, DB_BIGINT * bit_length);
+  extern bool csql_db_value_is_internal_lob_stream_marker (DB_VALUE * value, char *lob_type, const char **locator,
+							   int *locator_len, DB_BIGINT * data_len,
+							   DB_BIGINT * bit_length);
 
   extern char *csql_string_to_plain_string (const char *string_value, int length, int *result_length);
 

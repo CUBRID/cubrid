@@ -121,7 +121,9 @@ static T_PROXY_CLIENT_FUNC proxy_client_fn_table[] = {
   fn_proxy_get_shard_info,	/* fn_get_shard_info */
   fn_proxy_client_not_supported,	/* fn_set_cas_change_mode */
   fn_proxy_client_not_supported,	/* fn_stream_send_data */
-  fn_proxy_client_not_supported	/* fn_stream_end */
+  fn_proxy_client_not_supported,	/* fn_stream_end */
+  fn_proxy_client_not_supported,	/* fn_stream_init */
+  fn_proxy_client_not_supported	/* fn_stream_abort */
 };
 
 
@@ -171,7 +173,9 @@ static T_PROXY_CAS_FUNC proxy_cas_fn_table[] = {
   fn_proxy_cas_relay_only,	/* fn_get_shard_info */
   fn_proxy_cas_relay_only,	/* fn_set_cas_change_mode */
   fn_proxy_cas_relay_only,	/* fn_stream_send_data */
-  fn_proxy_cas_relay_only	/* fn_stream_end */
+  fn_proxy_cas_relay_only,	/* fn_stream_end */
+  fn_proxy_cas_relay_only,	/* fn_stream_init */
+  fn_proxy_cas_relay_only	/* fn_stream_abort */
 };
 
 
