@@ -3293,14 +3293,14 @@ vacuum_master_task::is_cursor_entry_ready_to_vacuum () const
       return false;
     }
 
-  if (m_cursor.get_current_entry ().start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid)
+  if (m_cursor.get_current_entry ().start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.load ().pageid)
     {
       // too close to end of log; let more log be appended before trying to vacuum the block
       vacuum_er_log (VACUUM_ER_LOG_JOBS,
                        "Cannot generate job for " VACUUM_LOG_DATA_ENTRY_MSG ("entry") ". "
                        "log_Gl.append.prev_lsa.pageid = %d.",
                        VACUUM_LOG_DATA_ENTRY_AS_ARGS (&m_cursor.get_current_entry ()),
-                       (long long int) log_Gl.append.prev_lsa.pageid);
+                       (long long int) log_Gl.append.prev_lsa.load ().pageid);
       return false;
     }
 
@@ -4472,9 +4472,11 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	{
 	  // we can be here if log has not yet passed first block. one case may be soon after copydb.
 	  assert (log_blockid == VACUUM_NULL_LOG_BLOCKID);
+	  const LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
+
 	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 			 "vacuum_data_load_and_recover: do not update last_blockid; prev_lsa = %lld|%d",
-			 LSA_AS_ARGS (&log_Gl.append.prev_lsa));
+			 (long long int) prev_lsa.pageid, (int) prev_lsa.offset);
 	}
       else if (LSA_ISNULL (&vacuum_Data.recovery_lsa) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
 	{
@@ -7980,7 +7982,7 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "vacuum_sa_reflect_last_blockid: last_blockid=%lld, append_prev_pageid=%d\n",
-		 (long long int) last_blockid, (int) log_Gl.append.prev_lsa.pageid);
+		 (long long int) last_blockid, (int) log_Gl.append.prev_lsa.load ().pageid);
   if (last_blockid == VACUUM_NULL_LOG_BLOCKID)
     {
       vacuum_data_unload_first_and_last_page (thread_p);
