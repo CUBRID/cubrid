@@ -3516,9 +3516,10 @@ qo_nljoin_cost (QO_PLAN * planp)
 	{
 	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
 	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
-	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
+	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card),
+	   * and never more than the LIMIT since the query stops there. */
 	  planp->limit_nljoin_guessed_card =
-	    MAX (1.0, guessed_result_cardinality * ((planp->info)->cardinality / outer_card));
+	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
       else
 	{
