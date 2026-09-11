@@ -419,6 +419,7 @@ static void pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_J
 						   json_table_node & result);
 static XASL_NODE *pt_find_xasl (XASL_NODE * list, XASL_NODE * match);
 static void pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
+static int pt_set_sub_xasl_id (XASL_NODE * xasl, const PT_NODE * node);
 static XASL_NODE *pt_append_scan (const XASL_NODE * to, const XASL_NODE * from);
 static PT_NODE *pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -13681,6 +13682,43 @@ pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl)
 }
 
 /*
+ * pt_set_sub_xasl_id () - clone node's XASL_ID into packing-buffer memory
+ *     instead of borrowing it. node is often temporary (e.g. an UPDATE/DELETE's aptr_statement)
+ *     and gets freed before xasl is serialized, but the packing buffer stays alive until pt_exit_packing_buf ().
+ *   return: NO_ERROR on success, ER_OUT_OF_VIRTUAL_MEMORY on allocation failure
+ *   xasl(out): XASL_NODE to attach the cloned XASL_ID to
+ *   node(in): PT_NODE to clone the XASL_ID from
+ */
+static int
+pt_set_sub_xasl_id (XASL_NODE * xasl, const PT_NODE * node)
+{
+  XASL_ID *sub_xasl_id;
+
+  xasl->sub_xasl_id = NULL;
+
+  if (node->xasl_id == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  sub_xasl_id = (XASL_ID *) pt_alloc_packing_buf (sizeof (XASL_ID));
+  if (sub_xasl_id == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  XASL_ID_SET_NULL (sub_xasl_id);
+  XASL_ID_COPY (sub_xasl_id, node->xasl_id);
+
+  xasl->sub_xasl_id = sub_xasl_id;
+  xasl->sub_host_var_count = node->sub_host_var_count;
+  xasl->sub_host_var_index = node->sub_host_var_index;
+
+  return NO_ERROR;
+}
+
+/*
  * pt_set_connect_by_xasl() - set the CONNECT BY xasl node,
  *	and make the pseudo-columns regu vars
  *   parser(in):
@@ -13893,9 +13931,12 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	      if (node->info.query.flag.subquery_cached)
 		{
 		  /* save the subquery cache info */
-		  xasl->sub_xasl_id = node->xasl_id;
-		  xasl->sub_host_var_count = node->sub_host_var_count;
-		  xasl->sub_host_var_index = node->sub_host_var_index;
+		  if (pt_set_sub_xasl_id (xasl, node) != NO_ERROR)
+		    {
+		      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+				  sizeof (XASL_ID));
+		      *continue_walk = PT_STOP_WALK;
+		    }
 		}
 
 	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
@@ -17879,9 +17920,12 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   /* checking false query */
   if (non_recursive_part_xasl)
     {
-      non_recursive_part_xasl->sub_xasl_id = non_recursive_part->xasl_id;
-      non_recursive_part_xasl->sub_host_var_count = non_recursive_part->sub_host_var_count;
-      non_recursive_part_xasl->sub_host_var_index = non_recursive_part->sub_host_var_index;
+      if (pt_set_sub_xasl_id (non_recursive_part_xasl, non_recursive_part) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, non_recursive_part, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		      sizeof (XASL_ID));
+	  return NULL;
+	}
     }
 
   if (recursive_part)
@@ -19614,9 +19658,12 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (aptr_statement->info.query.flag.subquery_cached)
     {
-      xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
-      xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
-      xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+      if (pt_set_sub_xasl_id (xasl->aptr_list, aptr_statement) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, aptr_statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		      sizeof (XASL_ID));
+	  return NULL;
+	}
     }
 
   into_spec = statement->info.insert.spec;
@@ -19845,9 +19892,10 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (aptr_statement->info.query.flag.subquery_cached)
     {
-      xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
-      xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
-      xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+      if (pt_set_sub_xasl_id (xasl->aptr_list, aptr_statement) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   server_node = from->info.spec.remote_server_name;
@@ -20023,9 +20071,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (xasl != NULL && aptr_statement->info.query.flag.subquery_cached)
 	{
-	  xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
-	  xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
-	  xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+	  if (pt_set_sub_xasl_id (xasl->aptr_list, aptr_statement) != NO_ERROR)
+	    {
+	      PT_ERRORmf (parser, aptr_statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+			  sizeof (XASL_ID));
+	      return NULL;
+	    }
 	}
     }
   else
@@ -27567,9 +27618,11 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* for subquery cache */
   if (aptr_statement->xasl_id && !statement->flag.do_not_use_subquery_cache)
     {
-      xasl->sub_xasl_id = aptr_statement->xasl_id;
-      xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
-      xasl->sub_host_var_index = aptr_statement->sub_host_var_index;
+      error = pt_set_sub_xasl_id (xasl, aptr_statement);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
     }
 
   /* flush all classes */
@@ -28070,9 +28123,11 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* for subquery cache */
   if (aptr_statement->xasl_id && !statement->flag.do_not_use_subquery_cache)
     {
-      xasl->sub_xasl_id = aptr_statement->xasl_id;
-      xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
-      xasl->sub_host_var_index = aptr_statement->sub_host_var_index;
+      error = pt_set_sub_xasl_id (xasl, aptr_statement);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
     }
 
   insert = &xasl->proc.insert;
