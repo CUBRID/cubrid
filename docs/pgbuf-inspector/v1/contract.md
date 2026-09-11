@@ -330,7 +330,7 @@ partial even if few resident records were emitted. The wire validates declared
 slot counts but only live collector tests can prove actual traversal.
 
 At most two clients attach. A global 100 ms scan-start floor applies across
-clients. Traversal/serialization has a 100 ms elapsed deadline from traversal
+clients. Traversal/serialization has a 1,500 ms elapsed deadline from traversal
 start, including backpressure, checked between slots. Output buffering is
 64 KiB, stall disconnection occurs after 250 ms without write progress,
 connect plus handshake has a 500 ms deadline, and the whole scan exchange

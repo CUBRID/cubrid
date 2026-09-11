@@ -53,7 +53,7 @@ each record. Limits may yield partial results; reaching a cap at full traversal
 can remain complete. The next start advances past the visited span.
 
 A global 100 ms floor applies to scan starts across both admitted clients.
-Traversal/serialization expires after 100 ms elapsed, checked between slots and
+Traversal/serialization expires after 1,500 ms elapsed, checked between slots and
 including output backpressure. Pending writes expire after 250 ms without
 progress; the whole exchange expires after 2 s, including the footer/drain.
 Socket operations never block, and each polling turn bounds traversal work to

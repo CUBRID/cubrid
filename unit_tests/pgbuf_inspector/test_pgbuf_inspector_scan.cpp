@@ -185,7 +185,7 @@ TEST_CASE ("Elapsed traversal includes pauses and never fabricates completion", 
 {
   for (std::uint64_t elapsed :
        {
-	       99999, 100000, 100001
+	       1499999, 1500000, 1500001
        })
     {
       scan_source source;
@@ -201,7 +201,7 @@ TEST_CASE ("Elapsed traversal includes pauses and never fabricates completion", 
       REQUIRE (scan.step (1 + elapsed, 0, out)); // Wall clock steps do not extend the deadline.
       REQUIRE (scan.step (1 + elapsed, 0, out));
       REQUIRE (scan.done ());
-      CHECK (out.find (elapsed < 100000 ? "\"visited_slots\":2,\"truncated\":false"
+      CHECK (out.find (elapsed < 1500000 ? "\"visited_slots\":2,\"truncated\":false"
 		       : "\"visited_slots\":1,\"truncated\":true") != std::string::npos);
     }
 }

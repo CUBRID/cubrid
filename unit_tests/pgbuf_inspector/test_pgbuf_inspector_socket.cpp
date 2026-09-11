@@ -904,10 +904,10 @@ TEST_CASE ("Backpressure bounds queued bytes and reserves a truthful footer", "[
   auto queued = header_size + visits * page_size - kernel_bytes;
   CHECK (queued <= 65536);
   CHECK (queued > 65536 - 4096);
-  now += std::chrono::milliseconds (100);
   std::string capture;
-  for (int i = 0; i < 100; ++i)
+  for (int i = 0; i < 350; ++i)
     {
+      now += std::chrono::milliseconds (5);
       auto count = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
       if (count > 0)
 	{
@@ -919,7 +919,7 @@ TEST_CASE ("Backpressure bounds queued bytes and reserves a truthful footer", "[
   REQUIRE (validator.feed (greeting + hello + request + capture));
   REQUIRE (validator.published ());
   CHECK (validator.record_count () == visits);
-  CHECK (visits == stalled_visits);
+  CHECK (visits > stalled_visits);
   CHECK (validator.lookup (0, 43) == observation::UNKNOWN);
   CHECK (capture.find ("\"truncated\":true") != std::string::npos);
 
@@ -1023,7 +1023,7 @@ TEST_CASE ("Real slow draining reaches the whole exchange deadline despite write
   REQUIRE (send (fd, request.data (), request.size (), MSG_NOSIGNAL) == static_cast<ssize_t> (request.size ()));
   auto start = endpoint::clock::now ();
   f.server.poll ();
-  // Establish saturation before the 100 ms traversal cap; a slow test host
+  // Establish saturation within 100 ms, before the traversal cap; a slow test host
   // that cannot establish this condition must fail rather than claim timing proof.
   for (int i = 0; i < 100; ++i)
     {
@@ -1180,4 +1180,52 @@ TEST_CASE ("Malformed scan controls close without protocol data or manufactured 
     CHECK (f.exchange (fd, malformed).empty ());
 
   }
+}
+
+TEST_CASE ("A dense volume capture completes across five millisecond polling turns",
+	   "[pgbuf_inspector][socket][coverage]")
+{
+  auto now = endpoint::clock::now ();
+  scan_source source;
+  source.slots = 32768;
+  source.sample = [] (std::size_t slot, page_sample &page)
+  {
+    if (slot >= 4096)
+      {
+	return sample_status::EMPTY;
+      }
+    page.volid = 1;
+    page.pageid = slot;
+    page.zone = 3;
+    return sample_status::RESIDENT;
+  };
+  socket_fixture f (source, [&now] { return now; });
+  socket_client fd (f.connect_client ());
+  auto hello = f.exchange (fd, greeting);
+  auto request = scan_request (hello);
+  REQUIRE (send (fd, request.data (), request.size (), MSG_NOSIGNAL) == static_cast<ssize_t> (request.size ()));
+  auto start = now;
+  std::string capture;
+  char bytes[65536];
+  for (int turn = 0; turn < 400 && (capture.find ("scan_footer") == std::string::npos || capture.back () != '\n'); ++turn)
+    {
+      f.server.poll ();
+      for (;;)
+	{
+	  auto count = recv (fd, bytes, sizeof (bytes), MSG_DONTWAIT);
+	  if (count <= 0)
+	    {
+	      break;
+	    }
+	  capture.append (bytes, count);
+	}
+      now += std::chrono::milliseconds (5);
+    }
+  INFO ("elapsed milliseconds " << std::chrono::duration_cast<std::chrono::milliseconds> (now - start).count ());
+  exchange_validator validator;
+  REQUIRE (validator.feed (greeting + hello + request + capture));
+  REQUIRE (validator.published ());
+  CHECK (validator.record_count () == 4096);
+  CHECK (capture.find ("\"visited_slots\":32768,\"truncated\":false") != std::string::npos);
+  CHECK (now - start < std::chrono::seconds (2));
 }

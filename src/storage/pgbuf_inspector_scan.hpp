@@ -29,7 +29,7 @@ namespace cubpgbuf
     constexpr std::size_t SCAN_SLOT_LIMIT = 65536;
     constexpr std::size_t SCAN_RECORD_LIMIT = 65536;
     constexpr std::size_t SCAN_BYTE_LIMIT = 1024 * 1024 * 1024;
-    constexpr std::uint64_t SCAN_ELAPSED_US = 100000;
+    constexpr std::uint64_t SCAN_ELAPSED_US = 1500000;
     constexpr std::size_t OUTPUT_BUFFER_BYTES = 65536;
 
 // Private sampling boundary: owned scalars only, no engine pointers or page bytes.

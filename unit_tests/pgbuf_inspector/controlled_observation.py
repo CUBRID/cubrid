@@ -125,7 +125,13 @@ class Observation:
         assert sequence > self.sequence
         frames = [header]
         raw = bytearray(line)
+        next_pause = 8192
         while True:
+            if pause_after_header and len(raw) >= next_pause and time.monotonic() < started + 1.5:
+                # Sustain pressure past the scan budget while allowing writes
+                # more often than the independent 250 ms stall deadline.
+                time.sleep(.12)
+                next_pause = len(raw) + 8192
             frame, line = self.frame(4096, started + 2)
             raw.extend(line)
             assert len(raw) <= 1073741824
@@ -185,6 +191,9 @@ try:
         print("PASS", phase, "held native VPID", target, "complete records", len(pages), flush=True)
     assert acknowledgement("populate")["state"] == "populated"
     assert acknowledgement("held")["state"] == "held"
+    pages, footer = observer.scan("populated-complete")
+    assert not footer["truncated"], "populated native scan did not complete"
+    print("PASS populated native complete scan", len(pages), "records", footer["visited_slots"], "slots", flush=True)
     pages, footer = observer.scan("partial", pause_after_header=True)
     assert footer["truncated"], "inconclusive: fixture failed to establish a partial scan"
     assert acknowledgement("held")["state"] == "held"

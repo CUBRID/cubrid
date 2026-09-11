@@ -1,0 +1,93 @@
+Filters: [coverage]
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+test_pgbuf_inspector is a Catch v2.11.3 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+A dense volume capture completes across five millisecond polling turns
+-------------------------------------------------------------------------------
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1185
+...............................................................................
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:195: PASSED:
+  REQUIRE( mkdtemp (root) )
+with expansion:
+  "/tmp/pgbuf-protocol-9b3Er3"
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:198: PASSED:
+  REQUIRE( server.start (root, "database", db, {}, source) )
+with expansion:
+  true
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:208: PASSED:
+  REQUIRE( fd >= 0 )
+with expansion:
+  5 >= 0
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:212: PASSED:
+  REQUIRE( connect (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) == 0 )
+with expansion:
+  0 == 0
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:217: PASSED:
+  REQUIRE( send (fd, request.data (), request.size (), MSG_NOSIGNAL) == static_cast<ssize_t> (request.size ()) )
+with expansion:
+  47 == 47
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:228: PASSED:
+  REQUIRE( n >= 0 )
+with expansion:
+  270 (0x10e) >= 0
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:519: PASSED:
+  REQUIRE( offset != std::string::npos )
+with expansion:
+  61
+  !=
+  18446744073709551615 (0xffffffffffffffff)
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1205: PASSED:
+  REQUIRE( send (fd, request.data (), request.size (), MSG_NOSIGNAL) == static_cast<ssize_t> (request.size ()) )
+with expansion:
+  73 == 73
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1225: PASSED:
+  REQUIRE( validator.feed (greeting + hello + request + capture) )
+with expansion:
+  true
+with message:
+  elapsed milliseconds 900
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1226: PASSED:
+  REQUIRE( validator.published () )
+with expansion:
+  true
+with message:
+  elapsed milliseconds 900
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1227: PASSED:
+  CHECK( validator.record_count () == 4096 )
+with expansion:
+  4096 (0x1000) == 4096 (0x1000)
+with message:
+  elapsed milliseconds 900
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1228: PASSED:
+  CHECK( capture.find ("\"visited_slots\":32768,\"truncated\":false") != std::string::npos )
+with expansion:
+  1297583 (0x13ccaf)
+  !=
+  18446744073709551615 (0xffffffffffffffff)
+with message:
+  elapsed milliseconds 900
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1229: PASSED:
+  CHECK( now - start < std::chrono::seconds (2) )
+with expansion:
+  {?} < {?}
+with message:
+  elapsed milliseconds 900
+
+===============================================================================
+All tests passed (13 assertions in 1 test case)

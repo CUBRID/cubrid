@@ -278,7 +278,12 @@ class DelayedStream:
                         self.requests.append(json.loads(request))
                         producer.sendall(request)
                         raw = bytearray()
+                        started = time.monotonic()
+                        next_pause = 8192
                         while True:
+                            if len(raw) >= next_pause and time.monotonic() < started + 1.5:
+                                time.sleep(.12)
+                                next_pause = len(raw) + 8192
                             line = responses.readline(4097)
                             assert line.endswith(b'\n') and len(line) <= 4096
                             raw.extend(line)
