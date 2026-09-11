@@ -89,7 +89,8 @@ namespace cubconn::connection
   m_send
   {
     .m_transmitter = transmitter (&m_stats),
-    .m_blocker = nullptr
+    .m_blocker = nullptr,
+    .m_room = nullptr
   }
   {
   }
@@ -113,7 +114,8 @@ namespace cubconn::connection
   m_send
   {
     .m_transmitter = transmitter (),
-    .m_blocker = nullptr
+    .m_blocker = nullptr,
+    .m_room = nullptr
   }
   {
   }
