@@ -47,3 +47,31 @@ reclamation. No-logging loader readback does not certify logged crash recovery.
 Source/standby replication does not certify multi-node heartbeat failover.
 Standalone-loader OOS activation remains separate from preserving the baseline's
 standalone loading behavior. Do not describe these boundaries as new passes.
+
+## Remote acceptance evidence
+
+Pin the full engine commit before collecting GitHub checks and CTP SQL, medium
+and shell results. Record each job URL, attempt, terminal status, test counts and
+the actual testcase repository/commit from checkout logs. Testcase branches are
+resolved independently of the engine branch; a fallback to `develop` may use
+expectations for features absent from the tested engine. Keep that mismatch
+visible instead of changing expected results merely to make a run pass.
+
+For a suspected baseline failure, replay the same testcase and answer bytes on
+the baseline and candidate in isolated CTP environments. Preserve both results
+and compare their failure signatures. Unordered queries may return different
+permutations between CI and local runs; identical local outputs establish the
+paired comparison, not byte identity with the remote output. A reproduced
+baseline failure remains a failed CI result.
+
+A missing commit status does not prove a suite was never scheduled. Inspect the
+exact CircleCI workflow and pipeline: a shell job can be blocked on an unstarted
+`download-build` prerequisite. Record that job and its prerequisite, retain the
+existing trigger, and collect the completed job once the prerequisite succeeds.
+Do not infer a shell pass or issue a duplicate trigger from an absent status.
+
+For the published `be7c01a6d2d05d461cb1e5b6e0127c15ffb1950b` revision,
+[PR #7927](https://github.com/CUBRID/cubrid/pull/7927) has separate
+[CI acceptance evidence](https://github.com/vimkim/my-cubrid-docs/blob/main/cbrd-27089/ci_analysis_report_be7c01a_codex.md).
+Final acceptance must reconcile that evidence with the producer and memory
+matrix; local CTest success does not close outstanding remote checks.
