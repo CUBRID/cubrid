@@ -676,6 +676,34 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_OOS_STATS];
   req_p->processing_function = soos_stats;
 
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_READ];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sinternal_lob_read;
+
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_STREAM_OPEN];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sinternal_lob_stream_open;
+
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_STREAM_READ];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sinternal_lob_stream_read;
+
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_STREAM_CLOSE];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sinternal_lob_stream_close;
+
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_BEGIN];
+  req_p->processing_function = sloaddb_internal_lob_upload_begin;
+
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_APPEND];
+  req_p->processing_function = sloaddb_internal_lob_upload_append;
+
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_END];
+  req_p->processing_function = sloaddb_internal_lob_upload_end;
+
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_ABORT];
+  req_p->processing_function = sloaddb_internal_lob_upload_abort;
+
   req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_get_mvcc_snapshot;
 
@@ -722,6 +750,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_STREAM_END];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sstream_end;
+
+  req_p = &net_Requests[NET_SERVER_STREAM_ABORT];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_abort;
 
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
@@ -1064,6 +1096,8 @@ net_server_conn_down (THREAD_ENTRY * thread_p, int tran_index)
   assert (thread_p && tran_index != NULL_TRAN_INDEX);
 
   logtb_set_tran_index_interrupt (thread_p, tran_index, false);
+
+  sinternal_lob_stream_purge_tran (tran_index);
 
   (void) xboot_unregister_client (thread_p, tran_index);
   session_remove_query_entry_all (thread_p);

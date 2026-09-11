@@ -28,6 +28,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <map>
+#include <mutex>
 
 #include "filesys.hpp"
 #include "filesys_temp.hpp"
@@ -65,6 +67,7 @@
 #include "chartype.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
+#include "internal_lob_file.hpp"
 #include "pl_sr.h"
 #include "replication.h"
 #include "server_support.h"
@@ -84,6 +87,8 @@
 #include "compile_context.h"
 #include "load_session.hpp"
 #include "copy_session.hpp"
+#include "internal_lob_dml_executor.hpp"
+#include "internal_lob_stream_session.hpp"
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -117,6 +122,16 @@
 #define QEWC_SAFE_GUARD_SIZE 1024
 // To have the safe area is just a safe guard to avoid potential issues of bad size calculation.
 #define QEWC_MAX_DATA_SIZE  (DB_PAGESIZE - QEWC_SAFE_GUARD_SIZE)
+
+struct internal_lob_stream_cursor
+{
+  int tran_index = NULL_TRAN_INDEX;
+  INTERNAL_LOB_READER reader;
+};
+
+static std::mutex internal_lob_stream_mutex;
+static std::map<INT64, internal_lob_stream_cursor> internal_lob_stream_cursor_table;
+static INT64 internal_lob_stream_next_token = 1;
 
 /* This file is only included in the server.  So set the on_server flag on */
 unsigned int db_on_server = 1;
@@ -903,6 +918,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   int content_size;
   int num_objs = 0;
   int nparallel_process, nparallel_process_idx, request_pages;
+  int keep_oos_locators = 0;
   NET_ENDIAN server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 1;
@@ -917,6 +933,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   ptr = or_unpack_int (ptr, &request_pages);
   ptr = or_unpack_int (ptr, &nparallel_process);
   ptr = or_unpack_int (ptr, &nparallel_process_idx);
+  ptr = or_unpack_int (ptr, &keep_oos_locators);
   ptr = or_unpack_int (ptr, &client_endian);
 
   if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN)
@@ -940,7 +957,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   copy_area = NULL;
   success =
 	  xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
-			      &nfetched, &last_oid, &copy_area, request_pages);
+			      &nfetched, &last_oid, &copy_area, request_pages, keep_oos_locators != 0);
 
   if (nparallel_process > 1)
     {
@@ -10248,6 +10265,311 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 }
 
 /*
+ * sinternal_lob_read - Server handler to read raw bytes from an internal LOB locator.
+ *   Request : offset (int64) + count (int) + locator string
+ *   Reply   : data_size (int) + err (int)
+ *   Data    : raw bytes when err is NO_ERROR
+ */
+void
+sinternal_lob_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = NULL;
+  char *locator_string = NULL;
+  char *buffer = NULL;
+  INT64 offset = 0;
+  int count = 0;
+  int nread = 0;
+  int err = NO_ERROR;
+  INTERNAL_LOB_LOCATOR locator;
+
+  (void) reqlen;
+
+  ptr = or_unpack_int64 (request, &offset);
+  ptr = or_unpack_int (ptr, &count);
+  (void) or_unpack_string_nocopy (ptr, &locator_string);
+
+  if (offset < 0 || count < 0 || locator_string == NULL
+      || !internal_lob_parse_locator_string (locator_string, (int) strlen (locator_string), &locator))
+    {
+      err = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  if (count > 0)
+    {
+      buffer = (char *) malloc ((size_t) count);
+      if (buffer == NULL)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, (size_t) count);
+	  goto reply;
+	}
+    }
+
+  err = internal_lob_read_range (thread_p, locator, (DB_BIGINT) offset, oos_buffer (buffer, (std::size_t) count), nread);
+  if (err != NO_ERROR)
+    {
+      nread = 0;
+    }
+
+reply:
+  ptr = or_pack_int (reply, nread);
+  (void) or_pack_int (ptr, err);
+
+  auto deleter = [buffer]() noexcept
+  {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, nread,
+				     std::move (deleter));
+}
+
+static INT64
+sinternal_lob_stream_allocate_token (void)
+{
+  INT64 token = internal_lob_stream_next_token++;
+
+  if (internal_lob_stream_next_token <= 0)
+    {
+      internal_lob_stream_next_token = 1;
+    }
+
+  while (token <= 0 || internal_lob_stream_cursor_table.find (token) != internal_lob_stream_cursor_table.end ())
+    {
+      token = internal_lob_stream_next_token++;
+      if (internal_lob_stream_next_token <= 0)
+	{
+	  internal_lob_stream_next_token = 1;
+	}
+    }
+
+  return token;
+}
+
+/*
+ * sinternal_lob_stream_open - Open a forward-only server-side reader cursor.
+ *   Request : locator string
+ *   Reply   : token (int64) + err (int)
+ */
+void
+sinternal_lob_stream_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *locator_string = NULL;
+  char *ptr = NULL;
+  INT64 token = 0;
+  int err = NO_ERROR;
+  INTERNAL_LOB_LOCATOR locator;
+  internal_lob_stream_cursor cursor;
+
+  (void) reqlen;
+
+  (void) or_unpack_string_nocopy (request, &locator_string);
+  if (locator_string == NULL
+      || !internal_lob_parse_locator_string (locator_string, (int) strlen (locator_string), &locator))
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  err = internal_lob_read_open (thread_p, locator, cursor.reader);
+  if (err != NO_ERROR)
+    {
+      goto reply;
+    }
+
+  cursor.tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  {
+    std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+    token = sinternal_lob_stream_allocate_token ();
+    internal_lob_stream_cursor_table[token] = cursor;
+  }
+
+reply:
+  ptr = or_pack_int64 (reply, token);
+  (void) or_pack_int (ptr, err);
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sinternal_lob_stream_read - Read the next bytes from a server-side reader cursor.
+ *   Request : token (int64) + count (int)
+ *   Reply   : data_size (int) + err (int)
+ *   Data    : raw bytes when err is NO_ERROR and data_size > 0
+ */
+void
+sinternal_lob_stream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = request;
+  char *buffer = NULL;
+  INT64 token = 0;
+  int count = 0;
+  int nread = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE + OR_INT_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  ptr = or_unpack_int64 (ptr, &token);
+  (void) or_unpack_int (ptr, &count);
+
+  if (token <= 0 || count < 0)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  if (count > 0)
+    {
+      buffer = (char *) malloc ((size_t) count);
+      if (buffer == NULL)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, (size_t) count);
+	  goto reply;
+	}
+    }
+
+  {
+    std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+    auto iter = internal_lob_stream_cursor_table.find (token);
+
+    if (iter == internal_lob_stream_cursor_table.end ()
+	|| iter->second.tran_index != LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+      {
+	err = ER_OBJ_INVALID_ARGUMENTS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	goto reply;
+      }
+
+    err = internal_lob_read_pull (thread_p, iter->second.reader, oos_buffer (buffer, (std::size_t) count), nread);
+    if (err != NO_ERROR)
+      {
+	nread = 0;
+	internal_lob_stream_cursor_table.erase (iter);
+      }
+  }
+
+reply:
+  ptr = or_pack_int (reply, nread);
+  (void) or_pack_int (ptr, err);
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  auto deleter = [buffer]() noexcept
+  {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, nread,
+				     std::move (deleter));
+}
+
+/*
+ * sinternal_lob_stream_close - Close a server-side reader cursor.
+ *   Request : token (int64)
+ *   Reply   : err (int)
+ */
+void
+sinternal_lob_stream_close (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  INT64 token = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  (void) or_unpack_int64 (request, &token);
+  if (token <= 0)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  {
+    std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+    auto iter = internal_lob_stream_cursor_table.find (token);
+
+    if (iter == internal_lob_stream_cursor_table.end ()
+	|| iter->second.tran_index != LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+      {
+	err = ER_OBJ_INVALID_ARGUMENTS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	goto reply;
+      }
+
+    internal_lob_stream_cursor_table.erase (iter);
+  }
+
+reply:
+  (void) or_pack_int (reply, err);
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sinternal_lob_stream_purge_tran - Drop every server-side reader cursor owned by a transaction whose connection
+ *   is going down. Cursors are normally released by sinternal_lob_stream_close, but a client that disconnects
+ *   between STREAM_OPEN and STREAM_CLOSE would otherwise leave its entry in the global table forever.
+ */
+void
+sinternal_lob_stream_purge_tran (int tran_index)
+{
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      return;
+    }
+
+  std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+  for (auto iter = internal_lob_stream_cursor_table.begin (); iter != internal_lob_stream_cursor_table.end ();)
+    {
+      if (iter->second.tran_index == tran_index)
+	{
+	  iter = internal_lob_stream_cursor_table.erase (iter);
+	}
+      else
+	{
+	  ++iter;
+	}
+    }
+}
+
+/*
  * svacuum_dump -
  *
  * return:
@@ -11029,6 +11351,218 @@ sloaddb_load_batch (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), mem_reply,
 				     reply_data_size, std::move (deleter));
+}
+
+void
+sloaddb_internal_lob_upload_begin (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = request;
+  int clsid = 0;
+  int type = 0;
+  INT64 data_length = 0;
+  INT64 bit_length = 0;
+  INT64 token = 0;
+  int error_code;
+  load_session *session = NULL;
+
+  if (reqlen != OR_INT_SIZE * 2 + OR_INT64_SIZE * 2)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      (void) or_pack_int64 (reply, token);
+      (void) or_pack_int (reply + OR_INT64_SIZE, error_code);
+      (void) return_error_to_client (thread_p, rid);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
+
+  ptr = or_unpack_int (ptr, &clsid);
+  ptr = or_unpack_int (ptr, &type);
+  ptr = or_unpack_int64 (ptr, &data_length);
+  (void) or_unpack_int64 (ptr, &bit_length);
+
+  error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->internal_lob_payload_begin ((cubload::class_id) clsid, (char) type,
+		   (DB_BIGINT) data_length, (DB_BIGINT) bit_length, token);
+    }
+  else if (er_errid () == NO_ERROR || !er_has_error ())
+    {
+      error_code = ER_LDR_INVALID_STATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+  ptr = or_pack_int64 (reply, token);
+  (void) or_pack_int (ptr, error_code);
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sloaddb_internal_lob_upload_append (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = request;
+  char *data = NULL;
+  int data_size = 0;
+  int expected_size = 0;
+  INT64 token = 0;
+  int error_code;
+  load_session *session = NULL;
+
+  if (reqlen != OR_INT64_SIZE + OR_INT_SIZE)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      (void) or_pack_int (reply, error_code);
+      (void) return_error_to_client (thread_p, rid);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
+
+  ptr = or_unpack_int64 (ptr, &token);
+  (void) or_unpack_int (ptr, &expected_size);
+
+  if (expected_size < 0)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      (void) or_pack_int (reply, error_code);
+      (void) return_error_to_client (thread_p, rid);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
+
+  error_code = css_receive_data_from_client (thread_p->conn_entry, rid, &data, &data_size);
+  if (error_code != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  if (data_size != expected_size)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto cleanup;
+    }
+
+  error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->internal_lob_payload_append (token, data, data_size);
+    }
+  else if (er_errid () == NO_ERROR || !er_has_error ())
+    {
+      error_code = ER_LDR_INVALID_STATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+cleanup:
+  if (data != NULL)
+    {
+      thread_p->release_packet (data);
+    }
+
+  (void) or_pack_int (reply, error_code);
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sloaddb_internal_lob_upload_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  INT64 token = 0;
+  int error_code;
+  load_session *session = NULL;
+
+  if (reqlen != OR_INT64_SIZE)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      (void) or_pack_int (reply, error_code);
+      (void) return_error_to_client (thread_p, rid);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
+
+  (void) or_unpack_int64 (request, &token);
+
+  error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->internal_lob_payload_end (token);
+    }
+  else if (er_errid () == NO_ERROR || !er_has_error ())
+    {
+      error_code = ER_LDR_INVALID_STATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+  (void) or_pack_int (reply, error_code);
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+void
+sloaddb_internal_lob_upload_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  INT64 token = 0;
+  int error_code;
+  load_session *session = NULL;
+
+  if (reqlen != OR_INT64_SIZE)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      (void) or_pack_int (reply, error_code);
+      (void) return_error_to_client (thread_p, rid);
+      css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
+
+  (void) or_unpack_int64 (request, &token);
+
+  error_code = session_get_load_session (thread_p, session);
+  if (error_code == NO_ERROR)
+    {
+      assert (session != NULL);
+      error_code = session->internal_lob_payload_abort (token);
+    }
+  else if (er_errid () == NO_ERROR || !er_has_error ())
+    {
+      error_code = ER_LDR_INVALID_STATE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+  (void) or_pack_int (reply, error_code);
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 void
@@ -12608,6 +13142,7 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
 {
   char *ptr = config_ptr;
   char *table_name = NULL;
+  int packed_table_name_len;
   int num_cols = 0;
   int format = 0;
   int delimiter = 0;
@@ -12619,6 +13154,37 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
 
   *error_code = NO_ERROR;
 
+  if (config_ptr == NULL || config_len < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "invalid COPY stream configuration");
+      *error_code = ER_STREAM_SESSION_ERROR;
+      return NULL;
+    }
+  packed_table_name_len = OR_GET_INT (config_ptr);
+  if (packed_table_name_len <= 0 || packed_table_name_len > config_len - OR_INT_SIZE
+      || memchr (config_ptr + OR_INT_SIZE, '\0', (size_t) packed_table_name_len) == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "invalid COPY table name");
+      *error_code = ER_STREAM_SESSION_ERROR;
+      return NULL;
+    }
+  ptr = config_ptr + OR_INT_SIZE + packed_table_name_len;
+  if (config_ptr + config_len - ptr < OR_INT_SIZE * 6)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "incomplete COPY stream configuration");
+      *error_code = ER_STREAM_SESSION_ERROR;
+      return NULL;
+    }
+  num_cols = OR_GET_INT (ptr);
+  if (num_cols <= 0 || num_cols > (config_len - (int) (ptr - config_ptr) - OR_INT_SIZE * 6) / OR_INT_SIZE
+      || config_len != (int) (ptr - config_ptr) + OR_INT_SIZE * (6 + num_cols))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "invalid COPY column metadata");
+      *error_code = ER_STREAM_SESSION_ERROR;
+      return NULL;
+    }
+
+  ptr = config_ptr;
   ptr = or_unpack_string_nocopy (ptr, &table_name);
   ptr = or_unpack_int (ptr, &num_cols);
   /* format: 0 = BINARY, 1 = CSV */
@@ -12700,6 +13266,51 @@ create_stream_session (THREAD_ENTRY *thread_p, int stream_kind, char *config_ptr
     case STREAM_KIND_COPY:
       return create_copy_session_from_config (thread_p, config_ptr, config_len, error_code);
 
+    case STREAM_KIND_INTERNAL_LOB:
+    {
+      int type;
+      INT64 data_length;
+      INT64 logical_length;
+      internal_lob_stream_session *session;
+
+      if (config_ptr == NULL || config_len != OR_INT_SIZE + OR_INT64_SIZE * 2)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+		  "invalid internal LOB stream configuration");
+	  *error_code = ER_STREAM_SESSION_ERROR;
+	  return NULL;
+	}
+      (void) or_unpack_int (config_ptr, &type);
+      OR_GET_INT64 (config_ptr + OR_INT_SIZE, &data_length);
+      OR_GET_INT64 (config_ptr + OR_INT_SIZE + OR_INT64_SIZE, &logical_length);
+      if (type != INTERNAL_LOB_STREAM_TYPE_BLOB && type != INTERNAL_LOB_STREAM_TYPE_CLOB)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+		  "invalid internal LOB stream type");
+	  *error_code = ER_STREAM_SESSION_ERROR;
+	  return NULL;
+	}
+
+      session = new internal_lob_stream_session ();
+      if (session == NULL)
+	{
+	  *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return NULL;
+	}
+      *error_code = session->init (thread_p, type == INTERNAL_LOB_STREAM_TYPE_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB,
+				   (DB_BIGINT) data_length,
+				   (DB_BIGINT) logical_length);
+      if (*error_code != NO_ERROR)
+	{
+	  delete session;
+	  return NULL;
+	}
+      return session;
+    }
+
+    case STREAM_KIND_INTERNAL_LOB_DML:
+      return internal_lob_dml_create_session (thread_p, config_ptr, config_len, error_code);
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream kind");
       *error_code = ER_STREAM_SESSION_ERROR;
@@ -12718,10 +13329,18 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *ptr = request;
   int stream_kind = 0;
   int error_code = NO_ERROR;
+  stream_session *session = NULL;
+
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "stream init request is too short");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto reply;
+    }
 
   ptr = or_unpack_int (ptr, &stream_kind);
 
-  stream_session *session = create_stream_session (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
+  session = create_stream_session (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
   if (session != NULL)
     {
       error_code = session_set_stream_session (thread_p, session);
@@ -12730,6 +13349,12 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	  session->abort (thread_p);
 	  delete session;
 	}
+    }
+
+reply:
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
     }
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -12783,13 +13408,13 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 /*
  * sstream_end () - Finalize COPY session and return row count
  *   request format: (empty)
- *   reply format: error_code (int), rows_loaded (int)
+ *   reply format: error_code (int), consumer result (int64)
  */
 void
 sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error_code = NO_ERROR;
-  int rows_loaded = 0;
+  INT64 stream_result_count = 0;
 
   stream_session *session = NULL;
   error_code = session_get_stream_session (thread_p, session);
@@ -12803,7 +13428,7 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
       stream_result result;
       result.count = 0;
       error_code = session->finish (thread_p, &result);	/* may flush a trailing CSV record */
-      rows_loaded = (int) result.count;
+      stream_result_count = (INT64) result.count;
 
       if (error_code != NO_ERROR)
 	{
@@ -12819,12 +13444,41 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     }
 
   {
-    OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+    OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
-    char *ptr;
 
-    ptr = or_pack_int (reply, error_code);
-    ptr = or_pack_int (ptr, rows_loaded);
+    (void) or_pack_int (reply, error_code);
+    OR_PUT_INT64 (reply + OR_INT_SIZE, &stream_result_count);
     css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   }
+}
+
+void
+sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  stream_session *session = NULL;
+
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      session->abort (thread_p);
+      delete session;
+      session_set_stream_session (thread_p, NULL);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
