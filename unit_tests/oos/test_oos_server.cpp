@@ -24,6 +24,7 @@
  */
 
 #include "object_representation.h"
+#include "dbtype.h"
 #include "connection_defs.h"
 #include "heap_oos.hpp"
 #include "locator_sr.h"
@@ -654,6 +655,74 @@ TEST (OosServerTest, ReplicaOosItemsAccumulateAndFixupConsumesInOrder)
   const OID fixed_oid2 = read_replicated_heap_oos_oid (heap_recdes, n_variables, 1);
   EXPECT_TRUE (OID_EQ (&fixed_oid1, &slave_oid1));
   EXPECT_TRUE (OID_EQ (&fixed_oid2, &slave_oid2));
+}
+
+/* The force-area contract keeps OOS items with their following heap row. A truncated
+ * group must fail atomically, including when an OOS publication itself fails. */
+TEST (OosServerTest, ReplicaIncompleteOosGroupRollsBackAndUnwinds)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  OOS_STATS_INFO before;
+  ASSERT_EQ (xoos_get_stats_by_class_oid (thread_p, &class_oid, &before), NO_ERROR);
+  const int original_depth = get_current_tdes ()->topops.last;
+  scope_exit cleanup ([&] () noexcept
+  {
+    oos_test_disarm_insert_publication_failures ();
+    while (get_current_tdes ()->topops.last > original_depth)
+      {
+	log_sysop_abort (thread_p);
+      }
+    clear_oos_insert_publication_state_for_test ();
+    er_clear ();
+  });
+
+  for (bool fail_publication :
+       {
+	       false, true
+       })
+    {
+      SCOPED_TRACE (fail_publication);
+      RECDES oos_recdes = RECDES_INITIALIZER;
+      ASSERT_EQ (build_oos_replication_recdes (make_filled_payload (50000, 'r'), oos_recdes), NO_ERROR);
+      scope_exit free_recdes ([&] () noexcept
+      {
+	recdes_free_data_area (&oos_recdes);
+      });
+      LC_COPYAREA *area = locator_allocate_copy_area_by_length (oos_recdes.length + 256
+			  + sizeof (LC_COPYAREA_MANYOBJS));
+      LC_COPYAREA *reply = locator_allocate_copy_area_by_length (DB_PAGESIZE);
+      ASSERT_NE (area, nullptr);
+      ASSERT_NE (reply, nullptr);
+      scope_exit free_areas ([&] () noexcept
+      {
+	locator_free_copy_area (area);
+	locator_free_copy_area (reply);
+      });
+      DB_VALUE key;
+      db_make_int (&key, 1);
+      char *record = or_pack_mem_value (area->mem, &key, nullptr);
+      memcpy (record, oos_recdes.data, oos_recdes.length);
+      LC_COPYAREA_MANYOBJS *many = LC_MANYOBJS_PTR_IN_COPYAREA (area);
+      memset (many, 0, sizeof (*many));
+      many->num_objs = 1;
+      many->objs.operation = LC_FLUSH_INSERT_OOS;
+      many->objs.class_oid = class_oid;
+      many->objs.offset = 0;
+      many->objs.length = record - area->mem + oos_recdes.length;
+      memset (LC_MANYOBJS_PTR_IN_COPYAREA (reply), 0, sizeof (LC_COPYAREA_MANYOBJS));
+      if (fail_publication)
+	{
+	  oos_test_throw_bad_alloc_on_next_oid_publication ();
+	}
+      const int error = xlocator_repl_force (thread_p, area, &reply);
+      EXPECT_NE (error, NO_ERROR);
+      EXPECT_EQ (get_current_tdes ()->topops.last, original_depth);
+      EXPECT_TRUE (thread_p->oos_oids.empty ());
+      er_clear ();
+      OOS_STATS_INFO after;
+      ASSERT_EQ (xoos_get_stats_by_class_oid (thread_p, &class_oid, &after), NO_ERROR);
+      EXPECT_EQ (after.num_recs, before.num_recs);
+    }
 }
 
 TEST (OosServerTest, ReplicaFixupRejectsInsufficientOids)

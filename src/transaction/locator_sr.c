@@ -46,6 +46,8 @@
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
+#include "heap_prepared_row.hpp"
+#include "heap_oos.hpp"
 #include "oos_file.hpp"
 #include "list_file.h"
 #include "log_lsa.hpp"
@@ -147,16 +149,21 @@ static int locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEO
 static int locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_COPYAREA_ONEOBJ * obj);
 static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, LC_COPYAREA_ONEOBJ * obj,
 						DB_VALUE * key_value, int err_code, const char *err_msg);
+
+/* *INDENT-OFF* */
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
 				 RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info_type, int pruning_type, PRUNING_CONTEXT * pcontext,
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
-				 bool need_locking);
+				 bool need_locking, heap_prepared_row *prepared = nullptr);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid,
 				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
-				PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking);
+				PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking,
+                                heap_prepared_row *prepared = nullptr);
+/* *INDENT-ON* */
+
 static int locator_delete_force_for_moving (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 					    HEAP_SCANCACHE * scan_cache, int *force_count,
 					    MVCC_REEV_DATA * mvcc_reev_data, OID * new_obj_oid, OID * partition_oid,
@@ -4953,7 +4960,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 		      PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 		      UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-		      bool dont_check_fk, bool use_bulk_logging)
+		      bool dont_check_fk, bool use_bulk_logging, heap_prepared_row * prepared)
 {
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -4987,14 +4994,22 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       /* Perform partition pruning on the given class */
       error_code =
 	partition_prune_insert (thread_p, class_oid, recdes, scan_cache, pcontext, pruning_type, &real_class_oid,
-				&real_hfid, &superclass_oid);
+				&real_hfid, &superclass_oid, prepared);
       if (error_code != NO_ERROR)
 	{
 	  goto error2;
 	}
       if (!OID_ISNULL (&superclass_oid))
 	{
-	  granted = lock_subclass (thread_p, &real_class_oid, &superclass_oid, IX_LOCK, LK_UNCOND_LOCK);
+	  /* Loader workers borrow destination BU locks acquired by their session. */
+	  if (has_BU_lock && lock_has_lock_on_object (&real_class_oid, oid_Root_class_oid, BU_LOCK))
+	    {
+	      granted = LK_GRANTED;
+	    }
+	  else
+	    {
+	      granted = lock_subclass (thread_p, &real_class_oid, &superclass_oid, IX_LOCK, LK_UNCOND_LOCK);
+	    }
 	  if (granted != LK_GRANTED)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -5041,6 +5056,17 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  assert_release (OID_EQ (class_oid, &real_class_oid));
 	}
     }
+
+  /* *INDENT-OFF* */
+  if (prepared != nullptr)
+    {
+      error_code = prepared->finalize (thread_p, &real_class_oid);
+      if (error_code != NO_ERROR)
+        {
+          goto error2;
+        }
+    }
+  /* *INDENT-ON* */
 
   *force_count = 0;
 
@@ -5364,7 +5390,8 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
 static int
 locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid, OID * new_class_oid,
 		     HFID * new_class_hfid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int op_type, int has_index,
-		     int *force_count, PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking)
+		     int *force_count, PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking,
+		     heap_prepared_row * prepared)
 {
   int error = NO_ERROR;
   OID new_obj_oid;
@@ -5390,7 +5417,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
 			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL,
-			      false, false);
+			      false, false, false, prepared);
     }
   else
     {
@@ -5407,7 +5434,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
 			      &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE,
-			      NULL, false, false);
+			      NULL, false, false, false, prepared);
       heap_scancache_end (thread_p, &insert_cache);
     }
 
@@ -5466,7 +5493,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk, REPL_INFO_TYPE repl_info_type,
 		      int pruning_type, PRUNING_CONTEXT * pcontext, MVCC_REEV_DATA * mvcc_reev_data,
-		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking)
+		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, heap_prepared_row * prepared)
 {
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   char *rep_dir_offset;
@@ -5987,7 +6014,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  COPY_OID (&real_class_oid, class_oid);
 	  error_code =
 	    partition_prune_update (thread_p, class_oid, recdes, pcontext, pruning_type, &real_class_oid, &real_hfid,
-				    &superclass_oid);
+				    &superclass_oid, prepared);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -6025,7 +6052,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      error_code =
 		locator_move_record (thread_p, hfid, class_oid, oid, &real_class_oid, &real_hfid, recdes, scan_cache,
-				     op_type, has_index, force_count, pcontext, mvcc_reev_data, need_locking);
+				     op_type, has_index, force_count, pcontext, mvcc_reev_data, need_locking, prepared);
 	      if (error_code == NO_ERROR)
 		{
 		  COPY_OID (class_oid, &real_class_oid);
@@ -6034,6 +6061,18 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      return error_code;
 	    }
 	}
+
+      /* Complete destination-owned OOS values before index and replication processing. */
+      /* *INDENT-OFF* */
+      if (prepared != nullptr)
+        {
+          error_code = prepared->finalize (thread_p, class_oid);
+          if (error_code != NO_ERROR)
+            {
+              goto error;
+            }
+        }
+      /* *INDENT-ON* */
 
       /* AN INSTANCE: Update indices if any */
       if (has_index)
@@ -6616,6 +6655,31 @@ error:
   return error_code;
 }
 
+/* *INDENT-OFF* */
+/* Only client copy-area producers call this adapter. Replica and internal complete-record
+ * consumers keep their existing path; HAS_OOS is never a pending-preparation discriminator. */
+static int
+locator_prepare_client_row (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *source,
+                            heap_prepared_row &prepared)
+{
+  if (OID_IS_ROOTOID (class_oid) || oid_is_system_class (class_oid))
+    {
+      /* Internal/catalog records are already complete. */
+      return NO_ERROR;
+    }
+  if (source->length <= 0)
+    {
+      /* Address-only input does not describe user attributes. */
+      return NO_ERROR;
+    }
+  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+    {
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  return prepared.prepare_serialized (thread_p, class_oid, source);
+}
+/* *INDENT-ON* */
+
 /*
  * locator_force_for_multi_update () -
  *
@@ -6745,11 +6809,23 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	      goto error;
 	    }
 
-	  /* update */
-	  error_code =
-	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
-				  has_index, NULL, 0, MULTI_ROW_UPDATE, &scan_cache, &force_count, false, repl_info,
-				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true);
+          /* *INDENT-OFF* */
+          heap_prepared_row prepared;
+          error_code = locator_prepare_client_row (thread_p, &obj->class_oid, &recdes, prepared);
+          if (error_code == NO_ERROR)
+            {
+              RECDES *write_record = prepared.record () != nullptr ? prepared.record () : &recdes;
+              heap_prepared_row *pending = prepared.record () != nullptr ? &prepared : nullptr;
+              error_code = locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, nullptr,
+                              write_record, has_index, nullptr, 0, MULTI_ROW_UPDATE, &scan_cache, &force_count,
+                              false, repl_info, DB_NOT_PARTITIONED_CLASS, nullptr, nullptr, UPDATE_INPLACE_NONE,
+                              true, pending);
+            }
+          if (error_code != NO_ERROR)
+            {
+              (void) heap_oos_begin_insert_publication (thread_p);
+            }
+          /* *INDENT-ON* */
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -7034,6 +7110,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   int packed_key_value_len;
   HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
+  bool row_topop_active = false;
 
   thread_p->oos_oids.clear ();
 
@@ -7089,9 +7166,20 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  HFID_COPY (&prev_hfid, &obj->hfid);
 	}
 
-      error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
-      if (error_code != NO_ERROR)
+      /* OOS items and their following heap row are one atomic apply operation. */
+      if (!row_topop_active)
 	{
+	  error_code = xtran_server_start_topop (thread_p, &oneobj_lsa);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  row_topop_active = true;
+	}
+      else if (!LC_IS_FLUSH_INSERT (obj->operation) && !LC_IS_FLUSH_UPDATE (obj->operation))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
 	  goto exit_on_error;
 	}
 
@@ -7189,10 +7277,12 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  num_continue_on_error++;
 
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
+	  row_topop_active = false;
 	}
-      else
+      else if (obj->operation != LC_FLUSH_INSERT_OOS)
 	{
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
+	  row_topop_active = false;
 	}
       pr_clear_value (&key_value);
 
@@ -7200,6 +7290,14 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	{
 	  thread_p->oos_oids.clear ();
 	}
+    }
+
+  if (row_topop_active)
+    {
+      /* The copy-area producer must not split an OOS group from its heap row. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error_code = ER_GENERIC_ERROR;
+      goto exit_on_error;
     }
 
   if (force_scancache != NULL)
@@ -7232,6 +7330,10 @@ exit_on_error:
       locator_end_force_scan_cache (thread_p, force_scancache);
     }
 
+  if (row_topop_active)
+    {
+      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
+    }
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
   return error_code;
@@ -7324,6 +7426,19 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
       /* delete old row must be set to true for system classes and false for others, therefore it must be updated for
        * each object. */
 
+      /* *INDENT-OFF* */
+      heap_prepared_row prepared;
+      if (LC_IS_FLUSH_INSERT (obj->operation) || LC_IS_FLUSH_UPDATE (obj->operation))
+        {
+          error_code = locator_prepare_client_row (thread_p, &obj->class_oid, &recdes, prepared);
+        }
+      RECDES *write_record = prepared.record () != nullptr ? prepared.record () : &recdes;
+      heap_prepared_row *pending = prepared.record () != nullptr ? &prepared : nullptr;
+      /* *INDENT-ON* */
+      if (error_code != NO_ERROR)
+	{
+	  goto row_done;
+	}
       switch (obj->operation)
 	{
 	case LC_FLUSH_INSERT:
@@ -7331,9 +7446,9 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_INSERT_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	  error_code =
-	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, has_index,
+	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, write_record, has_index,
 				  SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
-				  UPDATE_INPLACE_NONE, NULL, false, false);
+				  UPDATE_INPLACE_NONE, NULL, false, false, false, pending);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -7347,9 +7462,10 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	  error_code =
-	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
+	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, write_record,
 				  has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
-				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
+				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true,
+				  pending);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -7382,6 +7498,11 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  break;
 	}			/* end-switch */
 
+    row_done:
+      if (error_code != NO_ERROR && !OID_IS_ROOTOID (&obj->class_oid) && !oid_is_system_class (&obj->class_oid))
+	{
+	  (void) heap_oos_begin_insert_publication (thread_p);
+	}
       thread_p->trigger_involved = false;
 
       if (LOG_CHECK_LOG_APPLIER (thread_p) || num_ignore_error > 0)
@@ -7474,13 +7595,12 @@ error:
  *   new_recdes(in): The resulting new representation of the object.
  *   copyarea_length_hint(in): An estimated size for the LC_COPYAREA or -1 if
  *                             an estimated size is not known.
- *   lob_create_flag(in) :
  *
  * Note: The allocated should be freed by using locator_free_copy_area ()
  */
 LC_COPYAREA *
 locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
-					 RECDES * new_recdes, const int copyarea_length_hint, int lob_create_flag)
+					 RECDES * new_recdes, const int copyarea_length_hint)
 {
   LC_COPYAREA *copyarea = NULL;
   int copyarea_length = copyarea_length_hint <= 0 ? DB_PAGESIZE : copyarea_length_hint;
@@ -7504,14 +7624,7 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   new_recdes->data = copyarea->mem;
   new_recdes->area_size = copyarea->length;
 
-  if (lob_create_flag == LOB_FLAG_EXCLUDE_LOB)
-    {
-      scan = heap_attrinfo_transform_to_disk_except_lob (thread_p, attr_info, old_recdes, &build_record);
-    }
-  else
-    {
-      scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, &build_record);
-    }
+  scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, &build_record);
   if (scan != S_SUCCESS)
     {
       /* Get the real length used in the copy area */
@@ -7587,8 +7700,6 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 			      FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
 			      UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor, bool need_locking)
 {
-  LC_COPYAREA *copyarea = NULL;
-  RECDES new_recdes;
   SCAN_CODE scan = S_SUCCESS;	/* Scan return value for next operation */
   RECDES copy_recdes;
   RECDES *old_recdes = NULL;
@@ -7610,6 +7721,31 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     {
       COPY_OID (&class_oid, &attr_info->class_oid);
     }
+  /* SQL INSERT owns preparation through routing, storage and all index consumers. */
+  /* *INDENT-OFF* */
+  if (LC_IS_FLUSH_INSERT (operation))
+    {
+      heap_prepared_row prepared;
+      *force_count = 0;
+      if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+        {
+          return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+        }
+      error_code = prepared.prepare (thread_p, attr_info);
+      if (error_code == NO_ERROR)
+        {
+          error_code = locator_insert_force (thread_p, &class_hfid, &class_oid, oid, prepared.record (), true,
+                          op_type, scan_cache, force_count, pruning_type, pcontext, func_preds,
+                          UPDATE_INPLACE_NONE, nullptr, false, false, false, &prepared);
+        }
+      if (error_code != NO_ERROR)
+        {
+          (void) heap_oos_begin_insert_publication (thread_p);
+        }
+      return error_code;
+    }
+  /* *INDENT-ON* */
+
   switch (operation)
     {
     case LC_FLUSH_UPDATE:
@@ -7687,58 +7823,34 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
       old_recdes = &copy_recdes;
 
-      [[fallthrough]];
-
-    case LC_FLUSH_INSERT:
-    case LC_FLUSH_INSERT_PRUNE:
-    case LC_FLUSH_INSERT_PRUNE_VERIFY:
-      copyarea =
-	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
-						 LOB_FLAG_INCLUDE_LOB);
-      if (copyarea == NULL)
-	{
-	  error_code = ER_FAILED;
-	  break;
-	}
-
-      /* Assume that it has indices */
-      if (LC_IS_FLUSH_INSERT (operation))
-	{
-	  error_code =
-	    locator_insert_force (thread_p, &class_hfid, &class_oid, oid, &new_recdes, true, op_type, scan_cache,
-				  force_count, pruning_type, pcontext, func_preds, UPDATE_INPLACE_NONE, NULL, false,
-				  false);
-	}
-      else
-	{
-	  int has_index;
-
-	  assert (LC_IS_FLUSH_UPDATE (operation));
-
-	  /* MVCC snapshot no needed for now scan_cache->mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p); */
-	  has_index = LC_FLAG_HAS_INDEX;
-	  if (heap_attrinfo_check_unique_index (thread_p, attr_info, att_id, n_att_id))
-	    {
-	      has_index |= LC_FLAG_HAS_UNIQUE_INDEX;
-	    }
-
-	  error_code =
-	    locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes, &new_recdes, has_index,
-				  att_id, n_att_id, op_type, scan_cache, force_count, not_check_fk, repl_info,
-				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	    }
-	}
-
-      if (copyarea != NULL)
-	{
-	  locator_free_copy_area (copyarea);
-	  copyarea = NULL;
-	  new_recdes.data = NULL;
-	  new_recdes.area_size = 0;
-	}
+      /* Keep preparation and its record alive through movement and every index/heap consumer. */
+      /* *INDENT-OFF* */
+      {
+        heap_prepared_row prepared;
+        *force_count = 0;
+        if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+          {
+            return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+          }
+        error_code = prepared.prepare (thread_p, attr_info, old_recdes);
+        if (error_code == NO_ERROR)
+          {
+            int has_index = LC_FLAG_HAS_INDEX;
+            if (heap_attrinfo_check_unique_index (thread_p, attr_info, att_id, n_att_id))
+              {
+                has_index |= LC_FLAG_HAS_UNIQUE_INDEX;
+              }
+            error_code = locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes,
+                            prepared.record (), has_index, att_id, n_att_id, op_type, scan_cache,
+                            force_count, not_check_fk, repl_info, pruning_type, pcontext, mvcc_reev_data,
+                            force_update_inplace, need_locking, &prepared);
+          }
+        if (error_code != NO_ERROR)
+          {
+            (void) heap_oos_begin_insert_publication (thread_p);
+          }
+      }
+      /* *INDENT-ON* */
       break;
 
     case LC_FLUSH_DELETE:
@@ -8161,7 +8273,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	  if (heap_recdes_contains_oos (recdes))
+	  /* DELETE carries only the key; its old OOS values are not insert publications. */
+	  if (is_insert && heap_recdes_contains_oos (recdes))
 	    {
 	      // insert oos replication log
 	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
@@ -13076,12 +13189,27 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	      recdes.data = NULL;
 
 	      if (heap_get_visible_version
-		  (thread_p, &inst_oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN,
-		   HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
+		  (thread_p, &inst_oid, &oid_list[i], &recdes, &scan_cache, COPY, NULL_CHN,
+		   HEAP_RECDES_DONT_CONSUME_RAW_BYTES) != S_SUCCESS)
 		{
 		  error = ER_FAILED;
 		  goto exit;
 		}
+
+              /* *INDENT-OFF* */
+              heap_prepared_row prepared;
+              if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+                {
+                  error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+                  goto exit;
+                }
+              error = prepared.prepare_serialized (thread_p, &oid_list[i], &recdes);
+              if (error != NO_ERROR)
+                {
+                  goto exit;
+                }
+              RECDES *write_record = prepared.record ();
+              /* *INDENT-ON* */
 
 	      /* No supplemental log for insert is appended due to DDL statement */
 	      thread_p->no_supplemental_log = true;
@@ -13089,9 +13217,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	      /* make sure that pruning does not change the given class OID */
 	      COPY_OID (&cls_oid, class_oid);
 	      error =
-		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, &recdes, true, SINGLE_ROW_INSERT,
+		locator_insert_force (thread_p, &class_hfid, &cls_oid, &oid, write_record, true, SINGLE_ROW_INSERT,
 				      &parent_scan_cache, &force_count, DB_PARTITIONED_CLASS, &pcontext, NULL,
-				      UPDATE_INPLACE_OLD_MVCCID, NULL, false, false);
+				      UPDATE_INPLACE_OLD_MVCCID, NULL, false, false, false, &prepared);
 
 	      thread_p->no_supplemental_log = false;
 
@@ -13114,6 +13242,10 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
     }
 
 exit:
+  if (error != NO_ERROR)
+    {
+      (void) heap_oos_begin_insert_publication (thread_p);
+    }
   if (old_page_watcher.pgptr != NULL)
     {
       pgbuf_ordered_unfix (thread_p, &old_page_watcher);
@@ -13781,7 +13913,7 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 	}
       mvcc_reev_data->copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, mvcc_reev_data->curr_attrinfo, recdes,
-						 mvcc_reev_data->new_recdes, -1, LOB_FLAG_INCLUDE_LOB);
+						 mvcc_reev_data->new_recdes, -1);
       if (mvcc_reev_data->copyarea == NULL)
 	{
 	  ev_res = V_ERROR;
@@ -14021,10 +14153,10 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }
 
-// *INDENT-OFF*
+/* *INDENT-OFF* */
 int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-			    const std::vector<record_descriptor> &recdes, int has_index, int op_type,
+			    std::vector<heap_prepared_row> &recdes, int has_index, int op_type,
 			    HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
 			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk)
 {
@@ -14047,12 +14179,42 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 
   *force_count = 0;
 
+  /* Only nonpartitioned destinations use page bulk logging. Routing and HA
+   * publication are handled row by row by the loader. Finalize all payloads
+   * before allocating/fixing a bulk heap page: OOS lookup fixes the heap header
+   * and must never run while a preallocated heap data page is latched. */
+  assert (pruning_type == DB_NOT_PARTITIONED_CLASS && HA_DISABLED ());
+  scan_cache->cache_last_fix_page = false;
+  if (scan_cache->page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix_and_init (thread_p, scan_cache->page_watcher.pgptr, &scan_cache->page_watcher);
+    }
+  try
+    {
+      recdes_array.reserve (recdes.size ());
+      heap_pages_array.reserve (recdes.size ());
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+              recdes.size () * (sizeof (RECDES) + sizeof (VPID)));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (auto &row : recdes)
+    {
+      error_code = row.finalize (thread_p, class_oid);
+      if (error_code != NO_ERROR)
+        {
+          return error_code;
+        }
+    }
+
   // Take into account the unfill factor of the heap file.
   heap_max_page_size = heap_nonheader_page_capacity () * (1.0f - prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
 
   for (size_t i = 0; i < recdes.size (); i++)
     {
-      local_record = recdes[i].get_recdes ();
+      local_record = *recdes[i].record ();
       // Loop until we insert all records.
 
       if (heap_is_big_length (local_record.length))
@@ -14172,7 +14334,7 @@ has_errors_filtered_for_insert (std::vector<int> error_filter_array)
 
   return false;
 }
-// *INDENT-ON*
+/* *INDENT-ON* */
 
 void
 xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
