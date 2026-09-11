@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 
 #include <algorithm>
 
@@ -91,6 +92,7 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+#include "internal_lob_marker.h"
 #include "stream_session.hpp"	/* STREAM_KIND_* */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -120,6 +122,8 @@ static char *pack_const_string (char *buffer, const char *cstring);
 static char *pack_string_with_null_padding (char *buffer, const char *stream, int len);
 static int length_const_string (const char *cstring, int *strlen);
 static int length_string_with_null_padding (int len);
+static bool internal_lob_parse_locator_metadata (const char *data, int size, DB_BIGINT * length,
+						 DB_BIGINT * bit_length);
 #endif /* CS_MODE */
 #if defined (SA_MODE)
 static void enter_server_no_thread_entry (void);
@@ -263,6 +267,84 @@ static int
 length_string_with_null_padding (int len)
 {
   return or_packed_stream_length (len + 1);	/* 1 for NULL padding */
+}
+
+
+/*
+ * internal_lob_parse_locator_metadata () - parse locator length metadata without linking server-side storage helpers.
+ * return       : true if the locator syntax is valid
+ * data(in)     : locator bytes
+ * size(in)     : locator byte length
+ * length(out)  : CLOB byte length or BLOB bit length
+ * bit_length(out): unused compatibility output (-1)
+ */
+static bool
+internal_lob_parse_locator_metadata (const char *data, int size, DB_BIGINT * length, DB_BIGINT * bit_length)
+{
+  const char *prefix = "@internal_lob:";
+  char locator_buf[128];
+  int prefix_len = (int) strlen (prefix);
+  int volid = 0;
+  int pageid = 0;
+  int slotid = 0;
+  long long parsed_length = 0;
+  unsigned long long parsed_token = 0;
+  int consumed = 0;
+  int token_consumed = 0;
+  char *oid_part = NULL;
+
+  if (length != NULL)
+    {
+      *length = 0;
+    }
+  if (bit_length != NULL)
+    {
+      *bit_length = -1;
+    }
+
+  if (data == NULL || size <= prefix_len || size >= (int) sizeof (locator_buf))
+    {
+      return false;
+    }
+  if (memcmp (data, prefix, (size_t) prefix_len) != 0)
+    {
+      return false;
+    }
+
+  memcpy (locator_buf, data, (size_t) size);
+  locator_buf[size] = '\0';
+
+  oid_part = locator_buf + prefix_len;
+  if (oid_part[0] == 'A' && oid_part[1] == ':')
+    {
+      oid_part += 2;
+    }
+
+  if (sscanf (oid_part, "%d|%d|%d:%lld%n", &volid, &pageid, &slotid, &parsed_length, &consumed) != 4
+      || parsed_length < 0)
+    {
+      return false;
+    }
+  (void) volid;
+  (void) pageid;
+  (void) slotid;
+
+  if (oid_part[consumed] != ':'
+      || sscanf (oid_part + consumed + 1, "%llx%n", &parsed_token, &token_consumed) != 1
+      || parsed_token == 0 || token_consumed <= 0 || oid_part[consumed + 1 + token_consumed] != '\0')
+    {
+      return false;
+    }
+
+  if (length != NULL)
+    {
+      *length = (DB_BIGINT) parsed_length;
+    }
+  if (bit_length != NULL)
+    {
+      *bit_length = -1;
+    }
+  return true;
 }
 #endif /* CS_MODE */
 
@@ -420,14 +502,14 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
 		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea,
-		   int request_pages, int nparallel_process, int nparallel_process_idx)
+		   int request_pages, int nparallel_process, int nparallel_process_idx, bool keep_oos_locators)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
   int client_endian = (int) get_endian_type ();
-  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 8) + (OR_OID_SIZE * 2)) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 9) + (OR_OID_SIZE * 2)) a_request;
   char *request;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
   char *reply;
@@ -445,6 +527,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, request_pages);
   ptr = or_pack_int (ptr, nparallel_process);
   ptr = or_pack_int (ptr, nparallel_process_idx);
+  ptr = or_pack_int (ptr, keep_oos_locators ? 1 : 0);
   ptr = or_pack_int (ptr, client_endian);
   *fetch_copyarea = NULL;
 
@@ -487,7 +570,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea, request_pages);
+			fetch_copyarea, request_pages, keep_oos_locators);
 
   if (nparallel_process > 1)
     {
@@ -4939,6 +5022,453 @@ csession_reset_cur_insert_id (void)
   exit_server (*thread_p);
 
   return result;
+#endif
+}
+
+int
+internal_lob_read_from_server (const char *locator_data, int locator_len, DB_BIGINT offset, char *buf, int count,
+			       int *nread)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *request = NULL;
+  char *locator_buf = NULL;
+  char *data_reply = NULL;
+  char *ptr = NULL;
+  int locator_strlen = 0;
+  int request_size = 0;
+  int data_size = 0;
+  int received = 0;
+  int err = NO_ERROR;
+
+  if (nread == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  *nread = 0;
+
+  if (locator_data == NULL || locator_len <= 0 || offset < 0 || count < 0 || (buf == NULL && count > 0))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  locator_buf = (char *) malloc ((size_t) locator_len + 1);
+  if (locator_buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) locator_len + 1);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (locator_buf, locator_data, (size_t) locator_len);
+  locator_buf[locator_len] = '\0';
+
+  request_size = OR_INT64_SIZE + OR_INT_SIZE + length_const_string (locator_buf, &locator_strlen);
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+
+  ptr = or_pack_int64 (request, (INT64) offset);
+  ptr = or_pack_int (ptr, count);
+  (void) pack_const_string_with_length (ptr, locator_buf, locator_strlen);
+
+  err =
+    net_client_request2 (NET_SERVER_INTERNAL_LOB_READ, request, request_size, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			 NULL, 0, &data_reply, &data_size);
+  if (err != NO_ERROR)
+    {
+      err = ER_FAILED;
+      goto cleanup;
+    }
+
+  ptr = or_unpack_int (reply, &received);
+  (void) or_unpack_int (ptr, &err);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  if (received < 0 || received > count || data_size != received || (received > 0 && data_reply == NULL))
+    {
+      err = ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto cleanup;
+    }
+
+  if (received > 0)
+    {
+      memcpy (buf, data_reply, (size_t) received);
+    }
+  *nread = received;
+
+cleanup:
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+  if (locator_buf != NULL)
+    {
+      free_and_init (locator_buf);
+    }
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return err;
+#else
+  (void) locator_data;
+  (void) locator_len;
+  (void) offset;
+  (void) buf;
+  (void) count;
+  if (nread != NULL)
+    {
+      *nread = 0;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+  return ER_FAILED;
+#endif
+}
+
+int
+internal_lob_stream_open_from_server (const char *locator_data, int locator_len, INT64 * token)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *request = NULL;
+  char *locator_buf = NULL;
+  char *ptr = NULL;
+  int locator_strlen = 0;
+  int request_size = 0;
+  int err = NO_ERROR;
+
+  if (token == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  *token = 0;
+
+  if (locator_data == NULL || locator_len <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  locator_buf = (char *) malloc ((size_t) locator_len + 1);
+  if (locator_buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) locator_len + 1);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (locator_buf, locator_data, (size_t) locator_len);
+  locator_buf[locator_len] = '\0';
+
+  request_size = length_const_string (locator_buf, &locator_strlen);
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+  (void) pack_const_string_with_length (request, locator_buf, locator_strlen);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_STREAM_OPEN, request, request_size, reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  ptr = or_unpack_int64 (reply, token);
+  (void) or_unpack_int (ptr, &err);
+
+cleanup:
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+  if (locator_buf != NULL)
+    {
+      free_and_init (locator_buf);
+    }
+
+  return err;
+#else
+  (void) locator_data;
+  (void) locator_len;
+  if (token != NULL)
+    {
+      *token = 0;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+  return ER_FAILED;
+#endif
+}
+
+int
+internal_lob_stream_read_from_server (INT64 token, char *buf, int count, int *nread)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *data_reply = NULL;
+  char *ptr = NULL;
+  int data_size = 0;
+  int received = 0;
+  int err = NO_ERROR;
+
+  if (nread == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  *nread = 0;
+
+  if (token <= 0 || count < 0 || (buf == NULL && count > 0))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ptr = or_pack_int64 (request, token);
+  (void) or_pack_int (ptr, count);
+
+  err =
+    net_client_request2 (NET_SERVER_INTERNAL_LOB_STREAM_READ, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
+  if (err != NO_ERROR)
+    {
+      err = ER_FAILED;
+      goto cleanup;
+    }
+
+  ptr = or_unpack_int (reply, &received);
+  (void) or_unpack_int (ptr, &err);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  if (received < 0 || received > count || data_size != received || (received > 0 && data_reply == NULL))
+    {
+      err = ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto cleanup;
+    }
+
+  if (received > 0)
+    {
+      memcpy (buf, data_reply, (size_t) received);
+    }
+  *nread = received;
+
+cleanup:
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return err;
+#else
+  (void) token;
+  (void) buf;
+  (void) count;
+  if (nread != NULL)
+    {
+      *nread = 0;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+  return ER_FAILED;
+#endif
+}
+
+int
+internal_lob_stream_close_from_server (INT64 token)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  (void) or_pack_int64 (request, token);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_STREAM_CLOSE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+  return err;
+#else
+  (void) token;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+  return ER_FAILED;
+#endif
+}
+
+int
+loaddb_internal_lob_upload_begin (cubload::class_id clsid, char type, DB_BIGINT data_length, DB_BIGINT bit_length,
+				  INT64 * token)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_INT64_SIZE * 2) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = NULL;
+  int err = NO_ERROR;
+
+  if (token == NULL || clsid <= 0 || (type != 'B' && type != 'C') || data_length < 0 || bit_length < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  *token = 0;
+
+  ptr = or_pack_int (request, clsid);
+  ptr = or_pack_int (ptr, (int) type);
+  ptr = or_pack_int64 (ptr, (INT64) data_length);
+  (void) or_pack_int64 (ptr, (INT64) bit_length);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_UPLOAD_BEGIN, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  ptr = or_unpack_int64 (reply, token);
+  (void) or_unpack_int (ptr, &err);
+  return err;
+#else
+  (void) clsid;
+  (void) type;
+  (void) data_length;
+  (void) bit_length;
+  if (token != NULL)
+    {
+      *token = 0;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+  return ER_FAILED;
+#endif
+}
+
+int
+loaddb_internal_lob_upload_append (INT64 token, const char *data, int data_size)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = NULL;
+  int err = NO_ERROR;
+
+  if (token <= 0 || data_size < 0 || (data == NULL && data_size > 0))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ptr = or_pack_int64 (request, token);
+  (void) or_pack_int (ptr, data_size);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_UPLOAD_APPEND, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), (char *) data, data_size, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+  return err;
+#else
+  (void) token;
+  (void) data;
+  (void) data_size;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+  return ER_FAILED;
+#endif
+}
+
+int
+loaddb_internal_lob_upload_end (INT64 token)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  (void) or_pack_int64 (request, token);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_UPLOAD_END, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+  return err;
+#else
+  (void) token;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+  return ER_FAILED;
+#endif
+}
+
+int
+loaddb_internal_lob_upload_abort (INT64 token)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  (void) or_pack_int64 (request, token);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_UPLOAD_ABORT, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+  return err;
+#else
+  (void) token;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+  return ER_FAILED;
 #endif
 }
 
@@ -12092,6 +12622,197 @@ stream_from_init (int stream_kind, const char *config, int config_len)
 #endif /* !CS_MODE */
 }
 
+int
+internal_lob_dml_make_slot_value (DB_VALUE * value, DB_TYPE type, int slot)
+{
+  char marker_text[64];
+  char *marker = NULL;
+  int marker_len;
+  int error;
+
+  if (value == NULL || (type != DB_TYPE_BLOB && type != DB_TYPE_CLOB) || slot < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "invalid internal LOB DML slot value");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  marker_len = snprintf (marker_text, sizeof (marker_text), INTERNAL_LOB_DML_SLOT_PREFIX "%d", slot);
+  if (marker_len <= 0 || marker_len >= (int) sizeof (marker_text))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "internal LOB DML slot value is too large");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  marker = (char *) db_private_alloc (NULL, marker_len + 1);
+  if (marker == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+  memcpy (marker, marker_text, marker_len + 1);
+
+  error = type == DB_TYPE_BLOB
+    ? db_make_blob (value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) marker, marker_len * 8)
+    : db_make_clob (value, DB_MAX_LOB_PRECISION, marker, marker_len);
+  if (error != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, marker);
+    }
+  else
+    {
+      value->need_clear = true;
+      db_value_mark_internal_lob (value, DB_VALUE_INTERNAL_LOB_MARKER_DML_SLOT);
+    }
+  return error;
+}
+
+int
+internal_lob_dml_from_init (const XASL_ID * xasl_id, int dbval_count, const DB_VALUE * dbvals,
+			    QUERY_FLAG query_flag, const CACHE_TIME * client_cache_time, int query_timeout,
+			    const internal_lob_dml_slot_config * slot_configs, int slot_count)
+{
+#if defined(CS_MODE)
+  size_t packed_dbvals_size = 0;
+  size_t config_size;
+  char *config = NULL;
+  char *packed_dbvals = NULL;
+  char *ptr;
+  char *packed_dbvals_size_ptr;
+  char *packed_dbvals_ptr;
+  int packed_dbvals_length;
+  int error;
+
+  bool client_owned_dml = xasl_id != NULL && XASL_ID_IS_NULL (xasl_id);
+  if (xasl_id == NULL || dbval_count < 0 || (dbval_count > 0 && dbvals == NULL)
+      || client_cache_time == NULL || query_timeout < 0 || slot_configs == NULL || slot_count <= 0
+      || slot_count > 1024 || IS_QUERY_EXECUTE_WITH_COMMIT (query_flag) || IS_TRAN_AUTO_COMMIT (query_flag)
+      || (client_owned_dml && (dbval_count != 0 || dbvals != NULL || query_flag != 0 || query_timeout != 0)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "invalid internal LOB DML client configuration");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  for (int i = 0; i < dbval_count; i++)
+    {
+      packed_dbvals_size += OR_VALUE_ALIGNED_SIZE ((DB_VALUE *) & dbvals[i]);
+      if (packed_dbvals_size > INT_MAX)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+		  "internal LOB DML parameter data is too large");
+	  return ER_STREAM_SESSION_ERROR;
+	}
+    }
+
+  config_size = OR_INT_SIZE + OR_XASL_ID_SIZE + OR_INT_SIZE * 5 + OR_CACHE_TIME_SIZE
+    + (size_t) slot_count *INTERNAL_LOB_DML_SLOT_CONFIG_SIZE + packed_dbvals_size;
+  if (config_size > INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "internal LOB DML configuration is too large");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  config = (char *) malloc (config_size);
+  if (packed_dbvals_size > 0)
+    {
+      packed_dbvals = (char *) malloc (packed_dbvals_size);
+    }
+  if (config == NULL || (packed_dbvals_size > 0 && packed_dbvals == NULL))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, config_size);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+
+  ptr = or_pack_int (config, INTERNAL_LOB_DML_CONFIG_VERSION);
+  OR_PACK_XASL_ID (ptr, xasl_id);
+  ptr = or_pack_int (ptr, dbval_count);
+  packed_dbvals_size_ptr = ptr;
+  ptr = or_pack_int (ptr, 0);
+  ptr = or_pack_int (ptr, query_flag);
+  OR_PACK_CACHE_TIME (ptr, client_cache_time);
+  ptr = or_pack_int (ptr, query_timeout);
+  ptr = or_pack_int (ptr, slot_count);
+
+  for (int i = 0; i < slot_count; i++)
+    {
+      INT64 data_length = (INT64) slot_configs[i].data_length;
+      INT64 logical_length = (INT64) slot_configs[i].logical_length;
+
+      ptr = or_pack_int (ptr, (int) slot_configs[i].type);
+      OR_PUT_INT64 (ptr, &data_length);
+      ptr += OR_INT64_SIZE;
+      OR_PUT_INT64 (ptr, &logical_length);
+      ptr += OR_INT64_SIZE;
+      ptr = or_pack_int (ptr, slot_configs[i].flags);
+      ptr = or_pack_oid (ptr, &slot_configs[i].class_oid);
+    }
+
+  packed_dbvals_ptr = packed_dbvals;
+  for (int i = 0; i < dbval_count; i++)
+    {
+      packed_dbvals_ptr = or_pack_db_value (packed_dbvals_ptr, (DB_VALUE *) & dbvals[i]);
+    }
+  packed_dbvals_length = packed_dbvals_size > 0 ? CAST_BUFLEN (packed_dbvals_ptr - packed_dbvals) : 0;
+  OR_PUT_INT (packed_dbvals_size_ptr, packed_dbvals_length);
+  if (packed_dbvals_length > 0)
+    {
+      memcpy (ptr, packed_dbvals, (size_t) packed_dbvals_length);
+      ptr += packed_dbvals_length;
+    }
+
+  error = stream_from_init (STREAM_KIND_INTERNAL_LOB_DML, config, CAST_BUFLEN (ptr - config));
+
+exit:
+  free_and_init (packed_dbvals);
+  free_and_init (config);
+  return error;
+#else /* SA_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+	  "internal LOB DML stream is only used in client/server mode");
+  return ER_DB_UNIMPLEMENTED;
+#endif /* CS_MODE */
+}
+
+int
+internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, int data_len)
+{
+#if defined(CS_MODE)
+  const int frame_header_size = OR_INT_SIZE + OR_INT64_SIZE;
+  char *frame;
+  int error;
+  INT64 packed_offset = (INT64) offset;
+
+  if (slot < 0 || offset < 0 || data_len < 0 || (data_len > 0 && data == NULL)
+      || data_len > INT_MAX - frame_header_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "invalid internal LOB DML payload frame");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  frame = (char *) malloc ((size_t) frame_header_size + data_len);
+  if (frame == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) frame_header_size + data_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  OR_PUT_INT (frame, slot);
+  OR_PUT_INT64 (frame + OR_INT_SIZE, &packed_offset);
+  if (data_len > 0)
+    {
+      memcpy (frame + frame_header_size, data, (size_t) data_len);
+    }
+  error = stream_from_send_data (frame, frame_header_size + data_len);
+  free_and_init (frame);
+  return error;
+#else /* SA_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+	  "internal LOB DML stream is only used in client/server mode");
+  return ER_DB_UNIMPLEMENTED;
+#endif /* CS_MODE */
+}
+
 /*
  * copy_from_init () - Initialize a COPY FROM STDIN session on the server
  *   return: error code
@@ -12283,24 +13004,23 @@ stream_from_send_data (const char *data, int data_len)
 /*
  * stream_from_end () - Finalize COPY session and retrieve row count
  *   return: error code
- *   rows_loaded(out): number of rows successfully loaded
+ *   result_count(out): consumer result (rows for COPY, token for Internal LOB)
  */
 int
-stream_from_end (int *rows_loaded)
+stream_from_end (INT64 * result_count)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
 
-  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   int req_error = net_client_request (NET_SERVER_STREAM_END, NULL, 0, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      char *ptr;
-      ptr = or_unpack_int (reply, &rc);
-      ptr = or_unpack_int (ptr, rows_loaded);
+      (void) or_unpack_int (reply, &rc);
+      OR_GET_INT64 (reply + OR_INT_SIZE, result_count);
     }
   else
     {
@@ -12313,7 +13033,35 @@ stream_from_end (int *rows_loaded)
 
   return rc;
 #else /* CS_MODE */
-  *rows_loaded = 0;
+  *result_count = 0;
   return NO_ERROR;
 #endif /* !CS_MODE */
+}
+
+int
+stream_from_abort (void)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_ABORT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				      NULL, 0, NULL, 0);
+  if (req_error == NO_ERROR)
+    {
+      or_unpack_int (reply, &rc);
+    }
+  else
+    {
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
+  return rc;
+#else
+  return NO_ERROR;
+#endif
 }

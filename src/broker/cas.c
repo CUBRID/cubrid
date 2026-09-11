@@ -219,7 +219,9 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
   fn_set_cas_change_mode,	/* CAS_FC_SET_CAS_CHANGE_MODE */
   fn_stream_send_data,		/* CAS_FC_STREAM_SEND_DATA */
-  fn_stream_end			/* CAS_FC_STREAM_END */
+  fn_stream_end,		/* CAS_FC_STREAM_END */
+  fn_stream_init,		/* CAS_FC_STREAM_INIT */
+  fn_stream_abort		/* CAS_FC_STREAM_ABORT */
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
@@ -269,7 +271,9 @@ static const char *server_func_name[] = {
   "fn_get_shard_info",
   "fn_set_cas_change_mode",
   "fn_stream_send_data",
-  "fn_stream_end"
+  "fn_stream_end",
+  "fn_stream_init",
+  "fn_stream_abort"
 };
 
 

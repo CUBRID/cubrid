@@ -33,9 +33,14 @@
 #include "dbtran_def.h"
 #include "dbtype.h"
 #include "memory_alloc.h"
+#include "network_interface_cl.h"
 #include "object_primitive.h"
 #include "porting.h"
 #include "transaction_cl.h"
+#if defined (SA_MODE)
+#include "internal_lob_file.hpp"
+#include "thread_manager.hpp"
+#endif /* SA_MODE */
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -63,6 +68,7 @@
 #define	MAX_DEFAULT_DISPLAY_LENGTH	  20
 #define STRING_TYPE_PREFIX_SUFFIX_LENGTH  2
 #define BIT_TYPE_PREFIX_SUFFIX_LENGTH     3
+#define CSQL_INTERNAL_LOB_STREAM_CHUNK_SIZE (1024 * 1024)
 
 /* structure for current query result information */
 typedef struct
@@ -167,7 +173,11 @@ static jmp_buf csql_Jmp_buf;
 
 static const char *csql_cmd_string (CUBRID_STMT_TYPE stmt_type, const char *default_string);
 static void display_empty_result (int stmt_type, int line_no);
-static char **get_current_result (int **len, const CUR_RESULT_INFO * result_info, const CSQL_ARGUMENT * csql_arg);
+static char **get_current_result (int **len, bool ** stream_flags, const CUR_RESULT_INFO * result_info,
+				  const CSQL_ARGUMENT * csql_arg);
+static int write_current_result_to_delimited_stream (FILE * pf, const CUR_RESULT_INFO * result_info,
+						     const CSQL_ARGUMENT * csql_arg);
+static int fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * csql_arg);
 static int write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RESULT_INFO * result_info);
 static char *uncontrol_strdup (const char *from);
 static char *uncontrol_strndup (const char *from, int length);
@@ -485,6 +495,423 @@ display_empty_result (int stmt_type, int line_no)
   return;
 }
 
+
+static int
+fprint_internal_lob_stream_char (FILE * pf, int ch, bool plain_output, bool change_single_quote)
+{
+  if (plain_output)
+    {
+      if (ch == '\t')
+	{
+	  return (fputs ("\\t", pf) == EOF) ? CSQL_FAILURE : CSQL_SUCCESS;
+	}
+      if (ch == '\n')
+	{
+	  return (fputs ("\\n", pf) == EOF) ? CSQL_FAILURE : CSQL_SUCCESS;
+	}
+      if (ch == '\\')
+	{
+	  return (fputs ("\\\\", pf) == EOF) ? CSQL_FAILURE : CSQL_SUCCESS;
+	}
+    }
+  else if (change_single_quote && ch == '\'')
+    {
+      return (fputs ("''", pf) == EOF) ? CSQL_FAILURE : CSQL_SUCCESS;
+    }
+
+  return (fputc (ch, pf) == EOF) ? CSQL_FAILURE : CSQL_SUCCESS;
+}
+
+static int
+fprint_internal_lob_stream_blob_hex (FILE * pf, const char *data, int data_len, DB_BIGINT * emitted_nibbles,
+				     DB_BIGINT total_nibbles)
+{
+  static const char hex[] = "0123456789ABCDEF";
+  int i;
+
+  for (i = 0; i < data_len && *emitted_nibbles < total_nibbles; i++)
+    {
+      unsigned char ch = (unsigned char) data[i];
+
+      if (fputc (hex[ch >> 4], pf) == EOF)
+	{
+	  return CSQL_FAILURE;
+	}
+      (*emitted_nibbles)++;
+
+      if (*emitted_nibbles < total_nibbles)
+	{
+	  if (fputc (hex[ch & 0x0f], pf) == EOF)
+	    {
+	      return CSQL_FAILURE;
+	    }
+	  (*emitted_nibbles)++;
+	}
+    }
+
+  return CSQL_SUCCESS;
+}
+
+static int
+fprint_internal_lob_stream_blob_bits (FILE * pf, const char *data, int data_len, DB_BIGINT * emitted_bits,
+				      DB_BIGINT total_bits)
+{
+  int i;
+
+  for (i = 0; i < data_len && *emitted_bits < total_bits; i++)
+    {
+      unsigned char ch = (unsigned char) data[i];
+      int bit;
+
+      for (bit = 7; bit >= 0 && *emitted_bits < total_bits; bit--)
+	{
+	  if (fputc (((ch >> bit) & 0x01) ? '1' : '0', pf) == EOF)
+	    {
+	      return CSQL_FAILURE;
+	    }
+	  (*emitted_bits)++;
+	}
+    }
+
+  return CSQL_SUCCESS;
+}
+
+static int
+fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * csql_arg)
+{
+  char lob_type = '\0';
+  const char *locator = NULL;
+  int locator_len = 0;
+  DB_BIGINT data_len = 0;
+  DB_BIGINT bit_length = 0;
+  DB_BIGINT offset = 0;
+  DB_BIGINT emitted_nibbles = 0;
+  DB_BIGINT emitted_bits = 0;
+  DB_BIGINT total_nibbles = 0;
+  bool blob_as_binary_literal = false;
+  char *buffer = NULL;
+  int buffer_size = CSQL_INTERNAL_LOB_STREAM_CHUNK_SIZE;
+  bool plain_output = csql_arg->plain_output;
+  /* the delimiter and enclosure options only exist for the query and loaddb output styles; the
+   * other styles quote strings the way csql_db_value_as_string () does */
+  bool query_style_output = (bool) (csql_arg->query_output || csql_arg->loaddb_output);
+  char column_enclosure = query_style_output ? csql_arg->column_enclosure : '\'';
+  bool change_single_quote = (bool) (query_style_output && csql_arg->column_enclosure == '\'');
+  int error = CSQL_SUCCESS;
+#if defined (SA_MODE)
+  INTERNAL_LOB_LOCATOR sa_locator;
+  INTERNAL_LOB_READER reader;
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+#endif /* SA_MODE */
+#if defined (CS_MODE)
+  INT64 stream_token = 0;
+  bool stream_opened = false;
+#endif /* CS_MODE */
+
+  if (!csql_db_value_is_internal_lob_locator (value, &lob_type, &locator, &locator_len, &data_len, &bit_length)
+      && !csql_db_value_is_internal_lob_stream_marker (value, &lob_type, &locator, &locator_len, &data_len,
+						       &bit_length))
+    {
+      return CSQL_FAILURE;
+    }
+  if (data_len < 0 || bit_length < 0)
+    {
+      return CSQL_FAILURE;
+    }
+  if (lob_type == 'B')
+    {
+      total_nibbles = (bit_length + 3) / 4;
+      blob_as_binary_literal = (bit_length % 4 != 0);
+    }
+
+  if (!plain_output)
+    {
+      if (lob_type == 'B' && fputc (blob_as_binary_literal ? 'B' : 'X', pf) == EOF)
+	{
+	  return CSQL_FAILURE;
+	}
+      if (fputc (column_enclosure, pf) == EOF)
+	{
+	  return CSQL_FAILURE;
+	}
+    }
+
+  if (data_len > 0)
+    {
+      if (data_len < (DB_BIGINT) buffer_size)
+	{
+	  buffer_size = (int) data_len;
+	}
+
+      buffer = (char *) malloc ((size_t) buffer_size);
+      if (buffer == NULL)
+	{
+	  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+	  return CSQL_FAILURE;
+	}
+
+#if defined (SA_MODE)
+      if (!internal_lob_parse_locator_string (locator, locator_len, &sa_locator)
+	  || internal_lob_read_open (thread_p, sa_locator, reader) != NO_ERROR)
+	{
+	  error = CSQL_FAILURE;
+	  goto exit;
+	}
+#elif defined (CS_MODE)
+      if (internal_lob_stream_open_from_server (locator, locator_len, &stream_token) != NO_ERROR)
+	{
+	  error = CSQL_FAILURE;
+	  goto exit;
+	}
+      stream_opened = true;
+#else
+      error = CSQL_FAILURE;
+      goto exit;
+#endif /* SA_MODE */
+    }
+
+  while (offset < data_len)
+    {
+      DB_BIGINT remaining = data_len - offset;
+      int request_size = (remaining > (DB_BIGINT) buffer_size) ? buffer_size : (int) remaining;
+      int nread = 0;
+      int i;
+
+#if defined (SA_MODE)
+      if (internal_lob_read_pull (thread_p, reader, oos_buffer (buffer, (size_t) request_size), nread) != NO_ERROR)
+	{
+	  error = CSQL_FAILURE;
+	  goto exit;
+	}
+#elif defined (CS_MODE)
+      if (internal_lob_stream_read_from_server (stream_token, buffer, request_size, &nread) != NO_ERROR)
+	{
+	  error = CSQL_FAILURE;
+	  goto exit;
+	}
+#else
+      error = CSQL_FAILURE;
+      goto exit;
+#endif
+      if (nread <= 0 || nread > request_size || offset + nread > data_len)
+	{
+	  error = CSQL_FAILURE;
+	  goto exit;
+	}
+
+      if (lob_type == 'C')
+	{
+	  for (i = 0; i < nread; i++)
+	    {
+	      if (fprint_internal_lob_stream_char (pf, (unsigned char) buffer[i], plain_output,
+						   change_single_quote) != CSQL_SUCCESS)
+		{
+		  error = CSQL_FAILURE;
+		  goto exit;
+		}
+	    }
+	}
+      else
+	{
+	  if (blob_as_binary_literal)
+	    {
+	      if (fprint_internal_lob_stream_blob_bits (pf, buffer, nread, &emitted_bits, bit_length) != CSQL_SUCCESS)
+		{
+		  error = CSQL_FAILURE;
+		  goto exit;
+		}
+	    }
+	  else if (fprint_internal_lob_stream_blob_hex (pf, buffer, nread, &emitted_nibbles, total_nibbles) !=
+		   CSQL_SUCCESS)
+	    {
+	      error = CSQL_FAILURE;
+	      goto exit;
+	    }
+	}
+
+      offset += (DB_BIGINT) nread;
+    }
+
+  if (!plain_output && fputc (column_enclosure, pf) == EOF)
+    {
+      error = CSQL_FAILURE;
+    }
+
+exit:
+#if defined (CS_MODE)
+  if (stream_opened)
+    {
+      if (internal_lob_stream_close_from_server (stream_token) != NO_ERROR && error == CSQL_SUCCESS)
+	{
+	  error = CSQL_FAILURE;
+	}
+    }
+#endif /* CS_MODE */
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+  return error;
+}
+
+/*
+ * fprint_internal_lob_stream_column() - print one internal LOB column of the current tuple
+ *   return: CSQL_FAILURE/CSQL_SUCCESS
+ *   pf(in): output stream
+ *   result(in): query result positioned on the tuple being printed
+ *   col(in): column index
+ *   csql_arg(in): csql argument
+ *
+ * Note: get_current_result () cannot buffer an internal LOB value that exceeds the string
+ *       precision, so it only flags the column. The value is peeked again here and written
+ *       straight to the output stream.
+ */
+static int
+fprint_internal_lob_stream_column (FILE * pf, DB_QUERY_RESULT * result, int col, const CSQL_ARGUMENT * csql_arg)
+{
+  DB_VALUE db_value;
+  int error;
+
+  db_make_null (&db_value);
+  if (db_query_get_tuple_value (result, col, &db_value) < 0)
+    {
+      return CSQL_FAILURE;
+    }
+
+  error = fprint_internal_lob_stream (pf, &db_value, csql_arg);
+
+  if (db_value.need_clear)
+    {
+      pr_clear_value (&db_value);
+    }
+
+  return error;
+}
+
+static int
+write_current_result_to_delimited_stream (FILE * pf, const CUR_RESULT_INFO * result_info,
+					  const CSQL_ARGUMENT * csql_arg)
+{
+  int i;
+  DB_VALUE db_value;
+  CUBRID_STMT_TYPE stmt_type = result_info->curr_stmt_type;
+  DB_QUERY_RESULT *result = result_info->query_result;
+  int num_attrs = result_info->num_attrs;
+  char csql_column_delimiter = (csql_arg->query_output == true || csql_arg->loaddb_output == true)
+    ? csql_arg->column_delimiter : '\t';
+
+  db_make_null (&db_value);
+  (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
+
+  for (i = 0; i < num_attrs; i++)
+    {
+      DB_TYPE value_type;
+      char stack_buf[128];
+      char *temp = NULL;
+
+      if (db_query_get_tuple_value (result, i, &db_value) < 0)
+	{
+	  csql_Error_code = CSQL_ERR_SQL_ERROR;
+	  goto error;
+	}
+
+      value_type = DB_VALUE_TYPE (&db_value);
+      assert (value_type == DB_TYPE_NULL
+	      || result_info->attr_types[i] == DB_TYPE_NULL || result_info->attr_types[i] == DB_TYPE_VARIABLE
+	      || value_type == result_info->attr_types[i]
+	      || (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (result_info->attr_types[i]))
+	      || (TP_IS_BIT_TYPE (value_type) && TP_IS_BIT_TYPE (result_info->attr_types[i]))
+	      || (TP_IS_CHAR_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_CLOB))
+	      || (TP_IS_BIT_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_BLOB)));
+
+      switch (value_type)
+	{
+	case DB_TYPE_NULL:
+	  temp = (char *) "NULL";
+	  break;
+	case DB_TYPE_POINTER:
+	  snprintf (stack_buf, sizeof (stack_buf), "pointer value (%p)", (void *) db_get_pointer (&db_value));
+	  temp = stack_buf;
+	  break;
+	case DB_TYPE_ERROR:
+	  snprintf (stack_buf, sizeof (stack_buf), "error code (%d)", db_get_error (&db_value));
+	  temp = stack_buf;
+	  break;
+	default:
+	  if (stmt_type == CUBRID_STMT_GET_ISO_LVL)
+	    {
+	      int async_ws, iso_lvl;
+
+	      async_ws = db_get_int (&db_value) & TRAN_ASYNC_WS_BIT;
+	      iso_lvl = db_get_int (&db_value) & TRAN_ISO_LVL_BITS;
+	      if (iso_lvl < 1 || iso_lvl > 6)
+		{
+		  iso_lvl = 0;
+		  async_ws = false;
+		}
+	      snprintf (stack_buf, sizeof (stack_buf), "%s%s", csql_Isolation_level_string[iso_lvl],
+			(async_ws ? ", ASYNC WORKSPACE" : ""));
+	      temp = stack_buf;
+	    }
+	  else if ((stmt_type == CUBRID_STMT_GET_TIMEOUT) && (db_get_float (&db_value) == -1.0))
+	    {
+	      temp = (char *) "INFINITE";
+	    }
+	  else if (csql_db_value_is_internal_lob_locator (&db_value, NULL, NULL, NULL, NULL, NULL)
+		   || csql_db_value_is_internal_lob_stream_marker (&db_value, NULL, NULL, NULL, NULL, NULL))
+	    {
+	      if (fprint_internal_lob_stream (pf, &db_value, csql_arg) != CSQL_SUCCESS)
+		{
+		  csql_Error_code = CSQL_ERR_SQL_ERROR;
+		  goto error;
+		}
+	    }
+	  else
+	    {
+	      temp = csql_db_value_as_string (&db_value, NULL, csql_arg);
+	      if (temp == NULL)
+		{
+		  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+		  goto error;
+		}
+	    }
+	  break;
+	}
+
+      if (temp != NULL && fputs (temp, pf) == EOF)
+	{
+	  if (temp != stack_buf && temp != (char *) "NULL" && temp != (char *) "INFINITE")
+	    {
+	      free_and_init (temp);
+	    }
+	  goto error;
+	}
+      if (temp != NULL && temp != stack_buf && temp != (char *) "NULL" && temp != (char *) "INFINITE")
+	{
+	  free_and_init (temp);
+	}
+
+      if (i < num_attrs - 1 && fputc (csql_column_delimiter, pf) == EOF)
+	{
+	  goto error;
+	}
+
+      if (db_value.need_clear)
+	{
+	  pr_clear_value (&db_value);
+	}
+    }
+
+  return (fputc ('\n', pf) == EOF) ? CSQL_FAILURE : CSQL_SUCCESS;
+
+error:
+  if (db_value.need_clear)
+    {
+      pr_clear_value (&db_value);
+    }
+  return CSQL_FAILURE;
+}
+
 /*
  * get_current_result() - get the attribute values of the current result
  *   return: pointer newly allocated value array. On error, NULL.
@@ -499,11 +926,13 @@ display_empty_result (int stmt_type, int line_no)
  *   Caller should be responsible for free the return array and its elements.
  */
 static char **
-get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CSQL_ARGUMENT * csql_arg)
+get_current_result (int **lengths, bool ** stream_flags, const CUR_RESULT_INFO * result_info,
+		    const CSQL_ARGUMENT * csql_arg)
 {
   int i;
   char **val = NULL;		/* temporary array for values */
   int *len = NULL;		/* temporary array for lengths */
+  bool *is_stream = NULL;	/* temporary array for columns the caller must stream */
   DB_VALUE db_value;
   CUBRID_STMT_TYPE stmt_type = result_info->curr_stmt_type;
   DB_QUERY_RESULT *result = result_info->query_result;
@@ -526,6 +955,14 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
       goto error;
     }
   memset (len, 0, sizeof (int) * num_attrs);
+
+  is_stream = (bool *) malloc (sizeof (bool) * num_attrs);
+  if (is_stream == NULL)
+    {
+      csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+      goto error;
+    }
+  memset (is_stream, 0, sizeof (bool) * num_attrs);
 
   (void) db_query_set_copy_tplvalue (result, 0 /* peek */ );
 
@@ -636,6 +1073,21 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
 		}
 	      strcpy (val[i], "INFINITE");
 	    }
+	  else if (csql_db_value_is_internal_lob_stream_marker (&db_value, NULL, NULL, NULL, NULL, NULL))
+	    {
+	      /* A conversion result too large to materialize (e.g. CLOB_TO_CHAR on a huge LOB)
+	       * arrives as a stream marker; stream it instead of buffering. A raw internal-LOB
+	       * locator is intentionally NOT streamed here: a plain SELECT without a *_TO_*
+	       * conversion prints the locator text, which normal formatting produces below. */
+	      is_stream[i] = true;
+	      val[i] = (char *) malloc (1);
+	      if (val[i] == NULL)
+		{
+		  csql_Error_code = CSQL_ERR_NO_MORE_MEMORY;
+		  goto error;
+		}
+	      val[i][0] = '\0';
+	    }
 	  else
 	    {
 	      char *temp;
@@ -666,6 +1118,10 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
     {
       *lengths = len;
     }
+  if (stream_flags)
+    {
+      *stream_flags = is_stream;
+    }
   return (val);
 
 error:
@@ -683,6 +1139,10 @@ error:
   if (len != NULL)
     {
       free_and_init (len);
+    }
+  if (is_stream != NULL)
+    {
+      free_and_init (is_stream);
     }
   if (db_value.need_clear)
     {
@@ -855,104 +1315,158 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 	  for (object_no = 1;; object_no++)
 	    {
 	      csql_Row_count = object_no;
-	      /* free previous result */
-	      if (val != NULL)
+	      if (csql_arg->line_output == false
+		  && (csql_arg->plain_output == true || csql_arg->query_output == true
+		      || csql_arg->loaddb_output == true))
 		{
-		  for (i = 0; i < num_attrs; i++)
+		  if (write_current_result_to_delimited_stream (pf, result_info, csql_arg) != CSQL_SUCCESS)
 		    {
-		      free_and_init (val[i]);
+		      csql_Error_code = CSQL_ERR_SQL_ERROR;
+		      error = TRUE;
+		      break;
 		    }
-		  free_and_init (val);
 		}
-	      int *len = NULL;
-
-	      val = get_current_result (&len, result_info, csql_arg);
-	      if (val == NULL)
+	      else
 		{
-		  csql_Error_code = CSQL_ERR_SQL_ERROR;
-		  error = TRUE;
+		  /* free previous result */
+		  if (val != NULL)
+		    {
+		      for (i = 0; i < num_attrs; i++)
+			{
+			  free_and_init (val[i]);
+			}
+		      free_and_init (val);
+		    }
+		  int *len = NULL;
+		  bool *is_stream = NULL;
+
+		  val = get_current_result (&len, &is_stream, result_info, csql_arg);
+		  if (val == NULL)
+		    {
+		      csql_Error_code = CSQL_ERR_SQL_ERROR;
+		      error = TRUE;
+		      if (len != NULL)
+			{
+			  free (len);
+			}
+		      if (is_stream != NULL)
+			{
+			  free (is_stream);
+			}
+		      break;
+		    }
+
+		  if (csql_arg->line_output == true)
+		    {
+		      fprintf (pf, "<%05d>", object_no);
+		      for (i = 0; i < num_attrs; i++)
+			{
+			  fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
+			  if (is_stream[i])
+			    {
+			      fprintf (pf, "%*s: ", (int) (-max_attr_name_length), attr_names[i]);
+			      if (fprint_internal_lob_stream_column (pf, result, i, csql_arg) != CSQL_SUCCESS)
+				{
+				  csql_Error_code = CSQL_ERR_SQL_ERROR;
+				  error = TRUE;
+				  break;
+				}
+			      putc ('\n', pf);
+			    }
+			  else
+			    {
+			      fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length), attr_names[i], val[i]);
+			    }
+			}
+		      /* fflush(pf); */
+		    }
+		  else if (csql_arg->plain_output == true)
+		    {
+		      for (i = 0; i < num_attrs - 1; i++)
+			{
+			  fprintf (pf, "%s\t", val[i]);
+			}
+		      fprintf (pf, "%s\n", val[i]);
+		    }
+		  else if (csql_arg->query_output == true || csql_arg->loaddb_output == true)
+		    {
+		      for (i = 0; i < num_attrs - 1; i++)
+			{
+			  fprintf (pf, "%s%c", val[i], csql_arg->column_delimiter);
+			}
+		      fprintf (pf, "%s\n", val[i]);
+		    }
+		  else
+		    {
+		      int padding_size;
+
+		      for (i = 0; i < num_attrs; i++)
+			{
+			  if (is_stream[i])
+			    {
+			      fprintf (pf, "  ");
+			      if (fprint_internal_lob_stream_column (pf, result, i, csql_arg) != CSQL_SUCCESS)
+				{
+				  csql_Error_code = CSQL_ERR_SQL_ERROR;
+				  error = TRUE;
+				  break;
+				}
+			      continue;
+			    }
+
+			  if (strcmp ("NULL", val[i]) == 0)
+			    {
+			      is_null = true;
+			    }
+			  else
+			    {
+			      is_null = false;
+			    }
+
+			  column_width = csql_get_column_width (attr_names[i]);
+			  value_width =
+			    calculate_width (column_width, csql_string_width, len[i], attr_types[i], is_null);
+
+			  padding_size =
+			    (attr_lengths[i] > 0) ? MAX (attr_lengths[i] - (value_width),
+							 0) : MIN (attr_lengths[i] + (value_width), 0);
+
+			  fprintf (pf, "  ");
+			  if (padding_size > 0)
+			    {
+			      /* right justified */
+			      fprintf (pf, "%*s", (int) padding_size, "");
+			    }
+
+			  value = val[i];
+			  if (is_type_that_has_suffix (attr_types[i]) && is_null == false)
+			    {
+			      value[value_width - 1] = '\'';
+			    }
+
+			  fwrite (value, 1, value_width, pf);
+
+			  if (padding_size < 0)
+			    {
+			      /* left justified */
+			      fprintf (pf, "%*s", (int) (-padding_size), "");
+			    }
+			}
+		      putc ('\n', pf);
+		      /* fflush(pf); */
+		    }
 		  if (len != NULL)
 		    {
 		      free (len);
 		    }
-		  break;
-		}
-
-	      if (csql_arg->line_output == true)
-		{
-		  fprintf (pf, "<%05d>", object_no);
-		  for (i = 0; i < num_attrs; i++)
+		  if (is_stream != NULL)
 		    {
-		      fprintf (pf, "%*c", (int) ((i == 0) ? 1 : 8), ' ');
-		      fprintf (pf, "%*s: %s\n", (int) (-max_attr_name_length), attr_names[i], val[i]);
+		      free (is_stream);
 		    }
-		  /* fflush(pf); */
-		}
-	      else if (csql_arg->plain_output == true)
-		{
-		  for (i = 0; i < num_attrs - 1; i++)
+		  if (error == TRUE)
 		    {
-		      fprintf (pf, "%s\t", val[i]);
+		      break;
 		    }
-		  fprintf (pf, "%s\n", val[i]);
-		}
-	      else if (csql_arg->query_output == true || csql_arg->loaddb_output == true)
-		{
-		  for (i = 0; i < num_attrs - 1; i++)
-		    {
-		      fprintf (pf, "%s%c", val[i], csql_arg->column_delimiter);
-		    }
-		  fprintf (pf, "%s\n", val[i]);
-		}
-	      else
-		{
-		  int padding_size;
-
-		  for (i = 0; i < num_attrs; i++)
-		    {
-		      if (strcmp ("NULL", val[i]) == 0)
-			{
-			  is_null = true;
-			}
-		      else
-			{
-			  is_null = false;
-			}
-
-		      column_width = csql_get_column_width (attr_names[i]);
-		      value_width = calculate_width (column_width, csql_string_width, len[i], attr_types[i], is_null);
-
-		      padding_size =
-			(attr_lengths[i] > 0) ? MAX (attr_lengths[i] - (value_width),
-						     0) : MIN (attr_lengths[i] + (value_width), 0);
-
-		      fprintf (pf, "  ");
-		      if (padding_size > 0)
-			{
-			  /* right justified */
-			  fprintf (pf, "%*s", (int) padding_size, "");
-			}
-
-		      value = val[i];
-		      if (is_type_that_has_suffix (attr_types[i]) && is_null == false)
-			{
-			  value[value_width - 1] = '\'';
-			}
-
-		      fwrite (value, 1, value_width, pf);
-
-		      if (padding_size < 0)
-			{
-			  /* left justified */
-			  fprintf (pf, "%*s", (int) (-padding_size), "");
-			}
-		    }
-		  putc ('\n', pf);
-		  /* fflush(pf); */
-		}
-	      if (len != NULL)
-		{
-		  free (len);
 		}
 
 	      /* advance to next */
