@@ -8814,7 +8814,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
   int req_error, status = ER_FAILED;
   OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply;
   char *ptr;
 
@@ -8832,7 +8832,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
       ptr = or_unpack_int (ptr, &stat_info->leafs);
       ptr = or_unpack_int (ptr, &stat_info->pages);
       ptr = or_unpack_int (ptr, &stat_info->height);
-      ptr = or_unpack_int (ptr, &stat_info->keys);
+      ptr = or_unpack_int64 (ptr, &stat_info->keys);
 
       assert_release (stat_info->leafs > 0);
       assert_release (stat_info->pages > 0);
@@ -9364,19 +9364,13 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
 
   return success;
 #else /* CS_MODE */
-  LOG_LSA *tmp_lsa = NULL;
   int r = ER_FAILED;
 
   THREAD_ENTRY *thread_p = enter_server ();
-  tmp_lsa = xrepl_log_get_append_lsa ();
-  if (lsa && tmp_lsa)
+  if (lsa != NULL)
     {
-      LSA_COPY (lsa, tmp_lsa);
+      *lsa = xrepl_log_get_append_lsa ();
       r = NO_ERROR;
-    }
-  else
-    {
-      r = ER_FAILED;
     }
   exit_server (*thread_p);
 
@@ -9659,7 +9653,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	}
     }
 
-  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.pageid
+  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.load ().pageid
       && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       ctx_ptr->shutdown = true;
