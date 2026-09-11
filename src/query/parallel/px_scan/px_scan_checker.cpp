@@ -133,7 +133,7 @@ namespace parallel_scan
   bool dptr_subtree_worker_safe (XASL_NODE *arg, bool is_scan_level);
 
   void process_xasl_node_recursive (XASL_NODE *arg);
-  void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
+  void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg, bool serialize_nested_parallel = false);
   void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg);
 
   template <bool is_outptr_list>
@@ -964,7 +964,8 @@ namespace parallel_scan
       }
     for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	/* dptr subtrees also get sort/hash-join parallelism forced serial (they run per outer row) */
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, true);
       }
     for (XASL_NODE *xaslp = arg->fptr_list; xaslp; xaslp = xaslp->next)
       {
@@ -1090,7 +1091,7 @@ namespace parallel_scan
       }
   }
 
-  void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg)
+  void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg, bool serialize_nested_parallel)
   {
     if (!arg)
       {
@@ -1103,6 +1104,14 @@ namespace parallel_scan
       }
     xasl_processing_set.insert (arg);
 
+    if (serialize_nested_parallel)
+      {
+	/* the subtree runs serially per outer row (inside a scan worker or on the main thread), so its
+	 * sorts / hash joins must not reserve parallel workers either; 1 = forced serial in
+	 * compute_parallel_degree (). Replaces the former runtime scan-worker thread gate (CBRD-27205). */
+	arg->parallelism = 1;
+      }
+
     for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
       {
 	ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -1110,27 +1119,27 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->bptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->fptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->connect_by_ptr; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
 
     switch (arg->type)
@@ -1138,21 +1147,21 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part);
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, serialize_nested_parallel);
 	  }
 	if (arg->proc.cte.non_recursive_part)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.non_recursive_part);
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.non_recursive_part, serialize_nested_parallel);
 	  }
 	break;
       case MERGE_PROC:
 	if (arg->proc.merge.insert_xasl)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.insert_xasl);
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.insert_xasl, serialize_nested_parallel);
 	  }
 	if (arg->proc.merge.update_xasl)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.update_xasl);
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.update_xasl, serialize_nested_parallel);
 	  }
 	break;
       case MERGELIST_PROC:
