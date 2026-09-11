@@ -25,6 +25,12 @@
 
 #include "heap_prepared_row.hpp"
 #include "heap_oos.hpp"
+#include "locator_sr.h"
+#include "class_object.h"
+#include "locator_cl.h"
+#include "xserver_interface.h"
+#include "object_representation.h"
+#include "object_representation_sr.h"
 
 #include "test_oos_sql_common.hpp"
 
@@ -409,6 +415,328 @@ TEST_F (OosSqlShow, InsertOwnsOosInDestinationHeap)
       db_query_end (result);
     }
 }
+
+TEST_F (OosSqlShow, RawClientInsertOwnsDestinationOos)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, data_col BIT VARYING)"), 0);
+  DB_OBJECT *row = db_create (db_find_class ("t_oos_show_yes"));
+  ASSERT_NE (row, nullptr);
+  DB_VALUE value;
+  db_make_int (&value, 1);
+  ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+  std::string payload (50000, '\xAB');
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), payload.size () * 8);
+  ASSERT_EQ (db_put (row, "data_col", &value), NO_ERROR);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes "
+			       "WHERE id=1 AND data_col=CAST(REPEAT('AB',50000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  DB_QUERY_RESULT *result = nullptr;
+  ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &result), NO_ERROR);
+  int has_oos = -1;
+  EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+  EXPECT_EQ (has_oos, 1);
+  db_query_end (result);
+}
+
+TEST_F (OosSqlShow, RedistributionRewritesMultichunkValuesAtDestination)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, data_col BIT VARYING) "
+		       "PARTITION BY RANGE (id) (PARTITION p0 VALUES LESS THAN (10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES (1, CAST(REPEAT('CD',50000) AS BIT VARYING)), "
+		       "(7, CAST(REPEAT('EF',50000) AS BIT VARYING))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_GE (exec_sql ("ALTER TABLE t_oos_show_part REORGANIZE PARTITION p0 INTO "
+		       "(PARTITION p2 VALUES LESS THAN (5), PARTITION p3 VALUES LESS THAN (10))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE "
+			       "(id=1 AND data_col=CAST(REPEAT('CD',50000) AS BIT VARYING)) OR "
+			       "(id=7 AND data_col=CAST(REPEAT('EF',50000) AS BIT VARYING))", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 2);
+  for (const char *query :
+       { "SHOW HEAP OOS OF t_oos_show_part__p__p2",
+	 "SHOW HEAP OOS OF t_oos_show_part__p__p3"
+       })
+    {
+      DB_QUERY_RESULT *result = nullptr;
+      ASSERT_EQ (show_heap_oos_query (query, &result), NO_ERROR);
+      int chunks = 0;
+      EXPECT_EQ (get_int_column (result, COL_OOS_NUM_RECS, &chunks), NO_ERROR);
+      EXPECT_GT (chunks, 1);
+      db_query_end (result);
+    }
+}
+
+TEST_F (OosSqlShow, RawCopyAreaRoutesInsertAndMovementWithoutChangingPayload)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, data_col BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, data_col BIT VARYING) "
+		       "PARTITION BY RANGE (id) (PARTITION p0 VALUES LESS THAN (10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("t_oos_show_part");
+  OID root = *db_identifier (cls);
+  OID source = *db_identifier (db_find_class ("t_oos_show_yes"));
+  HFID root_hfid;
+  ASSERT_EQ (heap_get_class_info (thread_p, &root, &root_hfid, nullptr, nullptr), NO_ERROR);
+  OID row_oid = OID_INITIALIZER;
+  OID last_destination = root;
+  HFID last_hfid = root_hfid;
+  std::string bytes (50000, '\xDA');
+  for (int attempt = 0; attempt < 3; ++attempt)
+    {
+      HEAP_CACHE_ATTRINFO attrs;
+      ASSERT_EQ (heap_attrinfo_start (thread_p, attempt == 2 ? &last_destination : &root, -1, nullptr, &attrs), NO_ERROR);
+      DB_VALUE value;
+      db_make_int (&value, attempt == 0 ? 1 : 10 + attempt);
+      ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "id")), &value, &attrs), NO_ERROR);
+      db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+      ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "data_col")), &value, &attrs),
+		 NO_ERROR);
+      heap_prepared_row supplied;
+      ASSERT_EQ (supplied.prepare (thread_p, &attrs), NO_ERROR);
+      heap_attrinfo_end (thread_p, &attrs);
+      ASSERT_EQ (supplied.finalize (thread_p, &source), NO_ERROR);
+      /* A supplied stored image can already contain OOS; it still needs new destination-owned chains. */
+      RECDES *record = supplied.record ();
+      LC_COPYAREA *area = locator_allocate_copy_area_by_length (record->length + OR_MVCC_MAX_HEADER_SIZE
+			  + sizeof (LC_COPYAREA_MANYOBJS));
+      ASSERT_NE (area, nullptr);
+      memcpy (area->mem, record->data, record->length);
+      const std::string original (area->mem, record->length);
+      LC_COPYAREA_MANYOBJS *many = LC_MANYOBJS_PTR_IN_COPYAREA (area);
+      memset (many, 0, sizeof (*many));
+      many->num_objs = 1;
+      LC_COPYAREA_ONEOBJ &obj = many->objs;
+      obj.operation = attempt == 0 ? LC_FLUSH_INSERT_PRUNE : LC_FLUSH_UPDATE_PRUNE;
+      obj.hfid = root_hfid;
+      obj.class_oid = root;
+      if (attempt == 2)
+	{
+	  /* Client multi-update batches use the already selected destination class. */
+	  many->multi_update_flags = IS_MULTI_UPDATE | START_MULTI_UPDATE | END_MULTI_UPDATE;
+	  obj.operation = LC_FLUSH_UPDATE;
+	  obj.class_oid = last_destination;
+	  obj.hfid = last_hfid;
+	}
+      obj.oid = row_oid;
+      obj.length = record->length;
+      obj.offset = 0;
+      int error = xlocator_force (thread_p, area, 0, nullptr);
+      EXPECT_EQ (std::string (area->mem, original.size ()), original);
+      row_oid = obj.oid;
+      OID destination = obj.class_oid;
+      HFID destination_hfid = obj.hfid;
+      last_destination = destination;
+      last_hfid = destination_hfid;
+      locator_free_copy_area (area);
+      ASSERT_EQ (error, NO_ERROR) << db_error_string (1);
+      HEAP_SCANCACHE scan;
+      ASSERT_EQ (heap_scancache_start (thread_p, &scan, &destination_hfid, &destination, false, nullptr), NO_ERROR);
+      RECDES stored = RECDES_INITIALIZER;
+      SCAN_CODE status = heap_get_visible_version (thread_p, &row_oid, &destination, &stored, &scan, COPY, NULL_CHN,
+			 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+      if (status == S_SUCCESS)
+	{
+	  EXPECT_EQ (or_rep_id (&stored), heap_get_class_repr_id (thread_p, &destination));
+	}
+      heap_scancache_end (thread_p, &scan);
+      ASSERT_EQ (status, S_SUCCESS);
+      int matches = 0;
+      const char *query = attempt == 0
+			  ? "SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE id=1 AND "
+			  "data_col=CAST(REPEAT('DA',50000) AS BIT VARYING)"
+			  : attempt == 1 ? "SELECT COUNT(*) FROM t_oos_show_part__p__p1 WHERE id=11 AND "
+			  "data_col=CAST(REPEAT('DA',50000) AS BIT VARYING)"
+			  : "SELECT COUNT(*) FROM t_oos_show_part__p__p1 WHERE id=12 AND "
+			  "data_col=CAST(REPEAT('DA',50000) AS BIT VARYING)";
+      ASSERT_EQ (fetch_single_int (query, &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      DB_QUERY_RESULT *result = nullptr;
+      ASSERT_EQ (show_heap_oos_query (attempt == 0 ? "SHOW HEAP OOS OF t_oos_show_part__p__p0"
+				      : "SHOW HEAP OOS OF t_oos_show_part__p__p1", &result), NO_ERROR);
+      int chunks = 0;
+      EXPECT_EQ (get_int_column (result, COL_OOS_NUM_RECS, &chunks), NO_ERROR);
+      EXPECT_GT (chunks, 1);
+      db_query_end (result);
+    }
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+}
+
+TEST_F (OosSqlShow, RawClientUpdatePreservesUnassignedValuesAndRollsBackFailure)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT UNIQUE, data_col BIT VARYING)"), 0);
+  DB_OBJECT *row = db_create (db_find_class ("t_oos_show_yes"));
+  ASSERT_NE (row, nullptr);
+  DB_VALUE value;
+  db_make_int (&value, 1);
+  ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+  std::string payload (50000, '\xBC');
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), payload.size () * 8);
+  ASSERT_EQ (db_put (row, "data_col", &value), NO_ERROR);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  db_make_int (&value, 2);
+  ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+  ASSERT_EQ (locator_flush_instance (row), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id=2 AND "
+			       "data_col=CAST(REPEAT('BC',50000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id=1 AND "
+			       "data_col=CAST(REPEAT('BC',50000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  db_make_int (&value, 3);
+  heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation::record);
+  int error = db_put (row, "id", &value);
+  if (error == NO_ERROR)
+    {
+      error = locator_flush_instance (row);
+    }
+  EXPECT_LT (error, 0);
+  EXPECT_TRUE (thread_get_thread_entry_info ()->oos_oids.empty ());
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id=1 AND "
+			       "data_col=CAST(REPEAT('BC',50000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+#endif
+}
+
+TEST_F (OosSqlShow, SerializedPreparationPreservesMvccAndOutlivesSource)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT DEFAULT 7, "
+		       "k VARCHAR(80) DEFAULT 'abcdefghijklmnopqrstuvwxyz' STORAGE FORCE_OUTLINE, "
+		       "data_col BIT VARYING)"), 0);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+  OID class_oid = *db_identifier (cls);
+  heap_prepared_row adapted;
+  MVCC_REC_HEADER expected = MVCC_REC_HEADER_INITIALIZER;
+  {
+    HEAP_CACHE_ATTRINFO attrs;
+    ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+    std::string payload (50000, '\xED');
+    DB_VALUE value;
+    db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), payload.size () * 8);
+    ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "data_col")), &value, &attrs),
+	       NO_ERROR);
+    heap_prepared_row source;
+    ASSERT_EQ (source.prepare (thread_p, &attrs), NO_ERROR);
+    heap_attrinfo_end (thread_p, &attrs);
+    ASSERT_EQ (source.finalize (thread_p, &class_oid), NO_ERROR);
+    ASSERT_EQ (or_mvcc_get_header (source.record (), &expected), NO_ERROR);
+    expected.mvcc_flag |= OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_PREV_VERSION;
+    expected.mvcc_ins_id = 101;
+    expected.mvcc_del_id = 202;
+    expected.prev_version_lsa.pageid = 303;
+    expected.prev_version_lsa.offset = 4;
+    ASSERT_EQ (or_mvcc_set_header (source.record (), &expected), NO_ERROR);
+    const std::string original (source.record ()->data, source.record ()->length);
+    ASSERT_EQ (adapted.prepare_serialized (thread_p, &class_oid, source.record ()), NO_ERROR);
+    EXPECT_EQ (std::string (source.record ()->data, source.record ()->length), original);
+  }
+  heap_prepared_row moved (std::move (adapted));
+  ASSERT_EQ (moved.finalize (thread_p, &class_oid), NO_ERROR);
+  MVCC_REC_HEADER actual;
+  ASSERT_EQ (or_mvcc_get_header (moved.record (), &actual), NO_ERROR);
+  EXPECT_EQ ((int) actual.mvcc_flag, (int) expected.mvcc_flag);
+  EXPECT_EQ (actual.mvcc_ins_id, 101);
+  EXPECT_EQ (actual.mvcc_del_id, 202);
+  EXPECT_EQ (actual.prev_version_lsa.pageid, 303);
+  EXPECT_EQ (actual.prev_version_lsa.offset, 4);
+  HEAP_CACHE_ATTRINFO attrs;
+  ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+  ASSERT_EQ (heap_attrinfo_read_dbvalues (thread_p, &class_oid, moved.record (), &attrs), NO_ERROR);
+  DB_VALUE *value = heap_attrinfo_access (db_attribute_id (db_get_attribute (cls, "data_col")), &attrs);
+  int bit_length = 0;
+  const char *bytes = db_get_bit (value, &bit_length);
+  ASSERT_EQ (bit_length, 400000);
+  EXPECT_TRUE (std::string (bytes, bit_length / 8) == std::string (50000, '\xED'));
+  value = heap_attrinfo_access (db_attribute_id (db_get_attribute (cls, "k")), &attrs);
+  EXPECT_STREQ (db_get_string (value), "abcdefghijklmnopqrstuvwxyz");
+  heap_attrinfo_end (thread_p, &attrs);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+TEST_F (OosSqlShow, RedistributionFailurePreservesSourceAndNextOperation)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, a BIT VARYING, b BIT VARYING) "
+		       "PARTITION BY RANGE (id) (PARTITION p0 VALUES LESS THAN (10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part VALUES (1, CAST(REPEAT('CD',50000) AS BIT VARYING), "
+		       "CAST(REPEAT('EF',50000) AS BIT VARYING))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  for (int boundary = 0; boundary < 4; ++boundary)
+    {
+      SCOPED_TRACE (boundary);
+      if (boundary < 2)
+	{
+	  heap_prepared_row_test_fail_allocation_once (boundary == 0 ? heap_prepared_row_allocation::owner
+	      : heap_prepared_row_allocation::record);
+	}
+      else if (boundary == 2)
+	{
+	  heap_oos_test_fail_before_vfid_lookup_once ();
+	}
+      else
+	{
+	  oos_test_fail_insert_many_after_publications (1);
+	}
+      EXPECT_LT (exec_sql ("ALTER TABLE t_oos_show_part REORGANIZE PARTITION p0 INTO "
+			   "(PARTITION p2 VALUES LESS THAN (5), PARTITION p3 VALUES LESS THAN (10))"), 0);
+      EXPECT_TRUE (thread_get_thread_entry_info ()->oos_oids.empty ());
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE id=1 AND "
+				   "a=CAST(REPEAT('CD',50000) AS BIT VARYING) AND "
+				   "b=CAST(REPEAT('EF',50000) AS BIT VARYING)", &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+    }
+  ASSERT_GE (exec_sql ("ALTER TABLE t_oos_show_part REORGANIZE PARTITION p0 INTO "
+		       "(PARTITION p2 VALUES LESS THAN (5), PARTITION p3 VALUES LESS THAN (10))"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p2 WHERE id=1 AND "
+			       "a=CAST(REPEAT('CD',50000) AS BIT VARYING) AND "
+			       "b=CAST(REPEAT('EF',50000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+}
+
+TEST_F (OosSqlShow, InternalAndAddressReservationsBypassPreparation)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("CREATE SERIAL t_oos_ticket16_serial START WITH 1"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  OID cls = *db_identifier (db_find_class ("t_oos_show_yes"));
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_info (thread_p, &cls, &hfid, nullptr, nullptr), NO_ERROR);
+  heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation::owner);
+  OID reserved = OID_INITIALIZER;
+  ASSERT_EQ (heap_assign_address (thread_p, &hfid, &cls, &reserved, 100), NO_ERROR);
+  EXPECT_FALSE (OID_ISNULL (&reserved));
+  int serial = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT CAST(t_oos_ticket16_serial.NEXT_VALUE AS INTEGER)", &serial), NO_ERROR);
+  EXPECT_EQ (serial, 1);
+  ASSERT_GE (exec_sql ("ALTER TABLE t_oos_show_yes ADD COLUMN extra INT"), 0);
+  /* The pending failure must survive reservations, serial direct-page persistence and catalog writes. */
+  EXPECT_LT (exec_sql ("INSERT INTO t_oos_show_yes(id) VALUES(1)"), 0);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+  ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_yes(id, payload) "
+		       "VALUES(2, CAST(REPEAT('AA',50000) AS BIT VARYING))"), 0);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id=2 AND "
+			       "payload=CAST(REPEAT('AA',50000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_GE (exec_sql ("DROP SERIAL t_oos_ticket16_serial"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+}
+#endif
 
 TEST_F (OosSqlShow, ForcedOutlineKeyRoutesFromPreparedBytes)
 {

@@ -36,6 +36,8 @@ class heap_prepared_row
     /* REPLACE probes serialize LOB locators without copying the external LOB. */
     int prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes = nullptr,
 		 bool copy_lobs = true);
+    /* Copies supplied canonical bytes; resolves OOS per attribute, without SQL/LOB effects. */
+    int prepare_serialized (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source);
     int read_values (HEAP_CACHE_ATTRINFO *attr_info) const;
     /* Returns an owned logical value from canonical bytes, including selected OOS attributes. */
     int read_value (OR_ATTRIBUTE *attribute, DB_VALUE *value) const;
@@ -43,6 +45,8 @@ class heap_prepared_row
     RECDES *record ();
 
   private:
+    int prepare_internal (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
+			  bool copy_lobs, RECDES *serialized);
     struct storage;
     storage *m_storage;
 };

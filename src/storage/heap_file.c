@@ -12354,7 +12354,8 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
     {
       if (!attr_info->values[i].last_attrepr->is_fixed
 	  && attr_info->values[i].last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
-	  && !db_value_is_null (&attr_info->values[i].dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
+	  && (serialized_sizes != NULL || !db_value_is_null (&attr_info->values[i].dbvalue))
+	  && column_size[i] > OR_OOS_INLINE_SIZE)
 	{
 	  (*oos_plan)[i].selected = true;
 	  payload_size -= column_size[i];
@@ -13422,6 +13423,7 @@ struct heap_prepared_row::storage
     int position = 0;
     bool fixed = false;
     bool bound = false;
+    bool private_allocated = false;
   };
 
   std::vector<column> columns;
@@ -13435,7 +13437,14 @@ struct heap_prepared_row::storage
   {
     for (auto &col : columns)
       {
-        free_and_init (col.bytes.data);
+        if (col.private_allocated)
+          {
+            recdes_free_data_area (&col.bytes);
+          }
+        else
+          {
+            free_and_init (col.bytes.data);
+          }
       }
     free_and_init (recdes.data);
   }
@@ -13474,6 +13483,31 @@ int
 heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
                             bool copy_lobs)
 {
+  return prepare_internal (thread_p, attr_info, old_recdes, copy_lobs, nullptr);
+}
+
+int
+heap_prepared_row::prepare_serialized (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = heap_attrinfo_start (thread_p, source_class, -1, nullptr, &attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  error = heap_attrinfo_recache (thread_p, or_rep_id (source), &attr_info);
+  if (error == NO_ERROR)
+    {
+      error = prepare_internal (thread_p, &attr_info, nullptr, false, source);
+    }
+  heap_attrinfo_end (thread_p, &attr_info);
+  return error;
+}
+
+int
+heap_prepared_row::prepare_internal (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
+                                    bool copy_lobs, RECDES *serialized)
+{
   assert (m_storage == nullptr);
   if (attr_info->num_values < 0)
     {
@@ -13490,7 +13524,8 @@ heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_in
       owner.columns.resize (attr_info->num_values);
       owner.plans.resize (attr_info->num_values);
       std::vector<int> serialized_sizes (attr_info->num_values);
-      if (heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
+      if (serialized == nullptr
+          && heap_attrinfo_set_uninitialized (thread_p, &attr_info->inst_oid, old_recdes, attr_info) != NO_ERROR)
         {
           return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
         }
@@ -13508,6 +13543,63 @@ heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_in
           if (col.fixed)
             {
               serialized_sizes[i] = tp_domain_disk_size (value.last_attrepr->domain);
+            }
+          if (serialized != nullptr)
+            {
+              OR_ATTRIBUTE *source_attribute = value.read_attrepr;
+              if (source_attribute != nullptr
+                  && tp_domain_match (source_attribute->domain, value.last_attrepr->domain, TP_EXACT_MATCH))
+                {
+                  RECDES raw { 0, 0, REC_HOME, nullptr };
+                  bool owned = false;
+                  if (source_attribute->is_fixed)
+                    {
+                      heap_attrvalue_point_fixed (serialized, attr_info, source_attribute, &raw);
+                    }
+                  else
+                    {
+                      int error = heap_attrvalue_point_variable (serialized, attr_info, source_attribute,
+                                                                 &raw, &owned, nullptr, 0);
+                      if (error != NO_ERROR)
+                        {
+                          return error;
+                        }
+                      if (raw.data != nullptr && !owned)
+                        {
+                          OR_VAR_LENGTH (raw.length, serialized->data, source_attribute->location,
+                                         attr_info->read_classrepr->n_variable);
+                        }
+                    }
+                  col.bound = raw.data != nullptr;
+                  if (owned)
+                    {
+                      /* Transfer the resolved buffer directly; finalization borrows it. */
+                      col.bytes = raw;
+                      col.private_allocated = true;
+                    }
+                  else if (col.bound)
+                    {
+                      col.bytes.data = (char *) malloc (raw.length);
+                      if (col.bytes.data == nullptr)
+                        {
+                          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, raw.length);
+                          return ER_OUT_OF_VIRTUAL_MEMORY;
+                        }
+                      col.bytes.length = col.bytes.area_size = raw.length;
+                      memcpy (col.bytes.data, raw.data, raw.length);
+                    }
+                  if (!col.fixed)
+                    {
+                      serialized_sizes[i] = col.bound ? col.bytes.length : 0;
+                    }
+                  continue;
+                }
+              /* Schema evolution may require a stored default or domain conversion, never SQL evaluation. */
+              int error = heap_attrvalue_read (serialized, &value, attr_info);
+              if (error != NO_ERROR)
+                {
+                  return error;
+                }
             }
           if (value.do_increment != 0)
             {
@@ -13632,6 +13724,21 @@ heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_in
         }
       owner.recdes.length = (int) (cursor - buf.buffer);
       assert ((size_t) owner.recdes.length + mvcc_extra <= capacity);
+      if (serialized != nullptr)
+        {
+          MVCC_REC_HEADER header;
+          if (or_mvcc_get_header (serialized, &header) != NO_ERROR)
+            {
+              return ER_FAILED;
+            }
+          header.repid = attr_info->last_classrepr->id;
+          header.mvcc_flag = (header.mvcc_flag & ~OR_RECORD_FLAG_HAS_OOS)
+                             | (has_oos ? OR_RECORD_FLAG_HAS_OOS : 0);
+          if (or_mvcc_set_header (&owner.recdes, &header) != NO_ERROR)
+            {
+              return ER_FAILED;
+            }
+        }
       owner.phase = storage::state::prepared;
       return NO_ERROR;
     }
