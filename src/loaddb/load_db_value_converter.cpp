@@ -57,6 +57,7 @@ namespace cubload
   int to_db_generic_char (DB_TYPE type, const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_char (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+
   int to_db_clob (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_float (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -432,21 +433,19 @@ namespace cubload
      * performs for CHAR/VARCHAR is meaningless here. A CLOB only has the single
      * absolute LOB size limit (DB_MAX_LOB_PRECISION), so apply a plain bound check.
      */
+    int char_count = 0;
     const tp_domain &domain = attr->get_domain ();
-    int max_char_length = domain.precision;
+    INTL_CODESET codeset = (INTL_CODESET) domain.codeset;
 
-    if (max_char_length <= 0 || max_char_length > DB_MAX_LOB_PRECISION)
-      {
-	max_char_length = DB_MAX_LOB_PRECISION;
-      }
+    intl_char_count ((unsigned char *) str, (int) str_size, codeset, &char_count);
 
-    if (str_size > (size_t) max_char_length)
+    if (char_count > domain.precision)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_CLOB));
 	return ER_IT_DATA_OVERFLOW;
       }
 
-    return db_make_clob (val, max_char_length, str, (int) str_size);
+    return db_make_clob (val, domain.precision, str, (int) str_size);
   }
 
   int
@@ -805,19 +804,6 @@ namespace cubload
     int error_code = NO_ERROR;
     char *bstring = NULL;
     std::size_t dest_size;
-    const tp_domain &domain = attr->get_domain ();
-    int max_bit_length = domain.precision;
-
-    if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
-      {
-	max_bit_length = DB_MAX_LOB_PRECISION;
-      }
-
-    if (str_size > (std::size_t) max_bit_length)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BLOB));
-	return ER_IT_DATA_OVERFLOW;
-      }
 
     dest_size = (str_size + 7) / 8;
 
@@ -840,7 +826,7 @@ namespace cubload
 	return error_code;
       }
 
-    error_code = db_make_blob (val, max_bit_length, bstring, (int) str_size);
+    error_code = db_make_blob (val, DB_MAX_LOB_PRECISION, bstring, (int) str_size);
     if (error_code != NO_ERROR)
       {
 	db_private_free_and_init (NULL, bstring);
@@ -859,19 +845,6 @@ namespace cubload
     int error_code = NO_ERROR;
     char *bstring = NULL;
     std::size_t dest_size;
-    const tp_domain &domain = attr->get_domain ();
-    int max_bit_length = domain.precision;
-
-    if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
-      {
-	max_bit_length = DB_MAX_LOB_PRECISION;
-      }
-
-    if (str_size > (std::size_t) max_bit_length / 4)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BLOB));
-	return ER_IT_DATA_OVERFLOW;
-      }
 
     dest_size = (str_size + 1) / 2;
 
@@ -894,7 +867,7 @@ namespace cubload
 	return error_code;
       }
 
-    error_code = db_make_blob (val, max_bit_length, bstring, ((int) str_size) * 4);
+    error_code = db_make_blob (val, DB_MAX_LOB_PRECISION, bstring, ((int) str_size) * 4);
     if (error_code != NO_ERROR)
       {
 	db_private_free_and_init (NULL, bstring);
