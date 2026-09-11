@@ -726,7 +726,7 @@ static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, 
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
 					 TP_DOMAIN ** key_domain,
 					 /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-					 OID * rec_oid, bool is_check_foreign);
+					 OID * rec_oid, bool is_check_foreign, const heap_prepared_row * prepared);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
 					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain,
@@ -13471,7 +13471,8 @@ heap_prepared_row::record ()
 }
 
 int
-heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes)
+heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
+                            bool copy_lobs)
 {
   assert (m_storage == nullptr);
   if (attr_info->num_values < 0)
@@ -13526,7 +13527,8 @@ heap_prepared_row::prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_in
             {
               value.dbvalue.domain.numeric_info.precision = value.last_attrepr->domain->precision;
             }
-          if (heap_attrinfo_dbvalue_to_recdes (thread_p, &value, attr_info->class_oid, LOB_FLAG_INCLUDE_LOB,
+          if (heap_attrinfo_dbvalue_to_recdes (thread_p, &value, attr_info->class_oid,
+                                              copy_lobs ? LOB_FLAG_INCLUDE_LOB : LOB_FLAG_EXCLUDE_LOB,
                                               &col.bytes) != S_SUCCESS)
             {
               return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
@@ -13678,6 +13680,38 @@ heap_prepared_row::read_values (HEAP_CACHE_ATTRINFO *attr_info) const
         }
     }
   return NO_ERROR;
+}
+
+int
+heap_prepared_row::read_value (OR_ATTRIBUTE *attribute, DB_VALUE *value) const
+{
+  db_make_null (value);
+  if (m_storage != nullptr && (m_storage->phase == storage::state::prepared
+                              || m_storage->phase == storage::state::completed))
+    {
+      for (const auto &col : m_storage->columns)
+        {
+          if (col.id == attribute->id)
+            {
+              if (!col.bound)
+                {
+                  return db_value_domain_init (value, attribute->type, attribute->domain->precision,
+                                               attribute->domain->scale);
+                }
+              OR_BUF buf;
+              or_init (&buf, col.bytes.data, col.bytes.length);
+              int error = attribute->domain->type->data_readval (&buf, value, attribute->domain, col.bytes.length,
+                                                                 true, nullptr, 0);
+              if (error != NO_ERROR)
+                {
+                  pr_clear_value (value);
+                }
+              return error;
+            }
+        }
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+  return ER_GENERIC_ERROR;
 }
 
 int
@@ -14285,7 +14319,7 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 		      HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
-		      TP_DOMAIN ** key_domain, OID * rec_oid, bool is_check_foreign)
+		      TP_DOMAIN ** key_domain, OID * rec_oid, bool is_check_foreign, const heap_prepared_row * prepared)
 {
   char *nullmap_ptr;
   OR_ATTRIBUTE **atts;
@@ -14392,7 +14426,8 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 	}
       else
 	{
-	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
+	  error = prepared != NULL ? prepared->read_value (atts[i], &value)
+	    : heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
 	  if (error == NO_ERROR)
 	    {
 	      if (!DB_IS_NULL (&value))
@@ -14850,6 +14885,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
  *   buf(in):
  *   func_preds(in): cached function index expressions
  *   key_domain(out): domain of key
+ *   prepared(in): canonical values for duplicate probes; NULL for completed stored records
  *
  * Note: Return a B-tree key for the specified B-tree ID.
  *
@@ -14868,7 +14904,7 @@ DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 			RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
 			FUNC_PRED_UNPACK_INFO * func_indx_pred, TP_DOMAIN ** key_domain, OID * rec_oid,
-			bool is_check_foreign)
+			bool is_check_foreign, const heap_prepared_row * prepared)
 {
   OR_INDEX *index;
   int n_atts, reprid;
@@ -14905,6 +14941,8 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
     }
 
   index = &(idx_attrinfo->last_classrepr->indexes[btid_index]);
+  /* Prepared inputs are duplicate probes; SQL disallows unique function indexes. */
+  assert (prepared == NULL || (btree_is_unique_type (index->type) && index->func_index_info == NULL));
   n_atts = index->n_atts;
   *btid = index->btid;
 
@@ -14946,16 +14984,47 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       assert (recdes != NULL && recdes->data != NULL);
 
-      /* If any indexed attribute is OOS, recdes->length underestimates the actual midxkey size.
-       * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
-      for (int oos_i = 0; oos_i < n_atts; oos_i++)
+      if (prepared != NULL)
 	{
-	  if (IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[oos_i]->id))
+	  size_t prepared_size = or_multi_header_size (n_atts);
+	  for (int key_i = 0; key_i < n_atts; ++key_i)
 	    {
-	      continue;
+	      DB_VALUE value;
+	      int error = prepared->read_value (index->atts[key_i], &value);
+	      if (error != NO_ERROR)
+		{
+		  pr_clear_value (&value);
+		  pr_clear_value (db_value);
+		  return NULL;
+		}
+	      if (!DB_IS_NULL (&value))
+		{
+		  prepared_size += (size_t) index->atts[key_i]->domain->type->get_index_size_of_value (&value)
+		    + MAX_ALIGNMENT;
+		}
+	      pr_clear_value (&value);
 	    }
-	  /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
-	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, index->atts[oos_i]);
+	  if (prepared_size > INT_MAX)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, prepared_size);
+	      pr_clear_value (db_value);
+	      return NULL;
+	    }
+	  midxkey_size = (int) prepared_size;
+	}
+      else
+	{
+	  /* If any indexed attribute is OOS, recdes->length underestimates the actual midxkey size.
+	   * Pre-scan to add the actual OOS data size so heap allocation is used instead of the stack buffer. */
+	  for (int oos_i = 0; oos_i < n_atts; oos_i++)
+	    {
+	      if (IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[oos_i]->id))
+		{
+		  continue;
+		}
+	      /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
+	      midxkey_size += heap_midxkey_get_oos_extra_size (recdes, index->atts[oos_i]);
+	    }
 	}
 
       /* Allocate storage for the buf of midxkey */
@@ -14975,7 +15044,8 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       midxkey.min_max_val.position = -1;
 
       if (heap_midxkey_key_get
-	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
+	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign,
+	   prepared) == NULL)
 	{
 	  /* CBRD-26769: clean up everything this function owns before the error return, since
 	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:

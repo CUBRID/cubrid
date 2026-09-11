@@ -33,8 +33,12 @@ class heap_prepared_row
     heap_prepared_row (heap_prepared_row &&other) noexcept;
     heap_prepared_row &operator= (heap_prepared_row &&other) noexcept;
 
-    int prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes = nullptr);
+    /* REPLACE probes serialize LOB locators without copying the external LOB. */
+    int prepare (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes = nullptr,
+		 bool copy_lobs = true);
     int read_values (HEAP_CACHE_ATTRINFO *attr_info) const;
+    /* Returns an owned logical value from canonical bytes, including selected OOS attributes. */
+    int read_value (OR_ATTRIBUTE *attribute, DB_VALUE *value) const;
     int finalize (THREAD_ENTRY *thread_p, const OID *destination);
     RECDES *record ();
 
