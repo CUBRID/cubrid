@@ -27,6 +27,7 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
+#include <cassert>
 #include <unordered_set>
 #include <map>
 
@@ -36,6 +37,10 @@
 #include "query_executor.h"
 #include "mem_block.hpp"
 #include "packer.hpp"
+
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"
+#endif
 
 #include "network_callback_sr.hpp"
 #include "method_struct_invoke.hpp"
@@ -75,6 +80,16 @@ namespace cubpl
 
       bool m_is_running;
 
+      /* A PARALLEL_ENABLE declaration forbids server-side SQL in both serial and parallel
+       * execution. The parallel checkers admit only declared SPs to worker execution. */
+      bool m_is_parallel_enabled_sp;
+      /* Decided once, at construction: the px marker is owned by the parallel task that set it,
+       * and code that runs after the SP returns must reach the same verdict as code that ran
+       * before it. */
+      bool m_is_px_worker;
+
+      int reject_client_callback (bool reply_to_java);
+
       int interrupt_handler ();
 
     public:
@@ -110,7 +125,7 @@ namespace cubpl
       /* query handler */
       void add_query_handler (int handler_id);
       void remove_query_handler (int handler_id);
-      void reset_query_handlers ();
+      int reset_query_handlers ();
 
       const std::unordered_set <int> *get_stack_query_handler () const;
       const std::unordered_set <std::uint64_t> *get_stack_cursor () const;
@@ -122,15 +137,49 @@ namespace cubpl
       cubmethod::header m_java_header; // header sending to cub_javasp
       bool m_transaction_control;
 
+      bool is_px_worker_stack () const
+      {
+	return m_is_px_worker;
+      }
+
+      /* One predicate, enforced at both ends: the server refuses the callback, and the PL server
+       * is told up front so it refuses jdbc:default:connection before a Connection object is
+       * created (that object is cached per session, so concurrent px workers would share one). */
+      bool is_server_side_sql_forbidden () const
+      {
+	assert (m_is_parallel_enabled_sp || !m_is_px_worker);
+	return m_is_parallel_enabled_sp;
+      }
+
+      void set_parallel_enabled_sp (bool is_parallel_enabled)
+      {
+	m_is_parallel_enabled_sp = is_parallel_enabled;
+      }
+
+      /* The two entry points below are the single chokepoint for everything this stack sends to
+       * CAS; guarding them covers today's callbacks and any added later, with no way around. */
+
       template <typename ... Args>
       int send_data_to_client (Args &&... args)
       {
+	if (is_server_side_sql_forbidden ())
+	  {
+	    assert (false);
+	    return reject_client_callback (false);
+	  }
+
 	return xs_callback_send_no_receive (m_thread_p, m_client_header, std::forward<Args> (args)...);
       }
 
       template <typename ... Args>
       int send_data_to_client_recv (const xs_callback_func &func, Args &&... args)
       {
+	if (is_server_side_sql_forbidden ())
+	  {
+	    assert (false);
+	    return reject_client_callback (true);
+	  }
+
 	return xs_callback_send_and_receive (m_thread_p, func, m_client_header, std::forward<Args> (args)...);
       }
 
@@ -162,7 +211,17 @@ namespace cubpl
 	  return interrupt_handler ();
 	};
 
-	return conn->receive_buffer (b, &interrupt_func, 500);
+#if defined (SERVER_MODE)
+	auto *holder = thread_concurrency_slot_release (m_thread_p);
+#endif
+
+	int error = conn->receive_buffer (b, &interrupt_func, 500);
+
+#if defined (SERVER_MODE)
+	thread_concurrency_slot_acquire (m_thread_p, holder);
+#endif
+
+	return error;
       }
 
       void
