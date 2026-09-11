@@ -36,12 +36,38 @@ until the traversal budget elapses, while preserving write progress within the
 The direct native path passed; the full provenance-pinned cross-repository
 Volmap qualification was not rerun here.
 
-## Activation
+## Live activation and verification
 
-Compilation succeeded. Installation was deferred by the local build workflow
-because the target environment was running `demodb`. No live database process
-was stopped by this work. The live viewer subsequently stopped accepting
-connections, so live after-install coverage has not been claimed.
+The tested build was installed after the user closed the standalone csql
+session. Installed and built `libcubrid.so` ELF build IDs match:
+`3a367c1270296dedcbfc1918ede57cae766658a8`.
+Installation restored the stock cubrid.conf, so `enable_pgbuf_inspector=yes`
+was restored before the final restart. The managed start recipe also passed
+its runtime lock into the daemon, blocking managed stop on its own server;
+direct graceful CUBRID stop/start completed the restart. The new server
+published the expected private inspector socket and accepted SQL connections.
+
+A read-only `select * from pgbuf_lru_demo` populated the existing demo table's
+buffer pages. The live HTTP Volume requests in `live-scans.json` then measured:
+
+| Sectors requested | Producer time | Resident | Not resident | Partial omissions |
+| --- | ---: | ---: | ---: | ---: |
+| 0–63 | 577.284 ms | 610 | 3,486 | 0 |
+| 64–127 | 577.352 ms | 0 | 4,096 | 0 |
+| 0–63, repeat | 577.060 ms | 610 | 3,486 | 0 |
+
+All three captures report `producer_complete: true`, with 4,096 requested and
+4,096 evaluated pages each. Requests for the two halves use separate captures;
+they are not combined into a single observation. The original live symptom
+(roughly 100 ms scans with thousands of partial omissions) no longer occurs
+in these warmed-workload checks. Nonresident pages have no current LRU zone;
+complete coverage does not imply that all disk pages are in the buffer pool.
 
 Standards and Spec review found no blocking code issues. The backpressure
 coverage description was corrected to match resumed sampling during draining.
+
+The live Chromium viewport check (`browser-check.json`, [screenshot](live-volume.png))
+received two complete 1,536-page viewport captures, rendered 13 resident cells
+with `1S`/`3P` labels, and rendered no unknown glyphs. This viewport covers
+fewer sectors than the explicit 64-sector HTTP measurements above; its resident
+count is not a whole-volume count.
