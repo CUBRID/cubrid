@@ -3631,9 +3631,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
     }
 
-  bool found = false;
-
-  if (heap_get_class_info (thread_p, oid, &hfid, NULL, &found) != NO_ERROR || !found)
+  if (heap_get_class_hfid (thread_p, oid, &hfid, NULL) != NO_ERROR)
     {
       return DISK_ERROR;
     }

@@ -5980,15 +5980,9 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
     }
 
   thread_p = enter_server ();
-  bool hfid_found = false;
 
-  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, &hfid_found) != NO_ERROR || !hfid_found)
+  if (heap_get_class_hfid (thread_p, class_oid, &hfid, NULL) != NO_ERROR)
     {
-      if (!hfid_found)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid->volid, class_oid->pageid,
-		  class_oid->slotid);
-	}
       exit_server (*thread_p);
       free (priv_blobs);
       return ER_FAILED;

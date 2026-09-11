@@ -4302,20 +4302,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
-	  bool hfid_found = false;
-
-	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, &hfid_found);
+	  error_code = heap_get_class_hfid (thread_p, &fkref->self_oid, &hfid, NULL);
 	  if (error_code != NO_ERROR)
 	    {
-	      goto error3;
-	    }
-	  if (!hfid_found)
-	    {
-	      /* the referencing class must have a heap. */
-	      assert (false);
-	      error_code = ER_HEAP_UNKNOWN_OBJECT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, fkref->self_oid.volid, fkref->self_oid.pageid,
-		      fkref->self_oid.slotid);
 	      goto error3;
 	    }
 
@@ -4691,20 +4680,9 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
-	  bool hfid_found = false;
-
-	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, &hfid_found);
+	  error_code = heap_get_class_hfid (thread_p, &fkref->self_oid, &hfid, NULL);
 	  if (error_code != NO_ERROR)
 	    {
-	      goto error3;
-	    }
-	  if (!hfid_found)
-	    {
-	      /* the referencing class must have a heap. */
-	      assert (false);
-	      error_code = ER_HEAP_UNKNOWN_OBJECT;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, fkref->self_oid.volid, fkref->self_oid.pageid,
-		      fkref->self_oid.slotid);
 	      goto error3;
 	    }
 
@@ -5951,11 +5929,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      goto error;
 	    }
 
-	  bool hfid_found = false;
-
-	  if (heap_get_class_info (thread_p, class_oid, hfid, NULL, &hfid_found) != NO_ERROR || !hfid_found)
+	  error_code = heap_get_class_hfid (thread_p, class_oid, hfid, NULL);
+	  if (error_code != NO_ERROR)
 	    {
-	      assert (hfid_found);
 	      goto error;
 	    }
 
@@ -6998,19 +6974,9 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
       LC_REPL_RECDES_FOR_ONEOBJ (force_area, obj, packed_key_value_len, &recdes);
 
-      bool hfid_found = false;
-
-      error_code = heap_get_class_info (thread_p, &obj->class_oid, &obj->hfid, NULL, &hfid_found);
+      error_code = heap_get_class_hfid (thread_p, &obj->class_oid, &obj->hfid, NULL);
       if (error_code != NO_ERROR)
 	{
-	  goto exit_on_error;
-	}
-      if (!hfid_found)
-	{
-	  assert (false);
-	  error_code = ER_HEAP_UNKNOWN_OBJECT;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 3, obj->class_oid.volid, obj->class_oid.pageid,
-		  obj->class_oid.slotid);
 	  goto exit_on_error;
 	}
 
@@ -12194,18 +12160,9 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   nobjects = 0;
   nfetched = -1;
 
-  bool hfid_found;		/* always written by heap_get_class_info () */
-
-  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, &hfid_found);
+  error = heap_get_class_hfid (thread_p, class_oid, &hfid, NULL);
   if (error != NO_ERROR)
     {
-      goto error_exit;
-    }
-  if (!hfid_found)
-    {
-      assert (false);
-      error = ER_HEAP_UNKNOWN_OBJECT;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, class_oid->volid, class_oid->pageid, class_oid->slotid);
       goto error_exit;
     }
 
@@ -12762,12 +12719,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
   PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
 
-  bool class_hfid_found = false;
-
-  error = heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, &class_hfid_found);
-  if (error != NO_ERROR || !class_hfid_found)
+  error = heap_get_class_hfid (thread_p, class_oid, &class_hfid, NULL);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       goto exit;
     }
 
@@ -12800,12 +12754,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	  goto exit;
 	}
 
-      bool hfid_found = false;
-
-      error = heap_get_class_info (thread_p, &oid_list[i], &hfid, NULL, &hfid_found);
-      if (error != NO_ERROR || !hfid_found)
+      error = heap_get_class_hfid (thread_p, &oid_list[i], &hfid, NULL);
+      if (error != NO_ERROR)
 	{
-	  error = ER_FAILED;
 	  goto exit;
 	}
 

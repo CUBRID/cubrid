@@ -2370,7 +2370,6 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
   char *rec_attr_name_p = NULL, *string = NULL;
   const char *user_name = NULL;
   HFID hfid;
-  bool hfid_found = false;
   OID inst_oid;
   HEAP_CACHE_ATTRINFO attr_info;
   HEAP_SCANCACHE scan_cache;
@@ -2441,15 +2440,9 @@ clean_string:
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, &hfid_found);
+  error = heap_get_class_hfid (thread_p, class_oid, &hfid, NULL);
   if (error != NO_ERROR)
     {
-      goto end;
-    }
-
-  if (!hfid_found)
-    {
-      error = ER_FAILED;
       goto end;
     }
 

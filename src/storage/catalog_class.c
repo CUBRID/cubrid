@@ -4987,12 +4987,9 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
   scan_cache_inited = false;
 
   /* read values of the single record in heap */
-  bool found;			/* always written by heap_get_class_info () */
-
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, &found);
-  if (error != NO_ERROR || !found)
+  error = heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       goto exit;
     }
 
@@ -5431,12 +5428,9 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   scan_cache_inited = false;
 
   /* read values of all records in heap */
-  bool found;			/* always written by heap_get_class_info () */
-
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, &found);
-  if (error != NO_ERROR || !found)
+  error = heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       goto exit;
     }
 
@@ -5654,12 +5648,9 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  bool found;			/* always written by heap_get_class_info () */
-
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, &found);
-  if (error != NO_ERROR || !found)
+  error = heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       goto exit;
     }
 

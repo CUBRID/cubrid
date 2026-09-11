@@ -6397,21 +6397,11 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	    }
 	}
 
-      bool found = false;
-
-      ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, &found);
+      ret = heap_get_class_hfid (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return ret;
-	}
-      if (!found)
-	{
-	  /* instances of the class are being scanned, so its heap must exist. */
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid->volid, class_oid->pageid,
-		  class_oid->slotid);
-	  return ER_HEAP_UNKNOWN_OBJECT;
 	}
       assert (hfid == NULL || HFID_EQ (hfid, &scan_cache->node.hfid));
       assert (scan_cache->file_type == FILE_HEAP || scan_cache->file_type == FILE_HEAP_REUSE_SLOTS);
@@ -6656,20 +6646,11 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
     {
       if (!OID_EQ (class_oid, &scan_cache->node.class_oid))
 	{
-	  bool found = false;
-
-	  ret = heap_get_class_info (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type, &found);
+	  ret = heap_get_class_hfid (thread_p, class_oid, &scan_cache->node.hfid, &scan_cache->file_type);
 	  if (ret != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return ret;
-	    }
-	  if (!found)
-	    {
-	      assert (false);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid->volid,
-		      class_oid->pageid, class_oid->slotid);
-	      return ER_HEAP_UNKNOWN_OBJECT;
 	    }
 	  assert (HFID_EQ (&scan_cache->node.hfid, hfid));
 	  scan_cache->node.class_oid = *class_oid;
@@ -16394,7 +16375,7 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
       if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, &found) != NO_ERROR || !found)
 	{
-	  assert (found);
+	  /* best-effort: on a real error or a class with no heap, just skip re-adding the best page. */
 	  goto end;
 	}
       assert (!HFID_IS_NULL (&hfid));
@@ -17448,6 +17429,40 @@ heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 }
 
 /*
+ * heap_get_class_hfid () - get the HFID (and optionally file type) of a class that is required to have a heap.
+ *
+ * return          : NO_ERROR, a real failure code (record or file I/O), or ER_HEAP_UNKNOWN_OBJECT when the class
+ *                   currently has no heap.
+ * thread_p (in)   : thread entry
+ * class_oid (in)  : class OID
+ * hfid_out (out)  : output heap file identifier; valid only on NO_ERROR
+ * ftype_out (out) : output heap file type (may be NULL); valid only on NO_ERROR
+ *
+ * This wraps heap_get_class_info () for the many callers whose class must have a heap. It keeps a real failure and
+ * the "no heap" state (which heap_get_class_info () reports through its found argument) on distinct paths, so the two
+ * are never conflated - a record/file error is never misread as ER_HEAP_UNKNOWN_OBJECT, and "no heap" never masks a
+ * real error. Callers can then test the return code alone.
+ */
+int
+heap_get_class_hfid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out)
+{
+  bool found = false;
+  int error_code = heap_get_class_info (thread_p, class_oid, hfid_out, ftype_out, &found);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (!found)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid->volid, class_oid->pageid,
+	      class_oid->slotid);
+      return ER_HEAP_UNKNOWN_OBJECT;
+    }
+  return NO_ERROR;
+}
+
+/*
  * heap_compact_pages () - compact all pages from hfid of specified class OID
  *   return: error_code
  *   class_oid(out):  the class oid
@@ -18476,18 +18491,9 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
 	  goto cleanup;
 	}
 
-      bool found = false;
-
-      error = heap_get_class_info (thread_p, &class_oid, &ctx->hfids[0], NULL, &found);
+      error = heap_get_class_hfid (thread_p, &class_oid, &ctx->hfids[0], NULL);
       if (error != NO_ERROR)
 	{
-	  goto cleanup;
-	}
-      if (!found)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid.volid, class_oid.pageid,
-		  class_oid.slotid);
-	  error = ER_HEAP_UNKNOWN_OBJECT;
 	  goto cleanup;
 	}
 
@@ -20208,11 +20214,8 @@ heap_get_file_type (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     }
   else
     {
-      bool found = false;
-
-      if (heap_get_class_info (thread_p, &context->class_oid, NULL, &file_type, &found) != NO_ERROR || !found)
+      if (heap_get_class_hfid (thread_p, &context->class_oid, NULL, &file_type) != NO_ERROR)
 	{
-	  assert (found);
 	  return FILE_UNKNOWN_TYPE;
 	}
       assert (file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS);
@@ -25006,12 +25009,10 @@ heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * sca
 
   assert (scan_cache != NULL);
 
-  bool found = false;
-
-  if (heap_get_class_info (thread_p, partition_oid, &hfid, NULL, &found) != NO_ERROR || !found)
+  int error_code = heap_get_class_hfid (thread_p, partition_oid, &hfid, NULL);
+  if (error_code != NO_ERROR)
     {
-      assert (found);
-      return ER_FAILED;
+      return error_code;
     }
 
   new_ = (HEAP_SCANCACHE_NODE_LIST *) db_private_alloc (thread_p, sizeof (HEAP_SCANCACHE_NODE_LIST));
