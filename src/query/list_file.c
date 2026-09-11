@@ -4952,6 +4952,9 @@ qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int fl
 
   dup_list_id_p->tuple_cnt = list_id_p->tuple_cnt;
   dup_list_id_p->page_cnt = list_id_p->page_cnt;
+  /* pages are byte-identical copies, so the source's last-page geometry is correct for the duplicate */
+  dup_list_id_p->last_offset = list_id_p->last_offset;
+  dup_list_id_p->lasttpl_len = list_id_p->lasttpl_len;
 
   return dup_list_id_p;
 }
