@@ -28,8 +28,9 @@ fix count is zero and flushing is false. Fix, promote, replacement and flush
 admission require the BCB mutex; lock-free read fixing requires an existing READ
 latch, so it cannot enter this idle state. Active holders' header fields are
 omitted as unknown, without losing the safely observed residency record. Invalid
-LSAs are omitted; the engine null pageid becomes JSON null. OOS's native page
-kinds map through the wire-owned OOS vocabulary, never native ordinals.
+LSAs are omitted; the engine null pageid becomes JSON null. Develop's native page
+kinds map through the wire-owned DEVELOP layout, never native ordinals. The
+shared vocabulary retains reserved `oos`, which this producer does not emit.
 
 The BCB/I/O-buffer tables and their links are initialized before inspector startup
 and remain alive until its daemon is destroyed, before log/page-buffer teardown.

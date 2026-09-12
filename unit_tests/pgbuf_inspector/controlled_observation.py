@@ -70,7 +70,7 @@ def acknowledgement(command=None):
             if line.startswith(b"PGFIXTURE "):
                 reply = json.loads(line[len(b"PGFIXTURE "):])
                 expected = {None: "clean-held", "held": "held", "dirty": "dirty-held", "populate": "populated",
-                            "evict": "evicted", "absent": "absent"}
+                            "evict": "evicted", "absent": "absent", "page-kinds": "page-kinds"}
                 assert reply["state"] == expected[command], "inconclusive: unexpected native acknowledgement"
                 evidence.append({"command": command or "boot", "ack": reply,
                                  "monotonic": time.monotonic(), "elapsed": time.monotonic() - started})
@@ -174,6 +174,17 @@ try:
         integration.start(root, name, paths[0], target, env)
     observer = Observation(paths[0])
     (root / "handshake.json").write_text(json.dumps(observer.hello, indent=2))
+    expected_kinds = acknowledgement("page-kinds")["pages"]
+    pages, footer = observer.scan("page-kinds")
+    assert not footer["truncated"], "inconclusive: page-kind traversal must be complete"
+    assert len(expected_kinds) == 13
+    for expected in expected_kinds:
+        matches = [page for page in pages if (page["volid"], page["pageid"]) ==
+                   (expected["volid"], expected["pageid"])]
+        assert len(matches) == 1, "inconclusive: native tagged page unavailable or ambiguous"
+        assert matches[0].get("page_kind") == expected["page_kind"], (expected, matches[0])
+    assert all(page.get("page_kind") != "oos" for page in pages)
+    print("PASS all 13 native develop page kinds match wire semantics; no oos", flush=True)
     for phase, dirty in [("clean", False), ("dirty", True)]:
         before = acknowledgement("dirty" if dirty else "held")
         pages, footer = observer.scan(phase)

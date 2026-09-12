@@ -189,6 +189,46 @@ namespace
     return true;
   }
 
+  bool prepare_page_kinds (const VFID &file, std::vector<VPID> &workload)
+  {
+    // Private temporary pages carry real native header tags, without claiming
+    // to be usable instances of those storage structures. No other owner fixes them.
+    const PAGE_TYPE kinds[] = {PAGE_FTAB, PAGE_HEAP, PAGE_VOLHEADER, PAGE_VOLBITMAP,
+			       PAGE_QRESULT, PAGE_EHASH, PAGE_OVERFLOW, PAGE_AREA,
+			       PAGE_CATALOG, PAGE_BTREE, PAGE_LOG, PAGE_DROPPED_FILES, PAGE_VACUUM_DATA
+			      };
+    const char *names[] = {"ftab", "heap", "volheader", "volbitmap", "qresult", "ehash", "overflow",
+			   "area", "catalog", "btree", "log", "dropped_files", "vacuum_data"
+			  };
+    std::vector<VPID> pages;
+    for (PAGE_TYPE kind : kinds)
+      {
+	VPID vpid;
+	PAGE_PTR page = nullptr;
+	if (file_alloc (fixture_thread, &file, file_init_temp_page_type, &kind, &vpid, &page) != NO_ERROR)
+	  {
+	    return false;
+	  }
+	bool valid = page && pgbuf_get_page_ptype (fixture_thread, page) == kind;
+	workload.push_back (vpid);
+	pages.push_back (vpid);
+	pgbuf_unfix (fixture_thread, page);
+	if (!valid)
+	  {
+	    return false;
+	  }
+      }
+    std::printf ("PGFIXTURE {\"state\":\"page-kinds\",\"pages\":[");
+    for (std::size_t i = 0; i < pages.size (); ++i)
+      {
+	std::printf ("%s{\"volid\":%d,\"pageid\":%d,\"page_kind\":\"%s\"}",
+		     i == 0 ? "" : ",", pages[i].volid, pages[i].pageid, names[i]);
+      }
+    std::printf ("]}\n");
+    std::fflush (stdout);
+    return true;
+  }
+
   bool read_command (char (&command)[32])
   {
     // Bound the whole command, including a controller that sends only a prefix.
@@ -292,6 +332,13 @@ int main (int argc, char **argv)
 		  break;
 		}
 	      reply ("held", target);
+	    }
+	  else if (std::strcmp (command, "page-kinds\n") == 0 && held)
+	    {
+	      if (!prepare_page_kinds (file, workload))
+		{
+		  break;
+		}
 	    }
 	  else if (std::strcmp (command, "populate\n") == 0)
 	    {

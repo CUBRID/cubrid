@@ -17548,7 +17548,7 @@ cubpgbuf::inspector::make_scan_source ()
         sample.page_lsa = sampled_lsa {page.prv.lsa.pageid, static_cast<int> (page.prv.lsa.offset)};
         sample.oldest_unflush_lsa = sampled_lsa {bcb->oldest_unflush_lsa.pageid,
                                                 static_cast<int> (bcb->oldest_unflush_lsa.offset)};
-        sample.page_kind = page_kind_name (page.prv.ptype, page_type_layout::OOS);
+        sample.page_kind = page_kind_name (page.prv.ptype, page_type_layout::DEVELOP);
       }
     pthread_mutex_unlock (&bcb->mutex);
     return sample.volid < 0 || sample.pageid < 0 ? sample_status::UNAVAILABLE : sample_status::RESIDENT;
