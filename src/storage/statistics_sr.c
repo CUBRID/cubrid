@@ -118,6 +118,96 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
 }
 
 /*
+ * xstats_enter_update_gate () - serialize concurrent UPDATE STATISTICS on one class
+ *   return: NO_ERROR, or an error code
+ *   class_id_p(in): class whose statistics are about to be (re)collected
+ *   out_stats_fresh(out): true when another session committed a collection of this class
+ *                         while we waited on the gate -- the caller may then skip its own
+ *                         (now redundant) scan / histogram build / store (piggyback), provided
+ *                         that collection also satisfies its options (out_stored_fullscan;
+ *                         see do_update_stats ())
+ *   out_stored_fullscan(out): the stored statistics_strategy once the gate is granted
+ *                             (nonzero: the last collection was a FULLSCAN)
+ *
+ * Note (CBRD-27369): since CBRD-26959 an UPDATE STATISTICS collects column histograms by
+ *   default, writing one _db_histogram catalog row per column and holding those X locks
+ *   to commit.  Many sessions doing this on the same table cross-request S/X on that
+ *   small set of rows and deadlock-storm.  This gate makes the collection one-at-a-time
+ *   per class: it takes an X lock, held to end of transaction, on a resource private to
+ *   statistics collection -- the class OID with a reserved slot bit set
+ *   (OID_GET_UPDATE_STATS_GATE_OID).  Nothing else ever locks that OID, in particular not as
+ *   the class_oid of a lock (which would receive intention locks), so it self-conflicts
+ *   (X vs X) yet touches no resource the class's DML, reads, or catalog access lock: they
+ *   are unaffected (mirrors PostgreSQL's ShareUpdateExclusiveLock on ANALYZE).
+ *
+ *   Freshness is judged from the _db_class row's cache coherency number (chn), which every
+ *   statistics write bumps (catcls_update_class_stats () stores old_chn + 1): a changed chn,
+ *   or bookkeeping appearing where there was none, means a concurrent collection committed
+ *   while we waited.  Unlike the second-granular timestamp this also catches two collections
+ *   within the same second.  An unchanged row (e.g. the previous holder rolled back) leaves
+ *   it false.  (A DDL rewriting the same _db_class row inside the window would also bump
+ *   chn; that race is pathological next to a statistics storm and costs at most one skipped
+ *   collection, corrected by the next UPDATE STATISTICS.)
+ */
+int
+xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_stats_fresh, int *out_stored_fullscan)
+{
+  OID gate_oid;
+  char *class_name = NULL;
+  int chn_before = 0, chn_after = 0, fullscan_before = 0, fullscan_after = 0;
+  bool found_before = false, found_after = false, can_probe = true;
+  int error_code = NO_ERROR;
+
+  assert (class_id_p != NULL && out_stats_fresh != NULL && out_stored_fullscan != NULL);
+
+  *out_stats_fresh = false;
+  *out_stored_fullscan = 0;
+
+  /* bookkeeping before we wait; a read failure only disables the piggyback shortcut */
+  if (heap_get_class_name (thread_p, class_id_p, &class_name) != NO_ERROR || class_name == NULL)
+    {
+      er_clear ();
+      can_probe = false;
+    }
+  else if (catcls_get_class_stats (thread_p, class_name, &chn_before, &fullscan_before, &found_before) != NO_ERROR)
+    {
+      er_clear ();
+      can_probe = false;
+    }
+
+  /* a class's slot number is small, so the reserved gate-OID marker bit is free; the gate
+   * would over-serialize (never misbehave) if it were not, but assert the invariant */
+  assert ((class_id_p->slotid & UPDATE_STATS_GATE_OID_MASK) == 0);
+  OID_GET_UPDATE_STATS_GATE_OID (class_id_p, &gate_oid);
+  if (lock_object (thread_p, &gate_oid, oid_Root_class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto end;
+    }
+
+  if (can_probe)
+    {
+      if (catcls_get_class_stats (thread_p, class_name, &chn_after, &fullscan_after, &found_after) == NO_ERROR)
+	{
+	  *out_stats_fresh = found_after && (!found_before || chn_after != chn_before);
+	  *out_stored_fullscan = fullscan_after;
+	}
+      else
+	{
+	  er_clear ();
+	}
+    }
+
+end:
+  if (class_name != NULL)
+    {
+      free_and_init (class_name);
+    }
+
+  return error_code;
+}
+
+/*
  * stats_update_statistics_internal () -  Updates the statistics for the objects
  *                                        of a given class
  *   return:

@@ -456,6 +456,10 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqst_histogram_build_by_reservoir;
 
+  req_p = &net_Requests[NET_SERVER_QST_ENTER_UPDATE_GATE];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sqst_enter_update_gate;
+
   req_p = &net_Requests[NET_SERVER_QST_UPDATE_STATISTICS];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;

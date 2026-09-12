@@ -2231,6 +2231,65 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
   return NO_ERROR;
 }
 
+/*
+ * db_get_histogram_committed () - locate a column's _db_histogram entry and read its latest committed version
+ *   return: NO_ERROR, or an error code
+ *   classop(in): class
+ *   attr_name(in): column name
+ *   histogram_obj(out): the entry, NULL when the column has none
+ *
+ * Note (CBRD-27369): db_get_histogram () goes through the object layer's locking lookup -- it S-locks the row it finds
+ *   and fetches its dirty version -- so while an UPDATE STATISTICS holds the class's _db_histogram rows X-locked (until
+ *   its transaction commits) every query compile on that class blocks behind it in stats_get_histogram (). The
+ *   optimizer only needs the last committed histogram: this reads that version without taking a lock and without
+ *   materializing the transaction's MVCC snapshot (obj_find_multi_attr_committed ()). Writers, which need the current
+ *   row, keep using db_get_histogram ().
+ */
+int
+db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+{
+  int error = NO_ERROR;
+  int au_save;
+  DB_OBJECT *histogram_class;
+  DB_VALUE value[2];
+  const DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* internal catalog read; bypass user authorization as db_get_histogram () does (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
+  *histogram_obj = obj_find_multi_attr_committed (histogram_class, 2, search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+
+  db_value_clear (&value[0]);
+  db_value_clear (&value[1]);
+
+  if (*histogram_obj == NULL)
+    {
+      /* a missing entry is reported as a benign ER_OBJ_OBJECT_NOT_FOUND warning; only real errors propagate */
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  return er_errid ();
+	}
+    }
+
+  return NO_ERROR;
+}
+
 int
 stats_get_histogram (MOP classop, HIST_STATS **histogram)
 {
@@ -2310,7 +2369,8 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
       const char *attname = (char *) att->header.name;
       DB_VALUE *histogram_value = NULL;
       DB_VALUE null_frequency_value;
-      error = db_get_histogram (classop, attname, &histogram_obj);
+      /* last committed entry, unlocked: must not wait on a concurrent UPDATE STATISTICS (CBRD-27369) */
+      error = db_get_histogram_committed (classop, attname, &histogram_obj);
 
       if (*histogram == NULL || (*histogram)->histogram == NULL || (*histogram)->null_frequency == NULL)
 	{
