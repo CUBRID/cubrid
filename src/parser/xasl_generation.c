@@ -9244,6 +9244,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 			regu = pt_make_regu_arith (r1, r2, r3, op, domain);
 
+			/* Both serial operators re-enter storage mid-scan: nextval WRITE-latches
+			 * the _db_serial page, currval waits on the cache entry mutex a nextval
+			 * holds across that latch. A fixed (PEEK) scan deadlocks with either. */
+			if (parser->parent_proc_xasl != NULL)
+			  {
+			    XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+			  }
+
 			parser_free_tree (parser, cached_num_node_p);
 		      }
 		    else
