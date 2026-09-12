@@ -35,6 +35,7 @@
 #include "px_scan_task.hpp"
 #include "px_scan_input_handler_heap.hpp"
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
+#include "px_scan_checker.hpp"			/* parallel_scan::has_nonlinked_dptr */
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
 #include "heap_file.h"				/* heap_attrinfo_end, heap_get_num_data_pages */
 #include "file_manager.h"			/* file_get_num_user_pages */
@@ -453,6 +454,15 @@ extern "C"
       }
     else
       {
+	/* XASL_SNAPSHOT workers pre-evaluate after_join/if preds but never run non-linked dptrs
+	 * (only MERGEABLE/BUILDVALUE_OPT do); a pred depending on a dptr value would misqualify
+	 * rows. Reachable when XASL_TO_BE_CACHED unset MERGEABLE above; fall back serial (CBRD-27205). */
+	if (parallel_scan::has_nonlinked_dptr (xasl))
+	  {
+	    worker_manager_p->release_workers ();
+	    assert (scan_id->type == S_HEAP_SCAN);
+	    return NO_ERROR;
+	  }
 	scan_id->s.phsid.result_type = parallel_scan::RESULT_TYPE::XASL_SNAPSHOT;
       }
 
