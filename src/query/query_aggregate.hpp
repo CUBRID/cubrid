@@ -122,6 +122,7 @@ int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubx
     cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_CODE func_type,
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc);
 void qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list);
+void qdata_link_shared_accumulators_by_cell (cubxasl::aggregate_list_node *agg_list);
 int qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list, val_descr *vd,
 				   cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index);
 int qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_ptr, HFID *hfid,
@@ -147,7 +148,7 @@ DB_VALUE_COMPARE_RESULT qdata_agg_hkey_compare (cubquery::aggregate_hash_key *ck
 int qdata_agg_hkey_eq (const void *key1, const void *key2);
 cubquery::aggregate_hash_key *qdata_copy_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
 void qdata_load_agg_hvalue_in_agg_list (cubquery::aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
-					bool copy_vals);
+				       bool copy_vals);
 int qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key,
 				   cubquery::aggregate_hash_value *value, DB_VALUE *temp_dbval_array,
 				   qfile_list_id *list_id);

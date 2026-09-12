@@ -455,6 +455,8 @@ namespace parallel_scan
 	  {
 	    m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
 	  }
+	/* this clone's compiled programs are still alive here (qexec_clear_xasl () below frees them) */
+	m_trace_handler->add_expr_compile_dump (m_xasl);
 	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
 				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
@@ -505,6 +507,12 @@ namespace parallel_scan
 
     db_private_free (&thread_ref, m_vd->dbval_ptr);
     db_private_free (&thread_ref, m_xasl_state);
+    if (!m_uses_xasl_clone)
+      {
+	/* a worker XASL that is not a cached clone is freed right below: its compiled expression
+	 * programs (kept with a clone across executions) must go with it */
+	XASL_SET_FLAG (m_xasl, XASL_DECACHE_CLONE);
+      }
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
@@ -624,6 +632,8 @@ namespace parallel_scan
     qexec_mark_aggregate_operand_expressions (m_xasl);
 
     m_scan_id = &m_xasl->spec_list->s_id;
+    /* this worker's clone scans its own spec and projects/aggregates its own rows */
+    qexec_set_expr_share_spec (m_xasl, m_xasl->spec_list);
 
     m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
     if (m_xasl_state == nullptr)

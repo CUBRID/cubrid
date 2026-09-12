@@ -25,6 +25,7 @@
 
 #include "system.h"
 #include <atomic>
+#include <string>
 #include <vector>
 #include "thread_entry.hpp"
 #include "scan_manager.h"
@@ -77,6 +78,11 @@ namespace parallel_scan
 
       void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, SCAN_ID *scan_id,
 		      struct timeval elapsed_time);
+      /* the EXPR_COMPILE listing of a worker's XASL clone (expr_compile.h).  The compiled
+       * programs live and die with the worker clones, so the coordinator's XASL -- the one
+       * the SQL trace dumps -- never has any; the first worker to report keeps its listing
+       * here and the scan's trace prints it (every worker compiles the same clone the same way). */
+      void add_expr_compile_dump (xasl_node *xasl);
       /* Stored-procedure (regu call) evaluation counters a worker accumulated. They are folded
        * into the leader's own perfmon by merge_stats (), which is what feeds xasl->func_stats and
        * the trace's FUNC line; a worker's copy is otherwise discarded with its px_stats array.
@@ -100,6 +106,7 @@ namespace parallel_scan
       UINT64 m_sp_fetches = 0;
       UINT64 m_sp_ioreads = 0;
       trace_storage_for_sibling_xasl m_trace_storage_for_sibling_xasl;
+      std::string m_expr_compile_dump;	/* guarded by m_stats_mutex */
     private:
       std::atomic<bool> m_topnsort_used {false};
   };
@@ -125,6 +132,7 @@ namespace parallel_scan
       SCAN_TYPE m_scan_type;
       bool m_is_initialized;
       bool m_topnsort_used = false;
+      std::string m_expr_compile_dump;	/* one worker's EXPR_COMPILE listing, see trace_handler */
   };
 }
 

@@ -157,6 +157,23 @@ namespace cubxasl
     } pe;
     TYPE_PRED_EXPR type;
 
+    /* compiled scan-filter form of this tree (expr_compile.c), resolved lazily by the
+     * first eval_data_filter () of an execution and KEPT with the clone: when the execution
+     * ends (qexec_clear_pred () with is_final) its slot values are released and it stays
+     * for the clone's next execution, which re-verifies the host-variable type signature
+     * and recompiles on a mismatch; it is freed when the clone is released
+     * (XASL_DECACHE_CLONE).  Only the tree's root ever holds one.
+     * Concurrency contract: these fields (and the program they point to) are written with
+     * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
+     * exactly one executing thread at a time (the xcache clone mutex publishes the stores
+     * when the clone changes hands).  Nothing here tolerates two threads sharing one clone
+     * -- do not add such a caller without making this state per-thread or synchronized. */
+    void *scan_prog;
+    int scan_prog_state;	/* 0 = not tried yet, 1 = active, 2 = keep the interpreted path */
+    unsigned int scan_prog_gen;	/* bumped on every compile; consumers sharing its slots record it */
+    int scan_prog_defer;	/* rows waited for the plan's DB_TYPE_VARIABLE domains to be resolved
+				 * by the interpreted path (expr_compile.h, EXPR_DOMAIN_DEFER_ROWS) */
+
     void clear_xasl ();
   };
 } // namespace cubxasl

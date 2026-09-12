@@ -23,7 +23,7 @@
 #include "query_aggregate.hpp"
 
 #include "arithmetic.h"
-#include "btree.h"                          // btree_find_min_or_max_key, btree_get_unique_statistics_for_count
+#include "btree.h"		// btree_find_min_or_max_key, btree_get_unique_statistics_for_count
 #include "db_json.hpp"
 #include "dbtype.h"
 #include "fetch.h"
@@ -34,10 +34,11 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "expr_compile.h"
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
-#include "xasl.h"                           // QPROC_IS_INTERPOLATION_FUNC
+#include "xasl.h"		// QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_aggregate.hpp"
 #include "statistics.h"
 
@@ -57,7 +58,7 @@ static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thr
     cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain,
     FUNC_CODE func_type, tp_domain *func_domain,
-    std::vector<DB_VALUE> &db_values);
+    std::vector < DB_VALUE > &db_values);
 static int qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     QUERY_ID query_id);
 static int qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
@@ -339,7 +340,8 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
 	    }
 	}
       // these functions only affect acc.value and new_acc can be treated as an ordinary value
-      error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
+      error =
+	      qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
       break;
 
     // JSON_ARRAYAGG: append the partial arrays by preserving every element.
@@ -717,7 +719,7 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 static int
 qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
-    tp_domain *func_domain, std::vector<DB_VALUE> &db_values)
+    tp_domain *func_domain, std::vector < DB_VALUE > &db_values)
 {
   // we have only one argument so aggregate only the first db_value
   if (db_values.size () == 1)
@@ -726,7 +728,7 @@ qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubx
     }
 
   // maybe this condition will be changed in the future based on the future arguments conditions
-  for (DB_VALUE &db_value : db_values)
+  for (DB_VALUE &db_value:db_values)
     {
       if (DB_IS_NULL (&db_value))
 	{
@@ -899,6 +901,79 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
 }
 
 /*
+ * qdata_link_shared_accumulators_by_cell () - extend accumulator sharing to operands the
+ *                                             compiled operand program evaluates into the
+ *                                             same cell
+ *   agg_list(in/out): aggregate list of the query (head carries the program)
+ *
+ * qdata_link_shared_accumulators () compares the operand regu trees, so SUM (a + b) and
+ * AVG (b + a), or two operands whose literals are distinct plan nodes with the same value,
+ * accumulate separately.  The compiled program (expr_compile.h) has already resolved such
+ * operands to one cell -- common sub-expressions once, commuted operands, literals by value
+ * -- and a root cell holds the operand's value for the row unconditionally, so two plain
+ * SUM/AVG whose roots are the same cell compute the identical value on every row and may
+ * share exactly like regu-equal ones.  Only adds links; runs on the first evaluation of
+ * every execution, after the program was verified (or recompiled) for that execution's
+ * bind types -- the unification of two roots can depend on them (a coercion step inserted
+ * for one binding and not another), so a link is never taken from an earlier execution's
+ * program.  Like the regu-based link it needs the accumulator domains resolved.
+ *
+ * Callers: qdata_evaluate_aggregate_list () (first evaluation of an execution) and the
+ * BUILDVALUE end-of-execution link site in query_executor.c, where develop's
+ * qdata_link_shared_accumulators () resets every link right before finalize and the cell
+ * links must be re-derived (from the same program the rows used).  The parallel BUILDVALUE_OPT hook must NOT link by cell: its
+ * write_finalize () merges a worker's accumulators into the coordinator's without
+ * propagating shared sums first, and the coordinator (no program) would not know the link.
+ * The parallel hash GROUP BY worker is fine: its partial groups leave through
+ * qdata_save_agg_htable_to_list (), which propagates shared sums before flattening.
+ */
+void
+qdata_link_shared_accumulators_by_cell (cubxasl::aggregate_list_node *agg_list)
+{
+  cubxasl::aggregate_list_node *agg_p, *acc_owner_p;
+  EXPR_PROG *prog;
+  int index, acc_owner_index, root, owner_root;
+
+  if (agg_list == NULL || agg_list->operand_prog_state != 1 || agg_list->operand_prog == NULL
+      || agg_list->operand_prog_idx == NULL)
+    {
+      return;
+    }
+  prog = (EXPR_PROG *) agg_list->operand_prog;
+
+  for (agg_p = agg_list, index = 0; agg_p != NULL; agg_p = agg_p->next, index++)
+    {
+      if (agg_p->accumulator.shared_from != 0 || agg_p->operand_prog_base < 0
+	  || !qdata_agg_may_share_accumulator (agg_p))
+	{
+	  continue;
+	}
+      root = agg_list->operand_prog_idx[agg_p->operand_prog_base];
+      if (root < 0)
+	{
+	  continue;
+	}
+
+      for (acc_owner_p = agg_list, acc_owner_index = 0; acc_owner_p != agg_p;
+	   acc_owner_p = acc_owner_p->next, acc_owner_index++)
+	{
+	  if (acc_owner_p->accumulator.shared_from != 0 || acc_owner_p->operand_prog_base < 0
+	      || !qdata_agg_may_share_accumulator (acc_owner_p)
+	      || acc_owner_p->accumulator_domain.value_dom != agg_p->accumulator_domain.value_dom)
+	    {
+	      continue;
+	    }
+	  owner_root = agg_list->operand_prog_idx[acc_owner_p->operand_prog_base];
+	  if (owner_root >= 0 && prog->root_cells[owner_root] == prog->root_cells[root])
+	    {
+	      agg_p->accumulator.shared_from = acc_owner_index + 1;
+	      break;
+	    }
+	}
+    }
+}
+
+/*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in): aggregate expression node list
@@ -910,9 +985,145 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
  *        Alternate accumulators can not be used for DISTINCT processing or
  *        the GROUP_CONCAT and MEDIAN function.
  */
+/*
+ * qdata_agg_operand_prog_compile () - lazily compile the operand expressions of a whole
+ *				       aggregate list into one program (expr_compile.h)
+ *
+ * Only plain accumulating functions participate; the operands of any aggregate the
+ * per-row loop may skip (COUNT_STAR, GROUPBY_NUM, optimized or special-cased ones, and
+ * the index-boundary MIN/MAX whose operand the loop stops fetching once it is_ended) are
+ * left out so the unconditional per-row program evaluation cannot change behavior.
+ * Roots the expression compiler cannot cover purely are excluded the same way (the
+ * compiler is called without fallback roots), so every compiled step is side-effect
+ * free.
+ *
+ * The program evaluates the operands of EVERY participating aggregate before the
+ * per-row loop accumulates the first one, whereas the interpreted loop fetches and
+ * accumulates one aggregate at a time.  This is deliberate: one pass over the flat step
+ * array is what removes the per-aggregate fetch dispatch, and it is what lets a
+ * sub-expression shared by several aggregates (SUM (x * y), AVG (x * y)) compile to a
+ * single step chain.  The only observable consequence is WHICH error a row that fails
+ * twice reports: when accumulating aggregate i overflows on a row whose operand of a
+ * later aggregate j also fails, the interpreter reports i's accumulate error and this
+ * path reports j's operand error.  The row fails either way, and operand errors keep
+ * their list order among themselves because roots are emitted in list order.
+ *
+ * Exported (not static) for the parallel BUILDVALUE_OPT accumulation loop, which
+ * compiles each worker's clone the same way.
+ */
+void
+qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+				val_descr *val_desc_p)
+{
+  cubxasl::aggregate_list_node *agg_p;
+  REGU_VARIABLE *roots[128];
+  int *idx = NULL;
+  int n = 0, k;
+  EXPR_PROG *prog;
+
+  agg_list_p->operand_prog_state = 2;	/* disabled unless everything below succeeds */
+
+  /* collect candidate operands in evaluation order */
+  for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
+    {
+      bool participates;
+
+      switch (agg_p->function)
+	{
+	case PT_SUM:
+	case PT_AVG:
+	case PT_MIN:
+	case PT_MAX:
+	case PT_COUNT:
+	  /* an index-boundary MIN/MAX (min_max_optimized) is_ended after its first row and
+	   * the per-row loop skips it -- operand fetch included -- from then on; keep it on
+	   * the interpreted path so the program never evaluates an operand the interpreter
+	   * would not.  Nothing is lost: such a list is MIN/MAX-only
+	   * (pt_set_access_spec_for_aggregation ()) over a scan the executor stops after one
+	   * or two rows, where compiling would only cost. */
+	  participates = !agg_p->flag.agg_optimized && !agg_p->flag.min_max_optimized;
+	  break;
+	default:
+	  participates = false;
+	  break;
+	}
+
+      agg_p->operand_prog_base = -1;
+      if (!participates)
+	{
+	  continue;
+	}
+
+      agg_p->operand_prog_base = n;
+      for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
+	{
+	  if (n >= (int) DIM (roots))
+	    {
+	      return;
+	    }
+	  roots[n++] = &operand->value;
+	}
+    }
+
+  if (n == 0)
+    {
+      return;
+    }
+
+  idx = (int *) malloc (sizeof (int) * n);
+  if (idx == NULL)
+    {
+      return;
+    }
+
+  /* wired-only programs are wanted here: even when every operand is a plain
+   * TYPE_CONSTANT cell (buildlist aggregates -- the expressions were moved into the
+   * scan), the accumulate kernels below still skip the per-row operand vector, its
+   * deep copy and the accumulate dispatch */
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, true, false, idx,
+				  agg_list_p->operand_prog_share_spec);
+  if (prog == NULL)
+    {
+      free_and_init (idx);
+      return;
+    }
+
+  /* an aggregate whose every operand was excluded keeps its base but reads -1 entries */
+  for (k = 0; k < n; k++)
+    {
+      if (idx[k] >= 0)
+	{
+	  break;
+	}
+    }
+  if (k == n)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  agg_list_p->operand_prog = prog;
+  agg_list_p->operand_prog_idx = idx;
+  agg_list_p->operand_prog_state = 1;
+
+  /* a program that computes nothing (every covered operand is a plain column or a wired
+   * constant) does nothing the fast path's own peek does not: the accumulator
+   * (SUM_ACC, query_sum_accumulator.h) reads such an operand in place */
+  if (prog->n_compute == 0 && prog->n_shared == 0)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      agg_list_p->operand_prog = NULL;
+      agg_list_p->operand_prog_idx = NULL;
+      agg_list_p->operand_prog_state = 3;
+    }
+}
+
 int
 qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-			       val_descr *val_desc_p, cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index)
+			       val_descr *val_desc_p, cubxasl::aggregate_accumulator *alt_acc_list,
+			       bool use_desc_index)
 {
   cubxasl::aggregate_list_node *agg_p;
   cubxasl::aggregate_accumulator *accumulator;
@@ -924,10 +1135,61 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   int dbval_size, i, error;
   cubxasl::aggregate_percentile_info *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
+  EXPR_PROG *operand_prog = NULL;
+  bool compiled_now = false;
+
+  if (agg_list_p != NULL)
+    {
+      if (agg_list_p->operand_prog_state == 0)
+	{
+	  qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	  compiled_now = true;
+	}
+      if (agg_list_p->operand_prog_state == 1)
+	{
+	  operand_prog = (EXPR_PROG *) agg_list_p->operand_prog;
+	  if (!expr_prog_signature_ok (operand_prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p))
+	      || !expr_prog_share_current (operand_prog, agg_list_p->operand_prog_share_spec))
+	    {
+	      /* different bind types than the program was specialized for, or the scan filter
+	       * whose slots it reads was recompiled: recompile */
+	      expr_prog_free (operand_prog);
+	      free_and_init (agg_list_p->operand_prog_idx);
+	      agg_list_p->operand_prog = NULL;
+	      agg_list_p->operand_prog_state = 0;
+	      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	      operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
+	      compiled_now = true;
+	    }
+	}
+      if (operand_prog != NULL)
+	{
+	  /* The program (verified for this execution's bind types just above) says which
+	   * operands are one and the same cell: let SUM/AVG over them share an accumulator.
+	   * Derived once per execution -- qdata_link_shared_accumulators () reset the links
+	   * at execution start -- from the program of THIS execution, never from a program a
+	   * later row may replace.  A hash GROUP BY entry created before this row keeps its
+	   * own links and accumulates such a pair separately (correct, just not shared). */
+	  unsigned long long stamp = EXPR_PROG_EXEC_STAMP (val_desc_p);
+
+	  if (compiled_now || (stamp != 0 && agg_list_p->operand_prog_link_stamp != stamp))
+	    {
+	      qdata_link_shared_accumulators_by_cell (agg_list_p);
+	      agg_list_p->operand_prog_link_stamp = stamp;
+	    }
+	}
+      /* every participating operand of the row is evaluated here, before any aggregate
+       * accumulates; see qdata_agg_operand_prog_compile () for why and for the error
+       * precedence this implies on a row that fails twice */
+      if (operand_prog != NULL && expr_prog_eval (operand_prog, thread_p, val_desc_p, NULL, NULL) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
-      std::vector<DB_VALUE> db_values;
+      std::vector < DB_VALUE > db_values;
 
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
@@ -992,29 +1254,43 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       if (qdata_agg_is_plain_sum_avg (agg_p))
 	{
 	  DB_VALUE *peek_val = NULL;
+	  int prog_root = (operand_prog != NULL && agg_p->operand_prog_base >= 0)
+	    ? agg_list_p->operand_prog_idx[agg_p->operand_prog_base] : -1;
 
-	  if (accumulator->sum_acc.is_active && accumulator->sum_acc.sum_type == DB_TYPE_NUMERIC
-	      && agg_p->operands->value.type == TYPE_INARITH)
+	  if (prog_root >= 0)
 	    {
-	      NUMERIC_AGG_EXPR_VAL cv;
-
-	      if (qdata_agg_expr_eval_numeric (&agg_p->operands->value, &cv))
-		{
-		  if (numeric_sum_acc_add_expr_val (&accumulator->sum_acc, &cv) != NO_ERROR)
-		    {
-		      return ER_FAILED;
-		    }
-
-		  accumulator->curr_cnt++;
-		  continue;
-		}
+	      /* The compiled operand program (expr_compile.h) evaluated this operand for the
+	       * row already, together with every other operand of the list (shared
+	       * sub-expressions once, the scan filter's values reused): read its cell.  The
+	       * value then takes the same accumulator path as a peeked operand below. */
+	      peek_val = expr_prog_value (operand_prog, prog_root);
 	    }
-
-	  /* Peek the operand instead of copying it. For a marked arithmetic
-	   * expression this also runs the fused evaluation in fetch_peek_arith (). */
-	  if (fetch_peek_dbval (thread_p, &agg_p->operands->value, val_desc_p, NULL, NULL, NULL, &peek_val) != NO_ERROR)
+	  else
 	    {
-	      return ER_FAILED;
+	      if (accumulator->sum_acc.is_active && accumulator->sum_acc.sum_type == DB_TYPE_NUMERIC
+		  && agg_p->operands->value.type == TYPE_INARITH)
+		{
+		  NUMERIC_AGG_EXPR_VAL cv;
+
+		  if (qdata_agg_expr_eval_numeric (&agg_p->operands->value, &cv))
+		    {
+		      if (numeric_sum_acc_add_expr_val (&accumulator->sum_acc, &cv) != NO_ERROR)
+			{
+			  return ER_FAILED;
+			}
+
+		      accumulator->curr_cnt++;
+		      continue;
+		    }
+		}
+
+	      /* Peek the operand instead of copying it. For a marked arithmetic
+	       * expression this also runs the fused evaluation in fetch_peek_arith (). */
+	      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, val_desc_p, NULL, NULL, NULL, &peek_val) !=
+		  NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
 	    }
 
 	  if (DB_IS_NULL (peek_val))
@@ -1047,14 +1323,30 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
       /* fetch operands value. aggregate regulator variable should only contain constants */
       REGU_VARIABLE_LIST operand = NULL;
+      int opr_ordinal = agg_p->operand_prog_base;
       for (operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
 	  // create an empty value
 	  db_values.emplace_back ();
 
+	  int prog_root = -1;
+	  if (operand_prog != NULL && opr_ordinal >= 0)
+	    {
+	      prog_root = agg_list_p->operand_prog_idx[opr_ordinal++];
+	    }
+
+	  if (prog_root >= 0)
+	    {
+	      /* the compiled program evaluated this operand for the row already */
+	      if (pr_clone_value (expr_prog_value (operand_prog, prog_root), &db_values.back ()) != NO_ERROR)
+		{
+		  pr_clear_value_vector (db_values);
+		  return ER_FAILED;
+		}
+	    }
 	  // fetch it
-	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
-				&db_values.back ()) != NO_ERROR)
+	  else if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
+				     &db_values.back ()) != NO_ERROR)
 	    {
 	      pr_clear_value_vector (db_values);
 	      return ER_FAILED;
@@ -2867,12 +3159,14 @@ qdata_copy_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
 
 /*
  * qdata_load_agg_hvalue_in_agg_list () - load hash value in aggregate list
+ *   return: void
  *   value(in): aggregate hash value
  *   agg_list(in): aggregate list
  *   copy_vals(in): true for deep copy of DB_VALUES, false for shallow copy
  */
 void
-qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list, bool copy_vals)
+qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
+				   bool copy_vals)
 {
   int i = 0;
 
@@ -3196,8 +3490,8 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
  *   acc_dom(in): accumulator domains
  */
 SCAN_CODE
-qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id, aggregate_hash_key *key,
-				 aggregate_hash_value *value, tp_domain **key_dom,
+qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id,
+				 aggregate_hash_key *key, aggregate_hash_value *value, tp_domain **key_dom,
 				 cubxasl::aggregate_accumulator_domain **acc_dom)
 {
   SCAN_CODE sc;

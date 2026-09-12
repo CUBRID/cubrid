@@ -40,6 +40,7 @@
 #include "dbtype.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
+#include "expr_compile.h"
 #include "dbtype.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
@@ -2955,7 +2956,50 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
   ev_res = V_TRUE;
   if (scan_predp->pr_eval_fnc && scan_predp->pred_expr)
     {
-      ev_res = (*scan_predp->pr_eval_fnc) (thread_p, scan_predp->pred_expr, filterp->val_descr, oid);
+      PRED_EXPR *pred_root = scan_predp->pred_expr;
+
+      /* compiled form of the tree (expr_compile.h): the shape, the term kinds and the
+       * operand types eval_pred () re-discovers per row are fixed in the XASL, so they
+       * are resolved once here, on the scan's first row, and kept with the clone
+       * (qexec_clear_pred () releases the slot values when the execution ends).  The leaves
+       * and operand steps were resolved for the bound types of the compiling execution:
+       * an execution that binds other types recompiles.  Anything not covered keeps
+       * pr_eval_fnc. */
+      if (pred_root->scan_prog_state == 1
+	  && unlikely (!expr_scan_pred_signature_ok (pred_root->scan_prog, filterp->val_descr,
+						     EXPR_PROG_EXEC_STAMP (filterp->val_descr))))
+	{
+	  expr_scan_pred_free (pred_root->scan_prog);
+	  pred_root->scan_prog = NULL;
+	  pred_root->scan_prog_state = 0;
+	  /* a recompile starts its own deferral budget (see below) */
+	  pred_root->scan_prog_defer = 0;
+	}
+      if (unlikely (pred_root->scan_prog_state == 0))
+	{
+	  /* An arithmetic operand over a host variable has no resolved result domain until
+	   * the interpreted path evaluates it once (expr_compile.h).  Stay untried for this
+	   * row so pr_eval_fnc runs and resolves it, and compile on a later row against the
+	   * domain the interpreter chose. */
+	  if (pred_root->scan_prog_defer < EXPR_DOMAIN_DEFER_ROWS && expr_pred_domain_unresolved (pred_root, 0))
+	    {
+	      pred_root->scan_prog_defer++;
+	    }
+	  else
+	    {
+	      pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root, filterp->val_descr);
+	      pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
+	      pred_root->scan_prog_gen++;
+	    }
+	}
+      if (pred_root->scan_prog_state == 1)
+	{
+	  ev_res = expr_scan_pred_eval (pred_root->scan_prog, thread_p, filterp->val_descr, oid);
+	}
+      else
+	{
+	  ev_res = (*scan_predp->pr_eval_fnc) (thread_p, pred_root, filterp->val_descr, oid);
+	}
     }
 
   if (oid == NULL && recdesp == NULL)
