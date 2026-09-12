@@ -3840,6 +3840,164 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   return node;
 }
 
+/* argument classification for a CONNECT BY predicate side (see pt_split_hash_attrs_for_HQ) */
+typedef struct qo_hq_arg_class
+{
+  bool has_prior;		/* references a PRIOR expression */
+  bool has_name;		/* references a column outside of PRIOR */
+} QO_HQ_ARG_CLASS;
+
+/*
+ * qo_hq_classify_arg_walker () - marks PRIOR references (without descending
+ *   into them) and bare column references of a CONNECT BY predicate side
+ */
+static PT_NODE *
+qo_hq_classify_arg_walker (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk)
+{
+  QO_HQ_ARG_CLASS *c = (QO_HQ_ARG_CLASS *) void_arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (tree, PT_PRIOR) || PT_IS_EXPR_NODE_WITH_OPERATOR (tree, PT_QPRIOR))
+    {
+      c->has_prior = true;
+      /* names under PRIOR are parent-row constants, not scan columns */
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (PT_IS_NAME_NODE (tree))
+    {
+      c->has_name = true;
+    }
+
+  return tree;
+}
+
+/*
+ * qo_hq_op_except_prior_walker () - detects hierarchical operators other than
+ *   PRIOR (LEVEL, CONNECT_BY_ISLEAF, ...); such terms are evaluated in the
+ *   CONNECT BY proc and can use neither an index nor a hash
+ */
+static PT_NODE *
+qo_hq_op_except_prior_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node->node_type == PT_EXPR && PT_CHECK_HQ_OP_EXCEPT_PRIOR (node->info.expr.op))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_hq_has_hashable_eq_term () - checks the CONNECT BY predicate (still an
+ *   AND parse tree at rewrite time) for at least one conjunct the hash list
+ *   scan can serve: an equality with a PRIOR-only/constant side and a
+ *   column-only side, without other hierarchical operators
+ */
+static bool
+qo_hq_has_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * pred)
+{
+  /* the predicate is an AND parse tree at rewrite time, but iterate a
+   * conjunct (->next) list too in case it was already normalized */
+  for (; pred != NULL; pred = pred->next)
+    {
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_AND))
+	{
+	  if (qo_hq_has_hashable_eq_term (parser, pred->info.expr.arg1)
+	      || qo_hq_has_hashable_eq_term (parser, pred->info.expr.arg2))
+	    {
+	      return true;
+	    }
+	  continue;
+	}
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && pred->or_next == NULL)
+	{
+	  bool has_hq_op = false;
+	  QO_HQ_ARG_CLASS c1 = { false, false };
+	  QO_HQ_ARG_CLASS c2 = { false, false };
+	  PT_NODE *save_next = pred->next;
+
+	  pred->next = NULL;
+	  (void) parser_walk_tree (parser, pred, qo_hq_op_except_prior_walker, &has_hq_op, NULL, NULL);
+	  pred->next = save_next;
+	  if (has_hq_op)
+	    {
+	      continue;
+	    }
+
+	  (void) parser_walk_tree (parser, pred->info.expr.arg1, qo_hq_classify_arg_walker, &c1, NULL, NULL);
+	  (void) parser_walk_tree (parser, pred->info.expr.arg2, qo_hq_classify_arg_walker, &c2, NULL, NULL);
+
+	  /* Require a genuine parent<->child hash key: one side a pure PRIOR
+	   * expression (probe), the other a pure scan column (build). This mirrors
+	   * pt_split_hash_attrs_for_HQ / CHECK_HASH_ATTR, where a side carrying both
+	   * PRIOR and a bare column is UNHASHABLE; a constant side gives no
+	   * child-finding link, so it does not justify leaving single_table_opt. */
+	  {
+	    bool s1_probe = c1.has_prior && !c1.has_name;
+	    bool s1_build = c1.has_name && !c1.has_prior;
+	    bool s2_probe = c2.has_prior && !c2.has_name;
+	    bool s2_build = c2.has_name && !c2.has_prior;
+
+	    if ((s1_probe && s2_build) || (s1_build && s2_probe))
+	      {
+		return true;
+	      }
+	  }
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_hq_prefer_hash_over_single_table () - decides whether a single-table
+ *   CONNECT BY should give up the single-table optimization in favor of the
+ *   generic path, whose hash list scan finds children in O(N+E) instead of
+ *   rescanning the table for every parent row (CBRD-27329)
+ *   return: true to use the generic (materialize + hash list scan) path
+ */
+static bool
+qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
+{
+  PT_NODE *connect_by = node->info.query.q.select.connect_by;
+  SM_CLASS_CONSTRAINT *cons;
+
+  /* the user asked for the single-table plan shape explicitly */
+  if (node->info.query.q.select.hint & (PT_HINT_NO_HASH_LIST_SCAN | PT_HINT_USE_IDX | PT_HINT_USE_IDX_DESC))
+    {
+      return false;
+    }
+  if (node->info.query.q.select.using_index != NULL)
+    {
+      return false;
+    }
+
+  if (!qo_hq_has_hashable_eq_term (parser, connect_by))
+    {
+      return false;
+    }
+
+  /* Keep the single-table plan whenever the table has any usable index: the
+   * optimizer may use it for START WITH filtering, a covering scan, or child
+   * lookups, and giving that up would both regress those plans and defeat the
+   * index-oriented tests. Only an index-less table falls back to a full heap
+   * rescan per parent -- the O(N^2) case the hash list scan path removes. */
+  for (cons = sm_class_constraints (spec->info.spec.entity_name->info.name.db_object); cons != NULL; cons = cons->next)
+    {
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) && cons->index_status == SM_NORMAL_INDEX)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 /*
  * qo_check_generate_single_tbl_connect_by () - checks a SELECT ... CONNECT BY
  *                                              query for single-table
@@ -3916,6 +4074,14 @@ qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
     {
       return false;
     }
+
+  if (qo_hq_prefer_hash_over_single_table (parser, node, spec))
+    {
+      /* no index can serve the child lookups: the generic path finds children
+       * by hash instead of rescanning the table per parent row (CBRD-27329) */
+      return false;
+    }
+
   return true;
 }
 
