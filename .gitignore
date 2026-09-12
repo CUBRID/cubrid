@@ -143,6 +143,7 @@ cscope.files
 Debug/
 Release/
 build_x86_64_debug/
+build_x86_64_optdebug/
 build_x86_64_release/
 build_x86_64_coverage/
 build_x86_64_profile/
