@@ -4281,6 +4281,10 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  {
 	    err_code = db_make_sequence (&db_val, seq);
 	  }
+	else if (type == CCI_U_TYPE_MULTISET)
+	  {
+	    err_code = db_make_multiset (&db_val, set);
+	  }
 	else
 	  {
 	    err_code = db_make_set (&db_val, set);
