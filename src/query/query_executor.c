@@ -5630,8 +5630,32 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   if (gbstate.hash_eligible && gbstate.agg_hash_context->tuple_count > 0
       && mht_count (gbstate.agg_hash_context->hash_table) > 0)
     {
+      QFILE_LIST_ID *part_list_id = gbstate.agg_hash_context->part_list_id;
+
       /* reopen unsorted list to accept new tuples */
       if (qfile_reopen_list_as_append_mode (thread_p, list_id) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+
+      /* After a parallel scan, the partial list holds the merged worker lists. The
+       * list is closed, and its tuple descriptor is missing when the main list was
+       * empty and the worker list was copied to it. Restore both before appending.
+       */
+      if (part_list_id->tpl_descr.f_valp == NULL && part_list_id->type_list.type_cnt > 0)
+	{
+	  size_t size = sizeof (DB_VALUE *) * part_list_id->type_list.type_cnt;
+
+	  part_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
+	  if (part_list_id->tpl_descr.f_valp == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  part_list_id->tpl_descr.f_cnt = part_list_id->type_list.type_cnt;
+	}
+      if (part_list_id->tuple_cnt > 0 && part_list_id->last_pgptr == NULL
+	  && qfile_reopen_list_as_append_mode (thread_p, part_list_id) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
