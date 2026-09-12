@@ -31,6 +31,7 @@
 #include "storage_common.h"
 #include "heap_file.h"
 #include "log_append.hpp"
+#include "log_impl.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "record_descriptor.hpp"
@@ -40,6 +41,10 @@
 #include "dbtype.h"
 #include "xasl_cache.h"
 #include "thread_lockfree_hash_map.hpp"
+#if defined (SERVER_MODE)
+#include "server_support.h"
+#endif /* SERVER_MODE */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -1443,8 +1448,8 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
  * Called during shutdown while the heap, log and buffer managers are still up, unlike
  * serial_finalize_cache_pool, which runs after the volumes are dismounted. Without it a clean
  * restart resumes past the end of each reserved block, and every standalone (csql -S) process
- * consumes a whole one. The caller must be on a transaction that may run system operations - each
- * write opens one; see xboot_shutdown_server.
+ * consumes a whole one. On a server each write opens a system operation, so the caller's transaction
+ * must allow one; see serial_flush_cache_pool_replicated.
  */
 void
 serial_flush_cache_pool (THREAD_ENTRY * thread_p)
@@ -1462,6 +1467,212 @@ serial_flush_cache_pool (THREAD_ENTRY * thread_p)
     {
       serial_flush_entry_best_effort (thread_p, entry);
     }
+}
+
+#if defined (SERVER_MODE)
+/*
+ * serial_flush_cache_pool_replicated () - serial_flush_cache_pool on a transaction of its own, so that
+ *                each write-back carries a replication record and the standby lowers cur_val with us.
+ *   return:
+ *
+ * The system transactions cannot replicate, so a write-back on one would reach this node only. A
+ * regular transaction takes the flush-marked system operation in serial_update_serial_object, the
+ * path a NEXT_VALUE advance takes; the applier applies it at the operation's end.
+ */
+void
+serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
+{
+  int save_tran_index;
+  int tran_index;
+
+  if (!serial_Cache_initialized || serial_Cache_hashmap.get_element_count () == 0)
+    {
+      /* nothing to write back; do not take a transaction slot for it */
+      return;
+    }
+
+  save_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+					TRAN_READ_COMMITTED);
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      /* no transaction to write on; the block tails are lost, as after a crash */
+      er_clear ();
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
+      return;
+    }
+
+  serial_flush_cache_pool (thread_p);
+
+  (void) xtran_server_commit (thread_p, false);
+  logtb_free_tran_index (thread_p, tran_index);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_tran_index);
+}
+#endif /* SERVER_MODE */
+
+/*
+ * serial_repl_image_is_stale () - whether a row image the log applier brings is a _db_serial row that
+ *                would move cur_val against the serial's direction on a node that issues values itself.
+ *   return: true when the image must not be applied here
+ *   class_oidp(in)  : class of the row; rows of other classes are never stale
+ *   serial_oidp(in) : OID of the row
+ *   new_recdes(in)  : the image from the other node
+ *
+ * A standby follows every image, so a promotion resumes at the master's last issued value. A leaving
+ * master's log tail is applied after the promotion, so an active node takes an image only if it does
+ * not move cur_val backwards: below what this node has issued, it would re-issue those values. A
+ * cyclic serial has no direction, and an active node leaves its row alone. A skipped image is reported
+ * in the server log as a notification.
+ *
+ * The row on this node is read here instead of being taken from the caller: the caller reads it with
+ * a scan cache that does not keep the page fixed, so its record points into an unfixed page. The
+ * applier holds the row's X lock, so what is read here is the row the update is about to replace.
+ */
+bool
+serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, const OID * serial_oidp,
+			    RECDES * new_recdes)
+{
+#if !defined (SERVER_MODE)
+  /* the log applier forces rows into a server only */
+  return false;
+#else /* SERVER_MODE */
+  HEAP_SCANCACHE scan_cache;
+  RECDES old_recdes = RECDES_INITIALIZER;
+  HEAP_CACHE_ATTRINFO old_info, new_info;
+  bool scan_started = false, old_started = false, new_started = false, failed = false, stale = false;
+  HA_SERVER_STATE state;
+  ATTR_ID attrid;
+  DB_VALUE *val, *name = NULL, *old_cur = NULL, *new_cur = NULL;
+  DB_VALUE cmp_result;
+  int positive;
+  char old_str[NUMERIC_MAX_STRING_SIZE], new_str[NUMERIC_MAX_STRING_SIZE];
+
+  if (!oid_is_serial (class_oidp))
+    {
+      return false;
+    }
+  state = css_ha_server_state ();
+  if (state != HA_SERVER_STATE_ACTIVE && state != HA_SERVER_STATE_TO_BE_STANDBY)
+    {
+      return false;
+    }
+  if (!serial_Cache_initialized || serial_Num_attrs < 0)
+    {
+      return false;
+    }
+  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, oid_Serial_class_oid);
+  scan_started = true;
+  if (heap_get_visible_version (thread_p, serial_oidp, oid_Serial_class_oid, &old_recdes, &scan_cache, PEEK, NULL_CHN)
+      != S_SUCCESS)
+    {
+      failed = true;
+      goto exit;
+    }
+  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &old_info) != NO_ERROR)
+    {
+      failed = true;
+      goto exit;
+    }
+  old_started = true;
+  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &new_info) != NO_ERROR)
+    {
+      failed = true;
+      goto exit;
+    }
+  new_started = true;
+  if (heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &old_recdes, &old_info) != NO_ERROR
+      || heap_attrinfo_read_dbvalues (thread_p, serial_oidp, new_recdes, &new_info) != NO_ERROR)
+    {
+      failed = true;
+      goto exit;
+    }
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_UNIQUE_NAME_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  name = heap_attrinfo_access (attrid, &old_info);
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CURRENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  old_cur = heap_attrinfo_access (attrid, &old_info);
+  new_cur = heap_attrinfo_access (attrid, &new_info);
+  if (name == NULL || DB_IS_NULL (name) || old_cur == NULL || DB_IS_NULL (old_cur) || new_cur == NULL
+      || DB_IS_NULL (new_cur))
+    {
+      failed = true;
+      goto exit;
+    }
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  val = heap_attrinfo_access (attrid, &old_info);
+  if (val == NULL || DB_IS_NULL (val))
+    {
+      failed = true;
+      goto exit;
+    }
+  if (db_get_int (val) != 0)
+    {
+      stale = true;
+      goto exit;
+    }
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      failed = true;
+      goto exit;
+    }
+  val = heap_attrinfo_access (attrid, &old_info);
+  positive = (val == NULL) ? ER_FAILED : numeric_db_value_is_positive (val);
+  if (positive < 0)
+    {
+      failed = true;
+      goto exit;
+    }
+
+  if (numeric_db_value_compare (new_cur, old_cur, &cmp_result) != NO_ERROR || DB_IS_NULL (&cmp_result))
+    {
+      failed = true;
+      goto exit;
+    }
+  stale = positive ? (db_get_int (&cmp_result) < 0) : (db_get_int (&cmp_result) > 0);
+
+exit:
+  if (failed)
+    {
+      er_clear ();
+    }
+  else if (stale)
+    {
+      /* By design, so not the applier's error: report it as a notification and leave the error area as it
+       * was, and the object still counts as applied. */
+      er_stack_push ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_SERIAL_IMAGE_SKIPPED, 3, db_get_string (name),
+	      numeric_db_value_print (old_cur, old_str), numeric_db_value_print (new_cur, new_str));
+      er_stack_pop ();
+    }
+  if (new_started)
+    {
+      heap_attrinfo_end (thread_p, &new_info);
+    }
+  if (old_started)
+    {
+      heap_attrinfo_end (thread_p, &old_info);
+    }
+  if (scan_started)
+    {
+      heap_scancache_end (thread_p, &scan_cache);
+    }
+  return stale;
+#endif /* SERVER_MODE */
 }
 
 /*
