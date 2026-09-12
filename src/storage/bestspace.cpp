@@ -430,6 +430,25 @@ namespace cubstorage
       }
   }
 
+  // rediscover skips a page already advertised by an L1 slot: requeueing it would route concurrent
+  // inserters through the blocking candidate verify path against a page its L1 owner is filling.
+  bool
+  bestspace::shard::holds (const VPID &vpid)
+  {
+    std::size_t i;
+    L1 l1;
+
+    for (i = 0; i < ENTRIES_PER_SHARD; i++)
+      {
+	l1 = m_L1[i].load ();
+	if (l1.get_vpid ().pageid == vpid.pageid && l1.get_vpid ().volid == vpid.volid)
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+
   bestspace::status
   bestspace::shard::L3_find (OID *class_oid, tier minimum, std::uint16_t needed_size, std::uint16_t consume_size,
 			     std::size_t bias, PGBUF_WATCHER &page_watcher)
@@ -1069,6 +1088,19 @@ namespace cubstorage
 	return result;
       }
 
+    // pop returns a full batch only when the queue can cover needed_size; fewer means it cannot
+    // serve this request, so rediscover before extending the file.
+    if (num_candidates < ALLOC_BATCH_SIZE && m_parent.rediscover (hfid) > 0)
+      {
+	result = allocate_get_candidates_or_update_residents (class_oid, needed_size, consume_size, residents, victims,
+		 candidates, num_candidates, page_watcher);
+	if (result == status::FOUND || result == status::FAILURE)
+	  {
+	    allocate_unmark ();
+	    return result;
+	  }
+      }
+
     // verify the page has enough freespace and allocate new pages if not
     result = allocate_verify_or_allocate (class_oid, hfid, needed_size, candidates, num_candidates, page_watcher);
     if (result == status::FAILURE)
@@ -1285,8 +1317,13 @@ namespace cubstorage
     , m_num_pages (num_pages)
     , m_recs_num (recs_num)
     , m_recs_sumlen (recs_sumlen)
+    , m_scanning (false)
+    , m_scan_enabled (true)
+    , m_scan_fruitless (0)
   {
     assert (shard_count > 0);
+
+    VPID_SET_NULL (&m_scan_cursor);
 
     // last updated time
     m_last_updated.store (monotonic_seconds ());
@@ -1340,6 +1377,13 @@ namespace cubstorage
       {
 	m_candidates.try_push (candidates[i]);
       }
+
+    // CBRD-27325: fresh candidates mean free space exists again - re-arm the rediscovery scan
+    if (num_candidates > 0 && !m_scan_enabled.load ())
+      {
+	m_scan_fruitless.store (0);
+	m_scan_enabled.store (true);
+      }
   }
 
   void
@@ -1350,6 +1394,13 @@ namespace cubstorage
     for (i = 0; i < num_candidates; i++)
       {
 	m_candidates.push (candidates[i]);
+      }
+
+    // CBRD-27325: fresh candidates mean free space exists again - re-arm the rediscovery scan
+    if (num_candidates > 0 && !m_scan_enabled.load ())
+      {
+	m_scan_fruitless.store (0);
+	m_scan_enabled.store (true);
       }
   }
 
@@ -1545,6 +1596,125 @@ namespace cubstorage
   bestspace::get_num_shards ()
   {
     return m_shards.size ();
+  }
+
+  // Scan up to REDISCOVER_BATCH_SIZE pages of the heap chain from a persistent cursor and return
+  // free ones to the candidate queue. A hint only: consumers re-validate under latch.
+  std::size_t
+  bestspace::rediscover (HFID *hfid)
+  {
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    bestspace_entry found[REDISCOVER_BATCH_SIZE];
+    PGBUF_WATCHER watcher;
+    std::size_t num_found = 0;
+    std::size_t visited;
+    VPID vpid, next_vpid;
+    std::uint32_t fruitless;
+    int freespace;
+    int wait_msecs;
+    int error;
+    bool is_header;
+    bool expected = false;
+
+    if (!m_scan_enabled.load ())
+      {
+	return 0;
+      }
+    if (!m_scanning.compare_exchange_strong (expected, true))
+      {
+	// another thread is already scanning this heap
+	return 0;
+      }
+
+    vpid = m_scan_cursor;
+
+    for (visited = 0; visited < REDISCOVER_BATCH_SIZE; visited++)
+      {
+	if (VPID_ISNULL (&vpid))
+	  {
+	    // wrap around: restart from the heap header page
+	    vpid.volid = hfid->vfid.volid;
+	    vpid.pageid = hfid->hpgid;
+	  }
+	is_header = (vpid.pageid == hfid->hpgid && vpid.volid == hfid->vfid.volid);
+
+	PGBUF_INIT_WATCHER (&watcher, is_header ? PGBUF_ORDERED_HEAP_HDR : PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+	wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, &watcher);
+	(void) xlogtb_reset_wait_msecs (thread_p, wait_msecs);
+	if (error != NO_ERROR)
+	  {
+	    if (error != ER_LK_PAGE_TIMEOUT)
+	      {
+		// deallocated or otherwise stale cursor: restart from the header next time
+		VPID_SET_NULL (&vpid);
+	      }
+	    // a busy page keeps the cursor so the next scan resumes here
+	    er_clear ();
+	    break;
+	  }
+
+	if (!is_header
+	    && !heap_page_is_bestspace (thread_p, watcher.pgptr)
+	    && !heap_page_is_not_in_heap (thread_p, watcher.pgptr))
+	  {
+	    freespace = spage_max_space_for_new_record (thread_p, watcher.pgptr);
+	    if (freespace > 0 && size_to_tier ((std::uint16_t) freespace) >= tier::FS3)
+	      {
+		bool resident = false;
+		for (std::size_t s = 0; s < m_shards.size (); s++)
+		  {
+		    if (m_shards[s].holds (vpid))
+		      {
+			resident = true;
+			break;
+		      }
+		  }
+		if (!resident)
+		  {
+		    found[num_found].freespace = (std::uint16_t) freespace;
+		    found[num_found].volid = vpid.volid;
+		    found[num_found].pageid = vpid.pageid;
+		    num_found++;
+		  }
+	      }
+	  }
+
+	error = heap_vpid_next (thread_p, hfid, watcher.pgptr, &next_vpid);
+	pgbuf_ordered_unfix (thread_p, &watcher);
+	if (error != NO_ERROR)
+	  {
+	    er_clear ();
+	    VPID_SET_NULL (&vpid);
+	    break;
+	  }
+	vpid = next_vpid;
+      }
+
+    m_scan_cursor = vpid;
+
+    if (num_found > 0)
+      {
+	push_candidates (found, num_found);
+	m_scan_fruitless.store (0);
+      }
+    else
+      {
+	// threshold must be the live per-shard total; the global m_num_pages only refreshes at
+	// stats-sync and would disable the scan before a full chain sweep.
+	int live_pages;
+	std::uint64_t rn, rs;
+	get_estimates (live_pages, rn, rs);
+	fruitless = m_scan_fruitless.fetch_add ((std::uint32_t) visited) + (std::uint32_t) visited;
+	if (live_pages > 0 && fruitless >= (std::uint32_t) live_pages)
+	  {
+	    m_scan_enabled.store (false);
+	  }
+      }
+
+    m_scanning.store (false);
+    return num_found;
   }
 
   void
