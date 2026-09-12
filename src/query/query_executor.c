@@ -19373,12 +19373,27 @@ qexec_get_index_pseudocolumn_value_from_tuple (THREAD_ENTRY * thread_p, XASL_NOD
 
   if (!db_value_is_null (*index_valp))
     {
+      const char *str = db_get_string (*index_valp);
+      int str_size = db_get_string_size (*index_valp);
+      if (str_size < 0 || str_size == INT_MAX)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_PARAMETER, 0);
+	  return ER_QPROC_INVALID_PARAMETER;
+	}
+
       /* increase the size if more space needed */
       bool is_resize = false;
-      int need_size = (int) strlen ((*index_valp)->data.ch.medium.buf) + 1;
+      int need_size = str_size + 1;
       while (need_size > *index_len)
 	{
-	  (*index_len) += CONNECTBY_TUPLE_INDEX_STRING_MEM;
+	  if (*index_len > INT_MAX - CONNECTBY_TUPLE_INDEX_STRING_MEM)
+	    {
+	      *index_len = need_size;
+	    }
+	  else
+	    {
+	      (*index_len) += CONNECTBY_TUPLE_INDEX_STRING_MEM;
+	    }
 	  is_resize = true;
 	}
 
@@ -19393,7 +19408,9 @@ qexec_get_index_pseudocolumn_value_from_tuple (THREAD_ENTRY * thread_p, XASL_NOD
 	    }
 	}
 
-      strcpy (*index_value, (*index_valp)->data.ch.medium.buf);
+      /* The tuple string may not be NUL-terminated. */
+      memcpy (*index_value, str, str_size);
+      (*index_value)[str_size] = '\0';
     }
 
   return NO_ERROR;
