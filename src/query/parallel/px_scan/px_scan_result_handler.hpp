@@ -24,6 +24,7 @@
 #define _PX_SCAN_RESULT_HANDLER_HPP_
 
 #include "query_list.h"
+#include "qfile_tuple_layout.h"	/* QFILE_TUPLE_WALK */
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
@@ -150,6 +151,7 @@ namespace parallel_scan
       ~xasl_snapshot_tls() = default;
       list_id_header *list_id_header_p;
       QFILE_TUPLE_RECORD tpl_buf;
+      QFILE_TUPLE_WALK walk;	/* domain-driven reader of the snapshot tuples */
   };
 
   union VPID64_t

@@ -21,6 +21,7 @@
  */
 
 #include "px_hash_join_task_manager.hpp"
+#include "qfile_tuple_layout.h"
 
 #include "error_manager.h"		/* assert_release_error, er_errid, er_set, ... */
 #include "fetch.h"			/* fetch_val_list */
@@ -186,8 +187,8 @@ namespace parallel_query
       QFILE_LIST_ID **temp_part_list_id = nullptr;
 
       PAGE_PTR page = nullptr;
-      QFILE_TUPLE_RECORD tuple_record = { nullptr, 0 };
-      QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
+      QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+      QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
       int tuple_cnt, tuple_index, tuple_length;
 
       HASH_SCAN_KEY *temp_key = nullptr;
@@ -271,7 +272,8 @@ namespace parallel_query
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  tuple_record.tpl = (char *) page + QFILE_PAGE_HEADER_SIZE;
+	  qfile_slot_set_tuple_ptr_and_layout (&tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE,
+					       &m_split_info->fetch_info->list_id->type_list);
 
 	  /* overflow page */
 	  if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
@@ -286,7 +288,8 @@ namespace parallel_query
 		  break;	/* error_exit */
 		}
 
-	      tuple_record.tpl = overflow_record.tpl;
+	      qfile_slot_set_tuple_ptr_and_layout (&tuple_record, overflow_record.tpl,
+						   &m_split_info->fetch_info->list_id->type_list);
 	    }
 
 	  assert (has_error == false);
@@ -302,7 +305,7 @@ namespace parallel_query
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_record.tpl);
-		  tuple_record.tpl += tuple_length;
+		  qfile_slot_set_tuple_ptr (&tuple_record, tuple_record.tpl + tuple_length);	/* next tuple in page */
 		}
 	      else
 		{
@@ -420,7 +423,8 @@ namespace parallel_query
 	      if (temp_part_list_id[part_id] == nullptr)
 		{
 		  temp_part_list_id[part_id] =
-			  qfile_open_list (&thread_ref, &list_id->type_list, nullptr, list_id->query_id, QFILE_FLAG_ALL, nullptr);
+			  qfile_open_list (&thread_ref, &list_id->type_list, nullptr, list_id->query_id,
+					   QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (list_id), nullptr);
 		  if (temp_part_list_id[part_id] == nullptr)
 		    {
 		      assert_release_error (er_errid () != NO_ERROR);
@@ -902,8 +906,8 @@ cleanup:
       QFILE_LIST_ID *list_id;
 
       PAGE_PTR page = nullptr;
-      QFILE_TUPLE_RECORD probe_overflow_record = { nullptr, 0 };
-      QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
+      QFILE_TUPLE_RECORD probe_overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
+      QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
       int tuple_cnt, tuple_index, tuple_length;
 
       HASHJOIN_FETCH_INFO *outer, *inner;
@@ -989,7 +993,8 @@ cleanup:
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  probe->tuple_record.tpl = (char *) page + QFILE_PAGE_HEADER_SIZE;
+	  qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE,
+					       &probe->list_id->type_list);
 
 	  /* overflow page */
 	  if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
@@ -1005,7 +1010,8 @@ cleanup:
 		  break;	/* error_exit */
 		}
 
-	      probe->tuple_record.tpl = probe_overflow_record.tpl;
+	      qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, probe_overflow_record.tpl,
+						   &probe->list_id->type_list);
 	    }
 
 	  assert (has_error == false);
@@ -1023,7 +1029,7 @@ cleanup:
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (probe->tuple_record.tpl);
-		  probe->tuple_record.tpl += tuple_length;
+		  qfile_slot_set_tuple_ptr (&probe->tuple_record, probe->tuple_record.tpl + tuple_length);
 		}
 	      else
 		{
@@ -1202,8 +1208,8 @@ cleanup:
       QFILE_LIST_ID *list_id;
 
       PAGE_PTR page = nullptr;
-      QFILE_TUPLE_RECORD probe_overflow_record = { nullptr, 0 };
-      QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
+      QFILE_TUPLE_RECORD probe_overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
+      QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
       int tuple_cnt, tuple_index, tuple_length;
 
       HASHJOIN_FETCH_INFO *outer, *inner;
@@ -1292,7 +1298,8 @@ cleanup:
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  probe->tuple_record.tpl = (char *) page + QFILE_PAGE_HEADER_SIZE;
+	  qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE,
+					       &probe->list_id->type_list);
 
 	  /* overflow page */
 	  if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
@@ -1308,7 +1315,8 @@ cleanup:
 		  break;	/* error_exit */
 		}
 
-	      probe->tuple_record.tpl = probe_overflow_record.tpl;
+	      qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, probe_overflow_record.tpl,
+						   &probe->list_id->type_list);
 	    }
 
 	  assert (has_error == false);
@@ -1326,7 +1334,7 @@ cleanup:
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (probe->tuple_record.tpl);
-		  probe->tuple_record.tpl += tuple_length;
+		  qfile_slot_set_tuple_ptr (&probe->tuple_record, probe->tuple_record.tpl + tuple_length);
 		}
 	      else
 		{
