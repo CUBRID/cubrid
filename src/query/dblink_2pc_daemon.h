@@ -67,8 +67,10 @@
  * Decision completion: one per coordinator transaction, shared by that transaction's queue entries.
  *
  * The commit path creates it with remaining = number of participants, enqueues one entry per
- * participant carrying a pointer to it, then waits for remaining to reach 0.  The daemon calls
- * dblink_2pc_completion_settle() once per participant, right after the decision is actually delivered.
+ * participant that has an XA decision coming, each carrying a pointer to it, then waits for
+ * remaining to reach 0.  The daemon calls dblink_2pc_completion_settle() once per entry, right
+ * after the decision is actually delivered; the commit path settles the share of a participant it
+ * did not enqueue.
  *
  * Lifetime is refcounted because neither side reliably outlives the other: the commit path may give
  * up on the bound while entries are still queued, and an entry may be retried long after.  refcount
