@@ -378,6 +378,9 @@ typedef struct hashjoin_proc_node
   HASHJOIN_INPUT outer;
   HASHJOIN_INPUT inner;
   QFILE_LIST_MERGE_INFO merge_info;
+  /* merge_info.join_type is always JOIN_INNER for a semi/anti hash join (semi/anti are modelled
+   * structurally as inner joins); this records which of the two it actually is. */
+  HASHJOIN_SEMI_ANTI_TYPE semi_anti_type;
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
