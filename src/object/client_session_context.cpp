@@ -134,7 +134,12 @@ csc_qo_optimization_level (void)
 bool
 csc_has_method_callback_state (void)
 {
-  return tl_Csc_active != NULL && tl_Csc_active->method_callback_handler != nullptr;
+  /* Ordinary COMMIT also creates an (empty) callback handler. Only owned
+   * query handles, deferred frees or pending replies legitimately keep list
+   * files open across the outer query's end; an empty handler must not
+   * disable the per-thread qlist leak check (workspace#259 axis 6). */
+  return tl_Csc_active != NULL && tl_Csc_active->method_callback_handler != nullptr
+	 && tl_Csc_active->method_callback_handler->has_retained_resources ();
 }
 
 bool
