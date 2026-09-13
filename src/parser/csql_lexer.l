@@ -108,6 +108,11 @@ CSQL_PARSER_TLS int yytoken_start_column = 0;
             this_parser->line = yylineno;           \
         } while(0)
 
+#if defined (SERVER_MODE)
+static void parser_yy_thread_start (void);
+#define YY_USER_INIT parser_yy_thread_start ()
+#endif
+
 #define YY_USER_ACTION  { parser_yy_user_action(); }
 
 #define IS_BLANK_CHAR(c)    (char_isspace2((c)))
@@ -2257,3 +2262,23 @@ parser_yy_user_action (void)
   csql_yylloc.last_line = yylineno;
   csql_yylloc.last_column = this_parser->column;
 }
+
+#if defined (SERVER_MODE)
+/* Flex owns a buffer stack and its input buffer in each compiler thread.
+ * TLS pointers alone do not release those allocations when an adopted
+ * connection's thread exits. Keep the scanner warm within a thread, and
+ * destroy it once at actual thread exit, including pooled-worker expiry. */
+static void
+parser_yy_thread_start (void)
+{
+  struct scanner_cleanup
+  {
+    ~scanner_cleanup ()
+    {
+      (void) csql_yylex_destroy ();
+    }
+  };
+  static thread_local scanner_cleanup cleanup;
+  (void) cleanup;
+}
+#endif
