@@ -91,7 +91,7 @@
 #include "thread_worker_pool.hpp"	// for cubthread::system_core_count
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 
-extern bool csc_bracket_is_active (void);	/* client_session_context.cpp — merged client half's scope rules */
+#include "client_session_context.hpp"
 extern thread_local unsigned int db_on_server;	/* hat: set inside enter_server brackets */
 #endif // SERVER_MODE
 #include "string_regex.hpp"
@@ -971,6 +971,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_TEST_CHANGE_ONLY(x)    ((x)->static_flag & PRM_TEST_CHANGE)
 #define PRM_IS_FOR_HA(x)           ((x)->static_flag & PRM_FOR_HA)
 #define PRM_IS_FOR_SESSION(x)	   ((x)->static_flag & PRM_FOR_SESSION)
+#define PRM_IS_CLIENT_COMPILE(x)   ((x)->static_flag & PRM_CLIENT_COMPILE)
 #define PRM_GET_FROM_SERVER(x)	   ((x)->static_flag & PRM_FORCE_SERVER)
 #define PRM_IS_FOR_QRY_STRING(x)   ((x)->static_flag & PRM_FOR_QRY_STRING)
 #define PRM_CLIENT_SESSION_ONLY(x) ((x)->static_flag & PRM_CLIENT_SESSION)
@@ -1615,7 +1616,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_QO_DUMP,
    PRM_NAME_QO_DUMP,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -1661,7 +1662,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_RESET_TR_PARSER,
    PRM_NAME_RESET_TR_PARSER,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 10}},
@@ -1791,7 +1792,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_INSERT_MODE,
    PRM_NAME_INSERT_MODE,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 1 + 2}},
@@ -1815,7 +1816,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HOSTVAR_LATE_BINDING,
    PRM_NAME_HOSTVAR_LATE_BINDING,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -1963,7 +1964,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ORACLE_STYLE_OUTERJOIN,
    PRM_NAME_ORACLE_STYLE_OUTERJOIN,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -1975,7 +1976,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_ANSI_QUOTES,
    PRM_NAME_ANSI_QUOTES,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -2021,7 +2022,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PIPES_AS_CONCAT,
    PRM_NAME_PIPES_AS_CONCAT,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -2032,7 +2033,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_MYSQL_TRIGGER_CORRELATION_NAMES,
    PRM_NAME_MYSQL_TRIGGER_CORRELATION_NAMES,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -2044,7 +2045,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_REQUIRE_LIKE_ESCAPE_CHARACTER,
    PRM_NAME_REQUIRE_LIKE_ESCAPE_CHARACTER,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_QRY_STRING),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_QRY_STRING | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -2055,7 +2056,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_NO_BACKSLASH_ESCAPES,
    PRM_NAME_NO_BACKSLASH_ESCAPES,
-   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = true}},
@@ -2146,7 +2147,7 @@ SYSPRM_PARAM prm_Def[] = {
 
   {PRM_ID_LIKE_TERM_SELECTIVITY,
    PRM_NAME_LIKE_TERM_SELECTIVITY,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_FLOAT,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.f = 0.1f}},
@@ -3046,7 +3047,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_XASL_DEBUG_DUMP,
    PRM_NAME_XASL_DEBUG_DUMP,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -3338,7 +3339,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_UNICODE_INPUT_NORMALIZATION,
    PRM_NAME_UNICODE_INPUT_NORMALIZATION,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -3349,7 +3350,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_UNICODE_OUTPUT_NORMALIZATION,
    PRM_NAME_UNICODE_OUTPUT_NORMALIZATION,
-   (PRM_FOR_CLIENT | PRM_TEST_CHANGE),
+   (PRM_FOR_CLIENT | PRM_TEST_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -3568,7 +3569,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN,
    PRM_NAME_OPTIMIZER_ENABLE_MERGE_JOIN,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -3906,7 +3907,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_OBJECT_PRINT_FORMAT_OID,
    PRM_NAME_OBJECT_PRINT_FORMAT_OID,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -5414,7 +5415,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_HOSTVAR_PEEKING,
    PRM_NAME_HOSTVAR_PEEKING,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN | PRM_FOR_SESSION | PRM_CLIENT_COMPILE | PRM_FOR_QRY_STRING),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -5426,7 +5427,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT,
    PRM_NAME_DEFAULT_HISTOGRAM_BUCKET_COUNT,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 300}},
@@ -5558,7 +5559,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PLAN_CACHE_BIND_SENSITIVITY,
    PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -6737,15 +6738,25 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
       SYSPRM_PARAM *prm = GET_PRM (i);
-      if (PRM_IS_FOR_SESSION (prm) && (!PRM_IS_FOR_CLIENT (prm) || !PRM_USER_CAN_CHANGE (prm)))
+      if (PRM_IS_FOR_SESSION (prm)
+	  && (!PRM_IS_FOR_CLIENT (prm) || (!PRM_USER_CAN_CHANGE (prm) && !PRM_IS_CLIENT_COMPILE (prm))))
 	{
 	  /* session parameters can only be parameters for client that are changeable on-line */
 	  assert (0);
 	}
-      if (PRM_IS_FOR_SESSION (prm) && PRM_IS_HIDDEN (prm))
+      if (PRM_IS_FOR_SESSION (prm) && PRM_IS_HIDDEN (prm) && !PRM_IS_CLIENT_COMPILE (prm))
 	{
 	  /* hidden parameters are not allowed to use PRM_FOR_SESSION flag */
 	  assert (0);
+	}
+      /* Folded compiler settings retain their hidden/test-only policy while
+       * using the same session storage as public session parameters. */
+      if (PRM_IS_CLIENT_COMPILE (prm))
+	{
+	  assert (PRM_IS_FOR_SESSION (prm) && PRM_IS_FOR_CLIENT (prm));
+	  assert (!PRM_IS_FOR_SERVER (prm) || PRM_SERVER_SESSION (prm->id));
+	  assert (PRM_USER_CAN_CHANGE (prm) || PRM_TEST_CHANGE_ONLY (prm));
+	  assert (PRM_IS_BOOLEAN (prm) || PRM_IS_INTEGER (prm) || PRM_IS_FLOAT (prm));
 	}
       if (PRM_CLIENT_SESSION_ONLY (prm) && (!PRM_IS_FOR_SERVER (prm) || !PRM_IS_FOR_SESSION (prm)))
 	{
@@ -7736,7 +7747,16 @@ sysprm_validate_change_parameters (const char *data, bool check, SYSPRM_ASSIGN_V
 	  break;
 	}
 
-      if (!check || PRM_USER_CAN_CHANGE (prm) || (PRM_TEST_CHANGE_ONLY (prm) && prm_get_bool_value (PRM_ID_TEST_MODE)))
+      bool test_mode = prm_get_bool_value (PRM_ID_TEST_MODE);
+#if defined (SERVER_MODE)
+      /* Only compiler TEST_CHANGE policy follows the thin client's config.
+       * Never change the server's test mode or its operational permissions. */
+      if (PRM_IS_CLIENT_COMPILE (prm) && csc_bracket_is_active () && csc_current ()->client_compile_test_mode >= 0)
+	{
+	  test_mode = csc_current ()->client_compile_test_mode != 0;
+	}
+#endif
+      if (!check || PRM_USER_CAN_CHANGE (prm) || (PRM_TEST_CHANGE_ONLY (prm) && test_mode))
 	{
 	  /* We allow changing the parameter value. */
 	}
@@ -7888,6 +7908,111 @@ sysprm_make_default_values (const char *data, char *default_val_buf, const int b
 }
 
 /* end of former !SERVER_MODE region */
+
+/* Serialize only the scalar client compiler settings. Send defaults too: a
+ * thin client with no override must not inherit the server's client settings.
+ * Keep float roundtrips exact instead of the diagnostic printer's precision. */
+int
+sysprm_print_client_compile_parameters (char *buffer, size_t length)
+{
+  size_t used = 0;
+
+  if (length == 0)
+    {
+      return ER_FAILED;
+    }
+  buffer[0] = '\0';
+  for (int i = 0; i < MAX_SYSTEM_PARAMS; i++)
+    {
+      SYSPRM_PARAM *prm = GET_PRM (i);
+      if (!PRM_IS_CLIENT_COMPILE (prm))
+	{
+	  continue;
+	}
+      int n;
+      const char *separator = used == 0 ? "" : ";";
+      if (PRM_IS_BOOLEAN (prm))
+	{
+	  n = snprintf (buffer + used, length - used, "%s%s=%s", separator, prm->name,
+			PRM_GET_BOOL (prm->value) ? "yes" : "no");
+	}
+      else if (PRM_IS_INTEGER (prm))
+	{
+	  n = snprintf (buffer + used, length - used, "%s%s=%d", separator, prm->name, PRM_GET_INT (prm->value));
+	}
+      else if (PRM_IS_FLOAT (prm))
+	{
+	  n = snprintf (buffer + used, length - used, "%s%s=%.9g", separator, prm->name,
+			(double) PRM_GET_FLOAT (prm->value));
+	}
+      else
+	{
+	  return ER_FAILED;
+	}
+      if (n < 0 || (size_t) n >= length - used)
+	{
+	  return ER_FAILED;
+	}
+      used += (size_t) n;
+    }
+  return NO_ERROR;
+}
+
+#if defined (SERVER_MODE)
+/* Called only for the first request of a new thin connection. File settings
+ * may include TEST_CHANGE parameters, just as the fat client's configuration
+ * load did. Validate the complete allowlisted batch before touching any value;
+ * ordinary SET continues to enforce USER_CHANGE/TEST_CHANGE independently. */
+SYSPRM_ERR
+sysprm_init_client_compile_parameters (const char *data, bool test_mode)
+{
+  char buffer[LINE_MAX], *cursor = buffer;
+  SYSPRM_ASSIGN_VALUE *assignments = NULL;
+  SYSPRM_ERR error;
+
+  if (data == NULL || data[0] == '\0' || (size_t) strlen (data) >= sizeof (buffer))
+    {
+      return PRM_ERR_BAD_VALUE;
+    }
+  strcpy (buffer, data);
+  do
+    {
+      char *name = NULL, *value = NULL;
+      error = (SYSPRM_ERR) prm_get_next_param_value (&cursor, &name, &value);
+      if (error != PRM_ERR_NO_ERROR || name == NULL || value == NULL)
+	{
+	  return error == PRM_ERR_NO_ERROR ? (SYSPRM_ERR) PRM_ERR_BAD_VALUE : error;
+	}
+      SYSPRM_PARAM *prm = prm_find (name, NULL);
+      if (prm == NULL || !PRM_IS_CLIENT_COMPILE (prm)
+	  || session_get_session_parameter (thread_get_thread_entry_info (), prm->id) == NULL)
+	{
+	  return PRM_ERR_CANNOT_CHANGE;
+	}
+    }
+  while (cursor != NULL && *cursor != '\0');
+
+  error = sysprm_validate_change_parameters (data, false, &assignments);
+  if (error != PRM_ERR_NO_ERROR)
+    {
+      return error;
+    }
+  for (SYSPRM_ASSIGN_VALUE * a = assignments; a != NULL; a = a->next)
+    {
+      error = (SYSPRM_ERR) sysprm_set_value_internal (GET_PRM (a->prm_id), a->value, true, true);
+      if (error != PRM_ERR_NO_ERROR)
+	{
+	  break;
+	}
+    }
+  if (error == PRM_ERR_NO_ERROR)
+    {
+      csc_current ()->client_compile_test_mode = test_mode ? 1 : 0;
+    }
+  sysprm_free_assign_values (&assignments);
+  return error;
+}
+#endif /* SERVER_MODE */
 
 /*
  * sysprm_change_parameter_values () - update system parameter values
@@ -12579,10 +12704,23 @@ sysprm_print_parameters_for_qry_string (void)
 		  session_prm.value.v = sprm->value;
 		}
 	    }
-	  n = prm_print (&session_prm, ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+	  SYSPRM_PARAM *key_prm = &session_prm;
 #else
-	  n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+	  SYSPRM_PARAM *key_prm = GET_PRM (i);
 #endif
+	  if (PRM_IS_CLIENT_COMPILE (key_prm) && PRM_IS_FLOAT (key_prm))
+	    {
+	      n = snprintf (ptr, len, "%d=%.9g", i, (double) PRM_GET_FLOAT (key_prm->value));
+	    }
+	  else
+	    {
+	      n = prm_print (key_prm, ptr, len, PRM_PRINT_ID, PRM_PRINT_CURR_VAL);
+	    }
+	  if (n < 0 || n >= len - 1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	      return NULL;
+	    }
 	  ptr += n;
 	  len -= n;
 
@@ -12591,6 +12729,19 @@ sysprm_print_parameters_for_qry_string (void)
 	  assert (len > 0);
 	}
     }
+#if defined (SERVER_MODE)
+  if (csc_bracket_is_active () && csc_current ()->qo_cost_overrides != 0)
+    {
+      n = snprintf (ptr, len, "cost=%u;", csc_current ()->qo_cost_overrides);
+      if (n < 0 || n >= len)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	  return NULL;
+	}
+      ptr += n;
+      len -= n;
+    }
+#endif
   *ptr = '\0';
 
   /* TODO:

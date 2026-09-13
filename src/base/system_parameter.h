@@ -677,6 +677,11 @@ extern "C"
 
 #define PRM_FOR_PL_CONTEXT  0x00020000	/* is for PL parameter */
 
+/* Client compiler/render settings: session-owned in the fold, including
+ * hidden/test-only settings. Also the allowlist for thin csql's initial
+ * configuration; this flag does not grant runtime SET permission. */
+#define PRM_CLIENT_COMPILE  0x00040000
+
 #define PRM_DEPRECATED      0x40000000	/* is deprecated */
 #define PRM_OBSOLETED       0x80000000	/* is obsoleted */
 
@@ -846,6 +851,10 @@ extern "C"
   extern void sysprm_update_client_session_parameters (SESSION_PARAM * session_parameters);
 #endif				/* CS_MODE */
 
+  extern int sysprm_print_client_compile_parameters (char *buffer, size_t length);
+#if defined (SERVER_MODE)
+  extern SYSPRM_ERR sysprm_init_client_compile_parameters (const char *data, bool test_mode);
+#endif
   extern char *sysprm_print_parameters_for_qry_string (void);
   extern char *sysprm_print_parameters_for_ha_repl (void);
   extern SYSPRM_ERR sysprm_validate_change_parameters (const char *data, bool check,

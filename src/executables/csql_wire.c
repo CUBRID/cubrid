@@ -86,6 +86,7 @@ static volatile sig_atomic_t wire_Cancel_thread_up = 0;
 static void wire_cancel_send (void);
 static int wire_apply_statement_blocks (void);
 static int wire_apply_locale_parameters (void);
+static int wire_apply_compile_parameters (void);
 
 static void *
 wire_cancel_thread_run (void *arg)
@@ -605,7 +606,8 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
    * connection is its thin equivalent, and csql session commands gate on
    * this global (csql_session.c CMD_CHECK_CONNECT) */
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
-  if (wire_apply_statement_blocks () != NO_ERROR || wire_apply_locale_parameters () != NO_ERROR)
+  if (wire_apply_compile_parameters () != NO_ERROR || wire_apply_statement_blocks () != NO_ERROR
+      || wire_apply_locale_parameters () != NO_ERROR)
     {
       csql_wire_disconnect ();
       return wire_Err_code;
@@ -1100,6 +1102,39 @@ csql_wire_session_cmd (const CSQL_ARGUMENT * csql_arg, const char *line)
 
   csql_column_widths_serialize (widths, sizeof (widths));
   return wire_session_cmd (wire_flags_from_arg (csql_arg), csql_arg->string_width, widths, line, true);
+}
+
+/* This must precede every other request: the server accepts file-only settings
+ * during connection initialization, without relaxing the runtime SET policy. */
+static int
+wire_apply_compile_parameters (void)
+{
+  char parameters[LINE_MAX];
+  wire_body body = { NULL, 0, 0 };
+  char fc = (char) CAS_FC_CSQL_REQUEST;
+
+  if (sysprm_print_client_compile_parameters (parameters, sizeof (parameters)) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, er_msg ());
+      return ER_BO_CANT_LOAD_SYSPRM;
+    }
+  if (wire_body_append (&body, &fc, 1) != NO_ERROR || wire_arg_int (&body, CAS_CSQL_SUB_INIT_PARAMETERS) != NO_ERROR
+      || wire_arg_str (&body, parameters) != NO_ERROR
+      || wire_arg_int (&body, prm_get_bool_value (PRM_ID_TEST_MODE) ? 1 : 0) != NO_ERROR)
+    {
+      free_and_init (body.buf);
+      wire_set_error (ER_FAILED, "out of memory");
+      return ER_FAILED;
+    }
+  int status = wire_roundtrip (&body, false);
+  free_and_init (body.buf);
+  if (status != NO_ERROR && wire_Err_code == NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_CANT_LOAD_SYSPRM, 0);
+      wire_set_error (ER_BO_CANT_LOAD_SYSPRM, er_msg ());
+    }
+  return status;
 }
 
 /* Seed these client-only guards once per connection. Sending both false and

@@ -154,6 +154,7 @@ extern "C"
 #define CAS_CSQL_SUB_EXECUTE                    1
 #define CAS_CSQL_SUB_SESSION_CMD                2
 #define CAS_CSQL_SUB_TRAN                       3	/* silent commit/abort: exit paths print nothing */
+#define CAS_CSQL_SUB_INIT_PARAMETERS            4	/* first request only: client compiler configuration */
 /* CAS_FC_CSQL_REQUEST reply chunk tags: ordered stdout/stderr interleaving */
 #define CAS_CSQL_CHUNK_END                      0
 #define CAS_CSQL_CHUNK_OUT                      1

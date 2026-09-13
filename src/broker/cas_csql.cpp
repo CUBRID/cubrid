@@ -38,6 +38,7 @@
 
 #include "cas.h"
 #include "cas_common.h"
+#include "cas_common_vars.h"
 #include "cas_function.h"
 #include "cas_network.h"
 #include "cas_net_buf.h"
@@ -46,6 +47,7 @@
 #include "cas_protocol.h"
 #include "error_manager.h"
 #include "object_representation.h"
+#include "system_parameter.h"
 
 #include "csql.h"
 #include "adoption.hpp"
@@ -303,7 +305,24 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
   try
     {
       csql_error_capture_guard error_capture (&log_cookie);
-      if (sub_code == CAS_CSQL_SUB_EXECUTE)
+      if (sub_code == CAS_CSQL_SUB_INIT_PARAMETERS)
+	{
+	  char *parameters = NULL;
+	  int size = 0, test_mode = 0;
+	  if (!is_first_request || argc != 3 || !csql_arg_str_ok (argv[1], &parameters, &size)
+	      || !csql_arg_int_ok (argv[2]))
+	    {
+	      goto arg_error;
+	    }
+	  net_arg_get_int (&test_mode, argv[2]);
+	  if (test_mode != 0 && test_mode != 1)
+	    {
+	      goto arg_error;
+	    }
+	  SYSPRM_ERR error = sysprm_init_client_compile_parameters (parameters, test_mode != 0);
+	  status = error == PRM_ERR_NO_ERROR ? NO_ERROR : sysprm_set_error (error, parameters);
+	}
+      else if (sub_code == CAS_CSQL_SUB_EXECUTE)
 	{
 	  int flags = 0, input_type = 0, line_no = -1, string_width = 0;
 	  char *delims = NULL, *column_widths = NULL, *in_file_name = NULL, *text = NULL;

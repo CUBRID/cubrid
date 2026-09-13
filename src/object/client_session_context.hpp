@@ -141,6 +141,14 @@ class client_session_context
      * -1 = unset (reads fall through to sysprm). */
     int qo_optimization_level = -1;
 
+    /* Two-bit cost policy per optimizer plan kind; zero means all defaults.
+     * Also part of the query-cache key, never a shared vtable mutation. */
+    unsigned int qo_cost_overrides = 0;
+
+    /* Thin client's permission for TEST_CHANGE compiler settings only.
+     * -1: ordinary drivers use the server/CAS configuration as before. */
+    int client_compile_test_mode = -1;
+
     /* method/SP callback termination (#120 D8): the CAS-side process-global
      * handle cache was per-session in effect (one CAS per session) — its
      * faithful translation here is per-session ownership.  It holds
