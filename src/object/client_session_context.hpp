@@ -151,6 +151,13 @@ class client_session_context
      * Also part of the query-cache key, never a shared vtable mutation. */
     unsigned int qo_cost_overrides = 0;
 
+    /* Driver defaults belong to the logical session, not to whichever
+     * executor's CAS TLS happens to service a later AUTO attachment. */
+    int driver_default_isolation = 0;
+    int driver_default_lock_timeout = -1;
+    bool driver_default_ansi_quotes = true;
+    bool driver_default_no_backslash_escapes = true;
+
     /* Thin client's permission for TEST_CHANGE compiler settings only.
      * -1: ordinary drivers use the server/CAS configuration as before. */
     int client_compile_test_mode = -1;
@@ -199,6 +206,11 @@ extern bool csc_bracket_is_active (void);
 /* has the bracketed session terminated a method/SP callback in-process?
  * (qexec's qlist balance check stands down only for such sessions) */
 extern bool csc_has_method_callback_state (void);
+
+/* Request-boundary preparation for AUTO detach. Drains completed callback
+ * handles on their current owner, then checks whether any execution-owned
+ * resources still pin this context. Does not affect qlist leak accounting. */
+extern bool csc_prepare_detach (void);
 
 /* is the calling thread inside an in-process method dispatch? (page_buffer's
  * commit-time unfix sweep must spare the suspended outer executor's fixes) */

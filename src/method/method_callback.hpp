@@ -75,6 +75,13 @@ namespace cubmethod
 	return !m_deferred_query_free_handler.empty ();
       }
 
+      /* Empty callback objects are created even by ordinary COMMIT. Only
+       * owned handles and pending replies keep an execution context pinned. */
+      bool has_retained_resources () const
+      {
+        return m_live_query_handlers != 0 || !m_deferred_query_free_handler.empty () || !m_data_queue.empty ();
+      }
+
       void clear_all_query_handlers ();
 
       /* find query handler */
@@ -120,6 +127,7 @@ namespace cubmethod
       error_context m_error_ctx;
 
       std::vector<query_handler *> m_query_handlers;
+      std::size_t m_live_query_handlers = 0;
       oid_handler *m_oid_handler;
 
       std::queue <cubmem::extensible_block> m_data_queue;

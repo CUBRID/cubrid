@@ -114,7 +114,15 @@ struct locator_list_keep_mops
   LIST_MOPS *list;		/* The list of mops */
 };
 
+/* per session in the merged server: db_set_interrupt (0) at the start of a
+ * request only forwards the reset when this flag is still raised, so a shared
+ * flag cleared by another session's request start left a late cancel armed
+ * for the victim's next statement (workspace#259 axis 3, audit 0-6) */
+#if defined(SERVER_MODE)
+static thread_local volatile sig_atomic_t lc_Is_siginterrupt = false;
+#else
 static volatile sig_atomic_t lc_Is_siginterrupt = false;
+#endif
 
 #if defined(CUBRID_DEBUG)
 static void locator_dump_mflush (FILE * out_fp, LOCATOR_MFLUSH_CACHE * mflush);

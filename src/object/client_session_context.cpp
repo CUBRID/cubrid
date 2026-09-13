@@ -30,6 +30,8 @@
 
 #include "object_domain.h"	// tp_session_domains_final (B4-D9)
 #include "connection_defs.h"
+#include "method_callback.hpp"
+#include "error_manager.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -133,6 +135,29 @@ bool
 csc_has_method_callback_state (void)
 {
   return tl_Csc_active != NULL && tl_Csc_active->method_callback_handler != nullptr;
+}
+
+bool
+csc_prepare_detach (void)
+{
+  client_session_context *ctx = tl_Csc_active;
+  if (ctx == nullptr || ctx->render_stdout != nullptr || ctx->obj_method_call_level != 0
+      || ctx->er_dispatch_floor != 0 || !ctx->method_runtime_args.empty () || tran_is_in_libcas ())
+    {
+      return false;
+    }
+  cubmethod::callback_handler *handler = ctx->method_callback_handler;
+  if (handler == nullptr)
+    {
+      return true;
+    }
+  if (handler->has_deferred_query_handler ())
+    {
+      er_stack_push ();
+      handler->free_deferred_query_handler ();
+      er_stack_pop ();
+    }
+  return !handler->has_retained_resources ();
 }
 
 ws_context *

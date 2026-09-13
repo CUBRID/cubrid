@@ -2679,9 +2679,16 @@ lang_get_charset_env_string (char *buf, int buf_size, const char *lang_name, con
   return NO_ERROR;
 }
 
-/* unguarded — client half now compiled into server */
-/* client side charset and collation */
+/* client side charset and collation.  In the merged server the CAS speaker
+ * toggles this around its schema queries (cas_execute.c) while the grammar of
+ * a concurrent session reads it to resolve string-literal charsets — one
+ * dedicated thread per adopted connection, so per-session means per-thread
+ * (workspace#259 axis 2, audit 0-1).  CAS/CSQL/SA builds are unchanged. */
+#if defined(SERVER_MODE)
+static thread_local bool lang_Parser_use_client_charset = true;
+#else
 static bool lang_Parser_use_client_charset = true;
+#endif
 
 /*
  * lang_db_put_charset - Saves the charset and language information into DB

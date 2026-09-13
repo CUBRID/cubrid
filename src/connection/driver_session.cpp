@@ -521,7 +521,7 @@ namespace cubconn
           registry_auto_ready (wake_fd >= 0 && as_info->con_status == CON_STATUS_OUT_TRAN
                                && as_info->num_holdable_results == 0 && !is_xa_prepared ()
                                && as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO
-                               && !csc_has_method_callback_state ());
+                               && csc_prepare_detach ());
 	  /* the SIGUSR1 (re)arming of the CAS loop is retired: cancel arrives
 	   * as a tran interrupt via the control channel (#117 D4) */
 	  fn_ret = cas_process_request (fd, &net_buf, &req_info, wake_fd);
@@ -552,6 +552,12 @@ namespace cubconn
     void
     driver_session_run (session_params params)
     {
+      net_reset_connection ();
+      ux_reset_adopted_connection ();
+      unset_xa_prepare_flag ();
+      autocommit_deferred = false;
+      cas_send_result_flag = TRUE;
+      query_cancel_time = 0;
       int err;
       bool registered = false;
       bool adopted = false;
@@ -611,6 +617,11 @@ namespace cubconn
       cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
       if (entry_p == NULL)
 	{
+          if (ssl_client)
+            {
+              cas_ssl_close (params.client_fd);
+              ssl_client = false;
+            }
 	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) params.client_type);	/* same refund as above */
 	  registry_session_finished (params.token);
 	  close (params.client_fd);
@@ -625,7 +636,19 @@ namespace cubconn
 
       /* session-scoped client context; adopted by the server session after
        * registration, freed with it (session_state_uninit) */
-      ctx = new client_session_context ();
+      try
+        {
+          ctx = new client_session_context ();
+        }
+      catch (const std::bad_alloc &)
+        {
+        }
+      if (ctx == nullptr)
+        {
+          send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+                            CAS_ER_NO_MORE_MEMORY, "Cannot allocate client context");
+          goto retire;
+        }
       csc_activate (ctx);
 
       /* socketless conn entry: the CAS wire lives on params.client_fd, the
@@ -783,7 +806,12 @@ namespace cubconn
                                 CAS_ER_FREE_SERVER, "Cannot create AUTO wake descriptor");
               goto retire;
             }
-          registry_auto_enable (params.token, wake_fd);
+          if (!registry_auto_enable (params.token, wake_fd))
+            {
+              send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+                                CAS_ER_NO_MORE_MEMORY, "Cannot initialize AUTO admission");
+              goto retire;
+            }
           as_info->cur_keep_con = KEEP_CON_AUTO;
           as_info->cas_change_mode = CAS_CHANGE_MODE_AUTO;
           UINT64 nonce;
@@ -793,7 +821,7 @@ namespace cubconn
           if (nonce != 0)
             {
               client_session_context *retained = nullptr;
-              err = session_auto_claim (entry_p, ntohl (wire_id), info.db_user, nonce, &retained);
+              err = session_auto_claim (entry_p, ntohl (wire_id), info.db_user, info.session_id, nonce, &retained);
               if (err == NO_ERROR)
                 {
                   csc_deactivate ();
@@ -883,6 +911,17 @@ namespace cubconn
       if (!resumed)
         {
           ux_get_default_setting ();
+          ctx->driver_default_isolation = cas_default_isolation_level;
+          ctx->driver_default_lock_timeout = cas_default_lock_timeout;
+          ctx->driver_default_ansi_quotes = cas_default_ansi_quotes;
+          ctx->driver_default_no_backslash_escapes = cas_default_no_backslash_escapes;
+        }
+      else
+        {
+          cas_default_isolation_level = ctx->driver_default_isolation;
+          cas_default_lock_timeout = ctx->driver_default_lock_timeout;
+          cas_default_ansi_quotes = ctx->driver_default_ansi_quotes;
+          cas_default_no_backslash_escapes = ctx->driver_default_no_backslash_escapes;
         }
       (void) tr_set_execution_state (cas_session_cfg.trigger_action_flag != 0);
 
@@ -959,6 +998,7 @@ retire:
           close (wake_fd);
           wake_fd = -1;
         }
+      hm_srv_handle_table_final ();
       qr_final ();
       if (as_info != NULL)
 	{
@@ -994,8 +1034,11 @@ retire:
 	}
       entry_p->tran_index = NULL_TRAN_INDEX;
       entry_p->m_status = cubthread::entry::status::TS_DEAD;
-      csc_deactivate ();
-      if (!adopted)
+      if (csc_bracket_is_active ())
+        {
+          csc_deactivate ();
+        }
+      if (!adopted && ctx != nullptr)
 	{
 	  csc_retire_and_delete (ctx);
 	}
@@ -1017,6 +1060,7 @@ retire:
 	}
       registry_session_finished (params.token);
       close (params.client_fd);
+      ux_reset_adopted_connection ();
     }
   }				/* namespace adoption */
 }				/* namespace cubconn */

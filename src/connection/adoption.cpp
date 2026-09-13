@@ -44,8 +44,10 @@
 #include <climits>
 #include <condition_variable>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -62,6 +64,7 @@
 #include "boot.h"		// BOOT_CSQL_CLIENT_TYPE (wf122/B5 D2)
 #include "connection_defs.h"
 #include "connection_sr.h"	// css_increment_num_conn
+#include "server_support.h"
 #include "db_client_type.hpp"
 #include "environment_variable.h"
 #include "error_manager.h"
@@ -191,7 +194,7 @@ namespace cubconn
       char broker_name[BROKER_NAME_MAX];
       int client_fd;
       int tran_index;
-      std::shared_ptr<session_binding> binding = std::make_shared<session_binding> ();
+      std::shared_ptr<session_binding> binding;
       int client_id = -1; /* CSS identity; valid only before session cleanup */
       std::int32_t fn_status;
       /* SHOW SESSION STATUS (B2-D10): the session thread's CAS slot.  The
@@ -206,8 +209,21 @@ namespace cubconn
       const char *client_name = "UNKNOWN"; /* static protocol label, fixed at connect */
       int slot_index = -1;
       std::uint32_t client_ip = 0;
+      std::uint16_t client_port = 0;
       bool direct = false;	/* DIRECT_CONNECT session: no broker slot, no SESSION_END (wf122/B5) */
       std::shared_ptr<session_histogram> histogram;
+    };
+
+    struct executor
+    {
+      std::thread thread;
+      std::condition_variable wake;
+      std::optional<session_params> job;
+      executor *previous = nullptr;
+      executor *next = nullptr;
+      bool idle = false;
+      bool starting = true;
+      bool done = false;
     };
 
     struct manager
@@ -228,6 +244,14 @@ namespace cubconn
       std::unordered_map<std::uint32_t, session_entry> registry;
       std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> auto_pressure;
       std::uint32_t next_token = 1;
+
+      /* Connection-bound execution: no per-SQL queue or thread migration.
+       * Idle executors retain no engine entry or transaction reservation. */
+      std::mutex executors_mutex;
+      std::vector<std::unique_ptr<executor>> executors;
+      executor *idle_executors = nullptr;
+      bool reuse_executors = false;
+      int executor_idle_seconds = 0;
 
       /* sign-off callbacks still touching this manager after their registry
        * erase; stop() must not free the manager under them (codex review F2) */
@@ -378,28 +402,37 @@ namespace cubconn
 	}
     }
 
-    void
+    bool
     registry_auto_enable (std::uint32_t token, int wake_fd)
     {
       manager *m = adoption_Manager;
       if (m == nullptr)
         {
-          return;
+          return false;
         }
-      std::lock_guard<std::mutex> guard (m->registry_mutex);
-      auto it = m->registry.find (token);
-      if (it != m->registry.end ())
+      try
         {
-          current_binding = it->second.binding;
-          std::lock_guard<std::mutex> binding_guard (current_binding->mutex);
-          current_binding->wake_fd = wake_fd;
-          auto &pressure = m->auto_pressure[it->second.broker_name];
-          if (pressure == nullptr)
+          std::lock_guard<std::mutex> guard (m->registry_mutex);
+          auto it = m->registry.find (token);
+          if (it != m->registry.end ())
             {
-              pressure = std::make_shared<std::atomic<bool>> (false);
+              current_binding = it->second.binding;
+              std::lock_guard<std::mutex> binding_guard (current_binding->mutex);
+              current_binding->wake_fd = wake_fd;
+              auto &pressure = m->auto_pressure[it->second.broker_name];
+              if (pressure == nullptr)
+                {
+                  pressure = std::make_shared<std::atomic<bool>> (false);
+                }
+              current_binding->pressure = pressure;
+              return true;
             }
-          current_binding->pressure = pressure;
         }
+      catch (const std::bad_alloc &)
+        {
+          current_binding.reset ();
+        }
+      return false;
     }
 
     void
@@ -407,8 +440,12 @@ namespace cubconn
     {
       if (current_binding != nullptr)
         {
-          current_binding->auto_ready.store (ready, std::memory_order_release);
-          if (ready && current_binding->pressure != nullptr && current_binding->pressure->exchange (false))
+          /* SC publication pairs with pressure-before-candidate-scan below;
+           * neither side may miss the other's transition and lose a wakeup.
+           * With no pressure the shared group flag is read-only. */
+          current_binding->auto_ready.store (ready);
+          if (ready && current_binding->pressure != nullptr && current_binding->pressure->load ()
+              && current_binding->pressure->exchange (false))
             {
               const std::uint64_t one = 1;
               (void) write (current_binding->wake_fd, &one, sizeof (one));
@@ -422,11 +459,12 @@ namespace cubconn
       std::shared_ptr<session_binding> binding;
       {
         std::lock_guard<std::mutex> guard (m.registry_mutex);
-        auto &pressure = m.auto_pressure[ch.broker_name];
-        if (pressure == nullptr)
+        auto found = m.auto_pressure.find (ch.broker_name);
+        if (found == m.auto_pressure.end ())
           {
-            pressure = std::make_shared<std::atomic<bool>> (false);
+            return;
           }
+        const auto &pressure = found->second;
         pressure->store (wanted);
         if (!wanted)
           {
@@ -435,7 +473,7 @@ namespace cubconn
         for (const auto &pair : m.registry)
           {
             if (std::strcmp (pair.second.broker_name, ch.broker_name) == 0
-                && pair.second.binding->auto_ready.exchange (false, std::memory_order_acq_rel))
+                && pair.second.binding->auto_ready.exchange (false))
               {
                 binding = pair.second.binding;
                 if (!pressure->exchange (false))
@@ -1032,6 +1070,193 @@ namespace cubconn
     /* control-channel message handlers                                   */
     /* ------------------------------------------------------------------ */
 
+    /* All idle-list and job transitions use executors_mutex. There is no
+     * allocation, engine initialization or join under this mutex. */
+    static void
+    remove_idle_executor (manager &m, executor &worker)
+    {
+      assert (worker.idle);
+      if (worker.previous != nullptr)
+        {
+          worker.previous->next = worker.next;
+        }
+      else
+        {
+          m.idle_executors = worker.next;
+        }
+      if (worker.next != nullptr)
+        {
+          worker.next->previous = worker.previous;
+        }
+      worker.previous = worker.next = nullptr;
+      worker.idle = false;
+    }
+
+    static void
+    executor_run (manager &m, executor &worker)
+    {
+      std::unique_lock<std::mutex> guard (m.executors_mutex);
+      for (;;)
+        {
+          if (!worker.job)
+            {
+              worker.idle = true;
+              worker.next = m.idle_executors;
+              if (worker.next != nullptr)
+                {
+                  worker.next->previous = &worker;
+                }
+              m.idle_executors = &worker;
+              auto ready = [&] { return worker.job.has_value () || m.stopping.load (); };
+              bool awakened = true;
+              if (m.executor_idle_seconds < 0)
+                {
+                  worker.wake.wait (guard, ready);
+                }
+              else
+                {
+                  awakened = worker.wake.wait_for (guard, std::chrono::seconds (m.executor_idle_seconds), ready);
+                }
+              if (worker.idle)
+                {
+                  remove_idle_executor (m, worker);
+                }
+              if (!awakened || (m.stopping.load () && !worker.job))
+                {
+                  break;
+                }
+            }
+          session_params params = std::move (*worker.job);
+          worker.job.reset ();
+          guard.unlock ();
+          if (m.stopping.load ())
+            {
+              css_decrement_num_conn ((BOOT_CLIENT_TYPE) params.client_type);
+              registry_session_finished (params.token);
+              close (params.client_fd);
+            }
+          else
+            {
+              driver_session_run (std::move (params));
+            }
+          guard.lock ();
+          if (m.stopping.load ())
+            {
+              break;
+            }
+        }
+      worker.done = true;
+    }
+
+    static bool
+    submit_session (manager &m, session_params &&params)
+    {
+      if (!m.reuse_executors || params.direct || params.broker_info[BROKER_INFO_KEEP_CONNECTION] != 0)
+        {
+          std::thread session_thread (driver_session_run, std::move (params));
+          session_thread.detach ();
+          return true;
+        }
+
+      std::unique_lock<std::mutex> guard (m.executors_mutex);
+      if (m.stopping.load ())
+        {
+          return false;
+        }
+      if (m.idle_executors != nullptr)
+        {
+          executor &worker = *m.idle_executors;
+          remove_idle_executor (m, worker);
+          worker.job.emplace (std::move (params));
+          worker.wake.notify_one ();
+          return true;
+        }
+      guard.unlock ();
+      std::unique_ptr<executor> fresh (new executor ());
+      if (fresh == nullptr)
+        {
+          return false;
+        }
+      std::unique_ptr<executor> retired;
+      guard.lock ();
+      if (m.stopping.load ())
+        {
+          return false;
+        }
+      // An owner may have returned while the new executor was allocated.
+      if (m.idle_executors != nullptr)
+        {
+          executor &worker = *m.idle_executors;
+          remove_idle_executor (m, worker);
+          worker.job.emplace (std::move (params));
+          worker.wake.notify_one ();
+          return true;
+        }
+      std::size_t index = 0;
+      for (; index < m.executors.size (); index++)
+        {
+          if (m.executors[index] == nullptr
+              || (!m.executors[index]->starting && m.executors[index]->done))
+            {
+              break;
+            }
+        }
+      if (index == m.executors.size ())
+        {
+          return false;
+        }
+      retired = std::move (m.executors[index]);
+      fresh->job.emplace (std::move (params));
+      executor *worker = fresh.get ();
+      m.executors[index] = std::move (fresh);
+      guard.unlock ();
+      if (retired != nullptr && retired->thread.joinable ())
+        {
+          retired->thread.join ();
+        }
+      try
+        {
+          worker->thread = std::thread (executor_run, std::ref (m), std::ref (*worker));
+        }
+      catch (const std::system_error &)
+        {
+          guard.lock ();
+          worker->job.reset ();
+          worker->done = true;
+          worker->starting = false;
+          return false;
+        }
+      guard.lock ();
+      worker->starting = false;
+      return true;
+    }
+
+    static std::shared_ptr<session_binding>
+    make_binding (manager &m, std::uint32_t &token)
+    {
+      std::shared_ptr<session_binding> binding;
+      try
+        {
+          binding = std::make_shared<session_binding> ();
+        }
+      catch (const std::bad_alloc &)
+        {
+          return nullptr;
+        }
+      catch (const std::system_error &)
+        {
+          return nullptr;
+        }
+      std::lock_guard<std::mutex> guard (m.registry_mutex);
+      /* The driver's PID field is signed; never recycle an old token. */
+      if (m.next_token == 0 || m.next_token > INT_MAX)
+        {
+          return nullptr;
+        }
+      token = m.next_token++;
+      return binding;
+    }
+
     static void
     handle_handoff (manager &m, channel &ch, const handoff_body &body, int client_fd)
     {
@@ -1065,6 +1290,17 @@ namespace cubconn
 	  close (client_fd);
 	  return;
 	}
+
+      std::uint32_t token = 0;
+      auto binding = make_binding (m, token);
+      if (binding == nullptr)
+        {
+          reject_body reject;
+          reject.reason = (std::int32_t) reject_reason::NO_RESOURCES;
+          (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+          close (client_fd);
+          return;
+        }
 
       /* the broker's ACCESS_MODE x REPLICA_ONLY becomes the session's client
        * type (#121 D1/D7); the decrement runs in the session thread's
@@ -1106,21 +1342,17 @@ namespace cubconn
       params.server_name = m.db_name;
       params.broker_name = ch.broker_name;
 
-      std::uint32_t token;
       {
 	std::lock_guard<std::mutex> guard (m.registry_mutex);
-	do
-	  {
-	    token = m.next_token++;
-	  }
-	while (token == 0 || m.registry.count (token) > 0);
-
 	session_entry entry;
+        entry.binding = binding;
 	entry.token = token;
 	entry.channel_id = ch.id;
 	entry.config = body.config;
 	std::memcpy (entry.broker_name, ch.broker_name, sizeof (entry.broker_name));
 	entry.client_fd = client_fd;
+	entry.client_ip = params.client_ip;
+	entry.client_port = params.client_port;
 	entry.binding->client_fd = client_fd;
 	entry.tran_index = NULL_TRAN_INDEX;
 	entry.fn_status = FN_STATUS_PROBE_BUSY;
@@ -1137,17 +1369,21 @@ namespace cubconn
 
       try
 	{
-	  std::thread session_thread (driver_session_run, std::move (params));
-	  session_thread.detach ();
+          if (submit_session (m, std::move (params)))
+            {
+              return;
+            }
 	}
       catch (const std::system_error &)
-	{
-	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) client_type);
-	  /* already ACKed: sign the token off like a session would */
-	  registry_session_finished (token);
-	  close (client_fd);
-	  return;
-	}
+        {
+          // The caller still owns the admission and descriptor on failure.
+        }
+      catch (const std::bad_alloc &)
+        {
+        }
+      css_decrement_num_conn ((BOOT_CLIENT_TYPE) client_type);
+      registry_session_finished (token);
+      close (client_fd);
     }
 
     /* DIRECT_CONNECT (wf122/B5 D1/D2): a same-uid local csql turns its
@@ -1163,6 +1399,15 @@ namespace cubconn
     handle_direct_connect (manager &m, channel &ch, const direct_connect_body &body)
     {
       reject_body reject;
+      std::uint32_t token = 0;
+      auto binding = make_binding (m, token);
+      if (binding == nullptr)
+        {
+          reject.reason = (std::int32_t) reject_reason::NO_RESOURCES;
+          (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
+          return false;
+        }
+
 
       /* same-uid gate: the adoption socket becomes reachable by local
        * clients here; the broker ops above stay same-process-owner in
@@ -1241,20 +1486,16 @@ namespace cubconn
       params.broker_name = "__direct__";
       params.direct = true;
 
-      std::uint32_t token;
       {
 	std::lock_guard<std::mutex> guard (m.registry_mutex);
-	do
-	  {
-	    token = m.next_token++;
-	  }
-	while (token == 0 || m.registry.count (token) > 0);
-
 	session_entry entry;
+        entry.binding = binding;
 	entry.token = token;
 	entry.channel_id = ch.id;
 	std::memcpy (entry.broker_name, params.broker_name.c_str (), params.broker_name.size () + 1);
 	entry.client_fd = client_fd;
+	entry.client_ip = params.client_ip;
+	entry.client_port = params.client_port;
 	entry.binding->client_fd = client_fd;
 	entry.tran_index = NULL_TRAN_INDEX;
 	entry.fn_status = FN_STATUS_PROBE_BUSY;
@@ -1336,9 +1577,10 @@ namespace cubconn
 	  {
 	    if (std::strncmp (pair.second.broker_name, ch.broker_name, BROKER_NAME_MAX) == 0)
 	      {
-		resync_token_body t;
+		resync_token_body t = {};
 		t.token = pair.first;
 		t.client_ip = pair.second.client_ip;
+		t.client_port = pair.second.client_port;
 		const char *p = reinterpret_cast<const char *> (&t);
 		buf.insert (buf.end (), p, p + sizeof (t));
 		live_count++;
@@ -1693,6 +1935,21 @@ channel_done:
       manager *m = new manager ();
       m->db_name = db_name;
       m->socket_path = get_adoption_domain_path (db_name);
+      m->reuse_executors = prm_get_bool_value (PRM_ID_THREAD_CONNECTION_POOLING);
+      m->executor_idle_seconds = prm_get_integer_value (PRM_ID_THREAD_CONNECTION_TIMEOUT_SECONDS);
+      try
+        {
+          if (m->reuse_executors)
+            {
+              m->executors.resize (css_get_max_connections ());
+            }
+        }
+      catch (const std::bad_alloc &)
+        {
+          delete m;
+          return ER_FAILED;
+        }
+
 
       struct sockaddr_un addr;
       if (m->socket_path.length () >= sizeof (addr.sun_path))
@@ -1753,6 +2010,16 @@ channel_done:
 	  return;
 	}
       m->stopping.store (true);
+      {
+        std::lock_guard<std::mutex> guard (m->executors_mutex);
+        for (const auto &worker : m->executors)
+          {
+            if (worker != nullptr)
+              {
+                worker->wake.notify_one ();
+              }
+          }
+      }
 
       /* wake the accept thread */
       shutdown (m->listen_fd, SHUT_RDWR);
@@ -1764,10 +2031,12 @@ channel_done:
 
       /* wake the control-channel readers; their (joinable) threads mark
        * themselves dead and are joined below (codex review F3) */
+      std::vector<std::shared_ptr<channel>> channels;
       {
 	std::lock_guard<std::mutex> guard (m->channels_mutex);
 	for (auto &pair : m->channels)
 	  {
+            channels.push_back (pair.second);
 	    std::lock_guard<std::mutex> send_guard (pair.second->send_mutex);
 	    if (pair.second->fd >= 0)
 	      {
@@ -1775,6 +2044,14 @@ channel_done:
 	      }
 	  }
       }
+      /* No new HANDOFF or executor publication may race the drain snapshot. */
+      for (const auto &ch : channels)
+        {
+          if (ch->thread.joinable ())
+            {
+              ch->thread.join ();
+            }
+        }
 
       /* wake every adopted session (their loops block on the client fd) and
        * wait for the sign-offs — sessions must unregister their trans while
@@ -1826,17 +2103,17 @@ channel_done:
 	  std::this_thread::sleep_for (std::chrono::milliseconds (10));
 	}
 
-      /* join the channel threads — nothing references the channels after
-       * the sessions are gone and the finishers drained */
+      /* Returning from driver_session_run precedes the executor's final
+       * access to its owner. The registry drain alone cannot prove that. */
+      for (const auto &worker : m->executors)
+        {
+          if (worker != nullptr && worker->thread.joinable ())
+            {
+              worker->thread.join ();
+            }
+        }
       {
 	std::lock_guard<std::mutex> guard (m->channels_mutex);
-	for (auto &pair : m->channels)
-	  {
-	    if (pair.second->thread.joinable ())
-	      {
-		pair.second->thread.join ();
-	      }
-	  }
 	m->channels.clear ();
       }
 

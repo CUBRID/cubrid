@@ -222,6 +222,31 @@ hm_srv_handle_free_all (bool free_holdable)
     }
 }
 
+/*
+ * hm_srv_handle_table_final - release the session's handle table itself
+ *
+ * The CAS process freed it by exiting; in the merged server the table is a
+ * thread-local of a session thread that ends, so the array (and every handle
+ * still in it) has to be handed back explicitly at session retire
+ * (workspace#259 axis 6, audit 1-12).  Call it while as_info is still set.
+ */
+void
+hm_srv_handle_table_final (void)
+{
+  if (srv_handle_table != NULL)
+    {
+      if (as_info != NULL)
+	{
+	  hm_srv_handle_free_all (true);
+	}
+      FREE_MEM (srv_handle_table);
+    }
+  max_srv_handle = 0;
+  max_handle_id = 0;
+  current_handle_count = 0;
+  current_handle_id = -1;
+}
+
 void
 hm_srv_handle_unset_prepare_flag_all (void)
 {

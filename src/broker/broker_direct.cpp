@@ -827,7 +827,7 @@ namespace brd
 	      token_info ti;
 	      ti.db_name = db_name;
 	      std::memcpy (ti.clt_ip, &t.client_ip, 4);
-	      ti.clt_port = 0;	/* unknown post-restart: cancel requires the ip to match */
+	      ti.clt_port = t.client_port;
 	      m.tokens.emplace (t.token, ti);
 	    }
 	}
@@ -1699,39 +1699,18 @@ brd_cancel (unsigned int token, const unsigned char *clt_ip, unsigned short clt_
 	brd_debug ("cancel token=%u: unknown (table size %zu)", token, m->tokens.size ());
 	return -1;
       }
-    /* the anti-spoof check the pid scan used to make (broker.c:938-943)
-     * doubles as the disambiguator when equal tokens are live for different
-     * databases.  Preference order (codex F3 — OR-matching could route a
-     * cancel to the wrong database's session): exact (ip AND port) first,
-     * then ip-only (covers RESYNC-rebuilt entries, which carry port 0),
-     * then the legacy lenient rule only when the token is unambiguous. */
+    /* A missing port can only identify a unique matching peer. Never pick
+     * an arbitrary database when equal tokens and source IPs collide. */
     bool found = false;
     for (auto it = range.first; it != range.second; ++it)
       {
-	if (clt_port > 0 && it->second.clt_port == clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) == 0)
+	if ((clt_port == 0 || it->second.clt_port == clt_port)
+            && std::memcmp (it->second.clt_ip, clt_ip, 4) == 0)
 	  {
-	    db_name = it->second.db_name;
-	    found = true;
-	    break;
-	  }
-      }
-    if (!found)
-      {
-	for (auto it = range.first; it != range.second; ++it)
-	  {
-	    if (std::memcmp (it->second.clt_ip, clt_ip, 4) == 0)
-	      {
-		db_name = it->second.db_name;
-		found = true;
-		break;
-	      }
-	  }
-      }
-    if (!found && std::next (range.first) == range.second)
-      {
-	auto it = range.first;
-	if (! (clt_port > 0 && it->second.clt_port != clt_port && std::memcmp (it->second.clt_ip, clt_ip, 4) != 0))
-	  {
+            if (found)
+              {
+                return -1;
+              }
 	    db_name = it->second.db_name;
 	    found = true;
 	  }
@@ -1771,8 +1750,10 @@ brd_status (unsigned int token)
       {
 	return FN_STATUS_NONE;
       }
-    /* equal tokens across databases: the ST probe carries no client address
-     * to disambiguate with — first match, as the legacy pid scan behaved */
+    if (m->tokens.count (token) != 1)
+      {
+        return FN_STATUS_NONE;
+      }
     db_name = it->second.db_name;
   }
 

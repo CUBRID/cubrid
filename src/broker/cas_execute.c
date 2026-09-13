@@ -570,6 +570,19 @@ ux_adopted_identity_record (const char *db_name, const char *db_user, const char
   strncpy (database_user, db_user, sizeof (database_user) - 1);
   strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
 }
+
+void
+ux_reset_adopted_connection (void)
+{
+  memset (database_name, 0, sizeof (database_name));
+  memset (database_user, 0, sizeof (database_user));
+  memset (database_passwd, 0, sizeof (database_passwd));
+  memset (cas_db_sys_param, 0, sizeof (cas_db_sys_param));
+  cas_default_isolation_level = 0;
+  cas_default_lock_timeout = -1;
+  cas_default_ansi_quotes = true;
+  cas_default_no_backslash_escapes = true;
+}
 #endif /* SERVER_MODE */
 
 int

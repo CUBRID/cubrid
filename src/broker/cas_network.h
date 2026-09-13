@@ -254,6 +254,7 @@ extern SOCKET net_connect_proxy (int proxy_id);
 extern SOCKET net_connect_proxy (void);
 #endif /* !WINDOWS */
 extern SOCKET net_connect_client (SOCKET srv_sock_fd);
+extern void net_reset_connection (void);
 
 extern int net_read_stream (SOCKET sock_fd, char *buf, int size);
 extern int net_write_stream (SOCKET sock_fd, const char *buf, int size);

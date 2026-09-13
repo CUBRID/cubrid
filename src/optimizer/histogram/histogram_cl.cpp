@@ -486,9 +486,12 @@ histogram_collect_clear (HISTOGRAM_COLLECT *hc)
  * uses -- later fingerprints and optimizations then hit the cache. */
 /* fingerprint-walk ambient context: lets the histogram probes reach the statement for
  * spec resolution without changing their public signatures (QO calls them too, where the
- * name-node annotation makes the statement unnecessary). Client-side single-threaded. */
-static PARSER_CONTEXT *bind_fp_active_parser = NULL;
-static PT_NODE *bind_fp_active_statement = NULL;
+ * name-node annotation makes the statement unnecessary). Thread-local: in the merged
+ * server every session compiles on its own thread, and a process-wide slot let one
+ * session's walk read another session's parser after that session had freed it
+ * (workspace#259 axis 2, audit 0-3). */
+static thread_local PARSER_CONTEXT *bind_fp_active_parser = NULL;
+static thread_local PT_NODE *bind_fp_active_statement = NULL;
 
 struct spec_class_name_ctx
 {

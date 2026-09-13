@@ -1080,7 +1080,7 @@ session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * active_sessions
 #if defined (SERVER_MODE)
   if (session_p->auto_nonce != 0)
     {
-      *remove = session_p->auto_detached && session_p->ref_count == 0
+      *remove = session_p->auto_detached && ATOMIC_INC_32 (&session_p->ref_count, 0) == 0
 		&& std::chrono::steady_clock::now () >= session_p->auto_expires;
       return NO_ERROR;
     }
@@ -2984,14 +2984,18 @@ session_auto_enable (THREAD_ENTRY * thread_p, const char *user, UINT64 nonce)
  * connection must have returned its reference; two resumed transports can
  * never share a context. Authentication follows on the new registration. */
 int
-session_auto_claim (THREAD_ENTRY * thread_p, SESSION_ID id, const char *user, UINT64 nonce,
+session_auto_claim (THREAD_ENTRY * thread_p, SESSION_ID id, const char *user, const char *server_key, UINT64 nonce,
 		    client_session_context **context)
 {
   *context = NULL;
   if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p != NULL
-      || user == NULL || nonce == 0)
+      || user == NULL || nonce == 0 || server_key == NULL)
     {
       return ER_FAILED;
+    }
+  if (memcmp (server_key, xboot_get_server_session_key (), SERVER_SESSION_KEY_SIZE) != 0)
+    {
+      return ER_SES_SESSION_EXPIRED;
     }
   SESSION_STATE *state = sessions.states_hashmap.find (thread_p, id);
   if (state == NULL)
@@ -3001,7 +3005,7 @@ session_auto_claim (THREAD_ENTRY * thread_p, SESSION_ID id, const char *user, UI
   int error = ER_FAILED;
   if (state->auto_nonce == nonce && intl_identifier_casecmp (state->auto_user, user) == 0)
     {
-      if (state->auto_detached && state->ref_count == 0 && state->csc_p != NULL)
+      if (state->auto_detached && ATOMIC_INC_32 (&state->ref_count, 0) == 0 && state->csc_p != NULL)
 	{
 	  if (std::chrono::steady_clock::now () < state->auto_expires)
 	    {

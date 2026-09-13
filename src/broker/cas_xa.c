@@ -30,6 +30,7 @@
 #include "cas_log.h"
 #include "cas_function.h"
 #include "cas_execute.h"
+#include "cas_common_vars.h"	/* CAS_TLS */
 #include "cas_db_inc.h"
 #include "xa.h"
 
@@ -42,7 +43,11 @@ static void net_buf_cp_xid (T_NET_BUF * net_buf, XID * xid);
 static int compare_xid (XID * xid1, XID * xid2);
 #endif /* CAS_SUPPORT_XA */
 
-static bool xa_prepare_flag = false;
+/* per session: driver_session's retire path consults it to decide whether
+ * the open transaction may be rolled back — as a process global, one
+ * session's XA prepare suppressed every other session's disconnect rollback
+ * (workspace#259 axis 2, audit 0-2) */
+static CAS_TLS bool xa_prepare_flag = false;
 
 FN_RETURN
 fn_xa_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)

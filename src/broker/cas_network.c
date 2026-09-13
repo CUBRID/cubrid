@@ -81,6 +81,15 @@ static CAS_TLS bool net_timeout_flag = false;
 static CAS_TLS char net_error_flag;
 static CAS_TLS int net_timeout = NET_DEFAULT_TIMEOUT;
 
+void
+net_reset_connection (void)
+{
+  net_error_flag = 0;
+  net_timeout_flag = false;
+  net_timeout = NET_DEFAULT_TIMEOUT;
+  new_req_sock_fd = INVALID_SOCKET;
+}
+
 #define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
 	READ_FROM_SOCKET(sd, buf, size)
 #define WRITE_TO_NET(sd, buf, size) ssl_client ? cas_ssl_write (sd, buf, size) : \
@@ -424,16 +433,26 @@ net_decode_str (char *msg, int msg_size, char *func_code, void ***ret_argv)
       remain_size -= 4;
       cur_p += 4;
 
-      if (remain_size < i_val)
+      /* a negative length passed the remain_size check, walked cur_p
+       * backwards and grew argv without bound — in the CAS that killed one
+       * process, here it is cub_server's address space (workspace#259 axis 1,
+       * audit 1-4) */
+      if (i_val < 0 || remain_size < i_val)
 	{
 	  FREE_MEM (argv);
 	  return CAS_ER_COMMUNICATION;
 	}
 
       argc++;
-      argv = (void **) REALLOC (argv, sizeof (void *) * argc);
-      if (argv == NULL)
-	return CAS_ER_NO_MORE_MEMORY;
+      {
+	void **new_argv = (void **) REALLOC (argv, sizeof (void *) * argc);
+	if (new_argv == NULL)
+	  {
+	    FREE_MEM (argv);	/* realloc failure keeps the old block: do not lose it */
+	    return CAS_ER_NO_MORE_MEMORY;
+	  }
+	argv = new_argv;
+      }
 
       argv[argc - 1] = argp;
 
