@@ -210,7 +210,12 @@ extern OID *oid_Serial_class_oid;
 extern OID *oid_User_class_oid;
 extern OID *oid_Sp_code_class_oid;
 
+#if defined (SERVER_MODE)
+extern PAGEID &oid_next_tempid (void);
+#define oid_Next_tempid (oid_next_tempid ())
+#else
 extern PAGEID oid_Next_tempid;
+#endif
 
 extern void oid_set_root (const OID * oid);
 extern bool oid_is_root (const OID * oid);

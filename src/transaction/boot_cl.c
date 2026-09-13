@@ -40,9 +40,6 @@
 #endif /* !WINDOWS */
 
 #include <assert.h>
-#if defined (SERVER_MODE)
-#include <mutex>
-#endif
 
 #include "porting.h"
 #if !defined(HPUX)
@@ -153,7 +150,6 @@ static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
 static const char *boot_Client_no_user_string = "(nouser)";
 static const char *boot_Client_id_unknown_string = "(unknown)";
 
-static char boot_Client_id_buffer[L_cuserid + 1];
 static char boot_Db_path_buf[PATH_MAX];
 static char boot_Log_path_buf[PATH_MAX];
 static char boot_Lob_path_buf[PATH_MAX];
@@ -171,10 +167,16 @@ char boot_Host_name[CUB_MAXHOSTNAMELEN] = "";	/* server build uses boot_sr.c's *
 char boot_Ip_address[16] = { 0 };
 
 static char boot_Volume_label[PATH_MAX] = " ";
+#if defined (SERVER_MODE)
+static char boot_Client_login_name[L_cuserid + 1];
+#endif
+#if !defined (SERVER_MODE)
 static bool boot_Is_client_all_final = true;
 static bool boot_Set_client_at_exit = false;
 static int boot_Process_id = -1;
+#endif
 
+static void boot_initialize_ip (void);
 static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation);
 static int install_system_metadata (void);
 #if !defined (SERVER_MODE)
@@ -190,7 +192,9 @@ static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
 #if defined(CS_MODE)
 static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential);
 #endif
+#if !defined (SERVER_MODE)
 static int boot_client_find_and_cache_class_oids (void);
+#endif
 
 static int reset_isolation_and_wait_times (void);
 static int boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb);
@@ -223,6 +227,7 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
 {
   tran_cache_tran_settings (tran_index, lock_wait, tran_isolation);
 
+#if !defined (SERVER_MODE)
   if (boot_Set_client_at_exit)
     {
       return NO_ERROR;
@@ -230,13 +235,6 @@ boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation)
 
   boot_Set_client_at_exit = true;
   boot_Process_id = getpid ();
-#if !defined (SERVER_MODE)
-  /* the in-process client must not plant the CS client's exit-time
-   * shutdown inside cub_server — the client context is deliberately never
-   * shut down (see server_compile_tracer.cpp), and this handler would free
-   * client state after the thread manager's own teardown (tl_Entry_p
-   * already NULL -> assert in thread_get_thread_entry_info at exit). The
-   * server process's exit is owned by boot_shutdown_server_at_exit. */
   atexit (boot_shutdown_client_at_exit);
 #endif
 
@@ -262,7 +260,11 @@ install_system_metadata (void)
       return error;
     }
 
-  tr_init ();
+  error = tr_init ();
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
   catcls_init ();
   error = catcls_install ();
   if (error != NO_ERROR)
@@ -277,13 +279,67 @@ install_system_metadata (void)
 }
 
 
+#if defined (SERVER_MODE)
+/* Complete shared client-half initialization before the server accepts connections.
+ * Workspace areas are initialized earlier, alongside the server's domain area. */
+int
+boot_initialize_client_modules (void)
+{
+  int error_code;
+
+  boot_initialize_ip ();
+  if (getuserid (boot_Client_login_name, sizeof (boot_Client_login_name)) == NULL)
+    {
+      strncpy (boot_Client_login_name, boot_Client_id_unknown_string, sizeof (boot_Client_login_name) - 1);
+      boot_Client_login_name[sizeof (boot_Client_login_name) - 1] = '\0';
+    }
+  er_clear ();
+  db_install_static_methods ();
+  if (er_errid () != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+#if !defined (WINDOWS)
+#if defined (SOLARIS) || defined (LINUX) || defined (AIX)
+  /* Loader failure retains the historical behavior: native methods report it
+   * on use. No connection attempts to initialize or destroy this shared loader. */
+  (void) dl_initiate_module ();
+#else
+  (void) dl_initiate_module ("cub_server");
+#endif
+  er_clear ();
+#endif
+
+  error_code = showstmt_metadata_init ();
+  return error_code;
+}
+
+void
+boot_finalize_client_modules (void)
+{
+  showstmt_metadata_final ();
+  sm_flush_static_methods ();
+#if !defined (WINDOWS)
+  (void) dl_destroy_module ();
+#endif
+}
+#endif
+
 static int
 boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb)
 {
 #if !defined (SERVER_MODE)
   int error_code;
-#endif
   const char *conf_file = NULL;
+#endif
+#if defined (SERVER_MODE)
+  if (client_credential->db_name.empty ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, "(null)");
+      return ER_BO_UNKNOWN_DATABASE;
+    }
+#endif
 
   /* If the client is restarted, shutdown the client */
   if (BOOT_IS_CLIENT_RESTARTED ())
@@ -300,6 +356,7 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
     }
 #endif
 
+#if !defined (SERVER_MODE)
 #if defined(WINDOWS)
 /* set up the WINDOWS stream emulations */
   pc_init ();
@@ -426,6 +483,7 @@ boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang
 
   /* Initialize tsc-timer */
   tsc_init ();
+#endif /* !SERVER_MODE: shared modules belong to server boot */
 
   return NO_ERROR;
 }
@@ -505,6 +563,10 @@ boot_check_and_fill_db_path_info (BOOT_CLIENT_CREDENTIAL * client_credential, BO
 static void
 boot_check_and_fill_connection_info (BOOT_CLIENT_CREDENTIAL * client_credential, bool is_createdb)
 {
+#if !defined (SERVER_MODE)
+  char client_id_buffer[L_cuserid + 1];
+#endif
+
   /* Get the user name */
   if (client_credential->db_user.empty ())
     {
@@ -558,14 +620,18 @@ boot_check_and_fill_connection_info (BOOT_CLIENT_CREDENTIAL * client_credential,
 /* Get the login name, host, and process identifier */
   if (client_credential->login_name.empty ())
     {
-      if (getuserid (boot_Client_id_buffer, L_cuserid) != (char *) NULL)
+#if defined (SERVER_MODE)
+      client_credential->login_name = boot_Client_login_name;
+#else
+      if (getuserid (client_id_buffer, L_cuserid) != (char *) NULL)
 	{
-	  client_credential->login_name = boot_Client_id_buffer;
+	  client_credential->login_name = client_id_buffer;
 	}
       else
 	{
 	  client_credential->login_name = boot_Client_id_unknown_string;
 	}
+#endif
     }
   if (client_credential->host_name.empty ())
     {
@@ -1205,16 +1271,6 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   bool dl_initialized = false;
 #endif /* !WINDOWS */
 
-#if defined (SERVER_MODE)
-  /* in-process client boot is not reentrant: it interleaves process-once
-   * module initialization (language/areas/domains/showstmt/...) with
-   * per-session state, and the once-guards are plain flags — serialize whole
-   * boots here (cold path; concurrent sessions overlap only in the SQL work
-   * that follows).  Unregistration needs no counterpart: it is a folded
-   * server call plus this session's own state. */
-  static std::mutex boot_Restart_mutex;
-  std::lock_guard < std::mutex > boot_restart_guard (boot_Restart_mutex);
-#endif
 
   assert (client_credential != NULL);
 
@@ -1224,7 +1280,9 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
+#if !defined (SERVER_MODE)
   pr_Enable_string_compression = prm_get_bool_value (PRM_ID_ENABLE_STRING_COMPRESSION);
+#endif
 
   // build db info
   db = boot_build_db_info (client_credential, NULL, &error_code);
@@ -1242,7 +1300,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
    * Initialize the dynamic loader. Don't care about failures. If dynamic
    * loader fails, methods will fail when they are invoked
    */
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined (SERVER_MODE)
 #if !defined (SOLARIS) && !defined(LINUX) && !defined(AIX)
   (void) dl_initiate_module (client_credential->get_program_name ());
 #else /* !SOLARIS && !LINUX && !AIX */
@@ -1274,11 +1332,14 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   db = NULL;
 
   /* this must be done before the register_client because recovery steps may need domains. */
+#if !defined (SERVER_MODE)
   error_code = tp_init ();
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+
+#endif
 
   error_code = ws_init ();
   if (error_code != NO_ERROR)
@@ -1343,19 +1404,28 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
     }
 #endif /* CS_MODE */
+#if !defined (SERVER_MODE)
   if (sysprm_init_intl_param () != NO_ERROR)
     {
       error_code = er_errid ();
       goto error;
     }
 
+#endif /* SERVER_MODE resolves intl defaults in the session factory */
+
   /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 
+#if !defined (SERVER_MODE)
   oid_set_root (&boot_Server_credential.root_class_oid);
+#endif
   OID_INIT_TEMPID ();
 
-  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid);
+  error_code = sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   au_init ();			/* initialize authorization globals */
 
   /* start authorization and make sure the logged in user has access */
@@ -1364,13 +1434,20 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       goto error;
     }
+#if !defined (SERVER_MODE)
   error_code = boot_client_find_and_cache_class_oids ();
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
+#endif
+
+  error_code = db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
 #if defined(CS_MODE)
   error_code = boot_check_locales (client_credential);
@@ -1386,8 +1463,13 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
 #endif /* CS_MODE */
 
-  tr_init ();			/* initialize trigger manager */
+  error_code = tr_init ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
 
+#if !defined (SERVER_MODE)
   /* TODO: how about to call es_init() only for normal client? */
   if (boot_Server_credential.lob_path[0] != '\0')
     {
@@ -1401,6 +1483,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
     }
+#endif
   /* Does not care if was committed/aborted .. */
   (void) tran_commit (false);
 
@@ -1410,12 +1493,14 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
+#if !defined (SERVER_MODE)
   error_code = showstmt_metadata_init ();
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
+#endif
   return error_code;
 
 error:
@@ -1428,6 +1513,11 @@ error:
     }
 
 #if defined (SERVER_MODE)
+  if (db_get_session_id () != DB_EMPTY_SESSION)
+    {
+      (void) csession_end_session (db_get_session_id (), false);
+      db_set_session_id (DB_EMPTY_SESSION);
+    }
   /* a failure between boot_register_client and boot_client leaves the
    * transaction registered server-side while tm_Tran_index is still unset —
    * unregister it here by the local index, or it stays ACTIVE and shutdown's
@@ -1568,10 +1658,12 @@ boot_shutdown_client_at_exit (void)
 void
 boot_donot_shutdown_client_at_exit (void)
 {
+#if !defined (SERVER_MODE)
   if (BOOT_IS_CLIENT_RESTARTED () && boot_Process_id == getpid ())
     {
       boot_Process_id++;
     }
+#endif
 }
 
 /*
@@ -1594,7 +1686,9 @@ boot_server_die_or_changed (void)
     {
       (void) tran_abort_only_client (true);
       boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (), TM_TRAN_ISOLATION ());
+#if !defined (SERVER_MODE)
       boot_Is_client_all_final = false;
+#endif
 #if defined(CS_MODE)
       net_client_final (true);
 #endif /* !CS_MODE */
@@ -1621,6 +1715,7 @@ boot_server_die_or_changed (void)
 void
 boot_client_all_finalize (int final_level)
 {
+#if !defined (SERVER_MODE)
   void (*sigterm_handler) (int);
   void (*sigabrt_handler) (int);
   void (*sigint_handler) (int);
@@ -1703,6 +1798,7 @@ boot_client_all_finalize (int final_level)
   signal (SIGTERM, sigterm_handler);
   signal (SIGABRT, sigabrt_handler);
   signal (SIGINT, sigint_handler);
+#endif
 }
 
 #if defined(CS_MODE)
@@ -2156,8 +2252,8 @@ boot_get_host_name (void)
   return boot_Host_name;
 }
 
-char *
-boot_get_ip (void)
+static void
+boot_initialize_ip (void)
 {
   struct hostent *hp = NULL;
   if (boot_Host_name[0] == '\0')
@@ -2168,9 +2264,18 @@ boot_get_ip (void)
   if ((hp = gethostbyname_uhost (boot_Host_name)) != NULL)
     {
       char *ip = inet_ntoa (*(struct in_addr *) *hp->h_addr_list);
-      memcpy (boot_Ip_address, ip, 15);
+      strncpy (boot_Ip_address, ip, sizeof (boot_Ip_address) - 1);
+      boot_Ip_address[sizeof (boot_Ip_address) - 1] = '\0';
     }
 
+}
+
+char *
+boot_get_ip (void)
+{
+#if !defined (SERVER_MODE)
+  boot_initialize_ip ();
+#endif
   return boot_Ip_address;
 }
 
@@ -2282,6 +2387,7 @@ exit:
  *
  * return    : Error code.
  */
+#if !defined (SERVER_MODE)
 static int
 boot_client_find_and_cache_class_oids (void)
 {
@@ -2317,3 +2423,4 @@ boot_client_find_and_cache_class_oids (void)
 
   return NO_ERROR;
 }
+#endif

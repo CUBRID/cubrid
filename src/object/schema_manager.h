@@ -343,7 +343,7 @@ extern void sm_final (void);
 extern void sm_transaction_boundary (void);
 
 extern void sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid);
-extern void sm_init (OID * rootclass_oid, HFID * rootclass_hfid);
+extern int sm_init (OID * rootclass_oid, HFID * rootclass_hfid);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 extern int sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all);
 #endif /* ENABLE_UNUSED_FUNCTION */

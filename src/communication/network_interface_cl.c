@@ -4837,13 +4837,19 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   return req_error;
 #else
   int result = NO_ERROR;
-  SESSION_ID id;
+  SESSION_ID id = DB_EMPTY_SESSION;
+#if defined (SERVER_MODE)
+  bool created_session = false;
+#endif
 
   THREAD_ENTRY *thread_p = enter_server ();
 
   if (db_Session_id == DB_EMPTY_SESSION)
     {
       result = xsession_create_new (thread_p, &id);
+#if defined (SERVER_MODE)
+      created_session = (result == NO_ERROR);
+#endif
     }
   else
     {
@@ -4851,11 +4857,21 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
       if (xsession_check_session (thread_p, id) != NO_ERROR)
 	{
 	  /* create new session */
-	  if (xsession_create_new (thread_p, &id) != NO_ERROR)
+	  result = xsession_create_new (thread_p, &id);
+#if defined (SERVER_MODE)
+          created_session = (result == NO_ERROR);
+#endif
+	  if (result != NO_ERROR)
 	    {
 	      result = ER_FAILED;
 	    }
 	}
+    }
+
+  if (result != NO_ERROR)
+    {
+      exit_server (*thread_p);
+      return result;
     }
 
   db_Session_id = id;
@@ -4863,7 +4879,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 
 #if defined (SERVER_MODE)
   /* a CS client ships its session-parameter array in this request; do the same in-process or session_parameters stays NULL (session_get_session_parameter would read through it) */
-  if (result != ER_FAILED)
+  if (result == NO_ERROR)
     {
       SESSION_PARAM *session_params = sysprm_alloc_session_parameters_from_defaults ();
 
@@ -4888,7 +4904,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 #endif /* SERVER_MODE */
 
   /* get row count */
-  if (result != ER_FAILED)
+  if (result == NO_ERROR)
     {
       xsession_get_row_count (thread_p, row_count);
     }
@@ -4897,7 +4913,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   /* ssession_find_or_create_session records the login for SHOW ACCESS STATUS /
    * db_user.last_access_* and names the transaction's client; the folded
    * client half must do the same or every in-process login stays NULL. */
-  if (result != ER_FAILED && db_user != NULL)
+  if (result == NO_ERROR && db_user != NULL)
     {
       char db_user_upper[DB_MAX_USER_LENGTH] = { '\0' };
 
@@ -4907,6 +4923,18 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
     }
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
+  if (result != NO_ERROR)
+    {
+      /* The connection has not adopted a client context yet. */
+      if (created_session)
+        {
+          (void) xsession_end_session (thread_p, id, false);
+        }
+      db_Session_id = DB_EMPTY_SESSION;
+      *session_id = DB_EMPTY_SESSION;
+    }
+#endif
   exit_server (*thread_p);
 
   return result;

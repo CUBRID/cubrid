@@ -89,6 +89,7 @@
 #include "catalog_class.h"
 
 #if defined(SERVER_MODE)
+#include "boot_cl.h"
 #include "connection_sr.h"
 #include "server_support.h"
 #include "pl_sr.h"
@@ -2190,14 +2191,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   event_log_init (db_name);
   trace_log_init (db_name);
 
-  /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
+  /* Client workspaces use these areas throughout the server lifetime. */
   area_init ();
-  error_code = set_area_init ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = pr_area_init ();
+  error_code = ws_initialize_shared ();
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -2677,6 +2673,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     {
       goto error;
     }
+
+#if defined (SERVER_MODE)
+  error_code = boot_initialize_client_modules ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  showstmt_scan_init ();
+#endif
 
   session_states_init (thread_p);
 
@@ -3241,8 +3246,11 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
 #endif /* SA_MODE */
 
+#if defined (SA_MODE)
   /* Initialize scan function pointers of show statements */
   showstmt_scan_init ();
+
+#endif
 
   db_user_save = client_credential->get_db_user ();
   if (!client_credential->db_user.empty ())
@@ -3277,6 +3285,15 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       if (boot_find_root_heap (&(server_credential->root_class_hfid)) != NO_ERROR
 	  || HFID_IS_NULL (&(server_credential->root_class_hfid)))
 	{
+          logtb_release_tran_index (thread_p, tran_index);
+#if defined (SERVER_MODE)
+          thread_p->conn_entry->set_tran_index (NULL_TRAN_INDEX);
+#endif
+          client_credential->db_user = db_user_save;
+          if (er_errid () == NO_ERROR)
+            {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+            }
 	  *tran_state = TRAN_UNACTIVE_UNKNOWN;
 	  return NULL_TRAN_INDEX;
 	}
@@ -3300,6 +3317,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	  if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
 	    {
 	      logtb_release_tran_index (thread_p, tran_index);
+              thread_p->conn_entry->set_tran_index (NULL_TRAN_INDEX);
 	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: css_check_ha_server_state_for_client() error\n");
 	      *tran_state = TRAN_UNACTIVE_UNKNOWN;
 	      client_credential->db_user = db_user_save;
@@ -3906,6 +3924,9 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
+#if defined (SERVER_MODE)
+      boot_finalize_client_modules ();
+#endif
       es_final ();
       tp_final ();
       locator_free_areas ();

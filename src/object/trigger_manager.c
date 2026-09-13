@@ -7281,7 +7281,7 @@ tr_set_trace (bool trace)
  * tr_init()
  *    return: none
  */
-void
+int
 tr_init (void)
 {
   tr_Current_depth = 0;
@@ -7299,6 +7299,7 @@ tr_init (void)
 
   /* create the object map */
   tr_object_map = mht_create ("Trigger object map", TR_EST_MAP_SIZE, mht_ptrhash, mht_compare_ptrs_are_equal);
+  return tr_object_map != NULL ? NO_ERROR : ER_OUT_OF_VIRTUAL_MEMORY;
 }
 
 /* Helper routine for tr_final */

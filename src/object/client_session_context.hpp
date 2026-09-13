@@ -84,6 +84,12 @@ class client_session_context
     /* boot_cl.c: the server credential of this session's registration —
      * server_session_key must not be shared between sessions */
     BOOT_SERVER_CREDENTIAL boot_server_credential;
+    PAGEID oid_next_tempid = NULL_PAGEID;
+
+    /* Legacy connect options may also be set on folded reconnect paths. */
+    char *db_preferred_hosts = nullptr;
+    int db_connect_order;
+    int db_max_num_delayed_hosts_lookup = 0;
 
     /* db.h connection identity (db_Session_id and friends) */
     db_cl_context db;

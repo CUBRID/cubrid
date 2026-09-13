@@ -75,6 +75,9 @@
 #include "dbtype.h"
 #include "method_callback.hpp"
 #include "filesys_temp.hpp"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 
 #if !defined(WINDOWS)
 void (*prev_sigfpe_handler) (int) = SIG_DFL;
@@ -122,9 +125,15 @@ char db_Program_name[PATH_MAX];
 char db_Client_ip_addr[16] = { 0 };
 #endif /* !SERVER_MODE */
 
+#if defined (SERVER_MODE)
+#define db_Preferred_hosts (csc_current ()->db_preferred_hosts)
+#define db_Connect_order (csc_current ()->db_connect_order)
+#define db_Max_num_delayed_hosts_lookup (csc_current ()->db_max_num_delayed_hosts_lookup)
+#else
 static char *db_Preferred_hosts = NULL;
 static int db_Connect_order = DB_CONNECT_ORDER_SEQ;
 static int db_Max_num_delayed_hosts_lookup = 0;
+#endif
 static int db_Delayed_hosts_count = 0;
 
 /* a list of abnormal host status */
@@ -985,6 +994,7 @@ db_restart (const char *program, int print_version, const char *volume)
 	{
 	  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
 	  strncpy (db_Database_name, volume, DB_MAX_IDENTIFIER_LENGTH);
+#if !defined (SERVER_MODE)
 	  install_static_methods ();
 #if !defined(WINDOWS)
 #if defined(SA_MODE) && (defined(LINUX) || defined(x86_SOLARIS))
@@ -993,6 +1003,7 @@ db_restart (const char *program, int print_version, const char *volume)
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
+#endif /* !SERVER_MODE */
 	}
     }
 
@@ -1053,7 +1064,7 @@ db_shutdown (void)
   db_Database_name[0] = '\0';
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   db_Program_name[0] = '\0';
-#if !defined(WINDOWS)
+#if !defined(WINDOWS) && !defined (SERVER_MODE)
   (void) os_set_signal_handler (SIGFPE, prev_sigfpe_handler);
 #endif
 #if !defined (SERVER_MODE)

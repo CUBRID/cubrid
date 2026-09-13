@@ -35,6 +35,8 @@
 #include "authenticate.h"
 #if defined (SERVER_MODE)
 #include "client_session_context.hpp"
+#include "object_domain.h"
+#include "quick_fit.h"
 #endif
 #include "show_meta.h"
 #include "error_manager.h"
@@ -45,6 +47,10 @@
 #include "db.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+#if defined (SERVER_MODE)
+extern thread_local unsigned int db_on_server;
+#endif
 
 enum
 {
@@ -988,35 +994,33 @@ free_db_attribute_list (SHOWSTMT_METADATA * md)
  * return error code>
  */
 static int showstmt_metadata_init_internal (void);
+static void showstmt_metadata_final_internal (void);
+#if defined (SERVER_MODE)
+static client_session_context &
+showstmt_boot_context (void)
+{
+  static client_session_context ctx;
+  return ctx;
+}
+#endif
 
 int
 showstmt_metadata_init (void)
 {
 #if defined (SERVER_MODE)
-  /* B4: this runs once, from the FIRST session's boot (boot_restart_client,
-   * which is serialized) — but init_db_attribute_list's attribute structs
-   * are workspace-heap allocations, and a session's workspace dies with the
-   * session now (B4-D6 immediate teardown), leaving show_Metas[] pointing
-   * into freed memory for every later session's SHOW.  Build the
-   * process-lifetime metadata under its own never-torn-down context instead
-   * (the dk_boot_ctx pattern, deduplicate_key.c). */
-  int error;
-  client_session_context *session_ctx;
-
-  if (show_Inited)
+  /* Called by server bootstrap only. Metadata must not retain a session heap. */
+  assert (!csc_bracket_is_active ());
+  unsigned int saved_on_server = db_on_server;
+  csc_activate (&showstmt_boot_context ());
+  db_on_server = 0;
+  int error = showstmt_metadata_init_internal ();
+  if (error != NO_ERROR)
     {
-      return NO_ERROR;
+      tp_session_domains_final ();
+      db_destroy_workspace_heap ();
     }
-
-  session_ctx = csc_current ();
+  db_on_server = saved_on_server;
   csc_deactivate ();
-  {
-    static client_session_context show_boot_ctx;
-    csc_activate (&show_boot_ctx);
-    error = showstmt_metadata_init_internal ();
-    csc_deactivate ();
-  }
-  csc_activate (session_ctx);
   return error;
 #else
   return showstmt_metadata_init_internal ();
@@ -1083,6 +1087,29 @@ on_error:
  */
 void
 showstmt_metadata_final (void)
+{
+#if defined (SERVER_MODE)
+  if (!show_Inited)
+    {
+      return;
+    }
+  /* All sessions have retired; free with the same allocator used at boot. */
+  assert (!csc_bracket_is_active ());
+  unsigned int saved_on_server = db_on_server;
+  csc_activate (&showstmt_boot_context ());
+  db_on_server = 0;
+  showstmt_metadata_final_internal ();
+  tp_session_domains_final ();
+  db_destroy_workspace_heap ();
+  db_on_server = saved_on_server;
+  csc_deactivate ();
+#else
+  showstmt_metadata_final_internal ();
+#endif
+}
+
+static void
+showstmt_metadata_final_internal (void)
 {
   unsigned int i;
 

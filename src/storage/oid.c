@@ -27,6 +27,9 @@
 #include <assert.h>
 
 #include "oid.h"
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#endif
 #include "schema_system_catalog_constants.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -72,7 +75,15 @@ static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 
+#if defined (SERVER_MODE)
+PAGEID &
+oid_next_tempid (void)
+{
+  return csc_current ()->oid_next_tempid;
+}
+#else
 PAGEID oid_Next_tempid = NULL_PAGEID;
+#endif
 
 /* ROOT_CLASS OID values. Set during restart/initialization.*/
 OID *oid_Root_class_oid = &oid_Root_class;

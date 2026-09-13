@@ -29,12 +29,14 @@
 #include <cstring>
 
 #include "object_domain.h"	// tp_session_domains_final (B4-D9)
+#include "connection_defs.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 static thread_local client_session_context *tl_Csc_active = NULL;
 
 client_session_context::client_session_context ()
+  : db_connect_order (DB_CONNECT_ORDER_SEQ)
 {
   /* mirror the CS build's static initializer for the pre-boot credential;
    * boot_client_common re-initializes it at registration */
@@ -240,6 +242,10 @@ csc_teardown (client_session_context *ctx)
   db_on_server = 0;
 
   db_free_execution_plan ();
+  if (ctx->db_preferred_hosts != NULL)
+    {
+      free_and_init (ctx->db_preferred_hosts);
+    }
 
   if (ctx->obj_method_error_msg != NULL)
     {

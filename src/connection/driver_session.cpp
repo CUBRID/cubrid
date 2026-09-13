@@ -760,8 +760,8 @@ namespace cubconn
 
       apply_driver_session_id (info.session_id);
 
-      /* client-half boot with the driver's credentials; serialization is the
-       * engine's own (boot_restart_client) since A5 */
+      /* Shared modules are ready from server boot; initialize only this
+       * client's workspace, credentials and transaction registration. */
       err = db_restart_ex (client_name, info.db_name, info.db_user, info.db_passwd, NULL, params.client_type);
       if (err != NO_ERROR)
 	{

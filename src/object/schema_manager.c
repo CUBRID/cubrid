@@ -560,8 +560,6 @@ sm_add_static_method (const char *name, void (*function) ())
 	  return;
 	}
 
-      new_->next = Static_method_table;
-      Static_method_table = new_;
       new_->function = function;
 
       int size = strlen (name) + 1;	// include '\0'
@@ -574,6 +572,8 @@ sm_add_static_method (const char *name, void (*function) ())
 	}
 
       memcpy (new_->name, name, size);
+      new_->next = Static_method_table;
+      Static_method_table = new_;
     }
 }
 
@@ -2006,12 +2006,20 @@ sm_get_method_source_file (MOP obj, const char *name)
  *   rootclass_hfid(in): heap file of root class
  */
 
-void
+int
 sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
 {
   sm_Root_class_mop = ws_mop (rootclass_oid, NULL);
+  if (sm_Root_class_mop == NULL)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
+#if defined (SERVER_MODE)
+  assert (OID_EQ (oid_Root_class_oid, ws_oid (sm_Root_class_mop)));
+#else
   COPY_OID (oid_Root_class_oid, ws_oid (sm_Root_class_mop));
+#endif
 
   OID_SET_NULL (&(sm_Root_class.header.ch_rep_dir));	/* is dummy */
 
@@ -2022,6 +2030,7 @@ sm_init (OID * rootclass_oid, HFID * rootclass_hfid)
   sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
 
   sm_Descriptors = NULL;
+  return NO_ERROR;
 }
 
 /*

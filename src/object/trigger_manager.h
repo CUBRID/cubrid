@@ -293,7 +293,7 @@ extern const char *EVAL_SUFFIX;
 
 /* Module control */
 
-extern void tr_init (void);
+extern int tr_init (void);
 extern void tr_final (void);
 extern void tr_dump (FILE * fpp);	/* debug status */
 

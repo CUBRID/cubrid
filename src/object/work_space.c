@@ -228,10 +228,10 @@ ws_abort_transaction (void)
   static thread_local bool ws_abort_in_progress = false;
 
 #if defined (SERVER_MODE)
-  /* allocation failure on a thread with no session bracket has no
-   * transaction to abort: the caller sees the failed allocation with
-   * ER_OUT_OF_VIRTUAL_MEMORY set and nothing else happens */
-  if (!csc_bracket_is_active ())
+  /* Shared bootstrap and pre-registration workspace initialization may have
+   * an active bracket but no client transaction. Leave allocation failures to
+   * their initialization cleanup; never abort the server's main transaction. */
+  if (!csc_bracket_is_active () || tm_Tran_index == NULL_TRAN_INDEX)
     {
       return;
     }
@@ -2355,6 +2355,45 @@ ws_find_class (const char *name)
  * MAIN INITIALIZATION AND SHUTDOWN
  */
 
+/* Shared allocation areas are owned by server boot, not by a session. */
+int
+ws_initialize_shared (void)
+{
+  int error_code;
+
+  /*
+   * area_init() must have been called earlier.
+   * These need to all be returning errors !
+   */
+  error_code = ws_area_init ();	/* object lists */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = pr_area_init ();	/* DB_VALUE */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = set_area_init ();	/* set reference */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = obt_area_init ();	/* object templates, assignment templates */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  error_code = classobj_area_init ();	/* schema templates */
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * ws_init - initialize workspace
  *    return: NO_ERROR if successful, error code otherwise
@@ -2382,35 +2421,13 @@ ws_init (void)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /*
-   * area_init() must have been called earlier.
-   * These need to all be returning errors !
-   */
-  error_code = ws_area_init ();	/* object lists */
+#if !defined (SERVER_MODE)
+  error_code = ws_initialize_shared ();
   if (error_code != NO_ERROR)
     {
       goto error;
     }
-  error_code = pr_area_init ();	/* DB_VALUE */
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = set_area_init ();	/* set reference */
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = obt_area_init ();	/* object templates, assignment templates */
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = classobj_area_init ();	/* schema templates */
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
+#endif
 
   /* build the MOP table */
   ws_Mop_table_size = prm_get_integer_value (PRM_ID_WS_HASHTABLE_SIZE);

@@ -525,6 +525,7 @@ extern void ws_abort_transaction (void);
 extern int ws_init (void);
 extern void ws_final (void);
 extern void ws_clear (void);
+extern int ws_initialize_shared (void);
 extern int ws_area_init (void);
 extern void ws_area_final (void);
 
