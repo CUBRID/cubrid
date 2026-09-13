@@ -76,6 +76,22 @@ typedef enum hashjoin_status
   HASHJOIN_STATUS_ERROR
 } HASHJOIN_STATUS;
 
+/* merge_info.join_type stays JOIN_INNER for a semi/anti hash join (semi/anti are modelled
+ * structurally as inner joins), so this records which of the two it actually is; NONE means
+ * an ordinary (non-semi/anti) hash join. */
+typedef enum hashjoin_semi_anti_type
+{
+  HASHJOIN_SEMI_ANTI_NONE = 0,
+  HASHJOIN_SEMI_ANTI_SEMI,
+  HASHJOIN_SEMI_ANTI_ANTI
+} HASHJOIN_SEMI_ANTI_TYPE;
+
+/* An anti join must be routed through every outer-join-only path below (NULL-key partition
+ * routing, the reserved last partition, the fill_record "no match" emission) even though its
+ * join_type stays JOIN_INNER; this is the single condition every such site checks. */
+#define HASHJOIN_ACTS_AS_OUTER(manager) \
+  (IS_OUTER_JOIN_TYPE ((manager)->join_type) || (manager)->semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI)
+
 typedef enum hashjoin_merge_method
 {
   HASHJOIN_MERGE_COMBINE = 0,
@@ -394,6 +410,9 @@ typedef struct hashjoin_manager
   /* Copy of a member of QFILE_LIST_MERGE_INFO. */
   JOIN_TYPE join_type;
   int key_cnt;
+
+  /* Copy of a member of HASHJOIN_PROC_NODE. join_type above stays JOIN_INNER for semi/anti. */
+  HASHJOIN_SEMI_ANTI_TYPE semi_anti_type;
 
   /* Pointers to members of XASL_NODE. */
   PRED_EXPR *during_join_pred;

@@ -16160,6 +16160,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   XASL_SCAN_FNC_PTR func_vector = (XASL_SCAN_FNC_PTR) NULL;
   int multi_upddel = false;
   QFILE_LIST_MERGE_INFO *merge_infop;
+  bool is_anti_hash_join;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
   XASL_NODE *fixed_scan_xasl = NULL;
   bool iscan_oid_order, force_select_lock = false;
@@ -16515,6 +16516,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	{
 
 	  merge_infop = NULL;	/* init */
+	  is_anti_hash_join = false;	/* init */
 
 	  if (xptr->type == MERGELIST_PROC)
 	    {
@@ -16526,6 +16528,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  else if (xptr->type == HASHJOIN_PROC)
 	    {
 	      merge_infop = &(xptr->proc.hashjoin.merge_info);
+	      is_anti_hash_join = (xptr->proc.hashjoin.semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI);
 
 	      outer_xasl = xptr->proc.hashjoin.outer.xasl;
 	      inner_xasl = xptr->proc.hashjoin.inner.xasl;
@@ -16551,7 +16554,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			}
 		    }
 
-		  if (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_RIGHT)
+		  /* An anti hash join's structural join_type is JOIN_INNER, but unlike a plain
+		   * inner join (or semi), an empty inner does NOT make its result empty — every
+		   * outer row becomes unmatched and must be emitted (see hjoin_check_empty_inputs()
+		   * and hjoin_outer_fill_null_values()), so outer's aptr must still run. */
+		  if (!is_anti_hash_join
+		      && (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_RIGHT))
 		    {
 		      if (inner_xasl->list_id->type_list.type_cnt > 0 && inner_xasl->list_id->tuple_cnt == 0)
 			{

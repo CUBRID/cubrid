@@ -402,8 +402,10 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
   status = hjoin_check_empty_inputs (manager, context);
 
   /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
-  if (IS_OUTER_JOIN_TYPE (manager->join_type) && context == &manager->contexts[manager->context_cnt - 1])
+   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. An anti
+   * join needs this check too, or a NULL-keyed outer tuple routed to this last partition
+   * would never reach the fill_record path that anti must emit it through. */
+  if (HASHJOIN_ACTS_AS_OUTER (manager) && context == &manager->contexts[manager->context_cnt - 1])
     {
       status = (status == HASHJOIN_STATUS_TRY) ? HASHJOIN_STATUS_FILL_NULL_VALUES : status;
     }
@@ -479,6 +481,20 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       context->build = outer;
       context->probe = inner;
       break;
+
+    case JOIN_INNER:
+      if (manager->semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI)
+	{
+	  /* anti join: build direction is fixed regardless of relative size (see
+	   * hjoin_init_context()); a plain inner join (or semi, which behaves like inner
+	   * once its inner input is empty) never reaches this null-fill path, since an empty
+	   * inner just yields an empty result for both. */
+	  context->build = inner;
+	  context->probe = outer;
+	  break;
+	}
+      /* falls to the impossible-case handling below for a plain inner join or semi */
+      /* fall through */
 
     default:
       /* impossible case */
@@ -758,6 +774,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (inner_list_id->type_list.domp != NULL);
 
   manager->join_type = merge_info->join_type;
+  manager->semi_anti_type = proc->semi_anti_type;
   manager->key_cnt = merge_info->ls_column_cnt;
 
   manager->during_join_pred = xasl->during_join_pred;
@@ -1356,10 +1373,11 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   part_cnt = CEIL_PTVDIV (per_entry_size * min_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
     {
-      if (IS_OUTER_JOIN_TYPE (manager->join_type))
+      if (HASHJOIN_ACTS_AS_OUTER (manager))
 	{
 	  /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in this partition. */
+	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in this partition. An
+	   * anti join needs this reserved partition too (see hjoin_execute()'s matching check). */
 	  part_cnt += 1;
 	}
 
@@ -1670,7 +1688,9 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   /* Prevent faults when qfile_close_scan is called */
   list_scan_id.status = S_CLOSED;
 
-  is_outer_join = IS_OUTER_JOIN_TYPE (manager->join_type);
+  /* Without this, an anti join's NULL-keyed outer tuple below would be dropped by "continue"
+   * instead of routed to the reserved last partition, and anti would never emit it. */
+  is_outer_join = HASHJOIN_ACTS_AS_OUTER (manager);
 
   error = qfile_open_list_scan (list_id, &list_scan_id);
   if (error != NO_ERROR)
@@ -2451,7 +2471,31 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   switch (manager->join_type)
     {
     case JOIN_INNER:
-      if (outer->list_id->tuple_cnt < inner->list_id->tuple_cnt)
+      if (manager->semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI)
+	{
+	  /* anti join: reuses hjoin_outer_probe(), same as JOIN_LEFT — the outer side is
+	   * preserved and gets fill_record-based emission on no match, the inner side never
+	   * needs one. Without this, hjoin_outer_probe()'s "no match" path calls
+	   * hjoin_merge_tuple_to_list_id() with both records NULL and asserts. */
+	  outer->fill_record = &outer->tuple_record;
+	  inner->fill_record = NULL;
+
+	  /* build direction is fixed (inner always builds, outer always probes) regardless of
+	   * relative size — hjoin_inner_probe()/hjoin_outer_probe()'s early-exit and
+	   * inverted-polarity logic assume probe is the semi/anti join's outer side. */
+	  context->build = inner;
+	  context->probe = outer;
+	}
+      else if (manager->semi_anti_type == HASHJOIN_SEMI_ANTI_SEMI)
+	{
+	  /* semi join: reuses hjoin_inner_probe(), which never references fill_record. Build
+	   * direction is still fixed here (inner always builds, outer always probes) regardless
+	   * of relative size, same as the anti case above and for the same reason: the probe
+	   * loop's early-exit logic assumes probe is the semi join's outer side. */
+	  context->build = inner;
+	  context->probe = outer;
+	}
+      else if (outer->list_id->tuple_cnt < inner->list_id->tuple_cnt)
 	{
 	  context->build = outer;
 	  context->probe = inner;
@@ -2857,7 +2901,21 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
   switch (manager->join_type)
     {
     case JOIN_INNER:
-      status = (outer_tuple_cnt == 0 || inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : HASHJOIN_STATUS_TRY;
+      if (manager->semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI)
+	{
+	  /* anti join: an empty inner means no outer row can ever match, so every outer row
+	   * is unmatched and must be emitted (same shape as JOIN_LEFT, whose outer is also the
+	   * preserved side) — see hjoin_outer_fill_null_values()'s build-direction fix. Semi
+	   * needs no such exception: an empty inner means no match for any outer row either
+	   * way, so the plain inner-join END below is already correct for it. */
+	  status =
+	    (outer_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (inner_tuple_cnt ==
+							    0) ? HASHJOIN_STATUS_FILL_NULL_VALUES : HASHJOIN_STATUS_TRY;
+	}
+      else
+	{
+	  status = (outer_tuple_cnt == 0 || inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : HASHJOIN_STATUS_TRY;
+	}
       break;
 
     case JOIN_LEFT:
@@ -3368,7 +3426,9 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 	  goto error_exit;
 	}
 
-      if (IS_OUTER_JOIN_TYPE (manager->join_type))
+      /* an anti join needs this check too, to reach hjoin_outer_probe(), whose "no match
+       * found" fill_record path anti reuses with inverted polarity. */
+      if (HASHJOIN_ACTS_AS_OUTER (manager))
 	{
 	  error = hjoin_outer_probe (thread_p, manager, context, list_id);
 	}
@@ -3622,6 +3682,20 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
+	    }
+
+	  if (manager->semi_anti_type == HASHJOIN_SEMI_ANTI_SEMI)
+	    {
+	      /* semi join: at most one output row per probe row — stop scanning this row's
+	       * remaining buckets once the first match has been emitted. hjoin_probe_key()
+	       * decides "start a new search" vs. "resume the current chain" by whether
+	       * build->tuple_record.tpl is NULL, so it must be reset here — otherwise the next
+	       * probe row's search wrongly resumes this row's chain and can miss its own match
+	       * (found and fixed via CBRD-27379 ctp regression: an outer row with a bucket of
+	       * exactly one candidate was silently dropped right after a row with a
+	       * multi-candidate bucket). */
+	      build->tuple_record.tpl = NULL;
+	      break;
 	    }
 	}
       while (true);
@@ -3926,6 +4000,19 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }			/* if (context->during_join_pred != NULL) */
 
 	  any_key_matched = true;
+
+	  if (manager->semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI)
+	    {
+	      /* anti join: this bucket already proves a matching inner row exists, so the outer
+	       * row must be suppressed regardless of after_join_pred (existence check only, no
+	       * output) — stop scanning this row's remaining buckets without evaluating
+	       * after_join_pred. hjoin_probe_key() decides "start a new search" vs. "resume the
+	       * current chain" by whether build->tuple_record.tpl is NULL, so it must be reset
+	       * here — otherwise the next probe row's search wrongly resumes this row's chain
+	       * (same class of bug as hjoin_inner_probe()'s semi early-exit). */
+	      build->tuple_record.tpl = NULL;
+	      break;
+	    }
 
 	  if (context->after_join_pred != NULL)
 	    {
