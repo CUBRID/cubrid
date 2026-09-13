@@ -10431,7 +10431,9 @@ pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain)
   if (indx_infop == NULL)
     {
       assert (false);
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      /* a compile-time invariant of one statement, not a process-wide one:
+       * in the merged server FATAL severity would exit cub_server */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return ER_FAILED;
     }

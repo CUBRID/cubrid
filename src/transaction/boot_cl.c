@@ -2455,7 +2455,9 @@ boot_client_find_and_cache_class_oids (void)
 	{
 	  return error;
 	}
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      /* a session's failed catalog lookup is that session's error; in the
+       * merged server a FATAL severity would take the whole process down */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
   oid_set_cached_class_oid (OID_CACHE_SERIAL_CLASS_ID, &class_mop->oid_info.oid);
@@ -2469,7 +2471,7 @@ boot_client_find_and_cache_class_oids (void)
 	  return error;
 	}
 
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_FAILED;
     }
   oid_set_cached_class_oid (OID_CACHE_HA_APPLY_INFO_CLASS_ID, &class_mop->oid_info.oid);
