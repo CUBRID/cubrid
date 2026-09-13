@@ -42,7 +42,7 @@
 
 #define MAX_BROKER_NUM          50
 
-#define	CONF_LOG_FILE_LEN	128
+#define	CONF_LOG_FILE_LEN	256	/* was 128: long install paths truncated log/acl paths (workspace#259 axis 6) */
 
 #define	DEFAULT_AS_MIN_NUM	5
 #define	DEFAULT_AS_MAX_NUM	40
