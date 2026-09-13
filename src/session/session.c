@@ -51,6 +51,7 @@
 
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#include "xserver_interface.h"
 #include <chrono>
 #endif
 #include "thread_entry_task.hpp"
