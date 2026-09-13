@@ -259,6 +259,7 @@ const char *broker_keywords[] = {
   "SSL",
   "DIRECT_HANDOFF",
   "DIRECT_HANDOFF_SSL_DB",
+  "DIRECT_HANDOFF_WAIT_TIMEOUT",
 #if defined (FOR_ODBC_GATEWAY)
   "CGW_LINK_SERVER",
   "CGW_LINK_SERVER_IP",
@@ -679,6 +680,18 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	  goto conf_error;
 	}
       strcpy (br_info[num_brs].direct_handoff_ssl_db, s);
+
+      /* contract (workspace#259 axis 4, 2026-09-14): a driver waits at most
+       * this long for a handoff slot, then gets CAS_ER_FREE_SERVER; the
+       * default keeps the inherited 60 s header-read budget */
+      INI_GETSTR_CHK (s, ini, sec_name, "DIRECT_HANDOFF_WAIT_TIMEOUT", "60sec", &lineno);
+      strncpy_bufsize (time_str, s);
+      br_info[num_brs].direct_handoff_wait_timeout = (int) ut_time_string_to_sec (time_str, "sec");
+      if (br_info[num_brs].direct_handoff_wait_timeout <= 0)
+	{
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
 #if defined (FOR_ODBC_GATEWAY)
       INI_GETSTR_CHK (s, ini, sec_name, "CGW_LINK_SERVER", DEFAULT_EMPTY_STRING, &lineno);
       strcpy (br_info[num_brs].cgw_link_server, s);
@@ -1715,6 +1728,7 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       fprintf (fp, "APPL_SERVER_SHM_ID\t=%x\n", br_info[i].appl_server_shm_id);
       fprintf (fp, "SSL\t\t\t=%s\n", br_info[i].use_SSL ? "ON" : "OFF");
       fprintf (fp, "DIRECT_HANDOFF\t\t=%s\n", br_info[i].direct_handoff ? "ON" : "OFF");
+      fprintf (fp, "DIRECT_HANDOFF_WAIT_TIMEOUT\t=%d\n", br_info[i].direct_handoff_wait_timeout);
       fprintf (fp, "APPL_SERVER_MAX_SIZE\t=%d\n", br_info[i].appl_server_max_size / ONE_K);
       fprintf (fp, "SESSION_TIMEOUT\t\t=%d\n", br_info[i].session_timeout);
       fprintf (fp, "LOG_DIR\t\t\t=%s\n", br_info[i].log_dir);

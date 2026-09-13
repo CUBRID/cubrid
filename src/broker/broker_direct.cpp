@@ -1544,8 +1544,12 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
   std::memcpy (db_name, db_info.get (), len);
   db_name[len] = '\0';
 
-  const auto admission_deadline = std::chrono::steady_clock::now ()
-                                  + std::chrono::seconds (DB_INFO_PEEK_TIMEOUT_SEC);
+  /* DIRECT_HANDOFF_WAIT_TIMEOUT (workspace#259 axis 4): bounded wait for a
+   * slot, then CAS_ER_FREE_SERVER; 0/unset in an old shm falls back to the
+   * inherited header-read budget */
+  const int wait_seconds = m->shm->direct_handoff_wait_timeout > 0 ? m->shm->direct_handoff_wait_timeout
+                           : DB_INFO_PEEK_TIMEOUT_SEC;
+  const auto admission_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (wait_seconds);
 
   for (;;)
     {

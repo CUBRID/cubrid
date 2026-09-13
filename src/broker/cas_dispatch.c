@@ -58,6 +58,7 @@
 #include "cas_function.h"
 #include "cas_net_buf.h"
 #include "cas_execute.h"
+#include "system_parameter.h"
 #include "query_replace.h"
 #if defined (SERVER_MODE)
 #include "adoption.hpp"
@@ -549,8 +550,13 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
   /* the driver-sent body length lands in cub_server's address space now:
    * refuse negative/oversized values before allocating or reading (same
    * bound as driver_session's connect-phase REQUEST_BODY_MAX) */
+#if defined (SERVER_MODE)
+  const long long request_body_max = prm_get_bigint_value (PRM_ID_DRIVER_REQUEST_MAX_SIZE);
+#else
+  const long long request_body_max = CAS_DISPATCH_REQUEST_BODY_MAX;
+#endif
   if (*(client_msg_header.msg_body_size_ptr) < 0
-      || *(client_msg_header.msg_body_size_ptr) > CAS_DISPATCH_REQUEST_BODY_MAX)
+      || (long long) *(client_msg_header.msg_body_size_ptr) > request_body_max)
     {
       net_write_error (sock_fd, req_info->client_version, req_info->driver_info, cas_msg_header.info_ptr, cas_info_size,
 		       CAS_ERROR_INDICATOR, CAS_ER_COMMUNICATION, NULL);

@@ -842,6 +842,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_CAS_ACCESS_CONTROL_FILE "cas_access_control_file"
 #define PRM_NAME_CAS_ACCESS_CONTROL_DEFAULT_ALLOW "cas_access_control_default_allow"
 #define PRM_NAME_CAS_STRIPPED_COLUMN_NAME "cas_stripped_column_name"
+#define PRM_NAME_DRIVER_REQUEST_MAX_SIZE "driver_request_max_size"
 
 // #endregion 
 
@@ -5806,6 +5807,22 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = true}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* workspace#259 axis 4 (contract 2026-09-14): the largest single driver
+   * request body the folded CAS accepts.  Default 1 GiB = DB_MAX_STRING_LENGTH
+   * plus framing (legacy CAS had no bound); lower bound 16 MiB = the
+   * connect-phase bound. */
+  {PRM_ID_DRIVER_REQUEST_MAX_SIZE,
+   PRM_NAME_DRIVER_REQUEST_MAX_SIZE,
+   (PRM_FOR_SERVER | PRM_SIZE_UNIT),
+   PRM_BIGINT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.bi = 1024LL * 1024 * 1024}},
+   {false, {.bi = 1024LL * 1024 * 1024}},
+   {false, {.bi = 1024LL * 1024 * 1024}},
+   {false, {.bi = 16LL * 1024 * 1024}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

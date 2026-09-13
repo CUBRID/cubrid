@@ -622,6 +622,7 @@ struct t_shm_appl_server
   int appl_server_max_size;
   int appl_server_hard_limit;
   int session_timeout;
+  int direct_handoff_wait_timeout;
   int query_timeout;
   int num_appl_server;
   int max_string_length;

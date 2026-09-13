@@ -311,6 +311,7 @@ struct t_broker_info
   /* stage B1 (#117): dispatch driver connections to the database server's
    * adoption socket instead of a CAS pool */
   char direct_handoff;
+  int direct_handoff_wait_timeout;	/* seconds a driver waits for a handoff slot (workspace#259 axis 4) */
 
   /* stage B2 (#116 D9-SSL): an SSL client's db_info is encrypted, so the
    * broker cannot route by dbname — SSL handoffs go to this database */

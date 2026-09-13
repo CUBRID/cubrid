@@ -537,6 +537,7 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
   shm_as_p->appl_server_max_size = br_info_p->appl_server_max_size;
   shm_as_p->appl_server_hard_limit = br_info_p->appl_server_hard_limit;
   shm_as_p->session_timeout = br_info_p->session_timeout;
+  shm_as_p->direct_handoff_wait_timeout = br_info_p->direct_handoff_wait_timeout;
   shm_as_p->sql_log2 = br_info_p->sql_log2;
   shm_as_p->slow_log_mode = br_info_p->slow_log_mode;
 #if defined(WINDOWS)
