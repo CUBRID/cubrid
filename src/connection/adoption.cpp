@@ -465,6 +465,11 @@ namespace cubconn
               execution_state expected = execution_state::idle;
               if (!current_binding->state.compare_exchange_strong (expected, execution_state::yielded))
                 {
+                  /* Another controller claimed this attachment between the
+                   * idle publication and the exchange. The demand taken above
+                   * is still unserved: hand it back so the next idle candidate
+                   * (or yield_idle) delivers it instead of stranding it. */
+                  current_binding->pressure->yield_requested.store (true);
                   return;
                 }
               const std::uint64_t one = 1;
