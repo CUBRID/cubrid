@@ -112,6 +112,12 @@ extern int qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildval
 											 int *resolved);
 extern int qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final);
 extern qfile_list_id *qexec_get_xasl_list_id (xasl_node * xasl);
+/* merge join primitives shared with the parallel merge (px_merge_join) */
+extern DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, tp_domain ** left_dom,
+							 QFILE_TUPLE * rght_tval, tp_domain ** rght_dom, int tval_cnt);
+extern int qexec_merge_tuple_add_list (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
+				       qfile_tuple_record * tplrec1, qfile_tuple_record * tplrec2,
+				       QFILE_LIST_MERGE_INFO * merge_info, qfile_tuple_record * tplrec);
 extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 extern void qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 #if defined(CUBRID_DEBUG)

@@ -81,6 +81,11 @@ namespace parallel_query
 	page_threshold = (UINT32) hash_join_page_threshold;
 	break;
 
+      case parallel_type::MERGE_JOIN:
+	/* like hash join, consumes a pair of join input list files — share its threshold */
+	page_threshold = (UINT32) hash_join_page_threshold;
+	break;
+
       case parallel_type::SORT:
 	page_threshold = (UINT32) sort_page_threshold;
 	break;
