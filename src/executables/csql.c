@@ -3542,6 +3542,13 @@ csql_exit (int exit_status)
       csql_Exit_status = exit_status;
       longjmp (csql_Server_request_env, 1);
     }
+  /* release build, no request boundary armed: a folded csql path escaped the
+   * entry points.  Returning silently would let the caller continue as if
+   * nothing happened; leave a session error so the statement fails visibly
+   * (workspace#259 axis 1). */
+  csql_Exit_status = exit_status;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+  er_log_debug (ARG_FILE_LINE, "csql_exit: no request boundary armed (status %d)\n", exit_status);
   return;
 #else
   csql_Exit_status = exit_status;
