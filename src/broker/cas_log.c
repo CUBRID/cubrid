@@ -65,7 +65,32 @@ typedef int mode_t;
 
 static const char *get_access_log_type_string (ACCESS_LOG_TYPE type);
 static CAS_TLS char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
+#if defined (SERVER_MODE)
+/* The 160 KiB stdio buffer for the SQL log used to be a TLS array, paid by
+ * every server thread whether or not it ever opens a SQL log. Allocate it on
+ * first use per thread and release it at thread exit (pooled executors keep
+ * it warm across the sessions they serve). (workspace#259 axis 4: 스레드당 TLS) */
+static char *
+cas_sql_log_buffer (void)
+{
+  struct sql_log_buffer_holder
+  {
+    char *buffer = NULL;
+    ~sql_log_buffer_holder ()
+    {
+      free (buffer);
+    }
+  };
+  static thread_local sql_log_buffer_holder holder;
+  if (holder.buffer == NULL)
+    {
+      holder.buffer = (char *) malloc (SQL_LOG_BUFFER_SIZE);
+    }
+  return holder.buffer;
+}
+#else
 static CAS_TLS char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
+#endif
 
 static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name);
 static void cas_log_backup (T_CUBRID_FILE_ID fid);
@@ -212,7 +237,16 @@ cas_log_open (char *br_name)
 
       if (log_fp)
 	{
+#if defined (SERVER_MODE)
+	  char *sql_log_buffer = cas_sql_log_buffer ();
+	  if (sql_log_buffer != NULL)
+	    {
+	      setvbuf (log_fp, sql_log_buffer, _IOFBF, SQL_LOG_BUFFER_SIZE);
+	    }
+	  /* allocation failure: stdio's default buffer, the log still works */
+#else
 	  setvbuf (log_fp, sql_log_buffer, _IOFBF, SQL_LOG_BUFFER_SIZE);
+#endif
 	}
       cas_log_fd_status = CAS_LOG_FD_OPENED;
     }
