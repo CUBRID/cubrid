@@ -206,7 +206,9 @@ namespace parallel_query
       part_list_id = m_split_info->part_list_id;
       part_cnt = m_manager->context_cnt;
 
-      is_outer_join = IS_OUTER_JOIN_TYPE (m_manager->join_type);
+      /* an anti join's NULL join key on its outer side still needs the reserved null-key
+       * partition, same as query_hash_join.c's hjoin_split_qlist(). */
+      is_outer_join = HASHJOIN_ACTS_AS_OUTER (m_manager);
 
       temp_part_list_id = (QFILE_LIST_ID **) db_private_alloc (&thread_ref, part_cnt * sizeof (QFILE_LIST_ID *));
       if (temp_part_list_id == nullptr)
@@ -819,7 +821,9 @@ namespace parallel_query
 	}
       m_context->hash_scan.hash_list_scan_type = single_context->hash_scan.hash_list_scan_type;
 
-      if (IS_OUTER_JOIN_TYPE (m_manager->join_type))
+      /* an anti join needs this check too, to reach execute_outer(), same as
+       * query_hash_join.c's probe dispatch. */
+      if (HASHJOIN_ACTS_AS_OUTER (m_manager))
 	{
 	  execute_outer (thread_ref);
 	}
@@ -1141,6 +1145,18 @@ cleanup:
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
+		    }
+
+		  if (m_manager->semi_anti_type == HASHJOIN_SEMI_ANTI_SEMI)
+		    {
+		      /* semi join: at most one output row per probe row — stop scanning this
+		       * row's remaining buckets once the first match has been emitted.
+		       * hjoin_probe_key() decides "start a new search" vs. "resume the current
+		       * chain" by whether build->tuple_record.tpl is NULL, so it must be reset
+		       * here — otherwise the next probe row's search wrongly resumes this row's
+		       * chain (same bug as query_hash_join.c's hjoin_inner_probe()). */
+		      build->tuple_record.tpl = nullptr;
+		      break;
 		    }
 		}
 	      while (true);
@@ -1486,6 +1502,20 @@ cleanup:
 		    }			/* if (m_context->during_join_pred != nullptr) */
 
 		  any_key_matched = true;
+
+		  if (m_manager->semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI)
+		    {
+		      /* anti join: this bucket already proves a matching inner row exists, so the
+		       * outer row must be suppressed regardless of after_join_pred — stop scanning
+		       * this row's remaining buckets without evaluating after_join_pred (existence
+		       * check only, no output), same as query_hash_join.c's hjoin_outer_probe().
+		       * hjoin_probe_key() decides "start a new search" vs. "resume the current
+		       * chain" by whether build->tuple_record.tpl is NULL, so it must be reset
+		       * here — otherwise the next probe row's search wrongly resumes this row's
+		       * chain. */
+		      build->tuple_record.tpl = nullptr;
+		      break;
+		    }
 
 		  if (m_context->after_join_pred != nullptr)
 		    {
