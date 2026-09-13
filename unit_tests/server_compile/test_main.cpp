@@ -47,6 +47,7 @@
 #include "cas_dispatch.h"	// cas_server_session_slot_begin/end
 #include "cas_protocol.h"
 #include "cas_log.h"
+#include "cas.h"		// is_xa_prepared / set_xa_prepare_flag (workspace#259 axis 2)
 #include "environment_variable.h"
 #undef FREE			// cas_common.h FREE(PTR) vs page_buffer.h FREE — this TU uses neither
 #include "client_session_context.hpp"
@@ -1128,6 +1129,66 @@ cleanup:
   return ret;
 }
 
+/* workspace#259 axis 2: the CAS/client statics that the audit found shared
+ * across sessions (xa_prepare_flag, lang_Parser_use_client_charset) must be
+ * session-thread-local.  One thread flips both; a second thread and the main
+ * thread must still see the defaults.  A regression back to a process static
+ * fails here, not in production.  lc_Is_siginterrupt is covered by the
+ * session_static_gate baseline only: its setter enters the server
+ * (log_set_interrupt) and needs a registered thread entry, which these
+ * ad-hoc threads do not have. */
+static int
+test_session_local_statics (void)
+{
+  if (is_xa_prepared () || !lang_get_parser_use_client_charset ())
+    {
+      fprintf (stderr, "FAIL: session-local statics: unexpected defaults on the main thread\n");
+      return 1;
+    }
+
+  std::atomic<int> stage (0);
+  std::atomic<int> failures (0);
+  std::thread flipper ([&] ()
+  {
+    set_xa_prepare_flag ();
+    lang_set_parser_use_client_charset (false);
+    if (!is_xa_prepared () || lang_get_parser_use_client_charset ())
+      {
+	fprintf (stderr, "FAIL: session-local statics: flipper does not see its own writes\n");
+	failures.fetch_add (1);
+      }
+    stage.store (1);
+    while (stage.load () < 2)
+      {
+	std::this_thread::yield ();
+      }
+    unset_xa_prepare_flag ();
+    lang_set_parser_use_client_charset (true);
+  });
+  while (stage.load () < 1)
+    {
+      std::this_thread::yield ();
+    }
+  std::thread observer ([&] ()
+  {
+    if (is_xa_prepared () || !lang_get_parser_use_client_charset ())
+      {
+	fprintf (stderr, "FAIL: session-local statics leaked into another thread\n");
+	failures.fetch_add (1);
+      }
+  });
+  observer.join ();
+  if (is_xa_prepared () || !lang_get_parser_use_client_charset ())
+    {
+      fprintf (stderr, "FAIL: session-local statics leaked into the main thread\n");
+      failures.fetch_add (1);
+    }
+  stage.store (2);
+  flipper.join ();
+  return failures.load () == 0 ? 0 : 1;
+}
+
+
 int
 main (int, char **)
 {
@@ -1286,5 +1347,10 @@ main (int, char **)
       return 1;
     }
   printf ("PASS: utility-channel client-type allowlist admits exactly the utility/HA plane\n");
+  if (test_session_local_statics () != 0)
+    {
+      return 1;
+    }
+  printf ("PASS: XA prepare flag and parser client charset are session-thread-local\n");
   return 0;
 }
