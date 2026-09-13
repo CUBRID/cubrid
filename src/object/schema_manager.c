@@ -1541,6 +1541,26 @@ sm_dynamic_link_class (SM_CLASS * class_, METHOD_LINK * links)
       return error;
     }
 
+#if defined (SERVER_MODE)
+  /* Product decision (workspace#259 axis 5, 2026-09-14): user-defined native
+   * C methods are not supported inside cub_server. A dlopen'ed .so would run
+   * with the server's threads, static state, exit/abort and heap, and the
+   * loader mutex alone does not make that safe. Refuse before any dynamic
+   * link; built-in (static) methods and Java/PL/CSQL routines are unaffected. */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_DYNAMIC_LINK_PROBLEMS, 0);
+  er_log_debug (ARG_FILE_LINE, "sm_dynamic_link_class: user-defined native methods of class %s are not "
+		"supported in the server (dynamic linking refused)\n", sm_ch_name ((MOBJ) class_));
+  (void) files;
+  (void) file;
+  (void) names;
+  (void) sorted_names;
+  (void) commands;
+  (void) i;
+  (void) nfiles;
+  (void) psn;
+  return ER_SM_DYNAMIC_LINK_PROBLEMS;
+#endif
+
   files = class_->method_files;
   nfiles = ws_list_length ((DB_LIST *) files);
 
