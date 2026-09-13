@@ -43,6 +43,7 @@
 #include <sys/param.h>
 #endif
 #include <assert.h>
+#include <cmath>
 #include <ctype.h>
 
 #include "porting.h"
@@ -9606,6 +9607,14 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 		return PRM_ERR_BAD_VALUE;
 	      }
 	    else if (*end != '\0')
+	      {
+		return PRM_ERR_BAD_VALUE;
+	      }
+
+	    /* NaN bypasses comparison-based bounds. Compiler settings arrive
+	     * from both client configuration and runtime SET; neither may
+	     * inject a non-finite selectivity into the shared server. */
+	    if (PRM_IS_CLIENT_COMPILE (prm) && !std::isfinite (val))
 	      {
 		return PRM_ERR_BAD_VALUE;
 	      }
