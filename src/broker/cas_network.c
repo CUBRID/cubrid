@@ -589,8 +589,23 @@ retry_poll:
     {
       if (cas_shard_flag == OFF && !IS_INVALID_SOCKET (new_req_sock_fd) && (po[1].revents & POLLIN))
 	{
+#if defined (SERVER_MODE)
+	  UINT64 signal;
+	  (void) read (new_req_sock_fd, &signal, sizeof (signal));
+	  if (as_info->con_status == CON_STATUS_OUT_TRAN && as_info->num_holdable_results == 0
+	      && as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO && !as_info->reset_flag)
+	    {
+	      as_info->con_status = CON_STATUS_CLOSE_AND_CONNECT;
+	      return -1;
+	    }
+	  if (!(po[0].revents & (POLLIN | POLLERR | POLLHUP)))
+	    {
+	      goto retry_poll;
+	    }
+#else
 	  /* CHANGE CLIENT */
 	  return -1;
+#endif
 	}
       if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	{

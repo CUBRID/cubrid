@@ -48,7 +48,7 @@ namespace cubconn
     /* ------------------------------------------------------------------ */
 
     static const std::uint32_t PROTO_MAGIC = 0x41444F50;	/* "ADOP" */
-    static const std::uint32_t PROTO_VERSION = 4;
+    static const std::uint32_t PROTO_VERSION = 5;
 
     enum class msg_op : std::uint32_t
     {
@@ -67,6 +67,7 @@ namespace cubconn
 				 * HANDOFF_REJECT frame. */
 
       SESSION_CONFIG = 7, /* broker_session_change; replies SESSION_CONFIG_REPLY */
+      YIELD_IDLE = 8, /* release one safe idle attachment of this broker */
 
       /* server -> broker */
       HELLO_ACK = 9,		/* body: hello_ack_body */
@@ -222,6 +223,8 @@ namespace cubconn
      * an executing request. The session thread remains the resource owner. */
     bool registry_shutdown_client (int client_id, int tran_index);
     void registry_begin_session_cleanup (std::uint32_t token);
+    void registry_auto_enable (std::uint32_t token, int wake_fd);
+    void registry_auto_ready (bool ready);
     std::size_t registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows);
     void registry_set_fn_status (std::uint32_t token, int fn_status);
     void registry_set_session_id (std::uint32_t token, unsigned int session_id);

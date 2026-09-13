@@ -51,6 +51,7 @@
 
 #if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#include <chrono>
 #endif
 #include "thread_entry_task.hpp"
 #include "thread_lockfree_hash_map.hpp"
@@ -155,6 +156,10 @@ struct session_state
   /* the merged-in client half's session context (#123 D3): the session is the
    * durable owner; worker threads reach it only through activation brackets */
   client_session_context *csc_p;
+  UINT64 auto_nonce = 0;
+  char auto_user[DB_MAX_USER_LENGTH + 1] = { 0 };
+  bool auto_detached = false;
+  std::chrono::steady_clock::time_point auto_expires;
 #endif
 
   // *INDENT-OFF*
@@ -340,6 +345,9 @@ session_state_init (void *st)
   session_p->pl_session_p = NULL;
 #if defined (SERVER_MODE)
   session_p->csc_p = NULL;
+  session_p->auto_nonce = 0;
+  session_p->auto_user[0] = '\0';
+  session_p->auto_detached = false;
 #endif
 
   return NO_ERROR;
@@ -1068,6 +1076,15 @@ session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * active_sessions
   time_t curr_time = time (NULL);
 
   (*remove) = false;
+
+#if defined (SERVER_MODE)
+  if (session_p->auto_nonce != 0)
+    {
+      *remove = session_p->auto_detached && session_p->ref_count == 0
+		&& std::chrono::steady_clock::now () >= session_p->auto_expires;
+      return NO_ERROR;
+    }
+#endif
 
   if ((curr_time - session_p->active_time) >= prm_get_integer_value (PRM_ID_SESSION_STATE_TIMEOUT))
     {
@@ -2944,6 +2961,90 @@ session_adopt_client_context (THREAD_ENTRY * thread_p, client_session_context * 
   state_p->csc_p = csc;
 
   return NO_ERROR;
+}
+
+int
+session_auto_enable (THREAD_ENTRY * thread_p, const char *user, UINT64 nonce)
+{
+  SESSION_STATE *state = session_get_session_state (thread_p);
+  if (state == NULL || user == NULL || nonce == 0 || strlen (user) > DB_MAX_USER_LENGTH)
+    {
+      return ER_FAILED;
+    }
+  pthread_mutex_lock (&state->mutex);
+  state->auto_nonce = nonce;
+  intl_identifier_upper (user, state->auto_user);
+  state->auto_detached = false;
+  state->is_keep_session = false;
+  pthread_mutex_unlock (&state->mutex);
+  return NO_ERROR;
+}
+
+/* Pin and bind the retained session before activating its CSC. The old
+ * connection must have returned its reference; two resumed transports can
+ * never share a context. Authentication follows on the new registration. */
+int
+session_auto_claim (THREAD_ENTRY * thread_p, SESSION_ID id, const char *user, UINT64 nonce,
+		    client_session_context **context)
+{
+  *context = NULL;
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p != NULL
+      || user == NULL || nonce == 0)
+    {
+      return ER_FAILED;
+    }
+  SESSION_STATE *state = sessions.states_hashmap.find (thread_p, id);
+  if (state == NULL)
+    {
+      return ER_SES_SESSION_EXPIRED;
+    }
+  int error = ER_FAILED;
+  if (state->auto_nonce == nonce && intl_identifier_casecmp (state->auto_user, user) == 0)
+    {
+      if (state->auto_detached && state->ref_count == 0 && state->csc_p != NULL)
+	{
+	  if (std::chrono::steady_clock::now () < state->auto_expires)
+	    {
+	      session_state_increase_ref_count (thread_p, state);
+	      session_set_conn_entry_data (thread_p, state);
+	      state->auto_detached = false;
+	      *context = state->csc_p;
+	      error = NO_ERROR;
+	    }
+	  else
+	    {
+	      error = ER_SES_SESSION_EXPIRED;
+	    }
+	}
+    }
+  pthread_mutex_unlock (&state->mutex);
+  return error;
+}
+
+void
+session_auto_detach (THREAD_ENTRY * thread_p, bool renew_timeout)
+{
+  SESSION_STATE *state = session_get_session_state (thread_p);
+  if (state == NULL)
+    {
+      return;
+    }
+  pthread_mutex_lock (&state->mutex);
+  if (renew_timeout)
+    {
+      state->auto_expires = std::chrono::steady_clock::now ()
+	+ std::chrono::seconds (prm_get_integer_value (PRM_ID_SESSION_STATE_TIMEOUT));
+    }
+  state->auto_detached = true;
+  state->is_keep_session = false;
+  pthread_mutex_unlock (&state->mutex);
+}
+
+UINT64
+session_auto_nonce (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state = session_get_session_state (thread_p);
+  return state != NULL ? state->auto_nonce : 0;
 }
 #endif /* SERVER_MODE */
 

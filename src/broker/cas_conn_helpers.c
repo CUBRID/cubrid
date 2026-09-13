@@ -114,7 +114,11 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
     }
   else
     {
+#if defined (SERVER_MODE)
+      net_timeout_set (CAS_SHM_CFG (session_timeout) > 0 ? CAS_SHM_CFG (session_timeout) : -1);
+#else
       net_timeout_set (DEFAULT_CHECK_INTERVAL);
+#endif
       timeout = CAS_SHM_CFG (session_timeout);
       remained_timeout = timeout;
     }
@@ -233,7 +237,11 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 
   new_req_sock_fd = INVALID_SOCKET;
 
+#if defined (SERVER_MODE)
+  CON_STATUS_LOCK (as_info, CON_STATUS_LOCK_CAS);
+#else
   CON_STATUS_LOCK (&(shm_appl->as_info[shm_as_index]), CON_STATUS_LOCK_CAS);
+#endif
 
   if (as_info->con_status == CON_STATUS_OUT_TRAN)
     {
@@ -256,7 +264,11 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 	}
     }
 
+#if defined (SERVER_MODE)
+  CON_STATUS_UNLOCK (as_info, CON_STATUS_LOCK_CAS);
+#else
   CON_STATUS_UNLOCK (&(shm_appl->as_info[shm_as_index]), CON_STATUS_LOCK_CAS);
+#endif
 
   return ret_value;
 }

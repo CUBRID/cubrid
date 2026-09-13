@@ -1555,6 +1555,59 @@ error:
  *              system parameter.
  */
 
+#if defined (SERVER_MODE)
+/* A retained AUTO session already owns its workspace and settings. Only the
+ * registration and authenticated transport identity are new. Failure must
+ * never take boot_restart_failure_cleanup's session-destruction path. */
+int
+boot_resume_client (BOOT_CLIENT_CREDENTIAL *client_credential, const char *password)
+{
+  TRAN_STATE state;
+  const TRAN_ISOLATION isolation = TM_TRAN_ISOLATION ();
+  const int wait_msecs = TM_TRAN_WAIT_MSECS ();
+  const int row_count = db_Row_count;
+  MOP schema_owner = sc_current_schema_owner ();
+  int error;
+
+  assert (tm_Tran_index == NULL_TRAN_INDEX);
+  boot_check_and_fill_connection_info (client_credential, false);
+  db_set_client_type (client_credential->client_type);
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+  snprintf (db_Program_name, sizeof (db_Program_name), "%s", client_credential->get_program_name ());
+  snprintf (db_Database_name, sizeof (db_Database_name), "%s", client_credential->get_db_name ());
+
+  const int index = boot_register_client (client_credential, wait_msecs, isolation, &state, &boot_Server_credential);
+  if (index == NULL_TRAN_INDEX)
+    {
+      db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  boot_client (index, wait_msecs, isolation);
+  error = au_login (client_credential->get_db_user (), password, true);
+  if (error == NO_ERROR)
+    {
+      error = db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
+    }
+  if (error == NO_ERROR && schema_owner != NULL)
+    {
+      error = sc_set_current_schema (schema_owner);
+    }
+  if (error == NO_ERROR)
+    {
+      error = tran_commit (false);
+    }
+  if (error != NO_ERROR)
+    {
+      (void) tran_abort ();
+      (void) boot_unregister_client (index);
+      tm_Tran_index = NULL_TRAN_INDEX;
+      db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+    }
+  db_Row_count = row_count;
+  return error;
+}
+#endif
+
 int
 boot_shutdown_client (bool is_er_final)
 {

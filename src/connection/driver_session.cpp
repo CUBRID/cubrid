@@ -47,6 +47,9 @@
 
 #include "boot.h"		// BOOT client-type macros, HA_SERVER_STATE (#121 D2/D7)
 #include "client_session_context.hpp"
+#include "boot_cl.h"
+#include "crypt_opfunc.h"
+#include <sys/eventfd.h>
 #include "connection_defs.h"
 #include "connection_sr.h"
 #include "server_support.h"	// css_ha_server_state, css_is_ha_repl_delayed
@@ -474,6 +477,8 @@ namespace cubconn
       std::memcpy (out + size, &session, sizeof (SESSION_ID));
       size += sizeof (SESSION_ID);
       std::memset (out + size, 0, DRIVER_SESSION_SIZE - size);
+      UINT64 nonce = session_auto_nonce (thread_get_thread_entry_info ());
+      std::memcpy (out + size, &nonce, sizeof (nonce));
     }
 
     /* ------------------------------------------------------------------ */
@@ -483,8 +488,8 @@ namespace cubconn
     /* cas_common_main.c's inner request loop, translated: the CAS globals
      * (req_info, as_info, srv handles, net_buf scratch) are thread-local in
      * SERVER_MODE, so this thread IS the CAS process for its connection */
-    static void
-    request_loop (int fd, int client_version, const char (&driver_header)[DRIVER_HEADER_SIZE])
+    static bool
+    request_loop (int fd, int client_version, const char (&driver_header)[DRIVER_HEADER_SIZE], int wake_fd)
     {
       T_NET_BUF net_buf;
 
@@ -494,7 +499,7 @@ namespace cubconn
       if (net_buf.data == NULL)
 	{
 	  send_error_reply (fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR, CAS_ER_NO_MORE_MEMORY, NULL);
-	  return;
+	  return false;
 	}
       net_buf.alloc_size = NET_BUF_ALLOC_SIZE;
 
@@ -513,9 +518,14 @@ namespace cubconn
       FN_RETURN fn_ret = FN_KEEP_CONN;
       while (fn_ret == FN_KEEP_CONN)
 	{
+          registry_auto_ready (wake_fd >= 0 && as_info->con_status == CON_STATUS_OUT_TRAN
+                               && as_info->num_holdable_results == 0 && !is_xa_prepared ()
+                               && as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO
+                               && !csc_has_method_callback_state ());
 	  /* the SIGUSR1 (re)arming of the CAS loop is retired: cancel arrives
 	   * as a tran interrupt via the control channel (#117 D4) */
-	  fn_ret = cas_process_request (fd, &net_buf, &req_info, INVALID_SOCKET);
+	  fn_ret = cas_process_request (fd, &net_buf, &req_info, wake_fd);
+          registry_auto_ready (false);
 	  /* Match cas_common_main's per-request epilogue. Otherwise a later
 	   * cursor/handle close is still treated as the first request and
 	   * incorrectly tells the driver that its transaction is inactive. */
@@ -531,6 +541,8 @@ namespace cubconn
 	}
       cas_log_error_handler_end ();
       net_buf_destroy (&net_buf);
+      return fn_ret == FN_KEEP_SESS && as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT
+             && !as_info->reset_flag;
     }
 
     /* ------------------------------------------------------------------ */
@@ -543,6 +555,9 @@ namespace cubconn
       int err;
       bool registered = false;
       bool adopted = false;
+      bool resumed = false;
+      bool yielded = false;
+      int wake_fd = -1;
       CSS_CONN_ENTRY *conn = NULL;
       client_session_context *ctx = NULL;
       driver_conn_info info;
@@ -571,6 +586,7 @@ namespace cubconn
        * every later byte — read_full/write_full here and the CAS speaker's
        * READ_FROM_NET/WRITE_TO_NET — through the session's TLS channel. */
       const bool is_ssl = IS_SSL_CLIENT (params.driver_header);
+      const bool auto_mode = !params.direct && params.broker_info[BROKER_INFO_KEEP_CONNECTION] == 0;
       if (is_ssl)
 	{
 	  if (cas_init_ssl (params.client_fd) < 0
@@ -758,16 +774,72 @@ namespace cubconn
 	logddl_set_ip (client_ip_str);
       }
 
-      apply_driver_session_id (info.session_id);
+      if (auto_mode)
+        {
+          wake_fd = eventfd (0, EFD_CLOEXEC | EFD_NONBLOCK);
+          if (wake_fd < 0)
+            {
+              send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+                                CAS_ER_FREE_SERVER, "Cannot create AUTO wake descriptor");
+              goto retire;
+            }
+          registry_auto_enable (params.token, wake_fd);
+          as_info->cur_keep_con = KEEP_CON_AUTO;
+          as_info->cas_change_mode = CAS_CHANGE_MODE_AUTO;
+          UINT64 nonce;
+          std::uint32_t wire_id;
+          std::memcpy (&nonce, info.session_id + 12, sizeof (nonce));
+          std::memcpy (&wire_id, info.session_id + 8, sizeof (wire_id));
+          if (nonce != 0)
+            {
+              client_session_context *retained = nullptr;
+              err = session_auto_claim (entry_p, ntohl (wire_id), info.db_user, nonce, &retained);
+              if (err == NO_ERROR)
+                {
+                  csc_deactivate ();
+                  csc_retire_and_delete (ctx);
+                  ctx = retained;
+                  csc_activate (ctx);
+                  adopted = true;
+                  resumed = true;
+                }
+              else if (err != ER_SES_SESSION_EXPIRED)
+                {
+                  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+                                    CAS_ER_FREE_SERVER, "Session cannot be resumed");
+                  goto retire;
+                }
+            }
+        }
 
-      /* Shared modules are ready from server boot; initialize only this
-       * client's workspace, credentials and transaction registration. */
-      err = db_restart_ex (client_name, info.db_name, info.db_user, info.db_passwd, NULL, params.client_type);
+      if (resumed)
+        {
+          BOOT_CLIENT_CREDENTIAL credential;
+          credential.client_type = (BOOT_CLIENT_TYPE) params.client_type;
+          credential.db_name = info.db_name;
+          credential.db_user = info.db_user;
+          credential.program_name = client_name;
+          credential.process_id = -1;
+          char client_ip[16];
+          ut_get_ipv4_string (client_ip, sizeof (client_ip), (unsigned char *) &params.client_ip);
+          credential.client_ip_addr = client_ip;
+          db_set_client_ip_addr (client_ip);
+          err = boot_resume_client (&credential, info.db_passwd);
+        }
+      else
+        {
+          apply_driver_session_id (info.session_id);
+          err = db_restart_ex (client_name, info.db_name, info.db_user, info.db_passwd, NULL, params.client_type);
+        }
       if (err != NO_ERROR)
 	{
 	  /* cas_db_connect failure path: DBMS error straight to the driver */
 	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, DBMS_ERROR_INDICATOR, err,
 			    er_msg () != NULL ? er_msg () : "");
+          if (resumed)
+            {
+              session_auto_detach (entry_p, false);
+            }
 	  goto retire;
 	}
       registered = true;
@@ -790,12 +862,28 @@ namespace cubconn
 	  goto retire;
 	}
 
+      if (auto_mode && !resumed)
+        {
+          UINT64 nonce = 0;
+          err = crypt_generate_random_bytes ((char *) &nonce, sizeof (nonce));
+          if (err != NO_ERROR || nonce == 0 || session_auto_enable (entry_p, info.db_user, nonce) != NO_ERROR)
+            {
+              send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+                                CAS_ER_INTERNAL, "Cannot establish AUTO session");
+              (void) ux_end_session ();
+              goto retire;
+            }
+        }
+
       /* cancel arrives on the control channel as a tran interrupt (#117 D4) */
       registry_set_tran_index (params.token, tm_Tran_index);
 
       /* the new-connection defaults capture ux_database_connect performs
        * (cas_execute.c:493): isolation/lock-timeout baselines + sys params */
-      ux_get_default_setting ();
+      if (!resumed)
+        {
+          ux_get_default_setting ();
+        }
       (void) tr_set_execution_state (cas_session_cfg.trigger_action_flag != 0);
 
       /* The broker owns the shared, append-only rule slots. Each adopted
@@ -843,7 +931,7 @@ namespace cubconn
 	  goto retire;
 	}
 
-      request_loop (params.client_fd, CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header);
+      yielded = request_loop (params.client_fd, CAS_MAKE_PROTO_VER (params.driver_header), params.driver_header, wake_fd);
 
       /* cas.c:340-351 translated (B4-D6): roll back whatever transaction is
        * still open unless an XA-prepared one must survive for recovery, then
@@ -854,10 +942,23 @@ namespace cubconn
 	{
 	  (void) ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
 	}
-      (void) ux_end_session ();
+      db_set_keep_session (false);
+      if (yielded && auto_mode)
+        {
+          session_auto_detach (entry_p, true);
+        }
+      else
+        {
+          (void) ux_end_session ();
+        }
 
 retire:
       registry_begin_session_cleanup (params.token);
+      if (wake_fd >= 0)
+        {
+          close (wake_fd);
+          wake_fd = -1;
+        }
       qr_final ();
       if (as_info != NULL)
 	{

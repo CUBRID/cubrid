@@ -126,9 +126,13 @@ namespace brd
 	      {
 		continue;
 	      }
-	    return -1;
-	  }
-	p += n;
+	  return -1;
+	}
+      if (n == 0)
+        {
+          return -1;
+        }
+      p += n;
 	len -= (std::size_t) n;
       }
     return 0;
@@ -237,6 +241,8 @@ namespace brd
     /* handoff slots: ACK -1 is done by the dispatch thread, SESSION_END +1
      * by channel readers (#117 D3) */
     std::atomic<int> slots_used { 0 };
+    std::mutex slots_mutex;
+    std::condition_variable slots_cv;
 
     /* channels + tokens.  Token counters are per-server, so two databases
      * behind one broker may issue equal token values — the table is a
@@ -414,12 +420,14 @@ namespace brd
   static void
   slots_release (manager &m)
   {
+    std::lock_guard<std::mutex> guard (m.slots_mutex);
     /* floor at 0: a pre-restart session's end can race the re-sync that
      * would have counted it */
     int used = m.slots_used.load ();
     while (used > 0 && !m.slots_used.compare_exchange_weak (used, used - 1))
       ;
     m.shm->brd_slots_used = (used > 0) ? used - 1 : 0;
+    m.slots_cv.notify_all ();
   }
 
   static void
@@ -544,8 +552,13 @@ namespace brd
   static int
   channel_request (channel &ch, adopt::msg_op op, const void *body, std::size_t body_len,
 		   const void *handoff_payload, std::size_t handoff_payload_len, int handoff_fd,
-		   adopt::msg_header *reply_header, void *reply_body, std::size_t reply_body_size)
+		   adopt::msg_header *reply_header, void *reply_body, std::size_t reply_body_size,
+                   bool *fd_transferred = nullptr)
   {
+    if (fd_transferred != nullptr)
+      {
+        *fd_transferred = false;
+      }
     std::lock_guard<std::mutex> request_guard (ch.request_mutex);
 
     {
@@ -607,6 +620,10 @@ namespace brd
 	    {
 	      return -1;
 	    }
+          if (fd_transferred != nullptr)
+            {
+              *fd_transferred = true;
+            }
 	  /* a short sendmsg still delivered the fd; finish the byte stream */
 	  if ((std::size_t) sent < total)
 	    {
@@ -1507,13 +1524,38 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
   std::memcpy (db_name, db_info.get (), len);
   db_name[len] = '\0';
 
+  const auto admission_deadline = std::chrono::steady_clock::now ()
+                                  + std::chrono::seconds (DB_INFO_PEEK_TIMEOUT_SEC);
+
   for (;;)
     {
       /* admission wait: the driver keeps waiting in the queue's stead, same
        * as the idle-CAS wait it replaces (#117 D3) */
       while (m->slots_used.load () >= m->max_slots && !m->stopping.load ())
 	{
-	  std::this_thread::sleep_for (std::chrono::milliseconds (30));
+          std::shared_ptr<channel> yield_channel = channel_get_or_dial (*m, db_name);
+          if (yield_channel != nullptr && m->shm->keep_connection == KEEP_CON_AUTO)
+            {
+              adopt::token_body wanted;
+              wanted.token = 1;
+              (void) channel_send (*yield_channel, adopt::msg_op::YIELD_IDLE, &wanted, sizeof (wanted));
+            }
+          std::unique_lock<std::mutex> guard (m->slots_mutex);
+          bool available = m->slots_cv.wait_until (guard, admission_deadline,
+                              [m] { return m->slots_used.load () < m->max_slots || m->stopping.load (); });
+          guard.unlock ();
+          if (yield_channel != nullptr)
+            {
+              adopt::token_body wanted;
+              wanted.token = 0;
+              (void) channel_send (*yield_channel, adopt::msg_op::YIELD_IDLE, &wanted, sizeof (wanted));
+            }
+          if (!available)
+            {
+              reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+              close (job->clt_sock_fd);
+              return;
+            }
 	}
       if (m->stopping.load ())
 	{
@@ -1550,7 +1592,8 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
        * the server overwrites its own bytes 4-7 (proto version, function
        * flags, system-param bits) when it builds the reply */
       body.broker_info[BROKER_INFO_DBMS_TYPE] = CAS_DBMS_CUBRID;
-      body.broker_info[BROKER_INFO_KEEP_CONNECTION] = CAS_KEEP_CONNECTION_ON;
+      body.broker_info[BROKER_INFO_KEEP_CONNECTION] =
+        m->shm->keep_connection == KEEP_CON_AUTO ? 0 : CAS_KEEP_CONNECTION_ON;
       body.broker_info[BROKER_INFO_STATEMENT_POOLING] =
 	      m->shm->statement_pooling ? CAS_STATEMENT_POOLING_ON : CAS_STATEMENT_POOLING_OFF;
       body.broker_info[BROKER_INFO_CCI_PCONNECT] = m->shm->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF;
@@ -1559,11 +1602,15 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
 
       adopt::msg_header reply_header;
       char reply_body[64];
+      bool fd_transferred = false;
       if (channel_request (*ch, adopt::msg_op::HANDOFF, &body, sizeof (body), NULL, 0, job->clt_sock_fd,
-			   &reply_header, reply_body, sizeof (reply_body)) != 0)
+			   &reply_header, reply_body, sizeof (reply_body), &fd_transferred) != 0)
 	{
 	  brd_debug ("handoff db=%s: request failed/timeout", db_name);
-	  reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+          if (!fd_transferred)
+            {
+	      reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+            }
 	  close (job->clt_sock_fd);
 	  return;
 	}

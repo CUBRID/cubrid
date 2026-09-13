@@ -121,6 +121,69 @@ namespace cubconn
       }
     };
 
+    /* Out-of-band users pin the binding, not a recyclable transaction index
+     * or descriptor. Cleanup closes the binding and drains these short-lived
+     * pins before returning either resource to its allocator. */
+    struct session_binding
+    {
+      std::mutex mutex;
+      std::condition_variable drained;
+      int users = 0;
+      bool closing = false;
+      int tran_index = NULL_TRAN_INDEX;
+      int client_fd = -1;
+      int wake_fd = -1;
+      std::atomic<bool> auto_ready { false };
+      std::shared_ptr<std::atomic<bool>> pressure;
+    };
+
+    class binding_pin
+    {
+      public:
+        explicit binding_pin (const std::shared_ptr<session_binding> &binding)
+          : m_binding (binding), tran_index (NULL_TRAN_INDEX), client_fd (-1), wake_fd (-1)
+        {
+          if (m_binding != nullptr)
+            {
+              std::lock_guard<std::mutex> guard (m_binding->mutex);
+              if (!m_binding->closing)
+                {
+                  m_binding->users++;
+                  tran_index = m_binding->tran_index;
+                  client_fd = m_binding->client_fd;
+                  wake_fd = m_binding->wake_fd;
+                  m_active = true;
+                }
+            }
+        }
+
+        ~binding_pin ()
+        {
+          if (m_active)
+            {
+              std::lock_guard<std::mutex> guard (m_binding->mutex);
+              if (--m_binding->users == 0)
+                {
+                  m_binding->drained.notify_all ();
+                }
+            }
+        }
+
+        binding_pin (const binding_pin &) = delete;
+        binding_pin &operator= (const binding_pin &) = delete;
+
+      private:
+        std::shared_ptr<session_binding> m_binding;
+        bool m_active = false;
+
+      public:
+        int tran_index;
+        int client_fd;
+        int wake_fd;
+    };
+
+    static thread_local std::shared_ptr<session_binding> current_binding;
+
     struct session_entry
     {
       std::uint32_t token;
@@ -128,6 +191,7 @@ namespace cubconn
       char broker_name[BROKER_NAME_MAX];
       int client_fd;
       int tran_index;
+      std::shared_ptr<session_binding> binding = std::make_shared<session_binding> ();
       int client_id = -1; /* CSS identity; valid only before session cleanup */
       std::int32_t fn_status;
       /* SHOW SESSION STATUS (B2-D10): the session thread's CAS slot.  The
@@ -162,6 +226,7 @@ namespace cubconn
       std::mutex registry_mutex;
       std::condition_variable registry_cv;	/* signaled when a session signs off */
       std::unordered_map<std::uint32_t, session_entry> registry;
+      std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> auto_pressure;
       std::uint32_t next_token = 1;
 
       /* sign-off callbacks still touching this manager after their registry
@@ -305,7 +370,88 @@ namespace cubconn
       if (it != m->registry.end ())
 	{
 	  it->second.tran_index = tran_index;
+	  std::lock_guard<std::mutex> binding_guard (it->second.binding->mutex);
+	  if (!it->second.binding->closing)
+	    {
+	      it->second.binding->tran_index = tran_index;
+	    }
 	}
+    }
+
+    void
+    registry_auto_enable (std::uint32_t token, int wake_fd)
+    {
+      manager *m = adoption_Manager;
+      if (m == nullptr)
+        {
+          return;
+        }
+      std::lock_guard<std::mutex> guard (m->registry_mutex);
+      auto it = m->registry.find (token);
+      if (it != m->registry.end ())
+        {
+          current_binding = it->second.binding;
+          std::lock_guard<std::mutex> binding_guard (current_binding->mutex);
+          current_binding->wake_fd = wake_fd;
+          auto &pressure = m->auto_pressure[it->second.broker_name];
+          if (pressure == nullptr)
+            {
+              pressure = std::make_shared<std::atomic<bool>> (false);
+            }
+          current_binding->pressure = pressure;
+        }
+    }
+
+    void
+    registry_auto_ready (bool ready)
+    {
+      if (current_binding != nullptr)
+        {
+          current_binding->auto_ready.store (ready, std::memory_order_release);
+          if (ready && current_binding->pressure != nullptr && current_binding->pressure->exchange (false))
+            {
+              const std::uint64_t one = 1;
+              (void) write (current_binding->wake_fd, &one, sizeof (one));
+            }
+        }
+    }
+
+    static void
+    yield_idle (manager &m, const channel &ch, bool wanted)
+    {
+      std::shared_ptr<session_binding> binding;
+      {
+        std::lock_guard<std::mutex> guard (m.registry_mutex);
+        auto &pressure = m.auto_pressure[ch.broker_name];
+        if (pressure == nullptr)
+          {
+            pressure = std::make_shared<std::atomic<bool>> (false);
+          }
+        pressure->store (wanted);
+        if (!wanted)
+          {
+            return;
+          }
+        for (const auto &pair : m.registry)
+          {
+            if (std::strcmp (pair.second.broker_name, ch.broker_name) == 0
+                && pair.second.binding->auto_ready.exchange (false, std::memory_order_acq_rel))
+              {
+                binding = pair.second.binding;
+                if (!pressure->exchange (false))
+                  {
+                    binding.reset ();
+                  }
+                break;
+              }
+          }
+      }
+      binding_pin pin (binding);
+      if (pin.wake_fd >= 0)
+        {
+          const std::uint64_t one = 1;
+          (void) write (pin.wake_fd, &one, sizeof (one));
+        }
     }
 
     void
@@ -639,23 +785,32 @@ namespace cubconn
 	{
 	  return false;
 	}
-      std::lock_guard<std::mutex> guard (m->registry_mutex);
-      for (const auto &pair : m->registry)
+      std::shared_ptr<session_binding> binding;
+      {
+	std::lock_guard<std::mutex> guard (m->registry_mutex);
+	for (const auto &pair : m->registry)
+	  {
+	    if (pair.second.client_id == client_id)
+	      {
+		binding = pair.second.binding;
+		break;
+	      }
+	  }
+      }
+      if (binding == nullptr)
 	{
-	  const session_entry &entry = pair.second;
-	  if (entry.client_id == client_id)
-	    {
-	      /* Cleanup clears this identity under the same mutex before releasing
-	       * either the transaction slot or the driver transport. */
-	      if (tran_index != NULL_TRAN_INDEX)
-		{
-		  (void) logtb_set_tran_index_interrupt (NULL, tran_index, true);
-		}
-	      shutdown (entry.client_fd, SHUT_RDWR);
-	      return true;
-	    }
+	  return false;
 	}
-      return false;
+      binding_pin pin (binding);
+      if (pin.tran_index != NULL_TRAN_INDEX && pin.tran_index == tran_index)
+	{
+	  (void) logtb_set_tran_index_interrupt (NULL, pin.tran_index, true);
+	}
+      if (pin.client_fd >= 0)
+	{
+	  shutdown (pin.client_fd, SHUT_RDWR);
+	}
+      return true;
     }
 
     void
@@ -666,13 +821,27 @@ namespace cubconn
 	{
 	  return;
 	}
-      std::lock_guard<std::mutex> guard (m->registry_mutex);
-      auto it = m->registry.find (token);
-      if (it != m->registry.end ())
+      std::shared_ptr<session_binding> binding;
+      {
+	std::lock_guard<std::mutex> guard (m->registry_mutex);
+	auto it = m->registry.find (token);
+	if (it != m->registry.end ())
+	  {
+	    it->second.client_id = -1;
+	    it->second.tran_index = NULL_TRAN_INDEX;
+	    it->second.stats_slot = NULL;
+	    binding = it->second.binding;
+	  }
+      }
+      if (binding != nullptr)
 	{
-	  it->second.client_id = -1;
-	  it->second.tran_index = NULL_TRAN_INDEX;
-	  it->second.stats_slot = NULL;
+	  std::unique_lock<std::mutex> guard (binding->mutex);
+	  binding->closing = true;
+	  binding->drained.wait (guard, [&binding] { return binding->users == 0; });
+	  binding->tran_index = NULL_TRAN_INDEX;
+	  binding->client_fd = -1;
+	  binding->wake_fd = -1;
+	  binding->auto_ready.store (false, std::memory_order_release);
 	}
     }
 
@@ -785,6 +954,8 @@ namespace cubconn
     void
     registry_session_finished (std::uint32_t token)
     {
+      registry_begin_session_cleanup (token);
+      current_binding.reset ();
       if (token == current_session_token)
 	{
 	  current_histogram.reset ();
@@ -950,6 +1121,7 @@ namespace cubconn
 	entry.config = body.config;
 	std::memcpy (entry.broker_name, ch.broker_name, sizeof (entry.broker_name));
 	entry.client_fd = client_fd;
+	entry.binding->client_fd = client_fd;
 	entry.tran_index = NULL_TRAN_INDEX;
 	entry.fn_status = FN_STATUS_PROBE_BUSY;
 	m.registry.emplace (token, entry);
@@ -971,9 +1143,9 @@ namespace cubconn
       catch (const std::system_error &)
 	{
 	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) client_type);
-	  close (client_fd);
 	  /* already ACKed: sign the token off like a session would */
 	  registry_session_finished (token);
+	  close (client_fd);
 	  return;
 	}
     }
@@ -1083,6 +1255,7 @@ namespace cubconn
 	entry.channel_id = ch.id;
 	std::memcpy (entry.broker_name, params.broker_name.c_str (), params.broker_name.size () + 1);
 	entry.client_fd = client_fd;
+	entry.binding->client_fd = client_fd;
 	entry.tran_index = NULL_TRAN_INDEX;
 	entry.fn_status = FN_STATUS_PROBE_BUSY;
 	entry.direct = true;
@@ -1116,20 +1289,21 @@ namespace cubconn
     static void
     handle_cancel (manager &m, const token_body &body)
     {
-      int tran_index = NULL_TRAN_INDEX;
+      std::shared_ptr<session_binding> binding;
       {
 	std::lock_guard<std::mutex> guard (m.registry_mutex);
 	auto it = m.registry.find (body.token);
 	if (it != m.registry.end ())
 	  {
-	    tran_index = it->second.tran_index;
+	    binding = it->second.binding;
 	  }
       }
-      if (tran_index != NULL_TRAN_INDEX)
+      binding_pin pin (binding);
+      if (pin.tran_index != NULL_TRAN_INDEX)
 	{
 	  /* the query_cancel(SIGUSR1) successor (#117 D4): interrupt the
 	   * session's transaction directly */
-	  (void) logtb_set_tran_index_interrupt (NULL, tran_index, true);
+	  (void) logtb_set_tran_index_interrupt (NULL, pin.tran_index, true);
 	}
     }
 
@@ -1307,6 +1481,14 @@ namespace cubconn
 		  close (handoff_fd);
 		  handoff_fd = -1;
 		}
+	      break;
+	    case msg_op::YIELD_IDLE:
+	      if (header.length == sizeof (token_body))
+	        {
+                  token_body request;
+                  std::memcpy (&request, payload, sizeof (request));
+	          yield_idle (*m, *ch, request.token != 0);
+	        }
 	      break;
 	    case msg_op::DIRECT_CONNECT:
 	      if (header.length == sizeof (direct_connect_body))
@@ -1598,18 +1780,30 @@ channel_done:
        * wait for the sign-offs — sessions must unregister their trans while
        * the server infrastructure is still up */
       bool drained = false;
+      std::vector<std::shared_ptr<session_binding>> bindings;
       {
-	std::unique_lock<std::mutex> lock (m->registry_mutex);
+	std::lock_guard<std::mutex> lock (m->registry_mutex);
 	for (auto &pair : m->registry)
 	  {
-	    shutdown (pair.second.client_fd, SHUT_RDWR);
-	    if (pair.second.tran_index != NULL_TRAN_INDEX)
+	    bindings.push_back (pair.second.binding);
+	  }
+      }
+      for (const auto &binding : bindings)
+	{
+	  binding_pin pin (binding);
+	  if (pin.client_fd >= 0)
+	    {
+	      shutdown (pin.client_fd, SHUT_RDWR);
+	    }
+	  if (pin.tran_index != NULL_TRAN_INDEX)
 	      {
 		/* a session mid-request won't see the fd close until it
 		 * returns to the wire; interrupt its transaction too */
-		(void) logtb_set_tran_index_interrupt (NULL, pair.second.tran_index, true);
+		(void) logtb_set_tran_index_interrupt (NULL, pin.tran_index, true);
 	      }
-	  }
+        }
+      {
+	std::unique_lock<std::mutex> lock (m->registry_mutex);
 	drained = m->registry_cv.wait_for (lock, std::chrono::seconds (30), [m] { return m->registry.empty (); });
 	assert (drained);
       }
