@@ -243,6 +243,7 @@ namespace brd
     std::atomic<int> slots_used { 0 };
     std::mutex slots_mutex;
     std::condition_variable slots_cv;
+    std::uint64_t idle_hint_generation = 0; /* slots_mutex */
 
     /* channels + tokens.  Token counters are per-server, so two databases
      * behind one broker may issue equal token values — the table is a
@@ -479,6 +480,17 @@ namespace brd
 	    break;
 	  }
 
+        if ((adopt::msg_op) header.op == adopt::msg_op::IDLE_HINT)
+          {
+            if (header.length != sizeof (adopt::token_body))
+              {
+                break;
+              }
+            std::lock_guard<std::mutex> guard (m->slots_mutex);
+            m->idle_hint_generation++;
+            m->slots_cv.notify_all ();
+            continue;
+          }
 	if ((adopt::msg_op) header.op == adopt::msg_op::SESSION_END)
 	  {
 	    if (header.length == sizeof (adopt::token_body))
@@ -1533,24 +1545,86 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
        * as the idle-CAS wait it replaces (#117 D3) */
       while (m->slots_used.load () >= m->max_slots && !m->stopping.load ())
 	{
-          std::shared_ptr<channel> yield_channel = channel_get_or_dial (*m, db_name);
-          if (yield_channel != nullptr && m->shm->keep_connection == KEEP_CON_AUTO)
+          std::uint64_t seen_hint;
+          {
+            std::lock_guard<std::mutex> guard (m->slots_mutex);
+            seen_hint = m->idle_hint_generation;
+          }
+          std::vector<std::shared_ptr<channel>> yield_channels;
+          if (m->shm->keep_connection == KEEP_CON_AUTO)
             {
-              adopt::token_body wanted;
-              wanted.token = 1;
-              (void) channel_send (*yield_channel, adopt::msg_op::YIELD_IDLE, &wanted, sizeof (wanted));
+              std::set<std::string> owners;
+              {
+                std::lock_guard<std::mutex> guard (m->tokens_mutex);
+                for (const auto &entry : m->tokens)
+                  {
+                    owners.insert (entry.second.db_name);
+                  }
+              }
+              for (const auto &owner : owners)
+                {
+                  auto ch = channel_get_or_dial (*m, owner);
+                  if (ch != nullptr)
+                    {
+                      yield_channels.push_back (ch);
+                    }
+                }
+            }
+          if (m->slots_used.load () < m->max_slots)
+            {
+              break;
+            }
+          bool watching_idle = false;
+          if (yield_channels.size () == 1)
+            {
+              // The slot owner may be a different DB from the new request.
+              adopt::token_body wanted = { 1 };
+              (void) channel_send (*yield_channels.front (), adopt::msg_op::YIELD_IDLE, &wanted, sizeof (wanted));
+            }
+          else if (yield_channels.size () > 1)
+            {
+              bool claimed = false;
+              for (const auto &ch : yield_channels)
+                {
+                  adopt::msg_header reply_header;
+                  adopt::token_body reply = { 0 };
+                  if (channel_request (*ch, adopt::msg_op::YIELD_TRY, nullptr, 0, nullptr, 0, -1,
+                                       &reply_header, &reply, sizeof (reply)) == 0
+                      && (adopt::msg_op) reply_header.op == adopt::msg_op::YIELD_TRY_REPLY
+                      && reply_header.length == sizeof (reply) && reply.token != 0)
+                    {
+                      claimed = true;
+                      break;
+                    }
+                }
+              if (!claimed)
+                {
+                  watching_idle = true;
+                  adopt::token_body wanted = { 1 };
+                  for (const auto &ch : yield_channels)
+                    {
+                      (void) channel_send (*ch, adopt::msg_op::IDLE_WATCH, &wanted, sizeof (wanted));
+                    }
+                }
             }
           std::unique_lock<std::mutex> guard (m->slots_mutex);
-          bool available = m->slots_cv.wait_until (guard, admission_deadline,
-                              [m] { return m->slots_used.load () < m->max_slots || m->stopping.load (); });
+          bool awakened = m->slots_cv.wait_until (guard, admission_deadline,
+                            [&] { return m->slots_used.load () < m->max_slots || m->stopping.load ()
+                                         || (watching_idle && m->idle_hint_generation != seen_hint); });
           guard.unlock ();
-          if (yield_channel != nullptr)
+          adopt::token_body cancel = { 0 };
+          if (yield_channels.size () == 1)
             {
-              adopt::token_body wanted;
-              wanted.token = 0;
-              (void) channel_send (*yield_channel, adopt::msg_op::YIELD_IDLE, &wanted, sizeof (wanted));
+              (void) channel_send (*yield_channels.front (), adopt::msg_op::YIELD_IDLE, &cancel, sizeof (cancel));
             }
-          if (!available)
+          else if (watching_idle)
+            {
+              for (const auto &ch : yield_channels)
+                {
+                  (void) channel_send (*ch, adopt::msg_op::IDLE_WATCH, &cancel, sizeof (cancel));
+                }
+            }
+          if (!awakened)
             {
               reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
               close (job->clt_sock_fd);
@@ -1669,9 +1743,11 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
 	  std::memcpy (&reject, reply_body, sizeof (reject));
 	  if ((adopt::reject_reason) reject.reason == adopt::reject_reason::CLIENTS_EXCEEDED)
 	    {
-	      /* server-side backstop tripped: wait and retry (#117 D3) */
-	      std::this_thread::sleep_for (std::chrono::milliseconds (30));
-	      continue;
+              /* This DB cannot admit the connection. Return the existing
+               * retryable error instead of indefinitely blocking unrelated
+               * database handoffs behind this job. A negative ACK proves no
+               * server session or client-wire writer was started. */
+              brd_debug ("handoff db=%s: server capacity rejected", db_name);
 	    }
 	}
 

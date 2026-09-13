@@ -241,7 +241,10 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 
   new_req_sock_fd = INVALID_SOCKET;
 #if defined (SERVER_MODE)
-  cubconn::adoption::registry_auto_ready (false);
+  if (!cubconn::adoption::registry_auto_begin_request ())
+    {
+      as_info->con_status = CON_STATUS_CLOSE_AND_CONNECT;
+    }
 #endif
 
 #if defined (SERVER_MODE)

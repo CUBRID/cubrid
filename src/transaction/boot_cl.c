@@ -1538,23 +1538,6 @@ error:
   return error_code;
 }
 
-/*
- * boot_shutdown_client () - shutdown client
- *
- * returns : NO_ERROR if all OK, ER_ status otherwise
- *
- *   is_er_final(in) :
- *
- * Note:
- *              This function should be called before the CUBRID
- *              application is finished. This function will notify the
- *              recovery manager that the application has finished and will
- *              terminate all client modules (e.g., allocation of memory is
- *              deallocated).If there are active transactions, they are either
- *              committed or aborted according to the commit_on_shutdown
- *              system parameter.
- */
-
 #if defined (SERVER_MODE)
 /* A retained AUTO session already owns its workspace and settings. Only the
  * registration and authenticated transport identity are new. Failure must
@@ -1607,6 +1590,23 @@ boot_resume_client (BOOT_CLIENT_CREDENTIAL *client_credential, const char *passw
   return error;
 }
 #endif
+
+/*
+ * boot_shutdown_client () - shutdown client
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   is_er_final(in) :
+ *
+ * Note:
+ *              This function should be called before the CUBRID
+ *              application is finished. This function will notify the
+ *              recovery manager that the application has finished and will
+ *              terminate all client modules (e.g., allocation of memory is
+ *              deallocated).If there are active transactions, they are either
+ *              committed or aborted according to the commit_on_shutdown
+ *              system parameter.
+ */
 
 int
 boot_shutdown_client (bool is_er_final)

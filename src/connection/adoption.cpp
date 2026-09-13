@@ -85,7 +85,7 @@ namespace cubconn
     static const std::int32_t FN_STATUS_PROBE_NONE = -2;
     static const std::int32_t FN_STATUS_PROBE_BUSY = 1;
 
-    struct channel
+    struct channel : std::enable_shared_from_this<channel>
     {
       std::uint64_t id;
       int fd;			/* -1 once invalidated; guarded by send_mutex */
@@ -127,6 +127,15 @@ namespace cubconn
     /* Out-of-band users pin the binding, not a recyclable transaction index
      * or descriptor. Cleanup closes the binding and drains these short-lived
      * pins before returning either resource to its allocator. */
+    enum class execution_state { busy, idle, yielded, closing };
+
+    struct auto_group
+    {
+      std::atomic<bool> yield_requested { false };
+      std::atomic<bool> watch_requested { false };
+      std::shared_ptr<channel> watch_channel;
+    };
+
     struct session_binding
     {
       std::mutex mutex;
@@ -136,8 +145,9 @@ namespace cubconn
       int tran_index = NULL_TRAN_INDEX;
       int client_fd = -1;
       int wake_fd = -1;
-      std::atomic<bool> auto_ready { false };
-      std::shared_ptr<std::atomic<bool>> pressure;
+      std::atomic<execution_state> state { execution_state::busy };
+      std::atomic<std::uint64_t> idle_since { 0 };
+      std::shared_ptr<auto_group> pressure;
     };
 
     class binding_pin
@@ -242,7 +252,7 @@ namespace cubconn
       std::mutex registry_mutex;
       std::condition_variable registry_cv;	/* signaled when a session signs off */
       std::unordered_map<std::uint32_t, session_entry> registry;
-      std::unordered_map<std::string, std::shared_ptr<std::atomic<bool>>> auto_pressure;
+      std::unordered_map<std::string, std::shared_ptr<auto_group>> auto_pressure;
       std::uint32_t next_token = 1;
 
       /* Connection-bound execution: no per-SQL queue or thread migration.
@@ -422,7 +432,7 @@ namespace cubconn
               auto &pressure = m->auto_pressure[it->second.broker_name];
               if (pressure == nullptr)
                 {
-                  pressure = std::make_shared<std::atomic<bool>> (false);
+                  pressure = std::make_shared<auto_group> ();
                 }
               current_binding->pressure = pressure;
               return true;
@@ -440,17 +450,55 @@ namespace cubconn
     {
       if (current_binding != nullptr)
         {
+          if (ready)
+            {
+              current_binding->idle_since.store (std::chrono::steady_clock::now ().time_since_epoch ().count (),
+                                                  std::memory_order_relaxed);
+            }
           /* SC publication pairs with pressure-before-candidate-scan below;
            * neither side may miss the other's transition and lose a wakeup.
            * With no pressure the shared group flag is read-only. */
-          current_binding->auto_ready.store (ready);
-          if (ready && current_binding->pressure != nullptr && current_binding->pressure->load ()
-              && current_binding->pressure->exchange (false))
+          current_binding->state.store (ready ? execution_state::idle : execution_state::busy);
+          if (ready && current_binding->pressure != nullptr && current_binding->pressure->yield_requested.load ()
+              && current_binding->pressure->yield_requested.exchange (false))
             {
+              execution_state expected = execution_state::idle;
+              if (!current_binding->state.compare_exchange_strong (expected, execution_state::yielded))
+                {
+                  return;
+                }
               const std::uint64_t one = 1;
               (void) write (current_binding->wake_fd, &one, sizeof (one));
             }
+          if (ready && current_binding->pressure != nullptr && current_binding->pressure->watch_requested.load ()
+              && current_binding->state.load () == execution_state::idle
+              && current_binding->pressure->watch_requested.exchange (false))
+            {
+              auto ch = std::atomic_load (&current_binding->pressure->watch_channel);
+              if (ch != nullptr)
+                {
+                  token_body hint = { 0 };
+                  (void) send_message (*ch, msg_op::IDLE_HINT, &hint, sizeof (hint));
+                }
+            }
         }
+    }
+
+    bool
+    registry_auto_begin_request (void)
+    {
+      if (current_binding == nullptr)
+        {
+          return true;
+        }
+      execution_state expected = execution_state::idle;
+      if (current_binding->state.compare_exchange_strong (expected, execution_state::busy))
+        {
+          return true;
+        }
+      /* IN_TRAN requests never entered the idle candidate set. A request
+       * that loses to yield must not execute even if its header was read. */
+      return expected == execution_state::busy;
     }
 
     static void
@@ -465,23 +513,43 @@ namespace cubconn
             return;
           }
         const auto &pressure = found->second;
-        pressure->store (wanted);
+        pressure->yield_requested.store (wanted);
         if (!wanted)
           {
             return;
           }
-        for (const auto &pair : m.registry)
+        for (std::size_t attempts = 0; attempts < m.registry.size (); attempts++)
           {
-            if (std::strcmp (pair.second.broker_name, ch.broker_name) == 0
-                && pair.second.binding->auto_ready.exchange (false))
+            std::shared_ptr<session_binding> oldest;
+            std::uint64_t oldest_time = UINT64_MAX;
+            for (const auto &pair : m.registry)
               {
-                binding = pair.second.binding;
-                if (!pressure->exchange (false))
+                const auto &candidate = pair.second.binding;
+                if (std::strcmp (pair.second.broker_name, ch.broker_name) == 0
+                    && candidate->state.load () == execution_state::idle)
                   {
-                    binding.reset ();
+                    std::uint64_t since = candidate->idle_since.load (std::memory_order_relaxed);
+                    if (oldest == nullptr || since < oldest_time)
+                      {
+                        oldest = candidate;
+                        oldest_time = since;
+                      }
                   }
+              }
+            if (oldest == nullptr || !pressure->yield_requested.exchange (false))
+              {
                 break;
               }
+            /* Claim demand before withdrawing readiness. Another executor
+             * may already have consumed it; never strand an idle candidate
+             * by clearing its hint without actually delivering its wakeup. */
+            execution_state expected = execution_state::idle;
+            if (oldest->state.compare_exchange_strong (expected, execution_state::yielded))
+              {
+                binding = std::move (oldest);
+                break;
+              }
+            pressure->yield_requested.store (true);
           }
       }
       binding_pin pin (binding);
@@ -489,6 +557,97 @@ namespace cubconn
         {
           const std::uint64_t one = 1;
           (void) write (pin.wake_fd, &one, sizeof (one));
+        }
+    }
+
+    static bool
+    try_yield_idle (manager &m, const channel &ch)
+    {
+      std::shared_ptr<session_binding> binding;
+      {
+        std::lock_guard<std::mutex> guard (m.registry_mutex);
+        for (std::size_t attempt = 0; attempt < m.registry.size (); attempt++)
+          {
+            std::shared_ptr<session_binding> oldest;
+            std::uint64_t oldest_time = UINT64_MAX;
+            for (const auto &pair : m.registry)
+              {
+                const auto &candidate = pair.second.binding;
+                if (std::strcmp (pair.second.broker_name, ch.broker_name) == 0
+                    && candidate->state.load () == execution_state::idle)
+                  {
+                    std::uint64_t since = candidate->idle_since.load (std::memory_order_relaxed);
+                    if (oldest == nullptr || since < oldest_time)
+                      {
+                        oldest = candidate;
+                        oldest_time = since;
+                      }
+                  }
+              }
+            if (oldest == nullptr)
+              {
+                break;
+              }
+            execution_state expected = execution_state::idle;
+            if (oldest->state.compare_exchange_strong (expected, execution_state::yielded))
+              {
+                binding = std::move (oldest);
+                break;
+              }
+          }
+      }
+      binding_pin pin (binding);
+      if (pin.wake_fd < 0)
+        {
+          return false;
+        }
+      const std::uint64_t one = 1;
+      ssize_t sent;
+      do
+        {
+          sent = write (pin.wake_fd, &one, sizeof (one));
+        }
+      while (sent < 0 && errno == EINTR);
+      if (sent != (ssize_t) sizeof (one))
+        {
+          execution_state expected = execution_state::yielded;
+          (void) binding->state.compare_exchange_strong (expected, execution_state::idle);
+          return false;
+        }
+      return true;
+    }
+
+    static void
+    watch_idle (manager &m, channel &ch, bool enabled)
+    {
+      bool notify = false;
+      {
+        std::lock_guard<std::mutex> guard (m.registry_mutex);
+        auto found = m.auto_pressure.find (ch.broker_name);
+        if (found == m.auto_pressure.end ())
+          {
+            return;
+          }
+        auto &group = *found->second;
+        std::atomic_store (&group.watch_channel, ch.shared_from_this ());
+        group.watch_requested.store (enabled);
+        if (enabled)
+          {
+            for (const auto &pair : m.registry)
+              {
+                if (std::strcmp (pair.second.broker_name, ch.broker_name) == 0
+                    && pair.second.binding->state.load () == execution_state::idle)
+                  {
+                    notify = group.watch_requested.exchange (false);
+                    break;
+                  }
+              }
+          }
+      }
+      if (notify)
+        {
+          token_body hint = { 0 };
+          (void) send_message (ch, msg_op::IDLE_HINT, &hint, sizeof (hint));
         }
     }
 
@@ -879,7 +1038,7 @@ namespace cubconn
 	  binding->tran_index = NULL_TRAN_INDEX;
 	  binding->client_fd = -1;
 	  binding->wake_fd = -1;
-	  binding->auto_ready.store (false, std::memory_order_release);
+	  binding->state.store (execution_state::closing);
 	}
     }
 
@@ -1732,6 +1891,21 @@ namespace cubconn
 	          yield_idle (*m, *ch, request.token != 0);
 	        }
 	      break;
+            case msg_op::YIELD_TRY:
+              if (header.length == 0)
+                {
+                  token_body reply = { try_yield_idle (*m, *ch) ? 1u : 0u };
+                  (void) send_message (*ch, msg_op::YIELD_TRY_REPLY, &reply, sizeof (reply));
+                }
+              break;
+            case msg_op::IDLE_WATCH:
+              if (header.length == sizeof (token_body))
+                {
+                  token_body request;
+                  std::memcpy (&request, payload, sizeof (request));
+                  watch_idle (*m, *ch, request.token != 0);
+                }
+              break;
 	    case msg_op::DIRECT_CONNECT:
 	      if (header.length == sizeof (direct_connect_body))
 		{

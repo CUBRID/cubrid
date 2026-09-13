@@ -48,7 +48,7 @@ namespace cubconn
     /* ------------------------------------------------------------------ */
 
     static const std::uint32_t PROTO_MAGIC = 0x41444F50;	/* "ADOP" */
-    static const std::uint32_t PROTO_VERSION = 5;
+    static const std::uint32_t PROTO_VERSION = 6;
 
     enum class msg_op : std::uint32_t
     {
@@ -76,7 +76,11 @@ namespace cubconn
       STATUS_REPLY = 12,	/* body: status_reply_body */
       RESYNC_REPLY = 13,	/* body: resync_reply_body */
       SESSION_CONFIG_REPLY = 15,
-      SESSION_END = 14		/* async; body: token_body (frees a broker slot, #117 D3) */
+      SESSION_END = 14,		/* async; body: token_body (frees a broker slot, #117 D3) */
+      YIELD_TRY = 16,            /* claim an already-idle attachment, never arm a future yield */
+      YIELD_TRY_REPLY = 17,      /* token_body: nonzero when a yield was claimed */
+      IDLE_WATCH = 18,           /* token_body: enable/disable one idle notification */
+      IDLE_HINT = 19             /* async availability hint; does not return a slot */
     };
 
     struct msg_header
@@ -228,6 +232,7 @@ namespace cubconn
     void registry_begin_session_cleanup (std::uint32_t token);
     bool registry_auto_enable (std::uint32_t token, int wake_fd);
     void registry_auto_ready (bool ready);
+    bool registry_auto_begin_request (void);
     std::size_t registry_stats_snapshot (session_stat_row *rows, std::size_t max_rows);
     void registry_set_fn_status (std::uint32_t token, int fn_status);
     void registry_set_session_id (std::uint32_t token, unsigned int session_id);
