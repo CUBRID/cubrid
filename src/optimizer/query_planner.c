@@ -3349,7 +3349,11 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   /* add to out terms */
   bitset_union (&sarg_out_terms, &(plan->plan_un.join.join_terms));
 
-  if (IS_OUTER_JOIN_TYPE (join_type))
+  /* an anti join is structurally JOIN_INNER (IS_OUTER_JOIN_TYPE is false for it), but it still
+   * needs its during/after join terms wired onto the plan the same way a real outer join does;
+   * qo_plan_semi_anti_join_type() recovers the anti/semi intent from the inner's representative
+   * scan node (known limitation: returns PT_JOIN_NONE for a composite, multi-node inner). */
+  if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (inner) == PT_JOIN_ANTI)
     {
       /* set during join terms */
       bitset_assign (&(plan->plan_un.join.during_join_terms), duj_terms);
@@ -4137,7 +4141,15 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       break;
 
     case JOIN_INNER:
-      if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
+      if (qo_plan_semi_anti_join_type (inner_plan_p) != PT_JOIN_NONE)
+	{
+	  /* semi/anti: execution always builds the inner side regardless of relative size
+	   * (see hjoin_init_context()), so the cost model must charge the inner-build cost
+	   * too, not whichever direction happens to be cheaper. */
+	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
+	  plan_p->variable_io_cost += inner_build_io_cost;
+	}
+      else if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
 	{
 	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
 	  plan_p->variable_io_cost += inner_build_io_cost;
@@ -6702,8 +6714,9 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
     }
 
-  /* inner is single class spec; for a semi/anti inner ignore USE_MERGE/USE_HASH (merge/hash unsupported in v1)
-   * so NL/IDX still survives (M3 hint neutralization) */
+  /* inner is single class spec; for a semi/anti inner ignore USE_MERGE (merge unsupported for
+   * semi/anti) so IDX still survives that hint, but honor USE_HASH now that semi/anti hash
+   * join is supported (M3 hint neutralization lifted for hash only, kept for merge). */
   if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_NL))
     {
       /* join hint: force idx-join */
@@ -6713,8 +6726,7 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       /* join hint: force merge-join; skip idx-join */
       goto exit;
     }
-  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	   && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
     {
       /* join hint: force hash-join; skip idx-join */
       goto exit;
@@ -6836,7 +6848,9 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   else
     {
       /* At here, inner is single class spec */
-      /* for a semi/anti inner ignore USE_MERGE/USE_HASH (merge/hash unsupported in v1) so NL survives */
+      /* for a semi/anti inner ignore USE_MERGE (merge unsupported for semi/anti) so NL still
+       * survives that hint, but honor USE_HASH now that semi/anti hash join is supported
+       * (M3 hint neutralization lifted for hash only, kept for merge). */
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
       if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
 	{
@@ -6848,8 +6862,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  /* join hint: force idx-join, merge-join; skip nl-join */
 	  goto exit;
 	}
-      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	       && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
 	{
 	  /* join hint: force hash-join; skip nl-join */
 	  goto exit;
@@ -7147,30 +7160,23 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* inner_node is the single-class inner used for the key-limit / index checks below. */
-  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
-
-  /* Determine the node that carries the join-method hint.  For a right outer join the
-   * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
-   * from there - consistent with qo_examine_idx_join / qo_examine_nl_join - so that
-   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins.  A
-   * table-level hint applies only when that side is a single class; for a multi-node
-   * (temp) inner the table hint is not applicable and the cost decides. */
+  /* Convert a right outer join to a left outer join, same as qo_examine_nl_join() /
+   * qo_examine_idx_join(): swap the outer/inner QO_INFO themselves, so every check below
+   * (hint node, key-limit, best-plan lookup, and the final qo_join_new() call) just works
+   * on the new outer/inner without a separate JOIN_RIGHT branch. The bitsets (terms) are
+   * direction-agnostic and need no adjustment. */
   if (join_type == JOIN_RIGHT)
     {
-      if (bitset_cardinality (&(outer->nodes)) == 1)
-	{
-	  hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-	}
-      else
-	{
-	  hint_node = NULL;
-	}
+      QO_INFO *tmp = outer;
+
+      outer = inner;
+      inner = tmp;
+      join_type = JOIN_LEFT;
     }
-  else
-    {
-      hint_node = inner_node;
-    }
+
+  /* inner_node is the single-class inner used for the key-limit / index checks below. */
+  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+  hint_node = inner_node;
 
   if (hint_node != NULL)
     {
@@ -8238,7 +8244,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		      }
 		    else
 		      {		/* non-eq edge */
-			if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
+			/* an anti join's ON-clause term is structurally JOIN_INNER (IS_OUTER_JOIN_TYPE
+			 * is false for it), so it needs its own check here alongside real outer joins;
+			 * see qo_classify_outerjoin_terms() for the matching single-relation case. */
+			if (QO_ON_COND_TERM (term)
+			    && (IS_OUTER_JOIN_TYPE (join_type)
+				|| QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (planner->env, QO_TERM_LOCATION (term))) ==
+				PT_JOIN_ANTI))
 			  {	/* ON clause */
 			    bitset_add (&duj_terms, i);	/* need for m-join */
 			  }
@@ -8280,7 +8292,10 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      }
 	    else if (QO_TERM_CLASS (term) == QO_TC_OTHER)
 	      {
-		if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
+		/* see the QO_TC_JOIN non-eq-edge case above for why anti joins need their own check */
+		if (QO_ON_COND_TERM (term)
+		    && (IS_OUTER_JOIN_TYPE (join_type)
+			|| QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (planner->env, QO_TERM_LOCATION (term))) == PT_JOIN_ANTI))
 		  {		/* ON clause */
 		    bitset_add (&duj_terms, i);
 		  }
@@ -8385,13 +8400,19 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       BITSET eqclasses;
+      PT_JOIN_TYPE tail_join_type = QO_NODE_PT_JOIN_TYPE (tail_node);
+      bool is_semi_anti = (tail_join_type == PT_JOIN_SEMI || tail_join_type == PT_JOIN_ANTI);
 
       bitset_init (&eqclasses, planner->env);
 
 
       selectivity = 1.0;	/* init */
 
-      cardinality = head_info->cardinality * tail_info->cardinality;
+      /* semi/anti: keep cardinality driven by the outer (head) side alone, not a cross
+       * product, so an inner (tail) side estimated at 0 rows does not zero this out below
+       * and skip the semi/anti reestimate further down — an empty inner still yields
+       * Nouter rows for anti. */
+      cardinality = is_semi_anti ? head_info->cardinality : (head_info->cardinality * tail_info->cardinality);
       total_rows = head_info->total_rows * tail_info->total_rows;
       head_hit_prob = 1.0;
       tail_hit_prob = 1.0;
@@ -8446,6 +8467,22 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  cardinality = MAX (1.0, cardinality);
 	  total_rows *= selectivity;
 	  total_rows = MAX (1.0, total_rows);
+
+	  if (is_semi_anti)
+	    {
+	      /* A plain Nouter*Ninner*s cross-product estimate does not apply to semi/anti,
+	       * which emit at most one output row per outer (head) row. Reestimate via the
+	       * probability that at least one (semi) / none (anti) of the Ninner inner (tail)
+	       * rows matches this outer row, from the same equi-condition selectivity s
+	       * accumulated above. Ninner == 0 correctly yields 0 for semi and Nouter for anti. */
+	      double no_match_base = MAX (0.0, 1.0 - selectivity);
+	      double no_match_prob = pow (no_match_base, tail_info->cardinality);
+
+	      cardinality = (tail_join_type == PT_JOIN_ANTI)
+		? (head_info->cardinality * no_match_prob) : (head_info->cardinality * (1.0 - no_match_prob));
+	      cardinality = MAX (1.0, cardinality);
+	      total_rows = cardinality;
+	    }
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
 	    {
@@ -8538,7 +8575,9 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	/* semi/anti hash join is now supported, so the M3 prune is lifted here only — the
+	 * merge-join prune above (STEP 5-4) stays in place, out of scope for this ticket. */
+	if (!bitset_is_empty (&sm_join_terms))
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
