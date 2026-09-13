@@ -1137,6 +1137,23 @@ namespace cubconn
       return config.mask != 0;
     }
 
+    int
+    registry_session_timeout (std::uint32_t token)
+    {
+      manager *m = adoption_Manager;
+      if (m == NULL)
+	{
+	  return 0;
+	}
+      std::lock_guard<std::mutex> guard (m->registry_mutex);
+      auto it = m->registry.find (token);
+      if (it == m->registry.end () || it->second.config.mask == 0)
+	{
+	  return 0;
+	}
+      return it->second.config.runtime.session_timeout;
+    }
+
     void
     registry_set_fn_status (std::uint32_t token, int fn_status)
     {

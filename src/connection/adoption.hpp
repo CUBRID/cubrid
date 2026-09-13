@@ -237,6 +237,9 @@ namespace cubconn
     void registry_set_fn_status (std::uint32_t token, int fn_status);
     void registry_set_session_id (std::uint32_t token, unsigned int session_id);
     bool registry_take_session_config (broker_session_config &config);
+    /* SESSION_TIMEOUT of the broker that handed off this token (0 when unknown);
+     * read-only, does not consume the config generation */
+    int registry_session_timeout (std::uint32_t token);
     /* Optional accounting of completed driver requests. Byte counts include
      * protocol framing; processing time excludes the initial read and final
      * reply write. Histogram control requests do not account themselves. */

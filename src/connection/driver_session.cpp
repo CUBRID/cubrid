@@ -593,6 +593,23 @@ namespace cubconn
        * READ_FROM_NET/WRITE_TO_NET — through the session's TLS channel. */
       const bool is_ssl = IS_SSL_CLIENT (params.driver_header);
       const bool auto_mode = !params.direct && params.broker_info[BROKER_INFO_KEEP_CONNECTION] == 0;
+
+      /* contract (workspace#259 axis 4, 2026-09-14): everything before the
+       * connect reply (TLS handshake, db_info, authentication) is bounded by
+       * the broker's SESSION_TIMEOUT; a peer that stalls here holds no
+       * session and no slot beyond it.  Cleared before the request loop,
+       * whose own idle/IN_TRAN timeouts take over. */
+      {
+	struct timeval pre_auth_tv;
+	const int pre_auth_seconds = params.direct ? 0 : registry_session_timeout (params.token);
+	pre_auth_tv.tv_sec = pre_auth_seconds > 0 ? pre_auth_seconds : 0;
+	pre_auth_tv.tv_usec = 0;
+	if (pre_auth_tv.tv_sec > 0 && !params.direct)
+	  {
+	    (void) setsockopt (params.client_fd, SOL_SOCKET, SO_RCVTIMEO, &pre_auth_tv, sizeof (pre_auth_tv));
+	    (void) setsockopt (params.client_fd, SOL_SOCKET, SO_SNDTIMEO, &pre_auth_tv, sizeof (pre_auth_tv));
+	  }
+      }
       if (is_ssl)
 	{
 	  if (cas_init_ssl (params.client_fd) < 0
@@ -957,6 +974,12 @@ namespace cubconn
       cas_log_write_and_end (0, false, "connect db %s@%s user %s session id %u", as_info->database_name,
 			     as_info->database_host, info.db_user, as_info->session_id);
 
+      {
+	/* pre-auth bound ends with the connect reply */
+	struct timeval no_tv = { 0, 0 };
+	(void) setsockopt (params.client_fd, SOL_SOCKET, SO_RCVTIMEO, &no_tv, sizeof (no_tv));
+	(void) setsockopt (params.client_fd, SOL_SOCKET, SO_SNDTIMEO, &no_tv, sizeof (no_tv));
+      }
       reply_size = build_connect_reply (params.token, cas_log_slot_index, params.broker_info, session_blob,
 					reply, sizeof (reply));
       if (write_full (params.client_fd, reply, reply_size) != NO_ERROR)
