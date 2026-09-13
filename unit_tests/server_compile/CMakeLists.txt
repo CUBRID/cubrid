@@ -38,3 +38,16 @@ if(UNIX)
 else()
   message(SEND_ERROR "server_compile unit testing is unix-only")
 endif ()
+
+# workspace#259 axis 2: the session-static regression gate runs as part of
+# this unit target, so a new process-global static in the folded client half
+# fails the build instead of compiling silently (see session_static_gate.py).
+find_program(SESSION_STATIC_GATE_PYTHON python3)
+if(SESSION_STATIC_GATE_PYTHON)
+  add_custom_command(TARGET test_server_compile POST_BUILD
+    COMMAND ${SESSION_STATIC_GATE_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/session_static_gate.py --root ${CMAKE_SOURCE_DIR}
+    COMMENT "session_static_gate: file-scope statics in the folded client half vs baseline"
+    VERBATIM)
+else()
+  message(WARNING "python3 not found: session_static_gate is not run with test_server_compile")
+endif()
