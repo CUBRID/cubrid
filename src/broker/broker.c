@@ -903,8 +903,12 @@ receiver_thr_f (void *arg)
 #if !defined(WINDOWS)
 	  else if (br_direct_flag == ON)
 	    {
-	      /* the pid slot carries the server-issued token (#117 D4) */
-	      status = brd_status ((unsigned int) pid);
+	      /* the pid slot carries the server-issued token (#117 D4); the
+	       * control-channel wait happens off the receiver thread and the
+	       * helper owns the socket from here on */
+	      brd_status_reply_async (clt_sock_fd, (unsigned int) pid);
+	      clt_sock_fd = INVALID_SOCKET;
+	      continue;
 	    }
 #endif
 	  else
@@ -965,12 +969,14 @@ receiver_thr_f (void *arg)
 	  if (br_direct_flag == ON)
 	    {
 	      /* pid slot = token; same ip/port anti-spoof, forwarded over
-	       * the control channel instead of SIGUSR1 (#117 D4) */
-	      if (brd_cancel ((unsigned int) pid, (const unsigned char *) &clt_sock_addr.sin_addr,
-			      cas_req_header[0] == 'Q' ? client_port : 0) == 0)
-		{
-		  ret_code = 0;
-		}
+	       * the control channel instead of SIGUSR1 (#117 D4).  The dial /
+	       * reply wait runs off the receiver thread; the helper replies
+	       * and closes the socket. */
+	      brd_cancel_reply_async (clt_sock_fd, (unsigned int) pid, (const unsigned char *) &clt_sock_addr.sin_addr,
+				      cas_req_header[0] == 'Q' ? client_port : 0, cas_req_header[0] == 'X',
+				      cas_req_header);
+	      clt_sock_fd = INVALID_SOCKET;
+	      continue;
 	    }
 	  else if (shm_br->br_info[br_index].shard_flag == OFF)
 	    {

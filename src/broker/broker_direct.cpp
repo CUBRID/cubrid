@@ -54,6 +54,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -1852,4 +1853,109 @@ brd_status (unsigned int token)
   adopt::status_reply_body status;
   std::memcpy (&status, reply_body, sizeof (status));
   return status.fn_status;
+}
+
+/* ------------------------------------------------------------------ */
+/* non-blocking control replies (receiver thread must never wait on   */
+/* the server: dial 10 s / reply 5 s would stop accepting connections) */
+/* ------------------------------------------------------------------ */
+
+namespace
+{
+  /* legacy 4-byte reply of the receiver's CAS_SEND_ERROR_CODE */
+  void
+  brd_send_code (SOCKET fd, int value)
+  {
+    int write_val = htonl (value);
+    (void) brd::send_all (fd, &write_val, sizeof (write_val));
+  }
+
+  /* broker.c send_error_to_driver: renewed error code for a V2 or
+   * renewed-code-capable driver, CAS_CONV_ERROR_TO_OLD otherwise */
+  void
+  brd_send_cancel_frame (SOCKET fd, int error, const char *cas_req_header)
+  {
+    char driver_info[SRV_CON_CLIENT_INFO_SIZE];
+    std::memset (driver_info, 0, sizeof (driver_info));
+    driver_info[SRV_CON_MSG_IDX_PROTO_VERSION] = cas_req_header[2];
+    driver_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] = cas_req_header[3];
+    int write_val;
+    if (error == 0)
+      {
+	write_val = 0;
+      }
+    else if (CAS_MAKE_PROTO_VER (driver_info) == CAS_PROTO_MAKE_VER (PROTOCOL_V2)
+	     || (driver_info[SRV_CON_MSG_IDX_FUNCTION_FLAG] & BROKER_RENEWED_ERROR_CODE))
+      {
+	write_val = htonl (error);
+      }
+    else
+      {
+	write_val = htonl (CAS_CONV_ERROR_TO_OLD (error));
+      }
+    (void) brd::send_all (fd, &write_val, sizeof (write_val));
+  }
+
+  /* run fn on a detached helper; on thread-creation failure reply inline
+   * with the failure value so the driver is never left hanging */
+  template <typename Fn>
+  void
+  brd_detach_or_inline (Fn fn, Fn fallback)
+  {
+    try
+      {
+	std::thread (fn).detach ();
+      }
+    catch (const std::system_error &)
+      {
+	fallback ();
+      }
+  }
+}
+
+void
+brd_status_reply_async (SOCKET clt_sock_fd, unsigned int token)
+{
+  brd_detach_or_inline<std::function<void ()>> (
+    [clt_sock_fd, token] ()
+    {
+      brd_send_code (clt_sock_fd, brd_status (token));
+      close (clt_sock_fd);
+    },
+    [clt_sock_fd] ()
+    {
+      brd_send_code (clt_sock_fd, FN_STATUS_NONE);
+      close (clt_sock_fd);
+    });
+}
+
+void
+brd_cancel_reply_async (SOCKET clt_sock_fd, unsigned int token, const unsigned char *clt_ip,
+			unsigned short clt_port, bool new_frame, const char *cas_req_header)
+{
+  unsigned char ip[4];
+  std::memcpy (ip, clt_ip, sizeof (ip));
+  char header[4];
+  std::memcpy (header, cas_req_header, sizeof (header));
+  auto reply = [clt_sock_fd, new_frame, header] (int ret_code)
+  {
+    if (new_frame)
+      {
+	brd_send_cancel_frame (clt_sock_fd, ret_code, header);
+      }
+    else
+      {
+	brd_send_code (clt_sock_fd, ret_code == 0 ? 0 : CAS_CONV_ERROR_TO_OLD (ret_code));
+      }
+    close (clt_sock_fd);
+  };
+  brd_detach_or_inline<std::function<void ()>> (
+    [reply, token, ip, clt_port] ()
+    {
+      reply (brd_cancel (token, ip, clt_port) == 0 ? 0 : CAS_ER_QUERY_CANCEL);
+    },
+    [reply] ()
+    {
+      reply (CAS_ER_QUERY_CANCEL);
+    });
 }

@@ -70,6 +70,18 @@ extern "C"
  * FN_STATUS_NONE when unknown */
   int brd_status (unsigned int token);
 
+/* receiver thread, non-blocking "ST"/"QC" variants (workspace#259 axis 3):
+ * brd_status/brd_cancel may dial the server (10 s) or wait for a control
+ * reply (5 s); on the receiver thread that stalls new-connection acceptance
+ * for every database behind the broker.  These hand clt_sock_fd to a
+ * short-lived helper thread that computes the reply, writes it and closes
+ * the socket.  The caller must not touch clt_sock_fd afterwards.  new_frame
+ * selects the "X1" reply encoding (driver_info bytes 2-3 of the header) over
+ * the legacy 4-byte CAS_CONV_ERROR_TO_OLD code. */
+  void brd_status_reply_async (SOCKET clt_sock_fd, unsigned int token);
+  void brd_cancel_reply_async (SOCKET clt_sock_fd, unsigned int token, const unsigned char *clt_ip,
+			       unsigned short clt_port, bool new_frame, const char *cas_req_header);
+
 #ifdef __cplusplus
 }
 #endif
