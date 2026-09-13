@@ -455,6 +455,13 @@ namespace brd
 	    ++it;
 	  }
       }
+    /* SESSION_ENDs parked for an ACK that will now never arrive on this
+     * channel would otherwise accumulate for the broker's lifetime
+     * (workspace#259 axis 3: 지연 SESSION_END 영구 적재) */
+    for (auto it = m.orphan_ends.begin (); it != m.orphan_ends.end ();)
+      {
+	it = (it->second == db_name) ? m.orphan_ends.erase (it) : std::next (it);
+      }
   }
 
   /* ------------------------------------------------------------------ */
