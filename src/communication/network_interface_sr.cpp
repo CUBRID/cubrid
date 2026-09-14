@@ -10243,13 +10243,25 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
   OOS_STATS_INFO info;
   int err = NO_ERROR;
 
-  (void) or_unpack_oid (request, &class_oid);
-
   memset (&info, 0, sizeof (info));
-  err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
-  if (err != NO_ERROR)
+
+  /* A request with no payload leaves the buffer NULL: css_internal_request_handler only receives data when the
+   * size is non-zero.  Unpacking it unchecked dereferences NULL and takes the server down. */
+  if (request == NULL || reqlen < OR_OID_SIZE)
     {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
       (void) return_error_to_client (thread_p, rid);
+    }
+  else
+    {
+      (void) or_unpack_oid (request, &class_oid);
+
+      err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
+      if (err != NO_ERROR)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	}
     }
 
   char *ptr = or_pack_int (reply, err);
@@ -10270,28 +10282,82 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
  *   Reply   : data_size (int) + err (int)
  *   Data    : raw bytes when err is NO_ERROR
  */
+/*
+ * unpack_client_locator () - Read a locator string out of an untrusted request buffer.
+ *
+ * Both the buffer and the packed length come from the client.  A request carrying no payload leaves the buffer
+ * NULL (css_internal_request_handler only receives data when the size is non-zero), and the length field is
+ * whatever the sender chose to claim - or_unpack_string_nocopy trusts it and merely advances the pointer.  So
+ * the size is checked before the first unpack and the string is checked to end, NUL and all, inside the bytes
+ * that actually arrived; the caller's strlen-free length comes back here.
+ *
+ *   fixed_len: bytes of fixed arguments ahead of the string.
+ */
+static int
+unpack_client_locator (char *request, int reqlen, int fixed_len, const char **locator, int *locator_len)
+{
+  char *ptr;
+  int packed_len;
+  int string_len;
+
+  *locator = NULL;
+  *locator_len = 0;
+
+  if (request == NULL || reqlen < fixed_len + OR_INT_SIZE)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ptr = request + fixed_len;
+  packed_len = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  if (packed_len < 1 || packed_len > reqlen - fixed_len - OR_INT_SIZE)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* or_pack_string_with_length stores the NUL and the padding to a 4-byte boundary in the length, so the
+   * string ends at the first NUL within it.  strnlen keeps the scan inside the bytes that arrived; reaching
+   * the end without one means the payload is not a packed string. */
+  string_len = (int) strnlen (ptr, (size_t) packed_len);
+  if (string_len == packed_len)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  *locator = ptr;
+  *locator_len = string_len;
+  return NO_ERROR;
+}
+
 void
 sinternal_lob_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr = NULL;
-  char *locator_string = NULL;
+  const char *locator_string = NULL;
   char *buffer = NULL;
   INT64 offset = 0;
   int count = 0;
   int nread = 0;
+  int locator_len = 0;
   int err = NO_ERROR;
   INTERNAL_LOB_LOCATOR locator;
 
-  (void) reqlen;
+  if (unpack_client_locator (request, reqlen, OR_INT64_SIZE + OR_INT_SIZE, &locator_string, &locator_len)
+      != NO_ERROR)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
 
   ptr = or_unpack_int64 (request, &offset);
-  ptr = or_unpack_int (ptr, &count);
-  (void) or_unpack_string_nocopy (ptr, &locator_string);
+  (void) or_unpack_int (ptr, &count);
 
-  if (offset < 0 || count < 0 || locator_string == NULL
-      || !internal_lob_parse_locator_string (locator_string, (int) strlen (locator_string), &locator))
+  if (offset < 0 || count < 0 || !internal_lob_parse_locator_string (locator_string, locator_len, &locator))
     {
       err = ER_GENERIC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -10362,18 +10428,16 @@ sinternal_lob_stream_open (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
 {
   OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  char *locator_string = NULL;
+  const char *locator_string = NULL;
   char *ptr = NULL;
   INT64 token = 0;
+  int locator_len = 0;
   int err = NO_ERROR;
   INTERNAL_LOB_LOCATOR locator;
   internal_lob_stream_cursor cursor;
 
-  (void) reqlen;
-
-  (void) or_unpack_string_nocopy (request, &locator_string);
-  if (locator_string == NULL
-      || !internal_lob_parse_locator_string (locator_string, (int) strlen (locator_string), &locator))
+  if (unpack_client_locator (request, reqlen, 0, &locator_string, &locator_len) != NO_ERROR
+      || !internal_lob_parse_locator_string (locator_string, locator_len, &locator))
     {
       err = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
