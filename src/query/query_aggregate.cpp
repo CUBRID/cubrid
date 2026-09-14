@@ -3296,13 +3296,6 @@ qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_no
   /* set list_id domain, if it's not set */
   if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != TP_DOMAIN_TYPE (agg_p->domain))
     {
-#if !defined(NDEBUG)
-      if (agg_p->list_id->tuple_cnt == 0)
-	{
-	  /* Interpolation may choose a different storage type before the first tuple is written. */
-	  agg_p->list_id->type_list.layout_ready = false;
-	}
-#endif
       agg_p->list_id->type_list.domp[0] = agg_p->domain;
       qfile_set_layout (&agg_p->list_id->type_list);
       agg_p->sort_list->pos_descr.dom = agg_p->domain;

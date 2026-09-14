@@ -1595,6 +1595,9 @@ qfile_add_tuple_to_list_from (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
       qfile_tuple_copy_bytes (page_p, tuple, src_hdr_size, dst_hdr_size, tuple_length, 0, tuple_page_size);
     }
 
+#if !defined(NDEBUG)
+  qfile_type_list_note_tuple (&list_id_p->type_list, tuple, src_hdr_size);
+#endif
   qfile_add_tuple_to_list_id (list_id_p, page_p, tuple_length, tuple_page_size);
 
   prev_page_p = cur_page_p;
@@ -1770,6 +1773,9 @@ qfile_generate_tuple_into_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 
   assert ((page_p + tuple_length - cur_page_p) <= DB_PAGESIZE);
 
+#if !defined(NDEBUG)
+  qfile_type_list_note_tuple (&list_id_p->type_list, page_p, list_id_p->type_list.hdr_size);
+#endif
   qfile_add_tuple_to_list_id (list_id_p, page_p, tuple_length, tuple_length);
 
   qfile_set_dirty_page (thread_p, cur_page_p, DONT_FREE, list_id_p->tfile_vfid);
@@ -1953,6 +1959,10 @@ qfile_add_overflow_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_
   tuple_page_size = MIN (tuple_length, qfile_Max_tuple_page_size);
   memcpy (page_p, tuple, tuple_page_size);
 
+#if !defined(NDEBUG)
+  /* The source's bitmap may span overflow pages; inherit its used layouts instead of reading past this page. */
+  qfile_type_list_merge_bound_values (&list_id_p->type_list, &input_list_id_p->type_list);
+#endif
   qfile_add_tuple_to_list_id (list_id_p, page_p, tuple_length, tuple_page_size);
 
   prev_page_p = cur_page_p;
@@ -2820,6 +2830,9 @@ qfile_append_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE_
   base_list_id->last_offset = append_list_id->last_offset;
   base_list_id->lasttpl_len = append_list_id->lasttpl_len;
 
+#if !defined(NDEBUG)
+  qfile_type_list_merge_bound_values (&base_list_id->type_list, &append_list_id->type_list);
+#endif
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
@@ -2925,6 +2938,9 @@ qfile_connect_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * base_list_id, QFILE
     }
   base_last->dependent_list_id = append_list_id;
 
+#if !defined(NDEBUG)
+  qfile_type_list_merge_bound_values (&base_list_id->type_list, &append_list_id->type_list);
+#endif
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
@@ -2957,6 +2973,12 @@ qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
 
   list_id->tuple_cnt = 0;
   list_id->page_cnt = 0;
+#if !defined(NDEBUG)
+  for (i = 0; i < list_id->type_list.type_cnt; i++)
+    {
+      list_id->type_list.column_layout_array[i].has_bound_value = 0;
+    }
+#endif
   list_id->first_vpid.pageid = NULL_PAGEID;
   list_id->first_vpid.volid = NULL_VOLID;
   list_id->last_vpid.pageid = NULL_PAGEID;
@@ -3020,6 +3042,9 @@ qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, const QFILE_TUPLE_VALU
       return ER_FAILED;
     }
 
+#if !defined(NDEBUG)
+  qfile_type_list_note_tuple (type_list, tplrec->tpl, type_list->hdr_size);
+#endif
   /* all ok */
   return NO_ERROR;
 }
@@ -6832,6 +6857,10 @@ qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   page_p = (char *) cur_page_p + list_id_p->last_offset;
   tuple_page_size = MIN (tuple_length, qfile_Max_tuple_page_size);
   memcpy (page_p, tuple, tuple_page_size);
+
+#if !defined(NDEBUG)
+  qfile_type_list_note_tuple (&list_id_p->type_list, tuple, list_id_p->type_list.hdr_size);
+#endif
 
   /* get the information for our QFILE_TUPLE_POSITION */
   if (tuple_pos)

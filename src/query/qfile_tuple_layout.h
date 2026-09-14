@@ -49,6 +49,9 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * column_lay
   assert (id >= 0 && id <= DB_TYPE_LAST && id <= UINT8_MAX);
   column_layout->byte_offset_in_values = -1;
   column_layout->type_id = (uint8_t) id;
+#if !defined(NDEBUG)
+  column_layout->has_bound_value = 0;
+#endif
 
   if (id == DB_TYPE_VARIABLE || t->has_computed_disk_size ())
     {
@@ -141,6 +144,33 @@ extern int qfile_type_list_copy (QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE
 extern void qfile_set_layout (QFILE_TUPLE_VALUE_TYPE_LIST * type_list);
 #if !defined(NDEBUG)
 extern bool qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list);
+
+/* Track list writes, not descriptor calculation or temporary sort-key assembly.
+ * Only bound columns constrain relayout. */
+inline void
+qfile_type_list_note_tuple (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, const char *tuple, int hdr_size)
+{
+  const unsigned char *bitmap = QFILE_GET_TUPLE_HAS_NULL (tuple) ? QFILE_TUPLE_BITMAP (tuple, hdr_size) : NULL;
+
+  for (int i = 0; i < type_list->type_cnt; i++)
+    {
+      if (bitmap == NULL || QFILE_BITMAP_IS_BOUND (bitmap, i))
+	{
+	  type_list->column_layout_array[i].has_bound_value = 1;
+	}
+    }
+}
+
+/* Page copies/connections inherit the source's used layouts without scanning the copied tuples. */
+inline void
+qfile_type_list_merge_bound_values (const QFILE_TUPLE_VALUE_TYPE_LIST * dest, const QFILE_TUPLE_VALUE_TYPE_LIST * src)
+{
+  assert (dest->type_cnt == src->type_cnt);
+  for (int i = 0; i < dest->type_cnt; i++)
+    {
+      dest->column_layout_array[i].has_bound_value |= src->column_layout_array[i].has_bound_value;
+    }
+}
 #endif
 
 /*

@@ -38,8 +38,8 @@
 #include "memory_wrapper.hpp"
 
 /*
- * qfile_type_list_compute () - pure layout computation: fills column_layout_array[type_cnt] and the list-level fields from
- *   (domp, type_cnt, hdr_size); idempotent.
+ * qfile_type_list_compute () - recompute the domain-derived column and list-level fields from (domp, type_cnt, hdr_size).
+ *   The allocated column array's debug write history is preserved.
  */
 static void
 qfile_type_list_compute (TP_DOMAIN ** domp, int type_cnt, int hdr_size, QFILE_COL_LAYOUT * column_layout_array,
@@ -54,7 +54,13 @@ qfile_type_list_compute (TP_DOMAIN ** domp, int type_cnt, int hdr_size, QFILE_CO
 
   for (i = 0; i < type_cnt; i++)
     {
+#if !defined(NDEBUG)
+      uint16_t has_bound_value = column_layout_array[i].has_bound_value;
+#endif
       qfile_col_layout_of_domain (domp[i], &column_layout_array[i]);
+#if !defined(NDEBUG)
+      column_layout_array[i].has_bound_value = has_bound_value;
+#endif
 
       if (*max_fixed_length_col_cnt != type_cnt)
 	{
@@ -107,6 +113,12 @@ qfile_type_list_alloc (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int type_cnt, in
 	  return ER_FAILED;
 	}
       type_list->column_layout_array = (QFILE_COL_LAYOUT *) (type_list->domp + type_cnt);
+#if !defined(NDEBUG)
+      for (int i = 0; i < type_cnt; i++)
+	{
+	  type_list->column_layout_array[i].has_bound_value = 0;
+	}
+#endif
     }
 
   return NO_ERROR;
@@ -173,14 +185,14 @@ qfile_set_layout (QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
 #if !defined(NDEBUG)
       if (type_list->layout_ready)
 	{
-	  /* Check before overwriting the old descriptor. NULL/VARIABLE columns have only stored NULL so far;
-	   * resolving them may change the cached offsets, but not the interpretation of existing tuple bytes. */
+	  /* A ready descriptor need not have stored any values yet. Even a concrete domain can resolve late
+	   * (e.g. collation/host variables), so only columns with stored non-NULL bytes constrain the new layout. */
 	  for (int i = 0; i < type_list->type_cnt; i++)
 	    {
 	      const QFILE_COL_LAYOUT *old_layout = &type_list->column_layout_array[i];
 	      QFILE_COL_LAYOUT new_layout;
 
-	      if (old_layout->type_id == DB_TYPE_VARIABLE || old_layout->type_id == DB_TYPE_NULL)
+	      if (!old_layout->has_bound_value)
 		{
 		  continue;
 		}
@@ -238,6 +250,12 @@ qfile_type_list_check (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
   if (column_layout_array == NULL)
     {
       return true;		/* cannot check; do not fail the caller for that */
+    }
+
+  /* Write history is independent of the domain-derived fields being checked. */
+  for (int i = 0; i < type_list->type_cnt; i++)
+    {
+      column_layout_array[i].has_bound_value = type_list->column_layout_array[i].has_bound_value;
     }
 
   qfile_type_list_compute (type_list->domp, type_list->type_cnt, type_list->hdr_size, column_layout_array,

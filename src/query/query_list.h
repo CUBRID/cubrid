@@ -314,7 +314,7 @@ struct qfile_tuple_record
 /* Initialize the unbound record with an unstarted cache; bind tuple and layout with the slot setters before reading. */
 #define QFILE_TUPLE_RECORD_INITIALIZER { NULL, 0, NULL, -1, 0, 0, false, 0 }
 
-/* Per-column layout entry of the tuple layout descriptor. Kept at 8 bytes; consider the cost before growing it. */
+/* Per-column layout entry of the tuple layout descriptor. Kept at 8 bytes in release builds. */
 typedef struct qfile_col_layout QFILE_COL_LAYOUT;
 struct qfile_col_layout
 {
@@ -326,6 +326,9 @@ struct qfile_col_layout
   uint8_t alignby;		/* FIXED: 2 | 4. VAR: 1 */
   uint8_t type_id;		/* DB_TYPE of domp[i] (DB_TYPE_VARIABLE while unresolved): lets the assembler check the value's
 				 * type from this entry alone, without the domp[i] -> domain -> type load chain */
+#if !defined(NDEBUG)
+  uint16_t has_bound_value;	/* this layout has been used to store a non-NULL value; not derived from domp */
+#endif
 };
 
 /* Type list structure == tuple layout descriptor.
