@@ -2149,6 +2149,7 @@ jobs:
       WORKDIR: /home
       RUNDIR: ${{ needs.plan.outputs.rundir }}
       BUILD_NS: ${{ needs.plan.outputs.build_ns }}
+      PR: ${{ needs.gate.outputs.pr }}
       SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
     outputs:
       # One per suite, because one commit status per suite hangs off them. A suite
@@ -2612,7 +2613,8 @@ jobs:
                 awk '{print "- `" $0 "`"}' /tmp/dead_shards.list
                 echo
               fi
-              if [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; then
+              # /run is a pull request comment, so a batch run has nowhere to put it.
+              if [ -n "$PR" ] && { [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; }; then
                 # The CTP branch has to ride along, or the re-run silently takes develop.
                 rerun_cmd="/run rerun $GITHUB_RUN_ID"
                 [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
