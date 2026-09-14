@@ -54,3 +54,6 @@ set_tests_properties(
   test_oos_sql_visible_version
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
+
+# Routing rejection and injected cleanup failures collect diagnostic stacks in debug builds.
+set_tests_properties(test_oos_sql_show PROPERTIES TIMEOUT 300)
