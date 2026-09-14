@@ -16,16 +16,24 @@
 #   limitations under the License.
 #
 
+# Removes a database owned by one OOS test binary. Only that database: the registry also holds
+# the shared fixture and whatever else the developer keeps there.
+
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "$script_dir/oos_db_common.sh"
 
+db_name="${1:?database name required}"
+
 oos_require_env
 
-cubrid server stop "$OOS_UNITTESTDB_NAME" 2>/dev/null || true
-if oos_database_exists "$OOS_UNITTESTDB_NAME"; then
-  cubrid deletedb "$OOS_UNITTESTDB_NAME"
+if [ "$db_name" = "$OOS_UNITTESTDB_NAME" ]; then
+  printf 'refusing to delete the shared fixture database %s\n' "$db_name" >&2
+  exit 1
 fi
 
-oos_remove_fixture_sections "$(oos_cubrid_conf)"
+cubrid server stop "$db_name" 2>/dev/null || true
+if oos_database_exists "$db_name"; then
+  cubrid deletedb "$db_name"
+fi

@@ -1,6 +1,6 @@
 # Deferred OOS replacement verification
 
-The replacement is based on `f4299ac0cd777a2a964c1f197ae5ebf9841a4936`.
+The original replacement baseline was `f4299ac0cd777a2a964c1f197ae5ebf9841a4936`.
 A draft PR is a review checkpoint; it does not establish merge readiness.
 Record the source commit, compiler/configuration, binary and shared-library
 SHA-256 hashes, commands, exit codes and retained results for every run.
@@ -32,6 +32,13 @@ Run the catalog-bootstrap regression with the same installation and isolated
 environment as the loader runner, using `test_oos_bootstrap.py`. It creates a
 fresh 4KB database and checks authorization heap diagnostics and catalog users.
 It is a separate utility-level check; CTest does not invoke it.
+
+After integrating the identity-stamp format, use fresh databases for the 24-byte
+OOS inline stubs. Prepared rows must retain the stamp returned by insertion and
+serialize it with the head OOS OID and length. Run prepared-row value/lifetime
+checks, the configured identity-stamp and crash-recovery tests, and the real
+replication and transaction runners. Earlier 16-byte-format results do not
+validate the merged producer paths.
 
 ## Evidence classification
 

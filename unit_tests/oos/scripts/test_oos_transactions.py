@@ -136,6 +136,17 @@ class TransactionFixture(LoaderFixture):
         deadline = time.monotonic() + 10
         while Path(f"/proc/{servers[0]}/exe").exists() and time.monotonic() < deadline:
             time.sleep(0.05)
+        assert not Path(f"/proc/{servers[0]}/exe").exists(), "killed server did not exit"
+        # Process exit precedes the master's disconnect handling. Wait for its
+        # registration to disappear before asking it to start the recovery server.
+        attempt = 0
+        while True:
+            _, output = self.run(f"crash-status-{attempt}", ["cubrid", "server", "status"])
+            if not re.search(r"\bServer\s+t17\s+\(", output):
+                break
+            assert time.monotonic() < deadline, output
+            attempt += 1
+            time.sleep(0.05)
         self.run("restart", ["cubrid", "server", "start", "t17"])
 
     def test(self):
