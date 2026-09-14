@@ -304,16 +304,15 @@ namespace cubconn
       return NO_ERROR;
     }
 
-    /* one framed control message under the channel's send mutex */
+    /* one framed control message; the caller holds ch.send_mutex */
     static int
-    send_message (channel &ch, msg_op op, const void *body, std::size_t body_len)
+    send_message_locked (channel &ch, msg_op op, const void *body, std::size_t body_len)
     {
       msg_header header;
       header.magic = PROTO_MAGIC;
       header.op = (std::uint32_t) op;
       header.length = (std::uint32_t) body_len;
 
-      std::lock_guard<std::mutex> guard (ch.send_mutex);
       if (ch.fd < 0)
 	{
 	  return ER_FAILED;	/* invalidated under this mutex; never write a reused fd */
@@ -327,6 +326,14 @@ namespace cubconn
 	  return ER_FAILED;
 	}
       return NO_ERROR;
+    }
+
+    /* one framed control message under the channel's send mutex */
+    static int
+    send_message (channel &ch, msg_op op, const void *body, std::size_t body_len)
+    {
+      std::lock_guard<std::mutex> guard (ch.send_mutex);
+      return send_message_locked (ch, op, body, body_len);
     }
 
     /* receive len bytes; SCM_RIGHTS fds may ride on any segment (the broker
@@ -1543,9 +1550,13 @@ namespace cubconn
 
       /* ACK strictly before the session may exist: a session that dies fast
        * would otherwise emit SESSION_END ahead of the ACK on this channel and
-       * skew the broker's slot count (codex review F1) */
-      token_body ack;
+       * skew the broker's slot count (codex review F1).  The ACK carries the
+       * registered peer identity so the broker admits the token from its
+       * channel reader, in wire order (workspace#265 axis 3). */
+      resync_token_body ack = {};
       ack.token = token;
+      ack.client_ip = params.client_ip;
+      ack.client_port = params.client_port;
       (void) send_message (ch, msg_op::HANDOFF_ACK, &ack, sizeof (ack));
 
       try
@@ -1752,6 +1763,15 @@ namespace cubconn
        * entries, so a restarted broker rebuilds its token table (codex F2) */
       std::vector<char> buf (sizeof (resync_reply_body));
       std::uint32_t live_count = 0;
+      /* Snapshot/delta order contract (workspace#265 axis 3): the snapshot is
+       * taken and written while holding this channel's send_mutex, so a
+       * SESSION_END for a token in the snapshot can only follow the reply on
+       * the wire (a finisher erases under registry_mutex, then sends under
+       * send_mutex — it never holds both).  A token erased before the
+       * snapshot is absent from it, and its END is an unknown token the
+       * broker ignores.  Lock order send_mutex -> registry_mutex; nobody
+       * takes them the other way round. */
+      std::lock_guard<std::mutex> send_guard (ch.send_mutex);
       {
 	std::lock_guard<std::mutex> guard (m.registry_mutex);
 	for (const auto &pair : m.registry)
@@ -1771,7 +1791,7 @@ namespace cubconn
       resync_reply_body reply;
       reply.live_count = live_count;
       std::memcpy (buf.data (), &reply, sizeof (reply));
-      (void) send_message (ch, msg_op::RESYNC_REPLY, buf.data (), buf.size ());
+      (void) send_message_locked (ch, msg_op::RESYNC_REPLY, buf.data (), buf.size ());
     }
 
     /* ------------------------------------------------------------------ */
@@ -2275,21 +2295,29 @@ channel_done:
 		(void) logtb_set_tran_index_interrupt (NULL, pin.tran_index, true);
 	      }
         }
+      /* Drain policy (workspace#265 axis 3, D-DRAIN): the same contract the
+       * worker pool has in css_stop_all_workers — transactions are interrupted
+       * at once (no wait-for-commit option exists there either) and the
+       * sign-offs get shutdown_wait_time_in_secs; past that the process ends
+       * the way that function ends it.  A session still registered after the
+       * deadline holds server infrastructure this shutdown is about to tear
+       * down, so neither asserting (a core at every slow shutdown) nor
+       * continuing around it (a use-after-free later) is acceptable. */
+      const int wait_secs = prm_get_integer_value (PRM_ID_SHUTDOWN_WAIT_TIME_IN_SECS);
+      std::size_t still_registered = 0;
       {
 	std::unique_lock<std::mutex> lock (m->registry_mutex);
-	drained = m->registry_cv.wait_for (lock, std::chrono::seconds (30), [m] { return m->registry.empty (); });
-	assert (drained);
+	drained = m->registry_cv.wait_for (lock, std::chrono::seconds (wait_secs),
+					   [m] { return m->registry.empty (); });
+	still_registered = m->registry.size ();
       }
 
       if (!drained)
 	{
-	  /* a stuck session still references the manager; freeing it here
-	   * would be a use-after-free in release builds.  The process is
-	   * shutting down — leak the manager instead of racing it. */
-	  er_log_debug (ARG_FILE_LINE, "adoption: sessions still registered after 30s; leaking manager\n");
+	  er_log_debug (ARG_FILE_LINE, "adoption: %zu session(s) still registered after %d s; exiting\n",
+			still_registered, wait_secs);
 	  unlink (m->socket_path.c_str ());
-	  adoption_Manager = NULL;
-	  return;
+	  _exit (0);
 	}
 
       /* a sign-off may still be inside the manager after its registry erase

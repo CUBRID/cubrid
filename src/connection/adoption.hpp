@@ -48,7 +48,7 @@ namespace cubconn
     /* ------------------------------------------------------------------ */
 
     static const std::uint32_t PROTO_MAGIC = 0x41444F50;	/* "ADOP" */
-    static const std::uint32_t PROTO_VERSION = 6;
+    static const std::uint32_t PROTO_VERSION = 7;	/* 7: HANDOFF_ACK carries resync_token_body (workspace#265) */
 
     enum class msg_op : std::uint32_t
     {
@@ -71,7 +71,10 @@ namespace cubconn
 
       /* server -> broker */
       HELLO_ACK = 9,		/* body: hello_ack_body */
-      HANDOFF_ACK = 10,		/* body: token_body (server-issued cancel token) */
+      HANDOFF_ACK = 10,		/* body: resync_token_body (server-issued cancel token +
+				 * the peer identity the server registered, so the
+				 * broker's channel reader can admit the token in wire
+				 * order without the dispatch thread, workspace#265) */
       HANDOFF_REJECT = 11,	/* body: reject_body */
       STATUS_REPLY = 12,	/* body: status_reply_body */
       RESYNC_REPLY = 13,	/* body: resync_reply_body */
@@ -173,7 +176,10 @@ namespace cubconn
      * rebuild its token table — without them every survivor's SESSION_END
      * lands as an unknown token and its slot leaks until the next restart.
      * Preserve the peer port as well: it disambiguates equal tokens issued
-     * by different database server processes behind one broker. */
+     * by different database server processes behind one broker.
+     * Since PROTO_VERSION 7 the same record is the HANDOFF_ACK body: one
+     * admission record shape, whether it arrives as a snapshot entry or as
+     * the delta of a single handoff (workspace#265 axis 3). */
     struct resync_token_body
     {
       std::uint32_t token;

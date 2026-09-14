@@ -55,7 +55,6 @@
 #include <cstring>
 #include <deque>
 #include <functional>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <set>
@@ -203,6 +202,10 @@ namespace brd
     std::string db_name;
     unsigned char clt_ip[4];
     unsigned short clt_port;
+    /* the channel incarnation that admitted this token: a dying channel
+     * drops only its own admissions, never those a successor channel to the
+     * same database has already re-synced (workspace#265 axis 3) */
+    std::uint64_t channel_gen = 0;
   };
 
   struct manager
@@ -239,8 +242,12 @@ namespace brd
     std::mutex db_info_mutex;
     std::unordered_map<int, std::unique_ptr<char[]>> db_info_by_job;
 
-    /* handoff slots: ACK -1 is done by the dispatch thread, SESSION_END +1
-     * by channel readers (#117 D3) */
+    /* handoff slots (#117 D3).  Every transition is applied by the owning
+     * channel's reader thread in wire order — HANDOFF_ACK and RESYNC_REPLY
+     * entries admit (+1), SESSION_END releases (-1), channel death drops the
+     * channel's admissions.  One applier per channel means no reader-vs-
+     * dispatch reordering exists to park or reconcile (workspace#265 axis 3;
+     * replaces the orphan_ends set of codex F1). */
     std::atomic<int> slots_used { 0 };
     std::mutex slots_mutex;
     std::condition_variable slots_cv;
@@ -252,11 +259,9 @@ namespace brd
     std::mutex channels_mutex;
     std::unordered_map<std::string, std::shared_ptr<channel>> channels;
     std::mutex dial_mutex;	/* single-flight channel creation (codex F7) */
+    std::uint64_t next_channel_gen = 1;	/* dial_mutex */
     std::mutex tokens_mutex;
     std::unordered_multimap<unsigned int, token_info> tokens;
-    /* SESSION_ENDs that arrived before their HANDOFF_ACK was processed
-     * (reader vs dispatch ordering); the ACK consumes them (codex F1) */
-    std::set<std::pair<unsigned int, std::string>> orphan_ends;
   };
 
   static manager *brd_Manager = NULL;
@@ -264,6 +269,7 @@ namespace brd
   struct channel
   {
     std::string db_name;
+    std::uint64_t generation = 0;	/* scopes this channel's token admissions */
     int fd = -1;
     std::thread reader;
     std::mutex send_mutex;
@@ -432,35 +438,65 @@ namespace brd
     m.slots_cv.notify_all ();
   }
 
+  /* admit one session the server reported on this channel — a HANDOFF_ACK
+   * (delta) or a RESYNC_REPLY entry (snapshot); reader thread only */
   static void
-  tokens_drop_for_db (manager &m, const std::string &db_name)
+  tokens_admit (manager &m, const channel &ch, const adopt::resync_token_body &t)
   {
-    /* erase and release under the same lock the ACK path holds while it
-     * inserts+acquires: either order then nets to a consistent count
-     * (codex F4 — releasing outside let a late ACK acquire a slot for a
-     * token this loop had already dropped) */
+    token_info ti;
+    ti.db_name = ch.db_name;
+    std::memcpy (ti.clt_ip, &t.client_ip, 4);
+    ti.clt_port = t.client_port;
+    ti.channel_gen = ch.generation;
+    std::lock_guard<std::mutex> guard (m.tokens_mutex);
+    m.tokens.emplace (t.token, ti);
+    slots_acquire (m, 1);
+  }
+
+  /* SESSION_END on this channel: release the slot of a token this broker
+   * admitted for the channel's database.  An unknown token is a session that
+   * ended before it entered any snapshot this incarnation received, or one
+   * whose admitting channel already died — nothing is held for it. */
+  static void
+  tokens_end (manager &m, const channel &ch, unsigned int token)
+  {
+    std::lock_guard<std::mutex> guard (m.tokens_mutex);
+    auto range = m.tokens.equal_range (token);
+    for (auto it = range.first; it != range.second; ++it)
+      {
+	/* this channel's database scopes the erase — equal token values may
+	 * be live for other databases */
+	if (it->second.db_name == ch.db_name)
+	  {
+	    m.tokens.erase (it);
+	    slots_release (m);
+	    return;
+	  }
+      }
+    brd_debug ("session end db=%s: token=%u unknown", ch.db_name.c_str (), token);
+  }
+
+  static void
+  tokens_drop_for_channel (manager &m, const channel &ch)
+  {
+    /* the sessions died with their server: free their slots (#117 D7 —
+     * otherwise every server restart leaks slots until the pool starves).
+     * Only this channel's admissions: a successor channel to the same
+     * database may already have re-synced the survivors (a channel killed
+     * by a protocol violation or a reply timeout leaves the server, and its
+     * sessions, alive) and those are the successor's to drop. */
     std::lock_guard<std::mutex> guard (m.tokens_mutex);
     for (auto it = m.tokens.begin (); it != m.tokens.end ();)
       {
-	if (it->second.db_name == db_name)
+	if (it->second.channel_gen == ch.generation)
 	  {
 	    it = m.tokens.erase (it);
-	    /* the sessions died with their server: free their slots (#117
-	     * D7 — otherwise every server restart leaks slots until the
-	     * pool starves) */
 	    slots_release (m);
 	  }
 	else
 	  {
 	    ++it;
 	  }
-      }
-    /* SESSION_ENDs parked for an ACK that will now never arrive on this
-     * channel would otherwise accumulate for the broker's lifetime
-     * (workspace#259 axis 3: 지연 SESSION_END 영구 적재) */
-    for (auto it = m.orphan_ends.begin (); it != m.orphan_ends.end ();)
-      {
-	it = (it->second == db_name) ? m.orphan_ends.erase (it) : std::next (it);
       }
   }
 
@@ -505,34 +541,42 @@ namespace brd
 	      {
 		adopt::token_body tb;
 		std::memcpy (&tb, body.data (), sizeof (tb));
-		bool known = false;
-		{
-		  std::lock_guard<std::mutex> guard (m->tokens_mutex);
-		  auto range = m->tokens.equal_range (tb.token);
-		  for (auto it = range.first; it != range.second; ++it)
-		    {
-		      /* this channel's database scopes the erase — equal
-		       * token values may be live for other databases */
-		      if (it->second.db_name == ch->db_name)
-			{
-			  m->tokens.erase (it);
-			  known = true;
-			  break;
-			}
-		    }
-		  if (known)
-		    {
-		      slots_release (*m);
-		    }
-		  else
-		    {
-		      /* the dispatch thread has not processed the ACK yet:
-		       * park the end for the ACK to consume (codex F1) */
-		      m->orphan_ends.insert (std::make_pair (tb.token, ch->db_name));
-		    }
-		}
+		tokens_end (*m, *ch, tb.token);
 	      }
 	    continue;
+	  }
+
+	/* slot-affecting replies are applied here, before the requester sees
+	 * them, so admission and the SESSION_ENDs that follow on this channel
+	 * are applied in wire order by one thread.  A late ACK (requester
+	 * already timed out) is still a live session the server owns — it is
+	 * admitted too, and dropped with the channel the timeout killed. */
+	if ((adopt::msg_op) header.op == adopt::msg_op::HANDOFF_ACK
+	    && header.length == sizeof (adopt::resync_token_body))
+	  {
+	    adopt::resync_token_body t;
+	    std::memcpy (&t, body.data (), sizeof (t));
+	    tokens_admit (*m, *ch, t);
+	    m->shm->brd_num_handoffs++;
+	  }
+	else if ((adopt::msg_op) header.op == adopt::msg_op::RESYNC_REPLY
+		 && header.length >= sizeof (adopt::resync_reply_body))
+	  {
+	    /* restart re-sync (#117 D7): sessions surviving a broker restart
+	     * occupy slots the new incarnation doesn't know about.  The
+	     * reply carries the survivors' tokens (codex F2) — rebuild the
+	     * table with them, or every survivor's later SESSION_END is an
+	     * unknown token and its slot leaks. */
+	    adopt::resync_reply_body resync;
+	    std::memcpy (&resync, body.data (), sizeof (resync));
+	    std::size_t trailing = (header.length - sizeof (resync)) / sizeof (adopt::resync_token_body);
+	    std::size_t n = (trailing < (std::size_t) resync.live_count) ? trailing : (std::size_t) resync.live_count;
+	    for (std::size_t i = 0; i < n; i++)
+	      {
+		adopt::resync_token_body t;
+		std::memcpy (&t, body.data () + sizeof (resync) + i * sizeof (t), sizeof (t));
+		tokens_admit (*m, *ch, t);
+	      }
 	  }
 
 	/* request reply: hand to the waiting requester */
@@ -564,7 +608,7 @@ namespace brd
 	  m->channels.erase (it);
 	}
     }
-    tokens_drop_for_db (*m, ch->db_name);
+    tokens_drop_for_channel (*m, *ch);
   }
 
   /* send a request and wait for its reply (SESSION_ENDs are routed past the
@@ -793,6 +837,7 @@ namespace brd
 
     auto ch = std::make_shared<channel> ();
     ch->db_name = db_name;
+    ch->generation = m.next_channel_gen++;	/* under dial_mutex */
     ch->fd = fd;
     /* big enough for a RESYNC reply carrying max_slots token entries */
     ch->reply_body.resize (64 + (std::size_t) m.max_slots * sizeof (adopt::resync_token_body));
@@ -825,36 +870,18 @@ namespace brd
 	return NULL;
       }
 
-    /* restart re-sync (#117 D7): sessions surviving a broker restart occupy
-     * slots the new incarnation doesn't know about.  The reply carries the
-     * survivors' tokens (codex F2) — rebuild the table with them, or every
-     * survivor's later SESSION_END is an unknown token and its slot leaks. */
+    /* restart re-sync (#117 D7): the reader applies the snapshot as it
+     * arrives (tokens + slots, in wire order with the SESSION_ENDs that
+     * follow).  A channel that cannot answer is useless: kill it so the
+     * next dispatch redials instead of running unaccounted. */
     if (channel_request (*ch, adopt::msg_op::RESYNC, NULL, 0, NULL, 0, -1,
-			 &reply_header, reply_body.data (), reply_body.size ()) == 0
-	&& (adopt::msg_op) reply_header.op == adopt::msg_op::RESYNC_REPLY
-	&& reply_header.length >= sizeof (adopt::resync_reply_body))
+			 &reply_header, reply_body.data (), reply_body.size ()) != 0
+	|| (adopt::msg_op) reply_header.op != adopt::msg_op::RESYNC_REPLY
+	|| reply_header.length < sizeof (adopt::resync_reply_body))
       {
-	adopt::resync_reply_body resync;
-	std::memcpy (&resync, reply_body.data (), sizeof (resync));
-	std::size_t trailing = (reply_header.length - sizeof (resync)) / sizeof (adopt::resync_token_body);
-	std::size_t n = (trailing < (std::size_t) resync.live_count) ? trailing : (std::size_t) resync.live_count;
-	{
-	  std::lock_guard<std::mutex> guard (m.tokens_mutex);
-	  for (std::size_t i = 0; i < n; i++)
-	    {
-	      adopt::resync_token_body t;
-	      std::memcpy (&t, reply_body.data () + sizeof (resync) + i * sizeof (t), sizeof (t));
-	      token_info ti;
-	      ti.db_name = db_name;
-	      std::memcpy (ti.clt_ip, &t.client_ip, 4);
-	      ti.clt_port = t.client_port;
-	      m.tokens.emplace (t.token, ti);
-	    }
-	}
-	if (resync.live_count > 0)
-	  {
-	    slots_acquire (m, (int) resync.live_count);
-	  }
+	ch->dead.store (true);
+	shutdown (fd, SHUT_RDWR);
+	return NULL;
       }
 
     std::lock_guard<std::mutex> guard (m.channels_mutex);
@@ -1714,46 +1741,13 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
       config_guard.unlock ();
       brd_debug ("handoff db=%s: reply op=%u len=%u", db_name, reply_header.op, reply_header.length);
       if ((adopt::msg_op) reply_header.op == adopt::msg_op::HANDOFF_ACK
-	  && reply_header.length == sizeof (adopt::token_body))
+	  && reply_header.length == sizeof (adopt::resync_token_body))
 	{
-	  adopt::token_body ack;
+	  /* the channel reader admitted the token (slot + table) before it
+	   * released this reply; nothing is left to account for here */
+	  adopt::resync_token_body ack;
 	  std::memcpy (&ack, reply_body, sizeof (ack));
-	  bool already_ended;
-	  bool channel_died = false;
-	  {
-	    /* insert + acquire under the same lock tokens_drop_for_db holds
-	     * for erase + release: either interleaving nets consistently.
-	     * A dead channel means the reader already dropped this db's
-	     * tokens/slots — a late insert would leak both (codex F4). */
-	    std::lock_guard<std::mutex> guard (m->tokens_mutex);
-	    already_ended = (m->orphan_ends.erase (std::make_pair (ack.token, std::string (db_name))) > 0);
-	    channel_died = ch->dead.load ();
-	    if (!already_ended && !channel_died)
-	      {
-		token_info ti;
-		ti.db_name = db_name;
-		std::memcpy (ti.clt_ip, job->ip_addr, 4);
-		ti.clt_port = job->port;
-		m->tokens.emplace (ack.token, ti);
-		slots_acquire (*m, 1);
-	      }
-	  }
-	  if (already_ended)
-	    {
-	      /* the session died before this thread processed the ACK; its
-	       * SESSION_END was parked — the slot was never occupied (codex F1) */
-	      brd_debug ("handoff db=%s: token=%u ended before ack", db_name, ack.token);
-	    }
-	  else if (channel_died)
-	    {
-	      /* the server (and the session) died between the ACK and here */
-	      brd_debug ("handoff db=%s: token=%u acked on a dead channel", db_name, ack.token);
-	    }
-	  else
-	    {
-	      brd_debug ("handoff db=%s: token=%u stored (clt_port=%u)", db_name, ack.token, (unsigned) job->port);
-	      m->shm->brd_num_handoffs++;
-	    }
+	  brd_debug ("handoff db=%s: token=%u admitted (clt_port=%u)", db_name, ack.token, (unsigned) ack.client_port);
 	  close (job->clt_sock_fd);	/* the server owns the connection now */
 	  return;
 	}
