@@ -6662,9 +6662,10 @@ static int
 locator_prepare_client_row (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *source,
                             heap_prepared_row &prepared)
 {
-  if (OID_IS_ROOTOID (class_oid) || oid_is_system_class (class_oid))
+  if (!catcls_Enable || OID_IS_ROOTOID (class_oid) || oid_is_system_class (class_oid))
     {
-      /* Internal/catalog records are already complete. */
+      /* Internal/catalog records are already complete. During catalog bootstrap,
+       * the system-class OID cache is not populated yet. */
       return NO_ERROR;
     }
   if (source->length <= 0)
@@ -7499,7 +7500,8 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	}			/* end-switch */
 
     row_done:
-      if (error_code != NO_ERROR && !OID_IS_ROOTOID (&obj->class_oid) && !oid_is_system_class (&obj->class_oid))
+      if (error_code != NO_ERROR && catcls_Enable
+	  && !OID_IS_ROOTOID (&obj->class_oid) && !oid_is_system_class (&obj->class_oid))
 	{
 	  (void) heap_oos_begin_insert_publication (thread_p);
 	}
