@@ -14400,6 +14400,52 @@ cdc_wakeup_consumer ()
   cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_RUN;
 }
 
+/*
+ * cdc_check_dba_authorization () - shared DBA check for CDC and flashback requests.
+ *   return: true if the requester is authorized (DBA), false otherwise.
+ *   thread_p (in):
+ *   declared_user (in): db user declared by the client on an identity-less channel
+ *                       (CDC); NULL for a booted connection (flashback).
+ *
+ * A booted connection carries a server-verified client identity and is checked
+ * directly. The CDC log-server channel has no server-side identity, so it falls
+ * back to the db user the client library declares. DBA account only for now; DBA
+ * group resolution is to be added here (see CBRD-27436 analysis).
+ */
+bool
+cdc_check_dba_authorization (THREAD_ENTRY * thread_p, const char *declared_user)
+{
+  if (logtb_am_i_dba_client (thread_p))
+    {
+      return true;
+    }
+
+  return (declared_user != NULL && !strcasecmp (declared_user, "DBA"));
+}
+
+/*
+ * cdc_check_session_owner () - is the calling connection the one that opened the
+ *   active CDC session with scdc_start_session()?
+ *   return: true if there is an active session and this connection owns it.
+ *   thread_p (in):
+ *
+ * CBRD-27436: scdc_start_session() is the only CDC request that carries a
+ * client-declared identity to check with cdc_check_dba_authorization(); every
+ * other CDC request (FIND_LSA, GET_LOGINFO_METADATA, GET_LOGINFO, END_SESSION)
+ * had no authorization of any kind, so a client could skip START_SESSION
+ * entirely and reach them directly. Only a DBA-authorized connection can ever
+ * become cdc_Gl's owner (scdc_start_session enforces that), so requiring the
+ * caller to BE that owner is sufficient here and needs no new wire field on
+ * these requests (which would reopen the CDC wire-compatibility question for
+ * four more opcodes instead of the one).
+ */
+bool
+cdc_check_session_owner (THREAD_ENTRY * thread_p)
+{
+  return (cdc_Gl.conn.fd != -1
+	  && thread_p->conn_entry->fd == cdc_Gl.conn.fd && thread_p->conn_entry->client_id == cdc_Gl.conn.client_id);
+}
+
 int
 cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start_lsa)
 {

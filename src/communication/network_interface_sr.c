@@ -10738,11 +10738,49 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   char **extraction_user = NULL;
 
   char *dummy_user = NULL;
+  char *cdc_db_user = NULL;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
     {
       error_code = ER_CDC_NOT_AVAILABLE;
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
+      goto error;
+    }
+
+  /* CBRD-27436: The CDC log-server channel carries no server-side client identity
+   * (it is opened after db_shutdown and never runs boot_register_client), so the
+   * central CHECK_AUTHORIZATION gate cannot protect it. Enforce DBA here from the db
+   * user that the client library declares as the first field of the request.
+   *
+   * The declared length is attacker-controlled, so bound it against the remaining
+   * request length before trusting it (same class of check as CBRD-27437's count
+   * validation) -- otherwise a crafted length here reads past the request buffer
+   * exactly like the unbounded counts that ticket closes elsewhere. */
+  {
+    int cdc_db_user_len;
+
+    ptr = or_unpack_int (request, &cdc_db_user_len);
+    /* A legitimate packer (or_pack_string()) always writes a length that already
+     * includes alignment padding, so or_unpack_string_nocopy()'s raw "ptr += length"
+     * leaves later or_unpack_*() calls correctly aligned. On this attacker-controlled
+     * channel that invariant does not hold on its own; require it explicitly (length
+     * -1, or a properly-aligned length within the remaining bytes), or a crafted
+     * unaligned length aborts an assert-enabled cub_server at the next ASSERT_ALIGN
+     * before authorization ever runs. */
+    if (cdc_db_user_len < -1 || cdc_db_user_len > (reqlen - (int) (ptr - request))
+	|| (cdc_db_user_len != -1 && cdc_db_user_len % OR_INT_SIZE != 0))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+		(reqlen - (int) (ptr - request)), cdc_db_user_len);
+	error_code = ER_NET_DATASIZE_MISMATCH;
+	goto error;
+      }
+  }
+  ptr = or_unpack_string_nocopy (request, &cdc_db_user);
+  if (!cdc_check_dba_authorization (thread_p, cdc_db_user))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      error_code = ER_AU_DBA_ONLY;
       goto error;
     }
 
@@ -10791,7 +10829,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   cdc_Gl.conn.status = thread_p->conn_entry->status;
   cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
 
-  ptr = or_unpack_int (request, &max_log_item);
+  ptr = or_unpack_int (ptr, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
   ptr = or_unpack_int (ptr, &all_in_cond);
   ptr = or_unpack_int (ptr, &num_extraction_user);
@@ -10894,6 +10932,16 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   time_t input_time;
   int error_code;
 
+  /* CBRD-27436: scdc_start_session() is the only CDC request that carries a
+   * client-declared identity to check; this request had none at all, so a
+   * client could skip START_SESSION entirely and reach it directly. */
+  if (!cdc_check_session_owner (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      error_code = ER_AU_DBA_ONLY;
+      goto error;
+    }
+
   ptr = or_unpack_int64 (request, &input_time);
   //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread 
 
@@ -10961,6 +11009,15 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   int num_log_info;
 
   int rc;
+
+  /* CBRD-27436: no authorization of any kind guarded this request; a client could
+   * skip CDC_START_SESSION entirely and reach it directly (see scdc_find_lsa()). */
+  if (!cdc_check_session_owner (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      error_code = ER_AU_DBA_ONLY;
+      goto error;
+    }
 
   or_unpack_log_lsa (request, &start_lsa);
 
@@ -11048,6 +11105,17 @@ error:
 void
 scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
+  /* CBRD-27436: no authorization of any kind guarded this request; a client could
+   * skip CDC_START_SESSION entirely and reach it directly (see scdc_find_lsa()).
+   * This reply has no error-code framing (it sends the raw change-log buffer
+   * directly), so there is no clean error to send back; simply withhold the
+   * buffer and return, which a legitimate client already handles like any other
+   * short/absent reply. */
+  if (!cdc_check_session_owner (thread_p))
+    {
+      return;
+    }
+
   cdc_log ("%s : size of log info is %d", __func__, cdc_Gl.consumer.log_info_size);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, cdc_Gl.consumer.log_info, cdc_Gl.consumer.log_info_size);
@@ -11061,6 +11129,19 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
+
+  /* CBRD-27436: no authorization of any kind guarded this request; any client could
+   * end (and reset the global state of) a CDC session it never started, forcibly
+   * disconnecting a legitimate consumer. Check ownership before touching any of
+   * that shared state. */
+  if (!cdc_check_session_owner (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      error_code = ER_AU_DBA_ONLY;
+      or_pack_int (reply, error_code);
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+      return;
+    }
 
   error_code = cdc_cleanup (thread_p);
 

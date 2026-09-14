@@ -117,6 +117,10 @@ int g_extraction_user_count = 0;
 
 char g_dbname[CUBRID_LOG_MAX_DBNAME_LEN + 1] = "";
 
+/* CBRD-27436: authenticated db user, sent to the server so it can enforce DBA
+ * server-side on the identity-less CDC log channel. */
+char g_db_user[DB_MAX_USER_LENGTH + 1] = "";
+
 FILE *g_trace_log = NULL;
 char g_trace_log_base[PATH_MAX + 1] = ".";
 char g_trace_log_path[PATH_MAX + 1] = "";
@@ -742,6 +746,7 @@ cubrid_log_send_configurations (void)
   int err_code;
 
   request_size = OR_INT_SIZE * 5;
+  request_size += or_packed_string_length (g_db_user, NULL);
 
   for (i = 0; i < g_extraction_user_count; i++)
     {
@@ -759,7 +764,8 @@ cubrid_log_send_configurations (void)
 
   request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
 
-  ptr = or_pack_int (request, g_max_log_item);
+  ptr = or_pack_string (request, g_db_user);
+  ptr = or_pack_int (ptr, g_max_log_item);
   ptr = or_pack_int (ptr, g_extraction_timeout);
   ptr = or_pack_int (ptr, g_all_in_cond);
   ptr = or_pack_int (ptr, g_extraction_user_count);
@@ -908,6 +914,11 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
 			   "DBA authorization failed. %s is not a member of DBA group\n", username);
       goto error;
     }
+
+  /* CBRD-27436: remember the authenticated db user so it can be sent to the server
+   * for server-side DBA enforcement on the CDC channel. */
+  strncpy (g_db_user, username, DB_MAX_USER_LENGTH);
+  g_db_user[DB_MAX_USER_LENGTH] = '\0';
 
   db_shutdown ();
 
