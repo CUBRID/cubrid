@@ -167,67 +167,27 @@ match_password (const char *user, const char *database)
       return false;
     }
 
-  /* get both passwords into an encrypted format */
-  /* if database's password was encrypted with DES, then, user's password should be encrypted with DES, */
-  if (IS_ENCODED_DES (database))
+  /*
+   * Only SHA2-512 encoded passwords are accepted for authentication.
+   * Legacy DES (reversible, hard-coded key), unsalted SHA1, and unencoded
+   * (plaintext) storage formats are refused outright, even if they are
+   * still present in the database (KVE-2026-1859).
+   */
+  if (!IS_ENCODED_SHA2_512 (database))
     {
-      /* DB: DES */
-      strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
-	{
-	  /* USER : DES */
-	  strcpy (buf1, Au_user_password_des_oldstyle);
-	}
-      else
-	{
-	  /* USER : PLAINTEXT -> DES */
-	  encrypt_password (user, 1, buf1);
-	}
+      return false;
     }
-  else if (IS_ENCODED_SHA1 (database))
+
+  strcpy (buf2, database);
+  if (IS_ENCODED_ANY (user))
     {
-      /* DB: SHA1 */
-      strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
-	{
-	  /* USER:SHA1 */
-	  strcpy (buf1, Au_user_password_sha1);
-	}
-      else
-	{
-	  /* USER:PLAINTEXT -> SHA1 */
-	  encrypt_password_sha1 (user, 1, buf1);
-	}
-    }
-  else if (IS_ENCODED_SHA2_512 (database))
-    {
-      /* DB: SHA2 */
-      strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
-	{
-	  /* USER:SHA2 */
-	  strcpy (buf1, Au_user_password_sha2_512);
-	}
-      else
-	{
-	  /* USER:PLAINTEXT -> SHA2 */
-	  encrypt_password_sha2_512 (user, buf1);
-	}
+      /* USER:SHA2 */
+      strcpy (buf1, Au_user_password_sha2_512);
     }
   else
     {
-      /* DB:PLAINTEXT -> SHA2 */
-      encrypt_password_sha2_512 (database, buf2);
-      if (IS_ENCODED_ANY (user))
-	{
-	  /* USER : SHA1 */
-	  strcpy (buf1, Au_user_password_sha1);
-	}
-      else
-	{
-	  /* USER : PLAINTEXT -> SHA1 */
-	  encrypt_password_sha1 (user, 1, buf1);
-	}
+      /* USER:PLAINTEXT -> SHA2 */
+      encrypt_password_sha2_512 (user, buf1);
     }
 
   return strcmp (buf1, buf2) == 0;
