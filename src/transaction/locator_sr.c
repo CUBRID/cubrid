@@ -147,16 +147,20 @@ static int locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEO
 static int locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_COPYAREA_ONEOBJ * obj);
 static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, LC_COPYAREA_ONEOBJ * obj,
 						DB_VALUE * key_value, int err_code, const char *err_msg);
+
+/* *INDENT-OFF* */
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
 				 RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info_type, int pruning_type, PRUNING_CONTEXT * pcontext,
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
-				 bool need_locking);
+				 bool need_locking, bool from_workspace = false);
+/* *INDENT-ON* */
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid,
 				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
-				PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking);
+				PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking,
+				bool from_workspace);
 static int locator_delete_force_for_moving (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
 					    HEAP_SCANCACHE * scan_cache, int *force_count,
 					    MVCC_REEV_DATA * mvcc_reev_data, OID * new_obj_oid, OID * partition_oid,
@@ -4924,6 +4928,68 @@ error3:
 }
 
 /*
+ * locator_demote_workspace_record () - Apply OOS planning to a standalone workspace record.
+ *
+ * The caller has selected the destination heap and owns the force top operation. OOS creation and the
+ * subsequent heap/index write must remain in that operation, including on filtered-error paths.
+ * Workspace serialization already copied LOB locators and assigned object references; only their disk
+ * representation is changed here. The caller releases copyarea, if returned, after forcing the record.
+ */
+static int
+locator_demote_workspace_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes,
+				 RECDES * new_recdes, LC_COPYAREA ** copyarea)
+{
+#if defined (SA_MODE)
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error_code;
+
+  assert (*copyarea == NULL);
+  if (OID_IS_ROOTOID (class_oid) || OR_RECORD_HAS_OOS (recdes->data))
+    {
+      return NO_ERROR;
+    }
+
+  error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (attr_info.last_classrepr->n_variable == 0)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      return NO_ERROR;
+    }
+
+  error_code = heap_attrinfo_read_dbvalues_without_oid (thread_p, recdes, &attr_info);
+  if (error_code == NO_ERROR)
+    {
+      *copyarea = locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, NULL, new_recdes,
+							   recdes->length, LOB_FLAG_EXCLUDE_LOB);
+      if (*copyarea == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	}
+      else if (!OR_RECORD_HAS_OOS (new_recdes->data))
+	{
+	  /* No demotion was selected. Keep the original workspace representation and header. */
+	  locator_free_copy_area (*copyarea);
+	  *copyarea = NULL;
+	}
+      else
+	{
+	  /* tf_mem_to_disk already advanced CHN for the workspace object. Do not advance it again. */
+	  OR_PUT_INT (new_recdes->data + OR_CHN_OFFSET, or_chn (recdes));
+	}
+    }
+  heap_attrinfo_end (thread_p, &attr_info);
+  return error_code;
+#else
+  return NO_ERROR;
+#endif
+}
+
+/*
  * locator_insert_force () - Insert the given object on this heap
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4953,7 +5019,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      int op_type, HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 		      PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 		      UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-		      bool dont_check_fk, bool use_bulk_logging)
+		      bool dont_check_fk, bool use_bulk_logging, bool from_workspace)
 {
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
@@ -4962,6 +5028,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   RECDES new_recdes;
   bool is_cached = false;
   LC_COPYAREA *cache_attr_copyarea = NULL;
+  LC_COPYAREA *workspace_copyarea = NULL;
+  RECDES workspace_recdes;
   int error_code = NO_ERROR;
   OID real_class_oid;
   HFID real_hfid;
@@ -5058,6 +5126,21 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   /* adjust recdes type (if we got here it should be REC_HOME or REC_BIGONE; REC_BIGONE is detected and handled in
    * heap_insert_logical */
   recdes->type = REC_HOME;
+
+  if (from_workspace)
+    {
+      error_code = locator_demote_workspace_record (thread_p, &real_class_oid, recdes, &workspace_recdes,
+						    &workspace_copyarea);
+      if (error_code != NO_ERROR)
+	{
+	  goto error2;
+	}
+      if (workspace_copyarea != NULL)
+	{
+	  recdes = &workspace_recdes;
+	  recdes->type = REC_HOME;
+	}
+    }
 
   /* prepare context */
   heap_create_insert_context (&context, &real_hfid, &real_class_oid, recdes, local_scan_cache);
@@ -5275,6 +5358,10 @@ error1:
   HFID_COPY (hfid, &real_hfid);
 
 error2:
+  if (workspace_copyarea != NULL)
+    {
+      locator_free_copy_area (workspace_copyarea);
+    }
   if (cache_attr_copyarea != NULL)
     {
       locator_free_copy_area (cache_attr_copyarea);
@@ -5364,7 +5451,8 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
 static int
 locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid, OID * new_class_oid,
 		     HFID * new_class_hfid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int op_type, int has_index,
-		     int *force_count, PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking)
+		     int *force_count, PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking,
+		     bool from_workspace)
 {
   int error = NO_ERROR;
   OID new_obj_oid;
@@ -5390,7 +5478,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
 			      insert_cache, force_count, context->pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL,
-			      false, false);
+			      false, false, false, from_workspace);
     }
   else
     {
@@ -5407,7 +5495,7 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
       error =
 	locator_insert_force (thread_p, new_class_hfid, new_class_oid, &new_obj_oid, recdes, has_index, op_type,
 			      &insert_cache, force_count, DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE,
-			      NULL, false, false);
+			      NULL, false, false, false, from_workspace);
       heap_scancache_end (thread_p, &insert_cache);
     }
 
@@ -5466,7 +5554,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk, REPL_INFO_TYPE repl_info_type,
 		      int pruning_type, PRUNING_CONTEXT * pcontext, MVCC_REEV_DATA * mvcc_reev_data,
-		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking)
+		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, bool from_workspace)
 {
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   char *rep_dir_offset;
@@ -5480,6 +5568,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   RECDES new_record;
   bool is_cached = false;
   LC_COPYAREA *cache_attr_copyarea = NULL;
+  LC_COPYAREA *workspace_copyarea = NULL;
+  RECDES workspace_recdes;
   int error_code = NO_ERROR;
   HEAP_SCANCACHE *local_scan_cache;
   bool no_data_new_address = false;
@@ -6025,13 +6115,28 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      error_code =
 		locator_move_record (thread_p, hfid, class_oid, oid, &real_class_oid, &real_hfid, recdes, scan_cache,
-				     op_type, has_index, force_count, pcontext, mvcc_reev_data, need_locking);
+				     op_type, has_index, force_count, pcontext, mvcc_reev_data, need_locking,
+				     from_workspace);
 	      if (error_code == NO_ERROR)
 		{
 		  COPY_OID (class_oid, &real_class_oid);
 		  HFID_COPY (hfid, &real_hfid);
 		}
 	      return error_code;
+	    }
+	}
+
+      if (from_workspace)
+	{
+	  error_code = locator_demote_workspace_record (thread_p, class_oid, recdes, &workspace_recdes,
+							&workspace_copyarea);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  if (workspace_copyarea != NULL)
+	    {
+	      recdes = &workspace_recdes;
 	    }
 	}
 
@@ -6160,6 +6265,11 @@ error:
   if (old_classname != NULL && old_classname != classname)
     {
       free_and_init (old_classname);
+    }
+
+  if (workspace_copyarea != NULL)
+    {
+      locator_free_copy_area (workspace_copyarea);
     }
 
   if (cache_attr_copyarea != NULL)
@@ -6749,7 +6859,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
 				  has_index, NULL, 0, MULTI_ROW_UPDATE, &scan_cache, &force_count, false, repl_info,
-				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true);
+				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true, true);
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -7333,7 +7443,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  error_code =
 	    locator_insert_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, &recdes, has_index,
 				  SINGLE_ROW_INSERT, force_scancache, &force_count, pruning_type, NULL, NULL,
-				  UPDATE_INPLACE_NONE, NULL, false, false);
+				  UPDATE_INPLACE_NONE, NULL, false, false, false, true);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -7349,7 +7459,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
 				  has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
-				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
+				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true, true);
 
 	  if (error_code == NO_ERROR)
 	    {
