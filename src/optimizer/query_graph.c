@@ -31,6 +31,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <assert.h>
+#include <stdint.h>
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
@@ -10533,6 +10534,12 @@ qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_i
 
   for (i = 0; i < max_cols; i++)
     {
+      if (fk_idx->seg_idxs[i] == -1 || pk_idx->seg_idxs[i] == -1)
+	{
+	  /* this constraint column is not referenced by the current query */
+	  break;
+	}
+
       fk_seg = QO_ENV_SEG (env, fk_idx->seg_idxs[i]);
       pk_seg = QO_ENV_SEG (env, pk_idx->seg_idxs[i]);
 
@@ -10584,7 +10591,8 @@ qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_i
 static void
 qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 {
-  int i, j, k, n_matched, n_pairs, max_pairs;
+  int i, j, k, n_matched;
+  size_t n_pairs, cap, fi;
   QO_NODE *node_i, *node_j, *fk_node, *pk_node;
   QO_NODE_INDEX *fk_node_indexp, *pk_node_indexp;
   QO_INDEX_ENTRY *fk_idx, *pk_idx;
@@ -10592,26 +10600,8 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
   QO_SEGMENT **fk_col_segs;
   QO_EQCLASS **col_eqclasses;
 
-  max_pairs = 0;
-  for (i = 0; i < env->nnodes; i++)
-    {
-      fk_node_indexp = QO_NODE_INDEXES (QO_ENV_NODE (env, i));
-      if (fk_node_indexp != NULL)
-	{
-	  max_pairs += QO_NI_N (fk_node_indexp);
-	}
-    }
-  if (max_pairs <= 0)
-    {
-      return;
-    }
-
-  info_arr = (QO_FK_JOIN_INFO *) malloc (sizeof (QO_FK_JOIN_INFO) * max_pairs);
-  if (info_arr == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_FK_JOIN_INFO) * max_pairs);
-      return;
-    }
+  info_arr = NULL;
+  cap = 0;
   n_pairs = 0;
 
   /* iterate every ordered pair, not just every unordered pair once: we don't know a priori which of the two
@@ -10673,6 +10663,40 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 		  continue;
 		}
 
+	      /* Secure room for one more entry before any per-candidate allocation below, so that a capacity
+	       * failure here never has to unwind a not-yet-owned temporary allocation - only already-registered
+	       * entries and info_arr itself (see the fk_join_info_fail cleanup). This also enforces that the
+	       * count never grows past what env->n_fk_join_info (an int) can hold. */
+	      if (n_pairs >= (size_t) INT_MAX)
+		{
+		  goto fk_join_info_fail;
+		}
+	      if (n_pairs >= cap)
+		{
+		  size_t new_cap;
+		  QO_FK_JOIN_INFO *new_info_arr;
+
+		  if (cap > SIZE_MAX / 2)
+		    {
+		      goto fk_join_info_fail;
+		    }
+		  new_cap = (cap == 0) ? 8 : cap * 2;
+
+		  if (new_cap > SIZE_MAX / sizeof (QO_FK_JOIN_INFO))
+		    {
+		      goto fk_join_info_fail;
+		    }
+		  new_info_arr = (QO_FK_JOIN_INFO *) realloc (info_arr, sizeof (QO_FK_JOIN_INFO) * new_cap);
+		  if (new_info_arr == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      sizeof (QO_FK_JOIN_INFO) * new_cap);
+		      goto fk_join_info_fail;
+		    }
+		  info_arr = new_info_arr;
+		  cap = new_cap;
+		}
+
 	      fk_col_segs = (QO_SEGMENT **) malloc (sizeof (QO_SEGMENT *) * pk_idx->nsegs);
 	      col_eqclasses = (QO_EQCLASS **) malloc (sizeof (QO_EQCLASS *) * pk_idx->nsegs);
 	      if (fk_col_segs == NULL || col_eqclasses == NULL)
@@ -10685,15 +10709,17 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 		}
 
 	      n_matched = qo_match_fk_prefix (env, fk_idx, pk_idx, fk_col_segs, col_eqclasses);
-	      if (n_matched < 2)
+	      if (n_matched < 2 || n_matched < MIN (pk_idx->nsegs, fk_idx->nsegs))
 		{
-		  /* single-column (or no) FK-PK prefix match: leave the ordinary per-term selectivity alone */
+		  /* single-column FK-PK join, or only a leading prefix of a composite FK/PK matched: a partial
+		   * key match does not guarantee each FK row matches exactly one parent row, so the floor must not
+		   * be applied; leave the ordinary per-term selectivity alone */
 		  free_and_init (fk_col_segs);
 		  free_and_init (col_eqclasses);
 		  continue;
 		}
 
-	      assert (n_pairs < max_pairs);
+	      /* room for this entry was already secured above */
 	      info_arr[n_pairs].fk_node = fk_node;
 	      info_arr[n_pairs].pk_node = pk_node;
 	      info_arr[n_pairs].floor_selectivity = 1.0 / QO_NODE_NCARD (pk_node);
@@ -10712,7 +10738,20 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
     }
 
   env->fk_join_info = info_arr;
-  env->n_fk_join_info = n_pairs;
+  env->n_fk_join_info = (int) n_pairs;
+  return;
+
+fk_join_info_fail:
+  /* overflow, count-limit, or realloc failure while growing info_arr: abandon the whole FK-floor
+   * optimization for this query rather than keep a partial, iteration-order-dependent subset. Nothing has
+   * been assigned to env->fk_join_info/env->n_fk_join_info yet, so the caller sees exactly the same "no FK
+   * floor info" state as if this function had found nothing to register at all. */
+  for (fi = 0; fi < n_pairs; fi++)
+    {
+      free_and_init (info_arr[fi].fk_col_segs);
+      free_and_init (info_arr[fi].col_eqclasses);
+    }
+  free_and_init (info_arr);
 }
 
 /*
