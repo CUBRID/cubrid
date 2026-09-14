@@ -10726,6 +10726,39 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 }
 #endif
 
+/*
+ * cdc_flashback_unpack_bounded_string () - unpack a client-supplied length-prefixed
+ *   string, rejecting a declared length that would read past the request buffer or
+ *   leave later or_unpack_*() calls misaligned.
+ *   return: the advanced pointer on success; NULL if the declared length is out of
+ *           range (the caller must not dereference *out_string in that case).
+ *   ptr (in)         : current position in the request (at the length prefix)
+ *   request (in)     : start of the request buffer (for computing the byte budget)
+ *   reqlen (in)      : total length of the request buffer
+ *   out_string (out) : set to point into the request buffer on success
+ *
+ * CBRD-27437: or_unpack_string_nocopy() trusts its length prefix unconditionally
+ * (an unbounded "ptr += length"), the same class of bug this ticket bounds for
+ * CDC/flashback element counts. or_pack_string() always writes an already-padded
+ * length, so a legitimate peer never produces a length that isn't -1 (NULL) or a
+ * multiple of OR_INT_SIZE; require that here too, since an unaligned length would
+ * abort an assert-enabled cub_server at the next ASSERT_ALIGN downstream.
+ */
+static char *
+cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char **out_string)
+{
+  int declared_len;
+  char *after_len = or_unpack_int (ptr, &declared_len);
+
+  if (declared_len < -1 || declared_len > (reqlen - (int) (after_len - request))
+      || (declared_len != -1 && declared_len % OR_INT_SIZE != 0))
+    {
+      return NULL;
+    }
+
+  return or_unpack_string_nocopy (ptr, out_string);
+}
+
 void
 scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -10796,9 +10829,23 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &all_in_cond);
   ptr = or_unpack_int (ptr, &num_extraction_user);
 
+  /* CBRD-27437: bound the client-supplied count against the remaining request
+   * length before the unpack loop (each user needs at least a string length prefix). */
+  if (num_extraction_user < 0
+      || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), num_extraction_user);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   if (num_extraction_user > 0)
     {
-      extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
+      /* calloc, not malloc: on an early exit (below) the error path frees every
+       * slot up to num_extraction_user, including ones a failed strdup() never
+       * reached -- those must start out NULL, not uninitialized heap. */
+      extraction_user = (char **) calloc (num_extraction_user, sizeof (char *));
       if (extraction_user == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
@@ -10808,7 +10855,17 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
       for (int i = 0; i < num_extraction_user; i++)
 	{
-	  ptr = or_unpack_string_nocopy (ptr, &dummy_user);
+	  ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &dummy_user);
+	  if (ptr == NULL || dummy_user == NULL)
+	    {
+	      /* NULL covers both an out-of-range length (ptr == NULL) and a
+	       * declared-NULL (length -1) entry: this list is a set of usernames
+	       * to filter on, so an absent one is malformed either way, and
+	       * strdup (NULL) is undefined behavior. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+	      error_code = ER_NET_DATASIZE_MISMATCH;
+	      goto error;
+	    }
 
 	  extraction_user[i] = strdup (dummy_user);
 	  if (extraction_user[i] == NULL)
@@ -10821,6 +10878,17 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     }
 
   ptr = or_unpack_int (ptr, &num_extraction_class);
+
+  /* CBRD-27437: bound the class count against the remaining request length
+   * before the unpack loop (each class oid is packed as an int64). */
+  if (num_extraction_class < 0
+      || (INT64) num_extraction_class > (INT64) (reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (int) ((reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE), num_extraction_class);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
 
   if (num_extraction_class > 0)
     {
@@ -11108,11 +11176,28 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   ptr = or_unpack_int (request, &context.num_class);
 
+  /* CBRD-27437: bound the class count against the remaining request length
+   * before the unpack loop (each class name is packed as a string). */
+  if (context.num_class < 0
+      || (INT64) context.num_class > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), context.num_class);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   for (int i = 0; i < context.num_class; i++)
     {
       OID classoid = OID_INITIALIZER;
 
-      ptr = or_unpack_string_nocopy (ptr, &classname);
+      ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &classname);
+      if (ptr == NULL || classname == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+	  error_code = ER_NET_DATASIZE_MISMATCH;
+	  goto error;
+	}
 
       status = xlocator_find_class_oid (thread_p, classname, &classoid, NULL_LOCK);
       if (status != LC_CLASSNAME_EXIST)
@@ -11125,7 +11210,13 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       context.classoids.emplace_back (classoid);
     }
 
-  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &context.user);
+  if (ptr == NULL || context.user == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
   ptr = or_unpack_int64 (ptr, &start_time);
   ptr = or_unpack_int64 (ptr, &end_time);
 
@@ -11264,8 +11355,25 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
   ptr = or_unpack_int (request, &context.trid);
-  ptr = or_unpack_string_nocopy (ptr, &context.user);
+  ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &context.user);
+  if (ptr == NULL || context.user == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
   ptr = or_unpack_int (ptr, &context.num_class);
+
+  /* CBRD-27437: bound the class count against the remaining request length
+   * before the unpack loop (each class oid is packed as an OID). */
+  if (context.num_class < 0
+      || (INT64) context.num_class > (INT64) (reqlen - (int) (ptr - request)) / OR_OID_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (int) ((reqlen - (int) (ptr - request)) / OR_OID_SIZE), context.num_class);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
 
   for (int i = 0; i < context.num_class; i++)
     {
@@ -11277,6 +11385,18 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_unpack_log_lsa (ptr, &context.start_lsa);
   ptr = or_unpack_log_lsa (ptr, &context.end_lsa);
   ptr = or_unpack_int (ptr, &context.num_loginfo);
+  if (context.num_loginfo < 0)
+    {
+      /* This bounds a client-supplied requested-batch-size, not a count of items
+       * still to unpack from the request buffer, so it needs a sign check but not
+       * a reqlen-derived bound; it later feeds a db_private_alloc() size
+       * (area_size below), where a negative value is a real correctness bug, not
+       * only a large-response resource-consumption concern. An upper cap on how
+       * large a single requested batch may be remains a follow-up. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, context.num_loginfo);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
   ptr = or_unpack_int (ptr, &context.forward);
 
   error_code = flashback_make_loginfo (thread_p, &context);

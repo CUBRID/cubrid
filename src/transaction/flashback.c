@@ -194,8 +194,17 @@ flashback_reset ()
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
-  flashback_Current_conn->in_flashback = false;
-  flashback_Current_conn = NULL;
+  /* CBRD-27437: flashback_Current_conn is only assigned once flashback processing
+   * for this connection has actually started (see flashback_initialize()). A
+   * request that fails before that point (e.g. FLASHBACK_GET_LOGINFO sent without
+   * a preceding FLASHBACK_GET_SUMMARY, or a request rejected by a bounds/parameter
+   * check) still routes through this shared reset on its error path, so guard
+   * against a NULL flashback_Current_conn here rather than crashing. */
+  if (flashback_Current_conn != NULL)
+    {
+      flashback_Current_conn->in_flashback = false;
+      flashback_Current_conn = NULL;
+    }
 }
 
 /*
