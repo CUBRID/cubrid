@@ -5134,7 +5134,7 @@ cleanup:
 }
 
 int
-internal_lob_stream_open_from_server (const char *locator_data, int locator_len, INT64 * token)
+internal_lob_stream_open_from_server (const char *locator_data, int locator_len, INT64 start_offset, INT64 * token)
 {
 #if defined (CS_MODE)
   OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_reply;
@@ -5166,7 +5166,7 @@ internal_lob_stream_open_from_server (const char *locator_data, int locator_len,
   memcpy (locator_buf, locator_data, (size_t) locator_len);
   locator_buf[locator_len] = '\0';
 
-  request_size = length_const_string (locator_buf, &locator_strlen);
+  request_size = OR_INT64_SIZE + length_const_string (locator_buf, &locator_strlen);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -5174,7 +5174,8 @@ internal_lob_stream_open_from_server (const char *locator_data, int locator_len,
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
-  (void) pack_const_string_with_length (request, locator_buf, locator_strlen);
+  ptr = or_pack_int64 (request, start_offset);
+  (void) pack_const_string_with_length (ptr, locator_buf, locator_strlen);
 
   err = net_client_request (NET_SERVER_INTERNAL_LOB_STREAM_OPEN, request, request_size, reply,
 			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
@@ -5200,6 +5201,7 @@ cleanup:
 #else
   (void) locator_data;
   (void) locator_len;
+  (void) start_offset;
   if (token != NULL)
     {
       *token = 0;

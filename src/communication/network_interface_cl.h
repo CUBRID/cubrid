@@ -358,7 +358,8 @@ extern int csession_get_last_insert_id (DB_VALUE * value, bool update_last_inser
 extern int csession_reset_cur_insert_id (void);
 extern int internal_lob_read_from_server (const char *locator_data, int locator_len, DB_BIGINT offset, char *buf,
 					  int count, int *nread);
-extern int internal_lob_stream_open_from_server (const char *locator_data, int locator_len, INT64 * token);
+extern int internal_lob_stream_open_from_server (const char *locator_data, int locator_len, INT64 start_offset,
+						 INT64 * token);
 extern int internal_lob_stream_read_from_server (INT64 token, char *buf, int count, int *nread);
 extern int internal_lob_stream_close_from_server (INT64 token);
 extern int loaddb_internal_lob_upload_begin (cubload::class_id clsid, char type, DB_BIGINT data_length,

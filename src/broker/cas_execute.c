@@ -4634,10 +4634,15 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     DB_BIGINT lob_byte_length = 0;
     bool is_reference = dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length);
 
-    if (is_reference && !DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13))
+    /* Only the BLOB/CLOB framing below can carry a reference, and only to a V13 driver.  Any other
+     * combination -- an older driver, or a reference sitting in a VARCHAR/VARBIT value, which
+     * dbval_is_internal_lob_locator () also recognizes -- has no way to pull the payload, and the locator
+     * text is not the value.  Say so instead of handing back an envelope that would be stored as if it
+     * were content. */
+    if (is_reference
+	&& !(DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13)
+	     && (lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)))
       {
-	/* An older driver has no way to pull the payload, and the locator text is not the value.  Say so
-	 * instead of handing back an envelope that would be stored as if it were content. */
 	ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
 	NET_BUF_ERR_SET (net_buf);
 	return 0;
@@ -10846,12 +10851,12 @@ ux_stream_abort (T_NET_BUF * net_buf)
  * thin pass-through to the same server read cursor csql and unloaddb use; CAS holds no LOB bytes of its own.
  */
 int
-ux_lob_stream_open (char *locator, int locator_len, T_NET_BUF * net_buf)
+ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NET_BUF * net_buf)
 {
   INT64 token = 0;
   int err_code;
 
-  err_code = internal_lob_stream_open_from_server (locator, locator_len, &token);
+  err_code = internal_lob_stream_open_from_server (locator, locator_len, (INT64) start_offset, &token);
   if (err_code != NO_ERROR)
     {
       errors_in_transaction++;

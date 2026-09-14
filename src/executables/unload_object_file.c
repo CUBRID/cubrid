@@ -65,6 +65,8 @@
 #include "porting.h"
 #include "language_support.h"
 #include "compressor.hpp"
+/* The locator parser below is compiled in both SA and CS mode, so its header stays outside the guard. */
+#include "internal_lob_marker.h"
 #if defined (SA_MODE)
 #include "internal_lob_file.hpp"
 #include "thread_manager.hpp"
@@ -826,17 +828,6 @@ internal_lob_unload_sidecar_write_block (FILE * fp, const char *data, int len, c
 static bool
 internal_lob_unload_parse_locator_metadata (const char *data, int size, DB_BIGINT * length, DB_BIGINT * bit_length)
 {
-  char locator_buf[128];
-  int volid = 0;
-  int pageid = 0;
-  int slotid = 0;
-  long long parsed_length = 0;
-  unsigned long long parsed_token = 0;
-  int consumed = 0;
-  int token_consumed = 0;
-  int prefix_len = (int) strlen (INTERNAL_LOB_UNLOAD_LOCATOR_PREFIX);
-  char *oid_part = NULL;
-
   if (length != NULL)
     {
       *length = 0;
@@ -846,49 +837,10 @@ internal_lob_unload_parse_locator_metadata (const char *data, int size, DB_BIGIN
       *bit_length = -1;
     }
 
-  if (data == NULL || size <= prefix_len || size >= (int) sizeof (locator_buf))
-    {
-      return false;
-    }
-  if (memcmp (data, INTERNAL_LOB_UNLOAD_LOCATOR_PREFIX, (size_t) prefix_len) != 0)
-    {
-      return false;
-    }
-
-  memcpy (locator_buf, data, (size_t) size);
-  locator_buf[size] = '\0';
-
-  oid_part = locator_buf + prefix_len;
-  if (oid_part[0] == 'A' && oid_part[1] == ':')
-    {
-      oid_part += 2;
-    }
-
-  if (sscanf (oid_part, "%d|%d|%d:%lld%n", &volid, &pageid, &slotid, &parsed_length, &consumed) != 4
-      || parsed_length < 0)
-    {
-      return false;
-    }
-  (void) volid;
-  (void) pageid;
-  (void) slotid;
-
-  if (oid_part[consumed] != ':'
-      || sscanf (oid_part + consumed + 1, "%llx%n", &parsed_token, &token_consumed) != 1
-      || parsed_token == 0 || token_consumed <= 0 || oid_part[consumed + 1 + token_consumed] != '\0')
-    {
-      return false;
-    }
-
-  if (length != NULL)
-    {
-      *length = (DB_BIGINT) parsed_length;
-    }
-  if (bit_length != NULL)
-    {
-      *bit_length = -1;
-    }
-  return true;
+  /* One parser, one place.  The canonical reader also recomputes the locator's token over its OID and
+   * length, which the copy that used to live here did not: without that check, any user text shaped like
+   * "@internal_lob:1|2|3:5:abcd" is taken for a locator. */
+  return internal_lob_marker_parse_locator (data, size, length);
 }
 
 static int
@@ -967,7 +919,7 @@ internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int ke
 #elif defined (CS_MODE)
       /* One forward-only server cursor for the whole value (the same path csql streams with).  Reading by
        * offset instead made the server re-walk the chain from its start on every block, i.e. O(size^2). */
-      error = internal_lob_stream_open_from_server (key, key_len, &stream_token);
+      error = internal_lob_stream_open_from_server (key, key_len, 0, &stream_token);
       if (error != NO_ERROR)
 	{
 	  goto exit_before_lock;

@@ -658,7 +658,7 @@ fprint_internal_lob_stream (FILE * pf, DB_VALUE * value, const CSQL_ARGUMENT * c
 	  goto exit;
 	}
 #elif defined (CS_MODE)
-      if (internal_lob_stream_open_from_server (locator, locator_len, &stream_token) != NO_ERROR)
+      if (internal_lob_stream_open_from_server (locator, locator_len, 0, &stream_token) != NO_ERROR)
 	{
 	  error = CSQL_FAILURE;
 	  goto exit;

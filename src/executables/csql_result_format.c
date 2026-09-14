@@ -1152,17 +1152,6 @@ duplicate_string (const char *string)
 static bool
 csql_parse_internal_lob_locator_metadata (const char *data, int size, DB_BIGINT * length, DB_BIGINT * bit_length)
 {
-  char locator_buf[128];
-  int volid = 0;
-  int pageid = 0;
-  int slotid = 0;
-  long long parsed_length = 0;
-  unsigned long long parsed_token = 0;
-  int consumed = 0;
-  int token_consumed = 0;
-  int prefix_len = (int) strlen (CSQL_INTERNAL_LOB_LOCATOR_PREFIX);
-  char *oid_part = NULL;
-
   if (length != NULL)
     {
       *length = 0;
@@ -1172,49 +1161,10 @@ csql_parse_internal_lob_locator_metadata (const char *data, int size, DB_BIGINT 
       *bit_length = -1;
     }
 
-  if (data == NULL || size <= prefix_len || size >= (int) sizeof (locator_buf))
-    {
-      return false;
-    }
-  if (memcmp (data, CSQL_INTERNAL_LOB_LOCATOR_PREFIX, (size_t) prefix_len) != 0)
-    {
-      return false;
-    }
-
-  memcpy (locator_buf, data, (size_t) size);
-  locator_buf[size] = '\0';
-
-  oid_part = locator_buf + prefix_len;
-  if (oid_part[0] == 'A' && oid_part[1] == ':')
-    {
-      oid_part += 2;
-    }
-
-  if (sscanf (oid_part, "%d|%d|%d:%lld%n", &volid, &pageid, &slotid, &parsed_length, &consumed) != 4
-      || parsed_length < 0)
-    {
-      return false;
-    }
-  (void) volid;
-  (void) pageid;
-  (void) slotid;
-
-  if (oid_part[consumed] != ':'
-      || sscanf (oid_part + consumed + 1, "%llx%n", &parsed_token, &token_consumed) != 1
-      || parsed_token == 0 || token_consumed <= 0 || oid_part[consumed + 1 + token_consumed] != '\0')
-    {
-      return false;
-    }
-
-  if (length != NULL)
-    {
-      *length = (DB_BIGINT) parsed_length;
-    }
-  if (bit_length != NULL)
-    {
-      *bit_length = -1;
-    }
-  return true;
+  /* One parser, one place.  The canonical reader also recomputes the locator's token over its OID and
+   * length, which the copy that used to live here did not: without that check, any user text shaped like
+   * "@internal_lob:1|2|3:5:abcd" is taken for a locator. */
+  return internal_lob_marker_parse_locator (data, size, length);
 }
 
 bool
@@ -2172,9 +2122,23 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
       // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
       if (db_value_has_internal_lob_marker (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR))
 	{
-	  /* A plain SELECT shows the internal LOB locator text; the content is
-	   * produced only through BLOB_TO_BIT / BLOB_TO_CHAR. */
-	  result = duplicate_string (db_get_string (value));
+	  /* A plain SELECT shows the internal LOB locator text; the content is produced only through
+	   * BLOB_TO_BIT / BLOB_TO_CHAR.  A BLOB buffer holds bytes, not a C string -- when the value points
+	   * straight at instance memory there is no terminator -- so the locator is bounded by its own bit
+	   * length rather than by strlen (). */
+	  int locator_bit_length = 0;
+	  const char *locator_bytes = (const char *) db_get_bit (value, &locator_bit_length);
+	  int locator_len = (locator_bit_length > 0) ? ((locator_bit_length + 7) / 8) : 0;
+
+	  if (locator_bytes != NULL && locator_len > 0)
+	    {
+	      result = (char *) malloc ((size_t) locator_len + 1);
+	      if (result != NULL)
+		{
+		  memcpy (result, locator_bytes, (size_t) locator_len);
+		  result[locator_len] = '\0';
+		}
+	    }
 	}
       if (result == NULL)
 	{
