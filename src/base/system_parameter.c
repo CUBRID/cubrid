@@ -5368,8 +5368,12 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 10000}},	/* 10 seconds */
-   {false, {.i = 10000}},
+   /* A second. Waits measured on a connection whose drain is deliberately starved run 0.6-10.8 ms,
+    * so this is about two orders of magnitude above a normal wait and an order below what CUBRID
+    * already spends deciding a peer on this socket has stopped talking (connection_timeout, 5s).
+    * Being too short costs the connection, which is the defect this bounds, so it keeps margin. */
+   {false, {.i = 1000}},
+   {false, {.i = 1000}},
    {false, {.i = 3600000}},	/* an hour, for a deliberately patient setting */
    {false, {.i = 0}},		/* 0: drop the connection at once, as before CBRD-27287 */
    (char *) NULL,

@@ -684,7 +684,8 @@ static unsigned int
 css_send_response_buffers_to_client (CSS_CONN_ENTRY *conn, unsigned int eid, int packet_type, char *const *buffers,
 					     const int *buffer_sizes, std::size_t buffer_count, bool require_open,
 					     std::size_t first_retained_buffer,
-					     std::function<void ()> &&deleter, int wait_time)
+					     std::function<void ()> &&deleter, int wait_time,
+					     bool may_wait_for_room = false)
 {
   std::array<NET_HEADER, 4> header {};
   std::array<cubbase::span<std::byte>, cubconn::connection::worker::MAX_DIRECT_PACKET_COUNT> packet;
@@ -733,7 +734,7 @@ css_send_response_buffers_to_client (CSS_CONN_ENTRY *conn, unsigned int eid, int
   assert (r == NO_ERROR);
 
   return cubconn::connection::worker::send_packet (conn, packet.data (), packet_count, retain_packet.data (),
-						   std::move (deleter), wait_time);
+						   std::move (deleter), wait_time, may_wait_for_room);
 }
 
 unsigned int
@@ -759,8 +760,12 @@ css_send_reply_and_data_to_client_direct (CSS_CONN_ENTRY * conn, unsigned int ei
   assert (conn != NULL);
 
   buffer_count = (buffer_size > 0 && buffer != NULL) ? 2 : 1;
+
+  /* xs_callback_send is this function's only caller, so this is exactly the callback channel: the
+   * message does not carry a reply anyone is blocked on, and it is the only sender that can fill a
+   * send queue -- one row-wise PL call spends 4 iovec and never waits for an answer. */
   return css_send_response_buffers_to_client (conn, eid, DATA_TYPE, buffers, buffer_sizes, buffer_count, false,
-					      buffer_count, std::function<void ()> (), 0);
+					      buffer_count, std::function<void ()> (), 0, true);
 }
 
 /*
