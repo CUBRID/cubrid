@@ -679,7 +679,7 @@ static int ldr_refresh_attrs (LDR_CONTEXT *context);
 static int update_default_count (CLASS_TABLE *table, OID *oid);
 static int update_default_instances_stats (LDR_CONTEXT *context);
 static int insert_instance (LDR_CONTEXT *context);
-static MOP construct_instance (LDR_CONTEXT *context);
+static int construct_instance (LDR_CONTEXT *context, MOP *obj_ptr);
 static int insert_meth_instance (LDR_CONTEXT *context);
 static int add_element (void ***elements, int *count, int *max, int grow);
 static int add_argument (LDR_CONTEXT *context);
@@ -5488,13 +5488,14 @@ error_exit:
 /*
  * construct_instance - called to insert an instance using the current
  * constructor method.
- *    return: object pointer
+ *    return: NO_ERROR if successful, error code otherwise
  *    context(in/out):
+ *    obj_ptr(out): the constructed instance, NULL on failure
  * Note:
  *    This simulates the token parsing here.
  */
-static MOP
-construct_instance (LDR_CONTEXT *context)
+static int
+construct_instance (LDR_CONTEXT *context, MOP *obj_ptr)
 {
   DB_VALUE *meth_args[LDR_MAX_ARGS + 1];
   DB_VALUE retval;
@@ -5503,6 +5504,8 @@ construct_instance (LDR_CONTEXT *context)
   DB_VALUE vals[LDR_MAX_ARGS];
   int i, a;
   LDR_ATTDESC *attdesc;
+
+  *obj_ptr = NULL;
 
   for (i = 0, a = context->arg_index; i < context->arg_count && err == NO_ERROR && i < (int) LDR_MAX_ARGS; i++, a++)
     {
@@ -5513,6 +5516,11 @@ construct_instance (LDR_CONTEXT *context)
     }
 
   meth_args[i] = NULL;
+
+  if (err != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   err = db_send_argarray (context->cls, context->constructor->header.name, &retval, meth_args);
 
@@ -5547,7 +5555,9 @@ construct_instance (LDR_CONTEXT *context)
     }
 
 error_exit:
-  return context->obj;
+  *obj_ptr = (err == NO_ERROR) ? context->obj : NULL;
+
+  return err;
 }
 
 /*
@@ -5567,26 +5577,21 @@ insert_meth_instance (LDR_CONTEXT *context)
     {
       if (context->constructor != NULL)
 	{
-	  CHECK_PTR (err, real_obj = construct_instance (context));
-	  if (real_obj == NULL)
+	  CHECK_ERR (err, construct_instance (context, &real_obj));
+	  CHECK_PTR (err, real_obj);
+
+	  ws_release_instance (real_obj);
+	  inst = otable_find (context->table, context->inst_num);
+	  if (inst == NULL || ! (inst->flags & INST_FLAG_RESERVED))
 	    {
-	      CHECK_ERR (err, er_errid ());
+	      CHECK_ERR (err, otable_insert (context->table, WS_OID (real_obj), context->inst_num));
+	      CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
+	      CHECK_ERR (err, ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num));
 	    }
 	  else
 	    {
-	      ws_release_instance (real_obj);
-	      inst = otable_find (context->table, context->inst_num);
-	      if (inst == NULL || ! (inst->flags & INST_FLAG_RESERVED))
-		{
-		  CHECK_ERR (err, otable_insert (context->table, WS_OID (real_obj), context->inst_num));
-		  CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
-		  CHECK_ERR (err, ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num));
-		}
-	      else
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_FORWARD_CONSTRUCTOR, 0);
-		  CHECK_ERR (err, ER_LDR_FORWARD_CONSTRUCTOR);
-		}
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_FORWARD_CONSTRUCTOR, 0);
+	      CHECK_ERR (err, ER_LDR_FORWARD_CONSTRUCTOR);
 	    }
 	}
       else
