@@ -4555,13 +4555,22 @@ dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locato
 }
 
 /*
- * add_res_data_internal_lob () - Put an internal LOB reference on the wire: total byte length, then the locator.
+ * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V13.
+ *
+ * Such a value is one of two things and the driver cannot tell them apart from the column type: a reference to
+ * stored content (an internal LOB, which the driver then pulls with CAS_FC_LOB_STREAM_*), or content that only
+ * exists as this value - a scalar function result such as CHAR_TO_CLOB('x') has no storage behind it.  A leading
+ * discriminator byte says which, so the driver never has to guess.  The connection's protocol version cannot
+ * carry that decision: it is a property of each value, not of the connection.
+ *
+ *   [INTERNAL_LOB_WIRE_REF]    INT64 byte length, then the locator
+ *   [INTERNAL_LOB_WIRE_INLINE] the content itself
  */
 static void
-add_res_data_internal_lob (T_NET_BUF * net_buf, const char *locator, int locator_len, DB_BIGINT byte_length,
-			   unsigned char ext_type, int *net_size)
+add_res_data_internal_lob (T_NET_BUF * net_buf, char wire_kind, const char *data, int data_len,
+			   DB_BIGINT byte_length, unsigned char ext_type, int *net_size)
 {
-  int payload_size = NET_SIZE_BIGINT + locator_len;
+  int payload_size = 1 + (wire_kind == INTERNAL_LOB_WIRE_REF ? NET_SIZE_BIGINT : 0) + data_len;
 
   if (ext_type)
     {
@@ -4573,8 +4582,15 @@ add_res_data_internal_lob (T_NET_BUF * net_buf, const char *locator, int locator
       net_buf_cp_int (net_buf, payload_size, NULL);
     }
 
-  net_buf_cp_bigint (net_buf, byte_length, NULL);
-  net_buf_cp_str (net_buf, locator, locator_len);
+  net_buf_cp_byte (net_buf, wire_kind);
+  if (wire_kind == INTERNAL_LOB_WIRE_REF)
+    {
+      net_buf_cp_bigint (net_buf, byte_length, NULL);
+    }
+  if (data_len > 0)
+    {
+      net_buf_cp_str (net_buf, data, data_len);
+    }
 
   if (net_size)
     {
@@ -4611,21 +4627,55 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     }
 
   {
+    DB_TYPE lob_value_type = db_value_type (val);
     const char *lob_locator = NULL;
     int lob_locator_len = 0;
     DB_BIGINT lob_byte_length = 0;
+    bool is_reference = dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length);
 
-    if (dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length))
+    if (is_reference && !DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13))
       {
-	if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13))
+	/* An older driver has no way to pull the payload, and the locator text is not the value.  Say so
+	 * instead of handing back an envelope that would be stored as if it were content. */
+	ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+	NET_BUF_ERR_SET (net_buf);
+	return 0;
+      }
+
+    /* Every BLOB/CLOB going to a V13 driver is framed with the discriminator, reference or not - the driver
+     * reads the same shape for both and decides from the byte, not from the connection version. */
+    if ((lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)
+	&& DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13))
+      {
+	if (is_reference)
 	  {
-	    /* An older driver has no way to pull the payload, and the locator text is not the value.  Say so
-	     * instead of handing back an envelope that would be stored as if it were content. */
-	    ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-	    NET_BUF_ERR_SET (net_buf);
-	    return 0;
+	    add_res_data_internal_lob (net_buf, INTERNAL_LOB_WIRE_REF, lob_locator, lob_locator_len,
+				       lob_byte_length, ext_col_type, &data_size);
 	  }
-	add_res_data_internal_lob (net_buf, lob_locator, lob_locator_len, lob_byte_length, ext_col_type, &data_size);
+	else
+	  {
+	    const char *inline_data;
+	    int inline_len = 0;
+
+	    if (lob_value_type == DB_TYPE_BLOB)
+	      {
+		int bit_length = 0;
+
+		inline_data = (const char *) db_get_bit (val, &bit_length);
+		inline_len = (bit_length + 7) / 8;
+	      }
+	    else
+	      {
+		inline_data = db_get_char (val);
+		inline_len = db_get_string_size (val);
+	      }
+	    if (max_col_size > 0 && inline_len > max_col_size)
+	      {
+		inline_len = max_col_size;
+	      }
+	    add_res_data_internal_lob (net_buf, INTERNAL_LOB_WIRE_INLINE, inline_data, inline_len, 0,
+				       ext_col_type, &data_size);
+	  }
 	return data_size;
       }
   }

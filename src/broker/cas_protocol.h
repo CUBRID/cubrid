@@ -244,6 +244,12 @@ extern "C"
  * make CAS allocate an arbitrary buffer. */
 #define INTERNAL_LOB_STREAM_MAX_CHUNK (1024 * 1024)
 
+/* Leading byte of every BLOB/CLOB column sent to a PROTOCOL_V13 driver.  It says whether the payload is a
+ * reference to stored content or the content itself; the column type alone cannot distinguish them, because a
+ * scalar function result (CHAR_TO_CLOB('x')) is a LOB value with no storage behind it. */
+#define INTERNAL_LOB_WIRE_INLINE ((char) 0)
+#define INTERNAL_LOB_WIRE_REF    ((char) 1)
+
   enum t_cas_protocol
   {
     PROTOCOL_V0 = 0,		/* old protocol */
