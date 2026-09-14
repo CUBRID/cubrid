@@ -12123,31 +12123,6 @@ pt_dblink_dml_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME
   return snl->server_cnt - server_cnt_before;
 }
 
-/* walk callback: set *arg to true if the subtree holds a query node anywhere */
-static PT_NODE *
-pt_dblink_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  bool *has_query = (bool *) arg;
-
-  if (PT_IS_QUERY (tree))
-    {
-      *has_query = true;
-      *continue_walk = PT_STOP_WALK;
-    }
-
-  return tree;
-}
-
-static bool
-pt_dblink_has_query (PARSER_CONTEXT * parser, PT_NODE * tree)
-{
-  bool has_query = false;
-
-  parser_walk_tree (parser, tree, pt_dblink_find_query, &has_query, NULL, NULL);
-
-  return has_query;
-}
-
 /* true iff the UPDATE WHERE is one this sink can carry, with *has_driving_pred telling which track it is.
  * Two shapes are admitted:
  *   1. no WHERE at all, the SET track -- the only subquery sits in the assignments and every remote row is
@@ -12178,15 +12153,72 @@ pt_dblink_update_where_is_inscope (PT_NODE * node, bool * has_driving_pred)
   return true;
 }
 
+/* true iff expr can be copied into a remote SQL string as-is: a literal, a bare column of the remote
+ * target, or + - * / (and unary -) over those.
+ *
+ * Callers deparse this into the remote statement. Host variables print as "?" with no bind; function
+ * calls are unchecked text -- both are rejected.
+ *
+ * Bare columns rely on a single spec. Qualified names (t.col) are rejected here; WHERE can check
+ * qualifiers later in settle, this path cannot.
+ *
+ * "||" is omitted: CUBRID/Oracle concatenate, MySQL treats it as OR unless PIPES_AS_CONCAT is set.
+ *
+ * First caller: UPDATE SET. Named for the question, not the clause, so other deparse paths can reuse
+ * it. Predicate shapes have their own check. */
+static bool
+pt_dblink_dml_is_remote_only_expr (PT_NODE * expr)
+{
+  if (expr == NULL)
+    {
+      return false;
+    }
+
+  switch (expr->node_type)
+    {
+    case PT_VALUE:
+      return true;
+
+    case PT_NAME:
+      return expr->info.name.meta_class == PT_NORMAL;
+
+    case PT_EXPR:
+      switch (expr->info.expr.op)
+	{
+	case PT_PLUS:
+	case PT_MINUS:
+	case PT_TIMES:
+	case PT_DIVIDE:
+	case PT_UNARY_MINUS:
+	  break;
+	default:
+	  return false;
+	}
+
+      if (expr->info.expr.arg3 != NULL)
+	{
+	  return false;
+	}
+
+      return pt_dblink_dml_is_remote_only_expr (expr->info.expr.arg1)
+	&& (expr->info.expr.arg2 == NULL || pt_dblink_dml_is_remote_only_expr (expr->info.expr.arg2));
+
+    default:
+      return false;
+    }
+}
+
 /* true iff every UPDATE SET assignment is one the remote sink can honor, with *num_set_subq set to how many
  * of them are a scalar subquery. Two RHS forms are accepted:
  *   - a bare subquery (col = (SELECT ...)): evaluated once, its value bound to a placeholder in the remote
  *     SET clause
- *   - anything with no subquery in it (literal, remote column, expression over them): carried verbatim
+ *   - a remote-only expression (pt_dblink_dml_is_remote_only_expr): deparsed into that clause instead,
+ *     its value not being computable here
  *
  * Rejected: a multi-column row assignment ((c1, c2) = (SELECT ...)), which one placeholder per column cannot
- * express, and a subquery buried inside an expression (col = (SELECT ...) || 'x'), where binding the scalar
- * alone would drop the surrounding operator. Shape only -- purity is the caller's settle step. */
+ * express, and everything outside those two forms -- a subquery inside an expression (col = (SELECT ...) + 1),
+ * where binding the scalar alone would drop the operator, and a host variable or function call, which the
+ * remote-only check turns away. Shape only -- purity is the caller's settle step. */
 static bool
 pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *num_set_subq)
 {
@@ -12207,9 +12239,9 @@ pt_dblink_update_set_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node, int *n
 	{
 	  cnt++;
 	}
-      else if (pt_dblink_has_query (parser, ea.rhs))
+      else if (!pt_dblink_dml_is_remote_only_expr (ea.rhs))
 	{
-	  return false;		/* subquery buried inside an expression */
+	  return false;
 	}
     }
 
