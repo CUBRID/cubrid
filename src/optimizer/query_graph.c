@@ -102,7 +102,7 @@
  * Figure out how many bytes a pkeys[] struct with n entries requires.
  */
 #define SIZEOF_ATTR_CUM_STATS_PKEYS(n) \
-    ((n) * sizeof(int))
+    ((n) * sizeof(INT64))
 
 #define NOMINAL_HEAP_SIZE(class)	200	/* pages */
 #define NOMINAL_OBJECT_SIZE(class)	 64	/* bytes */
@@ -5222,7 +5222,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5539,7 +5539,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		{
 		  free_and_init (cum_statsp->pkeys);	/* free alloced */
 		}
-	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5578,7 +5578,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    {
 	      free_and_init (cum_statsp->pkeys);
 	    }
-	  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	  if (cum_statsp->pkeys == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5788,7 +5788,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5826,7 +5826,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		{
 		  free_and_init (cum_statsp->pkeys);
 		}
-	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -6003,7 +6003,7 @@ qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
    */
 
   statblock->heap_num_pages = NOMINAL_HEAP_SIZE (class_mop);
-  statblock->heap_num_objects = (statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
+  statblock->heap_num_objects = ((INT64) statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
 
 }
 
