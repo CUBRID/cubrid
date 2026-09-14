@@ -515,6 +515,23 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
     {
       /* Already connected to a database, make sure to clear errors from previous clients */
       er_clear ();
+
+      err_code = au_check_user_loginable (db_user);
+      if (err_code == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  /* the cached user object is gone, so this connection cannot answer for the user any more */
+	  ux_database_shutdown (true);
+
+	  return ux_database_connect (db_name, db_user, db_passwd, db_err_msg);
+	}
+      else if (err_code != NO_ERROR)
+	{
+	  /* a rejected connect ends no transaction, so the S lock on _db_user would block user DDL */
+	  (void) db_abort_transaction ();
+
+	  goto connect_error;
+	}
+
       /* check session to see if it is still active and create if isn't */
       (void) db_find_or_create_session (db_user, program_name);
     }
