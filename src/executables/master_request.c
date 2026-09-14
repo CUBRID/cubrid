@@ -1641,32 +1641,28 @@ css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn, unsigned short reque
 {
 #if !defined(WINDOWS)
   int error;
-  int result;
 
-  if (HA_DISABLED ())
+  /* Unlike the other remote-allowed HA requests, this one is not gated by
+   * hb_check_request_eligibility (): by the time it naturally arrives in the
+   * deactivation sequence (DEACT_STOP_ALL -> DEACT_CONFIRM_STOP_ALL ->
+   * DEACTIVATE_HEARTBEAT -> DEACT_CONFIRM_NO_SERVER), DEACTIVATE_HEARTBEAT has
+   * already cleared hb_Cluster->nodes via hb_cluster_cleanup (), so the
+   * eligibility check would always fail and "cubrid heartbeat stop --host"
+   * would hang forever retrying. The response depends only on
+   * hb_Deactivate_info's own state, which is idempotent regardless of the
+   * caller: hb_get_deactivating_server_count () is 0 whenever no deactivation
+   * is in progress, and hb_finish_deactivate_server_info () is a no-op on an
+   * already-clean state, so an unauthenticated caller cannot influence or
+   * advance real deactivation progress through this request. */
+  if (hb_get_deactivating_server_count () == 0)
     {
-      /* hb_Cluster is only allocated when HA is enabled; hb_check_request_eligibility ()
-       * dereferences it unconditionally for a non-UNIX-socket peer, so it must not be
-       * called while HA is off. */
-      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+      error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
+
+      hb_finish_deactivate_server_info ();
     }
   else
     {
-      result = hb_check_request_eligibility (conn->fd);
-      if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
-	{
-	  error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
-	}
-      else if (hb_get_deactivating_server_count () == 0)
-	{
-	  error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
-
-	  hb_finish_deactivate_server_info ();
-	}
-      else
-	{
-	  error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
-	}
+      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
     }
 
   if (error != NO_ERRORS)
@@ -1981,9 +1977,11 @@ send_to_client:
  *   The enforcement is done on the master so a raw client that does not use
  *   the commdb utility cannot bypass it. Every request NOT in this list
  *   (server/master kill, shutdown, server list, ...) must originate from a
- *   local peer. The HA requests in this list are additionally restricted to
+ *   local peer. Most HA requests in this list are additionally restricted to
  *   eligible peers by hb_check_request_eligibility () inside their own
- *   handlers.
+ *   handlers; DEACT_CONFIRM_NO_SERVER is the other exception besides
+ *   GET_SERVER_STATE - see the comment on css_process_deact_confirm_no_server ()
+ *   for why it cannot use that check.
  */
 #define IS_MASTER_REQUEST_ALLOWED_ON_REMOTE(req) \
   ((req) == DEACT_STOP_ALL || (req) == DEACT_CONFIRM_STOP_ALL \
