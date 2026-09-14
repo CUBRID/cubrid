@@ -1643,20 +1643,30 @@ css_process_deact_confirm_no_server (CSS_CONN_ENTRY * conn, unsigned short reque
   int error;
   int result;
 
-  result = hb_check_request_eligibility (conn->fd);
-  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+  if (HA_DISABLED ())
     {
+      /* hb_Cluster is only allocated when HA is enabled; hb_check_request_eligibility ()
+       * dereferences it unconditionally for a non-UNIX-socket peer, so it must not be
+       * called while HA is off. */
       error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
-    }
-  else if (hb_get_deactivating_server_count () == 0)
-    {
-      error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
-
-      hb_finish_deactivate_server_info ();
     }
   else
     {
-      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+      result = hb_check_request_eligibility (conn->fd);
+      if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+	}
+      else if (hb_get_deactivating_server_count () == 0)
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
+
+	  hb_finish_deactivate_server_info ();
+	}
+      else
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+	}
     }
 
   if (error != NO_ERRORS)
@@ -1683,18 +1693,28 @@ css_process_deact_confirm_stop_all (CSS_CONN_ENTRY * conn, unsigned short reques
   int error;
   int result;
 
-  result = hb_check_request_eligibility (conn->fd);
-  if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+  if (HA_DISABLED ())
     {
+      /* hb_Cluster is only allocated when HA is enabled; hb_check_request_eligibility ()
+       * dereferences it unconditionally for a non-UNIX-socket peer, so it must not be
+       * called while HA is off. */
       error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
-    }
-  else if (hb_is_deactivation_ready () == true)
-    {
-      error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
     }
   else
     {
-      error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+      result = hb_check_request_eligibility (conn->fd);
+      if (result != HB_HC_ELIGIBLE_LOCAL && result != HB_HC_ELIGIBLE_REMOTE)
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+	}
+      else if (hb_is_deactivation_ready () == true)
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_SUCCESS, HA_REQUEST_RESULT_SIZE);
+	}
+      else
+	{
+	  error = css_send_data (conn, request_id, HA_REQUEST_FAILURE, HA_REQUEST_RESULT_SIZE);
+	}
     }
 
   if (error != NO_ERRORS)
