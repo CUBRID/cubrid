@@ -742,12 +742,12 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 		 (ret_code < 0) ? "error:" : "", err_number_execute,
 		 (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
-		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+		 (srv_handle->use_query_cache == true) ? " (CACHE)" : "", eid_string);
 #else
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
 		 (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
-		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+		 (srv_handle->use_query_cache == true) ? " (CACHE)" : "", eid_string);
 #endif
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
@@ -796,13 +796,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      err_number_execute,
 			      (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle),
 			      elapsed_sec, elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
-			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+			      (srv_handle->use_query_cache == true) ? " (CACHE)" : "", eid_string);
 #else
 	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
 			      err_number_execute, get_tuple_count (srv_handle), elapsed_sec, elapsed_msec,
 			      (client_cache_reusable == TRUE) ? " (CC)" : "",
-			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+			      (srv_handle->use_query_cache == true) ? " (CACHE)" : "", eid_string);
 #endif
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
@@ -1678,7 +1678,7 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "next_result %d %s", srv_h_id,
-		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
+		 (srv_handle->use_query_cache == true) ? "(CACHE)" : "");
 
   ux_next_result (srv_handle, flag, net_buf, req_info);
 
@@ -1826,7 +1826,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   eid_string = get_error_log_eids (err_info.err_number);
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "execute_array %s%d tuple %d time %d.%03d%s%s%s",
 		 (ret_code < 0) ? "error:" : "", err_info.err_number, get_tuple_count (srv_handle), elapsed_sec,
-		 elapsed_msec, "", (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+		 elapsed_msec, "", (srv_handle->use_query_cache == true) ? " (CACHE)" : "", eid_string);
 
 
   query_timeout =
@@ -1863,7 +1863,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "execute_array %s%d tuple %d time %d.%03d%s%s%s\n", (ret_code < 0) ? "error:" : "",
 			      err_info.err_number, get_tuple_count (srv_handle), elapsed_sec, elapsed_msec, "",
-			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
+			      (srv_handle->use_query_cache == true) ? " (CACHE)" : "", eid_string);
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	  plan = db_get_execution_plan ();

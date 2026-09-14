@@ -82,6 +82,44 @@ query_info_clear (T_QUERY_INFO * qi)
 }
 
 void
+query_info_reset (void)
+{
+  int i;
+
+#ifdef MT_MODE
+  MUTEX_LOCK (query_info_mutex);
+#endif
+
+  if (query_info_arr != NULL)
+    {
+      for (i = 0; i < num_query_info; i++)
+	{
+	  query_info_clear (&query_info_arr[i]);
+	}
+      FREE_MEM (query_info_arr);
+      query_info_arr = NULL;
+    }
+  num_query_info = 0;
+
+#ifdef TEST
+  if (query_info_arr_ne != NULL)
+    {
+      for (i = 0; i < num_query_info_ne; i++)
+	{
+	  query_info_clear (&query_info_arr_ne[i]);
+	}
+      FREE_MEM (query_info_arr_ne);
+      query_info_arr_ne = NULL;
+    }
+  num_query_info_ne = 0;
+#endif
+
+#ifdef MT_MODE
+  MUTEX_UNLOCK (query_info_mutex);
+#endif
+}
+
+void
 query_info_print (void)
 {
   int i;

@@ -5205,6 +5205,98 @@ end:
 }
 
 /*
+ * qfile_policy_aware_delete () - Callback for mht_map_no_key to selectively delete
+ *   entries based on their cache_policy during DML commit.
+ *
+ *   Policy behavior on DML commit:
+ *     TTL (1)     : Protected from DML invalidation (only expires by TTL)
+ *     DEFAULT (0) : Invalidated on DML commit (legacy behavior)
+ */
+static int
+qfile_policy_aware_delete (THREAD_ENTRY * thread_p, void *data, void *args)
+{
+  QFILE_LIST_CACHE_ENTRY *lent = (QFILE_LIST_CACHE_ENTRY *) data;
+
+  if (lent == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  if (lent->cache_policy == 1)	/* RESULT_CACHE_POLICY_TTL */
+    {
+      /* TTL policy: protected from DML invalidation.
+       * Only delete if TTL has expired. */
+      if (lent->ttl_seconds > 0)
+	{
+	  struct timeval now;
+	  gettimeofday (&now, NULL);
+	  int elapsed = (int) (now.tv_sec - lent->time_created.tv_sec);
+	  if (elapsed >= lent->ttl_seconds)
+	    {
+	      /* TTL expired - delete this entry */
+	      return qfile_end_use_of_list_cache_entry (thread_p, lent, true);
+	    }
+	}
+      /* TTL still valid - skip (do NOT delete) */
+      return NO_ERROR;
+    }
+
+  /* DEFAULT(0): delete on DML commit */
+  return qfile_end_use_of_list_cache_entry (thread_p, lent, true);
+}
+
+/*
+ * qfile_clear_list_cache_except_ttl () - Policy-aware cache invalidation on DML commit.
+ *   TTL-policy entries are preserved; DEFAULT entries are deleted.
+ *   return: NO_ERROR
+ */
+int
+qfile_clear_list_cache_except_ttl (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
+{
+  int list_ht_no;
+  int rc, cnt;
+
+  if (QFILE_IS_LIST_CACHE_DISABLED || xcache_entry->list_ht_no < 0 || qfile_List_cache.n_hts == 0)
+    {
+      return NO_ERROR;
+    }
+
+  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  list_ht_no = xcache_entry->list_ht_no;
+
+  if (qfile_get_list_cache_number_of_entries (list_ht_no) == 0)
+    {
+      csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+      return NO_ERROR;
+    }
+
+  /* Selectively delete entries based on policy */
+  cnt = 0;
+  do
+    {
+      rc = mht_map_no_key (thread_p, qfile_List_cache.list_hts[list_ht_no],
+			   qfile_policy_aware_delete, NULL);
+      if (rc != NO_ERROR)
+	{
+	  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+	  thread_sleep (10);
+	  if (csect_enter (thread_p, CSECT_QPROC_LIST_CACHE, INF_WAIT) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+  while (rc != NO_ERROR && cnt++ < 10);
+
+  csect_exit (thread_p, CSECT_QPROC_LIST_CACHE);
+  return NO_ERROR;
+}
+
+/*
  * qfile_allocate_list_cache_entry () - Allocate the entry or get one from the pool
  *   return:
  *   req_size(in)       :
@@ -5278,6 +5370,12 @@ qfile_free_list_cache_entry (THREAD_ENTRY * thread_p, void *data, void *args)
   if (data == NULL)
     {
       return ER_FAILED;
+    }
+
+  /* free pending slot list_id if it has valid data */
+  if (lent->has_pending && lent->list_id_pending.type_list.type_cnt > 0)
+    {
+      qfile_clear_list_id (&lent->list_id_pending);
     }
 
   /*
@@ -5586,6 +5684,19 @@ qfile_end_use_of_list_cache_entry_local (THREAD_ENTRY * thread_p, void *data, vo
       return ER_FAILED;
     }
 
+  /* TTL policy entries are protected from DML invalidation */
+  if (lent->cache_policy == 1 && lent->ttl_seconds > 0)
+    {
+      struct timeval now;
+      gettimeofday (&now, NULL);
+      int elapsed = (int) (now.tv_sec - lent->time_created.tv_sec);
+      if (elapsed < lent->ttl_seconds)
+	{
+	  /* TTL still valid - skip deletion */
+	  return NO_ERROR;
+	}
+    }
+
   if (lent->invalidate == false)
     {
       lent->invalidate = *((bool *) args);
@@ -5669,6 +5780,91 @@ qfile_lookup_list_cache_entry (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl,
 	      qfile_delete_list_cache_entry (thread_p, lent);
 	    }
 	  goto end;
+	}
+
+      /* check TTL expiry */
+      if (lent->ttl_seconds > 0)
+	{
+	  struct timeval now;
+	  gettimeofday (&now, NULL);
+	  int elapsed = (int) (now.tv_sec - lent->time_created.tv_sec);
+	  if (elapsed >= lent->ttl_seconds)
+	    {
+	      /* TTL expired */
+	      if (lent->queue_slots >= 2
+		  && (lent->cache_policy == 1)
+		  && lent->has_pending)
+		{
+		  /* TTL + queue=2: pending slot has pre-fetched data, swap instead of miss */
+		  QFILE_LIST_ID tmp_id;
+		  memcpy (&tmp_id, &lent->list_id, sizeof (QFILE_LIST_ID));
+		  memcpy (&lent->list_id, &lent->list_id_pending, sizeof (QFILE_LIST_ID));
+		  memcpy (&lent->list_id_pending, &tmp_id, sizeof (QFILE_LIST_ID));
+
+		  lent->has_pending = false;
+		  lent->needs_refresh = false;
+		  lent->force_miss_next = false;
+		  (void) gettimeofday (&lent->time_created, NULL);
+		  /* fall through to return cache hit with fresh data */
+		}
+	      else
+		{
+		  /* no pending data - delete and treat as miss */
+#if defined(SERVER_MODE)
+		  if (lent->last_ta_idx == 0)
+#endif
+		    {
+		      qfile_delete_list_cache_entry (thread_p, lent);
+		    }
+		  goto end;
+		}
+	    }
+	  else if (lent->queue_slots >= 2
+		   && (lent->cache_policy == 1)
+		   && !lent->needs_refresh && !lent->has_pending
+		   && elapsed >= (lent->ttl_seconds / 2))
+	    {
+	      /* TTL + queue=2: past half-life, trigger pre-fetch for pending slot.
+	       * The needs_refresh -> force_miss_next progression ensures only ONE
+	       * worker gets a cache miss while all others continue getting stale hits. */
+	      lent->needs_refresh = true;
+	    }
+	}
+
+      /* Double-buffering queue logic for TTL with queue=2 */
+      if (lent->queue_slots >= 2
+	  && (lent->cache_policy == 1))
+	{
+	  if (lent->has_pending)
+	    {
+	      /* Pending slot has refreshed data - swap active <-> pending */
+	      QFILE_LIST_ID tmp_id;
+	      memcpy (&tmp_id, &lent->list_id, sizeof (QFILE_LIST_ID));
+	      memcpy (&lent->list_id, &lent->list_id_pending, sizeof (QFILE_LIST_ID));
+	      memcpy (&lent->list_id_pending, &tmp_id, sizeof (QFILE_LIST_ID));
+
+	      lent->has_pending = false;
+	      lent->needs_refresh = false;
+	      lent->force_miss_next = false;
+	      (void) gettimeofday (&lent->time_created, NULL);
+	      /* return cache hit with fresh data */
+	    }
+	  else if (lent->force_miss_next)
+	    {
+	      /* 2nd request after DML: return miss to trigger DB re-query.
+	       * The result will be stored in the pending slot by qfile_update_list_cache_entry. */
+	      lent->force_miss_next = false;
+	      goto end;		/* result_cached stays false = cache miss */
+	    }
+	  else if (lent->needs_refresh)
+	    {
+	      /* 1st request after trigger: return stale cached data (fast response).
+	       * Set force_miss_next so the NEXT request triggers the actual refresh.
+	       * Clear needs_refresh to prevent thundering herd: only ONE miss is generated. */
+	      lent->force_miss_next = true;
+	      lent->needs_refresh = false;
+	      /* fall through to return cache hit with stale data */
+	    }
 	}
 
       *result_cached = true;
@@ -5861,6 +6057,25 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   /* return with the one from the cache */
   if (lent != NULL)
     {
+      /* Double-buffering: store refreshed result in pending slot (TTL only).
+       * For an existing entry with queue=2 and no pending data, route the update to the
+       * pending slot. This works because the only way an existing cache entry gets updated
+       * is via a force_miss refresh cycle. */
+      if (lent->queue_slots >= 2 && !lent->has_pending
+	  && (lent->cache_policy == 1))
+	{
+	  /* This update was triggered by a force_miss lookup.
+	   * Store the new result in the pending slot instead of replacing the active one.
+	   * The next lookup will swap pending -> active. */
+	  if (qfile_copy_list_id (&lent->list_id_pending, list_id, false) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  lent->list_id_pending.tfile_vfid = NULL;
+	  lent->has_pending = true;
+	  lent->needs_refresh = false;
+	  lent->force_miss_next = false;
+	}
       goto end;
     }
 
@@ -5926,6 +6141,13 @@ qfile_update_list_cache_entry (THREAD_ENTRY * thread_p, int list_ht_no, const DB
   lent->deletion_marker = false;
   lent->invalidate = false;
   lent->xcache_entry = xasl;
+  lent->ttl_seconds = 0;	/* will be set by caller if TTL is specified */
+  lent->cache_policy = 0;	/* will be set by caller if policy is specified */
+  lent->queue_slots = 1;	/* will be set by caller if queue is specified */
+  lent->needs_refresh = false;
+  lent->force_miss_next = false;
+  lent->has_pending = false;
+  memset (&lent->list_id_pending, 0, sizeof (QFILE_LIST_ID));
 
   /* record my transaction id into the entry */
 #if defined(SERVER_MODE)
