@@ -132,6 +132,7 @@ extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, r
 extern SCAN_CODE qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					 void *scan_func_ptr);
 extern int qexec_execute_dptr_list (THREAD_ENTRY * thread_p, xasl_node * dptr_list, xasl_state * xstate, bool truncate);
+extern void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, xasl_node * xasl_list);
 extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl,
 							XASL_STATE * xasl_state, bool not_use_membuf);
 extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,

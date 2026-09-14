@@ -559,52 +559,6 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  static void clear_xasl_dptr_node (THREAD_ENTRY *thread_p, XASL_NODE *xaslp, bool uses_clones)
-  {
-    if (uses_clones)
-      {
-	if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
-	  {
-	    xaslp->status = XASL_CLEARED;
-	  }
-	else
-	  {
-	    /* The values allocated during execution will be cleared and the xasl is reused. */
-	    xaslp->status = XASL_INITIALIZED;
-	  }
-      }
-    else
-      {
-	xaslp->status = XASL_CLEARED;
-      }
-    if (xaslp->list_id->tuple_cnt > 0)
-      {
-	qfile_truncate_list (thread_p, xaslp->list_id);
-      }
-    if (xaslp->single_tuple)
-      {
-	QPROC_DB_VALUE_LIST value_list;
-	int i;
-	for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
-	     value_list = value_list->next, i++)
-	  {
-	    pr_clear_value (value_list->val);
-	  }
-      }
-  }
-
-  /* walk the full scan_ptr chain; mainline qexec_clear_scan_all_lists does the same. */
-  static void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
-  {
-    for (XASL_NODE *scan_xasl = xasl; scan_xasl != nullptr; scan_xasl = scan_xasl->scan_ptr)
-      {
-	for (XASL_NODE *xaslp = scan_xasl->dptr_list; xaslp != nullptr; xaslp = xaslp->next)
-	  {
-	    clear_xasl_dptr_node (thread_p, xaslp, uses_clones);
-	  }
-      }
-  }
-
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   int task<result_type, ST>::clone_xasl (cubthread::entry &thread_ref)
   {
@@ -701,7 +655,6 @@ namespace parallel_scan
   SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
   {
     SCAN_CODE scan_code, xs_scan;
-    bool uses_clones = xcache_uses_clones ();
     DB_LOGICAL ev_res;
     result_handler<result_type> *result_handler_p = m_result_handler;
 
@@ -739,7 +692,7 @@ namespace parallel_scan
 	    ev_res = eval_pred (&thread_ref, m_xasl->after_join_pred, m_vd, NULL);
 	    if (ev_res != V_TRUE)
 	      {
-		clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+		qexec_clear_scan_all_lists (&thread_ref, m_xasl);
 		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
 		  {
 		    continue;
@@ -759,7 +712,7 @@ namespace parallel_scan
 	    ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
 	    if (ev_res != V_TRUE)
 	      {
-		clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+		qexec_clear_scan_all_lists (&thread_ref, m_xasl);
 		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
 		  {
 		    continue;
@@ -855,9 +808,10 @@ namespace parallel_scan
 	    result_handler_p->write (&thread_ref, m_xasl->val_list);
 	  }
 
-	/* dptrs reaching here are per-row re-evaluated correlated subqueries; checker blocks join-type and IN-clause variants. clear all. */
+	/* same per-row teardown as the serial qexec_clear_all_lists: destroy (not truncate) the dptr head
+	 * lists so a GROUP BY dptr is re-opened with its outptr types on the next row (CBRD-27205) */
 
-	clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+	qexec_clear_scan_all_lists (&thread_ref, m_xasl);
       }
     return S_END;
   }

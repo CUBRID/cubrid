@@ -432,7 +432,6 @@ static int qexec_clear_analytic_function_list (THREAD_ENTRY * thread_p, XASL_NOD
 static int qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYPE * list, bool is_final);
 static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
-static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_final_close_dblink_specs (XASL_NODE * xasl);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
@@ -3493,7 +3492,7 @@ qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
  *   return:
  *   xasl_list(in)      :
  */
-static void
+void
 qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 {
   XASL_NODE *xasl;
