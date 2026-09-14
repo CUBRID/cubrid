@@ -955,11 +955,14 @@ scenario_session_var (const char *server_name)
   });
 }
 
-/* #168 smoke scenario — a legacy C METHOD whose FILE names an unset envvar
- * fails dynamic linking with ER_SM_INVALID_METHOD_ENV (-294), and the invoke
- * loop's pass-through must deliver that id, not wrap it in
- * ER_SP_EXECUTE_ERROR (-889): the in-process callback boundary has to ship
- * er_errid () the way legacy CS's METHOD_ERROR did (network_callback_sr.cpp). */
+/* #168 smoke scenario — a legacy C METHOD whose FILE names an unset envvar.
+ * Since the workspace#259 axis-5 decision the merged server refuses every
+ * user-defined native method before the file is even expanded, so the
+ * expected id is ER_SM_DYNAMIC_LINK_PROBLEMS (-237) instead of the former
+ * ER_SM_INVALID_METHOD_ENV (-294); either way the invoke loop's pass-through
+ * must deliver that id, not wrap it in ER_SP_EXECUTE_ERROR (-889): the
+ * in-process callback boundary has to ship er_errid () the way legacy CS's
+ * METHOD_ERROR did (network_callback_sr.cpp). */
 static bool
 scenario_method_env (const char *server_name)
 {
@@ -976,11 +979,11 @@ scenario_method_env (const char *server_name)
       {
 	return false;
       }
-    if (!scenario_exec (sid, "SELECT wf168_add (t, 1, 2) FROM wf168_x t", NULL, ER_SM_INVALID_METHOD_ENV))
+    if (!scenario_exec (sid, "SELECT wf168_add (t, 1, 2) FROM wf168_x t", NULL, ER_SM_DYNAMIC_LINK_PROBLEMS))
       {
 	return false;
       }
-    tracer_log ("M0_TRACER: S%d method-env failure surfaced as %d as expected", sid, ER_SM_INVALID_METHOD_ENV);
+    tracer_log ("M0_TRACER: S%d native-method refusal surfaced as %d as expected", sid, ER_SM_DYNAMIC_LINK_PROBLEMS);
     if (!scenario_exec (sid, "DROP CLASS wf168_x", NULL, 0))
       {
 	return false;
