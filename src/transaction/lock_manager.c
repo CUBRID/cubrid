@@ -6620,20 +6620,19 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
-  if (entry_ptr == NULL)
+  if (entry_ptr == NULL || entry_ptr->transient_count == 0)
     {
+      /* this call counted nothing on the entry, so it has nothing to give back -- a request that is there
+       * belongs to an earlier statement.  Reached when a class lock the transaction already held covered
+       * the request, so lock_object_transient () was granted without making an instance request. */
       return;
     }
 
   assert (!OID_IS_ROOTOID (oid) && (class_oid == NULL || !OID_IS_ROOTOID (class_oid)));
-  assert (entry_ptr->transient_count > 0);
-  if (entry_ptr->transient_count > 0)
+  entry_ptr->transient_count--;
+  if (lk_Gl.tran_lock_table[tran_index].transient_total > 0)
     {
-      entry_ptr->transient_count--;
-      if (lk_Gl.tran_lock_table[tran_index].transient_total > 0)
-	{
-	  lk_Gl.tran_lock_table[tran_index].transient_total--;
-	}
+      lk_Gl.tran_lock_table[tran_index].transient_total--;
     }
   lock_internal_perform_unlock_object (thread_p, entry_ptr, false, false);
 #endif /* !SERVER_MODE */
