@@ -1225,7 +1225,7 @@ static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STAT
 static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
 						   bool * exhausted, int *count);
 static int btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2);
-static int btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level);
+static INT64 btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level);
 static int btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static int btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
@@ -7498,7 +7498,7 @@ btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2)
  * values in a uniform n-key sample of an N-key population. Unlike scaling the transition
  * count of the sampled leaves, it is insensitive to the visit order of the samples.
  */
-static int
+static INT64
 btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level)
 {
   UINT64 *sample = env->prefix_sample + ((size_t) level * BTREE_STATS_DUJ1_SAMPLE);
@@ -7530,7 +7530,7 @@ btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level)
   estimate = MAX (estimate, (double) d);
   estimate = MIN (estimate, total_keys);
 
-  return (int) estimate;
+  return (INT64) estimate;
 }
 
 /*
@@ -7557,7 +7557,8 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 {
   BTID_INT *btid_int;
   bool exhausted, have_sample;
-  int level, prev_final = 0, budget, count, i;
+  int level, budget, count, i;
+  INT64 prev_final = 0;		/* distinct count of the level above; pkeys[] is INT64 (CBRD-27140) */
   int ret = NO_ERROR;
 
   assert (env != NULL);
@@ -7580,7 +7581,7 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
    * Duj1 estimate degenerates to the key count the AR sampling already produced. */
   for (level = 0; level < env->pkeys_val_num - 1; level++)
     {
-      budget = BTREE_STATS_PREFIX_SEEK_BUDGET + prev_final;
+      budget = (int) MIN ((INT64) BTREE_STATS_PREFIX_SEEK_BUDGET + prev_final, (INT64) INT_MAX);
       if (budget > BTREE_STATS_PREFIX_SEEK_BUDGET_MAX)
 	{
 	  break;		/* enumeration priced out; deeper levels are estimated below */
@@ -7743,10 +7744,11 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  env->stat_info->leafs = INT_MAX;
 	}
 
+      /* keys/pkeys are INT64 (CBRD-27140): saturate at the field's own bound, not at INT_MAX */
       env->stat_info->keys *= exp_ratio;
       if (env->stat_info->keys < 0)
 	{
-	  env->stat_info->keys = INT_MAX;
+	  env->stat_info->keys = DB_BIGINT_MAX;
 	}
 
       for (i = 0; i < env->pkeys_val_num; i++)
@@ -7754,7 +7756,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  env->stat_info->pkeys[i] *= exp_ratio;
 	  if (env->stat_info->pkeys[i] < 0)
 	    {			/* multiply-overflow defence */
-	      env->stat_info->pkeys[i] = INT_MAX;
+	      env->stat_info->pkeys[i] = DB_BIGINT_MAX;
 	    }
 	}
     }
