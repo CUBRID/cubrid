@@ -1,0 +1,10 @@
+{
+  "case": "refusal-rate-limited",
+  "category": "refusal",
+  "outcome": "refused",
+  "refusal_code": "rate-limited",
+  "retry_after_ms": 60,
+  "reply_to": "scan_request",
+  "connection": "open",
+  "frame_count": 1
+}

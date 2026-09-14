@@ -31,6 +31,7 @@
 #include <atomic>
 
 #include "page_buffer.h"
+#include "pgbuf_inspector.hpp"
 
 #include "storage_common.h"
 #include "memory_alloc.h"
@@ -17181,6 +17182,13 @@ pgbuf_flush_control_daemon_init ()
  * pgbuf_daemons_init () - initialize page buffer daemon threads
  */
 void
+pgbuf_get_lru_counts (int *shared, int *private_count)
+{
+  *shared = PGBUF_SHARED_LRU_COUNT;
+  *private_count = PGBUF_PRIVATE_LRU_COUNT;
+}
+
+void
 pgbuf_daemons_init ()
 {
   pgbuf_page_maintenance_daemon_init ();
@@ -17479,3 +17487,73 @@ exit_on_error:
 
   return error;
 }
+
+#if defined (SERVER_MODE) && defined (LINUX)
+/* *INDENT-OFF* */
+/* Private inspector adapter. The pool and its slot-to-I/O-buffer links are initialized before the inspector
+ * starts and remain allocated until its daemon has been destroyed. No engine pointer escapes the sampler. */
+cubpgbuf::inspector::scan_source
+cubpgbuf::inspector::make_scan_source ()
+{
+  scan_source source;
+  source.slots = pgbuf_Pool.num_buffers;
+  source.shared = PGBUF_SHARED_LRU_COUNT;
+  source.private_count = PGBUF_PRIVATE_LRU_COUNT;
+  source.sample = [] (std::size_t slot, page_sample &sample)
+  {
+    if (slot >= static_cast<std::size_t> (pgbuf_Pool.num_buffers))
+      {
+        return sample_status::UNAVAILABLE;
+      }
+    PGBUF_BCB *bcb = PGBUF_FIND_BCB_PTR (slot);
+    /* Deliberately bypass the optional BCB monitoring wrappers: sampling changes no accounting. */
+    if (pthread_mutex_trylock (&bcb->mutex) != 0)
+      {
+        return sample_status::UNAVAILABLE;
+      }
+    if (VPID_ISNULL (&bcb->vpid))
+      {
+        pthread_mutex_unlock (&bcb->mutex);
+        return sample_status::EMPTY;
+      }
+    sample.volid = bcb->vpid.volid;
+    sample.pageid = bcb->vpid.pageid;
+    PGBUF_ATOMIC_LATCH_IMPL latch;
+    latch.raw = bcb->atomic_latch.load (std::memory_order_acquire);
+    sample.latch_mode = static_cast<int> (latch.impl.latch_mode);
+    sample.waiter_present = latch.impl.waiter_exists != 0;
+    sample.fix_count = latch.impl.fcnt;
+    /* Flags can change under LRU-list locks, independently of this mutex. Their writers use whole-word CAS. */
+    int flags = __atomic_load_n (&bcb->flags, __ATOMIC_ACQUIRE);
+    sample.dirty = (flags & PGBUF_BCB_DIRTY_FLAG) != 0;
+    sample.flushing = (flags & PGBUF_BCB_FLUSHING_TO_DISK_FLAG) != 0;
+    sample.async_flush_requested = (flags & PGBUF_BCB_ASYNC_FLUSH_REQ) != 0;
+    sample.to_vacuum = (flags & PGBUF_BCB_TO_VACUUM_FLAG) != 0;
+    switch (PGBUF_GET_ZONE (flags))
+      {
+      case PGBUF_LRU_1_ZONE: sample.zone = 1; break;
+      case PGBUF_LRU_2_ZONE: sample.zone = 2; break;
+      case PGBUF_LRU_3_ZONE: sample.zone = 3; break;
+      case PGBUF_VOID_ZONE: sample.zone = 0; break;
+      default: sample.zone = -1; break;
+      }
+    sample.list_index = PGBUF_GET_LRU_INDEX (flags);
+    sample.page_kind = nullptr;
+    /* A fixed holder may write header scalars without this mutex. Only an idle, non-flushing BCB is safe:
+     * fix/promote/replacement/flush must acquire the mutex; lock-free read fix requires an existing READ latch.
+     * Unknown fields remain absent, never fabricated null. Neither a page latch nor a fix is acquired here. */
+    if (latch.impl.latch_mode == PGBUF_NO_LATCH && latch.impl.fcnt == 0 && !sample.flushing)
+      {
+        const FILEIO_PAGE &page = bcb->iopage_buffer->iopage;
+        sample.page_lsa = sampled_lsa {page.prv.lsa.pageid, static_cast<int> (page.prv.lsa.offset)};
+        sample.oldest_unflush_lsa = sampled_lsa {bcb->oldest_unflush_lsa.pageid,
+                                                static_cast<int> (bcb->oldest_unflush_lsa.offset)};
+        sample.page_kind = page_kind_name (page.prv.ptype, page_type_layout::DEVELOP);
+      }
+    pthread_mutex_unlock (&bcb->mutex);
+    return sample.volid < 0 || sample.pageid < 0 ? sample_status::UNAVAILABLE : sample_status::RESIDENT;
+  };
+  return source;
+}
+/* *INDENT-ON* */
+#endif

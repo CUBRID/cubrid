@@ -44,6 +44,7 @@
 #include <assert.h>
 
 #include "boot_sr.h"
+#include "pgbuf_inspector.hpp"
 
 #include "area_alloc.h"
 #include "btree.h"
@@ -2730,6 +2731,11 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       /* server is up! */
       boot_server_status (BOOT_SERVER_UP);
     }
+#if defined (SERVER_MODE) && defined (LINUX)
+/* *INDENT-OFF* */
+  cubpgbuf::inspector::initialize ();
+/* *INDENT-ON* */
+#endif
 
   return NO_ERROR;
 
@@ -2771,6 +2777,11 @@ error:
   cdc_daemons_destroy ();
 
   BO_DISABLE_FLUSH_DAEMONS ();
+#if defined (LINUX)
+/* *INDENT-OFF* */
+  cubpgbuf::inspector::finalize ();
+/* *INDENT-ON* */
+#endif
   pgbuf_daemons_destroy ();
   dwb_daemons_destroy ();
   parallel_query::worker_manager_global::get_manager ().destroy ();
@@ -3107,6 +3118,11 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 #ifdef CCI_XA
   dblink_2pc_daemon_stop ();
 #endif /* CCI_XA */
+#if defined (LINUX)
+/* *INDENT-OFF* */
+  cubpgbuf::inspector::finalize ();
+/* *INDENT-ON* */
+#endif
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
   pl_server_destroy ();

@@ -1,0 +1,6 @@
+{
+  "case": "refusal-version-unsupported",
+  "frames": [
+    { "frame": "error", "code": "version-unsupported", "supported_majors": [1] }
+  ]
+}

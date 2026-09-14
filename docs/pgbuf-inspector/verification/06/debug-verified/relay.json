@@ -1,0 +1,9 @@
+{
+  "requests": [
+    {
+      "type": "scan_request",
+      "incarnation": "3676524d936f21842f1b4f405bc181d8"
+    }
+  ],
+  "error": null
+}

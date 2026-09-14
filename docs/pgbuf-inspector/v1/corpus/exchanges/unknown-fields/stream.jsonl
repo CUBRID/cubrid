@@ -1,0 +1,6 @@
+{"type":"client_hello","supported_majors":[1]}
+{"type":"server_hello","protocol_major":1,"protocol_minor":0,"incarnation":"0123456789abcdef0123456789abcdef","database_creation":"1","volumes":[{"volid":0,"volume_creation":"2","device":"3","inode":"18446744073709551615"}],"shared_lru_count":2,"private_lru_count":3}
+{"type":"scan_request","incarnation":"0123456789abcdef0123456789abcdef"}
+{"type":"scan_header","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","start_time_us":"1000"}
+{"type":"page","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","volid":0,"pageid":7,"latch_mode":"read","waiter_present":true,"fix_count":2,"dirty":true,"flushing":false,"async_flush_requested":false,"to_vacuum":true,"lru_zone":"lru2","lru_list_kind":"private","lru_list_index":1,"page_lsa":{"pageid":"9223372036854775807","offset":12},"oldest_unflush_lsa":null,"page_kind":"oos","future":{"nested":[1,2]}}
+{"type":"scan_footer","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","end_time_us":"900","record_count":1,"visited_slots":2,"truncated":false}
