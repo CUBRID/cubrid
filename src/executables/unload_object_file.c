@@ -967,7 +967,7 @@ internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int ke
 #elif defined (CS_MODE)
       /* One forward-only server cursor for the whole value (the same path csql streams with).  Reading by
        * offset instead made the server re-walk the chain from its start on every block, i.e. O(size^2). */
-      error = internal_lob_stream_open_from_server (key, key_len, &stream_token);
+      error = internal_lob_stream_open_from_server (key, key_len, 0, &stream_token);
       if (error != NO_ERROR)
 	{
 	  goto exit_before_lock;

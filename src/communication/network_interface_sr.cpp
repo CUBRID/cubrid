@@ -10436,13 +10436,22 @@ sinternal_lob_stream_open (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
   const char *locator_string = NULL;
   char *ptr = NULL;
   INT64 token = 0;
+  INT64 start_offset = 0;
   int locator_len = 0;
   int err = NO_ERROR;
   INTERNAL_LOB_LOCATOR locator;
   internal_lob_stream_cursor cursor;
 
-  if (unpack_client_locator (request, reqlen, 0, &locator_string, &locator_len) != NO_ERROR
+  if (unpack_client_locator (request, reqlen, OR_INT64_SIZE, &locator_string, &locator_len) != NO_ERROR
       || !internal_lob_parse_locator_string (locator_string, locator_len, &locator))
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  (void) or_unpack_int64 (request, &start_offset);
+  if (start_offset < 0)
     {
       err = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -10453,6 +10462,18 @@ sinternal_lob_stream_open (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
   if (err != NO_ERROR)
     {
       goto reply;
+    }
+
+  /* Positioning happens here rather than by the client reading and discarding: the bytes ahead of the offset
+   * would otherwise cross the network only to be thrown away, which is what made a read near the end of a
+   * large value cost as much as reading the whole of it. */
+  if (start_offset > 0)
+    {
+      err = internal_lob_read_skip (thread_p, cursor.reader, start_offset);
+      if (err != NO_ERROR)
+	{
+	  goto reply;
+	}
     }
 
   cursor.tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);

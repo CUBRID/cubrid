@@ -2545,15 +2545,17 @@ fn_lob_stream_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, 
 {
   char *locator = NULL;
   int locator_len = 0;
+  DB_BIGINT start_offset = 0;
 
-  if (argc != 1)
+  if (argc != 2)
     {
       ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
       return FN_KEEP_CONN;
     }
   net_arg_get_str (&locator, &locator_len, argv[0]);
-  (void) ux_lob_stream_open (locator, locator_len, net_buf);
+  net_arg_get_bigint (&start_offset, argv[1]);
+  (void) ux_lob_stream_open (locator, locator_len, start_offset, net_buf);
   return FN_KEEP_CONN;
 }
 

@@ -10821,12 +10821,12 @@ ux_stream_abort (T_NET_BUF * net_buf)
  * thin pass-through to the same server read cursor csql and unloaddb use; CAS holds no LOB bytes of its own.
  */
 int
-ux_lob_stream_open (char *locator, int locator_len, T_NET_BUF * net_buf)
+ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NET_BUF * net_buf)
 {
   INT64 token = 0;
   int err_code;
 
-  err_code = internal_lob_stream_open_from_server (locator, locator_len, &token);
+  err_code = internal_lob_stream_open_from_server (locator, locator_len, (INT64) start_offset, &token);
   if (err_code != NO_ERROR)
     {
       errors_in_transaction++;

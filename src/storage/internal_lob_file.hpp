@@ -127,6 +127,7 @@ extern int internal_lob_read_range (THREAD_ENTRY *thread_p, const INTERNAL_LOB_L
 				    oos_buffer dest, int &nread);
 extern int internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator,
 				   INTERNAL_LOB_READER &reader);
+extern int internal_lob_read_skip (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, DB_BIGINT count);
 extern int internal_lob_read_pull (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, oos_buffer dest, int &nread);
 extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator);
 

@@ -659,13 +659,42 @@ internal_lob_read (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, 
   return NO_ERROR;
 }
 
+/*
+ * internal_lob_read_skip () - Advance an open reader by count bytes.
+ *
+ * The chain is a linked list of chunks, so moving forward means pulling them; what this avoids is carrying
+ * those bytes any further than the buffer they land in.
+ */
+int
+internal_lob_read_skip (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, DB_BIGINT count)
+{
+  char skip_buffer[64 * 1024];
+
+  while (count > 0)
+    {
+      int skipped = 0;
+      int skip_size = (count > (DB_BIGINT) sizeof (skip_buffer)) ? (int) sizeof (skip_buffer) : (int) count;
+      int err = internal_lob_read_pull (thread_p, reader, oos_buffer (skip_buffer, (std::size_t) skip_size), skipped);
+
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      if (skipped <= 0)
+	{
+	  return internal_lob_set_generic_error ();
+	}
+      count -= (DB_BIGINT) skipped;
+    }
+
+  return NO_ERROR;
+}
+
 int
 internal_lob_read_range (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, DB_BIGINT offset, oos_buffer dest,
 			 int &nread)
 {
-  char skip_buffer[64 * 1024];
   INTERNAL_LOB_READER reader;
-  DB_BIGINT to_skip;
   DB_BIGINT max_to_read;
   int err;
 
@@ -686,22 +715,10 @@ internal_lob_read_range (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &loc
       return NO_ERROR;
     }
 
-  to_skip = offset;
-  while (to_skip > 0)
+  err = internal_lob_read_skip (thread_p, reader, offset);
+  if (err != NO_ERROR)
     {
-      int skipped = 0;
-      int skip_size = (to_skip > (DB_BIGINT) sizeof (skip_buffer)) ? (int) sizeof (skip_buffer) : (int) to_skip;
-
-      err = internal_lob_read_pull (thread_p, reader, oos_buffer (skip_buffer, (std::size_t) skip_size), skipped);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-      if (skipped <= 0)
-	{
-	  return internal_lob_set_generic_error ();
-	}
-      to_skip -= (DB_BIGINT) skipped;
+      return err;
     }
 
   max_to_read = reader.total_bytes - offset;
