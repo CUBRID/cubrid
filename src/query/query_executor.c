@@ -12587,7 +12587,11 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 				 ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED, false, false);
   if (scan_code == S_DOESNT_EXIST)
     {
-      /* the deleter committed: the key is free, so this row is no longer a duplicate and the caller inserts */
+      /* The last version is deleted and gone for us -- by a transaction that committed, or by this one in an
+       * earlier statement.  Either way the key is free, so this row is no longer a duplicate and the caller
+       * inserts.  A delete that a concurrent transaction committed after our snapshot does not arrive here:
+       * above READ COMMITTED it is an isolation conflict (locator_has_isolation_conflict ()) and comes back
+       * as S_ERROR. */
       er_clear ();
       *force_count = 0;
       return NO_ERROR;
