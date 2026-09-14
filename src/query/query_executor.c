@@ -27017,11 +27017,15 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   int savepoint_used = 0;
   LOG_LSA lsa;
 
-  /* No transient scope is opened here: MERGE's driving select is excluded by the upd_del_class_cnt > 0
-   * test in qexec_open_scan (), so the halves never mark their row locks transient and there is nothing
-   * for a scope to keep from being released between them.  If a future change let a MERGE half take a
-   * transient row lock, this would need to open a scope (making each half not-outermost) so the abort of
-   * the enclosing system operation cannot undo a stamp whose row lock was already given back. */
+  /* Hold a scope around both halves so neither is the outermost statement.  Each half would otherwise
+   * open and close its own, giving its row locks back inside the system operation below -- and an abort
+   * of that operation then undoes a stamp whose row lock is already gone.
+   *
+   * The halves do take transient row locks: qexec_open_scan () does not exclude MERGE (pt_to_merge_update_query ()
+   * sets upd_del_class_cnt on the driving select) and the force phase never consults it.  What keeps the
+   * locks today is the system savepoint do_merge () takes, which logtb_has_active_savepoint () reports --
+   * an unrelated guard that CBRD-27238 narrows to user savepoints.  This scope does not depend on it. */
+  lock_transient_scope_start (thread_p);
 
   /* start a topop */
   error = xtran_server_start_topop (thread_p, &lsa);
@@ -27087,6 +27091,9 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       GOTO_EXIT_ON_ERROR;
     }
 
+  /* nothing to give back -- the halves ran nested and so took no statement-scoped lock of their own */
+  lock_transient_scope_end (thread_p, false);
+
   return NO_ERROR;
 
 exit_on_error:
@@ -27095,6 +27102,8 @@ exit_on_error:
     {
       xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
     }
+
+  lock_transient_scope_end (thread_p, false);
 
   return error;
 }
