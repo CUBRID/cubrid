@@ -2519,8 +2519,12 @@ fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   int err_code;
 
   err_code = ux_stream_end (net_buf);
-  if (err_code >= 0)
+  if (err_code >= 0 && ux_stream_ends_unit_of_work ())
     {
+      /* Only a COPY stream is a unit of work of its own. Committing at the end of an Internal LOB upload
+       * would commit the rest of the caller's open transaction too, whatever the driver's autocommit mode
+       * says -- and the upload itself has nothing to commit, it is staged in a temporary file until the
+       * statement that binds its token runs. */
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
@@ -2537,5 +2541,56 @@ fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
       return FN_KEEP_CONN;
     }
   (void) ux_stream_abort (net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *locator = NULL;
+  int locator_len = 0;
+
+  if (argc != 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_str (&locator, &locator_len, argv[0]);
+  (void) ux_lob_stream_open (locator, locator_len, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+  int size = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_bigint (&token, argv[0]);
+  net_arg_get_int (&size, argv[1]);
+  (void) ux_lob_stream_read (token, size, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+
+  if (argc != 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_bigint (&token, argv[0]);
+  (void) ux_lob_stream_close (token, net_buf);
   return FN_KEEP_CONN;
 }
