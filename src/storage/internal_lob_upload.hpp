@@ -51,10 +51,14 @@ class internal_lob_upload_store
       DB_BIGINT logical_length = 0;
       DB_BIGINT received = 0;
       bool complete = false;
+      bool consumed = false;	/* stored at least once; kept alive for the rest of the statement */
       FILE *file = NULL;
     };
 
     void clear (payload &entry);
+    /* Releases payloads already stored by an earlier statement.  Called when a new upload starts, which is the
+     * first moment we know the previous one can no longer be bound again. */
+    void purge_consumed ();
 
     std::mutex m_mutex;
     INT64 m_next_token;

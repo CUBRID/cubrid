@@ -98,6 +98,10 @@ internal_lob_upload_store::begin (DB_TYPE type, DB_BIGINT data_length, DB_BIGINT
       return internal_lob_upload_set_error (error_message);
     }
 
+  /* A new upload means the previous one can no longer be bound, so its staging file is released here.  This
+   * keeps a row-at-a-time loader (which stages one payload per row) down to a single open descriptor. */
+  purge_consumed ();
+
   entry.file = tmpfile ();
   if (entry.file == NULL)
     {
@@ -215,13 +219,36 @@ internal_lob_upload_store::consume (THREAD_ENTRY *thread_p, INT64 token, const O
       {
 	return internal_lob_upload_set_error ("internal LOB upload type does not match the target value");
       }
+    /* The staged file stays: one token can be bound to several records of the same statement (UPDATE matching
+     * many rows, or the same value written to two columns), and the reader addresses it by absolute offset, so
+     * storing it again needs nothing but the descriptor.  Erasing it here made the second record fail with
+     * "token does not belong to this session" after the first had already been written. */
     entry = found->second;
-    m_payloads.erase (found);
+    found->second.consumed = true;
   }
 
   error = heap_internal_lob_insert_stream (thread_p, class_oid, internal_lob_upload_file_reader, entry.file,
 	  entry.data_length, expected_type == DB_TYPE_BLOB ? entry.logical_length : -1,
 	  &locator);
-  clear (entry);
   return error;
 }
+
+void
+internal_lob_upload_store::purge_consumed ()
+{
+  std::lock_guard<std::mutex> guard (m_mutex);
+
+  for (auto it = m_payloads.begin (); it != m_payloads.end ();)
+    {
+      if (it->second.consumed)
+	{
+	  clear (it->second);
+	  it = m_payloads.erase (it);
+	}
+      else
+	{
+	  ++it;
+	}
+    }
+}
+
