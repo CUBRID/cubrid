@@ -221,6 +221,9 @@ extern "C"
     CAS_FC_STREAM_END = 46,
     CAS_FC_STREAM_INIT = 47,
     CAS_FC_STREAM_ABORT = 48,
+    CAS_FC_LOB_STREAM_OPEN = 49,
+    CAS_FC_LOB_STREAM_READ = 50,
+    CAS_FC_LOB_STREAM_CLOSE = 51,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
@@ -237,6 +240,10 @@ extern "C"
 #define CAS_FC_COPY_SEND_DATA CAS_FC_STREAM_SEND_DATA
 #define CAS_FC_COPY_END       CAS_FC_STREAM_END
 
+/* Largest payload one CAS_FC_LOB_STREAM_READ may ask for.  Both sides bound the request by it so a driver cannot
+ * make CAS allocate an arbitrary buffer. */
+#define INTERNAL_LOB_STREAM_MAX_CHUNK (1024 * 1024)
+
   enum t_cas_protocol
   {
     PROTOCOL_V0 = 0,		/* old protocol */
@@ -252,7 +259,8 @@ extern "C"
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
-    CURRENT_PROTOCOL = PROTOCOL_V12
+    PROTOCOL_V13 = 13,		/* internal LOB read streaming: the column carries a locator, not the content */
+    CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 

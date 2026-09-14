@@ -4470,6 +4470,118 @@ cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_
   return data_size;
 }
 
+/*
+ * dbval_is_internal_lob_locator () - Does this result value carry an internal LOB reference instead of content?
+ *
+ * A SELECT of an internal LOB column hands the client the value's locator, not its bytes - the same envelope csql
+ * and unloaddb resolve.  CAS forwards that locator to the driver, which then pulls the payload with
+ * CAS_FC_LOB_STREAM_*.  Scalar functions that produce a LOB use the stream-marker spelling; both are references.
+ */
+static bool
+dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locator_len, DB_BIGINT * byte_length)
+{
+  DB_TYPE type;
+  const char *data = NULL;
+  int size = 0;
+  int bit_length = 0;
+  DB_BIGINT parsed_length = 0;
+  int marker;
+
+  marker = db_value_get_internal_lob_marker (val);
+  if (marker != DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR && marker != DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      return false;
+    }
+
+  type = DB_VALUE_TYPE (val);
+  if (type == DB_TYPE_CLOB || type == DB_TYPE_VARCHAR)
+    {
+      data = db_get_string (val);
+      size = db_get_string_size (val);
+    }
+  else if (type == DB_TYPE_BLOB || type == DB_TYPE_VARBIT)
+    {
+      data = (const char *) db_get_bit (val, &bit_length);
+      size = (bit_length + 7) / 8;
+    }
+  else
+    {
+      return false;
+    }
+
+  if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      /* "@internal_lob_stream:<B|C>:<locator>" - step over the wrapper to reach the locator itself */
+      int wrapper_len = (int) strlen (INTERNAL_LOB_SCALAR_STREAM_PREFIX);
+
+      if (data == NULL || size <= wrapper_len + 2
+	  || memcmp (data, INTERNAL_LOB_SCALAR_STREAM_PREFIX, (size_t) wrapper_len) != 0
+	  || data[wrapper_len + 1] != ':')
+	{
+	  return false;
+	}
+      data += wrapper_len + 2;
+      size -= wrapper_len + 2;
+    }
+
+  if (!internal_lob_marker_parse_locator (data, size, &parsed_length))
+    {
+      return false;
+    }
+
+  if (type == DB_TYPE_BLOB || type == DB_TYPE_VARBIT)
+    {
+      /* a BLOB locator states the payload in bits */
+      if (parsed_length > DB_BIGINT_MAX - 7)
+	{
+	  return false;
+	}
+      parsed_length = (parsed_length + 7) / 8;
+    }
+
+  if (locator != NULL)
+    {
+      *locator = data;
+    }
+  if (locator_len != NULL)
+    {
+      *locator_len = size;
+    }
+  if (byte_length != NULL)
+    {
+      *byte_length = parsed_length;
+    }
+  return true;
+}
+
+/*
+ * add_res_data_internal_lob () - Put an internal LOB reference on the wire: total byte length, then the locator.
+ */
+static void
+add_res_data_internal_lob (T_NET_BUF * net_buf, const char *locator, int locator_len, DB_BIGINT byte_length,
+			   unsigned char ext_type, int *net_size)
+{
+  int payload_size = NET_SIZE_BIGINT + locator_len;
+
+  if (ext_type)
+    {
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + payload_size, NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, payload_size, NULL);
+    }
+
+  net_buf_cp_bigint (net_buf, byte_length, NULL);
+  net_buf_cp_str (net_buf, locator, locator_len);
+
+  if (net_size)
+    {
+      *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + payload_size;
+    }
+}
+
 static int
 dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size, char column_type_flag)
 {
@@ -4497,6 +4609,26 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     {
       ext_col_type = 0;
     }
+
+  {
+    const char *lob_locator = NULL;
+    int lob_locator_len = 0;
+    DB_BIGINT lob_byte_length = 0;
+
+    if (dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length))
+      {
+	if (!DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13))
+	  {
+	    /* An older driver has no way to pull the payload, and the locator text is not the value.  Say so
+	     * instead of handing back an envelope that would be stored as if it were content. */
+	    ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+	    NET_BUF_ERR_SET (net_buf);
+	    return 0;
+	  }
+	add_res_data_internal_lob (net_buf, lob_locator, lob_locator_len, lob_byte_length, ext_col_type, &data_size);
+	return data_size;
+      }
+  }
 
   switch (db_value_type (val))
     {
@@ -10622,6 +10754,100 @@ ux_stream_abort (T_NET_BUF * net_buf)
 {
   int err_code = stream_from_abort ();
   if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+/*
+ * Internal LOB read streaming.  A result column of an internal LOB carries the value's locator instead of its
+ * content (see dbval_to_net_buf), so the driver pulls the bytes afterwards through these three calls.  They are a
+ * thin pass-through to the same server read cursor csql and unloaddb use; CAS holds no LOB bytes of its own.
+ */
+int
+ux_lob_stream_open (char *locator, int locator_len, T_NET_BUF * net_buf)
+{
+  INT64 token = 0;
+  int err_code;
+
+  err_code = internal_lob_stream_open_from_server (locator, locator_len, &token);
+  if (err_code != NO_ERROR)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_bigint (net_buf, (DB_BIGINT) token, NULL);
+  return 0;
+}
+
+int
+ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf)
+{
+  char *buffer = NULL;
+  int nread = 0;
+  int err_code;
+
+  if (size <= 0 || size > INTERNAL_LOB_STREAM_MAX_CHUNK)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  buffer = (char *) MALLOC (size);
+  if (buffer == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  err_code = internal_lob_stream_read_from_server ((INT64) token, buffer, size, &nread);
+  if (err_code != NO_ERROR)
+    {
+      FREE_MEM (buffer);
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  if (nread < 0 || nread > size)
+    {
+      FREE_MEM (buffer);
+      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_int (net_buf, nread, NULL);
+  if (nread > 0)
+    {
+      net_buf_cp_str (net_buf, buffer, nread);
+    }
+
+  FREE_MEM (buffer);
+  return 0;
+}
+
+int
+ux_lob_stream_close (DB_BIGINT token, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  err_code = internal_lob_stream_close_from_server ((INT64) token);
+  if (err_code != NO_ERROR)
     {
       errors_in_transaction++;
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);

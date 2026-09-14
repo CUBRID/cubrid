@@ -98,6 +98,9 @@ extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf);
 extern int ux_stream_end (T_NET_BUF * net_buf);
 extern int ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf);
 extern int ux_stream_abort (T_NET_BUF * net_buf);
+extern int ux_lob_stream_open (char *locator, int locator_len, T_NET_BUF * net_buf);
+extern int ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf);
+extern int ux_lob_stream_close (DB_BIGINT token, T_NET_BUF * net_buf);
 
 extern int get_tuple_count (T_SRV_HANDLE * srv_handle);
 

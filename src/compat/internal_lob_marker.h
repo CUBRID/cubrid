@@ -19,6 +19,9 @@
 #ifndef _INTERNAL_LOB_MARKER_H_
 #define _INTERNAL_LOB_MARKER_H_
 
+#include <stdio.h>
+#include <string.h>
+
 #include "dbtype_def.h"
 
 /*
@@ -41,6 +44,8 @@
 #define INTERNAL_LOB_MARKER_PAYLOAD_PREFIX "@internal_lob"
 #define INTERNAL_LOB_MARKER_PAYLOAD_PREFIX_LEN 13
 
+#define INTERNAL_LOB_LOCATOR_PREFIX "@internal_lob:"
+#define INTERNAL_LOB_SCALAR_STREAM_PREFIX "@internal_lob_stream:"
 #define INTERNAL_LOB_FILE_SOURCE_PREFIX "@internal_lob_file:"
 #define INTERNAL_LOB_PENDING_PREFIX "@internal_lob_pending:"
 #define INTERNAL_LOB_UPLOAD_PREFIX "@internal_lob_upload:"
@@ -76,6 +81,74 @@ static inline bool
 db_value_has_internal_lob_marker (const DB_VALUE * value, int marker)
 {
   return db_value_get_internal_lob_marker (value) == marker;
+}
+
+/*
+ * internal_lob_marker_parse_locator () - Pull the payload length out of a locator text.
+ *
+ * A locator reads "@internal_lob:[A:]volid|pageid|slotid:length:token".  The length is the only field a reader
+ * needs before it opens a stream, so this works on the raw bytes and stays free of DB_VALUE, letting both the
+ * engine-side readers and CAS share one parse.  Returns false for anything that is not a well-formed locator.
+ */
+static inline bool
+internal_lob_marker_parse_locator (const char *data, int size, DB_BIGINT * length)
+{
+  char locator_buf[128];
+  int volid = 0;
+  int pageid = 0;
+  int slotid = 0;
+  long long parsed_length = 0;
+  unsigned long long parsed_token = 0;
+  int consumed = 0;
+  int token_consumed = 0;
+  int prefix_len = (int) strlen (INTERNAL_LOB_LOCATOR_PREFIX);
+  const char *oid_part = NULL;
+
+  if (length != NULL)
+    {
+      *length = 0;
+    }
+
+  if (data == NULL || size <= prefix_len || size >= (int) sizeof (locator_buf))
+    {
+      return false;
+    }
+  if (memcmp (data, INTERNAL_LOB_LOCATOR_PREFIX, (size_t) prefix_len) != 0)
+    {
+      return false;
+    }
+
+  memcpy (locator_buf, data, (size_t) size);
+  locator_buf[size] = '\0';
+
+  oid_part = locator_buf + prefix_len;
+  if (oid_part[0] == 'A' && oid_part[1] == ':')
+    {
+      /* adopted-chain locators carry an "A:" tag ahead of the OID */
+      oid_part += 2;
+    }
+
+  if (sscanf (oid_part, "%d|%d|%d:%lld%n", &volid, &pageid, &slotid, &parsed_length, &consumed) != 4
+      || parsed_length < 0)
+    {
+      return false;
+    }
+  (void) volid;
+  (void) pageid;
+  (void) slotid;
+
+  if (oid_part[consumed] != ':'
+      || sscanf (oid_part + consumed + 1, "%llx%n", &parsed_token, &token_consumed) != 1
+      || parsed_token == 0 || token_consumed <= 0 || oid_part[consumed + 1 + token_consumed] != '\0')
+    {
+      return false;
+    }
+
+  if (length != NULL)
+    {
+      *length = (DB_BIGINT) parsed_length;
+    }
+  return true;
 }
 
 #endif /* _INTERNAL_LOB_MARKER_H_ */
