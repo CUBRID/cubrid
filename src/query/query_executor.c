@@ -164,18 +164,33 @@
    && ((xasl)->spec_list->pruning_type == DB_NOT_PARTITIONED_CLASS)  \
    && ((xasl)->aptr_list == NULL) && ((xasl)->scan_ptr == NULL))
 
+/* Give back the row lock of an object the predicate above the scan rejected.  The scan may have counted
+ * that request as its statement's (scan_manager.c, lock_ends_with_statement); then the count has to go
+ * back with the lock, or the statement's release would later give back a request nobody is holding. */
 #define QEXEC_UNLOCK_UNQUALIFIED_OID(thread_p, xasl) \
   do \
     { \
       LOCK lock_mode = X_LOCK; \
       SCAN_ID *scan_id = &xasl->curr_spec->s_id; \
+      const OID *unlock_oid = NULL; \
+      const OID *unlock_class_oid = NULL; \
       if (scan_id->type == S_HEAP_SCAN) \
 	{ \
-	  lock_unlock_object_donot_move_to_non2pl (thread_p, &scan_id->s.hsid.curr_oid, &scan_id->s.hsid.cls_oid, lock_mode); \
+	  unlock_oid = &scan_id->s.hsid.curr_oid; \
+	  unlock_class_oid = &scan_id->s.hsid.cls_oid; \
 	} \
       else if (scan_id->type == S_INDX_SCAN) \
 	{ \
-	  lock_unlock_object_donot_move_to_non2pl (thread_p, scan_id->s.isid.curr_oidp, &scan_id->s.isid.cls_oid, lock_mode); \
+	  unlock_oid = scan_id->s.isid.curr_oidp; \
+	  unlock_class_oid = &scan_id->s.isid.cls_oid; \
+	} \
+      if (unlock_oid != NULL && scan_id->lock_ends_with_statement) \
+	{ \
+	  lock_unlock_object_transient (thread_p, unlock_oid, unlock_class_oid, lock_mode); \
+	} \
+      else if (unlock_oid != NULL) \
+	{ \
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, unlock_oid, unlock_class_oid, lock_mode); \
 	} \
     } \
   while (0)
