@@ -19,10 +19,14 @@
 #ifndef _OOS_FILE_HPP_
 #define _OOS_FILE_HPP_
 
+#include "dbtype_def.h"		/* DB_BIGINT */
+#include "log_lsa.hpp"
+#include "recovery.h"		/* LOG_RCV */
 #include "span.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+#include <cstdint>
 #include <vector>
 
 struct oos_record_header
@@ -30,10 +34,65 @@ struct oos_record_header
   int total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
   int chunk_index;		/* 0-based index of this chunk in the chain */
   OID next_chunk_oid;		/* OID of next chunk, or NULL OID if this is the last */
+  LOG_LSA identity_stamp;	/* Identity stamp of this chunk (CBRD-26950): the page LSA observed under
+				 * the write latch immediately before this chunk's insert was logged. The
+				 * head chunk's value is also stored in the owning heap record's OOS inline
+				 * stub, and oos_delete reclaims a chain only when the two are equal, so with
+				 * logging enabled a reused (volid|pageid|slotid) is never mistaken for the
+				 * chunk a stale OOS reference was created for. Distinct stamps across slot
+				 * reuse need the skipped-append case to be impossible, so they are a
+				 * logged-operation guarantee only; see the invariants at the issuing site in
+				 * oos_file.cpp. Each chunk carries the LSA of its own page; only the head
+				 * chunk's value reaches the stub. */
 };
 using OOS_RECORD_HEADER = struct oos_record_header;
 
 #define OOS_RECORD_HEADER_SIZE ((int) sizeof (OOS_RECORD_HEADER))
+
+/* Reference to one OOS value chain: the head OOS OID plus the identity stamp the chain was created
+ * with. This is the parsed form of a heap record's OOS inline stub. Keeping the pair in one value
+ * means it can never be split by accident on the way to oos_delete or oos_read (CBRD-26950). */
+struct oos_chain_ref
+{
+  OID head_oid;
+  LOG_LSA identity_stamp;
+};
+
+/* What oos_delete did with the chain a reference names. Every skip is a successful call that modified
+ * nothing, set no error and reported no reclaim candidate: the chain the reference described is gone,
+ * and whatever occupies its head location now belongs to another slot or page incarnation. The outcome
+ * lets a caller tell a real reclamation from a skip without an occupancy probe, and name the reason when
+ * it diagnoses the skip (CBRD-26950). A failed call reports OOS_DELETE_OUTCOME_UNKNOWN, so a caller that
+ * reads the outcome before the return code is never told a chain was reclaimed when it was not. */
+enum oos_delete_outcome
+{
+  OOS_DELETE_OUTCOME_UNKNOWN = 0,	/* the call failed; it reached no conclusion about the chain */
+  OOS_DELETE_RECLAIMED,			/* the head carried the reference's stamp; every chunk was deleted */
+  OOS_DELETE_SKIPPED_PAGE_GONE,		/* the head page is deallocated or no longer an OOS page */
+  OOS_DELETE_SKIPPED_SLOT_EMPTY,	/* the head page is an OOS page, but the head slot holds no record */
+  OOS_DELETE_SKIPPED_STAMP_MISMATCH	/* the head slot holds a chunk that carries another identity stamp */
+};
+
+/* Short, distinct English name of an outcome for diagnostics. */
+extern const char *oos_delete_outcome_string (oos_delete_outcome outcome);
+
+/* The OOS inline stub stores the identity stamp as one 64-bit integer written with the bigint
+ * helpers, so the stub stays 8-byte aligned at 24 bytes: OID (8) + full length (8) + stamp (8).
+ * The stock LSA helper spends 12 bytes and is not used. pageid takes the upper 48 bits and offset
+ * the lower 16, so NULL_LSA (-1, -1) packs to -1 and every LOG_LSA round-trips exactly. These two
+ * helpers are used only for the stub; the chunk header stores the raw LOG_LSA. */
+inline DB_BIGINT
+oos_pack_identity_stamp (const LOG_LSA &identity_stamp)
+{
+  return (DB_BIGINT) (((std::uint64_t) identity_stamp.pageid << 16)
+		      | ((std::uint64_t) identity_stamp.offset & 0xFFFFu));
+}
+
+inline LOG_LSA
+oos_unpack_identity_stamp (DB_BIGINT packed)
+{
+  return LOG_LSA ((std::int64_t) packed >> 16, (std::int16_t) ((std::uint64_t) packed & 0xFFFFu));
+}
 
 /* Alias for a RECDES whose first OOS_RECORD_HEADER_SIZE bytes are the OOS header.
  * Documentation only — no compile-time distinction from RECDES. */
@@ -48,11 +107,12 @@ struct oos_insert_request
 {
   oos_buffer src;
   OID *oid_out;
+  LOG_LSA *identity_stamp_out;	/* optional (may be NULL): receives the head chunk's identity stamp */
 };
 
 struct oos_read_request
 {
-  OID oid;
+  oos_chain_ref ref;
   oos_buffer dest;
 };
 
@@ -109,21 +169,53 @@ extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
  * Call only AFTER the deletes that emptied the pages are committed — a live undo could otherwise
  * restore chunks onto a deallocated page. */
 extern int oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vector<VPID> &candidates);
-/* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */
-extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
-/* Inserts requests in logical order; each request receives its head OOS OID. */
+/* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. identity_stamp_out
+ * (optional) receives the head chunk's identity stamp; a caller that persists an OOS inline stub
+ * must store it next to the head OOS OID (CBRD-26950). */
+extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid,
+		       LOG_LSA *identity_stamp_out = NULL);
+/* Inserts requests in logical order; each request receives its head OOS OID and, when asked, the
+ * head chunk's identity stamp. */
 extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos_insert_request> requests);
-/* Reads exactly dest.size() bytes; the caller obtains the length from the
- * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
-extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
+/* Reads exactly dest.size() bytes of the chain ref names; the caller obtains the length from the
+ * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. A stale reference fails
+ * with ER_HEAP_OOS_CORRUPTED_RECORD and never delivers another chain's bytes into dest: a
+ * deallocated head page, a head page that is no longer an OOS page, a missing head slot, a head
+ * chunk whose identity stamp differs from ref.identity_stamp, and a stamp-matching target that is
+ * not a chain head are all rejected before any payload is copied. Identity is compared before any
+ * other property of the current occupant is interpreted. Operational failures (I/O, interrupt)
+ * keep their own error. The head page is fixed with the deallocation-tolerant fix, which adds a
+ * sector-reservation check (two fixes of cached volume pages) per head page (CBRD-26950). */
+extern int oos_read (THREAD_ENTRY *thread_p, const oos_chain_ref &ref, oos_buffer dest);
 extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
-/* touched_vpids (optional): pages that lost a chunk are appended (with duplicates) so
- * batch-boundary callers can feed oos_reclaim_empty_pages after committing. */
-extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
-		       std::vector<VPID> *touched_vpids = NULL);
-/* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page
- * or a removed slot both report "gone" with NO_ERROR; any other failure is propagated. */
+/* Deletes the OOS value chain ref names only after proving target identity: the head chunk must
+ * carry ref.identity_stamp. A deallocated head page, a head page that is no longer an OOS page, a
+ * missing head slot or a mismatched stamp is a successful no-op that modifies nothing, leaves the
+ * error stack clean and reports no candidate, which gives every caller retry idempotency without
+ * extra state as long as the chain was written with logging enabled; the page type is checked under
+ * the latch before the page is read as a slotted page.
+ * A stamp-matching reference to a continuation chunk is malformed and fails with
+ * ER_HEAP_OOS_CORRUPTED_RECORD before any chunk is modified, and a reference with no head OOS OID at
+ * all fails with ER_HEAP_OOS_INVALID_ARGUMENT. Operational failures keep their own error (CBRD-26950).
+ * emptied_vpids (optional): every page this delete left with zero records is appended once, so
+ * batch-boundary callers can feed oos_reclaim_empty_pages after committing. Pages that still
+ * hold other chunks are not candidates and are not reported.
+ * outcome_out (optional): receives what happened, see oos_delete_outcome. Vacuum passes nothing and
+ * stays quiet, because a retry finding its target gone is expected there; the eager cleanup of a
+ * non-MVCC UPDATE or DELETE asks and diagnoses every skip, because the row it completes was the only
+ * reference and a vanished or reused target is unexpected. */
+extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const oos_chain_ref &ref,
+		       std::vector<VPID> *emptied_vpids = NULL, oos_delete_outcome *outcome_out = NULL);
+/* Occupancy probe for tests and diagnostics: *out_exists is true iff SOME record occupies the slot
+ * at oid. A deallocated page, a page that is no longer an OOS page and a removed slot all report
+ * "gone" with NO_ERROR; any other failure is propagated. It proves occupancy, not identity: it
+ * cannot tell the chunk a reference was created for from a later occupant of the same slot, so it
+ * must never gate a delete. oos_delete verifies identity itself (CBRD-26950). */
 extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);
+/* Reads the identity stamp the head chunk at head_oid currently carries, for building a chain
+ * reference in tests and diagnostics. Fails when the page is deallocated or no longer an OOS page,
+ * or the slot is absent. */
+extern int oos_get_identity_stamp (THREAD_ENTRY *thread_p, const OID &head_oid, LOG_LSA *identity_stamp_out);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);

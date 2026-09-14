@@ -749,7 +749,12 @@ extern bool heap_recdes_contains_oos (const RECDES * record);
 
 /* Shared with heap_oos.cpp: reads one raw variable-offset-table entry (with the OOS/NULL flag bits)
  * so the grouped OOS prefetch path locates OOS-marked attributes exactly as heap_file.c does. */
-extern int heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out);
+extern int heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out);
+
+/* Locates the OOS inline stub of variable attribute `location` after checking that its field is exactly one
+ * stub inside the record. Every stub reader and the replica fixup locate the stub through it; the heap
+ * writer lays the field out itself and bounds it against its own buffer (CBRD-26950). */
+extern int heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stub_out);
 
 // *INDENT-OFF*
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
@@ -761,10 +766,15 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 // TODO: Rename heap_file.c to heap_file.cpp and enable C++ formatting in indent tool, then we can remove the following lines.
 
 // *INDENT-OFF*
-using OID_VECTOR = std::vector<OID>;
+struct oos_chain_ref;		// oos_file.hpp: head OOS OID + identity stamp
+using OOS_REF_VECTOR = std::vector<oos_chain_ref>;
 // *INDENT-ON*
 
-extern int heap_recdes_get_oos_oids (const RECDES * record, OID_VECTOR & oos_oids);
+/* Parses every OOS inline stub of record into a chain reference (head OOS OID + identity stamp),
+ * the value the delete paths hand to oos_delete (CBRD-26950). A stub whose field is malformed fails
+ * with ER_HEAP_OOS_BAD_INLINE_HEADER (error set) and leaves oos_refs empty; an offset table without a
+ * terminator or without any OOS entry still fails with ER_FAILED. */
+extern int heap_recdes_get_oos_refs (const RECDES * record, OOS_REF_VECTOR & oos_refs);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

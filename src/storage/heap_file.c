@@ -696,6 +696,7 @@ struct heap_oos_column_plan
   bool selected = false;
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
+  LOG_LSA identity_stamp = NULL_LSA;	/* identity stamp of the inserted OOS value chain (CBRD-26950) */
 };
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
@@ -10414,7 +10415,7 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
  *           (no error is set; callers decide how to report it).
  */
 int
-heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
+heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out)
 {
   int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   void *var_table;
@@ -10454,12 +10455,70 @@ heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
 }
 
 /*
+ * heap_recdes_get_oos_inline_stub () - Locate the OOS inline stub stored in one variable attribute of
+ *   a heap record, after checking the boundaries of that attribute's field: the variable offset table
+ *   must mark it OOS, make it exactly OR_OOS_INLINE_SIZE bytes wide and keep it inside the record.
+ *   Only the record header is read before the check that both table entries bounding the field lie
+ *   inside the record, and no stub byte is read or written before the field itself is verified, so a
+ *   short field can neither pass the next attribute's bytes off as its identity stamp nor be written
+ *   past (CBRD-26950).
+ *
+ *   return: NO_ERROR with *stub_out set, or ER_FAILED for a malformed field (no error is set; each
+ *           caller reports through its own error contract).
+ *   recdes(in): heap record (only data/length are read)
+ *   location(in): the attribute's index in the variable offset table
+ *   stub_out(out): start of the stub inside recdes->data
+ */
+int
+heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stub_out)
+{
+  const int header_size = OR_HEADER_SIZE (recdes->data);
+  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  int this_entry = 0;
+  int next_entry = 0;
+  int this_offset;
+  int next_offset;
+
+  *stub_out = NULL;
+
+  /* The entry after this one bounds the field; both entries must lie inside the record before either is read. */
+  if (location < 0 || header_size + (location + 2) * offset_size > recdes->length)
+    {
+      return ER_FAILED;
+    }
+
+  if (heap_recdes_get_var_offset_entry (recdes, location, &this_entry) != NO_ERROR
+      || heap_recdes_get_var_offset_entry (recdes, location + 1, &next_entry) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  if (!OR_IS_OOS (this_entry))
+    {
+      return ER_FAILED;
+    }
+
+  /* The field must start past the table entries just read, be exactly one stub wide and end inside the record. */
+  this_offset = OR_GET_VAR_OFFSET (this_entry);
+  next_offset = OR_GET_VAR_OFFSET (next_entry);
+  if (this_offset < (location + 2) * offset_size || next_offset - this_offset != OR_OOS_INLINE_SIZE
+      || header_size + next_offset > recdes->length)
+    {
+      return ER_FAILED;
+    }
+
+  *stub_out = recdes->data + header_size + this_offset;
+  return NO_ERROR;
+}
+
+/*
  * heap_attrvalue_read_oos_inline () - Resolve an OOS-marked variable attribute from its inline
  *   OOS reference.
  *
  *   return: NO_ERROR, or an error code when the inline header / OOS page is
  *           corrupted or the payload buffer cannot be obtained. On every error
  *           path raw->data is set to NULL so the caller never reads stale data.
+ *   location(in): the attribute's index in the variable offset table
  *   oos_owned_buffer(out): true iff Resolve succeeds and raw->data contains transient OOS data.
  *           The caller must copy it and free it when it is not backed by oos_scratch. false on error.
  *
@@ -10467,19 +10526,19 @@ heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
  *   heap-allocated buffer the caller must free via recdes_free_data_area.
  */
 static int
-heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
+heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, char *oos_scratch, int oos_scratch_size,
 				bool * oos_owned_buffer)
 {
-  OID oos_oid;
+  oos_chain_ref oos_ref;
   DB_BIGINT oos_len;
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p;
 
   *oos_owned_buffer = false;
 
-  /* raw->data still points at the heap record's OOS inline reference; parse it before attaching
+  /* Parse the attribute's stub out of the record, checking its field boundaries, before attaching
    * any scratch/heap buffer to raw. */
-  error = heap_oos_parse_inline_ref (recdes, raw->data, &oos_oid, &oos_len);
+  error = heap_oos_parse_inline_ref (recdes, location, &oos_ref, &oos_len);
   if (error != NO_ERROR)
     {
       raw->data = NULL;
@@ -10504,7 +10563,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
     }
 
   /* oos_read has already set an error. Release any heap buffer here; scratch is stack-backed. */
-  error = oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len));
+  error = oos_read (thread_p, oos_ref, oos_buffer (raw->data, (std::size_t) oos_len));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -10564,7 +10623,8 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
   if (OR_IS_OOS (offset))
     {
       /* The helper reports transient OOS data only after a successful Resolve. */
-      return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
+      return heap_attrvalue_read_oos_inline (recdes, attrepr->location, raw, oos_scratch, oos_scratch_size,
+					     oos_owned_buffer);
     }
   else
     {
@@ -10918,57 +10978,23 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
       return 0;
     }
 
-  /* Read the offset from the variable offset table to check the OOS flag */
-  int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  int offset;
-
-  switch (offset_size)
-    {
-    case OR_BYTE_SIZE:
-      offset =
-	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
-      break;
-    case OR_SHORT_SIZE:
-      offset =
-	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
-      break;
-    case OR_INT_SIZE:
-      offset =
-	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), att->location, offset_size));
-      break;
-    default:
-      assert_release (false);
-      return 0;
-    }
-
-  if (!OR_IS_OOS (offset))
+  /* Locate the stub through the shared field-boundary check. A field that is not exactly one stub
+   * inside the record is corrupt: return 0 so the buffer is sized from recdes->length alone; the
+   * corruption is then surfaced as ER_HEAP_OOS_BAD_INLINE_HEADER when the value is actually read
+   * (CBRD-26769, CBRD-26950). */
+  char *stub = NULL;
+  if (heap_recdes_get_oos_inline_stub (recdes, att->location, &stub) != NO_ERROR)
     {
       return 0;
     }
 
-  /* Extract OOS length from inline data: [OOS OID (8B) + length (8B)] */
-  OR_BUF buf;
+  /* Read the OOS length directly from the inline stub (no I/O needed), validated exactly as
+   * heap_oos_parse_inline_ref does, so a corrupt header is never cast into a midxkey size. */
   OID oos_oid;
-  int rc = NO_ERROR;
-
-  buf.ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location);
-  buf.endptr = recdes->data + recdes->length;
-
-  /* CBRD-26769: validate the inline header exactly as heap_attrvalue_read_oos_inline does.
-   * A corrupt header must never be cast into a midxkey size: a negative/huge (int) length
-   * would mis-size midxkey.buf and let the legitimate columns overrun it before the read path
-   * raises ER_HEAP_OOS_BAD_INLINE_HEADER.  Return 0 so the buffer is sized from recdes->length
-   * alone; the corruption is then surfaced when the value is actually read. */
-  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
-    {
-      return 0;
-    }
-
-  or_get_oid (&buf, &oos_oid);
-
-  /* Read OOS length directly from recdes inline data (no I/O needed) */
-  DB_BIGINT length = or_get_bigint (&buf, &rc);
-  if (rc != NO_ERROR || OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
+  DB_BIGINT length = 0;
+  OR_GET_OID (stub, &oos_oid);
+  OR_GET_BIGINT (stub + OR_OID_SIZE, &length);
+  if (OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
     {
       return 0;
     }
@@ -12669,7 +12695,9 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
 	}
 
       plan.length = (DB_BIGINT) payload.length;
-      oos_insert_request request = { oos_buffer (payload.data, (size_t) payload.length), &plan.oid };
+      oos_insert_request request = { oos_buffer (payload.data, (size_t) payload.length), &plan.oid,
+	&plan.identity_stamp
+      };
       payloads->push_back (payload);
       requests->push_back (request);
     }
@@ -13073,6 +13101,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       buf->ptr = *ptr_varvals;
       or_put_oid (buf, &oos_plan->oid);
       or_put_bigint (buf, oos_plan->length);
+      /* identity stamp of the chain, packed into one bigint so the stub stays 8-byte aligned (CBRD-26950) */
+      or_put_bigint (buf, oos_pack_identity_stamp (oos_plan->identity_stamp));
       *ptr_varvals = buf->ptr;
     }
   else if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
@@ -28400,11 +28430,11 @@ heap_recdes_contains_oos (const RECDES * record)
 }
 
 int
-heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
+heap_recdes_get_oos_refs (const RECDES * recdes, OOS_REF_VECTOR & oos_refs)
 {
   using namespace oos_log;
 
-  oos_oids.clear ();
+  oos_refs.clear ();
 
   if (!heap_recdes_contains_oos (recdes))
     {
@@ -28412,7 +28442,6 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
     }
 
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
   /* NOTE: This upper bound may include VOT alignment padding and fixed-attribute bytes for legacy records
    * that lack the OR_VAR_BIT_LAST_ELEMENT flag. Such records are not fully supported yet (see PR description). */
   const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
@@ -28426,52 +28455,33 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 	}
 
       int offset;
-      switch (offset_size)
+      if (heap_recdes_get_var_offset_entry (recdes, index, &offset) != NO_ERROR)
 	{
-	case OR_BYTE_SIZE:
-	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	case OR_SHORT_SIZE:
-	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	case OR_INT_SIZE:
-	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	default:
-	  assert_release (false);
 	  return ER_FAILED;
 	}
 
       if (OR_IS_OOS (offset))
 	{
-	  OID oid = OID_INITIALIZER;
-	  const char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, index);
-	  if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
-	    {
-	      assert (false && "OID read would exceed record bounds");
-	      return ER_FAILED;
-	    }
-	  OR_BUF buf;
-	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
-	  int err = or_get_oid (&buf, &oid);
+	  /* The single stub parser checks the field boundaries before reading, so a short or truncated
+	   * field is a controlled error and never borrows the next attribute's bytes (CBRD-26950). The
+	   * stamp is the target identity oos_delete verifies before reclaiming the chain; the length is
+	   * parsed but not needed here. */
+	  oos_chain_ref ref;
+	  DB_BIGINT oos_len = 0;
+	  int err = heap_oos_parse_inline_ref (recdes, index, &ref, &oos_len);
 	  if (err != NO_ERROR)
 	    {
-	      assert (false && "or_get_oid failed unexpectedly");
-	      return ER_FAILED;
+	      oos_refs.clear ();
+	      return err;
 	    }
-	  if (OID_ISNULL (&oid))
-	    {
-	      assert (false && "OID read from OOS slot is null — corrupted record?");
-	      return ER_FAILED;
-	    }
-	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
-		     index);
-	  oos_oids.emplace_back (oid);
+	  oos_debug ("there exists an OOS with OID %hd|%d|%hd identity_stamp %lld|%d at offset %d index %d",
+		     OID_AS_ARGS (&ref.head_oid), LSA_AS_ARGS (&ref.identity_stamp), offset, index);
+	  oos_refs.push_back (ref);
 	}
 
       if (OR_IS_LAST_ELEMENT (offset))
 	{
-	  if (oos_oids.empty ())
+	  if (oos_refs.empty ())
 	    {
 	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
 	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
@@ -28480,15 +28490,15 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 #if !defined (NDEBUG)
 	  {
 	    std::string line = "{";
-	    for (size_t i = 0; i < oos_oids.size (); ++i)
+	    for (size_t i = 0; i < oos_refs.size (); ++i)
 	      {
 		char oid_buf[32];
 		if (i > 0)
 		  line.append (", ");
-		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
+		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_refs[i].head_oid));
 	      }
 	    line += '}';
-	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
+	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_refs.size (), line.c_str ());
 	  }
 #endif
 	  return NO_ERROR;
@@ -28506,10 +28516,10 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
  *   assert the error code + cleanup contract. See unit_tests/oos/test_oos.cpp.
  */
 int
-bridge_heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
-				       bool * oos_owned_buffer)
+bridge_heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, char *oos_scratch,
+				       int oos_scratch_size, bool * oos_owned_buffer)
 {
-  return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
+  return heap_attrvalue_read_oos_inline (recdes, location, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
 }
 
 void
