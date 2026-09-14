@@ -170,6 +170,27 @@ qfile_set_layout (QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
     {
       assert (type_list->domp != NULL);
       assert (type_list->column_layout_array == (QFILE_COL_LAYOUT *) (type_list->domp + type_list->type_cnt));
+#if !defined(NDEBUG)
+      if (type_list->layout_ready)
+	{
+	  /* Check before overwriting the old descriptor. NULL/VARIABLE columns have only stored NULL so far;
+	   * resolving them may change the cached offsets, but not the interpretation of existing tuple bytes. */
+	  for (int i = 0; i < type_list->type_cnt; i++)
+	    {
+	      const QFILE_COL_LAYOUT *old_layout = &type_list->column_layout_array[i];
+	      QFILE_COL_LAYOUT new_layout;
+
+	      if (old_layout->type_id == DB_TYPE_VARIABLE || old_layout->type_id == DB_TYPE_NULL)
+		{
+		  continue;
+		}
+	      qfile_col_layout_of_domain (type_list->domp[i], &new_layout);
+	      assert (old_layout->kind == new_layout.kind && old_layout->size == new_layout.size
+		      && old_layout->alignby == new_layout.alignby
+		      && old_layout->value_format == new_layout.value_format);
+	    }
+	}
+#endif
       qfile_type_list_compute (type_list->domp, type_list->type_cnt, type_list->hdr_size,
 			       type_list->column_layout_array, &type_list->max_fixed_length_col_cnt,
 			       type_list->data_offset, &type_list->bitmap_size);

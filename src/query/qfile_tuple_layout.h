@@ -451,22 +451,11 @@ qfile_value_body_size (const QFILE_COL_LAYOUT * column_layout, const DB_VALUE * 
   else
     {
       val_size = pr_data_writeval_disk_size (v);
-      if (column_layout->kind == QFILE_COL_VAR && column_layout->value_format == QFILE_VALUE_DIRECT)
-	{
-	  /* a DIRECT column stores the index_* encoding; a value without one would be misread by every reader */
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	  return ER_FAILED;
-	}
+      /* a DIRECT column must receive a value with the index_* encoding */
+      assert (column_layout->kind != QFILE_COL_VAR || column_layout->value_format != QFILE_VALUE_DIRECT);
     }
-  if (column_layout->kind == QFILE_COL_FIXED && val_size != column_layout->size)
-    {
-      /* the format is not self-describing: a value wider or narrower than the column's fixed width would overrun
-       * or underrun the tuple, so refuse it in release builds too */
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-      return ER_FAILED;
-    }
+  /* the writer must supply a value whose encoding fits the column's fixed width */
+  assert (column_layout->kind != QFILE_COL_FIXED || val_size == column_layout->size);
   return val_size;
 }
 
