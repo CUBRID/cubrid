@@ -149,7 +149,6 @@ env:
   #               where the seed CronJob refreshes it hourly
   #   unit        what one line of a shard's share file holds, and so what the
   #               split moves around: one case, or one top-level directory.
-  #               A re-run always selects by case, whatever this says
   #   case_glob   find -path pattern that names one case file
   #   case_filter perl regex a case path must also match; shell alone has one,
   #               because there a case is <name>/cases/<name>.sh
@@ -1213,9 +1212,8 @@ jobs:
                 echo "::warning::run $RERUN_FROM left $short more cases assigned but never handled."
                 echo "::warning::  Nothing names them, so this re-run cannot carry them and cannot pass."
               fi
-              # A unit that is gone was deleted or renamed, and nothing here can tell
-              # which. A renamed one has to run under its new name, so the re-run cannot
-              # pass over any of them. The rest still run, so their results are kept.
+              # Nothing here separates a deleted unit from a renamed one, and a renamed
+              # one has to run under its new name, so the re-run cannot pass over any.
               grep -xF -f /tmp/want.list /tmp/all.list > /tmp/sel.list || : > /tmp/sel.list
               got=$(wc -l < /tmp/sel.list)
               gone=$((want - got))
