@@ -12184,14 +12184,9 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	      return S_ERROR;
 	    }
 
-	  bool found = false;
-
-	  if (heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, &found) != NO_ERROR || !found)
+	  /* an instance of the class is being transformed, so its heap must exist. */
+	  if (heap_get_class_hfid (thread_p, &attr_info->class_oid, &hfid, NULL) != NO_ERROR)
 	    {
-	      /* an instance of the class is being transformed, so its heap must exist. */
-	      assert (false);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, attr_info->class_oid.volid,
-		      attr_info->class_oid.pageid, attr_info->class_oid.slotid);
 	      return S_ERROR;
 	    }
 
