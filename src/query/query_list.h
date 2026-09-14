@@ -277,6 +277,8 @@ typedef enum
 
 /* variable value length header */
 #define QFILE_VAR_HDR_LONG_BIT                  0x80
+#define QFILE_VAR_HDR_LONG_BIT_32               0x80000000
+#define QFILE_VAR_HDR_LEN_MASK                  0x7FFFFFFF
 #define QFILE_VAR_HDR_SHORT_MAX                 127
 #define QFILE_VAR_HDR_SIZE(len)                 ((len) <= QFILE_VAR_HDR_SHORT_MAX ? 1 : 4)
 

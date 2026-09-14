@@ -87,7 +87,7 @@ qfile_var_hdr_decode (const char *p, int *hdr)
     }
   memcpy (&w, p, 4);
   *hdr = 4;
-  return (int) (ntohl (w) & QFILE_TUPLE_LENGTH_MASK);
+  return (int) (ntohl (w) & QFILE_VAR_HDR_LEN_MASK);
 }
 
 inline void
@@ -101,7 +101,7 @@ qfile_var_hdr_encode (char *p, int column_data_size, int hdr)
       *p = (char) column_data_size;
       return;
     }
-  w = htonl ((unsigned int) column_data_size | QFILE_TUPLE_LENGTH_HAS_NULL_BIT);
+  w = htonl ((unsigned int) column_data_size | QFILE_VAR_HDR_LONG_BIT_32);
   memcpy (p, &w, 4);
 }
 
