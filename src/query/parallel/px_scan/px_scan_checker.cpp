@@ -22,6 +22,7 @@
 
 #include "px_scan_checker.hpp"
 #include "px_scan_instnum.hpp"
+#include "px_sp_eligibility.hpp"
 
 #include "dbtype_def.h"
 #include "error_manager.h"
@@ -181,15 +182,15 @@ namespace parallel_scan
 	break;
       case TYPE_SP:
 	result |= check<is_outptr_list> (arg->value.sp_ptr->args);
-	/* SP not executable in child threads. */
-	if (is_outptr_list)
+	if (!px_sp_is_parallel_eligible (arg->value.sp_ptr->sig))
 	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
+	    /* SP not executable in child threads. */
+	    set_flag (result, is_outptr_list ? CANNOT_LIST_MERGE : CANNOT_PARALLEL_SCAN);
 	  }
-	else
-	  {
-	    set_flag (result, CANNOT_PARALLEL_SCAN);
-	  }
+	/* declared PARALLEL_ENABLE: executable in px workers, so it blocks nothing. In the
+	 * output list that means the list-merge mode as well, where the workers evaluate
+	 * outptr_list themselves - an order-sensitive SP there is a false declaration, and the
+	 * trust model puts that on the declarer. */
 	break;
       case TYPE_FUNC:
 	temp = check<is_outptr_list> (arg->value.funcp->operand);
