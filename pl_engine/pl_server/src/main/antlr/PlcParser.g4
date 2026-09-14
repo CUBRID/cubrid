@@ -190,7 +190,7 @@ assignment_statement
 
 qualified_id
     : qualSingle=identifier '.' name=identifier                             // qualifier can be a record, owner, pkg, or table
-    | qualLeft=identifier '.' qualRight=identifier '.' name=identifier      // qualifier can be a onwer.pkg or owner.table
+    | qualLeft=identifier '.' qualRight=identifier '.' name=identifier      // qualifier can be a owner.pkg or owner.table
     ;
 
 assign_target

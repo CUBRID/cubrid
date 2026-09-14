@@ -2841,7 +2841,6 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 
   // insert or update into _db_package_code
   {
-    const char *compile_id = pkg_compile_response.compile_id.data();
     const char *ocode = pkg_compile_response.compiled_code.data();
     err = sp_set_pkg_code (&mop, unique_name, scode_spec, scode_body, ocode);
     if (err != NO_ERROR)
