@@ -1306,16 +1306,17 @@ static int btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid
 					BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
 					RECDES * leaf_record, LEAF_REC * leaf_rec_info, int after_key_offset,
 					PAGE_PTR * found_page, PAGE_PTR * prev_page, int *offset_to_object,
-					BTREE_MVCC_INFO * object_mvcc_info);
+					BTREE_MVCC_INFO * object_mvcc_info, BTREE_MVCC_INFO * deleted_mvcc_info);
 static int btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * mvcc_info,
 						BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
 						bool * is_match);
 static int btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * leaf_record,
 				     int after_key_offset, OID * oid, BTREE_MVCC_INFO * match_mvccinfo,
-				     BTREE_OP_PURPOSE purpose, int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
+				     BTREE_OP_PURPOSE purpose, int *offset_to_object, BTREE_MVCC_INFO * mvcc_info,
+				     BTREE_MVCC_INFO * deleted_mvcc_info);
 static int btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR overflow_page, OID * oid,
 				     BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, int *offset_to_object,
-				     BTREE_MVCC_INFO * mvcc_info);
+				     BTREE_MVCC_INFO * mvcc_info, BTREE_MVCC_INFO * deleted_mvcc_info);
 static int btree_leaf_get_vpid_for_overflow_oids (RECDES * rec, VPID * vpid);
 static int btree_record_get_last_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * recp,
 					 BTREE_NODE_TYPE node_type, int after_key_offset, OID * oidp, OID * class_oid,
@@ -1384,7 +1385,8 @@ static int btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_he
 static int btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
 				   const VPID * first_ovf_vpid, BTREE_OP_PURPOSE purpose,
 				   BTREE_MVCC_INFO * match_mvccinfo, PAGE_PTR * found_page, PAGE_PTR * prev_page,
-				   int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info);
+				   int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info,
+				   BTREE_MVCC_INFO * deleted_mvcc_info);
 static int btree_ovf_dir_insert_entry (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR dir_page,
 				       int insert_pos, const BTREE_OVF_DIR_ENTRY * entry);
 static int btree_ovf_dir_remove_entry (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * dir_head_vpid,
@@ -1530,9 +1532,6 @@ static int btree_key_online_index_IB_insert (THREAD_ENTRY * thread_p, BTID_INT *
 					     void *other_args);
 static int btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR leaf_page,
 				     BTREE_INSERT_HELPER * insert_helper, BTREE_SEARCH_KEY_HELPER * search_key);
-static bool btree_key_find_active_delete_owner (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
-						BTREE_INSERT_HELPER * insert_helper, RECDES * record,
-						int offset_after_key, MVCCID * owner_mvccid);
 static int btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 						    PAGE_PTR * leaf_page, BTREE_SEARCH_KEY_HELPER * search_key,
 						    bool * restart, void *other_args);
@@ -1666,7 +1665,8 @@ static MVCCID btree_get_creator_mvccid (THREAD_ENTRY * thread_p, PAGE_PTR root_p
 static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, RECDES * ovf_record,
 					 char *initial_oid_ptr, char *oid_ptr_lower_bound, char *oid_ptr_upper_bound,
 					 BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
-					 int *offset_to_object, BTREE_MVCC_INFO * mvcc_info);
+					 int *offset_to_object, BTREE_MVCC_INFO * mvcc_info,
+					 BTREE_MVCC_INFO * deleted_mvcc_info);
 
 STATIC_INLINE void btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   __attribute__ ((ALWAYS_INLINE));
@@ -12695,7 +12695,7 @@ static int
 btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
 			const VPID * first_ovf_vpid, BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
 			PAGE_PTR * found_page, PAGE_PTR * prev_page, int *offset_to_object,
-			BTREE_MVCC_INFO * object_mvcc_info)
+			BTREE_MVCC_INFO * object_mvcc_info, BTREE_MVCC_INFO * deleted_mvcc_info)
 {
   BTREE_OVF_DIR_HEADER *dir_hdr;
   VPID dir_head_vpid, target_vpid, prev_vpid;
@@ -12743,7 +12743,7 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
       /* Single-page chain. */
       error_code =
 	btree_find_oid_from_ovfl (thread_p, btid_int, first_ovf_page, oid, purpose, match_mvccinfo,
-				  offset_to_object, object_mvcc_info);
+				  offset_to_object, object_mvcc_info, deleted_mvcc_info);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -12848,7 +12848,7 @@ btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 
       error_code =
 	btree_find_oid_from_ovfl (thread_p, btid_int, target_page, oid, purpose, match_mvccinfo, offset_to_object,
-				  object_mvcc_info);
+				  object_mvcc_info, deleted_mvcc_info);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -14139,7 +14139,8 @@ static int
 btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
 			     BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, RECDES * leaf_record,
 			     LEAF_REC * leaf_rec_info, int after_key_offset, PAGE_PTR * found_page,
-			     PAGE_PTR * prev_page, int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info)
+			     PAGE_PTR * prev_page, int *offset_to_object, BTREE_MVCC_INFO * object_mvcc_info,
+			     BTREE_MVCC_INFO * deleted_mvcc_info)
 {
   int error_code = NO_ERROR;
   VPID overflow_vpid;
@@ -14161,7 +14162,7 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
   /* Find object in leaf. */
   error_code =
     btree_find_oid_from_leaf (thread_p, btid_int, leaf_record, after_key_offset, oid, match_mvccinfo, purpose,
-			      offset_to_object, object_mvcc_info);
+			      offset_to_object, object_mvcc_info, deleted_mvcc_info);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -14184,7 +14185,8 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
   if (!BTREE_IS_UNIQUE (btid_int->unique_pk))
     {
       return btree_ovf_dir_find_oid (thread_p, btid_int, oid, leaf_page, &leaf_rec_info->ovfl, purpose,
-				     match_mvccinfo, found_page, prev_page, offset_to_object, object_mvcc_info);
+				     match_mvccinfo, found_page, prev_page, offset_to_object, object_mvcc_info,
+				     deleted_mvcc_info);
     }
 
   thread_p->read_ovfl_pages_count = 0;	// For Vacuum only.
@@ -14203,7 +14205,7 @@ btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID *
 	}
       error_code =
 	btree_find_oid_from_ovfl (thread_p, btid_int, overflow_page, oid, purpose, match_mvccinfo, offset_to_object,
-				  object_mvcc_info);
+				  object_mvcc_info, deleted_mvcc_info);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -14430,6 +14432,30 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 }
 
 /*
+ * btree_note_deleted_object () - Remember an object the purpose turned down for carrying a delete MVCCID
+ *
+ * deleted_mvcc_info (in/out) : Where to remember it; NULL when the caller does not care.  The first such
+ *				object wins, and the field is left alone when there is none -- so the caller
+ *				initializes it and reads a valid delete MVCCID as "the key still holds this
+ *				object, stamped deleted by whoever owns that MVCCID".
+ * mvcc_info (in)	      : MVCC info of the object just turned down.
+ *
+ * Note: the searches match an object by OID and then by what the purpose expects of its MVCC info.  An
+ *	 object that fails only the second test is invisible to the caller, which sees NOT_FOUND and cannot
+ *	 tell it from a key that never held the object.  A caller that came to stamp a delete needs that
+ *	 difference: the object may already carry a delete MVCCID whose owner is still running.
+ */
+STATIC_INLINE void
+btree_note_deleted_object (BTREE_MVCC_INFO * deleted_mvcc_info, const BTREE_MVCC_INFO * mvcc_info)
+{
+  if (deleted_mvcc_info != NULL && !BTREE_MVCC_INFO_IS_DELID_VALID (deleted_mvcc_info)
+      && BTREE_MVCC_INFO_IS_DELID_VALID (mvcc_info))
+    {
+      *deleted_mvcc_info = *mvcc_info;
+    }
+}
+
+/*
  * btree_find_oid_from_leaf () - Find OID in leaf record and output its offset and MVCC info.
  *
  * return		  : Error code.
@@ -14442,11 +14468,12 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
  * purpose (in)		  : Purpose/context for the call.
  * offset_to_object (out) : Output offset to found object or NOT_FOUND.
  * mvcc_info (out)	  : Output object MVCC info when found.
+ * deleted_mvcc_info (out): See btree_note_deleted_object ().
  */
 static int
 btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * leaf_record, int after_key_offset,
 			  OID * oid, BTREE_MVCC_INFO * match_mvccinfo, BTREE_OP_PURPOSE purpose, int *offset_to_object,
-			  BTREE_MVCC_INFO * mvcc_info)
+			  BTREE_MVCC_INFO * mvcc_info, BTREE_MVCC_INFO * deleted_mvcc_info)
 {
   OR_BUF buf;			/* Buffer to read record. */
   OID inst_oid;			/* OID read from record. */
@@ -14502,6 +14529,7 @@ btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * lea
 	      return NO_ERROR;
 	    }
 	  /* Not our object. */
+	  btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
 	  /* Continue looking. */
 	}
       if (is_first)
@@ -14537,7 +14565,7 @@ error:
 static int
 btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR overflow_page, OID * oid,
 			  BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo, int *offset_to_object,
-			  BTREE_MVCC_INFO * mvcc_info)
+			  BTREE_MVCC_INFO * mvcc_info, BTREE_MVCC_INFO * deleted_mvcc_info)
 {
   OID inst_oid;			/* OID read from record. */
   int min, mid, max;		/* min, mid, max values used for binary search. */
@@ -14600,6 +14628,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	  *offset_to_object = 0;
 	  return NO_ERROR;
 	}
+      btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
     }
   /* First object is not a match. */
 
@@ -14641,6 +14670,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record.data);
 	  return NO_ERROR;
 	}
+      btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
     }
   /* Early outs failed. Do a binary search after OID. */
 
@@ -14672,7 +14702,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 
 	  return btree_seq_find_oid_from_ovfl (thread_p, btid_int, oid, &ovf_record, oid_ptr, oid_ptr_lower_bound,
 					       oid_ptr_upper_bound, purpose, match_mvccinfo, offset_to_object,
-					       mvcc_info);
+					       mvcc_info, deleted_mvcc_info);
 	}
       else if (OID_GT (oid, &inst_oid))
 	{
@@ -14711,7 +14741,7 @@ static int
 btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
 			      RECDES * ovf_record, char *initial_oid_ptr, char *oid_ptr_lower_bound,
 			      char *oid_ptr_upper_bound, BTREE_OP_PURPOSE purpose, BTREE_MVCC_INFO * match_mvccinfo,
-			      int *offset_to_object, BTREE_MVCC_INFO * mvcc_info)
+			      int *offset_to_object, BTREE_MVCC_INFO * mvcc_info, BTREE_MVCC_INFO * deleted_mvcc_info)
 {
   OID inst_oid;
   char *oid_ptr;
@@ -14757,6 +14787,7 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record->data);
 	  return NO_ERROR;
 	}
+      btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
 
       oid_ptr -= obj_size;
     }
@@ -14798,6 +14829,7 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record->data);
 	  return NO_ERROR;
 	}
+      btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
 
       oid_ptr += obj_size;
     }
@@ -21475,7 +21507,7 @@ btree_find_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_
 
       error_code =
 	btree_find_oid_and_its_page (thread_p, btid, oid, pg_ptr, BTREE_OP_DELETE_OBJECT_PHYSICAL, NULL, &rec,
-				     &leaf_pnt, offset, &found_page, NULL, &offset_to_object, NULL);
+				     &leaf_pnt, offset, &found_page, NULL, &offset_to_object, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  assert (found_page == NULL);
@@ -31942,59 +31974,6 @@ btree_key_append_object_into_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, 
 }
 
 /*
- * btree_key_find_active_delete_owner () - Is this object already stamped by a running transaction?
- *
- * return		 : True when the object is in this key with a delete MVCCID owned by another
- *			   running transaction; that MVCCID is output.
- * thread_p (in)	 : Thread entry.
- * btid_int (in)	 : B-tree info.
- * insert_helper (in)	 : Names the object we came to stamp.
- * record (in)		 : The key's leaf record.
- * offset_after_key (in) : Offset in the record where the packed key ends.
- * owner_mvccid (out)	 : The owning MVCCID.
- *
- * Note: only the leaf record is walked; an object that moved to an overflow page is not found here.
- *	The waiting half of this mechanism is btree_key_wait_for_tran_end () in btree_object_lock.cpp; this
- *	half stays in btree.c because it reads the leaf record layout.
- */
-static bool
-btree_key_find_active_delete_owner (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_INSERT_HELPER * insert_helper,
-				    RECDES * record, int offset_after_key, MVCCID * owner_mvccid)
-{
-#if defined (SERVER_MODE)
-  OR_BUF buf;
-  OID inst_oid, class_oid;
-  BTREE_MVCC_INFO mvcc_info;
-  bool is_first = true;
-
-  assert (owner_mvccid != NULL);
-
-  BTREE_RECORD_OR_BUF_INIT (buf, record);
-  while (buf.ptr < buf.endptr)
-    {
-      if (btree_or_get_object (&buf, btid_int, BTREE_LEAF_NODE, offset_after_key, &inst_oid, &class_oid, &mvcc_info)
-	  != NO_ERROR)
-	{
-	  return false;
-	}
-      if (OID_EQ (&inst_oid, BTREE_INSERT_OID (insert_helper)) && BTREE_MVCC_INFO_IS_DELID_VALID (&mvcc_info)
-	  && logtb_is_active_other_mvccid (thread_p, mvcc_info.delete_mvccid))
-	{
-	  *owner_mvccid = mvcc_info.delete_mvccid;
-	  return true;
-	}
-      if (is_first)
-	{
-	  or_seek (&buf, offset_after_key);
-	  is_first = false;
-	}
-    }
-#endif /* SERVER_MODE */
-
-  return false;
-}
-
-/*
  * btree_key_find_and_insert_delete_mvccid () - BTREE_ADVANCE_WITH_KEY_FUNCTION used for MVCC logical delete.
  *						An object is found and an MVCCID is added to its MVCC info.
  *
@@ -32026,7 +32005,7 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
 
   int num_visible = 0;
   MVCC_SNAPSHOT snapshot_dirty;
-  MVCCID settle_owner_mvccid = MVCCID_NULL;
+  BTREE_MVCC_INFO settle_mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
 
   /* Assert expected arguments. */
   assert (btid_int != NULL);
@@ -32094,7 +32073,7 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
   error_code =
     btree_find_oid_and_its_page (thread_p, btid_int, BTREE_INSERT_OID (insert_helper), *leaf_page,
 				 insert_helper->purpose, NULL, &record, &leaf_info, offset_after_key, &found_page,
-				 NULL, &offset_to_found_object, &mvcc_info);
+				 NULL, &offset_to_found_object, &mvcc_info, &settle_mvcc_info);
   if (error_code != NO_ERROR)
     {
       /* Error. */
@@ -32108,18 +32087,21 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
       assert (found_page == NULL);
 
       /* NOT_FOUND can also mean the object is here with a delete MVCCID already set: this purpose matches
-       * only an object without one.  A still-running owner means the entry was stamped by a writer that gave
-       * up the row lock before ending, and rollback restores the heap before the index -- so the record this
-       * key came from can already be back to the version it was stamped for.  The heap-side settle cannot
-       * see that, only the entry can.  Hand the owner to btree_key_wait_for_tran_end (), which drops the
-       * latch, waits under the transaction's lock timeout and asks for a restart -- the same primitive the
-       * unique-key probe waits on.  No private budget here, and the heap-side settle keeps no count either. */
+       * only an object without one, and the search reported such an object through settle_mvcc_info --
+       * wherever in the key it sits, leaf or overflow.  A still-running owner means the entry was stamped by
+       * a writer that gave up the row lock before ending, and rollback restores the heap before the index --
+       * so the record this key came from can already be back to the version it was stamped for.  The
+       * heap-side settle cannot see that, only the entry can.  Hand the owner to btree_key_wait_for_tran_end (),
+       * which drops the latch, waits under the transaction's lock timeout and asks for a restart -- the same
+       * primitive the unique-key probe waits on.  No private budget here, and the heap-side settle keeps no
+       * count either. */
 #if defined (SERVER_MODE)
       if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
-	  && btree_key_find_active_delete_owner (thread_p, btid_int, insert_helper, &record, offset_after_key,
-						 &settle_owner_mvccid))
+	  && BTREE_MVCC_INFO_IS_DELID_VALID (&settle_mvcc_info)
+	  && logtb_is_active_other_mvccid (thread_p, settle_mvcc_info.delete_mvccid))
 	{
-	  error_code = btree_key_wait_for_tran_end (thread_p, settle_owner_mvccid, NULL, leaf_page, NULL, restart);
+	  error_code =
+	    btree_key_wait_for_tran_end (thread_p, settle_mvcc_info.delete_mvccid, NULL, leaf_page, NULL, restart);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -34184,7 +34166,7 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	btree_find_oid_and_its_page (thread_p, btid_int, BTREE_DELETE_OID (delete_helper), *leaf_page,
 				     delete_helper->purpose, &delete_helper->match_mvccinfo, &leaf_record,
 				     &leaf_rec_info, offset_after_key, &found_page, &prev_found_page,
-				     &offset_to_object, BTREE_DELETE_MVCC_INFO (delete_helper));
+				     &offset_to_object, BTREE_DELETE_MVCC_INFO (delete_helper), NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -34460,7 +34442,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 	btree_find_oid_and_its_page (thread_p, btid_int, BTREE_DELETE_OID (delete_helper), *leaf_page,
 				     delete_helper->purpose, &delete_helper->match_mvccinfo, &leaf_record,
 				     &leaf_rec_info, offset_after_key, &found_page, &prev_found_page,
-				     &offset_to_object, BTREE_DELETE_MVCC_INFO (delete_helper));
+				     &offset_to_object, BTREE_DELETE_MVCC_INFO (delete_helper), NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -34553,7 +34535,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
     btree_find_oid_and_its_page (thread_p, btid_int, &delete_helper->second_object_info.oid, *leaf_page,
 				 second_object_search_purpose, &match_2nd_obj_mvccinfo, &leaf_record, &leaf_rec_info,
 				 offset_after_key, &found_page, &prev_found_page, &offset_to_second_object,
-				 &delete_helper->second_object_info.mvcc_info);
+				 &delete_helper->second_object_info.mvcc_info, NULL);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -35383,7 +35365,7 @@ btree_key_remove_insert_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	btree_find_oid_and_its_page (thread_p, btid_int, BTREE_DELETE_OID (delete_helper), *leaf_page,
 				     delete_helper->purpose, &delete_helper->match_mvccinfo, &record, &leaf_rec_info,
 				     offset_after_key, &found_page, NULL, &offset_to_object,
-				     BTREE_DELETE_MVCC_INFO (delete_helper));
+				     BTREE_DELETE_MVCC_INFO (delete_helper), NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -35560,7 +35542,7 @@ btree_key_remove_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	btree_find_oid_and_its_page (thread_p, btid_int, BTREE_DELETE_OID (delete_helper), *leaf_page,
 				     delete_helper->purpose, &delete_helper->match_mvccinfo, &leaf_record,
 				     &leaf_rec_info, offset_after_key, &found_page, NULL, &offset_to_object,
-				     BTREE_DELETE_MVCC_INFO (delete_helper));
+				     BTREE_DELETE_MVCC_INFO (delete_helper), NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -38676,7 +38658,7 @@ btree_find_oid_with_page_and_record (THREAD_ENTRY * thread_p, BTID_INT * btid_in
 
   error_code = btree_find_oid_and_its_page (thread_p, btid_int, oid, leaf_page, purpose, NULL, record, leaf_info,
 					    offset_after_key, found_page, prev_page, offset_to_object,
-					    object_mvcc_info);
+					    object_mvcc_info, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
