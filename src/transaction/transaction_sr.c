@@ -39,6 +39,9 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "server_support.h"
+#if defined(SERVER_MODE)
+#include "network_interface_sr.h"
+#endif /* SERVER_MODE */
 #include "session.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info and thread_sleep
@@ -84,6 +87,12 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
   /* A stream session (internal LOB DML / upload) still open here belongs to a statement that never reached
    * END; drop it while its savepoint is still valid instead of letting it leak into the next transaction. */
   session_abort_stream_session (thread_p);
+#if defined(SERVER_MODE)
+  /* A reader cursor belongs to the transaction that opened it.  Releasing it here is what keeps a client that
+   * abandons a stream from holding the cursor until its connection drops - which, with pooled broker->server
+   * connections, may be never.  Standalone mode has no such cursor: it reads the chain directly. */
+  sinternal_lob_stream_purge_tran (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+#endif /* SERVER_MODE */
 
 #ifndef CCI_XA
   /* dblink transaction commit first */
@@ -140,6 +149,12 @@ xtran_server_abort (THREAD_ENTRY * thread_p)
 
   /* Same as in xtran_server_commit: an open stream session must not outlive its transaction. */
   session_abort_stream_session (thread_p);
+#if defined(SERVER_MODE)
+  /* A reader cursor belongs to the transaction that opened it.  Releasing it here is what keeps a client that
+   * abandons a stream from holding the cursor until its connection drops - which, with pooled broker->server
+   * connections, may be never.  Standalone mode has no such cursor: it reads the chain directly. */
+  sinternal_lob_stream_purge_tran (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+#endif /* SERVER_MODE */
 
   /* dblink transaction abort first */
   (void) qmgr_check_dblink_trans (thread_p, true);

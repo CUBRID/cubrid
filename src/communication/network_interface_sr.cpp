@@ -129,6 +129,11 @@ struct internal_lob_stream_cursor
   INTERNAL_LOB_READER reader;
 };
 
+/* A reader cursor lives until the client closes it or its connection goes down, so a client that opens one per
+ * row and never closes it would otherwise grow this table without end.  The cap turns that into a refused open
+ * instead of unbounded server memory. */
+#define INTERNAL_LOB_STREAM_MAX_CURSORS 1024
+
 static std::mutex internal_lob_stream_mutex;
 static std::map<INT64, internal_lob_stream_cursor> internal_lob_stream_cursor_table;
 static INT64 internal_lob_stream_next_token = 1;
@@ -10453,6 +10458,15 @@ sinternal_lob_stream_open (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
   cursor.tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   {
     std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+
+    if (internal_lob_stream_cursor_table.size () >= INTERNAL_LOB_STREAM_MAX_CURSORS)
+      {
+	/* the reader holds no page latch between pulls, so dropping it needs nothing but letting it go */
+	err = ER_OBJ_INVALID_ARGUMENTS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	goto reply;
+      }
+
     token = sinternal_lob_stream_allocate_token ();
     internal_lob_stream_cursor_table[token] = cursor;
   }
