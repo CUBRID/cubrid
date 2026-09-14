@@ -194,7 +194,7 @@ namespace parallel_query
       unsigned int hash_key;
       UINT32 part_cnt, part_index, part_id;
 
-      bool is_outer_join = false;
+      bool has_null_fill_side = false;
       bool need_skip_next = false;
 
       int error = NO_ERROR;
@@ -206,9 +206,7 @@ namespace parallel_query
       part_list_id = m_split_info->part_list_id;
       part_cnt = m_manager->context_cnt;
 
-      /* an anti join's NULL join key on its outer side still needs the reserved null-key
-       * partition, same as query_hash_join.c's hjoin_split_qlist(). */
-      is_outer_join = HASHJOIN_ACTS_AS_OUTER (m_manager);
+      has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (m_manager->join_type);
 
       temp_part_list_id = (QFILE_LIST_ID **) db_private_alloc (&thread_ref, part_cnt * sizeof (QFILE_LIST_ID *));
       if (temp_part_list_id == nullptr)
@@ -328,10 +326,11 @@ namespace parallel_query
 		{
 		  need_skip_next = false;	/* init */
 
-		  if (is_outer_join)
+		  if (has_null_fill_side)
 		    {
-		      /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-		      * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
+		      /* In joins that NULL-fill the inner side,
+		       * tuples with NULL in any join column are placed in the last partition.
+		       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
 		      part_id = part_cnt - 1;
 		    }
 		  else
@@ -343,7 +342,7 @@ namespace parallel_query
 	      else
 		{
 		  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-		  part_id = (is_outer_join) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
+		  part_id = (has_null_fill_side) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
 
 		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
 		}
@@ -821,9 +820,7 @@ namespace parallel_query
 	}
       m_context->hash_scan.hash_list_scan_type = single_context->hash_scan.hash_list_scan_type;
 
-      /* an anti join needs this check too, to reach execute_outer(), same as
-       * query_hash_join.c's probe dispatch. */
-      if (HASHJOIN_ACTS_AS_OUTER (m_manager))
+      if (IS_NULL_FILL_JOIN_TYPE (m_manager->join_type))
 	{
 	  execute_outer (thread_ref);
 	}
@@ -1147,14 +1144,9 @@ cleanup:
 		      break;		/* error_exit */
 		    }
 
-		  if (m_manager->semi_anti_type == HASHJOIN_SEMI_ANTI_SEMI)
+		  if (m_manager->join_type == JOIN_SEMI)
 		    {
-		      /* semi join: at most one output row per probe row — stop scanning this
-		       * row's remaining buckets once the first match has been emitted.
-		       * hjoin_probe_key() decides "start a new search" vs. "resume the current
-		       * chain" by whether build->tuple_record.tpl is NULL, so it must be reset
-		       * here — otherwise the next probe row's search wrongly resumes this row's
-		       * chain (same bug as query_hash_join.c's hjoin_inner_probe()). */
+		      /* semi join: one match is enough to emit this row, so stop scanning. */
 		      build->tuple_record.tpl = nullptr;
 		      break;
 		    }
@@ -1503,16 +1495,11 @@ cleanup:
 
 		  any_key_matched = true;
 
-		  if (m_manager->semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI)
+		  if (m_manager->join_type == JOIN_ANTI)
 		    {
-		      /* anti join: this bucket already proves a matching inner row exists, so the
-		       * outer row must be suppressed regardless of after_join_pred — stop scanning
-		       * this row's remaining buckets without evaluating after_join_pred (existence
-		       * check only, no output), same as query_hash_join.c's hjoin_outer_probe().
-		       * hjoin_probe_key() decides "start a new search" vs. "resume the current
-		       * chain" by whether build->tuple_record.tpl is NULL, so it must be reset
-		       * here — otherwise the next probe row's search wrongly resumes this row's
-		       * chain. */
+		      /* anti join: one match is enough to suppress this row, so stop scanning.
+		       * The unnested subquery condition becomes the ON clause,
+		       * so after_join_pred does not decide the match. */
 		      build->tuple_record.tpl = nullptr;
 		      break;
 		    }

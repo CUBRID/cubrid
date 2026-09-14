@@ -297,32 +297,18 @@ error_exit:
       switch (manager->join_type)
 	{
 	case JOIN_INNER:
-	  if (manager->semi_anti_type == HASHJOIN_SEMI_ANTI_ANTI)
-	    {
-	      /* anti join: reuses the "no match" fill_record path, same as JOIN_LEFT — without
-	       * this, execute_outer()'s no-match branch would call hjoin_merge_tuple_to_list_id()
-	       * with both records null and assert (see query_hash_join.c's hjoin_init_context()
-	       * for the matching single-thread fix). */
-	      context->outer.fill_record = &context->outer.tuple_record;
-	      context->inner.fill_record = nullptr;
-	    }
-	  else
-	    {
-	      context->outer.fill_record = nullptr;
-	      context->inner.fill_record = nullptr;
-	    }
+	case JOIN_SEMI:
+	  context->outer.fill_record = nullptr;
+	  context->inner.fill_record = nullptr;
 	  break;
 
 	case JOIN_LEFT:
+	case JOIN_ANTI:
 	  context->outer.fill_record = &context->outer.tuple_record;
 	  context->inner.fill_record = nullptr;
 	  break;
 
 	case JOIN_RIGHT:
-	  context->outer.fill_record = nullptr;
-	  context->inner.fill_record = &context->inner.tuple_record;
-	  break;
-
 	default:
 	  /* impossible case */
 	  assert_release_error (false);

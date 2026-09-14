@@ -833,22 +833,6 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto error_exit;
     }
 
-  /* merge_info.join_type stays JOIN_INNER for semi/anti (structurally modelled as inner joins);
-   * recover the real intent here so the executor can tell semi/anti apart from an ordinary
-   * inner hash join without touching join_type. */
-  switch (qo_plan_semi_anti_join_type (plan->plan_un.join.inner))
-    {
-    case PT_JOIN_SEMI:
-      proc->semi_anti_type = HASHJOIN_SEMI_ANTI_SEMI;
-      break;
-    case PT_JOIN_ANTI:
-      proc->semi_anti_type = HASHJOIN_SEMI_ANTI_ANTI;
-      break;
-    default:
-      proc->semi_anti_type = HASHJOIN_SEMI_ANTI_NONE;
-      break;
-    }
-
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   assert (!pt_has_error (parser));
 
@@ -2229,10 +2213,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
        */
       bitset_union (&predset, &(plan->plan_un.join.join_terms));
 
-      /* outer join could have terms classed as AFTER JOIN TERM; setting after join terms to merged list scan.
-       * An anti join is structurally JOIN_INNER (IS_OUTER_JOIN_TYPE is false for it), but its
-       * during/after join terms still need to reach predset the same way, or they would be
-       * dropped from this plan entirely (see qo_join_new()'s matching check). */
+      /* outer and anti join could have terms classed as AFTER JOIN TERM;
+       * setting after join terms to merged list scan. */
       if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (plan->plan_un.join.inner) == PT_JOIN_ANTI)
 	{
 	  bitset_union (&predset, &(plan->plan_un.join.during_join_terms));
@@ -6236,10 +6218,6 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
    * The terms remaining in pred_set are evaluated by the parent list scan.
    * Each removed term is evaluated exactly once in the probe, and never by the parent. */
   bitset_difference (pred_set, &plan->plan_un.join.join_terms);
-  /* an anti join is structurally JOIN_INNER (IS_OUTER_JOIN_TYPE is false for it), but its
-   * during_join_terms are still evaluated in the probe (see hjoin_outer_probe()'s reuse for
-   * ANTI), so they must be removed from pred_set here too or they would be double-evaluated
-   * by the parent list scan. */
   if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (inner_plan) == PT_JOIN_ANTI)
     {
       bitset_difference (pred_set, &plan->plan_un.join.during_join_terms);
@@ -6428,6 +6406,20 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 
   /* join_type */
   merge_info->join_type = plan->plan_un.join.join_type;
+
+  switch (qo_plan_semi_anti_join_type (inner_plan))
+    {
+    case PT_JOIN_SEMI:
+      merge_info->join_type = JOIN_SEMI;
+      break;
+
+    case PT_JOIN_ANTI:
+      merge_info->join_type = JOIN_ANTI;
+      break;
+
+    default:
+      break;
+    }
 
   /* ls_column_cnt */
   merge_info->ls_column_cnt = bitset_cardinality (&plan->plan_un.join.join_terms);

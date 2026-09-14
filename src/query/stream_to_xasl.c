@@ -3211,7 +3211,6 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
   TP_DOMAIN **all_domains = NULL;
   int domain_cnt;
   int offset;
-  int semi_anti_type;
 
   int error = NO_ERROR;
 
@@ -3286,10 +3285,6 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       goto exit_on_error;
     }
   assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* Unused */
-
-  /* semi_anti_type */
-  ptr = or_unpack_int (ptr, &semi_anti_type);
-  node_p->semi_anti_type = (HASHJOIN_SEMI_ANTI_TYPE) semi_anti_type;
 
   /* domain_info */
   domain_cnt = node_p->merge_info.ls_column_cnt;

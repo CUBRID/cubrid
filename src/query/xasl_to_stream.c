@@ -3664,9 +3664,6 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
       return NULL;
     }
 
-  /* semi_anti_type */
-  ptr = or_pack_int (ptr, (int) node_p->semi_anti_type);
-
   return ptr;
 }
 
@@ -6477,9 +6474,6 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
       return ER_FAILED;
     }
   size += tmp_size;
-
-  /* semi_anti_type */
-  size += OR_INT_SIZE;
 
   return size;
 }

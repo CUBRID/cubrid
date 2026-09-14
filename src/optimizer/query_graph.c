@@ -2762,28 +2762,15 @@ qo_analyze_term (QO_TERM * term, int term_type)
     }
   else if (QO_TERM_CLASS (term) == QO_TC_OTHER && QO_ON_COND_TERM (term))
     {
-      /* An anti join's ON-clause term that references more than its own two relations
-       * (e.g. a JOIN b ... ANTI JOIN c ON c.k = a.k AND a.x > b.y) has no single head/tail
-       * pair for the QO_TC_JOIN case above to hang an outer-dep-set on. Without one, the
-       * join-order search can build the anti join before every relation this term needs
-       * exists; the term then gets misrouted onto a later, unrelated join's sarg instead of
-       * the anti join's during-join predicate, silently dropping rows the anti join should
-       * have kept (confirmed by direct repro + gdb trace). Freeze every other relation this
-       * term references under the anti join's own node, the same way the two-relation case
-       * above does for PT_JOIN_ANTI. */
       QO_NODE *on_node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
 
-      if (on_node != NULL && QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
 	{
-	  BITSET_ITERATOR term_node_iter;
-	  int term_node_idx;
-
-	  for (term_node_idx = bitset_iterate (&(QO_TERM_NODES (term)), &term_node_iter); term_node_idx != -1;
-	       term_node_idx = bitset_next_member (&term_node_iter))
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
 	    {
-	      if (term_node_idx != QO_NODE_IDX (on_node))
+	      if (t != QO_NODE_IDX (on_node))
 		{
-		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, term_node_idx));
+		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
 		}
 	    }
 	}
@@ -6449,15 +6436,13 @@ qo_discover_edges (QO_ENV * env)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
  * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
+ * O5|ON   |TC_sarg(anti)        |!on_node  |-              |TC_dj
+ * O6|ON   |TC_other(n>0,anti)   |-         |-              |TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
  * W2|WHERE|TC_join              |!Outer    |!Right         |TC_join(ow TC_aj)
  * W3|WHERE|TC_other(n>0)        |!Outer    |!Right         |TC_other(ow TC_aj)
  * W4|WHERE|TC_other(n==0)       |-         |-              |TC_aj
  * --+-----+---------------------+----------+---------------+------------------
- *
- * This matrix covers real outer joins (LEFT/RIGHT/FULL) only. An anti join is structurally
- * JOIN_INNER, so its ON-clause terms fall outside every row above; they are reclassified by
- * dedicated PT_JOIN_ANTI checks in the function body instead (see the O1/O3 sites below).
  */
 static void
 qo_classify_outerjoin_terms (QO_ENV * env)
@@ -6480,10 +6465,8 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  break;
 	}
 
-      /* QO_OUTER_JOIN_TERM() only recognizes LEFT/RIGHT/FULL join terms; an anti join's ON-clause
-       * term is structurally JOIN_INNER and would never trip it, so an anti-only query (no real
-       * outer join anywhere) would otherwise skip this whole function and leave its ON-clause
-       * terms unclassified. */
+      /* An anti join is structurally JOIN_INNER, and its ON-clause term can be QO_TC_OTHER,
+       * so QO_OUTER_JOIN_TERM () never matches it; check the ON clause's node for now. */
       if (QO_ON_COND_TERM (term) && QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, QO_TERM_LOCATION (term))) == PT_JOIN_ANTI)
 	{
 	  break;
@@ -6492,7 +6475,8 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
   if (i >= env->nterms)
     {
-      return;			/* not found outer join term nor anti-join on-clause term; do nothing */
+      /* not found outer join term nor anti-join on-clause term; do nothing */
+      return;
     }
 
   bitset_init (&dep_set, env);
@@ -6521,9 +6505,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    }
 	  else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
 	    {
-	      /* anti: also structurally inner, but its ON-clause term can still need promotion
-	       * below (STEP 1) when it references only the outer side, so fall through instead
-	       * of skipping like semi does. */
+	      /* anti: outer-only ON-clause term still needs promotion in STEP 1, so do not skip. */
 	    }
 	  else
 	    {
@@ -6570,10 +6552,6 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI
 		       && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (on_node)))
 		{
-		  /* anti join, outer-only ON-clause term (does not reference the anti join's own
-		   * inner node): this term can never turn true/false based on the inner side, so
-		   * it must be decided before the anti join's existence check runs instead of
-		   * being sarged onto the outer scan alone. */
 		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
 		}
 	    }
@@ -6616,11 +6594,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  if (nidx_self >= 0)
 	    {
 	      node = QO_ENV_NODE (env, nidx_self);
-	      /* an anti join's ON-clause term of this shape (references nodes that don't line
-	       * up with tail/on_node) is structurally JOIN_INNER, so it needs its own check
-	       * alongside real outer joins here too. */
-	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred
-		  || (QO_ON_COND_TERM (term) && QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI))
+	      if (QO_NODE_IS_OUTER_JOIN (node) || is_outerjoin_for_or_pred)
 		{
 		  if (QO_ON_COND_TERM (term))
 		    {
@@ -6630,6 +6604,10 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 		    {
 		      QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
 		    }
+		}
+	      else if (QO_ON_COND_TERM (term) && QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+		{
+		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
 		}
 	    }
 	  else

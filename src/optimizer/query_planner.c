@@ -3349,10 +3349,6 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   /* add to out terms */
   bitset_union (&sarg_out_terms, &(plan->plan_un.join.join_terms));
 
-  /* an anti join is structurally JOIN_INNER (IS_OUTER_JOIN_TYPE is false for it), but it still
-   * needs its during/after join terms wired onto the plan the same way a real outer join does;
-   * qo_plan_semi_anti_join_type() recovers the anti/semi intent from the inner's representative
-   * scan node (known limitation: returns PT_JOIN_NONE for a composite, multi-node inner). */
   if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (inner) == PT_JOIN_ANTI)
     {
       /* set during join terms */
