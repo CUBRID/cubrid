@@ -394,11 +394,13 @@ struct upddel_class_info_internal
   HEAP_SCANCACHE *scan_cache;
 
   OID prev_class_oid;		/* previous class oid */
-  bool is_mvcc_class;		/* whether MVCC applies to class_oid; set when the class changes, because
+  OID lock_policy_class;	/* the class the two answers below were given for.  These three are written
+				 * only by qexec_class_ends_locks_with_statement (): a second writer that
+				 * left this key alone would make the memo answer for the wrong class. */
+  bool is_mvcc_class;		/* whether MVCC applies to lock_policy_class -- memoized because
 				 * mvcc_is_mvcc_disabled_class () is too slow to ask per row */
-  OID lock_policy_class;	/* the class the two answers below were given for */
-  bool has_online_index;	/* an index of class_oid is being built online; set when the class changes,
-				 * because reading the class representation is too slow to ask per row */
+  bool has_online_index;	/* an index of lock_policy_class is being built online -- memoized because
+				 * reading the class representation is too slow to ask per row */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   int needs_pruning;		/* partition pruning information */
@@ -10768,8 +10770,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      er_log_debug (ARG_FILE_LINE, "qexec_execute_update: class OID is not correct\n");
 		      GOTO_EXIT_ON_ERROR;
 		    }
-		  internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
-		  internal_class->has_online_index = locator_class_has_online_index (thread_p, class_oid);
 
 		  /* temporary disable set filters when needs prunning */
 		  if (mvcc_reev_class != NULL)
@@ -11046,6 +11046,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 	      force_count = 0;
 	      oid = internal_class->oid;
+	      class_oid = internal_class->class_oid;
 	      if (oid == NULL)
 		{
 		  continue;
@@ -11627,8 +11628,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			  er_log_debug (ARG_FILE_LINE, "qexec_execute_delete: class OID is not correct\n");
 			  GOTO_EXIT_ON_ERROR;
 			}
-		      internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
-		      internal_class->has_online_index = locator_class_has_online_index (thread_p, class_oid);
 
 		      if (internal_class->num_lob_attrs)
 			{
@@ -26631,6 +26630,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       class_->is_mvcc_class = false;
       class_->has_online_index = false;
       class_->scan_cache = NULL;
+      OID_SET_NULL (&class_->lock_policy_class);
       OID_SET_NULL (&class_->prev_class_oid);
       class_->is_attr_info_inited = 0;
 
