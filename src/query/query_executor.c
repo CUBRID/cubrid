@@ -394,9 +394,10 @@ struct upddel_class_info_internal
   HEAP_SCANCACHE *scan_cache;
 
   OID prev_class_oid;		/* previous class oid */
-  OID lock_policy_class;	/* the class the two answers below were given for.  These three are written
-				 * only by qexec_class_ends_locks_with_statement (): a second writer that
-				 * left this key alone would make the memo answer for the wrong class. */
+  OID lock_policy_class;	/* the class the two answers below were given for.  These three are set
+				 * together when the class info is created and afterwards written only by
+				 * qexec_class_ends_locks_with_statement (): a second writer that left this
+				 * key alone would make the memo answer for the wrong class. */
   bool is_mvcc_class;		/* whether MVCC applies to lock_policy_class -- memoized because
 				 * mvcc_is_mvcc_disabled_class () is too slow to ask per row */
   bool has_online_index;	/* an index of lock_policy_class is being built online -- memoized because
@@ -7627,7 +7628,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
    * half is added by the opener, which knows the class (the pruned partition, after a switch). */
   upddel_target_scan = (mvcc_select_lock_needed && upddel_stmt
 			&& lock_transient_scope_is_outermost (thread_p)
-			&& logtb_find_current_isolation (thread_p) <= TRAN_READ_COMMITTED);
+			&& logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
 
   /* Finalize cached-scan activation once per open, before dispatching on access method. The
    * driving-scan gate is assigned next to fixed_scan in qexec_execute_mainblock_internal ();
@@ -10511,6 +10512,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
+  bool outermost_transient_scope;	/* a statement nested in another one keeps its locks to commit */
   bool statement_ends_locks;	/* whether this statement's row locks end with it */
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
@@ -10520,8 +10522,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
    * narrower question -- a statement nested in another one keeps them to commit, and so does one above
    * READ COMMITTED.  qexec_open_scan () gates the select phase on the same two facts, and the two phases
    * of one statement must not disagree about which of them the locks belong to. */
-  statement_ends_locks = (lock_transient_scope_start (thread_p)
-			  && logtb_find_current_isolation (thread_p) <= TRAN_READ_COMMITTED);
+  outermost_transient_scope = lock_transient_scope_start (thread_p);	/* raises the scope depth */
+  statement_ends_locks = (outermost_transient_scope && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
 
   thread_p->no_logging = (bool) update->no_logging;
 
@@ -11051,7 +11053,6 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 	      force_count = 0;
 	      oid = internal_class->oid;
-	      class_oid = internal_class->class_oid;
 	      if (oid == NULL)
 		{
 		  continue;
@@ -11074,7 +11075,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      /* Row-lock lifetime is the class's, not the row's -- decided per class here (see
 	       * qexec_class_ends_locks_with_statement). */
 	      lock_policy = base_lock_policy;
-	      if (statement_ends_locks && qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
+	      if (statement_ends_locks
+		  && qexec_class_ends_locks_with_statement (thread_p, internal_class, internal_class->class_oid))
 		{
 		  if (lock_policy == LOCATOR_LOCK_AT_FORCE)
 		    {
@@ -11430,6 +11432,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
+  bool outermost_transient_scope;	/* a statement nested in another one keeps its locks to commit */
   bool statement_ends_locks;	/* whether this statement's row locks end with it */
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
@@ -11444,8 +11447,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   /* from here every exit runs through one of the two lock_transient_scope_end () calls below.  See
    * qexec_execute_update () for why the scope and the lifetime question are not the same test. */
-  statement_ends_locks = (lock_transient_scope_start (thread_p)
-			  && logtb_find_current_isolation (thread_p) <= TRAN_READ_COMMITTED);
+  outermost_transient_scope = lock_transient_scope_start (thread_p);	/* raises the scope depth */
+  statement_ends_locks = (outermost_transient_scope && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -27028,7 +27031,12 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
    * The halves do take transient row locks: qexec_open_scan () does not exclude MERGE (pt_to_merge_update_query ()
    * sets upd_del_class_cnt on the driving select) and the force phase never consults it.  What keeps the
    * locks today is the system savepoint do_merge () takes, which logtb_has_active_savepoint () reports --
-   * an unrelated guard that CBRD-27238 narrows to user savepoints.  This scope does not depend on it. */
+   * an unrelated guard that CBRD-27238 narrows to user savepoints.  This scope does not depend on it.
+   *
+   * It covers only the MERGE the server executes.  When a target carries a trigger or is a view, do_merge ()
+   * sends the two halves down as separate server statements (server_op in execute_statement.c), each of them
+   * outermost in its own scope -- and there only that savepoint stands between them and a release inside the
+   * enclosing operation. */
   lock_transient_scope_start (thread_p);
 
   /* start a topop */

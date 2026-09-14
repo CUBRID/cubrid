@@ -12690,6 +12690,7 @@ btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
  * prev_page (out)	  : If not NULL, previous chain page of found_page (leaf_page for the first data page).
  * offset_to_object (out) : Offset to object in found page's record or NOT_FOUND.
  * object_mvcc_info (out) : Output MVCC info when found.
+  * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
@@ -14134,6 +14135,7 @@ btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
  * offset_to_object (out) : Offset to object in the record of leaf/overflow.
  *
  * TODO: output overflow record
+  * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
@@ -14432,27 +14434,38 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 }
 
 /*
- * btree_note_deleted_object () - Remember an object the purpose turned down for carrying a delete MVCCID
+ * btree_note_active_delete_owner () - Remember an object stamped deleted by a transaction still running
  *
- * deleted_mvcc_info (in/out) : Where to remember it; NULL when the caller does not care.  The first such
- *				object wins, and the field is left alone when there is none -- so the caller
- *				initializes it and reads a valid delete MVCCID as "the key still holds this
- *				object, stamped deleted by whoever owns that MVCCID".
- * mvcc_info (in)	      : MVCC info of the object just turned down.
+ * thread_p (in)	    : Thread entry.
+ * owner_mvcc_info (in/out) : Where to remember it; NULL when the caller does not care.  The first such
+ *			      object wins, and the field is left alone when there is none -- so the caller
+ *			      initializes it and reads a valid delete MVCCID as "the key still holds this
+ *			      object, stamped deleted by a transaction that has not ended".
+ * mvcc_info (in)	    : MVCC info of the object just turned down.
  *
  * Note: the searches match an object by OID and then by what the purpose expects of its MVCC info.  An
  *	 object that fails only the second test is invisible to the caller, which sees NOT_FOUND and cannot
  *	 tell it from a key that never held the object.  A caller that came to stamp a delete needs that
  *	 difference: the object may already carry a delete MVCCID whose owner is still running.
+ *
+ *	 All three tests belong here, not at the caller.  A key can hold the same OID twice -- one version
+ *	 deleted by a transaction long committed and not yet vacuumed, one current -- and which of the two
+ *	 the search meets first is a function of the record layout (a non-unique index appends, a unique one
+ *	 prepends).  Remembering the first object with any delete MVCCID and asking about its owner
+ *	 afterwards would answer for whichever copy the layout happened to put first.
  */
 STATIC_INLINE void
-btree_note_deleted_object (BTREE_MVCC_INFO * deleted_mvcc_info, const BTREE_MVCC_INFO * mvcc_info)
+btree_note_active_delete_owner (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * owner_mvcc_info,
+				const BTREE_MVCC_INFO * mvcc_info)
 {
-  if (deleted_mvcc_info != NULL && !BTREE_MVCC_INFO_IS_DELID_VALID (deleted_mvcc_info)
-      && BTREE_MVCC_INFO_IS_DELID_VALID (mvcc_info))
+#if defined (SERVER_MODE)
+  if (owner_mvcc_info != NULL && !BTREE_MVCC_INFO_IS_DELID_VALID (owner_mvcc_info)
+      && BTREE_MVCC_INFO_IS_DELID_VALID (mvcc_info)
+      && logtb_is_active_other_mvccid (thread_p, mvcc_info->delete_mvccid))
     {
-      *deleted_mvcc_info = *mvcc_info;
+      *owner_mvcc_info = *mvcc_info;
     }
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -14468,7 +14481,7 @@ btree_note_deleted_object (BTREE_MVCC_INFO * deleted_mvcc_info, const BTREE_MVCC
  * purpose (in)		  : Purpose/context for the call.
  * offset_to_object (out) : Output offset to found object or NOT_FOUND.
  * mvcc_info (out)	  : Output object MVCC info when found.
- * deleted_mvcc_info (out): See btree_note_deleted_object ().
+ * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * leaf_record, int after_key_offset,
@@ -14529,7 +14542,7 @@ btree_find_oid_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * lea
 	      return NO_ERROR;
 	    }
 	  /* Not our object. */
-	  btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
+	  btree_note_active_delete_owner (thread_p, deleted_mvcc_info, mvcc_info);
 	  /* Continue looking. */
 	}
       if (is_first)
@@ -14561,6 +14574,7 @@ error:
  * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
  * offset_to_object (out) : If object is found, it saves the offset to object. Otherwise, NOT_FOUND is output.
  * mvcc_info (out)	  : Output MVCC info if object is found.
+  * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR overflow_page, OID * oid,
@@ -14628,7 +14642,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	  *offset_to_object = 0;
 	  return NO_ERROR;
 	}
-      btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
+      btree_note_active_delete_owner (thread_p, deleted_mvcc_info, mvcc_info);
     }
   /* First object is not a match. */
 
@@ -14670,7 +14684,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
 	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record.data);
 	  return NO_ERROR;
 	}
-      btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
+      btree_note_active_delete_owner (thread_p, deleted_mvcc_info, mvcc_info);
     }
   /* Early outs failed. Do a binary search after OID. */
 
@@ -14736,6 +14750,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
  * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
  * offset_to_object (out) : If object is found, it saves the offset to object. Otherwise, NOT_FOUND is output.
  * mvcc_info (out)	  : Output MVCC info if object is found.
+  * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
@@ -14787,7 +14802,7 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record->data);
 	  return NO_ERROR;
 	}
-      btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
+      btree_note_active_delete_owner (thread_p, deleted_mvcc_info, mvcc_info);
 
       oid_ptr -= obj_size;
     }
@@ -14829,7 +14844,7 @@ btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID 
 	  *offset_to_object = CAST_BUFLEN (oid_ptr - ovf_record->data);
 	  return NO_ERROR;
 	}
-      btree_note_deleted_object (deleted_mvcc_info, mvcc_info);
+      btree_note_active_delete_owner (thread_p, deleted_mvcc_info, mvcc_info);
 
       oid_ptr += obj_size;
     }
@@ -32096,9 +32111,7 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
        * primitive the unique-key probe waits on.  No private budget here, and the heap-side settle keeps no
        * count either. */
 #if defined (SERVER_MODE)
-      if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID
-	  && BTREE_MVCC_INFO_IS_DELID_VALID (&settle_mvcc_info)
-	  && logtb_is_active_other_mvccid (thread_p, settle_mvcc_info.delete_mvccid))
+      if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID && BTREE_MVCC_INFO_IS_DELID_VALID (&settle_mvcc_info))
 	{
 	  error_code =
 	    btree_key_wait_for_tran_end (thread_p, settle_mvcc_info.delete_mvccid, NULL, leaf_page, NULL, restart);
