@@ -2039,11 +2039,12 @@ jobs:
           [ -f "$TIMINGS" ] || : > "$TIMINGS"
           old_n=$(wc -l < "$TIMINGS")
 
-          # Newer values win, as they do in CircleCI.
+          # Newer values win, as they do in CircleCI. A row is the cost the split must
+          # reserve for a case, and feedback.log records one verdict line per attempt.
           awk -F'\t' '
-            NR == FNR { t[$1] = $2; next }        # take the new values first
+            NR == FNR { t[$1] += $2; next }       # this run: all attempts of a case
             !($1 in t) { t[$1] = $2 }             # old values only fill the gaps
-            END { for (k in t) printf "%s\t%s\n", k, t[k] }
+            END { for (k in t) printf "%s\t%.3f\n", k, t[k] }   # seconds to 3 decimals, summed or not
           ' /tmp/new_timings.tsv "$TIMINGS" | sort > /tmp/merged.tsv
 
           # Losing this data takes the longest shard 24.8m -> 49.4m. The merge is a
