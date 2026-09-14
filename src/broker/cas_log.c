@@ -63,6 +63,16 @@ typedef int mode_t;
 #define CAS_LOG_VISIBLE_PW     0
 #define CAS_LOG_HIDE_PW        1
 
+#if defined (SERVER_MODE)
+/* A session thread that fails before cas_server_session_slot_begin (for
+ * example a TLS handshake that times out) has no CAS slot yet: every logger
+ * below is then a no-op instead of a NULL dereference of as_info
+ * (workspace#259 axis 4, found by the pre-auth timeout probe). */
+#define CAS_LOG_REQUIRE_SLOT() do { if (as_info == NULL) { return; } } while (0)
+#else
+#define CAS_LOG_REQUIRE_SLOT()
+#endif
+
 static const char *get_access_log_type_string (ACCESS_LOG_TYPE type);
 static CAS_TLS char cas_log_buffer[CAS_LOG_BUFFER_SIZE];	/* 8K buffer */
 #if defined (SERVER_MODE)
@@ -201,6 +211,7 @@ make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size
 void
 cas_log_open (char *br_name)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp != NULL)
     {
@@ -262,6 +273,7 @@ cas_log_open (char *br_name)
 void
 cas_log_reset (char *br_name)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (as_info->cas_log_reset)
     {
@@ -305,6 +317,7 @@ cas_log_close (bool flag)
 void
 cas_log_flush_if_needed (void)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp != NULL && as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL)
     {
       cas_fflush (log_fp);
@@ -381,6 +394,7 @@ cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
 void
 cas_log_end (int mode, int run_time_sec, int run_time_msec)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -504,6 +518,7 @@ cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_nu
 void
 cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -528,6 +543,7 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 void
 cas_log_write_nonl_noflush (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -592,6 +608,7 @@ cas_log_query_cancel (int dummy, ...)
 void
 cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -619,6 +636,7 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 void
 cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -645,6 +663,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, .
 void
 cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   FILE *fp = NULL;
   va_list ap;
 
@@ -757,6 +776,7 @@ cas_log_write2 (const char *fmt, ...)
 void
 cas_log_write_value_string (char *value, int size)
 {
+  CAS_LOG_REQUIRE_SLOT ();
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -773,6 +793,7 @@ cas_log_write_value_string (char *value, int size)
 void
 cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       cas_log_open (CAS_LOG_BROKER_NAME);
@@ -788,6 +809,7 @@ cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_P
 void
 cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       cas_log_open (CAS_LOG_BROKER_NAME);
@@ -809,6 +831,7 @@ cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR
 void
 cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       cas_log_open (CAS_LOG_BROKER_NAME);
@@ -824,6 +847,7 @@ cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_I
 void
 cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  CAS_LOG_REQUIRE_SLOT ();
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       cas_log_open (CAS_LOG_BROKER_NAME);

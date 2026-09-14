@@ -1503,7 +1503,17 @@ brd_park_client (SOCKET clt_sock_fd, const T_MAX_HEAP_NODE *job)
   pc->fd = clt_sock_fd;
   pc->job = *job;
   pc->got = 0;
-  pc->deadline = time (NULL) + DB_INFO_PEEK_TIMEOUT_SEC;
+  /* pre-auth contract (workspace#259 axis 4): a cleartext driver that never
+   * completes db_info is dropped after the broker's SESSION_TIMEOUT (capped
+   * by the inherited 60 s header budget); the server bounds the rest */
+  {
+    int peek_seconds = DB_INFO_PEEK_TIMEOUT_SEC;
+    if (m->shm->session_timeout > 0 && m->shm->session_timeout < peek_seconds)
+      {
+	peek_seconds = m->shm->session_timeout;
+      }
+    pc->deadline = time (NULL) + peek_seconds;
+  }
 
   {
     std::lock_guard<std::mutex> guard (m->park_inbox_mutex);
