@@ -28,18 +28,21 @@
 #endif // not SERVER_MODE and not SA_MODE
 
 // same module includes
+#include "thread_compat.hpp"
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
 #if defined (SERVER_MODE)
 #include "thread_worker_pool_impl.hpp"
+#include "thread_worker_pool_elastic.hpp"
 #endif
 
 // other module includes
 #include "count_registry.hpp"
 #include "base_flag.hpp"
 
+#include <type_traits>
 #include <mutex>
 #include <vector>
 
@@ -141,10 +144,11 @@ namespace cubthread
 
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
-      void push_task (worker_pool *worker_pool_arg, entry_task *exec_p);
+      void push_task (worker_pool *worker_pool_arg, entry_task *exec_p, task_submission_options options = {});
       // push task on the given core of entry worker pool.
       // read cubthread::worker_pool::execute_on_core for details.
-      void push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash, bool method_mode);
+      void push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash,
+			      task_submission_options options = {});
 
       //////////////////////////////////////////////////////////////////////////
       // daemon management
@@ -278,17 +282,6 @@ namespace cubthread
   };
 
   //////////////////////////////////////////////////////////////////////////
-  // alias
-  //////////////////////////////////////////////////////////////////////////
-#if defined (SERVER_MODE)
-  using worker_pool_type = cubthread::worker_pool_impl<false>;
-  using stats_worker_pool_type = cubthread::worker_pool_impl<true>;
-#else
-  using worker_pool_type = cubthread::worker_pool;
-  using stats_worker_pool_type = cubthread::worker_pool;
-#endif
-
-  //////////////////////////////////////////////////////////////////////////
   // thread logging flags
   //
   // TODO: complete thread logging for all modules
@@ -398,9 +391,16 @@ namespace cubthread
       {
 	return;
       }
+    bool called_from_worker = worker_pool_arg->is_current_thread_worker ();
+    assert_release_error (!called_from_worker);
+    if (called_from_worker)
+      {
+	// DO NOT untrack or delete a pool that is still executing the caller.
+	return;
+      }
     // remove from m_worker_pools and free worker_pool_arg->get_worker_count thread entries
     worker_pool *base_arg = worker_pool_arg;
-    destroy_and_untrack_resource (m_worker_pools, base_arg, worker_pool_arg->get_worker_count ());
+    destroy_and_untrack_resource (m_worker_pools, base_arg, worker_pool_arg->get_pool_size ());
     worker_pool_arg = NULL;
 #else // not SERVER_MODE = SA_MODE
     assert (worker_pool_arg == NULL);
@@ -428,7 +428,7 @@ namespace cubthread
   {
     check_not_single_thread ();
 
-    std::lock_guard<std::mutex> lock (m_entries_mutex);
+    std::unique_lock<std::mutex> ulock (m_entries_mutex);
 
     if (m_available_entries_count < entries_count)
       {
@@ -436,7 +436,12 @@ namespace cubthread
       }
     m_available_entries_count -= entries_count;
 
+    ulock.unlock ();
+
+    // this doesn't need to hold the lock
     Res *new_res = new Res (std::forward<CtArgs> (args)...);
+
+    ulock.lock ();
 
     tracker.push_back (new_res);
 
@@ -449,7 +454,7 @@ namespace cubthread
   {
     check_not_single_thread ();
 
-    std::lock_guard<std::mutex> lock (m_entries_mutex);
+    std::unique_lock<std::mutex> ulock (m_entries_mutex);
 
     for (auto iter = tracker.begin (); iter != tracker.end (); ++iter)
       {
@@ -458,10 +463,14 @@ namespace cubthread
 	    // remove resource from tracker
 	    (void) tracker.erase (iter);
 
+	    ulock.unlock ();
+
 	    // stop resource and delete
 	    res->stop_execution ();
 	    delete res;
 	    res = NULL;
+
+	    ulock.lock ();
 
 	    // update available entries
 	    m_available_entries_count += entries_count;
@@ -501,6 +510,35 @@ namespace cubthread
 #define REGISTER_DAEMON(name) static cubthread::manager::daemon_registry_t _gl_reg_daemon_##name (#name, 1)
 
 //////////////////////////////////////////////////////////////////////////
+// alias
+//////////////////////////////////////////////////////////////////////////
+
+#if defined (SERVER_MODE)
+template <
+	cubthread::stats_t Stats = cubthread::stats_t::off,
+	cubthread::pool_t Type = cubthread::pool_t::basic
+	>
+using worker_pool_type =
+	std::conditional_t<Type == cubthread::pool_t::basic, cubthread::worker_pool_impl<Stats>,
+	std::conditional_t<Type == cubthread::pool_t::elastic, cubthread::worker_pool_elastic<Stats>,
+	cubthread::worker_pool>>;
+#else
+template <cubthread::stats_t Stats = cubthread::stats_t::off, cubthread::pool_t Type = cubthread::pool_t::basic>
+using worker_pool_type = cubthread::worker_pool;
+#endif
+
+template <
+	cubthread::stats_t Stats = cubthread::stats_t::off,
+	cubthread::pool_t Type = cubthread::pool_t::basic,
+	typename ... Args
+	>
+worker_pool_type<Stats, Type> *
+thread_create_worker_pool (Args &&... args)
+{
+  return cubthread::get_manager ()->create_worker_pool<worker_pool_type<Stats, Type>> (std::forward<Args> (args)...);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // alias functions to be used in C legacy code
 //
 // use inline functions instead of definitions
@@ -516,23 +554,6 @@ inline cubthread::entry_manager &
 thread_get_entry_manager (void)
 {
   return cubthread::get_manager ()->get_entry_manager ();
-}
-
-inline cubthread::worker_pool_type *
-thread_create_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
-			   cubthread::entry_manager &entry_mgr, bool pool_threads = false)
-{
-  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_type> (pool_size, core_count, name,
-	 entry_mgr, pool_threads);
-}
-
-inline cubthread::stats_worker_pool_type *
-thread_create_stats_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
-				 cubthread::entry_manager &entry_mgr, bool pool_threads = false,
-				 cubthread::wait_seconds idle_timeout = std::chrono::seconds (5))
-{
-  return cubthread::get_manager ()->create_worker_pool<cubthread::stats_worker_pool_type> (pool_size, core_count, name,
-	 entry_mgr, pool_threads, idle_timeout);
 }
 
 inline std::size_t
@@ -611,5 +632,56 @@ thread_clear_all_holder_anchor (void)
   cubthread::get_entry ().m_holder_anchor = NULL;
   return cubthread::get_manager ()->clear_all_holder_anchor ();
 }
+
+#if defined (SERVER_MODE)
+inline cubthread::concurrency_slot_pool *
+thread_concurrency_slot_release (cubthread::entry *thread_p)
+{
+  cubthread::concurrency_slot_pool *holder = nullptr;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  thread_p->lock ();
+  if (!thread_p->m_slot)
+    {
+      thread_p->unlock ();
+      return nullptr;
+    }
+
+  std::unique_ptr<cubthread::concurrency_slot> slot = std::move (thread_p->m_slot);
+  thread_p->m_slot = nullptr;
+  thread_p->unlock ();
+
+  holder = slot->get_holder_pool ();
+  assert (holder);
+
+  slot->return_to_pool (std::move (slot));
+  return holder;
+}
+
+inline void
+thread_concurrency_slot_acquire (cubthread::entry *thread_p, cubthread::concurrency_slot_pool *holder)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (holder)
+    {
+      thread_p->lock ();
+      cubthread::entry::status old_status = thread_p->m_status;
+      thread_p->m_status = cubthread::entry::status::TS_WAIT;
+
+      holder->acquire_slot (thread_p);
+
+      thread_p->m_status = old_status;
+      thread_p->unlock ();
+    }
+}
+#endif
 
 #endif  // _THREAD_MANAGER_HPP_

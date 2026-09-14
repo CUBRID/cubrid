@@ -57,9 +57,28 @@ namespace parallel_scan
     m_stats.push_back (cs);
   }
 
+  void trace_handler::add_sp_stats (UINT64 calls, UINT64 time, UINT64 fetches, UINT64 ioreads)
+  {
+    std::lock_guard<std::mutex> lock (m_stats_mutex);
+    m_sp_calls += calls;
+    m_sp_time += time;
+    m_sp_fetches += fetches;
+    m_sp_ioreads += ioreads;
+  }
+
   void trace_handler::merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats)
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
+
+    /* Hand the workers' SP evaluation back to the leader's own counters. This runs while the
+     * leader is still inside qexec_execute_query (), so its closing read of PSTAT_REGU_* picks
+     * these up and xasl->func_stats reports the whole query's SP work, not just the leader's
+     * share. Zeroed after folding so a scan re-open (partition pruning) cannot count twice. */
+    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset, m_sp_calls);
+    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset, m_sp_time);
+    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset, m_sp_fetches);
+    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset, m_sp_ioreads);
+    m_sp_calls = m_sp_time = m_sp_fetches = m_sp_ioreads = 0;
     for (auto &stat : m_stats)
       {
 	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
@@ -88,6 +107,7 @@ namespace parallel_scan
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.clear();
+    m_sp_calls = m_sp_time = m_sp_fetches = m_sp_ioreads = 0;
     m_topnsort_used.store (false, std::memory_order_relaxed);   // per-reopen reset, matches m_stats.clear()
   }
 
