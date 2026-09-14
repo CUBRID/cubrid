@@ -4677,6 +4677,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
   sparam.is_btree_ops_log = prm_get_bool_value (PRM_ID_LOG_BTREE_OPS);
   sparam.orig_oid = oid_Null_oid;
   sparam.orig_class_oid = oid_Null_oid;
+  db_make_null (&sparam.this_key);
 
 #if defined (SERVER_MODE)
   assert (load_args->build_mvccid != MVCCID_NULL);
