@@ -14,6 +14,7 @@ and explaining what changed. Keep private database volumes out of PR evidence.
 | SQL writes and routing | `test_oos_sql_show` | Complete values and per-heap OOS ownership for INSERT, UPDATE and movement, supported keys, defaults and LOBs |
 | Duplicate probes | `test_oos_sql_show` | REPLACE and duplicate-key UPDATE probes create no OOS values; eventual writes preserve constraints |
 | Raw and special producers | `test_oos_sql_show` | Serialized rows and redistribution retain values/MVCC; serial and internal/address inputs remain complete |
+| Catalog bootstrap | `test_oos_bootstrap.py` | Fresh 4KB database retains DBA/PUBLIC users and complete authorization records before the system-class OID cache is initialized |
 | Failures and lifetimes | SQL/server tests | Allocation/storage/heap/index failures roll back live chains and leave the next operation usable |
 | Queued loader | [Loader runner](README.loader.md) | Retained input ownership, destination heaps, mixed/oversized rows, filtered failures and concurrent workers |
 | Replication and HA loader | [Replication runner](README.replication.md) | Source/replica value equality and order; failed replica rows roll back their OOS values |
@@ -26,6 +27,11 @@ server runners separately using their documented isolated environments. CTest
 alone does not run those external loader, replication and crash scenarios, nor
 does it run the CTP SQL, medium or shell suites. Select a short fixture directory
 on a filesystem with enough free space for retained databases.
+
+Run the catalog-bootstrap regression with the same installation and isolated
+environment as the loader runner, using `test_oos_bootstrap.py`. It creates a
+fresh 4KB database and checks authorization heap diagnostics and catalog users.
+It is a separate utility-level check; CTest does not invoke it.
 
 ## Evidence classification
 
