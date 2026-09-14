@@ -60,16 +60,13 @@
 #include <openssl/provider.h>
 #include <mutex>
 
-/* Init function of the legacy provider that is linked into the static libcrypto
- * (OpenSSL built with no-shared/no-module). Declaring it here lets us register
- * the provider via OSSL_PROVIDER_add_builtin() without shipping an external
- * ossl-modules/legacy module. The symbol is a C symbol, so extern "C" is
- * required because this file is compiled as C++. */
+#if defined (CUBRID_OPENSSL_BUILTIN_LEGACY)
+/* The bundled OpenSSL is built with no-module, which compiles the legacy provider
+ * into libcrypto and renames its init function to this symbol. Any other OpenSSL
+ * ships the provider as ossl-modules/legacy and does not export it, hence the
+ * guard. extern "C" is needed because this file is compiled as C++. */
 extern "C" OSSL_provider_init_fn ossl_legacy_provider_init;
-/* NOTE: this symbol only exists when OpenSSL is configured with no-module
- * (STATIC_LEGACY). The Windows prebuilt libraries under win/3rdparty are still
- * 1.1.1f, so this block is inactive there; upgrading them to 3.x requires a
- * no-module build as well, otherwise the link fails on this symbol. */
+#endif
 #endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -221,21 +218,15 @@ aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_
  *   CUBRID are available.
  *   return: NO_ERROR, or ER_ENCRYPTION_LIB_FAILED when a provider is unavailable
  *
- *   Since OpenSSL 3.0, single-DES (and other legacy algorithms) live in the
- *   "legacy" provider, which is not loaded by default. CUBRID still relies on
- *   DES-ECB for the legacy encrypted-string format (see the DES_ECB case below
- *   and crypt_encrypt_printable() in encryption.c, which encrypt_password()
- *   runs on every login with a password), so the legacy provider must be
- *   activated, otherwise EVP_EncryptInit()/EVP_DecryptInit() fail for DES.
+ *   Since OpenSSL 3.0, single-DES lives in the "legacy" provider, which is not
+ *   loaded by default. CUBRID still relies on DES-ECB for the legacy encrypted
+ *   string format (the DES_ECB case below, and crypt_encrypt_printable() in
+ *   encryption.c, which encrypt_password() runs on every login with a password),
+ *   so without this EVP_EncryptInit()/EVP_DecryptInit() fail for DES.
  *
- *   CUBRID links OpenSSL statically (no-shared/no-module), so instead of loading
- *   an external ossl-modules/legacy module at run time, the legacy provider that
- *   is built into libcrypto is registered via OSSL_PROVIDER_add_builtin(). This
- *   keeps the binary self-contained, matching the pre-3.0 behavior where DES was
- *   part of libcrypto with no extra step. Activating a provider programmatically
- *   also disables the implicit auto-load of the default provider, so it is loaded
- *   explicitly as well. Providers are process-global and reference-counted, so a
- *   one-time initialization is sufficient.
+ *   Activating any provider programmatically disables the implicit auto-load of
+ *   the default provider, so "default" has to be loaded explicitly as well.
+ *   Providers are process-global and reference-counted; once is enough.
  */
 static int
 crypt_ensure_openssl_providers (void)
@@ -247,8 +238,13 @@ crypt_ensure_openssl_providers (void)
   static std::once_flag onetime_providers;
   std::call_once (onetime_providers, [] ()
     {
-      if (OSSL_PROVIDER_add_builtin (NULL, "legacy", ossl_legacy_provider_init) != 1
-          || OSSL_PROVIDER_load (NULL, "default") == NULL || OSSL_PROVIDER_load (NULL, "legacy") == NULL)
+#if defined (CUBRID_OPENSSL_BUILTIN_LEGACY)
+      if (OSSL_PROVIDER_add_builtin (NULL, "legacy", ossl_legacy_provider_init) != 1)
+        {
+          provider_error = ER_ENCRYPTION_LIB_FAILED;
+        }
+#endif
+      if (OSSL_PROVIDER_load (NULL, "default") == NULL || OSSL_PROVIDER_load (NULL, "legacy") == NULL)
         {
           provider_error = ER_ENCRYPTION_LIB_FAILED;
         }

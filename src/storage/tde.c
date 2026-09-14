@@ -78,7 +78,7 @@ static int tde_generate_keyinfo (TDE_KEYINFO * keyinfo, int mk_index, const unsi
 static int tde_update_keyinfo (THREAD_ENTRY * thread_p, const TDE_KEYINFO * keyinfo);
 
 static int tde_create_keys_file (const char *keyfile_fullname);
-static bool tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash);
+static int tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash, bool * is_valid);
 static int tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash);
 static int tde_load_dks (const unsigned char *master_key, const TDE_KEYINFO * keyinfo);
 static int tde_create_dk (unsigned char *data_key);
@@ -716,6 +716,7 @@ tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
   int err = NO_ERROR;
   unsigned char mk[TDE_MASTER_KEY_LENGTH];
   time_t created_time;
+  bool is_valid;
 
   assert (keyinfo->mk_index >= 0);
 
@@ -727,7 +728,13 @@ tde_load_mk (int vdes, const TDE_KEYINFO * keyinfo, unsigned char *master_key)
 
   /* MK has found */
 
-  if (!(tde_validate_mk (mk, keyinfo->mk_hash) && created_time == keyinfo->created_time))
+  err = tde_validate_mk (mk, keyinfo->mk_hash, &is_valid);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (!(is_valid && created_time == keyinfo->created_time))
     {
       err = ER_TDE_INVALID_MASTER_KEY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_INVALID_MASTER_KEY, 1, keyinfo->mk_index);
@@ -775,25 +782,30 @@ tde_load_dks (const unsigned char *master_key, const TDE_KEYINFO * keyinfo)
  * tde_validate_mk () - Validate a master key by comparing with the hash value, 
  *                      usually with the hash value stored in tde key info heap
  *
- * return             : Valid or not
+ * return             : Error code
  * master_key (in)    : Master key
  * mk_hash (in)       : Hash to be compared with the master key
+ * is_valid (out)     : Whether the master key matches the hash
  */
-static bool
-tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash)
+static int
+tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash, bool * is_valid)
 {
   unsigned char hash[SHA256_DIGEST_LENGTH];
+  int err = NO_ERROR;
 
-  if (tde_make_mk_hash (master_key, hash) != NO_ERROR)
+  *is_valid = false;
+
+  /* reported separately from a mismatch: a crypto failure must not be read as a
+   * wrong or changed master key. */
+  err = tde_make_mk_hash (master_key, hash);
+  if (err != NO_ERROR)
     {
-      return false;
+      return err;
     }
 
-  if (memcmp (mk_hash, hash, TDE_MASTER_KEY_LENGTH) != 0)
-    {
-      return false;
-    }
-  return true;
+  *is_valid = (memcmp (mk_hash, hash, TDE_MASTER_KEY_LENGTH) == 0);
+
+  return NO_ERROR;
 }
 
 /*
@@ -1304,6 +1316,7 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
   time_t created_time;
   int vdes;
   int err = NO_ERROR;
+  bool is_valid;
 
   tde_make_keys_file_fullname (mk_path, boot_db_full_name (), false);
 
@@ -1327,10 +1340,18 @@ xtde_change_mk_without_flock (THREAD_ENTRY * thread_p, const int mk_index)
       goto exit;
     }
 
-  /* if the same key with the key set on the database */
-  if (mk_index == keyinfo.mk_index && tde_validate_mk (master_key, keyinfo.mk_hash))
+  if (mk_index == keyinfo.mk_index)
     {
-      goto exit;
+      err = tde_validate_mk (master_key, keyinfo.mk_hash, &is_valid);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (is_valid)
+	{
+	  /* the same key with the key set on the database */
+	  goto exit;
+	}
     }
 
   /* The previous key has to exist */

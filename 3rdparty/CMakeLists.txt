@@ -346,6 +346,11 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
 
+    # Only a no-module build (see CONFIGURE_COMMAND below) compiles the legacy
+    # provider into libcrypto and exports ossl_legacy_provider_init. A SYSTEM
+    # OpenSSL is normally a module build, where that symbol does not exist.
+    set(OPENSSL_HAS_BUILTIN_LEGACY TRUE)
+
     # OpenSSL 3.x's build scripts (Configure / Makefile) need several Perl modules
     # (IPC::Cmd, Time::Piece, Digest::SHA, ...) that are missing from minimal Perl
     # installs. Check them up front so the user gets an actionable message instead
@@ -538,6 +543,7 @@ endif()
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
 set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
+set (OPENSSL_HAS_BUILTIN_LEGACY ${OPENSSL_HAS_BUILTIN_LEGACY} PARENT_SCOPE)
 
 # TODO: EP_TARGETS, EP_LIBS, and EP_INCLUDES are currently linked across all targets.
 # However, TBB is only required on the server side and should only be linked to libcubrid.so.
