@@ -38,6 +38,7 @@
 #include "dbtype_def.h"
 #include "db_date.h"
 #include "db_elo.h"
+#include "db_oos.h"
 #include "db_query.h"
 #include "databases_file.h"
 #include "error_code.h"
@@ -107,6 +108,8 @@ extern "C"
   extern void db_set_interrupt (int set);
   extern int db_set_suppress_repl_on_transaction (int set);
   extern int db_checkpoint (void);
+  extern int db_vacuum (void);
+
   extern int db_freepgs (const char *vlabel);
   extern int db_totalpgs (const char *vlabel);
   extern char *db_vol_label (int volid, char *vol_fullname);
@@ -340,6 +343,8 @@ extern "C"
   extern int db_attribute_is_foreign_key (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_auto_increment (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_invisible_column (DB_ATTRIBUTE * attribute);
+  extern int db_attribute_is_oos_prefer_inline (DB_ATTRIBUTE * attribute);
+  extern int db_attribute_is_oos_force_outline (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_reverse_unique (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_non_null (DB_ATTRIBUTE * attribute);
   extern int db_attribute_is_indexed (DB_ATTRIBUTE * attribute);

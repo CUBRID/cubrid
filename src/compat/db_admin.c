@@ -1561,6 +1561,49 @@ db_checkpoint (void)
 }
 
 /*
+ * db_vacuum: Force a vacuum run for dev/debug (normally vacuum runs automatically).
+ * return : NO_ERROR or error code
+ */
+int
+db_vacuum (void)
+{
+  CHECK_CONNECT_ERROR ();
+  return cvacuum ();
+}
+
+/*
+ * db_get_oos_stats: Fetch OOS file statistics for a given class.
+ * return         : NO_ERROR or error code
+ * class_name (in): target class name
+ * stats (out)    : populated on success
+ */
+int
+db_get_oos_stats (const char *class_name, DB_OOS_STATS * stats)
+{
+  DB_OBJECT *class_op;
+  OID *class_oid;
+
+  CHECK_CONNECT_ERROR ();
+  if (class_name == NULL || stats == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  class_op = db_find_class (class_name);
+  if (class_op == NULL)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  class_oid = ws_identifier (class_op);
+  if (class_oid == NULL || OID_ISNULL (class_oid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, class_name);
+      return ER_LC_UNKNOWN_CLASSNAME;
+    }
+  return oos_get_stats_by_class_oid (class_oid, stats);
+}
+
+/*
  * db_set_lock_timeout() - This sets a timeout on the amount of time to spend
  *    waiting to aquire a lock on an object.  Normally the system will wait
  *    forever for a lock to be granted.  If you enable lock timeouts, you must

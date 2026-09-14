@@ -703,7 +703,7 @@ set_auto_increment_serial_name (char *serial_name, const char *class_name, const
 	  return pos;
 	}
 
-      // make <user_name>.<serail_name>  
+      // make <user_name>.<serail_name>
       pos = (dot - class_name) + 1;
       memcpy (serial_name, class_name, pos);	// <user_name>.
       buf_ptr = serial_name + pos;
