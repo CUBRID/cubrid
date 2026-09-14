@@ -301,13 +301,11 @@ static bool qo_check_groupby_skip_descending (QO_PLAN * plan, PT_NODE * list);
 static int qo_walk_plan_tree (QO_PLAN * plan, QO_WALK_FUNCTION f, void *arg);
 static void qo_set_use_desc (QO_PLAN * plan);
 static int qo_set_orderby_skip (QO_PLAN * plan, void *arg);
-static void qo_set_groupby_skip (QO_PLAN * plan);
 static int qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_plan_is_groupby_skip_candidate (QO_PLAN * plan);
-static void qo_apply_join_groupby_skip (QO_ENV * env, QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
@@ -1017,57 +1015,6 @@ qo_set_orderby_skip (QO_PLAN * plan, void *arg)
   return NO_ERROR;
 }
 
-/*
- * qo_set_groupby_skip () - sets the groupby_skip index flag on the scan that
- *			    actually supplies the GROUP BY ordering
- *
- * return: nothing
- * plan(in): plan to walk down from
- *
- * note: Only the outer (order-preserving) spine is walked, the very same spine
- *	 that qo_plan_compute_iscan_sort_list () follows to derive the
- *	 interesting order.  An inner plan never dictates the order of the join
- *	 result, so marking it would be wrong.
- *	 A QO_PLANTYPE_SORT is deliberately not walked through: the only sort
- *	 that can sit here is the SORT_TEMP that qo_join_new puts above a merge
- *	 join, and that one re-sorts by the join column.
- *	 A join that null-supplies its outer side does not hand the index order
- *	 on, so the walk stops on such joins as well.
- */
-static void
-qo_set_groupby_skip (QO_PLAN * plan)
-{
-  if (plan == NULL)
-    {
-      return;
-    }
-
-  switch (plan->plan_type)
-    {
-    case QO_PLANTYPE_SCAN:
-      if (plan->plan_un.scan.index != NULL && plan->plan_un.scan.index->head != NULL)
-	{
-	  plan->plan_un.scan.index->head->groupby_skip = true;
-	}
-      break;
-
-    case QO_PLANTYPE_JOIN:
-      if (plan->plan_un.join.join_type == NO_JOIN || plan->plan_un.join.join_type == JOIN_INNER
-	  || plan->plan_un.join.join_type == JOIN_LEFT)
-	{
-	  qo_set_groupby_skip (plan->plan_un.join.outer);
-	}
-      break;
-
-    case QO_PLANTYPE_FOLLOW:
-      qo_set_groupby_skip (plan->plan_un.follow.head);
-      break;
-
-    default:
-      break;
-    }
-}
-
 static int
 qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg)
 {
@@ -1253,16 +1200,14 @@ qo_top_plan_new (QO_PLAN * plan)
 	       * If all goes well, we have an indexed plan with group by skip!
 	       * Only a single scan top plan raises the flag here.  For a join top plan the
 	       * QO_INDEX_ENTRY is shared by every candidate plan on that node, and this
-	       * function runs for every complete plan built during the join enumeration:
-	       * a candidate whose join preserves the index order and a candidate whose join
-	       * does not would fight over the same flag, while the executor decides to skip
-	       * the group-by sort from that very flag (through the INDX_INFO of the first
-	       * access spec).  So for joins the flag is applied only to the chosen plan,
-	       * after the search - see qo_apply_join_groupby_skip ().
+	       * function runs for every complete candidate plan, so raising the shared flag
+	       * here could leak a discarded candidate's verdict into the chosen plan.
+	       * For joins the verdict is derived from the plan shape at XASL generation
+	       * instead - see qo_plan_skip_groupby ().
 	       */
-	      if (plan->plan_type == QO_PLANTYPE_SCAN)
+	      if (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index)
 		{
-		  qo_set_groupby_skip (plan);
+		  plan->plan_un.scan.index->head->groupby_skip = true;
 		}
 	    }
 	  else
@@ -9645,8 +9590,6 @@ qo_search_planner (QO_PLANNER * planner)
       goto end;
     }
 
-  qo_apply_join_groupby_skip (planner->env, plan);
-
   if (plan->use_iscan_descending == true && qo_plan_multi_range_opt (plan) == false)
     {
       qo_set_use_desc (plan);
@@ -13175,94 +13118,6 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
 
 end:
   return is_groupby_skip;
-}
-
-/*
- * qo_apply_join_groupby_skip () - marks the outermost index scan of the
- *				   chosen join plan with the groupby_skip
- *				   flag when the join preserves its order
- * return : nothing
- * env (in) : optimizer environment
- * plan (in) : the final top plan chosen by the planner
- *
- * note: for a single scan top plan, qo_top_plan_new sets the groupby_skip
- *	 flag of the index directly.  For a join top plan the flag cannot be
- *	 set during the enumeration, because the QO_INDEX_ENTRY is shared by
- *	 every candidate plan on that node: a candidate whose join preserves
- *	 the index order and a candidate whose join does not would fight over
- *	 the same flag, and the executor skips the group-by sort based on it
- *	 (through the INDX_INFO of the first access spec).  So the flag is
- *	 applied here, only for the plan that was actually chosen.
- *
- *	 The absence of a SORT_GROUPBY node above the join means that
- *	 qo_top_plan_new verified that the index sort list of the outermost
- *	 scan covers the GROUP BY columns for this very plan; this function
- *	 additionally requires that every join on the outer spine keeps the
- *	 outer side order-preserved before setting the flag.
- */
-static void
-qo_apply_join_groupby_skip (QO_ENV * env, QO_PLAN * plan)
-{
-  PT_NODE *tree, *group_by;
-  QO_PLAN *node_plan;
-
-  if (plan == NULL || env == NULL)
-    {
-      return;
-    }
-
-  tree = QO_ENV_PT_TREE (env);
-  if (tree == NULL || tree->node_type != PT_SELECT)
-    {
-      return;
-    }
-
-  group_by = tree->info.query.q.select.group_by;
-
-  /* the sorted-input group-by path of the executor does not handle rollup */
-  if (group_by == NULL || group_by->flag.with_rollup)
-    {
-      return;
-    }
-
-  if (qo_plan_multi_range_opt (plan))
-    {
-      return;
-    }
-
-  /*
-   * Walk through the final sorts appended above the group-by result.
-   * A SORT_GROUPBY node means qo_top_plan_new decided that the grouping
-   * needs a sort; any other sort type than the final ORDER BY / DISTINCT
-   * sorts re-orders the rows before the grouping, so give up on both.
-   */
-  node_plan = plan;
-  while (node_plan != NULL && node_plan->plan_type == QO_PLANTYPE_SORT)
-    {
-      if (node_plan->plan_un.sort.sort_type != SORT_ORDERBY && node_plan->plan_un.sort.sort_type != SORT_DISTINCT)
-	{
-	  return;
-	}
-      node_plan = node_plan->plan_un.sort.subplan;
-    }
-
-  /* single scan top plans are already handled by qo_top_plan_new */
-  if (node_plan == NULL || node_plan->plan_type != QO_PLANTYPE_JOIN)
-    {
-      return;
-    }
-
-  /* a hash or merge join on the outer spine re-orders the rows */
-  if (node_plan->need_final_sort)
-    {
-      return;
-    }
-
-  /* walk down the outer spine of the join and mark the scan that supplies the
-   * GROUP BY ordering; the walk stops on a join that null-supplies its outer
-   * side, since such a join does not hand the index order on
-   */
-  qo_set_groupby_skip (node_plan);
 }
 
 /*

@@ -3341,15 +3341,108 @@ qo_plan_skip_orderby (QO_PLAN * plan)
 }
 
 /*
- * qo_plan_skip_groupby () - check the plan info for order by
+ * qo_plan_skip_groupby () - check whether the chosen plan delivers the rows
+ *			     already grouped, so the group-by sort can be skipped
  *   return: true/false
- *   plan(in): QO_PLAN
+ *   plan(in): QO_PLAN (top plan chosen by the planner)
+ *
+ * note: For a single scan top plan qo_top_plan_new () verified the index order
+ *	 and raised the groupby_skip flag of the index entry, so the flag is
+ *	 simply read back.
+ *	 For a join top plan the verdict is derived from the plan shape instead:
+ *	 qo_top_plan_new () appends a SORT_GROUPBY node whenever the grouping
+ *	 needs a sort (including hash/merge joins, which set need_final_sort),
+ *	 so its absence means the outermost scan supplies the GROUP BY order.
+ *	 The index entry flag cannot be used for joins because it is shared by
+ *	 every candidate plan on the node while this verdict belongs to the
+ *	 chosen plan only.
  */
 bool
 qo_plan_skip_groupby (QO_PLAN * plan)
 {
-  return (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index
-	  && plan->plan_un.scan.index->head->groupby_skip) ? true : false;
+  QO_PLAN *node_plan;
+  QO_ENV *env;
+  PT_NODE *tree, *group_by;
+
+  if (plan == NULL || plan->info == NULL)
+    {
+      return false;
+    }
+
+  /* a single scan top plan carries the flag raised by qo_top_plan_new () */
+  if (plan->plan_type == QO_PLANTYPE_SCAN)
+    {
+      return (plan->plan_un.scan.index && plan->plan_un.scan.index->head->groupby_skip) ? true : false;
+    }
+
+  env = plan->info->env;
+  tree = (env != NULL) ? QO_ENV_PT_TREE (env) : NULL;
+  if (tree == NULL || tree->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  group_by = tree->info.query.q.select.group_by;
+
+  /* the sorted-input group-by path of the executor does not handle rollup */
+  if (group_by == NULL || group_by->flag.with_rollup)
+    {
+      return false;
+    }
+
+  if (qo_plan_multi_range_opt (plan))
+    {
+      return false;
+    }
+
+  /* walk through the final sorts appended above the group-by result; a SORT_GROUPBY node means qo_top_plan_new
+   * decided that the grouping needs a sort */
+  node_plan = plan;
+  while (node_plan != NULL && node_plan->plan_type == QO_PLANTYPE_SORT)
+    {
+      if (node_plan->plan_un.sort.sort_type != SORT_ORDERBY && node_plan->plan_un.sort.sort_type != SORT_DISTINCT)
+	{
+	  return false;
+	}
+      node_plan = node_plan->plan_un.sort.subplan;
+    }
+
+  if (node_plan == NULL || node_plan->plan_type != QO_PLANTYPE_JOIN)
+    {
+      return false;
+    }
+
+  /* a hash or merge join re-orders the rows */
+  if (node_plan->need_final_sort)
+    {
+      return false;
+    }
+
+  /* the chain of outer children must hand the index order on down to an index scan; a join that null-supplies its
+   * outer side (right/full outer) does not */
+  while (node_plan != NULL)
+    {
+      if (node_plan->plan_type == QO_PLANTYPE_JOIN)
+	{
+	  if (node_plan->plan_un.join.join_type != NO_JOIN && node_plan->plan_un.join.join_type != JOIN_INNER
+	      && node_plan->plan_un.join.join_type != JOIN_LEFT)
+	    {
+	      return false;
+	    }
+	  node_plan = node_plan->plan_un.join.outer;
+	}
+      else if (node_plan->plan_type == QO_PLANTYPE_FOLLOW)
+	{
+	  node_plan = node_plan->plan_un.follow.head;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  return (node_plan != NULL && node_plan->plan_type == QO_PLANTYPE_SCAN && node_plan->plan_un.scan.index != NULL
+	  && node_plan->plan_un.scan.index->head != NULL) ? true : false;
 }
 
 /*
