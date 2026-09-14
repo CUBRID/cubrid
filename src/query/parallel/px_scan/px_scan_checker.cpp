@@ -94,6 +94,19 @@ namespace parallel_scan
     return (flags & flag) != 0;
   }
 
+  static bool
+  has_nonlinked_dptr (const XASL_NODE *xasl)
+  {
+    for (const XASL_NODE *dptr = xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+      {
+	if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+
 
   using rv_list_node = struct regu_variable_list_node;
 
