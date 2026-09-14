@@ -10511,12 +10511,17 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
-  bool outermost_transient_scope;	/* a statement nested in another one keeps its locks to commit */
+  bool statement_ends_locks;	/* whether this statement's row locks end with it */
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
-  /* from here every exit runs through one of the two lock_transient_scope_end () calls below */
-  outermost_transient_scope = lock_transient_scope_start (thread_p);
+  /* from here every exit runs through one of the two lock_transient_scope_end () calls below.  The scope
+   * opens either way so the nesting stays balanced; whether the locks end with the statement is the
+   * narrower question -- a statement nested in another one keeps them to commit, and so does one above
+   * READ COMMITTED.  qexec_open_scan () gates the select phase on the same two facts, and the two phases
+   * of one statement must not disagree about which of them the locks belong to. */
+  statement_ends_locks = (lock_transient_scope_start (thread_p)
+			  && logtb_find_current_isolation (thread_p) <= TRAN_READ_COMMITTED);
 
   thread_p->no_logging = (bool) update->no_logging;
 
@@ -10867,7 +10872,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		  /* Row-lock lifetime is the class's, not the row's -- decided per class here (see
 		   * qexec_class_ends_locks_with_statement). */
 		  lock_policy = base_lock_policy;
-		  if (outermost_transient_scope
+		  if (statement_ends_locks
 		      && qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
 		    {
 		      if (lock_policy == LOCATOR_LOCK_AT_FORCE)
@@ -11069,8 +11074,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      /* Row-lock lifetime is the class's, not the row's -- decided per class here (see
 	       * qexec_class_ends_locks_with_statement). */
 	      lock_policy = base_lock_policy;
-	      if (outermost_transient_scope
-		  && qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
+	      if (statement_ends_locks && qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
 		{
 		  if (lock_policy == LOCATOR_LOCK_AT_FORCE)
 		    {
@@ -11426,7 +11430,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
-  bool outermost_transient_scope;	/* a statement nested in another one keeps its locks to commit */
+  bool statement_ends_locks;	/* whether this statement's row locks end with it */
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
@@ -11438,8 +11442,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       return qexec_execute_remote_delete_subquery (thread_p, xasl, xasl_state);
     }
 
-  /* from here every exit runs through one of the two lock_transient_scope_end () calls below */
-  outermost_transient_scope = lock_transient_scope_start (thread_p);
+  /* from here every exit runs through one of the two lock_transient_scope_end () calls below.  See
+   * qexec_execute_update () for why the scope and the lifetime question are not the same test. */
+  statement_ends_locks = (lock_transient_scope_start (thread_p)
+			  && logtb_find_current_isolation (thread_p) <= TRAN_READ_COMMITTED);
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -11678,8 +11684,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      /* Row-lock lifetime is the class's, not the row's -- decided per class here (a multi-class
 	       * DELETE gets a different answer for each; see qexec_class_ends_locks_with_statement). */
 	      lock_policy = base_lock_policy;
-	      if (outermost_transient_scope
-		  && qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
+	      if (statement_ends_locks && qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
 		{
 		  if (lock_policy == LOCATOR_LOCK_AT_FORCE)
 		    {
