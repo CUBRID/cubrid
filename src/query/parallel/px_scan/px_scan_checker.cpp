@@ -133,7 +133,6 @@ namespace parallel_scan
 
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
-  void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg);
 
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
@@ -780,10 +779,6 @@ namespace parallel_scan
 	  {
 	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 	  }
-	for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
-	  {
-	    block_parallel_index_and_temp_in_subtree (xaslp);
-	  }
 	break;
       case BUILDLIST_PROC:
       case BUILDVALUE_PROC:
@@ -909,42 +904,6 @@ namespace parallel_scan
 	  }
       }
 
-  }
-
-  void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg)
-  {
-    if (!arg)
-      {
-	return;
-      }
-    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
-      {
-	if (specp->type == TARGET_LIST
-	    || (specp->type == TARGET_CLASS && IS_ANY_INDEX_ACCESS (specp->access)))
-	  {
-	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
-	  }
-      }
-    for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
-    for (XASL_NODE *xaslp = arg->bptr_list; xaslp; xaslp = xaslp->next)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
-    for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
-    for (XASL_NODE *xaslp = arg->fptr_list; xaslp; xaslp = xaslp->next)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
-    for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
   }
 
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg)
