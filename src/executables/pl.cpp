@@ -289,9 +289,6 @@ main (int argc, char *argv[])
     /* pl command main routine */
     if (command.compare ("start") == 0)
       {
-#if !defined (WINDOWS)
-	pid_t ppid = getppid ();
-#endif
 	(void) pl_start_server (pl_info, db_name, pathname);
 
 	command = "running";
@@ -317,13 +314,9 @@ main (int argc, char *argv[])
 		break;// parent process is terminated
 	      }
 #else
-	    if (getppid () != ppid)
-	      {
-		// parent process is terminated
-		break;
-	      }
+	    /* create_child_process() configured PR_SET_PDEATHSIG before exec. */
+	    pause ();
 #endif
-	    sleep (1);
 	  }
 	while (true);
       }
