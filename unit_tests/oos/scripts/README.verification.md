@@ -70,14 +70,29 @@ permutations between CI and local runs; identical local outputs establish the
 paired comparison, not byte identity with the remote output. A reproduced
 baseline failure remains a failed CI result.
 
+Record the build mode as well as the source revision when replaying timing-sensitive
+failures. CircleCI's optimized debug mode uses `OptDebug` (`-O2`, assertions enabled),
+which differs from an unoptimized `Debug` build. For example, the index-capacity
+test at `512b361` failed its below-100-page assertion in CI, passed on both local
+Debug builds, and failed on the `38093ea` parent built in OptDebug mode. Preserve
+all observations; a local Debug pass alone does not resolve that CI failure.
+
 A missing commit status does not prove a suite was never scheduled. Inspect the
 exact CircleCI workflow and pipeline: a shell job can be blocked on an unstarted
 `download-build` prerequisite. Record that job and its prerequisite, retain the
 existing trigger, and collect the completed job once the prerequisite succeeds.
 Do not infer a shell pass or issue a duplicate trigger from an absent status.
 
-For the published `be7c01a6d2d05d461cb1e5b6e0127c15ffb1950b` revision,
+For the historical `be7c01a6d2d05d461cb1e5b6e0127c15ffb1950b` revision,
 [PR #7927](https://github.com/CUBRID/cubrid/pull/7927) has separate
 [CI acceptance evidence](https://github.com/vimkim/my-cubrid-docs/blob/main/cbrd-27089/ci_analysis_report_be7c01a_codex.md).
 Final acceptance must reconcile that evidence with the producer and memory
 matrix; local CTest success does not close outstanding remote checks.
+
+The superseding tested engine is `512b361a7a34a4857cd8ad91c496c7e0e94c0769`,
+compared with parent `38093ea859a8a08e20405b72b0cb395205bedb2f`. Its
+[CI report](https://github.com/vimkim/my-cubrid-docs/blob/main/cbrd-27089/ci_analysis_report_512b361_codex.md)
+records medium 155215, SQL 155214 and shell 155217. The jobs remain failed:
+24 failure signatures reproduce on the parent, and one testcase expects acceptance
+of invalid partition input that destination routing now rejects. Keep that
+classification separate from the final producer/resource acceptance decision.
