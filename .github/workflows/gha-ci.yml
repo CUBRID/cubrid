@@ -39,6 +39,16 @@
 
 name: gha-ci
 
+# The run title leads with the pull request, "PR #7941 · <title>".
+run-name: >-
+  ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request != null
+  && format('PR #{0} · {1}', github.event.issue.number, github.event.issue.title)
+  || github.event_name == 'workflow_dispatch' && inputs.pr != ''
+  && format('PR #{0} · dispatch {1} {2}', inputs.pr, inputs.suite, inputs.sha)
+  || github.event_name == 'workflow_dispatch'
+  && format('dispatch {0} {1}', inputs.suite, inputs.sha)
+  || '' }}
+
 on:
   # Which comments wake this is decided by the gate job; it cannot be narrowed here.
   issue_comment:
