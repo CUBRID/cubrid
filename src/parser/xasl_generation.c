@@ -19495,7 +19495,8 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 
 /*
  * pt_fill_remote_dml_sink () - Fill the common DBLink remote push-sink fields (connection info +
- *   qualified remote table name), shared by the INSERT SELECT and DELETE local-subquery XASL builders.
+ *   qualified remote table name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery XASL
+ *   builders.
  *   parser(in)      : parser context
  *   entity_name(in) : remote target's entity_name PT_NODE (PT_NAME with optional owner resolved)
  *   pdblink(in)     : remote connection info; url/user/pwd already validated non-NULL by the caller
@@ -19945,6 +19946,213 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   del->sink.remote_op = pt_append_string (parser, NULL, op_sql);
   if (del->sink.table_name == NULL || del->sink.remote_key_col == NULL || del->sink.remote_op == NULL
       || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (!pt_finish_remote_dml_xasl (xasl))
+    {
+      return NULL;
+    }
+
+  return xasl;
+}
+
+/*
+ * pt_to_update_xasl_remote_subquery () - Remote UPDATE + local subquery: build the UPDATE_PROC the sink
+ *   runs. The SET clause the remote receives is deparsed here with a placeholder per bound value, and the
+ *   WHERE key column and operator are carried when the statement has a WHERE.
+ *
+ * return        : XASL node, or NULL on error.
+ * parser (in)   : Parser context.
+ * statement (in): UPDATE parse tree (remote target with PT_DBLINK_TABLE_DML, qstr == NULL; WHERE and SET
+ *                 preserved by the parser gate).
+ *
+ * Note: two orders meet here and they are not the same one.
+ *   The aptr chain is the driving subquery first when the statement has a WHERE, then one single-tuple
+ *   subquery per bound SET value, in SET order -- remote_num_set_binds counts the latter.
+ *   The remote statement binds in its own text order: the SET values first, then the WHERE value, which the
+ *   driving aptr supplies per row. So the chain's head feeds the last placeholder.
+ */
+static XASL_NODE *
+pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  XASL_NODE *xasl = NULL, *set_aptr = NULL, *chain_tail = NULL;
+  UPDATE_PROC_NODE *upd = NULL;
+  PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
+  PT_NODE *cond, *driving_subq = NULL;
+  PT_DBLINK_INFO *pdblink = NULL;
+  PT_ASSIGNMENTS_HELPER ea;
+  const char *op_sql = NULL, *key_col = NULL;
+  char *set_text = NULL, *piece = NULL;
+  unsigned int save_custom_print;
+  int num_set_binds = 0;
+
+  assert (parser != NULL && statement != NULL);
+
+  from = statement->info.update.spec;
+  cond = statement->info.update.search_cond;
+
+  /* the WHERE, when the statement has one: its key column, operator and driving subquery */
+  if (cond != NULL && !pt_dblink_dml_xasl_where (parser, cond, "UPDATE", &key_col, &op_sql, &driving_subq))
+    {
+      return NULL;
+    }
+
+  server_node = from->info.spec.remote_server_name;
+  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
+
+  pdblink = &server_node->info.dblink_table;
+  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote UPDATE: connection info (url/user/pwd) not resolved");
+      return NULL;
+    }
+
+  /* With a WHERE, the driving subquery feeds the list-file the sink scans, and pt_make_aptr_parent_node
+   * builds that scan. Without one the sink sends a single statement, so there is nothing to scan. */
+  xasl = (driving_subq != NULL
+	  ? pt_make_aptr_parent_node (parser, driving_subq, UPDATE_PROC) : regu_xasl_node_alloc (UPDATE_PROC));
+  if (xasl == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (driving_subq != NULL && driving_subq->info.query.flag.subquery_cached)
+    {
+      xasl->aptr_list->sub_xasl_id = driving_subq->xasl_id;
+      xasl->aptr_list->sub_host_var_count = driving_subq->sub_host_var_count;
+      xasl->aptr_list->sub_host_var_index = driving_subq->sub_host_var_index;
+    }
+
+  chain_tail = xasl->aptr_list;
+
+  /* One walk of the SET list builds both halves of the contract: the text the remote receives, and the
+   * aptrs whose values fill its placeholders, in the same order. */
+  pt_init_assignments_helper (parser, &ea, statement->info.update.assignment);
+  while (pt_get_next_assignment (&ea))
+    {
+      if (ea.is_n_column || ea.lhs == NULL || ea.lhs->node_type != PT_NAME || ea.rhs == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE sink: unsupported SET assignment");
+	  return NULL;
+	}
+
+      if (set_text != NULL)
+	{
+	  set_text = pt_append_string (parser, set_text, ", ");
+	}
+      set_text = pt_append_string (parser, set_text, ea.lhs->info.name.original);
+      set_text = pt_append_string (parser, set_text, " = ");
+
+      if (PT_IS_QUERY (ea.rhs))
+	{
+	  set_text = pt_append_string (parser, set_text, "?");
+
+	  /* one placeholder takes one value; hidden columns (an ORDER BY key, say) would make the aptr's
+	   * tuple wider than that, so check the visible width the way the WHERE subquery is checked. */
+	  if (pt_length_of_select_list (pt_get_select_list (parser, ea.rhs), EXCLUDE_HIDDEN_COLUMNS) != 1)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		      "remote UPDATE SET subquery must return a single column");
+	      return NULL;
+	    }
+
+	  set_aptr = parser_generate_xasl (parser, ea.rhs);
+	  if (set_aptr == NULL || pt_has_error (parser))
+	    {
+	      return NULL;
+	    }
+	  XASL_CLEAR_FLAG (set_aptr, XASL_TOP_MOST_XASL);
+
+	  /* single-tuple, so the executor rejects a subquery returning more than one row and leaves the
+	   * value NULL when it returns none -- the same contract a scalar subquery has anywhere else. */
+	  set_aptr->is_single_tuple = true;
+	  if (set_aptr->single_tuple == NULL)
+	    {
+	      /* the subquery node, not its select list: that is the one-value list a scalar subquery gets
+	       * anywhere else (pt_make_regu_subquery), so a hidden column does not widen it past the one
+	       * placeholder it feeds. */
+	      set_aptr->single_tuple = pt_make_val_list (parser, ea.rhs);
+	      if (set_aptr->single_tuple == NULL)
+		{
+		  PT_ERRORm (parser, ea.rhs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return NULL;
+		}
+	    }
+
+	  if (ea.rhs->info.query.flag.subquery_cached)
+	    {
+	      set_aptr->sub_xasl_id = ea.rhs->xasl_id;
+	      set_aptr->sub_host_var_count = ea.rhs->sub_host_var_count;
+	      set_aptr->sub_host_var_index = ea.rhs->sub_host_var_index;
+	    }
+
+	  set_aptr->next = NULL;
+	  if (chain_tail == NULL)
+	    {
+	      xasl->aptr_list = set_aptr;
+	    }
+	  else
+	    {
+	      chain_tail->next = set_aptr;
+	    }
+	  chain_tail = set_aptr;
+	  num_set_binds++;
+	}
+      else
+	{
+	  /* Re-check the shape rather than trusting the gate blindly: if pt_dblink_update_set_is_inscope and
+	   * this walk ever drift apart, an expression the gate would not have accepted must not be printed
+	   * into the remote statement. */
+	  if (!pt_dblink_dml_is_remote_only_expr (ea.rhs))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		      "remote UPDATE sink: SET value cannot be sent to the remote server as written");
+	      return NULL;
+	    }
+
+	  /* the payload flags are the pushdown text's (pt_convert_dblink_dml_query) -- no server name, no []
+	   * quoting, no host var index -- since this also ships to a remote server as-is. PT_SUPPRESS_RESOLVED
+	   * is this side's own: a SET fragment must not carry the owner prefix name resolution put on. */
+	  save_custom_print = parser->custom_print;
+	  parser->custom_print |=
+	    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+	    PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_RESOLVED;
+	  piece = parser_print_tree (parser, ea.rhs);
+	  parser->custom_print = save_custom_print;
+
+	  if (piece == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE sink: cannot print a SET value");
+	      return NULL;
+	    }
+	  set_text = pt_append_string (parser, set_text, piece);
+	}
+    }
+
+  if (set_text == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE sink: no SET assignment");
+      return NULL;
+    }
+
+  upd = &xasl->proc.update;
+  upd->classes = NULL;
+  upd->num_classes = 0;
+
+  entity_name = from->info.spec.entity_name;
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &upd->sink);
+  if (key_col != NULL)
+    {
+      upd->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
+      upd->sink.remote_op = pt_append_string (parser, NULL, op_sql);
+    }
+  upd->remote_set_text = set_text;
+  upd->remote_num_set_binds = num_set_binds;
+
+  if (upd->sink.table_name == NULL || (key_col != NULL && upd->sink.remote_key_col == NULL) || pt_has_error (parser))
     {
       return NULL;
     }
@@ -22582,13 +22790,24 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	  return NULL;
 	}
 
-      /* remote UPDATE + local subquery: qstr == NULL means the gate chose the value-push sink, whose XASL
-       * builder and per-row runtime are not implemented yet. Reject rather than fall into
-       * pt_to_xasl_for_dblink below, which would ship a statement whose local subqueries cannot run on the
-       * remote server. Replaced by the sink builder once it lands. */
+      /* remote UPDATE + local subquery: qstr == NULL means the gate chose the value-push sink. The plan is
+       * built here so the builder runs on every such statement, but the per-row runtime that executes it is
+       * not there yet, so the statement is refused rather than handed a plan with no way to run. The
+       * refusal is what the runtime commit removes. */
       if (from->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
 	  && from->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
 	{
+	  if (pt_to_update_xasl_remote_subquery (parser, statement) == NULL)
+	    {
+	      /* only when the builder left a parse-tree error: with none, this call would discard the
+	       * er_set the builder made and report "Internal error- reporting semantic error" instead. */
+	      if (pt_has_error (parser))
+		{
+		  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
+		}
+	      return NULL;
+	    }
+
 	  PT_ERROR (parser, statement,
 		    "dblink: remote UPDATE with local subquery is not supported yet (under construction)");
 	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);

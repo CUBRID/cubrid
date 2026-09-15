@@ -4091,21 +4091,38 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
 {
   int offset;
 
-  /* classes */
+  /* classes. A remote UPDATE + local subquery sink has no local class (num_classes == 0) and
+   * xts_save_upddel_class_info_array asserts nelements > 0, so pack offset 0 directly -- the same shape the
+   * DELETE sink packs, and stx_build_update_proc reads it back as NULL. */
   ptr = or_pack_int (ptr, update_info->num_classes);
-  offset = xts_save_upddel_class_info_array (update_info->classes, update_info->num_classes);
-  if (offset == ER_FAILED)
+  if (update_info->num_classes > 0)
     {
-      return NULL;
+      offset = xts_save_upddel_class_info_array (update_info->classes, update_info->num_classes);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+    }
+  else
+    {
+      offset = 0;
     }
   ptr = or_pack_int (ptr, offset);
 
-  /* assigns */
+  /* assigns. The sink builds the SET clause as text, so it leaves this array empty; like the class array
+   * above, xts_save_update_assignment_array asserts nelements > 0, and the unpack reads offset 0 as NULL. */
   ptr = or_pack_int (ptr, update_info->num_assigns);
-  offset = xts_save_update_assignment_array (update_info->assigns, update_info->num_assigns);
-  if (offset == ER_FAILED)
+  if (update_info->num_assigns > 0)
     {
-      return NULL;
+      offset = xts_save_update_assignment_array (update_info->assigns, update_info->num_assigns);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+    }
+  else
+    {
+      offset = 0;
     }
   ptr = or_pack_int (ptr, offset);
 

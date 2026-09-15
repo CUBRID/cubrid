@@ -12165,8 +12165,9 @@ pt_dblink_update_where_is_inscope (PT_NODE * node, bool * has_driving_pred)
  * "||" is omitted: CUBRID/Oracle concatenate, MySQL treats it as OR unless PIPES_AS_CONCAT is set.
  *
  * First caller: UPDATE SET. Named for the question, not the clause, so other deparse paths can reuse
- * it. Predicate shapes have their own check. */
-static bool
+ * it. Predicate shapes have their own check. Shared (non-static) with xasl_generation.c, which re-checks
+ * the shape before printing -- if this and the gate ever drift, the expression is rejected, not shipped. */
+bool
 pt_dblink_dml_is_remote_only_expr (PT_NODE * expr)
 {
   if (expr == NULL)

@@ -3773,8 +3773,8 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0 || update_info->num_classes == 0)
     {
-      stx_set_xasl_errcode (thread_p, ER_GENERIC_ERROR);
-      return NULL;
+      /* the remote UPDATE + local subquery sink has no local class, as the DELETE sink does not */
+      update_info->classes = NULL;
     }
   else
     {
