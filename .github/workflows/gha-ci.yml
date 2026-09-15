@@ -809,7 +809,15 @@ jobs:
             tmp="${dir}.tmp.${GITHUB_RUN_ID}"
             rm -rf "$tmp"
             mkdir -p "$tmp"
-            cp -a /home/CUBRID "$tmp/CUBRID"
+            # Written before the archive so it travels inside it: the shard
+            # reads it back out of what it unpacked.
+            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
+              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
+            printf '%s\n' "$meta" > "/home/CUBRID/$BUILD_META"
+
+            # An archive, not a tree: a published tree became the shard's overlay
+            # lowerdir, so every process launch read the build over GlusterFS.
+            tar -C /home -cf - CUBRID | gzip -1 > "$tmp/CUBRID.tar.gz"
 
             # The summary links this copy, not the one under the run directory: a
             # reused build outlives the run that made it.
@@ -817,11 +825,6 @@ jobs:
               cp "$GITHUB_WORKSPACE/build.log" "$tmp/build.log"
             fi
 
-            # Inside the CUBRID tree on purpose: shard mounts it as the overlay lowerdir,
-            # so reading this file proves the mount the tests actually use.
-            meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
-              "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
-            printf '%s\n' "$meta" > "$tmp/CUBRID/$BUILD_META"
             printf '%s\n' "$meta" > "$tmp/build.meta"
 
             # Sentinel created inside staging, so the rename never exposes a partial tree.
@@ -863,14 +866,26 @@ jobs:
             fi
           fi
 
-          # plan and shard assume these three exist. Better to die here.
-          for f in "$BUILD_SENTINEL" build.meta "CUBRID/$BUILD_META"; do
+          # plan and shard assume these exist. Better to die here.
+          for f in "$BUILD_SENTINEL" build.meta; do
             [ -f "$dir/$f" ] || {
               echo "::error::the artifact has no $f: $dir"
               echo "  Builds published before this workflow carry no meta. Re-run with force_build=true."
               exit 1
             }
           done
+          # Either shape, the two plan and shard accept: a reused artifact can
+          # predate the archive, and this job does not republish it.
+          if [ -f "$dir/CUBRID.tar.gz" ]; then
+            tar -tzf "$dir/CUBRID.tar.gz" "CUBRID/$BUILD_META" >/dev/null || {
+              echo "::error::the archive carries no CUBRID/$BUILD_META: $dir"; exit 1; }
+          elif [ -f "$dir/CUBRID/$BUILD_META" ]; then
+            echo "reused a tree published before the archive: $dir"
+          else
+            echo "::error::the artifact has no CUBRID.tar.gz and no CUBRID/$BUILD_META: $dir"
+            echo "  Re-run with force_build=true."
+            exit 1
+          fi
           by=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")
           echo "artifact : $dir"
           echo "built by : $by (this run: $GITHUB_RUN_ID)"
@@ -1051,7 +1066,9 @@ jobs:
           # The sentinel marks a finished tree; directory existence passes a partial one.
           [ -f "$dir/$BUILD_SENTINEL" ] || {
             echo "::error::the build is not finished publishing (no sentinel): $dir"; exit 1; }
-          [ -d "$dir/CUBRID" ] || { echo "::error::no CUBRID tree: $dir"; exit 1; }
+          # Either shape: the archive, or a tree published before this change.
+          [ -f "$dir/CUBRID.tar.gz" ] || [ -d "$dir/CUBRID" ] || {
+            echo "::error::no CUBRID archive or tree: $dir"; exit 1; }
           [ -f "$dir/build.meta" ] || {
             echo "::error::no build.meta: $dir"
             echo "  An artifact published before this workflow. Re-run with force_build=true."; exit 1; }
@@ -1763,14 +1780,31 @@ jobs:
             mkdir -p "$TC_DIR"
           fi
 
-          lower="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug/CUBRID"
-          [ -d "$lower" ] || { echo "::error::no build: $lower"; exit 1; }
+          # The lowerdir must live inside the pod -- pointed at the volume,
+          # every process launch in every case is a FUSE read. The write layer
+          # stays tmpfs: sql and medium create their databases under CUBRID_DIR.
+          base="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug"
+          lower=/build-lower/CUBRID
+          mkdir -p /build-lower
+          t0=$(date +%s)
+          if [ -f "$base/CUBRID.tar.gz" ]; then
+            tar -xzf "$base/CUBRID.tar.gz" -C /build-lower
+            from="$base/CUBRID.tar.gz"
+          elif [ -d "$base/CUBRID" ]; then
+            # Published before this change: one bulk copy, not a shard-long drip.
+            cp -a "$base/CUBRID" "$lower"
+            from="$base/CUBRID"
+          else
+            echo "::error::no build: $base/CUBRID.tar.gz"; exit 1
+          fi
+          echo "build unpacked in $(( $(date +%s) - t0 ))s from $from"
+
           mkdir -p /build-rw/upper /build-rw/work "$CUBRID_DIR"
           mount -t overlay overlay \
             -o lowerdir="$lower",upperdir=/build-rw/upper,workdir=/build-rw/work "$CUBRID_DIR"
-          echo "CUBRID mounted"
+          echo "CUBRID mounted: lowerdir=$lower"
 
-          # Read through the overlay the tests use, not the hostPath.
+          # Read through the overlay the tests use, not the artifact on the volume.
           m="$CUBRID_DIR/$BUILD_META"
           [ -f "$m" ] || {
             echo "::error::no $BUILD_META inside the mounted CUBRID"
@@ -1950,6 +1984,8 @@ jobs:
           # "Publish results for collect" reports the cgroup high-water mark.
           echo "/rw       : $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
           echo "/build-rw : $(df -h /build-rw | tail -1 | awk '{print $3" used of "$2}')"
+          # Not tmpfs: the unpacked build, inside the pod.
+          echo "/build-lower : $(du -sh /build-lower 2>/dev/null | awk '{print $1}')"
 
       - name: Run CTP
         id: ctp
@@ -2549,7 +2585,7 @@ jobs:
               echo "| shards that read the meta inside the mounted CUBRID | $read_n / $planned $v_read |"
               echo "| did every shard read the same build | $v_same |"
               echo
-              echo "Provenance is read through the overlay the shard actually mounted, not through hostPath."
+              echo "Provenance is read through the overlay the shard actually mounted, not from the volume."
               echo
               echo "### Testcase provenance"
               echo
