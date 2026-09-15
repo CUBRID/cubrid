@@ -840,6 +840,21 @@ receiver_thr_f (void *arg)
       setsockopt (clt_sock_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &one, sizeof (one));
       ut_set_keepalive (clt_sock_fd);
 
+      /* ACL check must run before any protocol handling (PING/ST/QC/CANCEL/X1 included) so that an
+       * unauthorized IP cannot reach the pre-auth query-cancel path. */
+      if (v3_acl != NULL)
+	{
+	  unsigned char ip_addr[4];
+
+	  memcpy (ip_addr, &(clt_sock_addr.sin_addr), 4);
+
+	  if (uw_acl_check (ip_addr) < 0)
+	    {
+	      CLOSE_SOCKET (clt_sock_fd);
+	      continue;
+	    }
+	}
+
       cas_client_type = CAS_CLIENT_NONE;
 
       /* read header */
@@ -936,9 +951,16 @@ receiver_thr_f (void *arg)
 		  if (shm_appl->as_info[i].service_flag == SERVICE_ON && shm_appl->as_info[i].pid == pid
 		      && shm_appl->as_info[i].uts_status == UTS_STATUS_BUSY)
 		    {
+		      /* Sender IP must always match the session owner's IP, regardless of which
+		       * cancel variant (QC/CANCEL/X1) was used. */
+		      if (memcmp (&shm_appl->as_info[i].cas_clt_ip, &clt_sock_addr.sin_addr, 4) != 0)
+			{
+			  continue;
+			}
+
+		      /* When the sender supplied a client port (QC only), it must also match. */
 		      if (cas_req_header[0] == 'Q' && client_port > 0
-			  && shm_appl->as_info[i].cas_clt_port != client_port
-			  && memcmp (&shm_appl->as_info[i].cas_clt_ip, &clt_sock_addr.sin_addr, 4) != 0)
+			  && shm_appl->as_info[i].cas_clt_port != client_port)
 			{
 			  continue;
 			}
@@ -1009,20 +1031,6 @@ receiver_thr_f (void *arg)
 	  if (client_version < CAS_MAKE_VER (8, 2, 0))
 	    {
 	      CAS_SEND_ERROR_CODE (clt_sock_fd, CAS_ER_COMMUNICATION);
-	      CLOSE_SOCKET (clt_sock_fd);
-	      continue;
-	    }
-	}
-
-      if (v3_acl != NULL)
-	{
-	  unsigned char ip_addr[4];
-
-	  memcpy (ip_addr, &(clt_sock_addr.sin_addr), 4);
-
-	  if (uw_acl_check (ip_addr) < 0)
-	    {
-	      send_error_to_driver (clt_sock_fd, CAS_ER_NOT_AUTHORIZED_CLIENT, cas_req_header);
 	      CLOSE_SOCKET (clt_sock_fd);
 	      continue;
 	    }
