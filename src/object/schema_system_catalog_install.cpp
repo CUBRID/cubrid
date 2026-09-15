@@ -477,6 +477,7 @@ namespace cubschema
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
+      {"attr_id", "integer"},
       {"attr_name", format_varchar (255)},
       {"attr_type", "integer"},
       {"from_class_of", CT_CLASS_NAME},

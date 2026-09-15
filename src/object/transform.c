@@ -329,7 +329,8 @@ static CT_ATTR ct_attribute_atts[] = {
   {"default_value", NULL_ATTRID, DB_TYPE_VARCHAR},
   {"domains", NULL_ATTRID, DB_TYPE_SEQUENCE},
   {"flags", NULL_ATTRID, DB_TYPE_INTEGER},
-  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR}
+  {"comment", NULL_ATTRID, DB_TYPE_VARCHAR},
+  {"attr_id", NULL_ATTRID, DB_TYPE_INTEGER}
 };
 
 static CT_ATTR ct_attrid_atts[] = {
