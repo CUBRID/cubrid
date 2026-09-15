@@ -384,6 +384,18 @@ typedef struct hashjoin_proc_node
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
+/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, UPDATE + local subquery) */
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct remote_dml_sink
+{
+  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
+  char *url;			/* DBLink connection URL */
+  char *user;			/* DBLink connection user */
+  char *pwd;			/* DBLink connection password */
+  char *table_name;		/* remote target table name */
+};
+
 typedef struct update_proc_node UPDATE_PROC_NODE;
 struct update_proc_node
 {
@@ -400,18 +412,14 @@ struct update_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition and assignment reevaluation */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions and assignment reevaluation */
-};
-
-/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
- * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, and UPDATE to follow) */
-typedef struct remote_dml_sink REMOTE_DML_SINK;
-struct remote_dml_sink
-{
-  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
-  char *url;			/* DBLink connection URL */
-  char *user;			/* DBLink connection user */
-  char *pwd;			/* DBLink connection password */
-  char *table_name;		/* remote target table name */
+  /* remote UPDATE + local subquery sink fields (UPDATE remote SET col = (SELECT FROM local)). A local
+   * subquery becomes a bind placeholder; what pt_dblink_dml_is_remote_only_expr accepts is deparsed into
+   * the SET text instead, its value not being computable on this side. */
+  REMOTE_DML_SINK sink;
+  char *remote_set_text;	/* SET clause with a placeholder per bound value: "c1 = ?, c2 = c2 + 1" */
+  int remote_num_set_binds;	/* placeholders in remote_set_text; that many aptrs supply values, in chain order */
+  char *remote_key_col;		/* remote WHERE column, NULL when there is no WHERE (every row, no driving aptr) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE, NULL together with remote_key_col */
 };
 
 typedef struct insert_proc_node INSERT_PROC_NODE;

@@ -4147,12 +4147,42 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
     }
   ptr = or_pack_int (ptr, offset);
 
+  /* remote UPDATE + local subquery sink fields */
+  ptr = xts_process_remote_dml_sink (ptr, &update_info->sink);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  offset = xts_save_string (update_info->remote_set_text);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, update_info->remote_num_set_binds);
+
+  offset = xts_save_string (update_info->remote_key_col);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (update_info->remote_op);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   return ptr;
 }
 
 /*
  * xts_process_remote_dml_sink () - pack the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   url/user/pwd/table_name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery procs.
  *   return: advanced ptr, or NULL on failure
  */
 static char *
@@ -6556,14 +6586,19 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 	   + OR_INT_SIZE	/* num_orderby_keys */
 	   + OR_INT_SIZE	/* num_assign_reev_classes */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
-	   + PTR_SIZE);		/* mvcc_cond_reev_classes */
+	   + PTR_SIZE		/* mvcc_cond_reev_classes */
+	   + xts_sizeof_remote_dml_sink ()	/* remote UPDATE + local subquery sink fields */
+	   + PTR_SIZE		/* remote_set_text */
+	   + OR_INT_SIZE	/* remote_num_set_binds */
+	   + PTR_SIZE		/* remote_key_col */
+	   + PTR_SIZE);		/* remote_op */
 
   return size;
 }
 
 /*
  * xts_sizeof_remote_dml_sink () - size of the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   url/user/pwd/table_name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery procs.
  *   return:
  */
 static int

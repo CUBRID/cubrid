@@ -3843,6 +3843,14 @@ stx_build_update_proc (THREAD_ENTRY * thread_p, char *ptr, UPDATE_PROC_NODE * up
 	}
     }
 
+  /* remote UPDATE + local subquery sink fields */
+  ptr = stx_restore_remote_dml_sink (thread_p, ptr, &update_info->sink);
+
+  update_info->remote_set_text = stx_restore_string (thread_p, ptr);
+  ptr = or_unpack_int (ptr, &update_info->remote_num_set_binds);
+  update_info->remote_key_col = stx_restore_string (thread_p, ptr);
+  update_info->remote_op = stx_restore_string (thread_p, ptr);
+
   return ptr;
 
 error:
@@ -3852,7 +3860,7 @@ error:
 
 /*
  * stx_restore_remote_dml_sink () - restore the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   url/user/pwd/table_name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery procs.
  *   return: advanced ptr
  */
 static char *
