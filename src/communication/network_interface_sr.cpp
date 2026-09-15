@@ -127,6 +127,9 @@ struct internal_lob_stream_cursor
 {
   int tran_index = NULL_TRAN_INDEX;
   INTERNAL_LOB_READER reader;
+  /* Set while a pull is in flight for this cursor, so the mutex below only ever has to guard the map
+   * itself - never the page-buffer fetch a pull does. */
+  bool in_use = false;
 };
 
 /* A reader cursor lives until the client closes it or its connection goes down, so a client that opens one per
@@ -10560,22 +10563,59 @@ sinternal_lob_stream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
     }
 
   {
-    std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
-    auto iter = internal_lob_stream_cursor_table.find (token);
+    INTERNAL_LOB_READER *reader_p = NULL;
 
-    if (iter == internal_lob_stream_cursor_table.end ()
-	|| iter->second.tran_index != LOG_FIND_THREAD_TRAN_INDEX (thread_p))
-      {
-	err = ER_OBJ_INVALID_ARGUMENTS;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
-	goto reply;
-      }
+    /* Only the map lookup and the in-flight flag are under the lock.  The pull itself - buffer-pool
+     * fetches across possibly many OOS chunks - runs outside it, so one large read no longer holds up
+     * every other cursor server-wide for its whole duration.  A concurrent request against the SAME
+     * token is refused rather than serialized: no legitimate client issues two reads on one cursor at
+     * once, since the cursor is forward-only and a client always waits for one read's reply before
+     * asking for the next. */
+    {
+      std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+      auto iter = internal_lob_stream_cursor_table.find (token);
 
-    err = internal_lob_read_pull (thread_p, iter->second.reader, oos_buffer (buffer, (std::size_t) count), nread);
+      if (iter == internal_lob_stream_cursor_table.end ()
+	  || iter->second.tran_index != LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+	{
+	  err = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	  goto reply;
+	}
+      if (iter->second.in_use)
+	{
+	  err = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	  goto reply;
+	}
+      iter->second.in_use = true;
+      reader_p = &iter->second.reader;
+    }
+
+    err = internal_lob_read_pull (thread_p, *reader_p, oos_buffer (buffer, (std::size_t) count), nread);
+
+    {
+      std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+      auto iter = internal_lob_stream_cursor_table.find (token);
+
+      /* The cursor may already be gone (transaction-end purge ran while the pull was outside the
+       * lock); nothing to update in that case. */
+      if (iter != internal_lob_stream_cursor_table.end ())
+	{
+	  if (err != NO_ERROR)
+	    {
+	      internal_lob_stream_cursor_table.erase (iter);
+	    }
+	  else
+	    {
+	      iter->second.in_use = false;
+	    }
+	}
+    }
+
     if (err != NO_ERROR)
       {
 	nread = 0;
-	internal_lob_stream_cursor_table.erase (iter);
       }
   }
 
