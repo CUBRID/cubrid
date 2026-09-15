@@ -130,6 +130,11 @@ struct internal_lob_stream_cursor
   /* Set while a pull is in flight for this cursor, so the mutex below only ever has to guard the map
    * itself - never the page-buffer fetch a pull does. */
   bool in_use = false;
+  /* Set by a close/purge that arrives while in_use is true, instead of erasing the node out from under
+   * the pull that still holds reader_p.  The pull's own post-unlock re-lock is what actually erases it -
+   * see the upload side's identical deferral in internal_lob_upload_store::purge_consumed ()/consume (),
+   * internal_lob_upload.cpp. */
+  bool pending_erase = false;
 };
 
 /* A reader cursor lives until the client closes it or its connection goes down, so a client that opens one per
@@ -10603,10 +10608,12 @@ sinternal_lob_stream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
       auto iter = internal_lob_stream_cursor_table.find (token);
 
       /* The cursor may already be gone (transaction-end purge ran while the pull was outside the
-       * lock); nothing to update in that case. */
+       * lock); nothing to update in that case.  If it is still here but a close/purge marked it for
+       * deferred erase while the pull was in flight, this is the moment that erase actually happens -
+       * reader_p was still pointing at this node throughout the pull, so nothing may erase it earlier. */
       if (iter != internal_lob_stream_cursor_table.end ())
 	{
-	  if (err != NO_ERROR)
+	  if (err != NO_ERROR || iter->second.pending_erase)
 	    {
 	      internal_lob_stream_cursor_table.erase (iter);
 	    }
@@ -10687,7 +10694,18 @@ sinternal_lob_stream_close (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 	goto reply;
       }
 
-    internal_lob_stream_cursor_table.erase (iter);
+    /* A pull for this same cursor cannot be in flight on this thread (this request holds it), but the
+     * protocol is otherwise silent on whether another thread could be mid-pull for it (a cancel/interrupt
+     * channel, a forced transaction abort).  Erasing the node out from under that pull's reader_p would be
+     * a use-after-free, so defer to the moment the pull itself re-locks - see the read-side re-check. */
+    if (iter->second.in_use)
+      {
+	iter->second.pending_erase = true;
+      }
+    else
+      {
+	internal_lob_stream_cursor_table.erase (iter);
+      }
   }
 
 reply:
@@ -10715,13 +10733,21 @@ sinternal_lob_stream_purge_tran (int tran_index)
   std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
   for (auto iter = internal_lob_stream_cursor_table.begin (); iter != internal_lob_stream_cursor_table.end ();)
     {
-      if (iter->second.tran_index == tran_index)
+      if (iter->second.tran_index != tran_index)
 	{
-	  iter = internal_lob_stream_cursor_table.erase (iter);
+	  ++iter;
+	  continue;
+	}
+      /* Same reasoning as sinternal_lob_stream_close: never erase a cursor a pull is still reading
+       * through just because its owning transaction ended concurrently on another thread. */
+      if (iter->second.in_use)
+	{
+	  iter->second.pending_erase = true;
+	  ++iter;
 	}
       else
 	{
-	  ++iter;
+	  iter = internal_lob_stream_cursor_table.erase (iter);
 	}
     }
 }
