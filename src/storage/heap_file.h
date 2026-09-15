@@ -33,6 +33,7 @@
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
+#include "internal_lob_file.hpp"
 #include "mem_block.hpp"
 #include "mvcc.h"
 #include "page_buffer.h"
@@ -624,6 +625,18 @@ extern int heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * 
 
 extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
 				FILE_TYPE * ftype_out, char **classname_out);
+/* Reads exactly size bytes of the source at offset. The source's total size is known up front, so the internal LOB
+ * chain is written tail-first through the reverse writer without staging the payload. */
+typedef int (*HEAP_INTERNAL_LOB_RANGE_READER) (void *ctx, DB_BIGINT offset, char *buf, int size);
+extern int heap_internal_lob_insert_stream (THREAD_ENTRY * thread_p, const OID * class_oid,
+					    HEAP_INTERNAL_LOB_RANGE_READER reader, void *reader_ctx,
+					    DB_BIGINT total_bytes, DB_BIGINT bit_length,
+					    INTERNAL_LOB_LOCATOR * locator);
+extern int heap_internal_lob_clone_locator (THREAD_ENTRY * thread_p, const OID * class_oid, DB_TYPE lob_type,
+					    const INTERNAL_LOB_LOCATOR * source_locator,
+					    INTERNAL_LOB_LOCATOR * locator);
+extern int heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * value,
+					   INTERNAL_LOB_LOCATOR * locator);
 extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
 				  FILE_TYPE ftype, const char *classname_in);
 extern int heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
@@ -741,7 +754,11 @@ extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_R
 extern int heap_rv_postpone_mark_pages_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data);
 
-extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate);
+extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate,
+				bool conditional);
+extern bool heap_oos_find_vfid_by_type (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_TYPE file_type, VFID * vfid,
+					bool docreate, bool conditional);
+extern bool heap_internal_lob_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * lob_vfid, bool docreate);
 extern bool heap_recdes_contains_oos (const RECDES * record);
 
 /* Shared with heap_oos.cpp: reads one raw variable-offset-table entry (with the OOS/NULL flag bits)
@@ -758,10 +775,20 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 // TODO: Rename heap_file.c to heap_file.cpp and enable C++ formatting in indent tool, then we can remove the following lines.
 
 // *INDENT-OFF*
+struct heap_oos_reference
+{
+  OID oid;
+  DB_BIGINT disk_length;
+  DB_TYPE type;
+  int variable_index;
+};
+using HEAP_OOS_REFERENCE = struct heap_oos_reference;
+using HEAP_OOS_REFERENCE_VECTOR = std::vector<HEAP_OOS_REFERENCE>;
 using OID_VECTOR = std::vector<OID>;
 // *INDENT-ON*
 
-extern int heap_recdes_get_oos_oids (const RECDES * record, OID_VECTOR & oos_oids);
+extern int heap_recdes_get_oos_references (THREAD_ENTRY * thread_p, const OID * class_oid, const RECDES * record,
+					   HEAP_OOS_REFERENCE_VECTOR & oos_references);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

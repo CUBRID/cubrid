@@ -7811,6 +7811,32 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  return regu;
 		}
 
+	      if (node->info.expr.op == PT_BFILE_FROM_FILE || node->info.expr.op == PT_CFILE_FROM_FILE
+		  || node->info.expr.op == PT_BLOB_FROM_FILE || node->info.expr.op == PT_CLOB_FROM_FILE
+		  || pt_is_internal_lob_direct_source_expr (node))
+		{
+		  /*
+		   * FROM_FILE expressions and direct LOBFILE-to-internal-LOB DML sources read client-side external storage
+		   * and may create a transient internal LOB envelope.  Evaluate them while building XASL so the server
+		   * receives a DB_VALUE marker instead of executing a materializing arithmetic operator.  This intentionally
+		   * avoids generic constant-folding to keep parser PT_VALUE collation/domain validation from seeing transient
+		   * marker metadata.
+		   */
+		  regu_alloc (val);
+		  if (val == NULL)
+		    {
+		      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      break;
+		    }
+
+		  pt_evaluate_tree (parser, node, val, 1);
+		  if (!pt_has_error (parser))
+		    {
+		      regu = pt_make_regu_constant (parser, val, pt_node_to_db_type (node), node);
+		    }
+		  break;
+		}
+
 	      if (PT_REQUIRES_HIERARCHICAL_QUERY (node->info.expr.op))
 		{
 		  if (parser->symbols && parser->symbols->query_node)
@@ -20583,6 +20609,11 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
       PT_INTERNAL_ERROR (parser, "odku on update insert error");
       goto exit_on_error;
     }
+  error = pt_fold_internal_lob_direct_source_assignments (parser, assignments);
+  if (error != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   /* init update attribute ids */
   odku->num_assigns = 0;
@@ -22646,6 +22677,11 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
   if (error != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "update");
+      goto cleanup;
+    }
+  error = pt_fold_internal_lob_direct_source_assignments (parser, statement->info.update.assignment);
+  if (error != NO_ERROR)
+    {
       goto cleanup;
     }
 
@@ -27590,6 +27626,11 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   if (error != NO_ERROR)
     {
       PT_INTERNAL_ERROR (parser, "merge update");
+      goto cleanup;
+    }
+  error = pt_fold_internal_lob_direct_source_assignments (parser, info->update.assignment);
+  if (error != NO_ERROR)
+    {
       goto cleanup;
     }
 

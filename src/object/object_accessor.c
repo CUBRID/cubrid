@@ -57,6 +57,7 @@
 #include "network_interface_cl.h"
 #include "execute_statement.h"
 #include "dbtype.h"
+#include "internal_lob_marker.h"
 
 /*
  * OBJ_MAX_ARGS
@@ -641,6 +642,32 @@ assign_set_value (MOP op, SM_ATTRIBUTE * att, char *mem, SETREF * setref)
  *    This is called by obj_set and by the template assignment function.
  */
 
+/*
+ * obj_is_unresolved_internal_lob_transport () - Does the value still carry an Internal LOB transport envelope?
+ *    return: true if the payload has not been resolved into storage yet
+ *    value(in): value about to be assigned to an attribute
+ *
+ * Note:
+ *    Internal LOB parameters travel as BLOB/CLOB containers tagged with a transport marker; only the server heap
+ *    path (heap_internal_lob_insert_value ()) turns one into a chunk chain and a locator.  A LOCATOR marker is the
+ *    resolved form and is therefore not a transport envelope.
+ */
+static bool
+obj_is_unresolved_internal_lob_transport (const DB_VALUE * value)
+{
+  switch (db_value_get_internal_lob_marker (value))
+    {
+    case DB_VALUE_INTERNAL_LOB_MARKER_FILE_SOURCE:
+    case DB_VALUE_INTERNAL_LOB_MARKER_PENDING:
+    case DB_VALUE_INTERNAL_LOB_MARKER_STREAM:
+    case DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD:
+    case DB_VALUE_INTERNAL_LOB_MARKER_DML_SLOT:
+      return true;
+    default:
+      return false;
+    }
+}
+
 int
 obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
 {
@@ -652,6 +679,19 @@ obj_assign_value (MOP op, SM_ATTRIBUTE * att, char *mem, DB_VALUE * value)
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* The client object path serializes the memory representation, which no longer carries the transport marker, so an
+   * unresolved envelope would be stored as if it were the user payload.  Refuse instead of losing the LOB.  */
+  if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (att->domain)) && obj_is_unresolved_internal_lob_transport (value))
+    {
+      char detail[SM_MAX_IDENTIFIER_LENGTH + 128];
+
+      snprintf (detail, sizeof (detail),
+		"Internal LOB payload for attribute \"%s\" cannot be written through the client object path;"
+		" a trigger, a view, or object-level DML forces that path", att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, detail);
+      return ER_STREAM_SESSION_ERROR;
     }
 
   if (DB_IS_NULL (value))

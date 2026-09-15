@@ -40,6 +40,9 @@
 #include "thread_compat.hpp"
 #endif /* defined(SERVER_MODE) || defined(SA_MODE) */
 
+#define REPL_OOS_METADATA_MAGIC 0x4f4f5332	/* "OOS2": trailer = magic, target attrid, REPL_OOS_FLAG_* */
+#define REPL_OOS_FLAG_INTERNAL_LOB_HEAD 0x1	/* the node is the head of an internal LOB chain */
+
 typedef enum
 {
   REPL_INFO_TYPE_SBR,		/* statement-based */
@@ -105,6 +108,9 @@ extern void repl_log_send (void);
 extern int repl_add_update_lsa (THREAD_ENTRY * thread_p, const OID * inst_oid);
 extern int repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid, LOG_RECTYPE log_type,
 			    LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_type);
+extern int repl_log_insert_oos (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid,
+				LOG_RCVINDEX rcvindex, DB_VALUE * key_dbvalue, REPL_INFO_TYPE repl_type,
+				int attrid, int oos_flags);
 extern int repl_log_insert_statement (THREAD_ENTRY * thread_p, REPL_INFO_SBR * repl_info);
 extern void repl_start_flush_mark (THREAD_ENTRY * thread_p);
 extern void repl_end_flush_mark (THREAD_ENTRY * thread_p, bool need_undo);

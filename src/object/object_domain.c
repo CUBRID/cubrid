@@ -738,8 +738,6 @@ tp_apply_sys_charset (void)
     }
 
   /* update string domains with current codeset */
-  /* tp_Clob_domain / tp_Blob_domain carry no codeset/collation slot — mirrors BFILE/CFILE.
-   * Server uses LANG_SYS_CODESET (createdb codeset) for byte->char views at runtime. */
   tp_String_domain.codeset = LANG_SYS_CODESET;
   tp_String_domain.collation_id = LANG_SYS_COLLATION;
   tp_Char_domain.codeset = LANG_SYS_CODESET;
@@ -5829,10 +5827,9 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 
 #define ROUND(x)		  ((x) > 0 ? ((x) + .5) : ((x) - .5))
 #define SECONDS_IN_A_DAY	  (long)(86400)	/* 24L * 60L * 60L */
-
 #undef TP_IMPLICIT_COERCION_NOT_ALLOWED
-#define TP_IMPLICIT_COERCION_NOT_ALLOWED(src_type, dest_type)		\
-   tp_implicit_coercion_not_allowed (src_type, dest_type)
+#define TP_IMPLICIT_COERCION_NOT_ALLOWED(src_type, dest_type) \
+  tp_implicit_coercion_not_allowed (src_type, dest_type)
 
 /*
  * tp_value_string_to_double - Coerce a string to a double.
@@ -5893,7 +5890,6 @@ make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN * desired_do
     case DB_TYPE_CLOB:
       db_make_clob (&temp, desired_domain->precision, new_string, strlen (new_string));
       break;
-
     default:			/* Can't get here.  This just quiets the compiler */
       break;
     }
@@ -7425,13 +7421,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
    */
   db_value_domain_init (target, desired_type, desired_domain->precision, desired_domain->scale);
 
-  /* CLOB is character-shaped storage, but its value/domain does not carry
-   * per-value codeset/collation; keep it out of generic string collation setup. */
-  if (TP_IS_CHAR_TYPE (desired_type))
+  if (TP_IS_CHAR_TYPE (desired_type) || desired_type == DB_TYPE_CLOB)
     {
       if (desired_domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
-	  if (TP_IS_CHAR_TYPE (original_type))
+	  if (TP_IS_CHAR_TYPE (original_type) || desired_type == DB_TYPE_CLOB)
 	    {
 	      db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
 					      TP_DOMAIN_COLLATION (desired_domain));
@@ -7573,7 +7567,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CLOB:
 	  {
 	    double num_value = 0.0;
 
@@ -7688,7 +7681,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CLOB:
 	  {
 	    double num_value = 0.0;
 
@@ -7829,7 +7821,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CLOB:
 	  {
 	    DB_BIGINT num_value = 0;
 
@@ -7905,7 +7896,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CLOB:
 	  {
 	    double num_value = 0.0;
 
@@ -7969,7 +7959,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CLOB:
 	  {
 	    double num_value = 0.0;
 
@@ -8016,7 +8005,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CLOB:
 	  {
 	    DB_VALUE temp;
 
@@ -8085,7 +8073,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CLOB:
 	  {
 	    double num_value = 0.0;
 
@@ -8126,7 +8113,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_CLOB:
 	  if (tp_atoutime (src, &v_utime) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
@@ -8241,7 +8227,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_CLOB:
 	  if (tp_atotimestamptz (src, &v_timestamptz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
@@ -8374,7 +8359,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_CLOB:
 	  /* read as DATETIMETZ */
 	  if (tp_atotimestamptz (src, &v_timestamptz) != NO_ERROR)
 	    {
@@ -8488,7 +8472,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_CLOB:
 	  if (tp_atoudatetime (src, &v_datetime) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
@@ -8584,7 +8567,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_CLOB:
 	  if (tp_atodatetimetz (src, &v_datetimetz) != NO_ERROR)
 	    {
 	      status = DOMAIN_ERROR;
@@ -8667,7 +8649,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_CLOB:
 	  {
 	    if (tp_atodatetimetz (src, &v_datetimetz) != NO_ERROR)
 	      {
@@ -8766,7 +8747,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_CLOB:
 	  if (tp_atodate (src, &v_date) == NO_ERROR)
 	    {
 	      db_date_decode (&v_date, &month, &day, &year);
@@ -8980,7 +8960,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  }
 	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	case DB_TYPE_CLOB:
 	  if (tp_atotime (src, &v_time) == NO_ERROR)
 	    {
 	      db_time_decode (&v_time, &hour, &minute, &second);
@@ -9396,7 +9375,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    err = db_blob_to_bit (src, NULL, &tmpval);
 	    if (err == NO_ERROR)
 	      {
-		err = tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
+		status =
+		  tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
+	      }
+	    else
+	      {
+		status = DOMAIN_INCOMPATIBLE;
 	      }
 
 	    (void) pr_clear_value (&tmpval);
@@ -9796,17 +9780,19 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		DB_VALUE tmpval;
 		DB_VALUE cs;
 
+		/* Convert directly from CLOB into the charset of the desired domain string, then coerce that string
+		 * into target so the usual wrap-up moves it into dest.  Casting into dest here would overwrite the live
+		 * CLOB when src == dest and lose the domain coercion to the temporary. */
 		db_make_null (&tmpval);
-		/* convert directly from CLOB into charset of desired domain string */
 		db_make_int (&cs, desired_domain->codeset);
 		err = db_clob_to_char (src, &cs, &tmpval);
 		if (err == NO_ERROR)
 		  {
 		    err =
-		      tp_value_cast_internal (&tmpval, dest, desired_domain, coercion_mode, do_domain_select, false);
+		      tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
 		  }
-
 		pr_clear_value (&tmpval);
+
 		status = (err == NO_ERROR) ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
 	      }
 	      break;

@@ -282,6 +282,12 @@ IDL       [a-zA-Z0-9_]
 [cC][oO][nN][sS][tT][rR][aA][iI][nN][tT][sS]				{ return CONSTRAINTS; }
 [cC][oO][nN][tT][iI][nN][uU][eE]					{ return CONTINUE; }
 [cC][oO][nN][vV][eE][rR][tT]						{ return CONVERT; }
+[cC][oO][pP][yY]							{ return COPY_; }
+[cC][sS][vV]								{ return CSV_; }
+[dD][eE][lL][iI][mM][iI][tT][eE][rR]					{ return DELIMITER_; }
+[qQ][uU][oO][tT][eE]							{ return QUOTE_; }
+[hH][eE][aA][dD][eE][rR]						{ return HEADER_; }
+[bB][uU][lL][kK]							{ return BULK_; }
 [cC][oO][rR][rR][eE][sS][pP][oO][nN][dD][iI][nN][gG]			{ return CORRESPONDING; }
 [cC][oO][sS][tT]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return COST;
@@ -393,6 +399,7 @@ IDL       [a-zA-Z0-9_]
 [fF][oO][rR][cC][eE][_][oO][uU][tT][lL][iI][nN][eE]			{ csql_yylval.cptr = pt_makename(yytext);
 									  return FORCE_OUTLINE; }
 [fF][oO][rR][eE][iI][gG][nN]						{ return FOREIGN; }
+[fF][oO][rR][mM][aA][tT]						{ return FORMAT_; }
 [fF][oO][uU][nN][dD]							{ return FOUND; }
 [fF][rR][oO][mM]							{ return FROM; }
 [fF][uU][lL][lL]							{ return FULL; }
@@ -866,6 +873,7 @@ IDL       [a-zA-Z0-9_]
 									  return STDDEV_POP; }
 [sS][tT][dD][dD][eE][vV][_][sS][aA][mM][pP]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return STDDEV_SAMP; }
+[sS][tT][dD][iI][nN]							{ return STDIN_; }
 [sS][tT][oO][rR][aA][gG][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return STORAGE; }
 [sS][tT][rR][_][tT][oO][_][dD][aA][tT][eE]				{ csql_yylval.cptr = pt_makename(yytext);

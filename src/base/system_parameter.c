@@ -5534,7 +5534,7 @@ SYSPRM_PARAM prm_Def[] = {
    NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
+   (DUP_PRM_FUNC) NULL}
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the

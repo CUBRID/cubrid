@@ -1783,7 +1783,13 @@
 
 #define ER_HEAP_OOS_INVALID_ARGUMENT                -1383
 
-#define ER_LAST_ERROR                               -1384
+#define ER_COPY_NOT_SUPPORTED                       -1384
+#define ER_COPY_BINARY_FORMAT_ERROR                 -1385
+#define ER_STREAM_SESSION_ERROR                     -1386
+#define ER_COPY_CSV_FORMAT_ERROR                    -1387
+#define ER_LDR_INTERNAL_LOB_CHARSET_MISMATCH         -1388
+
+#define ER_LAST_ERROR                               -1389
 
 
 

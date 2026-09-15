@@ -96,6 +96,9 @@
 #include "method_callback.hpp"
 #include "network.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
@@ -3557,6 +3560,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DROP_SERVER:
 	case PT_RENAME_SERVER:
 	case PT_ALTER_SERVER:
+	case PT_COPY:
 
 	  /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
 	  db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -3810,6 +3814,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_ALTER_SERVER:
 	  error = do_alter_server (parser, statement);
+	  break;
+
+	case PT_COPY:
+	  error = do_copy (parser, statement);
 	  break;
 
 	default:
@@ -4273,6 +4281,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SYNONYM:
     case PT_DROP_SYNONYM:
     case PT_RENAME_SYNONYM:
+    case PT_COPY:
       /* Need to get dirty version when fetch the instance. That's because we are in an update command. */
       db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
       break;
@@ -4501,6 +4510,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_RENAME_SYNONYM:
       err = do_rename_synonym (parser, statement);
+      break;
+    case PT_COPY:
+      err = do_copy (parser, statement);
       break;
 
     default:
@@ -9897,6 +9909,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  statement->info.update.execute_with_commit_allowed = 1;
 	}
 
+      err = pt_fold_internal_lob_direct_source_assignments (parser, statement->info.update.assignment);
+      if (err != NO_ERROR)
+	{
+	  break;
+	}
+      qo_auto_parameterize (parser, statement->info.update.assignment);
+
       /* if we are updating class attributes, not need to prepare */
       if (lhs->info.name.meta_class == PT_META_ATTR)
 	{
@@ -10167,6 +10186,39 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  * Note:
  */
+static const OID *
+do_get_internal_lob_update_class_oid (PT_NODE * statement)
+{
+  const OID *class_oid = NULL;
+
+  for (PT_NODE * spec = statement != NULL ? statement->info.update.spec : NULL; spec != NULL; spec = spec->next)
+    {
+      PT_NODE *flat;
+      DB_OBJECT *class_obj;
+      const OID *candidate;
+
+      if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) == 0)
+	{
+	  continue;
+	}
+
+      flat = spec->info.spec.flat_entity_list;
+      class_obj = flat != NULL ? flat->info.name.db_object : NULL;
+      candidate = class_obj != NULL ? ws_oid (class_obj) : NULL;
+      if (candidate == NULL || OID_ISNULL (candidate))
+	{
+	  return NULL;
+	}
+      if (class_oid != NULL && !OID_EQ (class_oid, candidate))
+	{
+	  return NULL;
+	}
+      class_oid = candidate;
+    }
+
+  return class_oid;
+}
+
 int
 do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
@@ -10206,6 +10258,10 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   for (err = NO_ERROR, result = 0; statement && (err >= NO_ERROR); statement = statement->next)
     {
+      DB_VALUE *saved_host_variables = parser->host_variables;
+      DB_VALUE *client_stream_values = NULL;
+      int client_stream_var_cnt = parser->host_var_count + parser->auto_param_count;
+
       /*
        * Update object case:
        *   update object by OID
@@ -10300,13 +10356,41 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
-	  err =
-	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+	  /* orderby_for auto-parameterization above may reallocate parser->host_variables and add
+	   * auto-parameters; re-capture the array pointer and count so the client stream swap and the
+	   * restore below operate on the current array rather than a stale (possibly freed) one. */
+	  saved_host_variables = parser->host_variables;
+	  client_stream_var_cnt = parser->host_var_count + parser->auto_param_count;
+
+	  if (statement->info.update.server_update)
+	    {
+	      err = execute_query_with_internal_lob_dml (statement->xasl_id, &parser->query_id,
+							 parser->host_var_count + parser->auto_param_count,
+							 parser->host_variables, &list_id, query_flag, NULL, NULL,
+							 do_get_internal_lob_update_class_oid (statement));
+	    }
+	  else
+	    {
+	      err = begin_client_internal_lob_dml_stream (client_stream_var_cnt, parser->host_variables,
+							  &client_stream_values,
+							  do_get_internal_lob_update_class_oid (statement));
+	      if (err == NO_ERROR && client_stream_values != NULL)
+		{
+		  parser->host_variables = client_stream_values;
+		}
+	      if (err == NO_ERROR)
+		{
+		  err = execute_query (statement->xasl_id, &parser->query_id,
+				       parser->host_var_count + parser->auto_param_count, parser->host_variables,
+				       &list_id, query_flag, NULL, NULL);
+		}
+	    }
 
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
 	    {
+	      parser->host_variables = saved_host_variables;
+	      abort_client_internal_lob_dml_stream (client_stream_var_cnt, client_stream_values);
 	      break;		/* stop while loop if error */
 	    }
 	}
@@ -10347,6 +10431,39 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (old_wait_msecs >= -1)
 	    {
 	      (void) tran_reset_wait_times (old_wait_msecs);
+	    }
+
+	  if (err >= NO_ERROR && client_stream_values != NULL)
+	    {
+	      for (spec = statement->info.update.spec; spec != NULL && err == NO_ERROR; spec = spec->next)
+		{
+		  if (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE)
+		    {
+		      flat = spec->info.spec.flat_entity_list;
+		      if (flat == NULL || flat->info.name.db_object == NULL)
+			{
+			  err = ER_FAILED;
+			}
+		      else
+			{
+			  err = sm_flush_objects (flat->info.name.db_object);
+			}
+		    }
+		}
+	    }
+
+	  parser->host_variables = saved_host_variables;
+	  if (err < NO_ERROR)
+	    {
+	      abort_client_internal_lob_dml_stream (client_stream_var_cnt, client_stream_values);
+	    }
+	  else
+	    {
+	      int stream_error = end_client_internal_lob_dml_stream (client_stream_var_cnt, client_stream_values);
+	      if (stream_error != NO_ERROR)
+		{
+		  err = stream_error;
+		}
 	    }
 	}
 
@@ -11892,6 +12009,75 @@ insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALU
 }
 
 
+static int
+do_prepare_internal_lob_value_list (PARSER_CONTEXT * parser, PT_NODE ** values)
+{
+  int error = NO_ERROR;
+  PT_NODE *val = NULL, *head = NULL, *prev = NULL;
+
+  error = pt_fold_internal_lob_direct_source_values (parser, values);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (val = *values; val != NULL; val = val->next)
+    {
+      if (pt_is_const_not_hostvar (val) && !PT_IS_NULL_NODE (val))
+	{
+	  val = pt_rewrite_to_auto_param (parser, val);
+	  if (prev != NULL)
+	    {
+	      prev->next = val;
+	    }
+
+	  if (val == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      return error;
+	    }
+	}
+
+      if (head == NULL)
+	{
+	  head = val;
+	}
+
+      prev = val;
+    }
+  *values = head;
+  return error;
+}
+
+static int
+do_prepare_internal_lob_insert_values (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  PT_NODE *value_list = NULL;
+
+  if (statement->info.insert.odku_assignments != NULL)
+    {
+      error = pt_fold_internal_lob_direct_source_assignments (parser, statement->info.insert.odku_assignments);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      qo_auto_parameterize (parser, statement->info.insert.odku_assignments);
+    }
+
+  /* insert value auto parameterize */
+  for (value_list = statement->info.insert.value_clauses; value_list != NULL; value_list = value_list->next)
+    {
+      error = do_prepare_internal_lob_value_list (parser, &value_list->info.node_list.list);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * do_prepare_insert_internal () - Prepares insert statement for server
  *				   execution.
@@ -11904,8 +12090,6 @@ static int
 do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
-  PT_NODE *val = NULL, *head = NULL, *prev = NULL;
-  PT_NODE *value_list = NULL;
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
@@ -11923,35 +12107,10 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   contextp->sql_user_text = statement->sql_user_text;
   contextp->sql_user_text_len = statement->sql_user_text_len;
 
-  /* insert value auto parameterize */
-  for (value_list = statement->info.insert.value_clauses; value_list != NULL; value_list = value_list->next)
+  error = do_prepare_internal_lob_insert_values (parser, statement);
+  if (error != NO_ERROR)
     {
-      head = NULL;
-      prev = NULL;
-      for (val = value_list->info.node_list.list; val != NULL; val = val->next)
-	{
-	  if (pt_is_const_not_hostvar (val) && !PT_IS_NULL_NODE (val))
-	    {
-	      val = pt_rewrite_to_auto_param (parser, val);
-	      if (prev != NULL)
-		{
-		  prev->next = val;
-		}
-
-	      if (val == NULL)
-		{
-		  break;
-		}
-	    }
-
-	  if (head == NULL)
-	    {
-	      head = val;
-	    }
-
-	  prev = val;
-	}
-      value_list->info.node_list.list = head;
+      return error;
     }
 
   /* make query string */
@@ -14606,6 +14765,11 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (statement->info.insert.server_allowed != SERVER_INSERT_IS_ALLOWED)
 	{
+	  error = do_prepare_internal_lob_insert_values (parser, statement);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
 	  goto cleanup;
 	}
     }
@@ -14653,13 +14817,65 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       if (statement->xasl_id == NULL)
 	{
+	  DB_VALUE *saved_host_variables;
+	  DB_VALUE *stream_values = NULL;
+	  int var_cnt;
+
 	  /* check if it is not necessary to execute this statement */
 	  if (qo_need_skip_execution ())
 	    {
 	      statement->etc = NULL;
 	      return NO_ERROR;
 	    }
-	  return do_insert (parser, statement);
+
+	  var_cnt = parser->host_var_count + parser->auto_param_count;
+	  {
+	    PT_NODE *flat = statement->info.insert.spec->info.spec.flat_entity_list;
+	    DB_OBJECT *class_obj = flat != NULL ? flat->info.name.db_object : NULL;
+	    const OID *direct_class_oid = class_obj != NULL ? ws_oid (class_obj) : NULL;
+
+	    err = begin_client_internal_lob_dml_stream (var_cnt, parser->host_variables, &stream_values,
+							direct_class_oid);
+	  }
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+
+	  saved_host_variables = parser->host_variables;
+	  if (stream_values != NULL)
+	    {
+	      parser->host_variables = stream_values;
+	    }
+	  err = do_insert (parser, statement);
+	  parser->host_variables = saved_host_variables;
+	  if (err >= NO_ERROR && stream_values != NULL)
+	    {
+	      PT_NODE *flat = statement->info.insert.spec->info.spec.flat_entity_list;
+
+	      if (flat == NULL || flat->info.name.db_object == NULL)
+		{
+		  err = ER_FAILED;
+		}
+	      else
+		{
+		  int flush_error = sm_flush_objects (flat->info.name.db_object);
+		  if (flush_error != NO_ERROR)
+		    {
+		      err = flush_error;
+		    }
+		}
+	    }
+
+	  if (err < NO_ERROR)
+	    {
+	      abort_client_internal_lob_dml_stream (var_cnt, stream_values);
+	      return err;
+	    }
+	  {
+	    int stream_error = end_client_internal_lob_dml_stream (var_cnt, stream_values);
+	    return stream_error == NO_ERROR ? err : stream_error;
+	  }
 	}
     }
 
@@ -14714,8 +14930,18 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (parser->query_id == NULL_QUERY_ID);
   list_id = NULL;
 
-  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-		       parser->host_variables, &list_id, query_flag, NULL, NULL);
+  const OID *direct_class_oid = NULL;
+  if (statement->info.insert.spec != NULL)
+    {
+      PT_NODE *direct_flat = statement->info.insert.spec->info.spec.flat_entity_list;
+      DB_OBJECT *direct_class_obj = direct_flat != NULL ? direct_flat->info.name.db_object : NULL;
+      direct_class_oid = direct_class_obj != NULL ? ws_oid (direct_class_obj) : NULL;
+    }
+
+  err = execute_query_with_internal_lob_dml (statement->xasl_id, &parser->query_id,
+					     parser->host_var_count + parser->auto_param_count,
+					     parser->host_variables, &list_id, query_flag, NULL, NULL,
+					     direct_class_oid);
 
   /* free returned QFILE_LIST_ID */
   if (list_id)
@@ -18292,6 +18518,27 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   server_op = (server_insert && server_update);
 
+  if (statement->info.merge.update.assignment != NULL && !insert_only)
+    {
+      err = pt_fold_internal_lob_direct_source_assignments (parser, statement->info.merge.update.assignment);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      qo_auto_parameterize (parser, statement->info.merge.update.assignment);
+    }
+
+  if (statement->info.merge.insert.value_clauses != NULL
+      && statement->info.merge.insert.value_clauses->info.node_list.list_type == PT_IS_VALUE)
+    {
+      err =
+	do_prepare_internal_lob_value_list (parser, &statement->info.merge.insert.value_clauses->info.node_list.list);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
   if (server_op)
     {
       statement->info.merge.flags |= PT_MERGE_INFO_SERVER_OP;
@@ -18514,6 +18761,17 @@ cleanup:
   return err;
 }
 
+static void
+do_swap_internal_lob_stream_values (int value_count, DB_VALUE * parser_values, DB_VALUE * stream_values)
+{
+  for (int i = 0; i < value_count; i++)
+    {
+      DB_VALUE swap_value = parser_values[i];
+      parser_values[i] = stream_values[i];
+      stream_values[i] = swap_value;
+    }
+}
+
 /*
  * do_execute_merge() - Execute the prepared MERGE statement
  *   return: Error code
@@ -18528,8 +18786,10 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   INT64 result = 0;
   int error = NO_ERROR;
   PT_NODE *flat = NULL, *spec = NULL, *values_list = NULL;
-  const char *savepoint_name;
+  const char *savepoint_name = NULL;
   DB_OBJECT *class_obj;
+  DB_VALUE *client_stream_values = NULL;
+  int client_stream_var_cnt = parser->host_var_count + parser->auto_param_count;
   QFILE_LIST_ID *list_id = NULL;
   int au_save;
   int wait_msecs = -2, old_wait_msecs = -2;
@@ -18578,6 +18838,19 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       class_obj = flat->info.name.db_object;
     }
 
+  if (!(statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP))
+    {
+      err = begin_client_internal_lob_dml_stream (client_stream_var_cnt, parser->host_variables,
+						  &client_stream_values, class_obj != NULL ? ws_oid (class_obj) : NULL);
+      if (err != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (client_stream_values != NULL)
+	{
+	  do_swap_internal_lob_stream_values (client_stream_var_cnt, parser->host_variables, client_stream_values);
+	}
+    }
 
   if (statement->info.merge.flags & PT_MERGE_INFO_SERVER_OP)
     {
@@ -18640,8 +18913,10 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (parser->query_id == NULL_QUERY_ID);
       list_id = NULL;
 
-      err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			   parser->host_variables, &list_id, query_flag, NULL, NULL);
+      err = execute_query_with_internal_lob_dml (statement->xasl_id, &parser->query_id,
+						 parser->host_var_count + parser->auto_param_count,
+						 parser->host_variables, &list_id, query_flag, NULL, NULL,
+						 class_obj != NULL ? ws_oid (class_obj) : NULL);
 
       AU_RESTORE (au_save);
       if (err != NO_ERROR)
@@ -18877,6 +19152,11 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  (void) tran_reset_wait_times (old_wait_msecs);
 	}
 
+      if (err >= NO_ERROR && client_stream_values != NULL)
+	{
+	  err = sm_flush_objects (class_obj);
+	}
+
       if (err >= NO_ERROR)
 	{
 	  err = db_is_vclass (class_obj);
@@ -18904,6 +19184,23 @@ exit:
   if (list_id != NULL)
     {
       cursor_free_self_list_id (list_id);
+    }
+
+  if (client_stream_values != NULL)
+    {
+      do_swap_internal_lob_stream_values (client_stream_var_cnt, parser->host_variables, client_stream_values);
+      if (err < NO_ERROR)
+	{
+	  abort_client_internal_lob_dml_stream (client_stream_var_cnt, client_stream_values);
+	}
+      else
+	{
+	  int stream_error = end_client_internal_lob_dml_stream (client_stream_var_cnt, client_stream_values);
+	  if (stream_error != NO_ERROR)
+	    {
+	      err = stream_error;
+	    }
+	}
     }
 
   /* If err == er_errid () and parser has error, we already record the parser error to sys error, no need to call
@@ -22638,4 +22935,126 @@ pt_is_allowed_result_cache ()
     }
 
   return true;
+}
+
+/*
+ * do_copy () - Execute a COPY statement
+ *   return: Error code or number of rows loaded
+ *   parser(in): Parser context
+ *   statement(in): Parse tree node for COPY statement
+ *
+ * Resolves the table and column types, then calls copy_from_init(). Actual
+ * binary data transfer is handled by the CAS broker via stream_from_send_data()
+ * and stream_from_end().
+ */
+int
+do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int error = NO_ERROR;
+  const char *table_name;
+  DB_OBJECT *class_obj;
+  DB_ATTRIBUTE *attr;
+  PT_NODE *col;
+  DB_TYPE *col_types = NULL;
+  int ncols = 0;
+  PT_NODE *entity_spec;
+  PT_NODE *entity;
+
+  /* table_name is stored as a PT_SPEC from class_spec_without_server_name */
+  entity_spec = statement->info.copy.table_name;
+  if (entity_spec == NULL || entity_spec->node_type != PT_SPEC || entity_spec->info.spec.entity_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  entity = entity_spec->info.spec.flat_entity_list;
+  if (entity != NULL)
+    {
+      table_name = entity->info.name.original;
+    }
+  else
+    {
+      /* flat_entity_list may not be populated; use entity_name directly */
+      table_name = entity_spec->info.spec.entity_name->info.name.resolved;
+      if (table_name == NULL)
+	{
+	  table_name = entity_spec->info.spec.entity_name->info.name.original;
+	}
+    }
+
+  class_obj = db_find_class (table_name);
+  if (class_obj == NULL)
+    {
+      error = er_errid ();
+      return (error != NO_ERROR) ? error : ER_FAILED;
+    }
+
+  if (statement->info.copy.column_list != NULL)
+    {
+      for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	{
+	  ncols++;
+	}
+
+      col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
+      if (col_types == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      int i = 0;
+      for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	{
+	  attr = db_get_attribute (class_obj, col->info.name.original);
+	  if (attr == NULL)
+	    {
+	      error = er_errid ();
+	      free_and_init (col_types);
+	      return (error != NO_ERROR) ? error : ER_FAILED;
+	    }
+	  col_types[i++] = db_attribute_type (attr);
+	}
+    }
+  else
+    {
+      /* no column list: use all columns in schema order */
+      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	{
+	  ncols++;
+	}
+
+      col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
+      if (col_types == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      int i = 0;
+      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	{
+	  col_types[i++] = db_attribute_type (attr);
+	}
+    }
+
+  /* CSV-only options are rejected for the BINARY format (DDL-time error). */
+  if (statement->info.copy.format != 1
+      && (statement->info.copy.fmt.csv.delimiter != 0 || statement->info.copy.fmt.csv.quote != 0
+	  || statement->info.copy.fmt.csv.header != 0))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
+	      "DELIMITER/QUOTE/HEADER are only valid with FORMAT CSV");
+      free_and_init (col_types);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  error = copy_from_init (table_name, col_types, ncols, statement->info.copy.format,
+			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
+			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk);
+
+  free_and_init (col_types);
+
+  return error;
 }
