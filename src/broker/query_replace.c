@@ -114,6 +114,13 @@ qr_hash_str (const char *s)
 /* highest operator id qr_norm_glue can address; id 0 means "not an operator" */
 #define QR_NORM_NOPS  15
 
+/* what the last '.' emitted was attached to, which decides whether it can be part of a
+ * number: "1." continues one, "qr_t1." does not, and a '.' with whitespace before it may
+ * still start one (".5"). */
+#define QR_DOT_SEP    0
+#define QR_DOT_IDENT  1
+#define QR_DOT_NUM    2
+
 /* qr_norm_char_class[b] = OR of the QR_CC_* flags for byte b, built once at
  * process startup so both the CAS lookup path and the broker rule-build path
  * index it directly with no per-call setup or per-character multi-compare. */
@@ -227,11 +234,15 @@ static bool qr_norm_char_class_ready = qr_build_norm_char_class ();
  *   return: true if one separator space has to be emitted
  *   dst(in), len(in): output so far (len > 0)
  *   c(in): the byte about to be emitted, already folded
+ *   num_tok(in): the token body last emitted began with a digit, so it is a number and not an
+ *     identifier -- "1 . 2" has to stay apart while "qr_t1 . code" may merge
+ *   dot_kind(in): QR_DOT_* for the last '.' emitted
  */
-STATIC_INLINE bool qr_norm_need_space (const char *dst, int len, char c) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool qr_norm_need_space (const char *dst, int len, char c, int num_tok, int dot_kind)
+  __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE bool
-qr_norm_need_space (const char *dst, int len, char c)
+qr_norm_need_space (const char *dst, int len, char c, int num_tok, int dot_kind)
 {
   unsigned char prev = (unsigned char) dst[len - 1];
   unsigned char pid;
@@ -257,24 +268,38 @@ qr_norm_need_space (const char *dst, int len, char c)
     }
 
   /* a '.' beside a digit builds a numeric literal out of what were three tokens: "1 . 2" is a
-   * syntax error, "1.2" is one number, and merging them lets a rule for the valid query serve
-   * the invalid one.  "t . c" still merges with "t.c" -- the lexer accepts whitespace after a
-   * dot before an identifier -- unless the name ends in a digit, where this errs toward a miss. */
-  if ((c == '.' && (qr_norm_char_class[prev] & QR_CC_DIGIT))
-      || (prev == '.' && (qr_norm_char_class[(unsigned char) c] & QR_CC_DIGIT)))
+   * syntax error and "1.2" is one number.  the token before the dot tells a number from an
+   * identifier, so "qr_t1 . code" keeps merging with "qr_t1.code". */
+  if (c == '.' && num_tok && (qr_norm_char_class[prev] & QR_CC_DIGIT))
     {
       return true;
     }
+  if (prev == '.')
+    {
+      /* ".5" starts at the dot, so a dot that only a separator precedes may still begin a
+       * number; only a dot stuck to a non-numeric identifier ("qr_t1. 2") may lose the space. */
+      if ((qr_norm_char_class[(unsigned char) c] & QR_CC_DIGIT) && dot_kind != QR_DOT_IDENT)
+	{
+	  return true;
+	}
+      /* an exponent or float suffix right after the dot keeps building the number: "1.E2" is
+       * 100.0 while "1. e2" is 1.0 aliased e2 -- both parse, so a collision here does not even
+       * announce itself as a broken query. */
+      if ((c == 'E' || c == 'e' || c == 'F' || c == 'f') && dot_kind == QR_DOT_NUM)
+	{
+	  return true;
+	}
+    }
 
   /* the sign of an exponent belongs to the number the same way: "1e+5" is one token while
-   * "1e +5" and "1e+ 5" are syntax errors.  the digit before the 'e' is what tells an exponent
-   * from an identifier, so "a e + b" keeps merging. */
-  if ((c == '+' || c == '-') && (prev == 'e' || prev == 'E')
+   * "1e +5" and "1e+ 5" are syntax errors.  an identifier that merely ends in a digit and an
+   * 'e' ("foo1e + 2") is not a number, so it keeps merging. */
+  if (num_tok && (c == '+' || c == '-') && (prev == 'e' || prev == 'E')
       && len >= 2 && (qr_norm_char_class[(unsigned char) dst[len - 2]] & QR_CC_DIGIT))
     {
       return true;
     }
-  if ((qr_norm_char_class[(unsigned char) c] & QR_CC_DIGIT) && (prev == '+' || prev == '-')
+  if (num_tok && (qr_norm_char_class[(unsigned char) c] & QR_CC_DIGIT) && (prev == '+' || prev == '-')
       && len >= 3 && (dst[len - 2] == 'e' || dst[len - 2] == 'E')
       && (qr_norm_char_class[(unsigned char) dst[len - 3]] & QR_CC_DIGIT))
     {
@@ -294,6 +319,8 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 {
   int len = 0;
   int prev_space = 1;		/* drop leading whitespace */
+  int num_tok = 0;		/* the token body last emitted began with a digit */
+  int dot_kind = QR_DOT_SEP;	/* what the last '.' emitted was attached to */
   char quote = 0;		/* current open quote char, 0 = outside literal */
   const char *s;
   unsigned int h = 5381;
@@ -325,7 +352,7 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 
 #define QR_PEND(ch) \
   do { \
-    if (prev_space && len > 0 && qr_norm_need_space (dst, len, (ch))) \
+    if (prev_space && len > 0 && qr_norm_need_space (dst, len, (ch), num_tok, dot_kind)) \
       { \
         QR_PUT (' '); \
       } \
@@ -449,7 +476,7 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 			    {
 			      char fc = QR_FOLD (*s);
 
-			      if (inner_prev_space && len > 0 && qr_norm_need_space (dst, len, fc))
+			      if (inner_prev_space && len > 0 && qr_norm_need_space (dst, len, fc, num_tok, dot_kind))
 				{
 				  QR_PUT (' ');
 				}
@@ -484,7 +511,7 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 			    {
 			      char fc = QR_FOLD (*s);
 
-			      if (inner_prev_space && len > 0 && qr_norm_need_space (dst, len, fc))
+			      if (inner_prev_space && len > 0 && qr_norm_need_space (dst, len, fc, num_tok, dot_kind))
 				{
 				  QR_PUT (' ');
 				}
@@ -551,6 +578,24 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	char fc = QR_FOLD (c);
 
 	QR_PEND (fc);
+	if (qr_norm_char_class[(unsigned char) fc] & QR_CC_WORD)
+	  {
+	    if (len == 0 || !(qr_norm_char_class[(unsigned char) dst[len - 1]] & QR_CC_WORD))
+	      {
+		num_tok = (qr_norm_char_class[(unsigned char) fc] & QR_CC_DIGIT) ? 1 : 0;
+	      }
+	  }
+	else if (fc == '.')
+	  {
+	    if (prev_space || len == 0 || !(qr_norm_char_class[(unsigned char) dst[len - 1]] & QR_CC_WORD))
+	      {
+		dot_kind = QR_DOT_SEP;
+	      }
+	    else
+	      {
+		dot_kind = num_tok ? QR_DOT_NUM : QR_DOT_IDENT;
+	      }
+	  }
 	prev_space = 0;
 	QR_PUT (fc);
       }
