@@ -342,6 +342,7 @@ static int qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg);
 static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
+static bool qo_plan_is_groupby_skip_candidate (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
@@ -1210,6 +1211,20 @@ qo_top_plan_new (QO_PLAN * plan)
 	      parser_free_node (parser, group_sort_list);
 	    }
 
+	  if (groupby_skip && plan->need_final_sort)
+	    {
+	      /*
+	       * The interesting order comes from the outermost index scan, but a hash/merge join
+	       * above it (for which qo_join_new sets need_final_sort) does not hand that order on:
+	       * a hash join may not preserve the order of its probe input when partitioned or run
+	       * in parallel, and a merge join re-sorts both inputs by the join column in S_ASC
+	       * order regardless of direction. qexec_groupby_index () trusts its input to be
+	       * grouped and has no fallback, so a broken order would silently split groups.
+	       * Give up the skip here and let the GROUP BY sort be costed in below.
+	       */
+	      groupby_skip = false;
+	    }
+
 	  if (groupby_skip)
 	    {
 	      /* if the plan is index_groupby, we validate the plan */
@@ -1222,7 +1237,15 @@ qo_top_plan_new (QO_PLAN * plan)
 		      return plan;
 		    }
 		}
-	      /* if all goes well, we have an indexed plan with group by skip! */
+	      /*
+	       * If all goes well, we have an indexed plan with group by skip!
+	       * Only a single scan top plan raises the flag here.  For a join top plan the
+	       * QO_INDEX_ENTRY is shared by every candidate plan on that node, and this
+	       * function runs for every complete candidate plan, so raising the shared flag
+	       * here could leak a discarded candidate's verdict into the chosen plan.
+	       * For joins the verdict is derived from the plan shape at XASL generation
+	       * instead - see qo_plan_skip_groupby ().
+	       */
 	      if (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index)
 		{
 		  plan->plan_un.scan.index->head->groupby_skip = true;
@@ -6360,8 +6383,12 @@ qo_check_plan_on_info (QO_INFO * info, QO_PLAN * plan)
       return 0;
     }
 
-  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan. */
-  if (qo_is_iscan_from_groupby (plan) && !plan->plan_un.scan.index->head->groupby_skip)
+  /* if the plan is of type QO_SCANMETHOD_INDEX_GRUOPBY_SCAN but it doesn't skip the groupby, we release the plan.
+   * The groupby_skip flag is only raised once a plan is top-rooted, so before that - while joins are still being
+   * enumerated - judge the plan by the candidate predicate instead, exactly as the ORDER BY branch above does.
+   * Otherwise no group-by skip index scan could ever survive in a statement that has a join. */
+  if (qo_is_iscan_from_groupby (plan)
+      && !(plan->top_rooted ? plan->plan_un.scan.index->head->groupby_skip : qo_plan_is_groupby_skip_candidate (plan)))
     {
       qo_plan_release (plan);
       return 0;
@@ -13577,6 +13604,83 @@ cleanup:
     }
 
   return is_orderby_skip;
+}
+
+/*
+ * qo_plan_is_groupby_skip_candidate () - verify if a plan is a candidate for
+ *					  groupby skip
+ * return : true/false
+ * plan (in) : plan to verify
+ *
+ * note: This is the GROUP BY counterpart of qo_plan_is_orderby_skip_candidate ().
+ *	 It is needed because the groupby_skip flag on the index entry is only raised
+ *	 by qo_top_plan_new () once a plan covers the whole query, so during join
+ *	 enumeration the flag is still down and cannot be used to admit a candidate.
+ */
+static bool
+qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE *group_by, *statement, *entity, *group_sort_list;
+  QO_ENV *env;
+  bool is_prefix = false, is_groupby_skip = false;
+
+  if (plan == NULL || plan->info == NULL)
+    {
+      assert (false);
+      return false;
+    }
+
+  env = plan->info->env;
+
+  parser = QO_ENV_PARSER (env);
+  statement = QO_ENV_PT_TREE (env);
+  group_by = statement->info.query.q.select.group_by;
+
+  /* WITH ROLLUP needs every group boundary materialized, so the sort cannot be skipped. */
+  if (group_by == NULL || group_by->flag.with_rollup)
+    {
+      goto end;
+    }
+
+  group_sort_list = qo_plan_compute_iscan_sort_list (plan, group_by, &is_prefix, false);
+  if (group_sort_list == NULL)
+    {
+      goto end;
+    }
+
+  if (is_prefix)
+    {
+      parser_free_tree (parser, group_sort_list);
+      goto end;
+    }
+
+  /* no descending retry here; qo_top_plan_new () does not retry descending on a join plan, so such a candidate could
+   * never skip the group by anyway */
+  is_groupby_skip = pt_sort_spec_cover_groupby (parser, group_sort_list, group_by, statement);
+
+  parser_free_tree (parser, group_sort_list);
+
+  /*
+   * In RIGHT OUTER JOIN, all leading tables are used as null-supplying,
+   * so skip GROUP BY cannot be applied.
+   * This mirrors the check in qo_plan_is_orderby_skip_candidate ().
+   */
+  if (is_groupby_skip && qo_is_iscan_from_groupby (plan))
+    {
+      entity = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)->next;
+      for (; entity != NULL; entity = entity->next)
+	{
+	  if (entity->info.spec.join_type == PT_JOIN_RIGHT_OUTER)
+	    {
+	      is_groupby_skip = false;
+	      break;
+	    }
+	}
+    }
+
+end:
+  return is_groupby_skip;
 }
 
 /*
