@@ -1543,23 +1543,88 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 }
 
 /*
- * dblink_dml_open () - Connect to remote server and prepare the INSERT or DELETE statement for the
- *   DBLink remote push-sink (INSERT SELECT ... FROM local, DELETE + local subquery).
+ * dblink_dml_build_update_sql () - Build "UPDATE <table> SET <set_text>" plus " WHERE <key_col> <op> ?"
+ *   when the statement has a WHERE. set_text already carries one placeholder per bound SET value, so the
+ *   statement's placeholders read SET first and then the key -- the order the caller binds in.
+ *   return: NO_ERROR on success, error code on failure
+ *   thread_p(in)   : thread entry
+ *   table_name(in) : remote table name
+ *   set_text(in)   : SET clause built at XASL generation ("c1 = ?, c2 = c2 + 1")
+ *   key_col(in)    : remote WHERE column, NULL when the statement updates every remote row
+ *   op(in)         : comparison operator SQL text, NULL together with key_col
+ *   sql_out(out)   : set to the built SQL text on success
+ *
+ * The identifiers are appended unquoted, as the DELETE builder appends its key column; see the TODO there.
+ */
+static int
+dblink_dml_build_update_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *set_text,
+			     const char *key_col, const char *op, char **sql_out)
+{
+  int ret, remaining;
+  char *sql;
+  size_t sql_len;
+  bool has_where;
+
+  *sql_out = NULL;
+
+  if (set_text == NULL || set_text[0] == '\0')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE: SET text is NULL or empty");
+      return ER_DBLINK;
+    }
+
+  /* key_col and op arrive together: the statement either sends a WHERE or updates every remote row */
+  has_where = (key_col != NULL && key_col[0] != '\0');
+  if (has_where != (op != NULL && op[0] != '\0'))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE: key_col and op disagree");
+      return ER_DBLINK;
+    }
+
+  sql_len = strlen (table_name) + strlen (set_text) + (has_where ? strlen (key_col) + strlen (op) : 0) + 64;
+  sql = (char *) db_private_alloc (thread_p, sql_len);
+  if (sql == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  remaining = (int) sql_len;
+  if (has_where)
+    {
+      ret = snprintf (sql, remaining, "/* DBLINK UPDATE */ UPDATE %s SET %s WHERE %s %s ?", table_name, set_text,
+		      key_col, op);
+    }
+  else
+    {
+      ret = snprintf (sql, remaining, "/* DBLINK UPDATE */ UPDATE %s SET %s", table_name, set_text);
+    }
+  if (ret < 0 || ret >= remaining)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote UPDATE: SQL assembly truncated");
+      db_private_free (thread_p, sql);
+      return ER_DBLINK;
+    }
+
+  *sql_out = sql;
+  return NO_ERROR;
+}
+
+/*
+ * dblink_dml_open () - Connect to remote server and prepare the statement the DBLink remote push-sink
+ *   sends (INSERT SELECT ... FROM local, DELETE or UPDATE with a local subquery).
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)    : thread entry
- *   kind(in)        : DBLINK_DML_INSERT or DBLINK_DML_DELETE
- *   url(in)         : CCI connection URL
- *   user(in)        : remote user name
- *   pwd(in)         : remote password
- *   table_name(in)  : remote table name
+ *   kind(in)        : DBLINK_DML_INSERT, DBLINK_DML_DELETE or DBLINK_DML_UPDATE
+ *   sink(in)        : the plan's sink fields -- connection, target table, and the remote WHERE column and
+ *                     operator when the statement sends a WHERE
  *   attr_names(in)  : INSERT only -- explicit column names (NULL for positional INSERT)
  *   num_attrs(in)   : INSERT only -- length of attr_names (0 when positional)
  *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
- *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
- *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
+ *   set_text(in)    : UPDATE only -- the SET clause, with a placeholder per bound value
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
- * Note: To prevent partial writes, both kinds ALWAYS:
+ * Note: To prevent partial writes, every kind ALWAYS:
  *   1. Set CCI_AUTOCOMMIT_FALSE on the remote CCI connection (ignores DBLINK_AUTO_COMMIT)
  *   2. Register the connection in the per-local-transaction dblink pool
  *      (qmgr_dblink_add_conn_handle)
@@ -1582,9 +1647,8 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
  *   connection stays in the pool either way.
  */
 int
-dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user, const char *pwd,
-		 const char *table_name, char **attr_names, int num_attrs, int num_bind, const char *key_col,
-		 const char *op, DBLINK_DML_STATE * state)
+dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML_SINK * sink, char **attr_names,
+		 int num_attrs, int num_bind, const char *set_text, DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
@@ -1596,19 +1660,19 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
   state->savepoint_set = false;
   state->rows_sent = false;
 
-  if (table_name == NULL || table_name[0] == '\0')
+  if (sink->table_name == NULL || sink->table_name[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: table_name is NULL or empty");
       return ER_DBLINK;
     }
-  if (url == NULL || user == NULL || pwd == NULL)
+  if (sink->url == NULL || sink->user == NULL || sink->pwd == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: url/user/pwd is NULL");
       return ER_DBLINK;
     }
 
-  /* switch (not if/kind==INSERT-else) + default so a future DBLINK_DML_UPDATE that forgets to add a
-   * case here fails with a clear error instead of silently taking the wrong branch. */
+  /* switch (not if/kind==INSERT-else) + default so a kind added later that forgets a case here fails with
+   * a clear error instead of silently taking the wrong branch. */
   switch (kind)
     {
     case DBLINK_DML_INSERT:
@@ -1616,6 +1680,9 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       break;
     case DBLINK_DML_DELETE:
       errctx = "remote DELETE";
+      break;
+    case DBLINK_DML_UPDATE:
+      errctx = "remote UPDATE";
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
@@ -1625,7 +1692,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
   /* Acquire pooled remote connection: CCI_AUTOCOMMIT_FALSE (ignore DBLINK_AUTO_COMMIT) + DML 2PC
    * participant, for all-or-nothing.  Shared with the scan/push paths via dblink_acquire_pooled_conn;
    * the connection is committed/rolled back + disconnected by qmgr_check_dblink_trans() at local txn end. */
-  ret = dblink_acquire_pooled_conn (thread_p, url, user, pwd, CCI_AUTOCOMMIT_FALSE, true, errctx, &state->conn_handle);
+  ret = dblink_acquire_pooled_conn (thread_p, sink->url, sink->user, sink->pwd, CCI_AUTOCOMMIT_FALSE, true, errctx,
+				    &state->conn_handle);
   if (ret != NO_ERROR)
     {
       /* er_set done in helper; a partially opened conn (if any) is cleaned up by the helper */
@@ -1635,10 +1703,14 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
   switch (kind)
     {
     case DBLINK_DML_INSERT:
-      ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind, &sql);
+      ret = dblink_dml_build_insert_sql (thread_p, sink->table_name, attr_names, num_attrs, num_bind, &sql);
       break;
     case DBLINK_DML_DELETE:
-      ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, &sql);
+      ret = dblink_dml_build_delete_sql (thread_p, sink->table_name, sink->remote_key_col, sink->remote_op, &sql);
+      break;
+    case DBLINK_DML_UPDATE:
+      ret = dblink_dml_build_update_sql (thread_p, sink->table_name, set_text, sink->remote_key_col, sink->remote_op,
+					 &sql);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
@@ -1679,7 +1751,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
 }
 
 /*
- * dblink_dml_execute_row () - Bind values and execute one remote INSERT or DELETE row.
+ * dblink_dml_execute_row () - Bind values and execute one row of the remote statement this sink sends
+ *   (INSERT, DELETE or UPDATE).
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)      : thread entry
  *   state(in)         : open DML sink state (conn_handle, stmt_handle)
