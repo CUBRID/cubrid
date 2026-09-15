@@ -10411,10 +10411,13 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       goto fallback_serial;
     }
 
-  /* glean the read-only index config once; scanners share it */
+  /* glean the read-only index config once; scanners share it. It always returns NO_ERROR, so check
+   * the error stack and key_type instead -- or_get_domain can fail with or without reporting */
   memset (&btid_int, 0, sizeof (btid_int));
   btid_int.sys_btid = btid;
-  if (btree_glean_root_header_info (thread_p, root_header, &btid_int, true) != NO_ERROR)
+  er_clear ();
+  (void) btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
+  if (er_errid () != NO_ERROR || btid_int.key_type == NULL)
     {
       goto exit_on_error;
     }
