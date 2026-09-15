@@ -809,19 +809,14 @@ jobs:
             tmp="${dir}.tmp.${GITHUB_RUN_ID}"
             rm -rf "$tmp"
             mkdir -p "$tmp"
-            # Inside the CUBRID tree on purpose: the shard reads it back out of
-            # what it unpacked, so it proves the tree the tests actually run on.
-            # Written before the archive so it travels inside it.
+            # Written before the archive so it travels inside it: the shard
+            # reads it back out of what it unpacked.
             meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
               "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
             printf '%s\n' "$meta" > "/home/CUBRID/$BUILD_META"
 
-            # One archive, not a tree of 463 files. The shard unpacks it onto node
-            # disk and mounts that. A published tree became the shard's overlay
-            # lowerdir, so every process launch in every case read the build over
-            # GlusterFS -- that saturated a node's FUSE client and pushed its
-            # shards into the 120-minute timeout. gzip -1 because the win is
-            # bytes off the wire, not the last of the ratio.
+            # An archive, not a tree: a published tree became the shard's overlay
+            # lowerdir, so every process launch read the build over GlusterFS.
             tar -C /home -cf - CUBRID | gzip -1 > "$tmp/CUBRID.tar.gz"
 
             # The summary links this copy, not the one under the run directory: a
@@ -879,7 +874,6 @@ jobs:
               exit 1
             }
           done
-          # The shard's provenance check reads this back out of the archive.
           tar -tzf "$dir/CUBRID.tar.gz" "CUBRID/$BUILD_META" >/dev/null || {
             echo "::error::the archive carries no CUBRID/$BUILD_META: $dir"; exit 1; }
           by=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")
@@ -1776,12 +1770,9 @@ jobs:
             mkdir -p "$TC_DIR"
           fi
 
-          # The lowerdir has to be node-local. Pointed at the volume, it made
-          # every process launch in every case a FUSE read: that saturated a
-          # node's FUSE client and pushed its shards into the 120-minute
-          # timeout. /build-lower is the container's own layer, which is node
-          # disk. The write layer stays tmpfs -- sql and medium create their
-          # databases under CUBRID_DIR, which is what /build-rw is sized for.
+          # The lowerdir must be node-local -- pointed at the volume, every
+          # process launch in every case is a FUSE read. The write layer stays
+          # tmpfs: sql and medium create their databases under CUBRID_DIR.
           base="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug"
           lower=/build-lower/CUBRID
           mkdir -p /build-lower
@@ -1790,8 +1781,7 @@ jobs:
             tar -xzf "$base/CUBRID.tar.gz" -C /build-lower
             from="$base/CUBRID.tar.gz"
           elif [ -d "$base/CUBRID" ]; then
-            # Published before this change. One bulk copy still beats reading it
-            # file by file for the length of the shard.
+            # Published before this change: one bulk copy, not a shard-long drip.
             cp -a "$base/CUBRID" "$lower"
             from="$base/CUBRID"
           else
@@ -1984,7 +1974,7 @@ jobs:
           # "Publish results for collect" reports the cgroup high-water mark.
           echo "/rw       : $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
           echo "/build-rw : $(df -h /build-rw | tail -1 | awk '{print $3" used of "$2}')"
-          # Not tmpfs: the unpacked build on node disk, this pod's own copy.
+          # Not tmpfs: the unpacked build on node disk.
           echo "/build-lower : $(du -sh /build-lower 2>/dev/null | awk '{print $1}')"
 
       - name: Run CTP
