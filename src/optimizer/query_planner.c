@@ -3637,7 +3637,8 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val, outer_card;
+  double guessed_result_cardinality, limit_val, outer_card, inner_work;
+  PT_JOIN_TYPE sa_type;
 
   inner = planp->plan_un.join.inner;
 
@@ -3699,10 +3700,28 @@ qo_nljoin_cost (QO_PLAN * planp)
     {
       guessed_result_cardinality = (outer->info)->cardinality;
     }
+
+  inner_work = guessed_result_cardinality;
+
+  sa_type = qo_plan_semi_anti_join_type (inner);
+  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
+    {
+      double match_frac;
+      match_frac = MIN (1.0, (outer->info)->hit_prob);
+
+      if (inner->iscan_index_rows > 0.0)
+	{
+	  /* the key range holds matching rows only, so the row the scan stops on is the first one it
+	   * reads whichever of the iscan_index_rows it is, and an outer row whose key is absent from the
+	   * index reads none at all */
+	  inner_work = guessed_result_cardinality * match_frac / MAX (1.0, inner->iscan_index_rows);
+	}
+    }
+
   /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
    * the inner side really descends once per outer row, so it is charged here and only here --
    * see the publishing comment in qo_iscan_cost (). */
-  inner_cpu_cost = guessed_result_cardinality * (inner->variable_cpu_cost + inner->iscan_descent_cpu);
+  inner_cpu_cost = inner_work * inner->variable_cpu_cost + guessed_result_cardinality * inner->iscan_descent_cpu;
 
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
@@ -3721,7 +3740,7 @@ qo_nljoin_cost (QO_PLAN * planp)
        * those rows' pages are fetched regardless of whether the filter later rejects them).
        * Using the filtered join cardinality here under-counted the fetches of strongly-filtered
        * joins and made orders containing them look too cheap. */
-      N = guessed_result_cardinality * MAX (1.0, inner->iscan_index_rows);
+      N = inner_work * MAX (1.0, inner->iscan_index_rows);
 
       /* Saturate the heap side and the leaf side separately, each against its own object size:
        * the heap share (iscan_heap_io, recorded by qo_iscan_cost) against the inner table's
@@ -3739,14 +3758,13 @@ qo_nljoin_cost (QO_PLAN * planp)
       heap_fetched = qo_mackert_lohman_pages ((double) QO_NODE_TCARD (inner->plan_un.scan.node), N);
       leaf_fetched = qo_mackert_lohman_pages ((double) inner->plan_un.scan.index->cum_stats.pages, N);
 
-      inner_io_cost = MIN (guessed_result_cardinality * heap_io, heap_fetched)
-	+ MIN (guessed_result_cardinality * leaf_io, leaf_fetched);
+      inner_io_cost = MIN (inner_work * heap_io, heap_fetched) + MIN (inner_work * leaf_io, leaf_fetched);
     }
   else
     {
       /* if inner is seq scan, it is calculated by default card. */
       /* This prevents the worst plan if the cardinality is calculated to be less than the actual value. */
-      inner_io_cost = (guessed_result_cardinality + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
+      inner_io_cost = (inner_work + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
     }
 
   /* outer side CPU cost of nested-loop block join */
@@ -7698,6 +7716,13 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
       return;
     }
 
+  /* The counts above are the base columns' own, but each side may already have been cut down by its
+   * filters and earlier joins, and no side can hold more distinct values than it holds rows.  Bound
+   * each count by its side's row count: a join whose outer narrowed to the values the inner does keep
+   * was otherwise charged the original relationship and read as half-missing. */
+  head_ndv = MIN (head_ndv, (INT64) MAX (1.0, head_info->cardinality));
+  tail_ndv = MIN (tail_ndv, (INT64) MAX (1.0, tail_info->cardinality));
+
   *out_head_factor = MIN (1.0, (double) tail_ndv / (double) head_ndv);
   *out_tail_factor = MIN (1.0, (double) head_ndv / (double) tail_ndv);
 }
@@ -8299,6 +8324,23 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  cardinality = MAX (1.0, cardinality);
 	  total_rows *= selectivity;
 	  total_rows = MAX (1.0, total_rows);
+
+	  if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	    {
+	      /* a SEMI JOIN emits an outer row at most once and an ANTI JOIN only the outer rows the inner
+	       * does not match, so neither can emit more rows than the outer side holds.  The product above
+	       * counts one row per matching inner row instead, which the next join step would then carry.
+	       * head_hit_prob is the share of outer rows the inner matches (qo_get_term_hit_prob ()). */
+	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI)
+		{
+		  cardinality = head_info->cardinality * head_hit_prob;
+		}
+	      else
+		{
+		  cardinality = head_info->cardinality * (1.0 - head_hit_prob);
+		}
+	      cardinality = MAX (1.0, cardinality);
+	    }
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
 	    {
