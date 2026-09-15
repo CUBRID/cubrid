@@ -1497,8 +1497,8 @@ jobs:
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     # 50 privileged pods running testcase code; testcases arrive via the App token.
     permissions: {}
-    # plan picks the lane: runs-on cannot read needs.gate, and plan is the one job
-    # that knows both the suite and whether this is a re-run.
+    # The lane comes from plan, not an expression here: plan already owns the
+    # split, and a second copy of the rule is the one nobody updates.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
