@@ -287,7 +287,12 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE) /* Debug only: unsafe, may break DB consistency */ \
   \
   /* server-side full-scan reservoir histogram build */ \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR)
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR) \
+  \
+  /* shared client->server byte-stream transport */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_INIT) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_SEND_DATA) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_END)
 
 enum net_server_request
 {

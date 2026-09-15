@@ -89,6 +89,10 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+#include "stream_session.hpp"	/* STREAM_KIND_* */
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -11947,6 +11951,83 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 #endif /* !CS_MODE */
 }
 
+#if defined(CS_MODE)
+/* Whether this connection holds an open stream session. The caller of a
+ * statement that opened one needs to know that bytes are still to come,
+ * without knowing which consumer opened it. */
+static bool stream_Is_open = false;
+#endif /* CS_MODE */
+
+/*
+ * stream_from_is_open () - Is a stream session open on this connection?
+ *   return: true between a successful stream_from_init () and stream_from_end ()
+ */
+bool
+stream_from_is_open (void)
+{
+#if defined(CS_MODE)
+  return stream_Is_open;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_init () - Open a client->server byte-stream session on the server
+ *   return: error code
+ *   stream_kind(in): STREAM_KIND_* consumer tag (e.g. STREAM_KIND_COPY)
+ *   config(in): consumer-specific config blob (already or_pack_*'d by the caller)
+ *   config_len(in): length of config in bytes
+ *
+ * Sends [int stream_kind][config bytes] to NET_SERVER_STREAM_INIT. The server
+ * factory dispatches on stream_kind to build the matching session. This entry is
+ * consumer-agnostic; the config blob is opaque here.
+ */
+int
+stream_from_init (int stream_kind, const char *config, int config_len)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int request_size;
+  char *request = NULL;
+  char *ptr;
+
+  /* size: stream_kind (int) + config blob */
+  request_size = OR_INT_SIZE + config_len;
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_int (request, stream_kind);
+  if (config_len > 0)
+    {
+      memcpy (ptr, config, config_len);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_INIT, request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  stream_Is_open = (rc == NO_ERROR);
+
+  free_and_init (request);
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
 /*
  * file_clean_invalid_file -
  *
@@ -12044,3 +12125,89 @@ file_delete_target_file (const char *target_vfid_str)
 #endif /* !CS_MODE */
 }
 #endif
+
+/*
+ * stream_from_send_data () - Send one chunk of the byte stream to the server
+ *   return: error code
+ *   data(in): binary data buffer
+ *   data_len(in): length of data in bytes
+ */
+int
+stream_from_send_data (const char *data, int data_len)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_SEND_DATA, (char *) data, data_len, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+  else
+    {
+      /* server returned a standard error reply; propagate its code (and the
+       * message net_client_request placed in the error stack) to the caller */
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
+
+  if (rc != NO_ERROR)
+    {
+      /* the server drops the session on a failed chunk, so nothing is open here either */
+      stream_Is_open = false;
+    }
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_end () - End the stream and retrieve the session's result
+ *   return: error code
+ *   count(out): the binding's count -- rows for COPY, bytes for a value stream
+ */
+int
+stream_from_end (INT64 * count)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_END, NULL, 0, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  /* the server drops the session on END whether or not it reported an error */
+  stream_Is_open = false;
+
+  if (!req_error)
+    {
+      char *ptr;
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int64 (ptr, count);
+    }
+  else
+    {
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
+
+  return rc;
+#else /* CS_MODE */
+  *count = 0;
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}

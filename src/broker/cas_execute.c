@@ -81,6 +81,10 @@
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
 #include "query_replace.h"
+#include "network_interface_cl.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -10420,6 +10424,10 @@ encode_ext_type_to_short (T_BROKER_VERSION client_version, unsigned char cas_typ
 // return             : true to commit, false otherwise
 // server_handle (in) : server handle
 //
+/* Auto-commit owed by a statement that opened a stream session; the stream
+ * END pays it once the transfer is done. */
+static bool stream_Deferred_auto_commit = false;
+
 static bool
 do_commit_after_execute (const t_srv_handle & server_handle)
 {
@@ -10437,6 +10445,15 @@ do_commit_after_execute (const t_srv_handle & server_handle)
   // IMPORTANT EXCEPTION: server commit must always be followed by a client commit! when result set is small (less than
   //                      one page) and when other conditions are met too, server commits automatically.
   //
+
+  /* A statement that opened a stream session is not finished here: the byte
+   * transfer follows and the stream END ends the statement, so the commit is
+   * deferred to it -- with the mode this statement ran in. */
+  if (stream_from_is_open ())
+    {
+      stream_Deferred_auto_commit = (server_handle.auto_commit_mode == TRUE);
+      return false;
+    }
 
   if (server_handle.auto_commit_mode != TRUE)
     {
@@ -10498,4 +10515,44 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
   srv_handle->q_result->stmt_id = stmt_id;
 
   return err_code;
+}
+
+int
+ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  err_code = stream_from_send_data (data, data_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+int
+ux_stream_end (T_NET_BUF * net_buf, bool * auto_commit)
+{
+  int err_code;
+  INT64 count = 0;
+
+  *auto_commit = stream_Deferred_auto_commit;
+  stream_Deferred_auto_commit = false;
+
+  err_code = stream_from_end (&count);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_bigint (net_buf, count, NULL);
+  return 0;
 }

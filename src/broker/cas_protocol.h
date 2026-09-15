@@ -217,6 +217,8 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
+    CAS_FC_STREAM_SEND_DATA = 45,
+    CAS_FC_STREAM_END = 46,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
