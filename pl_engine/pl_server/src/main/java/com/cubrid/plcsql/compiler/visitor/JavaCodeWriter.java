@@ -318,7 +318,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'+AUTH-CHECKED-DECL'%",
                 "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "      %'+PARAMETERS'%",
-                "    ) throws Exception {",
+                "    ) {",
                 "    %'+AUTH-CLEAR'%",
                 "    try {",
                 "      %'+MAIN-USER-CODE'%",
@@ -462,7 +462,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "    %'+PARAMETERS'%",
-                "  ) throws Exception {",
+                "  ) {",
                 "  %'+AUTH-CLEAR'%",
                 "  Long[] sql_rowcount = new Long[] { null };",
                 "  %'+NULLIFY-OUT-PARAMETERS'%",
@@ -802,7 +802,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplExprCase =
             new String[] {
                 "(new Object() { %'RESULT-TYPE'% invoke(%'SELECTOR-TYPE'% selector) // simple case expression",
-                "   throws Exception {",
+                "   {",
                 "  return",
                 "    %'+WHEN-PARTS'%",
                 "    %'+ELSE-PART'%;",
@@ -959,7 +959,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplExprGlobalFuncCall_notInLoop =
             new String[] {
                 "(new Object() { // global function call: %'FUNC-NAME'%",
-                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
+                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) {",
                 "    CallableStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
                 "      pstmt_%'SQL-SERIAL-NO'% = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
@@ -986,7 +986,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplExprGlobalFuncCall_inLoop =
             new String[] {
                 "(new Object() { // global function call: %'FUNC-NAME'%",
-                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
+                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) {",
                 "    CallableStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
                 "      pstmt_%'SQL-SERIAL-NO'% = pstmtRef_%'SQL-SERIAL-NO'%[0];",
@@ -1017,7 +1017,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplExprGlobalFuncCall_direct =
             new String[] {
                 "(new Object() { // global function call (direct): %'FUNC-NAME'%",
-                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
+                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) {",
                 "    %'+AUTH-CHECK'%",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
                 "    %'RETURN-TYPE'% ret = %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
@@ -1362,7 +1362,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplExprLocalFuncCall =
             new String[] {
                 "(new Object() { // local function call: %'FUNC-NAME'%",
-                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) throws Exception {",
+                "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) {",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
                 "    %'RETURN-TYPE'% ret = %'BLOCK'%%'FUNC-NAME'%(%'ARGS'%);",
                 "    %'+UPDATE-OUT-ARGS'%",
@@ -1444,7 +1444,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplExprSerialVal_notInLoop =
             new String[] {
                 "(new Object() {",
-                "  BigDecimal getSerialVal() throws Exception {",
+                "  BigDecimal getSerialVal() {",
                 "    PreparedStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
                 "      BigDecimal ret;",
@@ -1464,7 +1464,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      throw new SQL_ERROR(\"serial value unavailable\");",
                 "    } finally {",
                 "      if (pstmt_%'SQL-SERIAL-NO'% != null) {",
-                "        pstmt_%'SQL-SERIAL-NO'%.close();",
+                "        try {",
+                "          pstmt_%'SQL-SERIAL-NO'%.close();",
+                "        } catch (SQLException e) {",
+                "          throw new SQL_ERROR(e.getMessage());",
+                "        }",
                 "      }",
                 "    }",
                 "  }",
@@ -1474,7 +1478,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplExprSerialVal_inLoop =
             new String[] {
                 "(new Object() {",
-                "  BigDecimal getSerialVal() throws Exception {",
+                "  BigDecimal getSerialVal() {",
                 "    PreparedStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
                 "      BigDecimal ret;",
@@ -2592,7 +2596,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtGlobalProcCall_notInLoop =
             new String[] {
                 "new Object() { // global procedure call: %'PROC-NAME'%",
-                "  void invoke(%'PARAMETERS'%) throws Exception {",
+                "  void invoke(%'PARAMETERS'%) {",
                 "    CallableStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
                 "      pstmt_%'SQL-SERIAL-NO'% = conn.prepareCall(\"%'DYNAMIC-SQL'%\");",
@@ -2616,7 +2620,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtGlobalProcCall_inLoop =
             new String[] {
                 "new Object() { // global procedure call: %'PROC-NAME'%",
-                "  void invoke(%'PARAMETERS'%) throws Exception {",
+                "  void invoke(%'PARAMETERS'%) {",
                 "    CallableStatement pstmt_%'SQL-SERIAL-NO'% = null;",
                 "    try {",
                 "      pstmt_%'SQL-SERIAL-NO'% = pstmtRef_%'SQL-SERIAL-NO'%[0];",
@@ -2644,7 +2648,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtGlobalProcCall_direct =
             new String[] {
                 "new Object() { // global procedure call (direct): %'PROC-NAME'%",
-                "  void invoke(%'PARAMETERS'%) throws Exception {",
+                "  void invoke(%'PARAMETERS'%) {",
                 "    %'+AUTH-CHECK'%",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
                 "    %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
@@ -2765,7 +2769,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static String[] tmplStmtLocalProcCall =
             new String[] {
                 "new Object() { // local procedure call: %'PROC-NAME'%",
-                "  void invoke(%'PARAMETERS'%) throws Exception {",
+                "  void invoke(%'PARAMETERS'%) {",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
                 "    %'BLOCK'%%'PROC-NAME'%(%'ARGS'%);",
                 "    %'+UPDATE-OUT-ARGS'%",
@@ -3430,7 +3434,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     private static final String[] tmplDeclBlock =
             new String[] {
                 "class Decl_of_%'BLOCK'% {",
-                "  Decl_of_%'BLOCK'%() throws Exception {};",
+                "  Decl_of_%'BLOCK'%() {};",
                 "  %'+DECLARATIONS'%",
                 "}",
                 "Decl_of_%'BLOCK'% %'BLOCK'% = new Decl_of_%'BLOCK'%();"
