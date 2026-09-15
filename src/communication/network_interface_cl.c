@@ -12029,6 +12029,67 @@ stream_from_init (int stream_kind, const char *config, int config_len)
 }
 
 /*
+ * copy_from_init () - Initialize a COPY FROM STDIN session on the server
+ *   return: error code
+ *   table_name(in): target table name
+ *   col_types(in): array of column DB_TYPE values
+ *   ncols(in): number of columns
+ *
+ * Thin COPY binding over stream_from_init(): packs the COPY config blob (table
+ * name + options + col_types, unchanged encoding) and opens with STREAM_KIND_COPY.
+ */
+int
+copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols, int format,
+		int delimiter, int quote, int header, int bulk)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int config_size;
+  char *config = NULL;
+  char *ptr;
+
+  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk
+   * + ncols * col_type + ncols * attribute id. The attribute ids carry the user's
+   * column list, which the column types alone cannot express. */
+  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE * 2);
+
+  config = (char *) malloc (config_size);
+  if (config == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) config_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_string (config, table_name);
+  ptr = or_pack_int (ptr, ncols);
+  ptr = or_pack_int (ptr, format);
+  ptr = or_pack_int (ptr, delimiter);
+  ptr = or_pack_int (ptr, quote);
+  ptr = or_pack_int (ptr, header);
+  ptr = or_pack_int (ptr, bulk);
+  for (int i = 0; i < ncols; i++)
+    {
+      ptr = or_pack_int (ptr, (int) col_types[i]);
+    }
+  for (int i = 0; i < ncols; i++)
+    {
+      ptr = or_pack_int (ptr, col_ids[i]);
+    }
+
+  rc = stream_from_init (STREAM_KIND_COPY, config, config_size);
+
+  free_and_init (config);
+
+  return rc;
+#else /* CS_MODE */
+  /* The stream transport is a client->server network path; standalone mode has
+   * no server to stream to, so report it instead of silently loading nothing. */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "COPY FROM STDIN in standalone mode");
+  return ER_COPY_NOT_SUPPORTED;
+#endif /* !CS_MODE */
+}
+
+/*
  * file_clean_invalid_file -
  *
  * return:
