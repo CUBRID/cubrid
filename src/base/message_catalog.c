@@ -46,6 +46,9 @@
 #include <string.h>
 #include <limits.h>
 #include <stdio.h>
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+#include <mutex>
+#endif
 
 #include "porting.h"
 
@@ -484,7 +487,7 @@ struct msgcat_def
   const char *name;
   MSG_CATD msg_catd;
 };
-struct msgcat_def msgcat_System[] = {
+static struct msgcat_def msgcat_System[] = {
   {MSGCAT_CATALOG_CUBRID /* 0 */ , "cubrid.cat", NULL},
   {MSGCAT_CATALOG_CSQL /* 1 */ , "csql.cat", NULL},
   {MSGCAT_CATALOG_UTILS /* 2 */ , "utils.cat", NULL}
@@ -492,6 +495,14 @@ struct msgcat_def msgcat_System[] = {
 
 #define MSGCAT_SYSTEM_DIM \
         (sizeof(msgcat_System) / sizeof(struct msgcat_def))
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+// To ensure safety in a multi-threaded environment, access to msgcat_System[x].msg_catd must be protected using a lock.
+// In addition, msgcat_init() and msgcat_final() must not be called concurrently in a multi-thread environment
+/* *INDENT-OFF* */
+static std::mutex g_msgcat_mutex;
+/* *INDENT-ON* */
+#endif
 
 /*
  * msgcat_init - initialize message catalog module
@@ -502,6 +513,9 @@ msgcat_init (void)
 {
   size_t i;
   int rc = NO_ERROR;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  std::lock_guard < std::mutex > lock (g_msgcat_mutex);
+#endif
 
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
     {
@@ -528,6 +542,9 @@ msgcat_final (void)
 {
   size_t i;
   int rc;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  std::lock_guard < std::mutex > lock (g_msgcat_mutex);
+#endif
 
   rc = NO_ERROR;
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
@@ -567,10 +584,17 @@ msgcat_message (int cat_id, int set_id, int msg_id)
 
   if (msgcat_System[cat_id].msg_catd == NULL)
     {
-      msgcat_System[cat_id].msg_catd = msgcat_open (msgcat_System[cat_id].name);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      std::lock_guard < std::mutex > lock (g_msgcat_mutex);
+
       if (msgcat_System[cat_id].msg_catd == NULL)
+#endif
 	{
-	  return NULL;
+	  msgcat_System[cat_id].msg_catd = msgcat_open (msgcat_System[cat_id].name);
+	  if (msgcat_System[cat_id].msg_catd == NULL)
+	    {
+	      return NULL;
+	    }
 	}
     }
 

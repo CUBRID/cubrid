@@ -83,6 +83,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(CS_MODE)
+#error Does not belong to CS_MODE
+#endif
+
 #define RMUTEX_NAME_TDES_TOPOP "TDES_TOPOP"
 
 #define NUM_ASSIGNED_TRAN_INDICES log_Gl.trantable.num_assigned_indices
