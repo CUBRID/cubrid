@@ -134,6 +134,15 @@ struct internal_lob_stream_cursor
  * instead of unbounded server memory. */
 #define INTERNAL_LOB_STREAM_MAX_CURSORS 1024
 
+/* Every well-behaved reader (CAS, csql, unloaddb) already caps a single read at 1MB - see
+ * INTERNAL_LOB_STREAM_MAX_CHUNK in cas_protocol.h, CSQL_INTERNAL_LOB_STREAM_CHUNK_SIZE, and
+ * INTERNAL_LOB_UNLOAD_BLOCK_SIZE.  Those are self-imposed client-side limits: the server itself
+ * enforced nothing, so `count` reached malloc() and internal_lob_read_pull()'s buffer-pool fetch
+ * unbounded.  A client that speaks the raw protocol directly - bypassing CAS's own limit entirely -
+ * could force an arbitrary allocation and copy per request.  This mirrors the client-side limit
+ * instead of inventing a new one, so no compliant client is affected. */
+#define INTERNAL_LOB_READ_MAX_CHUNK (1024 * 1024)
+
 static std::mutex internal_lob_stream_mutex;
 static std::map<INT64, internal_lob_stream_cursor> internal_lob_stream_cursor_table;
 static INT64 internal_lob_stream_next_token = 1;
@@ -10362,7 +10371,8 @@ sinternal_lob_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   ptr = or_unpack_int64 (request, &offset);
   (void) or_unpack_int (ptr, &count);
 
-  if (offset < 0 || count < 0 || !internal_lob_parse_locator_string (locator_string, locator_len, &locator))
+  if (offset < 0 || count < 0 || count > INTERNAL_LOB_READ_MAX_CHUNK
+      || !internal_lob_parse_locator_string (locator_string, locator_len, &locator))
     {
       err = ER_GENERIC_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -10531,7 +10541,7 @@ sinternal_lob_stream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
   ptr = or_unpack_int64 (ptr, &token);
   (void) or_unpack_int (ptr, &count);
 
-  if (token <= 0 || count < 0)
+  if (token <= 0 || count < 0 || count > INTERNAL_LOB_READ_MAX_CHUNK)
     {
       err = ER_OBJ_INVALID_ARGUMENTS;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
