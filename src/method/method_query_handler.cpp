@@ -869,6 +869,10 @@ namespace cubmethod
 	return ER_FAILED;
       }
 
+    /* skip leading whitespace/comments before classifying the statement */
+    std::size_t pos = skip_leading_whitespace_and_comment (sql_stmt_copy, 0);
+    sql_stmt_copy = sql_stmt_copy.substr (pos);
+
     str_trim (sql_stmt_copy);
     int stmt_type = get_stmt_type (sql_stmt_copy);
     if (stmt_type != CUBRID_STMT_CALL)
