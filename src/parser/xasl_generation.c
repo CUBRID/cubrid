@@ -22790,28 +22790,22 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 	  return NULL;
 	}
 
-      /* remote UPDATE + local subquery: qstr == NULL means the gate chose the value-push sink. The plan is
-       * built here so the builder runs on every such statement, but the per-row runtime that executes it is
-       * not there yet, so the statement is refused rather than handed a plan with no way to run. The
-       * refusal is what the runtime commit removes. */
+      /* remote UPDATE + local subquery: qstr == NULL means the gate chose the value-push sink, so build the
+       * plan the sink runs instead of the pushdown text below, which would ship a statement whose local
+       * subqueries cannot run on the remote server. */
       if (from->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
 	  && from->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
 	{
-	  if (pt_to_update_xasl_remote_subquery (parser, statement) == NULL)
+	  XASL_NODE *sink_xasl = pt_to_update_xasl_remote_subquery (parser, statement);
+
+	  if (sink_xasl == NULL && pt_has_error (parser))
 	    {
 	      /* only when the builder left a parse-tree error: with none, this call would discard the
 	       * er_set the builder made and report "Internal error- reporting semantic error" instead. */
-	      if (pt_has_error (parser))
-		{
-		  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
-		}
-	      return NULL;
+	      pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
 	    }
 
-	  PT_ERROR (parser, statement,
-		    "dblink: remote UPDATE with local subquery is not supported yet (under construction)");
-	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
-	  return NULL;
+	  return sink_xasl;
 	}
 
       return pt_to_xasl_for_dblink (parser, from);
