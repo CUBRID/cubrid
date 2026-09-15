@@ -16983,6 +16983,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
     }
 
   xasl->status = XASL_SUCCESS;
+  qexec_assert_result_list_backward (xasl, xasl->list_id);
 
   return NO_ERROR;
 
