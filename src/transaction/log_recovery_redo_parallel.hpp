@@ -193,7 +193,7 @@ namespace cublog
        */
       task_active_state_bookkeeping m_task_state_bookkeeping;
 
-      cubthread::worker_pool_type *m_worker_pool;
+      worker_pool_type<> *m_worker_pool;
       /* tasks have owner-controlled life-time in order to be able to
        * collect post-execution perf stats from them
        */

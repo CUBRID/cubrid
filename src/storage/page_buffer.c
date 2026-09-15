@@ -5303,6 +5303,42 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * pgbuf_set_force_latch_wait () - make page latches ignore the transaction's no-wait setting
+ *   return: the old value, to be restored by the caller
+ *   thread_p(in): thread entry
+ *   force(in): new value
+ *
+ * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
+ *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
+ *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
+ *       inconsistency.
+ *       The flag lives in the thread entry rather than in LOG_TDES because parallel scan workers share their
+ *       parent's tran_index: a save/restore on tdes->wait_msecs would race between sibling workers and could
+ *       drop the user's lock_timeout.
+ */
+bool
+pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force)
+{
+#if defined (SERVER_MODE)
+  bool old_val;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
+  old_val = thread_p->force_latch_wait;
+  thread_p->force_latch_wait = force;
+
+  return old_val;
+#else /* not SERVER_MODE = SA_MODE */
+  /* single threaded, no latch contention */
+  return false;
+#endif /* not SERVER_MODE */
+}
+
+/*
  * pgbuf_set_lsa_as_temporary () - The log sequence address of the page is set to temporary lsa address
  *   return: void
  *   pgptr(in): Pointer to page
@@ -11575,11 +11611,15 @@ pgbuf_wakeup_page_flush_daemon (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_has_perm_pages_fixed () -
+ * pgbuf_has_perm_pages_fixed () - does the thread still hold a page other than a query result page?
  *
- * return	       : The number of pages fixed by the thread.
+ * return	       : true if any page whose type is not PAGE_QRESULT is fixed by the thread.
  * thread_p (in)       : Thread entry.
  *
+ * Note: PAGE_QRESULT is the single exemption, because a query result page belongs to the thread's own list file
+ *       scan and no other thread fixes it. Callers use this to check that a thread is not holding a latch another
+ *       thread needs before it blocks - see lock_suspend and pgbuf_ordered_callback. Widening the exemption to the
+ *       other temporary page types would loosen those asserts, so weigh those callers before changing it.
  */
 bool
 pgbuf_has_perm_pages_fixed (THREAD_ENTRY * thread_p)
@@ -12942,12 +12982,11 @@ exit:
  *   callback_func (in): callback executed without any fixed pages
  *   callback_args (in): callback arguments
  *
- * Note: Every ordered page fixed by the current thread must have a watcher, because its fix can only be restored
- *       through the watcher's page pointer. Fixes on pages that are not ordered pages are left alone: the heap
- *       allocation path never fixes them, so keeping them cannot deadlock with the allocating thread. The callback
- *       must not leave any page fixed. Unfixed pages are re-fixed in page order even when the callback returns an
- *       error. If re-fixing fails, some watchers may remain without a fixed page and callers must check watcher page
- *       pointers before using them.
+ * Note: Only ordered pages are unfixed, because only they carry a watcher through which the fix can be restored. Any
+ *       other fix is left in place - see the assert before the callback. The callback must not fix a page of its
+ *       own.
+ *       Unfixed pages are re-fixed in page order even when the callback returns an error. If re-fixing fails, some
+ *       watchers may remain without a fixed page and callers must check watcher page pointers before using them.
  */
 #if !defined(NDEBUG)
 int
@@ -12999,10 +13038,8 @@ pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_
 
       if (!PGBUF_IS_ORDERED_PAGETYPE (holder->bufptr->iopage_buffer->iopage.prv.ptype))
 	{
-	  /* not part of the heap latch ordering protocol, so the heap allocation path never fixes it and keeping it */
-	  /* across the callback cannot deadlock with the thread that owns the allocation. query result page fixed by */
-	  /* the select side of an INSERT ... SELECT is the usual case here, and it carries no watcher. leave it fixed */
-	  /* and untouched, exactly as pgbuf_ordered_fix does for the holders it cannot restore. */
+	  /* outside the heap latch ordering protocol, so it has no watcher and its fix cannot be restored. leave it
+	   * in place, exactly as pgbuf_ordered_fix does for the holders it cannot restore. */
 	  continue;
 	}
 
@@ -13132,13 +13169,16 @@ pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_
 	}
     }
 
-  assert (pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list == NULL);
+  /* pgbuf_ordered_callback used to require that the thread holds no page at all. It unfixes ordered pages only, so a
+   * fix without a watcher may now remain - in practice the query result page of the thread's own list file scan,
+   * which no other thread fixes. Any other type must surface here: the shard allocator the callback waits for fixes
+   * PAGE_FTAB and PAGE_VOLHEADER itself, and keeping one of those across the wait would deadlock against it.
+   *
+   * TODO: if this fires, decide whether the reported page type must be unfixed across the callback too, rather than
+   * allowing it here. */
+  assert (!pgbuf_has_perm_pages_fixed (thread_p));
 
   callback_status = callback_func (thread_p, callback_args);
-
-  /* only callback functions that do not fix any pages are allowed. */
-  /* it must not leave a page fixed. */
-  assert (pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list == NULL);
 
   /* restore every page in the same global order used by ordered fix. */
   for (i = 0; i < saved_pages_cnt; i++)
@@ -16846,17 +16886,35 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
+  int wait_msecs;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
+  wait_msecs = (tdes != NULL) ? tdes->wait_msecs : LK_ZERO_WAIT;
+
+#if defined (SERVER_MODE)
+  /* The two disk manager fixes must not inherit the transaction's no-wait setting; see
+   * pgbuf_set_force_latch_wait ().
+   * Both no-wait values are in scope although they have different owners - LK_ZERO_WAIT carries the user's
+   * lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. Every check fed by this function tests
+   * that same pair - the demotion in pgbuf_fix_internal (), the sleep budget in pgbuf_timed_sleep () and the
+   * early give-up in pgbuf_ordered_fix () - and a fix that must not be refused has to clear all of them.
+   * Lift only those two: a finite or an already infinite policy is left as the transaction set it, because
+   * pgbuf_timed_sleep () classifies a watchdog expiry by this very value and would otherwise report
+   * ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED. Resolve NULL the way pgbuf_set_force_latch_wait ()
+   * does, so the flag is read from the entry it was written to. */
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
-      return tdes->wait_msecs;
+      THREAD_ENTRY *flag_owner_p = (thread_p != NULL) ? thread_p : thread_get_thread_entry_info ();
+
+      if (flag_owner_p != NULL && flag_owner_p->force_latch_wait)
+	{
+	  return LK_INFINITE_WAIT;
+	}
     }
-  else
-    {
-      return 0;
-    }
+#endif /* SERVER_MODE */
+
+  return wait_msecs;
 }
 
 /*

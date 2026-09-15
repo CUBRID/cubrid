@@ -53,10 +53,11 @@
  *   transid(in):
  *   invalidate_snapshot(in): true, if need to invalidate the snapshot
  *   db_error(in):
+ *   in_method(in): true, if this packet belongs to a method callback
  */
 CSS_QUEUE_ENTRY *
 connection_list_cl::css_make_queue_entry (unsigned int key, char *buffer, int size, CSS_QUEUE_ENTRY *next, int rc,
-    int transid, int invalidate_snapshot, int db_error)
+    int transid, int invalidate_snapshot, int db_error, bool in_method)
 {
   CSS_QUEUE_ENTRY *entry_p;
 
@@ -74,6 +75,7 @@ connection_list_cl::css_make_queue_entry (unsigned int key, char *buffer, int si
   entry_p->transaction_id = transid;
   entry_p->invalidate_snapshot = invalidate_snapshot;
   entry_p->db_error = db_error;
+  entry_p->in_method = in_method;
 
   return entry_p;
 }
@@ -129,18 +131,20 @@ connection_list_cl::css_find_queue_entry (CSS_QUEUE_ENTRY *header, unsigned int 
  *   transid(in):
  *   invalidate_snapshot(in):
  *   db_error(in):
+ *   in_method(in):
  *
  * Note: this will add an entry to the end of the header
  */
 int
 connection_list_cl::css_add_entry_to_header (CSS_QUEUE_ENTRY **anchor, unsigned short request_id, char *buffer,
     int buffer_size, int rc, int transid, int invalidate_snapshot,
-    int db_error)
+    int db_error, bool in_method)
 {
   CSS_QUEUE_ENTRY *enrty_p, *new_entry_p;
 
   new_entry_p =
-	  css_make_queue_entry (request_id, buffer, buffer_size, NULL, rc, transid, invalidate_snapshot, db_error);
+	  css_make_queue_entry (request_id, buffer, buffer_size, NULL, rc, transid, invalidate_snapshot, db_error,
+				in_method);
   if (new_entry_p == NULL)
     {
       return CANT_ALLOC_BUFFER;
@@ -310,7 +314,7 @@ connection_list_cl::css_queue_packet (CSS_CONN_ENTRY *conn, CSS_QUEUE_ENTRY **qu
   if (!css_is_request_aborted (conn, request_id))
     {
       return css_add_entry_to_header (queue_p, request_id, buffer, size, rc, conn->get_tran_index (),
-				      conn->invalidate_snapshot, conn->db_error);
+				      conn->invalidate_snapshot, conn->db_error, conn->in_method);
     }
 
   return NO_ERRORS;
@@ -352,7 +356,7 @@ connection_list_cl::css_recv_and_queue_packet (CSS_CONN_ENTRY *conn, unsigned sh
       if (!css_is_request_aborted (conn, request_id))
 	{
 	  css_add_entry_to_header (queue_p, request_id, buffer, size, rc, conn->get_tran_index (),
-				   conn->invalidate_snapshot, conn->db_error);
+				   conn->invalidate_snapshot, conn->db_error, conn->in_method);
 	  return true;
 	}
     }
@@ -488,7 +492,7 @@ connection_list_cl::css_queue_command_packet (CSS_CONN_ENTRY *conn, unsigned sho
 	{
 	  memcpy ((char *) temp, (char *) header, sizeof (NET_HEADER));
 	  css_add_entry_to_header (&conn->request_queue, request_id, (char *) temp, size, 0, conn->get_tran_index (),
-				   conn->invalidate_snapshot, conn->db_error);
+				   conn->invalidate_snapshot, conn->db_error, conn->in_method);
 	}
     }
 }
@@ -509,7 +513,7 @@ connection_list_cl::css_process_abort_packet (CSS_CONN_ENTRY *conn, unsigned sho
   if (css_find_queue_entry (conn->abort_queue, request_id) == NULL)
     {
       css_add_entry_to_header (&conn->abort_queue, request_id, NULL, 0, 0, conn->get_tran_index (),
-			       conn->invalidate_snapshot, conn->db_error);
+			       conn->invalidate_snapshot, conn->db_error, conn->in_method);
     }
 }
 

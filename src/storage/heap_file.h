@@ -409,7 +409,9 @@ extern int heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_
 extern int heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					const OID * class_oid, int op_type, MVCC_SNAPSHOT * mvcc_snapshot);
 extern int heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache);
+#endif /* ENABLE_UNUSED_FUNCTION */
 extern int heap_scancache_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern int heap_scancache_end_when_scan_will_resume (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
@@ -456,9 +458,12 @@ extern SCAN_CODE heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, R
 extern bool heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern bool heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern int heap_get_num_data_pages (THREAD_ENTRY * thread_p, const HFID * hfid, int *num_pages);
-extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
+/* heap_get_num_objects () returns NO_ERROR / ER_FAILED and hands the count back through nobjs (CBRD-27140);
+ * heap_estimate () below still returns *npages (or -1 on error) -- do not test the two the same way. */
+extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs,
+				 int *avg_length);
 
-extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
+extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs, int *avg_length);
 extern int heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid);
 
 extern int heap_get_class_name (THREAD_ENTRY * thread_p, const OID * class_oid, char **class_name);
@@ -573,8 +578,10 @@ extern OR_CLASSREP *heap_classrepr_get (THREAD_ENTRY * thread_p, const OID * cla
 extern int heap_classrepr_free (OR_CLASSREP * classrep, int *idx_incache);
 extern REPR_ID heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid);
 extern int heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid);
+#if defined (ENABLE_UNUSED_FUNCTION)
 extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES * recdes,
 						   HEAP_CACHE_ATTRINFO * attr_info);
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* Recovery functions */
 extern int heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

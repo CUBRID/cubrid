@@ -229,6 +229,13 @@ namespace cubconn::connection
       /* timer based */
       int m_timerfd;
       uint64_t m_timens;
+
+      /* dummy contexts registered to epoll for m_eventfd and m_timerfd.
+       * they are owned by this worker and are NOT tracked in m_context.
+       * their m_conn does not point to a real connection entry. see eventfd_register ().
+       */
+      context *m_eventfd_contexts[2] = { };
+
       /* index is a type of timer handle block */
       std::array<timer_handle, static_cast<std::size_t> (timer_type::TYPE_COUNT)> m_timer_handler;
 
@@ -342,7 +349,7 @@ namespace cubconn::connection
       result handle_data_packet (context *ctx, cubbase::span<std::byte> &packet);
 
       /* header */
-      result handle_command_header_packet (context *ctx);
+      result handle_command_header_packet (context *ctx, cubbase::span<std::byte> &packet);
       result handle_header_packet (context *ctx, cubbase::span<std::byte> &packet);
 
       /* reception */

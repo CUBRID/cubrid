@@ -45,7 +45,7 @@
 #include "misctype_def.h"
 
 // forward definitions
-struct json_t;
+struct trace_json_t;
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -1626,6 +1626,8 @@ typedef enum
 /*
  * Type definitions
  */
+
+typedef struct parser_string_block PARSER_STRING_BLOCK;	/* defined in parse_tree.c */
 
 typedef struct parser_varchar PARSER_VARCHAR;
 
@@ -3334,6 +3336,7 @@ struct pt_stored_proc_info
   PT_MISC_TYPE dtrm_type;	/* PT_NOT_DETERMINISTIC, PT_DETERMINISTIC */
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
+  unsigned parallel_enable:1;	/* PARALLEL_ENABLE clause */
   PT_TYPE_ENUM ret_type;
   PT_NODE *ret_data_type;
   int recompile;
@@ -3860,7 +3863,7 @@ typedef struct pt_plan_trace_info
   union
   {
     char *text_plan;
-    struct json_t *json_plan;
+    struct trace_json_t *json_plan;
   } trace;
 } PT_PLAN_TRACE_INFO;
 
@@ -3890,6 +3893,7 @@ struct parser_context
   int stack_size;		/* total number of slots in node_stack */
   PT_NODE **node_stack;		/* the parser stack */
   PT_NODE *orphans;		/* list of parse tree fragments freed later */
+  PARSER_STRING_BLOCK *string_blocks;	/* this parser's string block list (private to parse_tree.c) */
 
   char *error_buffer;		/* for parse error messages */
 
@@ -4116,7 +4120,7 @@ void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 extern "C"
 {
 #endif
-  void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  void *parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
 #ifdef __cplusplus
