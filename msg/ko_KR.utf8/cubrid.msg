@@ -2007,6 +2007,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
 
 339 패키지 "%1$s"이(가) 존재하지 않습니다.
+340 %1$s은(는) 아직 지원되지 않습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

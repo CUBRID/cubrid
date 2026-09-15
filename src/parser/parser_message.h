@@ -526,6 +526,7 @@
 #define MSGCAT_SEMANTIC_UUID_INVALID_ARG                MSGCAT_SEMANTIC_NO(338)
 
 #define MSGCAT_SEMANTIC_PKG_NOT_EXIST                            MSGCAT_SEMANTIC_NO(339)
+#define MSGCAT_SEMANTIC_NOT_SUPPORTED_YET                        MSGCAT_SEMANTIC_NO(340)
 
 /* Message id in the set MSGCAT_SET_PARSER_RUNTIME */
 #define MSGCAT_RUNTIME_NO(n)				n

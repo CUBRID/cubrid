@@ -9609,7 +9609,33 @@ pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_N
 static void
 pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  // TODO package
+  DB_OBJECT *owner = NULL;
+  PT_NODE *name = node->info.pkg.name;
+  const char *owner_name = pt_get_qualifier_name (parser, name);
+
+  if (owner_name == NULL)
+    {
+      /* not qualified: the package is created in the current user's schema */
+      return;
+    }
+
+  owner = db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_AU_INVALID_USER)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, owner_name);
+	}
+      return;
+    }
+
+  if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
+    {
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
+		  node->info.pkg.for_body ? "CREATE PACKAGE BODY" : "CREATE PACKAGE");
+    }
 }
 
 /*
@@ -9633,7 +9659,9 @@ pt_check_drop_package (PARSER_CONTEXT * parser, PT_NODE * node)
 static void
 pt_check_alter_package (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  // TODO package
+  /* TODO package: ALTER PACKAGE (COMMENT, OWNER TO, COMPILE) is not implemented yet. Reject it
+   * here so that it does not report success without doing anything. */
+  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_YET, "ALTER PACKAGE");
 }
 
 /*

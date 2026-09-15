@@ -2009,6 +2009,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
 339 Package "%1$s" does not exist.
+340 %1$s is not supported yet.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

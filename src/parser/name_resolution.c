@@ -3555,7 +3555,7 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	       * nodes PT_FUNCTION.  If so, pt_make_stored_procedure() and pt_make_method_call() will
 	       * translate it into a method_call.
 	       */
-	      sp_mop = jsp_find_stored_procedure (node->info.function.generic_name, DB_AUTH_NONE);
+	      sp_mop = jsp_find_stored_procedure (node->info.function.generic_name);
 	      if (sp_mop != NULL)
 		{
 		  sp_unique_name[0] = '\0';
