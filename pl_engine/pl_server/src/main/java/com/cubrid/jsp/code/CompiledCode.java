@@ -53,7 +53,7 @@ public class CompiledCode extends SimpleJavaFileObject {
             // it does not start with a package name but ends with ".class"
             this.className = name.substring(0, name.length() - ".class".length());
         } else {
-            // it starts with a package name "com.cubrid.generated..."
+            // it starts with a package name "com.cubrid.plcsql.generated..."
             this.className = name;
         }
 

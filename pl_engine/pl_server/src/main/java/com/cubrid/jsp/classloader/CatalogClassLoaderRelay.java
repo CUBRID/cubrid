@@ -52,15 +52,15 @@ public class CatalogClassLoaderRelay extends ClassLoader {
     @Override
     public Class<?> loadClass(String name) throws ClassNotFoundException {
 
-        // CatalogClassLoaderRelay cannot be a initiating class loader of the class of the given
+        // CatalogClassLoaderRelay cannot be an initiating class loader of the class of the given
         // name because
         //   . it does not call defineClass(), and
         //   . JVM does not call loadClass on it, but only the application code does.
         // This overriding is only to check the assertion.
-        // TODO: remove this overridding after some time.
+        // TODO: remove this overriding after some time.
 
         assert findLoadedClass(name) == null
-                : "CatalogClassLoaderRelay cannot be a initiating class loader for " + name;
+                : "CatalogClassLoaderRelay cannot be an initiating class loader for " + name;
         return super.loadClass(name);
     }
 

@@ -64,7 +64,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             if (decl.isPkgPublic) {
                 // stored procedures/functions
-                // package spec items and their impelementations in the package body
+                // package spec items and their implementations in the package body
                 return "public static ";
             } else {
                 // package body items which do not implement a package spec item
