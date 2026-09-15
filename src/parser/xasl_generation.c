@@ -19765,6 +19765,116 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * pt_dblink_dml_xasl_where () - Translate a sink's WHERE predicate into the three pieces the remote
+ *   statement needs: the key column, the comparison operator as SQL text, and the local subquery whose
+ *   values the sink binds one at a time. The DELETE and UPDATE sink builders ask this of the same shape,
+ *   so they ask it here; stmt is the statement word the messages carry.
+ *   return: true on success, false with the error set
+ *   cond(in)     : the WHERE predicate the parser gate admitted
+ *   key_col(out) : remote target column on the left-hand side
+ *   op_sql(out)  : the operator the remote statement gets
+ *   subq(out)    : the local subquery feeding the values
+ */
+static bool
+pt_dblink_dml_xasl_where (PARSER_CONTEXT * parser, PT_NODE * cond, const char *stmt, const char **key_col,
+			  const char **op_sql, PT_NODE ** subq)
+{
+  PT_NODE *arg1, *arg2;
+  char errmsg[256];
+
+  assert (cond != NULL && cond->node_type == PT_EXPR);
+
+  *key_col = NULL;
+  *op_sql = NULL;
+  *subq = NULL;
+
+  /* Only the first predicate is translated below, so a second would be dropped without a diagnostic. The
+   * gate admits one, but rewrites between there and here can append (LIMIT becomes inst_num() <= n). Reject
+   * so a future appender surfaces as an error instead of a silently unenforced condition. */
+  if (cond->next != NULL)
+    {
+      snprintf (errmsg, sizeof (errmsg), "remote %s subquery: only a single WHERE predicate is supported", stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  /* op -> remote WHERE text (fixed set; one remote pred per list-file value; ANY = per-row OR). */
+  switch (cond->info.expr.op)
+    {
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+    case PT_EQ:
+      *op_sql = "=";
+      break;
+    case PT_LT:
+    case PT_LT_SOME:
+      *op_sql = "<";
+      break;
+    case PT_GT:
+    case PT_GT_SOME:
+      *op_sql = ">";
+      break;
+    case PT_LE:
+    case PT_LE_SOME:
+      *op_sql = "<=";
+      break;
+    case PT_GE:
+    case PT_GE_SOME:
+      *op_sql = ">=";
+      break;
+    case PT_NE:
+    case PT_NE_SOME:
+      *op_sql = "<>";
+      break;
+    default:
+      snprintf (errmsg, sizeof (errmsg), "remote %s subquery: unexpected operator", stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  /* single-column WHERE left-hand side (reject row / multi-column predicates) */
+  arg1 = cond->info.expr.arg1;
+  if (arg1 != NULL && arg1->node_type == PT_NAME)
+    {
+      *key_col = arg1->info.name.original;
+    }
+  else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
+	   && arg1->info.dot.arg2->node_type == PT_NAME)
+    {
+      /* Trailing attr only; qualifier already checked at the parser gate (not re-checkable after name rewrite). */
+      *key_col = arg1->info.dot.arg2->info.name.original;
+    }
+  if (*key_col == NULL)
+    {
+      snprintf (errmsg, sizeof (errmsg),
+		"remote %s with a local subquery requires a single-column predicate (row / multi-column not supported)",
+		stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  /* the local subquery feeds the value list */
+  arg2 = cond->info.expr.arg2;
+  if (arg2 == NULL || !PT_IS_QUERY (arg2))
+    {
+      snprintf (errmsg, sizeof (errmsg), "remote %s subquery: WHERE right-hand side is not a subquery", stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  /* single-column subquery (one value bound per row) */
+  if (pt_length_of_select_list (pt_get_select_list (parser, arg2), EXCLUDE_HIDDEN_COLUMNS) != 1)
+    {
+      snprintf (errmsg, sizeof (errmsg), "remote %s local subquery must return a single column", stmt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return false;
+    }
+
+  *subq = arg2;
+  return true;
+}
+
+/*
  * pt_to_delete_xasl_remote_subquery () - Remote DELETE + local subquery: aptr = local list-file,
  *   DELETE_PROC holds remote conn/table/key/op; runtime binds per-row "DELETE ... WHERE key op ?".
  *
@@ -19780,7 +19890,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *aptr_statement = NULL;
   PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
   PT_DBLINK_INFO *pdblink = NULL;
-  PT_NODE *cond, *arg1, *arg2;
+  PT_NODE *cond;
   const char *op_sql = NULL;
   const char *key_col = NULL;
 
@@ -19789,84 +19899,8 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   from = statement->info.delete_.spec;
   cond = statement->info.delete_.search_cond;
 
-  assert (cond != NULL && cond->node_type == PT_EXPR);
-
-  /* Only the first predicate is translated below, so a second would be dropped without a diagnostic. The
-   * gate admits one, but rewrites between there and here can append (LIMIT becomes inst_num() <= n). Reject
-   * so a future appender surfaces as an error instead of a silently unenforced condition. */
-  if (cond->next != NULL)
+  if (!pt_dblink_dml_xasl_where (parser, cond, "DELETE", &key_col, &op_sql, &aptr_statement))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE subquery: only a single WHERE predicate is supported");
-      return NULL;
-    }
-
-  /* op -> remote WHERE text (fixed set; one remote pred per list-file value; ANY = per-row OR). */
-  switch (cond->info.expr.op)
-    {
-    case PT_IS_IN:
-    case PT_EQ_SOME:
-    case PT_EQ:
-      op_sql = "=";
-      break;
-    case PT_LT:
-    case PT_LT_SOME:
-      op_sql = "<";
-      break;
-    case PT_GT:
-    case PT_GT_SOME:
-      op_sql = ">";
-      break;
-    case PT_LE:
-    case PT_LE_SOME:
-      op_sql = "<=";
-      break;
-    case PT_GE:
-    case PT_GE_SOME:
-      op_sql = ">=";
-      break;
-    case PT_NE:
-    case PT_NE_SOME:
-      op_sql = "<>";
-      break;
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE subquery: unexpected operator");
-      return NULL;
-    }
-
-  /* single-column WHERE left-hand side (reject row / multi-column predicates) */
-  arg1 = cond->info.expr.arg1;
-  if (arg1 != NULL && arg1->node_type == PT_NAME)
-    {
-      key_col = arg1->info.name.original;
-    }
-  else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
-	   && arg1->info.dot.arg2->node_type == PT_NAME)
-    {
-      /* Trailing attr only; qualifier already checked at the parser gate (not re-checkable after name rewrite). */
-      key_col = arg1->info.dot.arg2->info.name.original;
-    }
-  if (key_col == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE with a local subquery requires a single-column predicate (row / multi-column not supported)");
-      return NULL;
-    }
-
-  /* the local subquery feeds the value list */
-  arg2 = cond->info.expr.arg2;
-  if (arg2 == NULL || !PT_IS_QUERY (arg2))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE subquery: WHERE right-hand side is not a subquery");
-      return NULL;
-    }
-
-  /* single-column subquery (one value bound per row) */
-  if (pt_length_of_select_list (pt_get_select_list (parser, arg2), EXCLUDE_HIDDEN_COLUMNS) != 1)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE local subquery must return a single column");
       return NULL;
     }
 
@@ -19874,7 +19908,6 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
    * (pt_dblink_delete_corr_ref), before the stand-alone bind -- so it never reaches this XASL builder. */
 
   /* build XASL skeleton: aptr (local subquery) + val_list + list scan spec */
-  aptr_statement = arg2;
   xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
   if (xasl == NULL || pt_has_error (parser))
     {
