@@ -22,6 +22,7 @@
 
 #include "px_scan_checker.hpp"
 #include "px_scan_instnum.hpp"
+#include "px_sp_eligibility.hpp"
 
 #include "dbtype_def.h"
 #include "error_manager.h"
@@ -132,7 +133,6 @@ namespace parallel_scan
 
   void process_xasl_node_recursive (XASL_NODE *arg);
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
-  void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg);
 
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
@@ -181,15 +181,15 @@ namespace parallel_scan
 	break;
       case TYPE_SP:
 	result |= check<is_outptr_list> (arg->value.sp_ptr->args);
-	/* SP not executable in child threads. */
-	if (is_outptr_list)
+	if (!px_sp_is_parallel_eligible (arg->value.sp_ptr->sig))
 	  {
-	    set_flag (result, CANNOT_LIST_MERGE);
+	    /* SP not executable in child threads. */
+	    set_flag (result, is_outptr_list ? CANNOT_LIST_MERGE : CANNOT_PARALLEL_SCAN);
 	  }
-	else
-	  {
-	    set_flag (result, CANNOT_PARALLEL_SCAN);
-	  }
+	/* declared PARALLEL_ENABLE: executable in px workers, so it blocks nothing. In the
+	 * output list that means the list-merge mode as well, where the workers evaluate
+	 * outptr_list themselves - an order-sensitive SP there is a false declaration, and the
+	 * trust model puts that on the declarer. */
 	break;
       case TYPE_FUNC:
 	temp = check<is_outptr_list> (arg->value.funcp->operand);
@@ -779,10 +779,6 @@ namespace parallel_scan
 	  {
 	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 	  }
-	for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
-	  {
-	    block_parallel_index_and_temp_in_subtree (xaslp);
-	  }
 	break;
       case BUILDLIST_PROC:
       case BUILDVALUE_PROC:
@@ -908,42 +904,6 @@ namespace parallel_scan
 	  }
       }
 
-  }
-
-  void block_parallel_index_and_temp_in_subtree (XASL_NODE *arg)
-  {
-    if (!arg)
-      {
-	return;
-      }
-    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
-      {
-	if (specp->type == TARGET_LIST
-	    || (specp->type == TARGET_CLASS && IS_ANY_INDEX_ACCESS (specp->access)))
-	  {
-	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
-	  }
-      }
-    for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
-    for (XASL_NODE *xaslp = arg->bptr_list; xaslp; xaslp = xaslp->next)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
-    for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
-    for (XASL_NODE *xaslp = arg->fptr_list; xaslp; xaslp = xaslp->next)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
-    for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
-      {
-	block_parallel_index_and_temp_in_subtree (xaslp);
-      }
   }
 
   void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg)

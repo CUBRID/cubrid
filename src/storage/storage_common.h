@@ -967,6 +967,15 @@ typedef enum
   SHOWSTMT_END
 } SHOWSTMT_TYPE;
 
+/* Scan mode of the show statements which acquire a class lock (SHOW HEAP HEADER/CAPACITY for now).
+ * It is passed as the last show argument; a request which does not carry it at all gets the
+ * default, EXACT. */
+typedef enum
+{
+  SHOWSTMT_SCAN_EXACT = 0,	/* S_LOCK: statistics consistent with the committed DML */
+  SHOWSTMT_SCAN_APPROX		/* IS_LOCK: concurrent with DML, but approximate */
+} SHOWSTMT_SCAN_MODE;
+
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4
 
