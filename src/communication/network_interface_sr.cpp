@@ -5112,6 +5112,43 @@ sbtree_class_test_unique (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 }
 
 /*
+ * sbtree_compact_overflow () - CBRD-27401: ALTER INDEX ... COMPACT. Compacts the overflow OID chains of an index.
+ *
+ * return :
+ * thread_p (in) :
+ * rid (in) :
+ * request (in) : packed BTID and fill factor
+ * reqlen (in) :
+ */
+void
+sbtree_compact_overflow (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  int fill_factor;
+  INT64 keys_compacted = 0;
+  INT64 pages_freed = 0;
+  int error;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE * 2) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_int (ptr, &fill_factor);
+
+  error = xbtree_compact_overflow (thread_p, &btid, fill_factor, &keys_compacted, &pages_freed);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int64 (ptr, keys_compacted);
+  ptr = or_pack_int64 (ptr, pages_freed);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sdk_totalpgs -
  *
  * return:
