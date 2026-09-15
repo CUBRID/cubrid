@@ -510,7 +510,16 @@ au_check_server_authorization (MOP server_object)
 bool
 au_is_server_authorized_user (DB_VALUE * owner_val)
 {
-  return (au_check_owner (owner_val) == NO_ERROR);
+  bool authorized;
+  int save;
+
+  /* au_check_owner () reads Au_user's "groups" bare: without this its group term drops out, and with
+   * no error. Disabling here rather than in each caller keeps every caller on the same predicate. */
+  AU_SAVE_AND_DISABLE (save);
+  authorized = (au_check_owner (owner_val) == NO_ERROR);
+  AU_RESTORE (save);
+
+  return authorized;
 }
 
 void
