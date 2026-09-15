@@ -464,6 +464,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    %'+PARAMETERS'%",
                 "  ) throws Exception {",
                 "  %'+AUTH-CLEAR'%",
+                "  Long[] sql_rowcount = new Long[] { null };",
                 "  %'+NULLIFY-OUT-PARAMETERS'%",
                 "  %'+DECL-CLASS'%",
                 "  %'+BODY'%",
