@@ -105,9 +105,15 @@ static int class_grant_loop (extract_context &ctxt, print_output &output_ctx, CL
  *                   user/group hierarchy.
  *   return: error code
  *   output_ctx(in/out): print context
+ *   password_output_ctx(in/out): print context for the password-restoring
+ *     "set_password_encoded[_sha1]" calls, kept out of output_ctx so the
+ *     password hashes do not end up in the (commonly shared) schema file
+ *     (KVE-2026-1859). Each statement pair emitted here is self-contained
+ *     (it looks its own user up by name) since it may be replayed from a
+ *     separate file/session from the one that creates the user.
  */
 int
-au_export_users (extract_context &ctxt, print_output &output_ctx)
+au_export_users (extract_context &ctxt, print_output &output_ctx, print_output &password_output_ctx)
 {
   int error = NO_ERROR;
   DB_SET *direct_groups = NULL;
@@ -248,25 +254,23 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 
 	  if (!is_system_user && has_dba_privilege)
 	    {
-	      output_ctx ("call [add_user]('%s', '') on class [db_root]", uname);
+	      output_ctx ("call [add_user]('%s', '') on class [db_root];\n", uname);
 	      if (has_password)
 		{
-		  output_ctx (" to [auser];\n");
-		  output_ctx ("call [%s]('%s') on [auser];\n",
-			      (encrypt_mode == ENCODE_PREFIX_DES) ? "set_password_encoded" : "set_password_encoded_sha1",
-			      passbuf);
-		}
-	      else
-		{
-		  output_ctx (";\n");
+		  password_output_ctx ("call [find_user]('%s') on class [_db_user] to [auser];\n", uname);
+		  password_output_ctx ("call [%s]('%s') on [auser];\n",
+				       (encrypt_mode ==
+					ENCODE_PREFIX_DES) ? "set_password_encoded" : "set_password_encoded_sha1",
+				       passbuf);
 		}
 	    }
 	  else if (is_system_user && has_password)
 	    {
-	      output_ctx ("call [find_user]('%s') on class [_db_user] to [auser];\n", uname);
-	      output_ctx ("call [%s]('%s') on [auser];\n",
-			  (encrypt_mode == ENCODE_PREFIX_DES) ? "set_password_encoded" : "set_password_encoded_sha1",
-			  passbuf);
+	      password_output_ctx ("call [find_user]('%s') on class [_db_user] to [auser];\n", uname);
+	      password_output_ctx ("call [%s]('%s') on [auser];\n",
+				   (encrypt_mode ==
+				    ENCODE_PREFIX_DES) ? "set_password_encoded" : "set_password_encoded_sha1",
+				   passbuf);
 	    }
 
 	  /* export comment */
