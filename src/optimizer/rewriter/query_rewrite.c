@@ -291,7 +291,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  /* rewrite uncorrelated subquery to join query */
 	  qo_rewrite_subqueries (parser, node, &idx, &continue_walk);
 
-	  qo_rewrite_exists_semi_anti (parser, node);
+	  qo_rewrite_exists_semi_anti (parser, node, &idx);
 	}
 
       /* rewrite optimization on WHERE, HAVING clause */
