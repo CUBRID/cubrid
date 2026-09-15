@@ -14982,6 +14982,11 @@ pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_
 	    }
 	  parser_free_tree (parser, copy->info.sort_spec.expr);
 	  copy->info.sort_spec.expr = pt_make_integer_value (parser, new_pos);
+	  if (copy->info.sort_spec.expr == NULL)
+	    {
+	      parser_free_tree (parser, copy);
+	      goto give_up;
+	    }
 	  copy->info.sort_spec.pos_descr.pos_no = new_pos;
 	  new_order = parser_append_node (copy, new_order);
 	  continue;
@@ -15015,6 +15020,11 @@ pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_
 	  copy->info.sort_spec.expr =
 	    (zero == NULL) ? NULL : pt_wrap_with_cast_op (parser, zero, PT_TYPE_INTEGER,
 							  TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	  if (copy->info.sort_spec.expr == NULL && zero != NULL)
+	    {
+	      /* pt_wrap_with_cast_op () gives up before it takes the constant over */
+	      parser_free_tree (parser, zero);
+	    }
 	}
       else
 	{
@@ -15023,6 +15033,7 @@ pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_
 
       if (copy->info.sort_spec.expr == NULL)
 	{
+	  parser_free_tree (parser, copy);
 	  goto give_up;
 	}
       copy->info.sort_spec.expr->flag.is_hidden_column = 0;
@@ -15084,9 +15095,6 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       return q;
     }
-
-  /* static SQL: keep the internal hidden columns out of the text that is re-parsed at runtime */
-  omit_hidden_columns = pt_static_sql_can_omit_hidden_columns (parser, p, &static_sql_order_by);
 
   if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_IDX_SCHEMA))
     {
@@ -15196,6 +15204,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   else
     {
+      /* static SQL: keep the internal hidden columns out of the text that is re-parsed at runtime.
+       * Built here rather than at the top of the function so that the list this hands back cannot
+       * outlive an early return above; from here on the only way out is the return at the end. */
+      omit_hidden_columns = pt_static_sql_can_omit_hidden_columns (parser, p, &static_sql_order_by);
+
       if (p->info.query.with != NULL)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.with);
@@ -15830,6 +15843,13 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		}
 	      q = pt_append_varchar (parser, q, r1);
 	    }
+	}
+
+      if (static_sql_order_by != NULL)
+	{
+	  /* printed by now, and nothing else holds it */
+	  parser_free_tree (parser, static_sql_order_by);
+	  static_sql_order_by = NULL;
 	}
 
       if (p->info.query.orderby_for)
