@@ -653,11 +653,9 @@ static REGU_VARIABLE *replace_null_dbval (REGU_VARIABLE * regu_var, DB_VALUE * s
 static void qexec_replace_prior_regu_vars (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu, XASL_NODE * xasl);
 static void qexec_replace_prior_regu_vars_pred (THREAD_ENTRY * thread_p, PRED_EXPR * pred, XASL_NODE * xasl);
 static int qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl, DB_VALUE ** level_valp, DB_VALUE ** isleaf_valp,
-						 DB_VALUE ** iscycle_valp, DB_VALUE ** parent_pos_valp,
-						 DB_VALUE ** index_valp);
+						 DB_VALUE ** iscycle_valp, DB_VALUE ** parent_pos_valp);
 static void qexec_reset_pseudocolumns_val_pointers (DB_VALUE * level_valp, DB_VALUE * isleaf_valp,
-						    DB_VALUE * iscycle_valp, DB_VALUE * parent_pos_valp,
-						    DB_VALUE * index_valp);
+						    DB_VALUE * iscycle_valp, DB_VALUE * parent_pos_valp);
 static int qexec_recalc_tuples_parent_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p);
 static int qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 						HEAP_CACHE_ATTRINFO * attr_info, HEAP_CACHE_ATTRINFO * index_attr_info,
@@ -17631,7 +17629,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   CONNECTBY_PROC_NODE *connect_by;
 
   DB_VALUE *level_valp = NULL, *isleaf_valp = NULL, *iscycle_valp = NULL;
-  DB_VALUE *parent_pos_valp = NULL, *index_valp = NULL;
+  DB_VALUE *parent_pos_valp = NULL;
   REGU_VARIABLE_LIST regu_list;
 
   int isleaf_value, iscycle_value;
@@ -17667,8 +17665,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
   memset (&unknown_parent_pos, 0, sizeof (unknown_parent_pos));
 
-  if (qexec_set_pseudocolumns_val_pointers (xasl, &level_valp, &isleaf_valp, &iscycle_valp, &parent_pos_valp,
-					    &index_valp) != NO_ERROR)
+  if (qexec_set_pseudocolumns_val_pointers (xasl, &level_valp, &isleaf_valp, &iscycle_valp, &parent_pos_valp)
+      != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17808,10 +17806,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   reverse_hash_children = (xasl->spec_list->s_id.type == S_LIST_SCAN
 			   && (xasl->spec_list->s_id.s.llsid.hlsid.hash_list_scan_type == HASH_METH_IN_MEM
 			       || xasl->spec_list->s_id.s.llsid.hlsid.hash_list_scan_type == HASH_METH_HYBRID));
-
-  /* the index-string pseudocolumn is unused now that the result is emitted directly in depth-first order; keep the
-   * column NULL so the tuple layout is unchanged */
-  db_make_null (index_valp);
 
   if (qfile_open_list_scan (listfile1, &lfscan_id) != NO_ERROR)
     {
@@ -18136,7 +18130,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
     }
 
-  qexec_reset_pseudocolumns_val_pointers (level_valp, isleaf_valp, iscycle_valp, parent_pos_valp, index_valp);
+  qexec_reset_pseudocolumns_val_pointers (level_valp, isleaf_valp, iscycle_valp, parent_pos_valp);
 
   xasl->status = XASL_SUCCESS;
 
@@ -19240,11 +19234,10 @@ exit_on_error:
  *  isleaf_valp(out):
  *  iscycle_valp(out):
  *  parent_pos_valp(out):
- *  index_valp(out):
  */
 static int
 qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl, DB_VALUE ** level_valp, DB_VALUE ** isleaf_valp,
-				      DB_VALUE ** iscycle_valp, DB_VALUE ** parent_pos_valp, DB_VALUE ** index_valp)
+				      DB_VALUE ** iscycle_valp, DB_VALUE ** parent_pos_valp)
 {
   REGU_VARIABLE_LIST regulist;
   int i, n, error;
@@ -19283,11 +19276,6 @@ qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl, DB_VALUE ** level_valp, 
 	  *iscycle_valp = regulist->value.value.dbvalptr;
 	  db_make_int (*iscycle_valp, 0);
 	}
-      if (i == n - PCOL_INDEX_STRING_TUPLE_OFFSET)
-	{
-	  *index_valp = regulist->value.value.dbvalptr;
-	  db_make_int (*index_valp, 0);
-	}
       regulist = regulist->next;
       i++;
     }
@@ -19314,10 +19302,6 @@ qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl, DB_VALUE ** level_valp, 
 	{
 	  regulist->value.value.dbvalptr = *iscycle_valp;
 	}
-      if (i == n - PCOL_INDEX_STRING_TUPLE_OFFSET)
-	{
-	  regulist->value.value.dbvalptr = *index_valp;
-	}
       regulist = regulist->next;
       i++;
     }
@@ -19332,17 +19316,15 @@ qexec_set_pseudocolumns_val_pointers (XASL_NODE * xasl, DB_VALUE ** level_valp, 
  *  isleaf_valp(in/out):
  *  iscycle_valp(in/out):
  *  parent_pos_valp(in/out):
- *  index_valp(in/out):
  */
 static void
 qexec_reset_pseudocolumns_val_pointers (DB_VALUE * level_valp, DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
-					DB_VALUE * parent_pos_valp, DB_VALUE * index_valp)
+					DB_VALUE * parent_pos_valp)
 {
   (void) pr_clear_value (level_valp);
   (void) pr_clear_value (parent_pos_valp);
   (void) pr_clear_value (isleaf_valp);
   (void) pr_clear_value (iscycle_valp);
-  (void) pr_clear_value (index_valp);
 }
 
 /*
