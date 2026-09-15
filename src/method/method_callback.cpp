@@ -974,25 +974,9 @@ namespace cubmethod
 		      param_info.type = db_get_int (&arg_type);
 		    }
 
-		  // a parameter "has a default" iff it is optional; the default value itself may be NULL
-		  // (for ':= NULL'), so it must not be inferred from the default_value column being null
-		  if (db_get (arg_mop_p, SP_ARG_ATTR_IS_OPTIONAL, &has_default) == NO_ERROR)
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
 		    {
-		      param_info.has_default =
-			      (!DB_IS_NULL (&has_default) && db_get_int (&has_default) != 0) ? 1 : 0;
-		    }
-		  if (param_info.has_default)
-		    {
-		      DB_VALUE dflt;
-		      if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &dflt) == NO_ERROR)
-			{
-			  const char *dv = DB_IS_NULL (&dflt) ? NULL : db_get_string (&dflt);
-			  if (dv != NULL)
-			    {
-			      param_info.default_value.assign (dv);
-			    }
-			  pr_clear_value (&dflt);
-			}
+		      param_info.has_default = DB_IS_NULL (&has_default) ? 0 : 1;
 		    }
 
 		  pr_clear_value (&mode);
