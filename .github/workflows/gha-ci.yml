@@ -472,13 +472,14 @@ jobs:
           # schedule carries no inputs, and the batch's shape is all three suites.
           suite="${IN_SUITE:-all}"
           par="$IN_PAR"; limit="${IN_LIMIT:-0}"; tt="$IN_TT"
-          # A run posts every context or none, and the batch always asks for shell.
-          ctx=$(jq -r '.shell.status_ctx' <<<"$SUITES")
+          # Every suite's context, not one of them: a single-suite dispatch must not
+          # mark a commit the other two never ran.
+          want_ctx=$(jq -c '[.[].status_ctx]' <<<"$SUITES")
           since=$(date -u -d "$WINDOW_HOURS hours ago" +%Y-%m-%dT%H:%M:%SZ)
 
           # This lists every commit reachable from the branch, so a merge would put a
           # side branch's in it too; the first-parent walk below is what says "merged".
-          gh api "repos/${REPO}/commits?sha=${BRANCH}&since=${since}&per_page=100" \
+          gh api --paginate "repos/${REPO}/commits?sha=${BRANCH}&since=${since}&per_page=100" \
             --jq '.[] | [.sha, (.parents[0].sha // "-"), (.commit.message | split("\n")[0])] | @tsv' \
             > /tmp/window.tsv
           # A dash, not an empty field: read takes a tab for whitespace, so a run of them
@@ -489,12 +490,13 @@ jobs:
 
           # A pending does not count; that commit still has no verdict.
           covered() {
-            local body n
+            local body missing
             body=$(gh api "repos/${REPO}/commits/$1/status") || {
               echo "::error::could not read the statuses of $1"; exit 1; }
-            n=$(jq -r --arg c "$ctx" \
-                '[.statuses[] | select(.context == $c and .state != "pending")] | length' <<<"$body")
-            [ "$n" != 0 ]
+            missing=$(jq -r --argjson want "$want_ctx" \
+                '[.statuses[] | select(.state != "pending") | .context] as $done
+                 | ($want - $done) | join(", ")' <<<"$body")
+            [ -z "$missing" ]
           }
 
           : > /tmp/todo.list
@@ -516,7 +518,7 @@ jobs:
 
           n=$(wc -l < /tmp/todo.list)
           if [ "$n" = 0 ]; then
-            echo "nothing to run: no develop commit in the window needs '$ctx'"
+            echo "nothing to run: every develop commit in the window has its verdicts"
             exit 0
           fi
 
