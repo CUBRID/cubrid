@@ -594,7 +594,7 @@ struct cdt_eval_set
 static void
 do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
 {
-  if (eval_set == NULL || eval_set->entries == NULL)
+  if (eval_set == NULL)
     {
       return;
     }
@@ -608,7 +608,7 @@ do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
  *	column DEFAULT stored as a Compact DEFAULT Tree (DB_DEFAULT_NONE with a tree
  *	stream), as opposed to a legacy pseudo-column DEFAULT or no DEFAULT at all.
  */
-static bool
+static inline bool
 is_residual_default_attr (const SM_ATTRIBUTE * att)
 {
   return (att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
@@ -623,7 +623,7 @@ is_residual_default_attr (const SM_ATTRIBUTE * att)
  *	assignments by the BASE class attribute order (populate_defaults), so the
  *	lookup is only meaningful for a plain class template; otemplate may be NULL.
  */
-static bool
+static inline bool
 is_template_assigned_attr (const DB_OTMPL * otemplate, const SM_ATTRIBUTE * att)
 {
   return (otemplate != NULL && otemplate->base_class == NULL && otemplate->assignments != NULL
