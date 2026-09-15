@@ -200,9 +200,9 @@ typedef int (*LDR_ELEM) (LDR_CONTEXT *, const char *, size_t, DB_VALUE *);
  *    Loader attribute description structure.
  *    This contains the description, attribute, and fast setter function
  *    for the attribute.
- *    parser_* holds the parser token information and is used when parsing
- *    the constructor syntax, to simulate the parse phase when creating a
- *    constructor object.
+ *    ctor_val holds the value of this slot on a %constructor line. The
+ *    instance does not exist yet when such a token is parsed, so the value is
+ *    converted then and written once the constructor has returned an object.
  */
 
 typedef struct LDR_ATTDESC
@@ -215,11 +215,9 @@ typedef struct LDR_ATTDESC
 				 * whenever att changes, by ldr_refresh_conv_att (). */
   LDR_SETTER setter[NUM_LDR_TYPES];	/* Setter functions indexed by type */
 
-  char *parser_str;		/* used as a holder to hold the parser strings when parsing method arguments. */
-  size_t parser_str_len;		/* Length of parser token string */
-  size_t parser_buf_len;		/* Length of parser token buffer */
-  data_type parser_type;	/* Used when parsing method arguments, to store */
-  /* the type information. */
+  DB_VALUE ctor_val;		/* Converted value of this slot on a %constructor line. Arguments take
+				 * their natural type and db_send_argarray () coerces them to the
+				 * method signature; attributes take the attribute domain. */
 
   DB_OBJECT *ref_class;		/* Class referenced by object reference */
   int instance_id;		/* Instance id of instance referenced by ref_class object ref */
@@ -1797,10 +1795,7 @@ ldr_clear_and_free_context (LDR_CONTEXT *context)
     {
       for (i = 0; i < (context->num_attrs + context->arg_count); i += 1)
 	{
-	  if (context->attrs[i].parser_str)
-	    {
-	      free_and_init (context->attrs[i].parser_str);
-	    }
+	  db_value_clear (&context->attrs[i].ctor_val);
 	  if (context->attrs[i].attdesc)
 	    {
 	      db_free_attribute_descriptor (context->attrs[i].attdesc);
@@ -2251,39 +2246,40 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
   attdesc = &context->attrs[context->next_attr];
 
   /*
-   * Save the parser buffer and type information, this will be
-   * used later to feed to the fast setters to populate the
-   * constructor generated instance
-   * Attempt to reuse the strings buffers.
+   * Convert the token now and keep the value. The instance the constructor
+   * returns does not exist yet, so the setters cannot run here - they write
+   * into its memory image. construct_instance () writes these values once the
+   * object is back.
    */
-  if (attdesc->parser_buf_len == 0)
+  db_value_clear (&attdesc->ctor_val);
+
+  /*
+   * A collection arrives as an opening brace, its elements, then a closing brace,
+   * so there is no single token to convert here. Feeding a brace to the element table
+   * only raises ER_LDR_NESTED_SET, which is the wrong diagnosis for a top level collection.
+   * Leave the value null instead.
+   *
+   * Nothing reads it: ldr_act_meth () counts a slot for each brace, so a line
+   * with a collection always trips the count check and never reaches
+   * construct_instance ().
+   */
+  if (type != LDR_COLLECTION)
     {
-      attdesc->parser_str = (char *) (malloc (len + 1));
-      if (attdesc->parser_str == NULL)
+      if (context->next_attr >= context->arg_index)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	  /*
+	   * A constructor argument. Arguments carry no domain of their own, so
+	   * they take their natural type and db_send_argarray () coerces them
+	   * positionally against the method signature.
+	   */
+	  CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val));
 	}
-      CHECK_PTR (err, attdesc->parser_str);
-      attdesc->parser_buf_len = len;
-    }
-  else if (len > attdesc->parser_buf_len)
-    {
-      char *parser_str_old;
-      parser_str_old = attdesc->parser_str;
-      /* Prevent leak from realloc call failure */
-      attdesc->parser_str = (char *) realloc (attdesc->parser_str, len + 1);
-      if (attdesc->parser_str == NULL)
+      else
 	{
-	  /* Prevent leakage if realloc fails */
-	  free_and_init (parser_str_old);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	  /* An attribute of the instance, so the attribute domain applies. */
+	  CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, type, &attdesc->ctor_val));
 	}
-      CHECK_PTR (err, attdesc->parser_str);
-      attdesc->parser_buf_len = len;
     }
-  memcpy (attdesc->parser_str, str, len + 1);
-  attdesc->parser_type = type;
-  attdesc->parser_str_len = len;
 
 error_exit:
   context->next_attr += 1;
@@ -5069,9 +5065,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
   attdesc->attdesc = NULL;
   attdesc->att = NULL;
   attdesc->conv_att = NULL;
-  attdesc->parser_str_len = 0;
-  attdesc->parser_buf_len = 0;
-  attdesc->parser_str = NULL;
+  db_make_null (&attdesc->ctor_val);
   attdesc->ref_class = NULL;
   attdesc->collection_domain = NULL;
 
@@ -5523,26 +5517,18 @@ construct_instance (LDR_CONTEXT *context, MOP *obj_ptr)
   DB_VALUE retval;
   int err = NO_ERROR;
   MOP obj = NULL;
-  DB_VALUE vals[LDR_MAX_ARGS];
   int i, a;
   LDR_ATTDESC *attdesc;
 
   *obj_ptr = NULL;
 
-  for (i = 0, a = context->arg_index; i < context->arg_count && err == NO_ERROR && i < (int) LDR_MAX_ARGS; i++, a++)
+  /* ldr_act_meth () already converted every token on this line. */
+  for (i = 0, a = context->arg_index; i < context->arg_count && i < (int) LDR_MAX_ARGS; i++, a++)
     {
-      err =
-	      (* (elem_converter[context->attrs[a].parser_type])) (context, context->attrs[a].parser_str,
-		  context->attrs[a].parser_str_len, &vals[i]);
-      meth_args[i] = & (vals[i]);
+      meth_args[i] = &context->attrs[a].ctor_val;
     }
 
   meth_args[i] = NULL;
-
-  if (err != NO_ERROR)
-    {
-      goto error_exit;
-    }
 
   err = db_send_argarray (context->cls, context->constructor->header.name, &retval, meth_args);
 
@@ -5558,15 +5544,15 @@ construct_instance (LDR_CONTEXT *context, MOP *obj_ptr)
 	}
 
       /* now we have to initialize the instance with the supplied values */
-      for (context->next_attr = 0; context->next_attr < context->arg_index && !err; context->next_attr++)
+      for (context->next_attr = 0; context->next_attr < context->arg_index && err == NO_ERROR; context->next_attr++)
 	{
 	  attdesc = &context->attrs[context->next_attr];
 
 	  err = ldr_fetch_att (context, attdesc);
 
-	  if (!err)
+	  if (err == NO_ERROR)
 	    {
-	      err = (* (attdesc->setter[attdesc->parser_type])) (context, attdesc->parser_str, attdesc->parser_str_len, attdesc);
+	      err = ldr_generic (context, &attdesc->ctor_val);
 	    }
 	}
     }
