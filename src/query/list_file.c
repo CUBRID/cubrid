@@ -4076,8 +4076,10 @@ qfile_compare_partial_sort_record_general (SORTKEY_INFO * key_info_p, SORT_REC *
   order = 0;
 
   /* the P_sort_key body is a key mini tuple: read it through two stack slots bound to the key layout */
-  qfile_slot_set_tuple_ptr_and_layout (&s0, PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT), 0, &key_info_p->key_tl);
-  qfile_slot_set_tuple_ptr_and_layout (&s1, PTR_ALIGN (&(k1->s.original.body[0]), MAX_ALIGNMENT), 0, &key_info_p->key_tl);
+  qfile_slot_set_tuple_ptr_and_layout (&s0, PTR_ALIGN (&(k0->s.original.body[0]), MAX_ALIGNMENT), 0,
+				       &key_info_p->key_tl);
+  qfile_slot_set_tuple_ptr_and_layout (&s1, PTR_ALIGN (&(k1->s.original.body[0]), MAX_ALIGNMENT), 0,
+				       &key_info_p->key_tl);
 
   for (i = 0; i < n; i++)
     {
@@ -7073,7 +7075,8 @@ qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
 	  /* tuple_p is not a tuple pointer inside the current page, it is a copy made by qfile_scan_list_next(), so
 	   * avoid fetching it twice, and make sure it doesn't get freed at cleanup stage of this function. For
 	   * reference see how qfile_retrieve_tuple() handles overflow pages. */
-	  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p), &list_id_p->type_list);
+	  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p),
+					       &list_id_p->type_list);
 	}
       else
 	{
