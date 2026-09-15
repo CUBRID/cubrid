@@ -4155,6 +4155,80 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
        * fully logged by the tracker unregister (above) and the sector unreserve (below); page-level state needs no
        * logging. buffered pages are discarded (cleared of dirty status and invalidated) so that no stale content can
        * reach disk after the sectors are reused; pages that are not buffered are not even touched. */
+
+      /* the file's own header and file table pages are the exception: unlike the user pages, they are read again
+       * if a crash interrupts this destroy - recovery re-runs the postpone and file_destroy fetches the header and
+       * walks the file tables from disk. discarding their buffered copies without a flush would drop their
+       * unflushed updates out of the checkpoint's redo range (a discarded bcb no longer holds the redo lsa back),
+       * so a checkpoint taken between the discard and the end of this system operation would leave recovery with
+       * a header that never reached disk. make the resident, dirty ones durable first; the cost is a handful of
+       * page writes at most (header + file table pages), independent of the file size. */
+      ftab_collector.npages = 0;
+      ftab_collector.nsects = 0;
+      ftab_collector.partsect_ftab =
+	(FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
+      if (ftab_collector.partsect_ftab == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+      FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector, NULL, NULL,
+				  false, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
+      error_code =
+	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector, NULL, NULL,
+				  false, NULL, NULL);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+      for (iter_sects = 0; iter_sects < ftab_collector.nsects; iter_sects++)
+	{
+	  vpid_ftab.volid = ftab_collector.partsect_ftab[iter_sects].vsid.volid;
+	  for (offset = 0,
+	       vpid_ftab.pageid = SECTOR_FIRST_PAGEID (ftab_collector.partsect_ftab[iter_sects].vsid.sectid);
+	       offset < DISK_SECTOR_NPAGES; offset++, vpid_ftab.pageid++)
+	    {
+	      if (!file_partsect_is_bit_set (&ftab_collector.partsect_ftab[iter_sects], offset))
+		{
+		  continue;
+		}
+	      /* fix only if buffered: a page that is not buffered is already current on disk */
+	      page_ftab =
+		pgbuf_fix (thread_p, &vpid_ftab, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	      if (page_ftab == NULL)
+		{
+		  if (er_errid () != NO_ERROR)
+		    {
+		      ASSERT_ERROR_AND_SET (error_code);
+		      goto exit;
+		    }
+		  continue;
+		}
+	      if (pgbuf_flush_with_wal (thread_p, page_ftab) == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  pgbuf_unfix_and_init (thread_p, page_ftab);
+		  goto exit;
+		}
+	      pgbuf_unfix_and_init (thread_p, page_ftab);
+	    }
+	}
+      if (pgbuf_flush_with_wal (thread_p, page_fhead) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
+	}
       pgbuf_unfix_and_init (thread_p, page_fhead);
 
       /* scan the buffer pool once for pages of the destroyed sectors. cost is proportional to the pool size. */
