@@ -4127,7 +4127,8 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   if (file_get_tde_algorithm_internal (fhead) != TDE_ALGORITHM_NONE)
     {
       tde_er_log
-	("file_destroy(): destroy encrypted file; buffered pages are discarded and never written again, VFID = %d|%d, # of (user) pages = %d, tde algorithm = %s\n",
+	("file_destroy(): destroy encrypted file; buffered pages are discarded and never written again, "
+	 "VFID = %d|%d, # of (user) pages = %d, tde algorithm = %s\n",
 	 VFID_AS_ARGS (&fhead->self), fhead->n_page_user,
 	 tde_get_algorithm_name (file_get_tde_algorithm_internal (fhead)));
     }
@@ -4150,19 +4151,12 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 
   if (!FILE_IS_TEMPORARY (fhead))
     {
-      /* bulk destroy: do not fix and deallocate pages one by one - that reads the whole file from disk
-       * when it is not buffered and appends one dealloc log record per page. the file's logical removal is already
-       * fully logged by the tracker unregister (above) and the sector unreserve (below); page-level state needs no
-       * logging. buffered pages are discarded (cleared of dirty status and invalidated) so that no stale content can
-       * reach disk after the sectors are reused; pages that are not buffered are not even touched. */
-
-      /* the file's own header and file table pages are the exception: unlike the user pages, they are read again
-       * if a crash interrupts this destroy - recovery re-runs the postpone and file_destroy fetches the header and
-       * walks the file tables from disk. discarding their buffered copies without a flush would drop their
-       * unflushed updates out of the checkpoint's redo range (a discarded bcb no longer holds the redo lsa back),
-       * so a checkpoint taken between the discard and the end of this system operation would leave recovery with
-       * a header that never reached disk. make the resident, dirty ones durable first; the cost is a handful of
-       * page writes at most (header + file table pages), independent of the file size. */
+      /* bulk destroy: the removal is fully logged by the tracker unregister (above) and the sector unreserve (below),
+       * so pages are not fixed and deallocated one by one; buffered pages are discarded instead.
+       *
+       * exception: the header and file table pages are read again from disk if recovery re-runs this postpone.
+       * discarding them would drop their unflushed updates out of a later checkpoint's redo range, so flush the
+       * resident dirty ones first (a handful of pages at most). */
       ftab_collector.npages = 0;
       ftab_collector.nsects = 0;
       ftab_collector.partsect_ftab =
@@ -4203,7 +4197,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 		{
 		  continue;
 		}
-	      /* fix only if buffered: a page that is not buffered is already current on disk */
+	      /* not buffered = already current on disk */
 	      page_ftab =
 		pgbuf_fix (thread_p, &vpid_ftab, OLD_PAGE_IF_IN_BUFFER, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	      if (page_ftab == NULL)
@@ -4231,7 +4225,6 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	}
       pgbuf_unfix_and_init (thread_p, page_fhead);
 
-      /* scan the buffer pool once for pages of the destroyed sectors. cost is proportional to the pool size. */
       pgbuf_discard_pages_of_sectors (thread_p, vsid_collector.vsids, vsid_collector.n_vsids);
     }
   else
