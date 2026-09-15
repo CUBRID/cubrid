@@ -37,6 +37,7 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "file_io.h"
+#include "disk_manager.h"
 #include "lockfree_circular_queue.hpp"
 #include "log_append.hpp"
 #include "log_manager.h"
@@ -3465,12 +3466,16 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
   return NO_ERROR;
 }
 
+/* retries (10 ms each) before pgbuf_discard_page () gives up on a page that stays fixed */
+#define PGBUF_DISCARD_FCNT_MAX_RETRIES 100
+
 /*
  * pgbuf_discard_page () - discard the buffered copy of a page belonging to a destroyed file: clear its dirty status
  *                         and invalidate the buffer, without flushing and without any logging.
  *
- *                         when the function returns, no bcb for the given page remains in the buffer. this is a hard
- *                         guarantee: the caller unreserves the page's sector right after, and the sector may be
+ *                         when the function returns, no bcb for the given page remains in the buffer (the only
+ *                         exception is a page that stays fixed beyond the retry limit, which should never happen and
+ *                         is left to the NEW_PAGE fix to neutralize). this is a hard guarantee: the caller unreserves the page's sector right after, and the sector may be
  *                         immediately reused by another file. a leftover dirty bcb could overwrite the reused sector
  *                         with dead content, an in-flight write must finish before the sector can be reused, and even
  *                         a leftover clean bcb breaks the NEW_PAGE fix of the reused page (it expects no stale
@@ -3488,6 +3493,7 @@ pgbuf_discard_page (THREAD_ENTRY * thread_p, const VPID * vpid)
 {
   PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
+  int fcnt_retries = 0;
 
   assert (vpid != NULL && !VPID_ISNULL (vpid));
 
@@ -3506,6 +3512,20 @@ retry:
     {
       /* no one should be able to fix a page of a file being destroyed. */
       assert (false);
+      if (++fcnt_retries > PGBUF_DISCARD_FCNT_MAX_RETRIES)
+	{
+	  /* do not loop forever in a release build if the invariant is broken. clear the dirty status so the stale
+	   * content can never reach disk and leave the bcb behind: the NEW_PAGE fix neutralizes a stale buffered copy
+	   * when the page is allocated again (see pgbuf_fix). */
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_discard_page: page %d|%d is still fixed after %d retries; left to the "
+			"NEW_PAGE fix\n", VPID_AS_ARGS (vpid), fcnt_retries - 1);
+	  if (pgbuf_bcb_is_dirty (bufptr))
+	    {
+	      pgbuf_bcb_clear_dirty (thread_p, bufptr);
+	    }
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  return;
+	}
       PGBUF_BCB_UNLOCK (bufptr);
       thread_sleep (0.01f);
       goto retry;
@@ -3526,10 +3546,15 @@ retry:
       set_waiter_exists (&bufptr->atomic_latch, true);
       if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false) != NO_ERROR)
 	{
-	  /* interrupted while waiting; the flush may still be in progress, start over. */
+	  /* woken up by an interrupt or shutdown request, not by the flusher. the interrupt is deliberately not
+	   * propagated: this runs inside the commit postpone of a transaction whose commit is already durable, so it
+	   * cannot be cancelled - the destroy must complete here or be re-run by recovery. the wait stays bounded
+	   * because the flusher clears the flushing status and wakes the waiters on both its success and its failure
+	   * path; we only need to look the page up again. */
 	  thread_sleep (0.01f);
 	}
-      /* bufptr->mutex has been released. state may have changed meanwhile; look the page up again. */
+      /* pgbuf_block_bcb () released bufptr->mutex before suspending and returns without it on both paths. state may
+       * have changed meanwhile; look the page up again. */
       goto retry;
     }
 
@@ -3560,31 +3585,6 @@ retry:
 }
 
 /*
- * pgbuf_compare_vsids_for_discard () - bsearch comparator for VSID arrays; must match disk_compare_vsids ordering
- *                                      (volume id first, then sector id)
- *
- * return       : 1 if first is bigger, -1 if first is smaller, 0 if equal
- * first (in)   : first VSID
- * second (in)  : second VSID
- */
-static int
-pgbuf_compare_vsids_for_discard (const void *first, const void *second)
-{
-  VSID *first_vsid = (VSID *) first;
-  VSID *second_vsid = (VSID *) second;
-
-  if (first_vsid->volid > second_vsid->volid)
-    {
-      return 1;
-    }
-  else if (first_vsid->volid < second_vsid->volid)
-    {
-      return -1;
-    }
-  return (int) (first_vsid->sectid - second_vsid->sectid);
-}
-
-/*
  * pgbuf_discard_pages_of_sectors () - discard all buffered pages belonging to the given sectors, in one pass over
  *                                     the buffer pool. candidates are detected by scanning the pool; the actual
  *                                     discard of each candidate goes through pgbuf_discard_page (), which gives the
@@ -3611,6 +3611,7 @@ pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int
 
   if (vsids == NULL || nsects <= 0)
     {
+      assert (false);
       return;
     }
 
@@ -3627,8 +3628,8 @@ pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int
 	  continue;
 	}
       vsid_key.volid = vpid.volid;
-      vsid_key.sectid = vpid.pageid / DISK_SECTOR_NPAGES;
-      if (bsearch (&vsid_key, vsids, nsects, sizeof (VSID), pgbuf_compare_vsids_for_discard) == NULL)
+      vsid_key.sectid = SECTOR_FROM_PAGEID (vpid.pageid);
+      if (bsearch (&vsid_key, vsids, nsects, sizeof (VSID), disk_compare_vsids) == NULL)
 	{
 	  continue;
 	}
