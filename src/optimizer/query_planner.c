@@ -265,6 +265,9 @@ static void planner_permutate (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NO
 			       BITSET *, BITSET *, BITSET *, BITSET *, int, int *);
 
 static QO_PLAN *qo_find_best_nljoin_inner_plan_on_info (QO_PLAN *, QO_INFO *, JOIN_TYPE, int);
+static QO_PLAN *qo_distinct_new (QO_PLAN *, QO_INFO *);
+static int qo_examine_distinct_join (QO_INFO *, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
+				     BITSET *, BITSET *);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
@@ -275,7 +278,8 @@ static int qo_examine_merge_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BI
 				  BITSET *);
 static int qo_examine_hash_join (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *, BITSET *,
 				 BITSET *);
-static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *);
+static int qo_examine_correlated_index (QO_INFO *, JOIN_TYPE, QO_INFO *, QO_INFO *, BITSET *, BITSET *, BITSET *,
+					QO_PLAN *);
 static int qo_examine_follow (QO_INFO *, QO_TERM *, QO_INFO *, BITSET *, BITSET *);
 static void qo_compute_projected_segs (QO_PLANNER *, BITSET *, BITSET *, BITSET *);
 static int qo_compute_projected_size (QO_PLANNER *, BITSET *);
@@ -2802,6 +2806,62 @@ qo_sort_new (QO_PLAN * root, QO_EQCLASS * order, SORT_TYPE sort_type)
 }
 
 /*
+ * qo_distinct_new () - build a plan that reads the subplan once into a temporary file, keeping one row per
+ *      distinct value of the columns the rest of the query reads from that side
+ *   return: the new plan, or NULL
+ *   subplan(in): the plan whose rows are to be collected
+ *   distinct_info(in): the info node that holds the plans of this side read that way; its cardinality is what
+ *		    the removal leaves behind, which is why the plan cannot share the subplan's info
+ *
+ * Note: which columns those are follows from the plan itself -- only the ones the rest of the query needs
+ *       are projected out of a node (qo_compute_projected_segs ()).  For the inner of a SEMI JOIN they are
+ *       the join columns, since nothing else in the query may read that side.  Once the duplicates are gone
+ *       an ordinary join over these rows returns each outer row at most once, which is what lets the planner
+ *       read this side first instead of once per outer row.
+ *
+ *       Unlike qo_sort_new (), this does not go through qo_top_plan_new (): the plan belongs inside a join,
+ *       not at the top of the query.
+ */
+static QO_PLAN *
+qo_distinct_new (QO_PLAN * subplan, QO_INFO * distinct_info)
+{
+  QO_PLAN *plan;
+
+  if (subplan == NULL || subplan->info == NULL || distinct_info == NULL)
+    {
+      return NULL;
+    }
+
+  plan = qo_plan_malloc ((subplan->info)->env);
+  if (plan == NULL)
+    {
+      return NULL;
+    }
+
+  plan->info = distinct_info;
+  plan->refcount = 0;
+  plan->top_rooted = false;
+  plan->well_rooted = false;
+  plan->iscan_sort_list = NULL;
+  plan->analytic_eval_list = NULL;
+  plan->order = QO_UNORDERED;
+  plan->plan_type = QO_PLANTYPE_SORT;
+  plan->vtbl = &qo_sort_plan_vtbl;
+
+  plan->plan_un.sort.sort_type = SORT_DISTINCT;
+  plan->plan_un.sort.subplan = qo_plan_add_ref (subplan);
+  plan->plan_un.sort.xasl = NULL;
+
+  plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+  plan->has_sort_limit = subplan->has_sort_limit;
+  plan->need_final_sort = subplan->need_final_sort;
+
+  qo_plan_compute_cost (plan);
+
+  return plan;
+}
+
+/*
  * qo_sort_walk () -
  *   return:
  *   plan(in):
@@ -2973,6 +3033,12 @@ qo_sort_cost (QO_PLAN * planp)
 
       order = planp->order;
       objects = (subplanp->info)->cardinality;
+      if (planp->plan_un.sort.sort_type == SORT_DISTINCT)
+	{
+	  /* the file the join reads holds what the removal left, not what the subplan produced.  For the
+	   * query's own DISTINCT the two are the same info, so this changes nothing there */
+	  objects = (planp->info)->cardinality;
+	}
       result_size = objects * (double) (subplanp->info)->projected_size;
       pages = result_size / (double) IO_PAGESIZE;
       if (pages < 1.0)
@@ -2987,6 +3053,12 @@ qo_sort_cost (QO_PLAN * planp)
       planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
       planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
       planp->variable_io_cost = pages;
+
+      if (planp->plan_un.sort.sort_type == SORT_DISTINCT)
+	{
+	  /* recognising a duplicate means looking at every row the subplan produced, once */
+	  planp->fixed_cpu_cost += (subplanp->info)->cardinality * (double) QO_CPU_WEIGHT;
+	}
 
       if (order != QO_UNORDERED && order != subplanp->order)
 	{
@@ -6620,14 +6692,162 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       /* if right outer join, select outer plan from the inner node and inner plan from the outer node, and do left
        * outer join
        */
-      n = qo_examine_correlated_index (info, JOIN_LEFT, inner, outer, afj_terms, sarged_terms, pinned_subqueries);
+      n = qo_examine_correlated_index (info, JOIN_LEFT, inner, outer, afj_terms, sarged_terms, pinned_subqueries, NULL);
     }
   else
     {
-      n = qo_examine_correlated_index (info, join_type, outer, inner, afj_terms, sarged_terms, pinned_subqueries);
+      n = qo_examine_correlated_index (info, join_type, outer, inner, afj_terms, sarged_terms, pinned_subqueries, NULL);
     }
 
 exit:
+
+  return n;
+}
+
+/*
+ * qo_examine_distinct_join () - offer the join the SEMI JOIN read the other way round: its inner collected once
+ *      with the duplicates removed, driving the side whose rows the join keeps
+ *   return: the number of plans kept
+ *   info(in):
+ *   outer(in): the side the SEMI JOIN keeps rows of
+ *   inner(in): the side it only tests against
+ *   join_terms(in):
+ *   duj_terms(in):
+ *   afj_terms(in):
+ *   sarged_terms(in):
+ *   pinned_subqueries(in):
+ *   hash_terms(in):
+ *
+ * Note: a SEMI JOIN returns an outer row once however many inner rows match it, which is why its inner is
+ *       searched once per outer row and the order of the two sides is fixed.  With one row left per distinct
+ *       join value that reason is gone -- an ordinary join over those rows returns the same result -- and the
+ *       inner may be read first instead.  That wins when reading it out once is cheaper than searching it for
+ *       every outer row, a small or empty inner most plainly.  ANTI JOIN has no such form.
+ */
+static int
+qo_examine_distinct_join (QO_INFO * info, QO_INFO * outer, QO_INFO * inner, BITSET * join_terms, BITSET * duj_terms,
+			  BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries, BITSET * hash_terms)
+{
+  QO_ENV *env = info->env;
+  QO_INFO *distinct_info;
+  QO_PLAN *inner_plan, *distinct_plan, *probe_plan;
+  BITSET_ITERATOR ti, si;
+  double distinct_rows = 1.0;
+  bool ndv_known = true;
+  int t, sg, node_idx;
+  int n = 0;
+
+  /* The side driven from the collected file is searched the way the inner of a nested loop is, and that side
+   * has to be one table -- the same limit qo_examine_idx_join () keeps.  Nothing is lost by it: the two sides
+   * of the SEMI JOIN are brought together as a pair of their own first, and whatever plan wins for that pair
+   * is what the remaining tables are joined onto. */
+  if (bitset_cardinality (&(outer->nodes)) != 1)
+    {
+      return 0;
+    }
+
+  /* Every join condition must be an equality between plain columns, or there is no key to remove the
+   * duplicates on.  The distinct-value counts of the inner's side of those equalities say how many rows are
+   * left; where they are missing, charge the file with every row the inner holds, which is the most the
+   * removal can leave and keeps an inner that is small or empty worth reading out. */
+  for (t = bitset_iterate (join_terms, &ti); t != -1; t = bitset_next_member (&ti))
+    {
+      QO_TERM *term = QO_ENV_TERM (env, t);
+      bool has_inner_seg = false;
+
+      if (!QO_TERM_IS_FLAGED (term, QO_TERM_MERGEABLE_EDGE))
+	{
+	  return 0;
+	}
+
+      for (sg = bitset_iterate (&(QO_TERM_SEGS (term)), &si); sg != -1; sg = bitset_next_member (&si))
+	{
+	  QO_SEGMENT *seg = QO_ENV_SEG (env, sg);
+
+	  if (!BITSET_MEMBER (inner->nodes, QO_NODE_IDX (QO_SEG_HEAD (seg))))
+	    {
+	      continue;
+	    }
+	  if (QO_SEG_INFO (seg) == NULL || QO_SEG_INFO (seg)->ndv <= 0)
+	    {
+	      ndv_known = false;
+	    }
+	  else
+	    {
+	      distinct_rows *= (double) QO_SEG_INFO (seg)->ndv;
+	    }
+	  has_inner_seg = true;
+	}
+
+      if (!has_inner_seg)
+	{
+	  return 0;
+	}
+    }
+
+  /* the columns are taken as independent, which can put the product above the rows there are to draw from */
+  distinct_rows = MAX (1.0, ndv_known ? MIN (distinct_rows, inner->cardinality) : inner->cardinality);
+
+  /* This side read with the duplicates removed holds fewer rows than the side itself, so it needs an info of
+   * its own to say so and to own the plans that read it that way.  The one kept here is reused: the same side
+   * comes up again in every join order the examination walks through. */
+  node_idx = bitset_first_member (&(inner->nodes));
+  distinct_info = info->planner->distinct_info[node_idx];
+  if (distinct_info == NULL)
+    {
+      distinct_info =
+	qo_alloc_info (info->planner, &(inner->nodes), &(inner->terms), &(inner->eqclasses), distinct_rows,
+		       inner->total_rows);
+      if (distinct_info == NULL)
+	{
+	  return 0;
+	}
+      info->planner->distinct_info[node_idx] = distinct_info;
+    }
+
+  /* Build the plan the first time this side comes up and let the info keep it; every later join order that
+   * reaches this side takes the one already there.  Building a fresh one each time would be wasted work, and
+   * a plan the list turns down carries no reference -- the candidates below would take it down with them.
+   * The list has to be asked whether it holds anything before it is read: qo_find_best_plan_on_planvec ()
+   * reaches for the first slot without looking at the count. */
+  distinct_plan =
+    (distinct_info->best_no_order.nplans > 0) ? qo_find_best_plan_on_info (distinct_info, QO_UNORDERED, 1.0) : NULL;
+  if (distinct_plan == NULL)
+    {
+      inner_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
+      if (inner_plan == NULL)
+	{
+	  return 0;
+	}
+
+      distinct_plan = qo_distinct_new (inner_plan, distinct_info);
+      if (distinct_plan == NULL)
+	{
+	  return 0;
+	}
+
+      if (qo_check_planvec (&distinct_info->best_no_order, distinct_plan) != PLAN_COMP_GT)
+	{
+	  qo_plan_release (distinct_plan);
+	  return 0;
+	}
+    }
+
+  /* An index on the probed side's join columns is only ever put to use when that side is the one being added
+   * to the join, which for the side a SEMI JOIN keeps rows of never happens -- so no such plan exists to pick
+   * up here.  Build them against the file the duplicates were removed from. */
+  n += qo_examine_correlated_index (info, JOIN_INNER, NULL, outer, afj_terms, sarged_terms, pinned_subqueries,
+				    distinct_plan);
+
+  probe_plan = qo_find_best_nljoin_inner_plan_on_info (distinct_plan, outer, JOIN_INNER, 0);
+  if (probe_plan != NULL)
+    {
+      n +=
+	qo_check_plan_on_info (info,
+			       qo_join_new (info, JOIN_INNER, QO_JOINMETHOD_NL_JOIN, distinct_plan, probe_plan,
+					    join_terms, duj_terms, afj_terms, sarged_terms, pinned_subqueries,
+					    hash_terms));
+    }
 
   return n;
 }
@@ -7151,6 +7371,8 @@ exit:
  *   sarged_terms(in): The residual terms to be evaluated at this level of
  *		       the plan tree
  *   pinned_subqueries(in): The subqueries to be pinned to plans at this node
+ *   given_outer_plan(in): the plan to drive the scan with, when the caller holds one that is not the best
+ *		    plan of 'outer' -- NULL to take the best plan of 'outer' as usual
  *
  * Note: Check whether we can build a nested loop join that implements
  *		the join term as a correlated index on the inner term.
@@ -7169,7 +7391,7 @@ exit:
  */
 static int
 qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INFO * inner, BITSET * afj_terms,
-			     BITSET * sarged_terms, BITSET * pinned_subqueries)
+			     BITSET * sarged_terms, BITSET * pinned_subqueries, QO_PLAN * given_outer_plan)
 {
   QO_NODE *nodep;
   QO_NODE_INDEX *node_indexp;
@@ -7184,7 +7406,7 @@ qo_examine_correlated_index (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * oute
   BITSET indexable_terms;
 
   /* outer plan */
-  outer_plan = qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
+  outer_plan = (given_outer_plan != NULL) ? given_outer_plan : qo_find_best_plan_on_info (outer, QO_UNORDERED, 1.0);
   if (outer_plan == NULL)
     {
       return 0;
@@ -7526,6 +7748,7 @@ qo_alloc_planner (QO_ENV * env)
     bitset_add (&(planner->all_subqueries), i);
 
   planner->node_info = NULL;
+  planner->distinct_info = NULL;
   planner->join_info = NULL;
   planner->best_info = NULL;
   planner->cp_info = NULL;
@@ -7565,6 +7788,11 @@ qo_planner_free (QO_PLANNER * planner)
   if (planner->node_info)
     {
       free_and_init (planner->node_info);
+    }
+
+  if (planner->distinct_info)
+    {
+      free_and_init (planner->distinct_info);
     }
 
   if (planner->join_info)
@@ -8447,6 +8675,14 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 				    &sarged_terms, &pinned_subqueries);
 	  }
 #endif /* HASH_JOINS */
+
+	/* STEP 5-6: examine the same SEMI JOIN with its inner collected once, duplicates removed */
+	if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI && !bitset_is_empty (&nl_join_terms))
+	  {
+	    kept +=
+	      qo_examine_distinct_join (new_info, head_info, tail_info, &nl_join_terms, &duj_terms, &afj_terms,
+					&sarged_terms, &pinned_subqueries, &sm_join_terms);
+	  }
       }
 
     /* At this point, kept indicates the number of worthwhile plans generated by examine_joins (i.e., plans that where
@@ -9479,6 +9715,16 @@ qo_search_planner (QO_PLANNER * planner)
 	  plan = NULL;
 	  goto end;
 	}
+
+      /* filled in only for the nodes a SEMI JOIN examination asks for (qo_examine_distinct_join ()) */
+      planner->distinct_info = (QO_INFO **) malloc (size);
+      if (planner->distinct_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  plan = NULL;
+	  goto end;
+	}
+      memset (planner->distinct_info, 0, size);
     }
 
   for (i = 0; i < (signed) planner->N; ++i)
