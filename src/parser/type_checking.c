@@ -8011,7 +8011,17 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	  node->info.query.q.select.connect_by = pt_where_type_keep_true (parser, node->info.query.q.select.connect_by);
 	  node->info.query.q.select.start_with = pt_where_type (parser, node->info.query.q.select.start_with);
 	  node->info.query.q.select.after_cb_filter = pt_where_type (parser, node->info.query.q.select.after_cb_filter);
-	  node->info.query.q.select.having = pt_where_type (parser, node->info.query.q.select.having);
+	  if (node->info.query.q.select.group_by == NULL)
+	    {
+	      /* HAVING without GROUP BY makes the query a single-group aggregate; if a constant-true
+	       * HAVING were dropped here, the rewritten text (xasl cache key) would collide with the
+	       * plain query's although their results differ. Keep a TRUE marker instead. */
+	      node->info.query.q.select.having = pt_where_type_keep_true (parser, node->info.query.q.select.having);
+	    }
+	  else
+	    {
+	      node->info.query.q.select.having = pt_where_type (parser, node->info.query.q.select.having);
+	    }
 	  node->info.query.orderby_for = pt_where_type (parser, node->info.query.orderby_for);
 	}
       break;

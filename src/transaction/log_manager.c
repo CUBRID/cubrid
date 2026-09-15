@@ -64,6 +64,7 @@
 #include "log_append.hpp"
 #include "log_archives.hpp"
 #include "log_compress.h"
+#include "log_prior_inflight.hpp"
 #include "log_record.hpp"
 #include "log_recovery.h"
 #include "log_system_tran.hpp"
@@ -122,7 +123,7 @@ static int rv;
 #define LOG_ISCHECKPOINT_TIME() \
   (log_Gl.rcv_phase == LOG_RESTARTED \
    && log_Gl.run_nxchkpt_atpageid != NULL_PAGEID \
-   && log_Gl.hdr.append_lsa.pageid >= log_Gl.run_nxchkpt_atpageid)
+   && log_Gl.hdr.append_lsa.load ().pageid >= log_Gl.run_nxchkpt_atpageid)
 
 #if defined(SERVER_MODE)
 #define LOG_FLUSH_LOGGING_HAS_BEEN_SKIPPED(thread_p) \
@@ -348,6 +349,8 @@ static int cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time,
 
 static bool cdc_is_filtered_class (OID classoid);
 static bool cdc_is_filtered_user (char *user);
+
+static void cdc_release_arv_num_to_keep (THREAD_ENTRY * thread_p);
 
 #if defined(SERVER_MODE)
 // *INDENT-OFF*
@@ -593,16 +596,14 @@ log_get_crash_point_lsa (void)
 }
 
 /*
- * log_find_find_lsa -
+ * log_get_append_lsa -
  *
- * return:
- *
- * NOTE:
+ * return: the current append lsa
  */
-LOG_LSA *
+LOG_LSA
 log_get_append_lsa (void)
 {
-  return (&log_Gl.hdr.append_lsa);
+  return log_Gl.hdr.append_lsa;
 }
 
 /*
@@ -884,9 +885,7 @@ log_create_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const cha
       goto error;
     }
 
-  LSA_SET_NULL (&log_Gl.append.prev_lsa);
-  /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
-  LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+  LOG_RESET_PREV_LSA (&NULL_LSA);
 
   /*
    * Flush the append page, so that the end of the log mark is written.
@@ -1144,6 +1143,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   log_Gl.run_nxchkpt_atpageid = NULL_PAGEID;	/* Don't run the checkpoint */
   log_Gl.rcv_phase = LOG_RECOVERY_ANALYSIS_PHASE;
 
+  /* cdc_initialize() only runs in SERVER_MODE, so in SA mode this would keep the zero the global was loaded with.
+   * Zero is a valid pageid, so archive removal would take it for a position cdc still needs, hold on to the volume
+   * that contains it and write that volume into the log header, where it outlives the utility. */
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
+
   log_Gl.loghdr_pgptr = (LOG_PAGE *) malloc (LOG_PAGESIZE);
   if (log_Gl.loghdr_pgptr == NULL)
     {
@@ -1178,11 +1182,10 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	      goto error;
 	    }
 	  log_Gl.hdr.fpageid = LOGPAGEID_MAX;
-	  log_Gl.hdr.append_lsa.pageid = LOGPAGEID_MAX;
-	  log_Gl.hdr.append_lsa.offset = 0;
+	  log_Gl.hdr.append_lsa.store (LOG_LSA (LOGPAGEID_MAX, 0));
 
 	  /* sync append_lsa to prior_lsa */
-	  LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+	  log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
 
 	  LSA_SET_NULL (&log_Gl.hdr.chkpt_lsa);
 	  log_Gl.hdr.nxarv_pageid = LOGPAGEID_MAX;
@@ -1201,11 +1204,29 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       logpb_fetch_header (thread_p, &log_Gl.hdr);
     }
 
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
+    {
+      /* With cdc off the gate that reads this value never runs, so the volumes it names are going to
+       * be deleted anyway. Give it up here rather than leave the header pointing at a volume that is
+       * about to go - turning cdc off is the operator saying the protection is no longer wanted. */
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+    }
+
+  if (ismedia_crash != false)
+    {
+      /* The header that was just read came out of a backup image, so the volume it names was chosen
+       * by whatever cdc session the source database had. The database being restored into has no
+       * such session to hand the position back to, and only a partial restore reaches the reset in
+       * log_recovery_resetlog(). A client that does come back records what it needs again on its
+       * first bundle, so give the protection up here rather than pin volumes for good. */
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+    }
+
   if (ismedia_crash != false && (r_args) && r_args->restore_slave)
     {
       r_args->db_creation = log_Gl.hdr.db_creation;
       LSA_COPY (&r_args->restart_repl_lsa, &log_Gl.hdr.smallest_lsa_at_last_chkpt);
-      LSA_COPY (&r_args->restart_committed_lsa, &log_Gl.hdr.append_lsa);
+      r_args->restart_committed_lsa = log_Gl.hdr.append_lsa;
     }
 
   LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
@@ -1403,7 +1424,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
 	{
-	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&log_Gl.hdr.append_lsa, &log_Gl.hdr.eof_lsa))
+	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && log_Gl.hdr.append_lsa.load () > log_Gl.hdr.eof_lsa)
 	    {
 	      /* We cannot believe in append_lsa for this case. It points to an unflushed log page. Since we are
 	       * going to skip recovery for emergency startup, just replace it with eof_lsa. */
@@ -1422,7 +1443,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	}
 
       /* Read the End of file record to find out the previous address */
-      if (log_Gl.hdr.append_lsa.pageid > 0 || log_Gl.hdr.append_lsa.offset > 0)
+      const LOG_LSA append_lsa = log_Gl.hdr.append_lsa;
+
+      if (append_lsa.pageid > 0 || append_lsa.offset > 0)
 	{
 	  eof = (LOG_RECORD_HEADER *) LOG_APPEND_PTR ();
 	  LOG_RESET_PREV_LSA (&eof->back_lsa);
@@ -1430,7 +1453,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
 #if defined(SERVER_MODE)
       /* fix flushed_lsa_lower_bound become NULL_LSA */
-      LSA_COPY (&log_Gl.flushed_lsa_lower_bound, &log_Gl.append.prev_lsa);
+      log_Gl.flushed_lsa_lower_bound = log_Gl.append.prev_lsa;
 #endif /* SERVER_MODE */
 
       /*
@@ -1445,17 +1468,17 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
-  if (!LSA_EQ (&log_Gl.append.prev_lsa, &log_Gl.prior_info.prev_lsa))
+  if (log_Gl.append.prev_lsa.load () != log_Gl.prior_info.prev_lsa)
     {
       assert (0);
       /* defense code */
-      LOG_RESET_PREV_LSA (&log_Gl.append.prev_lsa);
+      log_Gl.prior_info.prev_lsa = log_Gl.append.prev_lsa;
     }
-  if (!LSA_EQ (&log_Gl.hdr.append_lsa, &log_Gl.prior_info.prior_lsa))
+  if (log_Gl.hdr.append_lsa.load () != log_Gl.prior_info.prior_lsa)
     {
       assert (0);
       /* defense code */
-      LOG_RESET_APPEND_LSA (&log_Gl.hdr.append_lsa);
+      log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
     }
 
   /*
@@ -1468,7 +1491,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     }
 
   /* Next checkpoint should be run at ... */
-  log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.pageid + log_Gl.chkpt_every_npages);
+  log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.load ().pageid + log_Gl.chkpt_every_npages);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
@@ -1515,8 +1538,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   LOG_CS_EXIT (thread_p);
 
-  er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
-		(long long int) log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset);
+  {
+    const LOG_LSA append_lsa = log_Gl.hdr.append_lsa;
+
+    er_log_debug (ARG_FILE_LINE, "log_initialize_internal: end of log initializaton, append_lsa = (%lld|%d) \n",
+		  (long long int) append_lsa.pageid, append_lsa.offset);
+  }
 
   return error_code;
 
@@ -1849,7 +1876,7 @@ log_final (THREAD_ENTRY * thread_p)
   if (anyloose_ends == false && error_code == NO_ERROR)
     {
       log_Gl.hdr.is_shutdown = true;
-      LSA_COPY (&log_Gl.hdr.chkpt_lsa, &log_Gl.hdr.append_lsa);
+      log_Gl.hdr.chkpt_lsa = log_Gl.hdr.append_lsa;
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &log_Gl.hdr.chkpt_lsa);
     }
   else
@@ -4797,11 +4824,13 @@ log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECT
       char time_val[CTIME_MAX];
       time_t xxtime = time (NULL);
 
+      const LOG_LSA append_lsa = log_Gl.hdr.append_lsa;
+
       (void) ctime_r (&xxtime, time_val);
       fprintf (stdout,
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
 			       ((iscommitted == LOG_COMMIT) ? MSGCAT_LOG_FINISH_COMMIT : MSGCAT_LOG_FINISH_ABORT)),
-	       tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset, time_val);
+	       tdes->tran_index, tdes->trid, append_lsa.pageid, append_lsa.offset, time_val);
       fflush (stdout);
     }
 #endif /* !NDEBUG */
@@ -5993,11 +6022,13 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	  char time_val[CTIME_MAX];
 	  time_t xxtime = time (NULL);
 
+	  const LOG_LSA append_lsa = log_Gl.hdr.append_lsa;
+
 	  (void) ctime_r (&xxtime, time_val);
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
 				   ((iscommitted != LOG_ABORT) ? MSGCAT_LOG_FINISH_COMMIT : MSGCAT_LOG_FINISH_ABORT)),
-		   tdes->tran_index, tdes->trid, log_Gl.hdr.append_lsa.pageid, log_Gl.hdr.append_lsa.offset, time_val);
+		   tdes->tran_index, tdes->trid, append_lsa.pageid, append_lsa.offset, time_val);
 	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
@@ -6273,6 +6304,7 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 {
   char db_creation_time_val[CTIME_MAX];
   char vol_creation_time_val[CTIME_MAX];
+  LOG_LSA append_lsa = log_header_p->append_lsa;
 
   (void) ctime_r ((time_t *) & log_header_p->db_creation, db_creation_time_val);
   (void) ctime_r ((time_t *) & log_header_p->vol_creation, vol_creation_time_val);
@@ -6292,15 +6324,16 @@ log_dump_header (FILE * out_fp, LOG_HEADER * log_header_p)
 	   log_header_p->db_compatibility, log_header_p->db_iopagesize, log_header_p->db_logpagesize,
 	   log_header_p->is_shutdown, log_header_p->next_trid, (long long int) log_header_p->mvcc_next_id,
 	   log_header_p->avg_ntrans, log_header_p->avg_nlocks, log_header_p->npages, (long long) log_header_p->fpageid,
-	   LSA_AS_ARGS (&log_header_p->append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
+	   LSA_AS_ARGS (&append_lsa), LSA_AS_ARGS (&log_header_p->chkpt_lsa));
 
   fprintf (out_fp,
 	   "     Next_archive_pageid = %lld at active_phy_pageid = %d,\n"
 	   "     Next_archive_num = %d, Last_archiv_num_for_syscrashes = %d,\n"
-	   "     Last_deleted_arv_num = %d, has_logging_been_skipped = %d,\n"
+	   "     Last_deleted_arv_num = %d, Cdc_arv_num_to_keep = %d, has_logging_been_skipped = %d,\n"
 	   "     bkup_lsa: level0 = %lld|%d, level1 = %lld|%d, level2 = %lld|%d,\n     Log_prefix = %s\n",
 	   (long long int) log_header_p->nxarv_pageid, log_header_p->nxarv_phy_pageid, log_header_p->nxarv_num,
 	   log_header_p->last_arv_num_for_syscrashes, log_header_p->last_deleted_arv_num,
+	   LOG_HDR_CDC_ARV_NUM_IS_SET (log_header_p) ? LOG_HDR_CDC_ARV_NUM_GET (log_header_p) : -1,
 	   log_header_p->has_logging_been_skipped, LSA_AS_ARGS (&log_header_p->bkup_level0_lsa),
 	   LSA_AS_ARGS (&log_header_p->bkup_level1_lsa), LSA_AS_ARGS (&log_header_p->bkup_level2_lsa),
 	   log_header_p->prefix_name);
@@ -7168,15 +7201,15 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
 	{
 	  lsa.pageid = 0;
 	}
-      else if (lsa.pageid > log_Gl.hdr.append_lsa.pageid && LOG_ISRESTARTED ())
+      else if (lsa.pageid > log_Gl.hdr.append_lsa.load ().pageid && LOG_ISRESTARTED ())
 	{
-	  lsa.pageid = log_Gl.hdr.append_lsa.pageid;
+	  lsa.pageid = log_Gl.hdr.append_lsa.load ().pageid;
 	}
     }
   else
     {
       /* Backward */
-      if (lsa.pageid < 0 || lsa.pageid > log_Gl.hdr.append_lsa.pageid)
+      if (lsa.pageid < 0 || lsa.pageid > log_Gl.hdr.append_lsa.load ().pageid)
 	{
 	  log_find_end_log (thread_p, &lsa);
 	}
@@ -7226,7 +7259,7 @@ xlog_dump (THREAD_ENTRY * thread_p, FILE * out_fp, int isforward, LOG_PAGEID sta
       if (lsa.offset == NULL_OFFSET && (lsa.offset = log_pgptr->hdr.offset) == NULL_OFFSET)
 	{
 	  /* Nothing in this page.. */
-	  if (lsa.pageid >= log_Gl.hdr.append_lsa.pageid || lsa.pageid <= 0)
+	  if (lsa.pageid >= log_Gl.hdr.append_lsa.load ().pageid || lsa.pageid <= 0)
 	    {
 	      LSA_SET_NULL (&lsa);
 	    }
@@ -8682,7 +8715,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 
   /* Guess the end of the log from the header */
 
-  LSA_COPY (end_lsa, &log_Gl.hdr.append_lsa);
+  *end_lsa = log_Gl.hdr.append_lsa;
   type = LOG_LARGER_LOGREC_TYPE;
 
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
@@ -8759,7 +8792,7 @@ log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa)
 	    }
 	}
 
-      if (type == LOG_END_OF_LOG && eof != NULL && !LSA_EQ (end_lsa, &log_Gl.hdr.append_lsa))
+      if (type == LOG_END_OF_LOG && eof != NULL && *end_lsa != log_Gl.hdr.append_lsa.load ())
 	{
 	  /*
 	   * Reset the log header for future reads, multiple restart crashes,
@@ -9356,6 +9389,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   DB_DATETIME vol_creation;
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
+  LOG_LSA append_lsa = header->append_lsa;
 
   if (cursor >= 1)
     {
@@ -9424,7 +9458,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_bigint (out_values[idx], header->fpageid);
   idx++;
 
-  lsa_to_string (buf, sizeof (buf), &header->append_lsa);
+  lsa_to_string (buf, sizeof (buf), &append_lsa);
   error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
@@ -9800,6 +9834,119 @@ log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
 }
 
 /*
+ * log_get_undo_record_from_data () - unzip a contiguous undo image, if zipped, and copy it into recdes.
+ *   A recdes too small is reported as S_DOESNT_FIT with recdes->length set to minus the needed size.
+ *   Shared by the log page reader and the staged prior node reader.
+ *   return: S_SUCCESS / S_DOESNT_FIT / S_ERROR
+ *
+ * undo_data (in): contiguous undo bytes
+ * udata_size (in): byte length of undo_data
+ * is_zipped (in): whether undo_data is zlib-compressed
+ * recdes (out): destination record
+ */
+static SCAN_CODE
+log_get_undo_record_from_data (THREAD_ENTRY * thread_p, char *undo_data, int udata_size, bool is_zipped,
+			       RECDES * recdes)
+{
+  if (is_zipped)
+    {
+      /* One buffer per thread, reused: the version chain calls this once per hop, and the page path once
+       * per record, so a buffer allocated here would be an IO_PAGESIZE malloc/free on both. */
+      LOG_ZIP *log_unzip_ptr = log_append_get_unzip_undo (thread_p);
+
+      if (log_unzip_ptr == NULL)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_get_undo_record_from_data");
+	  return S_ERROR;
+	}
+
+      if (log_unzip (log_unzip_ptr, udata_size, (char *) undo_data))
+	{
+	  udata_size = (int) log_unzip_ptr->data_length;
+	  undo_data = (char *) log_unzip_ptr->log_data;
+	}
+      else
+	{
+	  assert (false);
+	  return S_ERROR;
+	}
+    }
+
+  /* copy the record */
+  recdes->type = *(INT16 *) (undo_data);
+  recdes->length = udata_size - sizeof (recdes->type);
+  if (recdes->area_size < 0 || recdes->area_size < (int) recdes->length)
+    {
+      /*
+       * DOES NOT FIT
+       * Give a hint to the user of the needed length. Hint is given as a
+       * negative value
+       */
+      /* do not use unary minus because slot_p->record_length is unsigned */
+      recdes->length *= -1;
+
+      return S_DOESNT_FIT;
+    }
+
+  memcpy (recdes->data, (char *) (undo_data) + sizeof (recdes->type), recdes->length);
+
+  return S_SUCCESS;
+}
+
+/*
+ * log_get_undo_record_from_node () - read a staged prior node's undo image into recdes, without going
+ *   through the log page buffer. node->udata holds the image the drain would copy onto a page, and its
+ *   zip flag sits in the data header the page path reads it from too. Node must be pinned.
+ *   return: S_SUCCESS / S_DOESNT_FIT / S_ERROR
+ */
+static SCAN_CODE
+log_get_undo_record_from_node (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, RECDES * recdes)
+{
+  int header_ulength;
+
+  /* the window only ever stages types this switch knows */
+  assert (log_prior_inflight_is_registrable (node));
+
+  switch (node->log_header.type)
+    {
+    case LOG_MVCC_UNDO_DATA:
+      header_ulength = ((LOG_REC_MVCC_UNDO *) node->data_header)->undo.length;
+      break;
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      header_ulength = ((LOG_REC_MVCC_UNDOREDO *) node->data_header)->undoredo.ulength;
+      break;
+    default:
+      assert (false);
+      return S_ERROR;
+    }
+
+  return log_get_undo_record_from_data (thread_p, node->udata, node->ulength, ZIP_CHECK (header_ulength), recdes);
+}
+
+/*
+ * log_get_undo_record_from_inflight () - read an undo image out of the in-flight window, without
+ *   draining. Pins the node while it is read.
+ *   return: whether the window held the record; if it did, scan_out carries the read's result
+ */
+bool
+log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, RECDES * recdes, SCAN_CODE * scan_out)
+{
+  LOG_PRIOR_INFLIGHT_PIN pin = NULL;
+  LOG_PRIOR_NODE *node = log_prior_inflight_pin_lookup (thread_p, *lsa, pin);
+
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  *scan_out = log_get_undo_record_from_node (thread_p, node, recdes);
+  log_prior_inflight_unpin (pin);
+
+  return true;
+}
+
+/*
  * log_get_undo_record () - gets undo record from log lsa adress
  *   return: S_SUCCESS or ER_code
  *
@@ -9823,13 +9970,12 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
   LOG_LSA oldest_prior_lsa;
   bool is_zipped = false;
   char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  LOG_ZIP *log_unzip_ptr = NULL;
   char *area = NULL;
   SCAN_CODE scan = S_SUCCESS;
   bool area_was_mallocated = false;
 
   /* assert log record is not in prior list */
-  oldest_prior_lsa = *log_get_append_lsa ();
+  oldest_prior_lsa = log_get_append_lsa ();
   assert (LSA_LT (&process_lsa, &oldest_prior_lsa));
 
   log_rec_header = LOG_GET_LOG_RECORD_HEADER (log_page_p, &process_lsa);
@@ -9932,56 +10078,12 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       undo_data = area;
     }
 
-  if (is_zipped)
-    {
-      log_unzip_ptr = log_zip_alloc (IO_PAGESIZE);
-      if (log_unzip_ptr == NULL)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_get_undo_record");
-	  scan = S_ERROR;
-	  goto exit;
-	}
-
-      if (log_unzip (log_unzip_ptr, udata_size, (char *) undo_data))
-	{
-	  udata_size = (int) log_unzip_ptr->data_length;
-	  undo_data = (char *) log_unzip_ptr->log_data;
-	}
-      else
-	{
-	  assert (false);
-	  scan = S_ERROR;
-	  goto exit;
-	}
-    }
-
-  /* copy the record */
-  recdes->type = *(INT16 *) (undo_data);
-  recdes->length = udata_size - sizeof (recdes->type);
-  if (recdes->area_size < 0 || recdes->area_size < (int) recdes->length)
-    {
-      /*
-       * DOES NOT FIT
-       * Give a hint to the user of the needed length. Hint is given as a
-       * negative value
-       */
-      /* do not use unary minus because slot_p->record_length is unsigned */
-      recdes->length *= -1;
-
-      scan = S_DOESNT_FIT;
-      goto exit;
-    }
-
-  memcpy (recdes->data, (char *) (undo_data) + sizeof (recdes->type), recdes->length);
+  scan = log_get_undo_record_from_data (thread_p, undo_data, udata_size, is_zipped, recdes);
 
 exit:
   if (area_was_mallocated)
     {
       free (area);
-    }
-  if (log_unzip_ptr != NULL)
-    {
-      log_zip_free (log_unzip_ptr);
     }
 
   return scan;
@@ -14135,7 +14237,151 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
 LOG_PAGEID
 cdc_min_log_pageid_to_keep ()
 {
-  return cdc_Gl.consumer.start_lsa.pageid;
+#if defined (SERVER_MODE)
+  return cdc_Gl.arv_keep_lsa.pageid;
+#else
+  /* cdc only runs inside the server, so a stand-alone utility has no position of its own to protect
+   * and cdc_Gl is never initialized there. It reads the volume the log header names, and never picks
+   * one - page id 0 out of a zeroed global would otherwise look like a real position. */
+  return NULL_PAGEID;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * cdc_update_arv_num_to_keep - Remember the archive volume that holds the start of the bundle handed to a client
+ *
+ * return: nothing
+ *
+ *   bundle_start_lsa(in): LSA of the first log record of the bundle
+ *
+ * NOTE: cdc_Gl dies with the server, so the volume goes into the active log header. It keeps archive removal off
+ *       the logs cdc has yet to re-read while the client has not reconnected.
+ */
+void
+cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa)
+{
+  int arv_num;
+
+  if (LSA_ISNULL (bundle_start_lsa))
+    {
+      return;
+    }
+
+  /* A session that is keeping up changes nothing here: the position is still in the active log and the header
+   * already names the volume it will land in. Settle that in read mode so that the log flush daemon, which
+   * takes LOG_CS in write mode for every group commit, is not queued behind an extract request. Read mode
+   * still shuts out archive removal, the only other writer of these fields. */
+  LOG_CS_ENTER_READ_MODE (thread_p);
+  if (!logpb_is_page_in_archive (bundle_start_lsa->pageid)
+      && LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr) && LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr) == log_Gl.hdr.nxarv_num
+      && !LSA_ISNULL (&cdc_Gl.arv_keep_lsa) && LSA_GE (bundle_start_lsa, &cdc_Gl.arv_keep_lsa))
+    {
+      LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
+
+      cdc_log ("cdc_update_arv_num_to_keep : the bundle starting at (%lld|%d) keeps archive %d",
+	       LSA_AS_ARGS (bundle_start_lsa), log_Gl.hdr.nxarv_num);
+
+      LOG_CS_EXIT (thread_p);
+      return;
+    }
+  LOG_CS_EXIT (thread_p);
+
+  /* Archive removal narrows the header down from cdc_Gl.arv_keep_lsa under LOG_CS, so deciding and writing here
+   * has to be one unit: a removal round slipping in between would re-raise the header from the stale position,
+   * undoing a backward seek. LOG_CS also keeps nxarv_num and last_deleted_arv_num stable. */
+  LOG_CS_ENTER (thread_p);
+
+  if (!logpb_is_page_in_archive (bundle_start_lsa->pageid))
+    {
+      /* A page still in the active log ends up in the volume created next; no earlier one can hold it. */
+      arv_num = log_Gl.hdr.nxarv_num;
+    }
+  else if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr)
+	   && !LSA_ISNULL (&cdc_Gl.arv_keep_lsa) && LSA_GE (bundle_start_lsa, &cdc_Gl.arv_keep_lsa))
+    {
+      /* The header was computed for a page at or before this one, so it already keeps enough. */
+      arv_num = LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr);
+    }
+  else
+    {
+      /* A session is starting, or it was pointed backwards. Read which volume holds the page: this is the same
+       * call archive removal has always made, and logpb_fetch_from_archive() wants LOG_CS - held here - and guards
+       * the archive descriptor with LOG_ARCHIVE_CS. Keeping every volume that is left would also be correct, but
+       * nothing can narrow that down before a client reconnects, so a restart in between would leave the header
+       * naming the oldest volume alive and stop archive removal altogether. */
+      arv_num = logpb_get_archive_num_for_pageid (thread_p, bundle_start_lsa->pageid);
+      if (arv_num < 0)
+	{
+	  /* Could not be read. Keep every volume that is left rather than give one up. */
+	  arv_num = log_Gl.hdr.last_deleted_arv_num + 1;
+	}
+    }
+
+  LSA_COPY (&cdc_Gl.arv_keep_lsa, bundle_start_lsa);
+
+  /* Ahead of the check below, so that a session which is not moving the volume still shows up. */
+  cdc_log ("cdc_update_arv_num_to_keep : the bundle starting at (%lld|%d) keeps archive %d",
+	   LSA_AS_ARGS (bundle_start_lsa), arv_num);
+
+  if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr) && LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr) == arv_num)
+    {
+      LOG_CS_EXIT (thread_p);
+      return;
+    }
+
+  /* Which archive is being held back, and the position that asked for it, is what an operator needs after a
+   * failure, so it does not sit behind a debug parameter. The volume only moves when an archive is created. */
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_ARCHIVE_KEPT, 3,
+	  (long long int) bundle_start_lsa->pageid, bundle_start_lsa->offset, arv_num);
+
+  /* The log header is not a logged page, so nothing redoes a change to it: an in-memory only update would be
+   * lost on a kill and the database would come back unprotected. Flush every change - the value tracks
+   * nxarv_num, which only moves when an archive is created, so this costs one write per archive, not per
+   * bundle. */
+  LOG_HDR_CDC_ARV_NUM_SET (&log_Gl.hdr, arv_num);
+  logpb_flush_header (thread_p);
+
+  /* logpb_flush_header() only writes, and the active log is not mounted for synchronous io, so an os
+   * crash can still lose this. Every other header field can be worked out again from the log or the
+   * archives; this one is the only record of a decision, so a lost write means no protection at all -
+   * exactly the failure this is meant to prevent. The value tracks archive creation, so the cost is
+   * one sync per archive. */
+  if (fileio_synchronize (thread_p, log_Gl.append.vdes, log_Name_active, false) == NULL_VOLDES)
+    {
+      /* fileio_synchronize () has already set the error. There is nothing to undo - the value is written,
+       * it is just not known to be on the medium yet - but it must not look durable when it is not. */
+      _er_log_debug (ARG_FILE_LINE,
+		     "The archive number to keep for cdc (%d) was written but could not be synced to disk.", arv_num);
+    }
+
+  LOG_CS_EXIT (thread_p);
+}
+
+/*
+ * cdc_release_arv_num_to_keep - Give up the archive volume that was being kept for cdc
+ *
+ * return: nothing
+ *
+ * NOTE: A client that ends its session is done with what it was handed, so the protection goes with it - that is what
+ *       archive removal did before the volume was recorded at all. Only a client that goes away without ending the
+ *       session leaves it in place, which is the case a restart has to be able to resume from.
+ */
+static void
+cdc_release_arv_num_to_keep (THREAD_ENTRY * thread_p)
+{
+  LOG_CS_ENTER (thread_p);
+
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
+
+  if (LOG_HDR_CDC_ARV_NUM_IS_SET (&log_Gl.hdr))
+    {
+      cdc_log ("cdc_release_arv_num_to_keep : giving up archive %d", LOG_HDR_CDC_ARV_NUM_GET (&log_Gl.hdr));
+
+      LOG_HDR_CDC_ARV_NUM_RESET (&log_Gl.hdr);
+      logpb_flush_header (thread_p);
+    }
+
+  LOG_CS_EXIT (thread_p);
 }
 
 /* Number of cdc_find_lsa() resolutions currently scanning archive volumes.  cdc_find_lsa()
@@ -14341,7 +14587,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	  else if (error == ER_CDC_LSA_NOT_FOUND)
 	    {
 	      /* input time is too big to find log, then returns latest log */
-	      LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
+	      *start_lsa = log_Gl.append.prev_lsa;
 
 	      *extraction_time = time (NULL);	/* can not know time of latest log */
 	      is_found = true;
@@ -14398,7 +14644,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 		  else
 		    {
 		      /* no time information has been found in any log volume; returns the latest log */
-		      LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
+		      *start_lsa = log_Gl.append.prev_lsa;
 		      *extraction_time = time (NULL);
 		    }
 		  is_found = true;
@@ -14448,7 +14694,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	      else
 		{
 		  /* num_arvs ==0 but no time info has been found in active log volume */
-		  LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
+		  *start_lsa = log_Gl.append.prev_lsa;
 
 		  *extraction_time = time (NULL);	/* can not know time of latest log */
 		  is_found = true;
@@ -15103,6 +15349,8 @@ cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa)
 	}
     }
 
+  cdc_update_arv_num_to_keep (thread_p, start_lsa);	/* also advances cdc_Gl.arv_keep_lsa */
+
   LSA_COPY (&cdc_Gl.consumer.start_lsa, start_lsa);	/* stores start lsa to consume */
   log_infos = cdc_Gl.consumer.log_info;
   memset (log_infos, 0, cdc_Gl.consumer.log_info_size);
@@ -15215,6 +15463,7 @@ cdc_initialize ()
 
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
+  LSA_SET_NULL (&cdc_Gl.arv_keep_lsa);
 
   cdc_Gl.producer.temp_logbuf[0].log_page_p =
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[0].log_page, MAX_ALIGNMENT);
@@ -15265,9 +15514,11 @@ cdc_free_extraction_filter ()
 
 /* if client request for session end, it clean up all data structure */
 int
-cdc_cleanup ()
+cdc_cleanup (THREAD_ENTRY * thread_p)
 {
   cdc_log ("cdc_cleanup () : cleanup start");
+
+  cdc_release_arv_num_to_keep (thread_p);
 
   if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
     {

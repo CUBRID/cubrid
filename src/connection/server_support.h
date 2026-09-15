@@ -104,12 +104,15 @@ extern int css_change_ha_server_state (THREAD_ENTRY * thread_p, HA_SERVER_STATE 
 extern int css_notify_ha_log_applier_state (THREAD_ENTRY * thread_p, HA_LOG_APPLIER_STATE state);
 
 extern void css_push_external_task (CSS_CONN_ENTRY * conn, cubthread::entry_task * task);
-extern void css_push_server_task (CSS_CONN_ENTRY & conn_ref);
+extern void css_push_server_task (CSS_CONN_ENTRY & conn_ref, cubthread::task_submission_options options);
 extern void css_get_thread_stats (UINT64 * stats_out);
+extern void css_get_thread_runtime_stats (UINT64 * total_slots, UINT64 * target_slots, UINT64 * busy_slots,
+					  UINT64 * total_workers, UINT64 * target_workers, UINT64 * busy_workers);
 extern void css_get_task_stats (UINT64 * stats_out);
 extern size_t css_get_num_request_workers (void);
 extern bool css_are_all_request_handlers_suspended (void);
 extern size_t css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, int client_id);
+extern void css_set_max_concurrency_and_workers (std::size_t max_concurrency, std::size_t max_worker);
 
 extern void css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_index,
 				 int net_request_index);
@@ -120,8 +123,6 @@ extern int css_check_conn (CSS_CONN_ENTRY * p);
 
 extern int css_check_accessibility (SOCKET new_fd);
 
-extern size_t css_get_max_workers ();
-extern size_t css_get_max_task_count ();
 extern size_t css_get_max_connections ();
 
 #if defined (SERVER_MODE)
