@@ -478,10 +478,11 @@ dblink_coerce_to_declared_codeset (DB_VALUE * dbval, DB_VALUE * conv_val)
     }
   else
     {
+      const char *back_str = db_get_string (&back_val);
       int size = db_get_string_size (dbval);
 
-      restored = (db_get_string_size (&back_val) == size
-		  && memcmp (db_get_string (&back_val), db_get_string (dbval), size) == 0);
+      restored = (back_str != NULL && db_get_string_size (&back_val) == size
+		  && memcmp (back_str, db_get_string (dbval), size) == 0);
     }
 
   pr_clear_value (&back_val);
