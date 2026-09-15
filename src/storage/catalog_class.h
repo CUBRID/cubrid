@@ -44,6 +44,8 @@ int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * chars
 int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
+int catcls_get_class_stats (THREAD_ENTRY * thread_p, const char *class_name, int *out_chn, int *out_with_fullscan,
+			    bool * out_found);
 int catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsigned int ci_time_stamp,
 			       bool with_fullscan);
 

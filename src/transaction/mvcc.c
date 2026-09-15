@@ -617,6 +617,58 @@ mvcc_satisfies_dirty (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVC
 }
 
 /*
+ * mvcc_satisfies_committed () - Check whether a record version is the latest committed one, independently of any
+ *				 transaction snapshot.
+ *
+ * return	  : SNAPSHOT_SATISFIED when the version was inserted by a committed transaction (or by the current
+ *		    one) and is not deleted by a committed transaction (or by the current one); TOO_NEW_FOR_SNAPSHOT
+ *		    when another, still active transaction inserted it (the caller then falls back to the previous
+ *		    version, if any); TOO_OLD_FOR_SNAPSHOT when its deleter has committed or is the current transaction.
+ * thread_p (in)  : Thread entry.
+ * rec_header (in): MVCC record header.
+ * snapshot (in)  : The snapshot descriptor carrying this function.
+ *
+ * NOTE: This is mvcc_satisfies_dirty () minus the uncommitted versions of other transactions: it yields the last
+ *	 committed state of a record without building the transaction snapshot. CBRD-27369 uses it to read the
+ *	 _db_histogram catalog at query compile time, where the reader must neither block on nor observe a concurrent
+ *	 UPDATE STATISTICS, and must not pin the transaction's MVCC snapshot before the statement itself runs.
+ *
+ * NOTE: The snapshot argument can never be the transaction snapshot!
+ */
+MVCC_SATISFIES_SNAPSHOT_RESULT
+mvcc_satisfies_committed (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header, MVCC_SNAPSHOT * snapshot)
+{
+  assert (rec_header != NULL && snapshot != NULL);
+
+  if (MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID) && !MVCC_IS_REC_INSERTED_BY_ME (thread_p, rec_header)
+      && MVCC_IS_REC_INSERTER_ACTIVE (thread_p, rec_header))
+    {
+      /* inserted by another transaction that has not committed yet */
+      return TOO_NEW_FOR_SNAPSHOT;
+    }
+
+  if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
+    {
+      /* committed (or own) insert, not deleted */
+      return SNAPSHOT_SATISFIED;
+    }
+
+  if (MVCC_IS_REC_DELETED_BY_ME (thread_p, rec_header))
+    {
+      return TOO_OLD_FOR_SNAPSHOT;
+    }
+
+  if (MVCC_IS_REC_DELETER_ACTIVE (thread_p, rec_header))
+    {
+      /* deleted by another transaction that has not committed yet: still the last committed version */
+      return SNAPSHOT_SATISFIED;
+    }
+
+  /* the deleter has committed */
+  return TOO_OLD_FOR_SNAPSHOT;
+}
+
+/*
 * mvcc_is_mvcc_disabled_class () - MVCC is disabled for root class and
 *					_db_serial, db_partition. this is a slow operation so cache this result.
 *

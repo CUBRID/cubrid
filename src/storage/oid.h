@@ -171,6 +171,26 @@ inline bool operator!=(const OID& oid1, const OID& oid2)
     } \
   while (0)
 
+/* Per-class lock resource private to UPDATE STATISTICS serialization (CBRD-27369).  It is
+ * the class OID with a reserved slot bit that nothing else ever sets: not a real slot
+ * (slot numbers are small), not the catalog virtual directory OID (that sets bit 15,
+ * VIRTUAL_CLASS_DIR_OID_MASK, and is intention-locked as a class_oid by catalog access),
+ * and not any other locker.  An X lock on it therefore self-conflicts -- serializing
+ * concurrent statistics collection on the class -- while touching no resource the class's
+ * DML, reads, or catalog access locks.  Bit 15 is deliberately left clear so
+ * OID_IS_VIRTUAL_CLASS_OF_DIR_OID () stays false for it (the lock manager special-cases
+ * that flag). */
+#define UPDATE_STATS_GATE_OID_MASK (1 << 14)
+#define OID_GET_UPDATE_STATS_GATE_OID(class_oidp,gate_oidp) \
+  do \
+    { \
+      (gate_oidp)->volid = (class_oidp)->volid; \
+      (gate_oidp)->pageid = (class_oidp)->pageid; \
+      (gate_oidp)->slotid = ((class_oidp)->slotid) \
+			     | UPDATE_STATS_GATE_OID_MASK; \
+    } \
+  while (0)
+
 enum
 {
   OID_CACHE_ROOT_CLASS_ID = 0,

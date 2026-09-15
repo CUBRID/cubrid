@@ -167,6 +167,7 @@ extern MOP obj_find_primary_key (MOP op, const DB_VALUE ** values, int size, AU_
  *
  */
 
+extern MOP obj_find_multi_attr_committed (MOP op, int size, const char *attr_names[], const DB_VALUE * values[]);
 extern MOP obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE * values[],
 				AU_FETCHMODE fetchmode);
 extern MOP obj_find_multi_desc (MOP op, int size, const SM_DESCRIPTOR * desc[], const DB_VALUE * values[],
