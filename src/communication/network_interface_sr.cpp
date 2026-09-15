@@ -10410,8 +10410,12 @@ reply:
 	free (buffer);
       }
   };
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, nread,
-				     std::move (deleter));
+  /* css_send_reply_and_data_to_client () asserts !!buffer == !!buffer_size: a non-NULL buffer paired
+   * with a zero size (an exhausted cursor read to one byte past its end, or an offset landing at or
+   * past the value's length) trips it and takes the server down.  buffer itself still needs the
+   * deleter to run, so only the pointer handed to the send is nulled when there is nothing to send. */
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     nread > 0 ? buffer : NULL, nread, std::move (deleter));
 }
 
 static INT64
@@ -10635,8 +10639,12 @@ reply:
 	free (buffer);
       }
   };
-  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer, nread,
-				     std::move (deleter));
+  /* css_send_reply_and_data_to_client () asserts !!buffer == !!buffer_size: a non-NULL buffer paired
+   * with a zero size (an exhausted cursor read to one byte past its end, or an offset landing at or
+   * past the value's length) trips it and takes the server down.  buffer itself still needs the
+   * deleter to run, so only the pointer handed to the send is nulled when there is nothing to send. */
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     nread > 0 ? buffer : NULL, nread, std::move (deleter));
 }
 
 /*
