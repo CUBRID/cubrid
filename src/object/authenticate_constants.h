@@ -34,6 +34,7 @@
 #define AU_PUBLIC_USER_NAME     "PUBLIC"
 #define AU_DBA_USER_NAME        "DBA"
 #define AU_INFORMATION_SCHEMA_USER_NAME        "INFORMATION_SCHEMA"
+#define AU_CATALOG_READER_USER_NAME        "DB_CATALOG_READER"
 
 /*
  * Authorization Types

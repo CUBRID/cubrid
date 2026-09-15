@@ -750,8 +750,8 @@ au_set_user_loginable (MOP user, bool loginable)
       goto end;
     }
 
-  if (ws_is_same_object (user, Au_information_schema_user) || ws_is_same_object (user, Au_dba_user)
-      || ws_is_same_object (user, Au_user))
+  if (ws_is_same_object (user, Au_information_schema_user) || ws_is_same_object (user, Au_catalog_reader_user)
+      || ws_is_same_object (user, Au_dba_user) || ws_is_same_object (user, Au_user))
     {
       db_make_null (&name);
       error = obj_get (user, "name", &name);

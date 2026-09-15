@@ -120,6 +120,15 @@ class EXPORT_IMPORT authenticate_context
     MOP information_schema_user;
 
     /*
+     * Au_catalog_reader_user
+     *
+     * This is the system user that groups the catalog readers.
+     * This user cannot login and owns nothing; its members are shown every row
+     * of the catalog views that are otherwise filtered by owner and grant.
+     */
+    MOP catalog_reader_user;
+
+    /*
     * Au_user
     *
     * This points to the MOP of the user object of the currently
@@ -207,12 +216,13 @@ class EXPORT_IMPORT authenticate_context
 
     int create_public_user (MOP root_cls);
     int create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls);
+    int create_catalog_reader_user (void);
 
     int set_system_users_as_created (void);
 
     auto get_system_users (void) const
     {
-      return std::array { dba_user, public_user, information_schema_user };
+      return std::array { dba_user, public_user, information_schema_user, catalog_reader_user };
     }
 };
 

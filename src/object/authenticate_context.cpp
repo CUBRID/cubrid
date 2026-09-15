@@ -52,6 +52,7 @@ authenticate_context::reset (void)
   public_user = nullptr;
   dba_user = nullptr;
   information_schema_user = nullptr;
+  catalog_reader_user = nullptr;
   disable_auth_check = true;
   ignore_passwords = false;
 }
@@ -173,7 +174,8 @@ authenticate_context::start (void)
       public_user = au_find_user (AU_PUBLIC_USER_NAME);
       dba_user = au_find_user (AU_DBA_USER_NAME);
       information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
+      catalog_reader_user = au_find_user (AU_CATALOG_READER_USER_NAME);
+      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL || catalog_reader_user == NULL)
 	{
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -493,6 +495,11 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
+  if (create_catalog_reader_user () != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   if (set_system_users_as_created () != NO_ERROR)
     {
       goto exit_on_error;
@@ -519,6 +526,11 @@ exit_on_error:
     {
       au_drop_user (information_schema_user);
       information_schema_user = NULL;
+    }
+  if (catalog_reader_user != NULL)
+    {
+      au_drop_user (catalog_reader_user);
+      catalog_reader_user = NULL;
     }
   if (root != NULL)
     {
@@ -580,7 +592,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
       public_user = au_find_user (AU_PUBLIC_USER_NAME);
       dba_user = au_find_user (AU_DBA_USER_NAME);
       information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
+      catalog_reader_user = au_find_user (AU_CATALOG_READER_USER_NAME);
+      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL || catalog_reader_user == NULL)
 	{
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
@@ -997,6 +1010,32 @@ authenticate_context::create_information_schema_user (MOP root_cls, MOP user_cls
   au_grant (DB_OBJECT_CLASS, information_schema_user, auth_cls, AU_SELECT, false);
 
   if (set_loginable (information_schema_user, false) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+int
+authenticate_context::create_catalog_reader_user (void)
+{
+  int exists = 0;
+
+  catalog_reader_user = au_add_user (AU_CATALOG_READER_USER_NAME, &exists);
+  assert (exists == 0);
+  if (catalog_reader_user == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /*
+   * no grant is needed here
+   * the members read the catalog through the db_* and INFORMATION_SCHEMA views,
+   * whose definitions admit this group by name
+   */
+
+  if (set_loginable (catalog_reader_user, false) != NO_ERROR)
     {
       return ER_FAILED;
     }

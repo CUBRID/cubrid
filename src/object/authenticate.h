@@ -59,6 +59,7 @@ class print_output;
 #define Au_dba_user                     au_ctx ()->dba_user
 #define Au_public_user                  au_ctx ()->public_user
 #define Au_information_schema_user      au_ctx ()->information_schema_user
+#define Au_catalog_reader_user          au_ctx ()->catalog_reader_user
 #define Au_disable                      au_ctx ()->disable_auth_check
 
 #define Au_root_class                   au_ctx ()->root_class
