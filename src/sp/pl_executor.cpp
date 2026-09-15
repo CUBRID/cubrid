@@ -49,6 +49,12 @@ namespace cubpl
     auth.assign (sig->auth);
     lang = sig->type;
     result_type = sig->result_type;
+    if (lang == PL_TYPE_PLCSQL)
+      {
+	// PL/CSQL SPs have compile_id.
+	assert (sig->ext.sp.compile_id != NULL);
+	compile_id.assign (sig->ext.sp.compile_id);
+      }
 
     pl_arg &arg = sig->arg;
     num_args = arg.arg_size;
@@ -61,7 +67,7 @@ namespace cubpl
 	arg_type[i] = arg.arg_type[i];
       }
 
-    transaction_control = (lang == SP_LANG_PLCSQL) ? true : tc;
+    transaction_control = (lang == PL_TYPE_PLCSQL) ? true : tc;
   }
 
   void
@@ -69,6 +75,7 @@ namespace cubpl
   {
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
+    serializator.pack_string (compile_id);
     serializator.pack_string (auth);
     serializator.pack_int (lang);
     serializator.pack_int (num_args);
@@ -95,6 +102,7 @@ namespace cubpl
   {
     size_t size = serializator.get_packed_int_size (start_offset); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
+    size += serializator.get_packed_string_size (compile_id, size); // compile_id
     size += serializator.get_packed_string_size (auth, size); // auth
     size += serializator.get_packed_int_size (size); // lang
     size += serializator.get_packed_int_size (size); // num_args
@@ -577,6 +585,14 @@ exit:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
 	break;
 
+      case METHOD_CALLBACK_GET_CODE_BY_NAME:
+	error_code = callback_get_code_by_name (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_CHECK_EXECUTE_AUTH:
+	error_code = callback_check_execute_auth (thread_ref, unpacker);
+	break;
+
       case METHOD_CALLBACK_SET_PL_SESSION_PARAM:
 	error_code = callback_set_pl_session_param (thread_ref, unpacker);
 	break;
@@ -1034,6 +1050,41 @@ exit:
     error = m_stack->send_data_to_java (blk);
     blk.freemem ();
 
+    return error;
+  }
+
+  int
+  executor::callback_get_code_by_name (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int code = METHOD_CALLBACK_GET_CODE_BY_NAME;
+
+    std::string class_name;
+    std::string req_compile_id;
+    unpacker.unpack_all (class_name, req_compile_id);
+
+    auto relay_result = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    return m_stack->send_data_to_client_recv (relay_result, code, class_name, req_compile_id);
+  }
+
+  int
+  executor::callback_check_execute_auth (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_CHECK_EXECUTE_AUTH;
+
+    std::string unique_name;
+    unpacker.unpack_all (unique_name);
+
+    auto relay_result = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client_recv (relay_result, code, unique_name);
     return error;
   }
 

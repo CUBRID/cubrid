@@ -111,8 +111,12 @@ namespace cubmethod
       int get_sql_semantics (packing_unpacker &unpacker);
       int get_global_semantics (packing_unpacker &unpacker);
 
+      /* handle class access */
+      int get_code_by_name (packing_unpacker &unpacker);
+
       /* handle auth */
       int change_rights (packing_unpacker &unpacker);
+      int check_execute_auth (packing_unpacker &unpacker);
 
       /* ported from cas_handle */
       query_handler *new_query_handler ();

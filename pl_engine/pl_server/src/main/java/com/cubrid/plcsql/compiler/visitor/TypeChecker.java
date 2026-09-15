@@ -256,11 +256,6 @@ public class TypeChecker extends AstVisitor<Type> {
             // forward declaration
             assert node.recordTypeSpec != null;
             visitTypeSpec(node.recordTypeSpec);
-
-            if (node.bodyDecl != null) {
-                assert node.bodyDecl instanceof DeclCursor;
-                visitDeclCursor((DeclCursor) node.bodyDecl);
-            }
         }
         return null;
     }
@@ -1444,11 +1439,6 @@ public class TypeChecker extends AstVisitor<Type> {
 
         routineDefNestLevel--;
 
-        if (node.bodyDecl != null) {
-            assert node.body == null;
-            visit(node.bodyDecl);
-        }
-
         return null;
     }
 
@@ -1523,7 +1513,7 @@ public class TypeChecker extends AstVisitor<Type> {
                         Misc.getLineColumnOf(arg.ctx), // s214
                         String.format(
                                 "argument %d to the call of %s has an incompatible type %s",
-                                i + 1, Misc.detachPkgName(decl.name), argType.plcName));
+                                i + 1, decl.name, argType.plcName));
             } else {
                 if (declParam instanceof DeclParamOut && c.getReversion(iStore) == null) {
                     throw new SemanticError(

@@ -65,6 +65,11 @@ public abstract class Decl extends AstNode {
     // and other declarations can give them a body (body decl).
     // the following field links the former to the latter in such cases.
     public Decl bodyDecl;
+    // Java code generation for this node can have been done when it is the implementation of
+    // a declaration in a package specification
+    public boolean codeGenDone;
+    public boolean isPkgItem;
+    public boolean isPkgPublic;
 
     public abstract String kind();
 
@@ -101,5 +106,13 @@ public abstract class Decl extends AstNode {
         // by default, unreachable
         // declarations which can be a package item will properly override this method
         assert false;
+    }
+
+    public void setPkgItem() {
+        isPkgItem = true;
+    }
+
+    public void setPkgPublic() {
+        isPkgPublic = true;
     }
 }
