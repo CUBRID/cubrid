@@ -319,13 +319,6 @@ public class PlcsqlCompilerMain {
             t0 = logElapsedTime(logStore, "converting to AST", t0);
         }
 
-        // ------------------------------------------
-        // ask server semantic infomation
-        // . signature of a global procedure/function
-        // . whether a name represent a serial or not
-        // . type of a table column
-        converter.askServerSemanticQuestions();
-
         if (verbose) {
             t0 = logElapsedTime(logStore, "getting global semantics information from server", t0);
         }

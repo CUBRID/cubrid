@@ -173,6 +173,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         // but its scope must be set as other declarations
         declPkg.setScope(symbolStack.getCurrentScope());
 
+        // connectionRequired can be updated in askServerSemanticQuestions()
+        askServerSemanticQuestions();
+
         return new UnitPkg(specContext, connectionRequired, unitOwner, declPkg);
     }
 
@@ -238,10 +241,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 gpc.decl = new DeclProc(null, ps.name, null, null, paramList, ps.directive);
 
+                gpc.usesDefaultArg = (gpc.args.nodes.size() < paramList.nodes.size());
                 gpc.targetClass = ps.targetClass;
                 gpc.uniqueName = ps.uniqueName;
-                if (ps.targetClass != null && !ps.targetClass.isEmpty()) {
+                if (ps.targetClass != null && !gpc.usesDefaultArg) {
+                    // PL/CSQL SP call without using default arguments
+                    assert !ps.targetClass.isEmpty();
                     referencedClasses.add(ps.targetClass);
+                } else {
+                    connectionRequired = true;
                 }
 
             } else if (q instanceof ServerAPI.FunctionSignature) {
@@ -303,10 +311,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 fs.directive,
                                 TypeSpec.getBogus(iStore, retType));
 
+                gfc.usesDefaultArg = (gfc.args.nodes.size() < paramList.nodes.size());
                 gfc.targetClass = fs.targetClass;
                 gfc.uniqueName = fs.uniqueName;
-                if (fs.targetClass != null && !fs.targetClass.isEmpty()) {
+                if (fs.targetClass != null && !gfc.usesDefaultArg) {
+                    // PL/CSQL SP call without using default arguments
+                    assert !fs.targetClass.isEmpty();
                     referencedClasses.add(fs.targetClass);
+                } else {
+                    connectionRequired = true;
                 }
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
@@ -363,6 +376,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         topLevelStmt = CREATE_SP;
         DeclRoutine decl = visitCreate_routine(ctx.create_routine());
+
+        // connectionRequired can be updated in askServerSemanticQuestions()
+        askServerSemanticQuestions();
+
         ret = new UnitSp(ctx, connectionRequired, unitOwner, decl);
 
         // every other stacks must have been popped except for PREDEFINED and MAIN (level 0 and 1)
@@ -566,9 +583,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             //  . (<owner>.)<table>.<column>
             //  . (<owner>.)<pkg>.<var>
             //  . (<owner>.)<pkg>.<const>
-            String qualifiedName = Misc.getNormalizedText(ctx.qualified_id(), false);
-            assert (qualifiedName.indexOf(".") >= 0); // by syntax
-            String[] split = qualifiedName.split("\\.");
+            String qualifiedId = Misc.getNormalizedText(ctx.qualified_id(), false);
+            assert (qualifiedId.indexOf(".") >= 0); // by syntax
+            String[] split = qualifiedId.split("\\.");
 
             String qualifier, name;
             switch (split.length) {
@@ -1146,8 +1163,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
-        Qualified_idContext qualifiedName = ctx.func_call_name().qualified_id();
-        if (qualifiedName == null) {
+        Qualified_idContext qualifiedId = ctx.func_call_name().qualified_id();
+        if (qualifiedId == null) {
             // in this case, function name is not qualified
             name = Misc.getNormalizedText(ctx.func_call_name().func_name());
         } else {
@@ -1156,10 +1173,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             boolean isGlobalCall = true;
 
-            if (qualifiedName.qualSingle != null) {
+            if (qualifiedId.qualSingle != null) {
 
-                String qual = Misc.getNormalizedText(qualifiedName.qualSingle);
-                name = Misc.getNormalizedText(qualifiedName.name);
+                String qual = Misc.getNormalizedText(qualifiedId.qualSingle);
+                name = Misc.getNormalizedText(qualifiedId.name);
                 if (qual.equals(unitOwner) && name.equals(spName) && isSpFunc) {
 
                     // OK: this is a recursive call of the stored function being defined
@@ -1173,11 +1190,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 // This has an owner name or package name and the target function is not the SP
                 // being defined.
                 // Take this as a global function call.
-                connectionRequired = true;
 
                 String uniqName =
                         Misc.getNormalizedText(
-                                qualifiedName, false); // TODO: check if this has dots or not
+                                qualifiedId, false); // TODO: check if this has dots or not
                 ExprGlobalFuncCall ret =
                         new ExprGlobalFuncCall(ctx, uniqName, args, getSqlSerialNo());
                 addToSqlUses(ret);
@@ -1190,8 +1206,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         assert name != null;
         DeclFunc decl = symbolStack.getDeclFunc(name);
         if (decl == null) {
-
-            connectionRequired = true;
 
             ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args, getSqlSerialNo());
             addToSqlUses(ret);
@@ -1988,7 +2002,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                         name, new UseAndDeclLevel(ctx, SymbolStack.LEVEL_PREDEFINED));
             }
 
-            // this is possibly a global function call
+            // this must be a global function call, otherwise an error
 
             connectionRequired = true;
 
@@ -2039,6 +2053,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     0, // directive
                                     TypeSpec.getBogus(iStore, retType));
                     ret = egfc;
+
+                    if (fs.targetClass == null) {
+                        // it is a JSP.
+                        connectionRequired = true;
+                    }
                 }
             }
 
@@ -2859,7 +2878,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 // This has an owner name or package name and the target procedure is not the SP
                 // being defined.
                 // Take this as a global procedure call.
-                connectionRequired = true;
 
                 String uniqName = Misc.getNormalizedText(qualifiedId, false);
                 StmtGlobalProcCall ret =
@@ -2874,8 +2892,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         assert name != null;
         DeclProc decl = symbolStack.getDeclProc(name);
         if (decl == null) {
-
-            connectionRequired = true;
 
             StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args, getSqlSerialNo());
             addToSqlUses(ret);

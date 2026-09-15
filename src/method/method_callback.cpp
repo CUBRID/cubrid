@@ -974,9 +974,9 @@ namespace cubmethod
 		      param_info.type = db_get_int (&arg_type);
 		    }
 
-		  if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_IS_OPTIONAL, &has_default) == NO_ERROR)
 		    {
-		      param_info.has_default = DB_IS_NULL (&has_default) ? 0 : 1;
+		      param_info.has_default = (!DB_IS_NULL (&has_default) && db_get_int (&has_default) != 0) ? 1 : 0;
 		    }
 
 		  pr_clear_value (&mode);

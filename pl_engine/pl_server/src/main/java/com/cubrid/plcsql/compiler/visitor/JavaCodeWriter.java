@@ -974,7 +974,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      throw new SQL_ERROR(e.getMessage());",
                 "    } finally {",
                 "      if (pstmt_%'SQL-SERIAL-NO'% != null) {",
-                "        pstmt_%'SQL-SERIAL-NO'%.close();",
+                "        try {",
+                "          pstmt_%'SQL-SERIAL-NO'%.close();",
+                "        } catch (SQLException e) {",
+                "          throw new SQL_ERROR(e.getMessage());",
+                "        }",
                 "      }",
                 "    }",
                 "  }",
@@ -1040,9 +1044,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.decl != null;
 
-        if (node.targetClass != null && !node.targetClass.isEmpty()) {
-            // PL/CSQL target: call the method of its generated Java class directly (same package,
+        if (node.targetClass != null && !node.usesDefaultArg) {
+            // PL/CSQL target call without using default arguments: call the method of its generated
+            // Java class directly (same package,
             // so the simple class name is enough)
+
+            assert !node.targetClass.isEmpty();
+
             int paramSize = node.decl.paramList.nodes.size();
             String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
             LocalCallCodeSnippets code =
@@ -2016,7 +2024,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    throw new SQL_ERROR(e.getMessage());",
                 "  } finally {",
                 "    if (pstmt_%'SQL-SERIAL-NO'% != null) {",
-                "      pstmt_%'SQL-SERIAL-NO'%.close();",
+                "      try {",
+                "        pstmt_%'SQL-SERIAL-NO'%.close();",
+                "      } catch (SQLException e) {",
+                "        throw new SQL_ERROR(e.getMessage());",
+                "      }",
                 "    }",
                 "  }",
                 "}"
@@ -2471,7 +2483,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    throw new SQL_ERROR(e.getMessage());",
                 "  } finally {",
                 "    if (pstmt_%'SQL-SERIAL-NO'% != null) {",
-                "      pstmt_%'SQL-SERIAL-NO'%.close();",
+                "      try {",
+                "        pstmt_%'SQL-SERIAL-NO'%.close();",
+                "      } catch (SQLException e) {",
+                "        throw new SQL_ERROR(e.getMessage());",
+                "      }",
                 "    }",
                 "  }",
                 "}"
@@ -2608,7 +2624,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      throw new SQL_ERROR(e.getMessage());",
                 "    } finally {",
                 "      if (pstmt_%'SQL-SERIAL-NO'% != null) {",
-                "        pstmt_%'SQL-SERIAL-NO'%.close();",
+                "        try {",
+                "          pstmt_%'SQL-SERIAL-NO'%.close();",
+                "        } catch (SQLException e) {",
+                "          throw new SQL_ERROR(e.getMessage());",
+                "        }",
                 "      }",
                 "    }",
                 "  }",
@@ -2664,9 +2684,13 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.decl != null;
 
-        if (node.targetClass != null && !node.targetClass.isEmpty()) {
-            // PL/CSQL target: call the method of its generated Java class directly (same package,
+        if (node.targetClass != null && !node.usesDefaultArg) {
+            // PL/CSQL target call without using default arguments: call the method of its generated
+            // Java class directly (same package,
             // so the simple class name is enough)
+
+            assert !node.targetClass.isEmpty();
+
             int paramSize = node.decl.paramList.nodes.size();
             String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
             LocalCallCodeSnippets code =
@@ -4126,7 +4150,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'+LOOP'%",
                 "} finally {",
                 "  // closing PreparedStatement objects out of the loop above",
-                "  %'+CLOSE-STATEMENTS'%",
+                "  try {",
+                "    %'+CLOSE-STATEMENTS'%",
+                "  } catch (SQLException e) {",
+                "    throw new SQL_ERROR(e.getMessage());",
+                "  }",
                 "}",
             };
 
@@ -4136,7 +4164,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         CodeTemplateList decls = new CodeTemplateList();
         CodeTemplateList closes = new CodeTemplateList();
 
+        int cnt = 0;
         for (SqlUse u : sqlUses) {
+
+            cnt++;
 
             String klass = u.ofCallableStmt() ? "CallableStatement" : "PreparedStatement";
 
@@ -4165,6 +4196,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             }
             closes.addElement(
                     new CodeTemplate("StatementCloseMoved", Misc.UNKNOWN_LINE_COLUMN, close));
+        }
+
+        if (cnt == 0) {
+            // just return the code without wrapping
+            return code;
         }
 
         return new CodeTemplate(
