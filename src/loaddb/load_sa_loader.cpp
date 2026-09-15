@@ -5580,18 +5580,39 @@ insert_meth_instance (LDR_CONTEXT *context)
 	  CHECK_ERR (err, construct_instance (context, &real_obj));
 	  CHECK_PTR (err, real_obj);
 
+	  /*
+	   * construct_instance () pinned the instance, but finish_line () had
+	   * already restored the pin for this line before calling us. Restore it
+	   * here so the instance can be flushed and culled like any other.
+	   */
+	  ws_restore_pin (real_obj, context->obj_pin, context->class_pin);
 	  ws_release_instance (real_obj);
-	  inst = otable_find (context->table, context->inst_num);
-	  if (inst == NULL || ! (inst->flags & INST_FLAG_RESERVED))
+
+	  /*
+	   * Note : instances without ids are not inserted in the object table as
+	   * there can not be referenced from the load file.
+	   */
+	  if (context->inst_num >= 0)
 	    {
-	      CHECK_ERR (err, otable_insert (context->table, WS_OID (real_obj), context->inst_num));
-	      CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
-	      CHECK_ERR (err, ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num));
+	      inst = otable_find (context->table, context->inst_num);
+	      if (inst == NULL || ! (inst->flags & INST_FLAG_RESERVED))
+		{
+		  CHECK_ERR (err, otable_insert (context->table, WS_OID (real_obj), context->inst_num));
+		  CHECK_PTR (err, inst = otable_find (context->table, context->inst_num));
+		  CHECK_ERR (err, ldr_add_mop_tempoid_map (real_obj, context->table, context->inst_num));
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_FORWARD_CONSTRUCTOR, 0);
+		  CHECK_ERR (err, ER_LDR_FORWARD_CONSTRUCTOR);
+		}
 	    }
-	  else
+
+	  if (err == NO_ERROR)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_FORWARD_CONSTRUCTOR, 0);
-	      CHECK_ERR (err, ER_LDR_FORWARD_CONSTRUCTOR);
+	      context->obj = NULL;
+	      context->table->total_inserts++;
+	      err = check_commit (context);
 	    }
 	}
       else
@@ -5600,7 +5621,7 @@ insert_meth_instance (LDR_CONTEXT *context)
 	}
     }
 
-  if (err)
+  if (err != NO_ERROR)
     {
       ldr_internal_error (context);
     }
