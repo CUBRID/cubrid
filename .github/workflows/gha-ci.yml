@@ -866,16 +866,26 @@ jobs:
             fi
           fi
 
-          # plan and shard assume these three exist. Better to die here.
-          for f in "$BUILD_SENTINEL" build.meta CUBRID.tar.gz; do
+          # plan and shard assume these exist. Better to die here.
+          for f in "$BUILD_SENTINEL" build.meta; do
             [ -f "$dir/$f" ] || {
               echo "::error::the artifact has no $f: $dir"
               echo "  Builds published before this workflow carry no meta. Re-run with force_build=true."
               exit 1
             }
           done
-          tar -tzf "$dir/CUBRID.tar.gz" "CUBRID/$BUILD_META" >/dev/null || {
-            echo "::error::the archive carries no CUBRID/$BUILD_META: $dir"; exit 1; }
+          # Either shape, the two plan and shard accept: a reused artifact can
+          # predate the archive, and this job does not republish it.
+          if [ -f "$dir/CUBRID.tar.gz" ]; then
+            tar -tzf "$dir/CUBRID.tar.gz" "CUBRID/$BUILD_META" >/dev/null || {
+              echo "::error::the archive carries no CUBRID/$BUILD_META: $dir"; exit 1; }
+          elif [ -f "$dir/CUBRID/$BUILD_META" ]; then
+            echo "reused a tree published before the archive: $dir"
+          else
+            echo "::error::the artifact has no CUBRID.tar.gz and no CUBRID/$BUILD_META: $dir"
+            echo "  Re-run with force_build=true."
+            exit 1
+          fi
           by=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")
           echo "artifact : $dir"
           echo "built by : $by (this run: $GITHUB_RUN_ID)"
