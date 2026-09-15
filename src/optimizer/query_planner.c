@@ -6740,6 +6740,15 @@ qo_examine_distinct_join (QO_INFO * info, QO_INFO * outer, QO_INFO * inner, BITS
       return 0;
     }
 
+  /* This candidate puts the two sides the other way round, so a hint that fixes the join order rules it
+   * out -- the same thing qo_examine_nl_join () and qo_examine_idx_join () do where they swap the two
+   * sides.  ORDERED and LEADING are read from the statement because they hold for the whole query;
+   * only the hints that can differ per table are stamped on the node (add_hint ()). */
+  if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & (PT_HINT_ORDERED | PT_HINT_LEADING))
+    {
+      return 0;
+    }
+
   /* Every join condition must be an equality between plain columns, or there is no key to remove the
    * duplicates on.  The distinct-value counts of the inner's side of those equalities say how many rows are
    * left; where they are missing, charge the file with every row the inner holds, which is the most the
