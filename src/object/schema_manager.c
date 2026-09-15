@@ -15971,6 +15971,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
   HFID prev_hfid;
+  HFID new_hfid;
   SM_CLASS *class_ = NULL;
   OID *oid = NULL;
   DB_OBJLIST *subs;
@@ -16015,28 +16016,18 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   prev_hfid = *insts_hfid;
 
-  /* Destroy the heap */
-  error = heap_destroy_newly_created (insts_hfid, oid, true);
+  /* Create the new heap first and flush the class straight from the old HFID to the new one, so the class record
+   * never exposes a NULL HFID on disk; a concurrent lock-free reader caching that transient state aborted the
+   * server (CBRD-27286). The old heap is destroyed last - its destruction is postponed to commit time anyway, so
+   * the ordering does not change when the pages are actually freed. */
+  HFID_SET_NULL (&new_hfid);
+  error = heap_create (&new_hfid, oid, reuse_oid);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
-  HFID_SET_NULL (insts_hfid);
-  ws_dirty (class_mop);
-
-  error = locator_flush_class (class_mop);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* Create a new heap */
-  error = heap_create (insts_hfid, oid, reuse_oid);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  *insts_hfid = new_hfid;
 
   /* Destroy and Create the lob dir if need */
   error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
@@ -16047,6 +16038,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* Destroy the old heap */
+  error = heap_destroy_newly_created (&prev_hfid, oid, true);
 
 end:
   return error;
