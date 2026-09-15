@@ -815,7 +815,13 @@ spage_boot (THREAD_ENTRY * thread_p)
 
   spage_User_page_size = DB_PAGESIZE;
 
-  spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100, spage_Saving_entry_descriptor);
+  /* spage_boot () cannot report, and neither could the path this replaces, so the error is left set and the
+   * rest of this function runs exactly as it did before */
+  if (spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100,
+				 spage_Saving_entry_descriptor) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
 }
 
 /*
