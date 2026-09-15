@@ -2483,13 +2483,35 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
 		   DB_VALUE *val)
 {
   DB_TYPE dom_type = TP_DOMAIN_TYPE (attdesc->att->domain);
-  int err = NO_ERROR;
+
+  int err;
 
   db_make_null (val);
-  CHECK_PARSE_ERR (err, cubload::get_conv_func (type, dom_type) (str, len, attdesc->conv_att, val), context, dom_type,
-		   str);
 
-error_exit:
+  err = cubload::get_conv_func (type, dom_type) (str, len, attdesc->conv_att, val);
+
+  /* TODO: ctshim,
+   * Report nothing for a failure here. The caller wraps this in CHECK_ERR,
+   * which displays the error once and filters warnings out, and all but one of
+   * the ldr_*_elem () functions this replaced were silent in the same way.
+   *
+   * ldr_elo_ext_elem () is the one that is not. It calls display_error (0) on
+   * itself before returning, so an unreadable LOB locator prints one line more
+   * than every other bad value. That extra line is loaddb's published output -
+   * tests/loaddb pins it and so does the QA case bug_bts_16011 - so it is kept
+   * here rather than dropped as a side effect of moving the conversion.
+   *
+   * Making it uniform means removing BOTH reports, not just this one.
+   * ldr_elo_ext_elem () is still live: elem_converter[LDR_ELO_EXT] reaches it
+   * from construct_instance () when a %constructor argument is a LOB. A
+   * collection cannot hold one - SET(CLOB) is rejected by the DDL - so that is
+   * the only way in.
+   */
+  if (err != NO_ERROR && type == LDR_ELO_EXT)
+    {
+      display_error (0);
+    }
+
   return err;
 }
 
