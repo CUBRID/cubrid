@@ -10723,9 +10723,13 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
  * Stream layout (all multi-byte fields via OR_BUF):
  *   version(byte = PT_CDT_VERSION)  node
  *   node := VALUE_TAG(int)  db_value(or_put_value, domain included)
- *         | OP_TAG(int)     op(int)  qualifier(int)  result domain  arity(int)  node*arity
- *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  result domain  arity(int)  node*arity
+ *         | OP_TAG(int)     op(int)  qualifier(int)  continued_case(int)  result domain  arity(int)  node*arity
+ *         | FUNC_TAG(int)   fcode(int)  qualifier(int = 0)  continued_case(int = 0)  result domain  arity(int)
+ *                          node*arity
  * A PT_FUNCTION_HOLDER wrapper is transparent: its held PT_FUNCTION is stored.
+ * continued_case is an unparse hint of PT_EXPR (CONCAT/CONCAT_WS/FIELD and the
+ * CASE/DECODE/COALESCE/LEAST/GREATEST chains); without it a rehydrated residual
+ * prints in a different form than the original expression.
  */
 #define PT_CDT_VERSION 1
 #define PT_CDT_TAG_VALUE 1	/* PT_VALUE */
@@ -10777,14 +10781,15 @@ pt_cdt_canonical_domain (TP_DOMAIN * domain)
 
 /*
  * pt_cdt_put_node_header () - emit the uniform OP/FUNC node header: tag,
- *	code, qualifier, canonical result domain, 32-bit alignment
+ *	code, qualifier, continued_case, canonical result domain, 32-bit alignment
  *   return: NO_ERROR or error code
  *
  * On overflow this returns ER_TF_BUFFER_OVERFLOW before anything is written 
  * past the buffer, which lets pt_cdt_serialize retry with a larger buffer.
  */
 static int
-pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, int tag, int code, int qualifier)
+pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, int tag, int code, int qualifier,
+			int continued_case)
 {
   TP_DOMAIN *domain;
   int rc;
@@ -10799,11 +10804,11 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
 
   /* everything written below plus the arity int the caller writes right
    * after this header */
-  int tag_code_qualifier_size = 3 * OR_INT_SIZE;
+  int header_ints_size = 4 * OR_INT_SIZE;	/* tag, code, qualifier, continued_case */
   int aligned_domain_size = DB_ALIGN (or_packed_domain_size (domain, 0), INT_ALIGNMENT);
   int arity_size = OR_INT_SIZE;
 
-  if (buf->ptr + tag_code_qualifier_size + aligned_domain_size + arity_size > buf->endptr)
+  if (buf->ptr + header_ints_size + aligned_domain_size + arity_size > buf->endptr)
     {
       return ER_TF_BUFFER_OVERFLOW;
     }
@@ -10811,6 +10816,7 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
   or_put_int (buf, tag);
   or_put_int (buf, code);
   or_put_int (buf, qualifier);
+  or_put_int (buf, continued_case);
   rc = or_put_domain (buf, domain, 0, 0);
   if (rc == NO_ERROR)
     {
@@ -10870,8 +10876,10 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
 	  return pt_cdt_put_node (parser, buf, node->info.expr.arg1);
 	}
 
+      /* continued_case is an unparse hint (e.g. whether CONCAT prints as a function call); preserve it so a
+       * rehydrated residual prints like the original expression */
       rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_OP, (int) node->info.expr.op,
-				   (int) node->info.expr.qualifier);
+				   (int) node->info.expr.qualifier, (int) node->info.expr.continued_case);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -10896,7 +10904,7 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
       return rc;
 
     case PT_FUNCTION:
-      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0);
+      rc = pt_cdt_put_node_header (parser, buf, node, PT_CDT_TAG_FUNC, (int) node->info.function.function_type, 0, 0);
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -11011,7 +11019,7 @@ static PT_NODE *
 pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 {
   int rc = NO_ERROR;
-  int tag, code, qualifier, arity, i;
+  int tag, code, qualifier, continued_case = 0, arity, i;
   int is_null = 0;
   TP_DOMAIN *domain = NULL;
   PT_NODE *node = NULL;
@@ -11052,6 +11060,10 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
     {
       qualifier = or_get_int (buf, &rc);
     }
+  if (rc == NO_ERROR)
+    {
+      continued_case = or_get_int (buf, &rc);
+    }
   if (rc != NO_ERROR)
     {
       return NULL;
@@ -11091,6 +11103,7 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
 	}
       node->info.expr.op = (PT_OP_TYPE) code;
       node->info.expr.qualifier = (PT_MISC_TYPE) qualifier;
+      node->info.expr.continued_case = (short) continued_case;
       node->info.expr.arg1 = args[0];
       node->info.expr.arg2 = args[1];
       node->info.expr.arg3 = args[2];
@@ -11166,6 +11179,139 @@ pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream
     }
 
   return pt_cdt_get_node (parser, &buf);
+}
+
+/*
+ * CDT registry -- the Compact DEFAULT Trees a parser has rehydrated, one per attribute.
+ *
+ * "CDT" names the residual DEFAULT expression itself: a residual DEFAULT is exactly a
+ * DEFAULT stored as a Compact DEFAULT Tree (an Expression-Derived Literal is frozen
+ * to a value, a legacy pseudo-column DEFAULT has no stream), and the registry holds
+ * its rehydrated PT_NODE form.
+ *
+ * Every client-side reader of a CDT (a Default Reference -- the DEFAULT keyword or
+ * DEFAULT(col) --, the statement-clock probe of an INSERT and the Local Evaluation
+ * CDT_EVAL_SET) used to rehydrate the stream on its own, so one multi-row INSERT
+ * decoded the same stream once per DEFAULT keyword plus once per pass.  The registry
+ * decodes each attribute's stream once per parser -- once per compile, and once per
+ * prepare for a prepared statement -- and hands out the SAME tree.  Entries and
+ * trees are both parser memory (parser_alloc / parser nodes): they live exactly as
+ * long as the parser and go away with it, so there is nothing to free and no
+ * capacity to manage; the list is as long as the number of CDT attributes this
+ * parser has asked about.
+ *
+ * Callers treat the tree as shared and read-only: walk it, evaluate it
+ * (pt_evaluate_tree never memoizes onto the nodes), or parser_copy_tree it when
+ * they need a subtree of their own -- never mutate or parser_free_tree it.
+ *
+ * An entry is keyed on the attribute (class, id) and validated against a
+ * parser-owned COPY of the stream bytes, so a class re-fetched after an ALTER (a
+ * new stream) gets a fresh tree while the old one simply stays until the parser
+ * is freed.  The copy matters: the attribute's own stream buffer belongs to the
+ * workspace and can be released -- and its address reused -- while this parser
+ * (a prepared statement, say) lives on, so neither the pointer nor its bytes may
+ * be consulted after registration.
+ */
+struct pt_cdt_registry_entry
+{
+  struct pt_cdt_registry_entry *next;
+  MOP class_mop;		/* att->class_mop */
+  int att_id;			/* att->id */
+  const char *stream;		/* parser-owned copy of the stream the tree was decoded from (content check) */
+  int stream_size;
+  PT_NODE *tree;		/* the shared rehydrated tree */
+  PT_VOLATILITY volatility;	/* effective volatility of tree (pt_get_expr_tree_volatility) */
+};
+
+/*
+ * pt_cdt_registry_tree () - the rehydrated Compact DEFAULT Tree of a residual
+ *	DEFAULT attribute, decoded once per parser and shared afterwards (see the
+ *	registry note above).  The caller must not mutate or free the returned tree.
+ *   return: shared tree, or NULL when att has no residual DEFAULT or the stream
+ *	could not be decoded (the reader or er_set carries the cause)
+ *   parser(in): parser context owning the registry and the tree
+ *   att(in): attribute
+ *   volatility(out): effective volatility of the tree; may be NULL
+ */
+PT_NODE *
+pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLATILITY * volatility)
+{
+  struct pt_cdt_registry_entry *entry;
+  const DB_DEFAULT_EXPR *default_expr;
+  PT_NODE *tree, *unclassified_node = NULL;
+  char *stream_copy;
+
+  assert (parser != NULL && att != NULL);
+
+  default_expr = &att->default_value.default_expr;
+  if (default_expr->default_expr_tree_stream == NULL || default_expr->default_expr_tree_stream_size <= 0)
+    {
+      return NULL;
+    }
+
+  for (entry = parser->cdt_registry; entry != NULL; entry = entry->next)
+    {
+      if (entry->class_mop == att->class_mop && entry->att_id == att->id)
+	{
+	  break;
+	}
+    }
+
+  if (entry != NULL && entry->stream_size == default_expr->default_expr_tree_stream_size
+      && memcmp (entry->stream, default_expr->default_expr_tree_stream, entry->stream_size) == 0)
+    {
+      if (volatility != NULL)
+	{
+	  *volatility = entry->volatility;
+	}
+      return entry->tree;
+    }
+
+  tree = pt_compact_default_tree_from_stream (parser, default_expr->default_expr_tree_stream,
+					      default_expr->default_expr_tree_stream_size);
+  if (tree == NULL)
+    {
+      /* never register a failure: the next reader gets to diagnose it too */
+      return NULL;
+    }
+
+  /* the copy of the stream this tree was decoded from, in parser memory (see the registry note) */
+  stream_copy = (char *) parser_alloc (parser, default_expr->default_expr_tree_stream_size);
+  if (stream_copy == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) default_expr->default_expr_tree_stream_size);
+      parser_free_tree (parser, tree);
+      return NULL;
+    }
+  memcpy (stream_copy, default_expr->default_expr_tree_stream, default_expr->default_expr_tree_stream_size);
+
+  if (entry == NULL)
+    {
+      entry = (struct pt_cdt_registry_entry *) parser_alloc (parser, sizeof (*entry));
+      if (entry == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
+	  parser_free_tree (parser, tree);
+	  return NULL;
+	}
+      entry->class_mop = att->class_mop;
+      entry->att_id = att->id;
+      entry->next = parser->cdt_registry;
+      parser->cdt_registry = entry;
+    }
+  /* a re-fetched attribute (new stream after an ALTER) replaces its entry; the previous tree and stream copy
+   * may still be referenced by a pass of this statement, so they are left to the parser to release */
+  entry->stream = stream_copy;
+  entry->stream_size = default_expr->default_expr_tree_stream_size;
+  entry->tree = tree;
+  entry->volatility = pt_get_expr_tree_volatility (tree, &unclassified_node);
+
+  if (volatility != NULL)
+    {
+      *volatility = entry->volatility;
+    }
+  return tree;
 }
 
 /*
