@@ -7,8 +7,7 @@
 #   issue_comment  /run <suites>       build, then those suites on the debug build
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; one suite always runs, or all three
-#   schedule                           the nightly batch: one workflow_dispatch per
-#                                      develop commit merged since the last batch
+#   schedule                           the nightly batch, one dispatch per merge
 #
 # <suites> is any of shell, sql and medium, and `all` means all three. Everything that
 # differs between them is one table, the `SUITES` env below; plan and collect walk it
@@ -25,8 +24,7 @@
 # own and always reads the DEFAULT BRANCH, so /run does nothing until this is merged.
 # workflow_dispatch runs the copy in the ref it is given, and appears in the UI only
 # once the default branch carries the file. push runs the pushed commit's copy, and
-# schedule the default branch's -- so the batch dispatches on its own ref, which is how
-# a topic branch can rehearse it.
+# schedule the default branch's -- so the batch dispatches on its own ref.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
@@ -48,8 +46,8 @@ on:
   # Post-merge build. Only develop refreshes the ccache.
   push:
     branches: [develop, 'feature/**']
-  # The nightly batch. 15:20Z is 00:20 KST -- past the day's last develop merge (13Z)
-  # and before the next day's first (00Z), and off the hour, where cron queues longest.
+  # 00:20 KST: past the day's last develop merge (13Z), before the next day's first
+  # (00Z), and off the hour, where cron queues longest.
   schedule:
     - cron: '20 15 * * *'
   workflow_dispatch:
@@ -274,8 +272,7 @@ jobs:
 
           case "$EV" in
             schedule)
-              # The batch runs in the nightly job below; nothing is built or tested here.
-              echo "schedule: nightly batch"
+              echo "schedule: nightly batch -- the nightly job does it"
               emit run false
               exit 0
               ;;
@@ -292,9 +289,8 @@ jobs:
               ;;
 
             workflow_dispatch)
-              # The batch dispatcher names no commit: it runs in the nightly job below.
               if [ "$IN_NIGHTLY" = true ] && [ -z "$IN_SHA" ]; then
-                echo "dispatch: nightly batch"
+                echo "dispatch: nightly batch -- the nightly job does it"
                 emit run false
                 exit 0
               fi
@@ -302,11 +298,9 @@ jobs:
               sha="$IN_SHA"; pr="$IN_PR"
               par="$IN_PAR"; limit="$IN_LIMIT"; force="$IN_FORCE"
               rerun="$IN_RERUN"; sab="$IN_SAB"; tt="$IN_TT"
-              # One suite per dispatch keeps parallelism and rerun_from unambiguous.
-              # `all` is the batch's shape, and it is those two that stay out: one
-              # number cannot serve three widths, and a re-run takes its suites from
-              # the run it names. limit is a per-suite cap either way.
-              # The choice input constrains the UI, not the API.
+              # `all` refuses parallelism and rerun_from: one number cannot serve three
+              # widths, and a re-run takes its suites from the run it names. limit is a
+              # per-suite cap either way. The choice input constrains the UI, not the API.
               sel="${IN_SUITE:-shell}"
               case "$sel" in
                 shell|sql|medium) ;;
@@ -318,9 +312,8 @@ jobs:
                 *) echo "::error::suite must be shell, sql, medium or all, got: ${sel}"; exit 1 ;;
               esac
               test_run=true
-              # A batch run tests a commit that is already on develop, so it reads the
-              # artifact that commit's push published rather than building its own copy
-              # in the pull request namespace. It refreshes no ccache: the push did.
+              # Already on develop: read the artifact its push published, not a second
+              # copy in the pull request namespace.
               if [ "$IN_NIGHTLY" = true ]; then ns=develop; fi
               echo "dispatch: sha=${sha} pr=${pr:-(none)} suite=$(echo $sel) nightly=${IN_NIGHTLY:-false} parallelism=${par:-(suite default)}"
               ;;
@@ -401,9 +394,7 @@ jobs:
               echo "::error::unhandled event: $EV"; exit 1 ;;
           esac
 
-          # Which runs paint a commit. A pull request always does; a dispatch only
-          # when it names one or is a batch run, so the documented way to try a
-          # throwaway image -- dispatch with pr empty -- still paints nothing.
+          # A dispatch that names no pull request and is no batch still paints nothing.
           post_status=false
           if [ -n "$pr" ] || { [ "$EV" = workflow_dispatch ] && [ "$IN_NIGHTLY" = true ]; }; then
             post_status=true
@@ -443,20 +434,11 @@ jobs:
           emit testtools "$tt"
           echo "resolved: event=$EV test=$test_run suites=$suites namespace=$ns ccache_write=$cache_write status=$post_status"
 
-  # The nightly batch. One run per develop commit merged since the last batch, so a
-  # failure can be read back to the merge that brought it in -- which is what the
-  # watching pull requests were doing by hand. It files nothing: a developer reads it
-  # when a pull request fails, and a case that stays red across commits is QA's call.
-  #
-  # No cursor is stored anywhere. The commit status IS the record of what an earlier
-  # batch covered, so a night that never ran heals on the next one and a commit whose
-  # status never landed is picked up again. WINDOW_HOURS bounds how far back that
-  # reaches, CAP the fan-out on a day that is not a normal day.
-  #
-  # schedule only fires on the default branch and only for its head, so the path is
-  # rehearsed from a topic branch with nightly=true and an empty sha. A rehearsal takes
-  # the newest commit alone and prints the rest, and passes suite, parallelism and limit
-  # through, which is how one fork run can stand for the batch.
+  # One run per develop commit merged since the last batch, so a failure can be read
+  # back to the merge that brought it in. No cursor is stored: the commit status IS
+  # the record of what an earlier batch covered, so a missed night heals on the next.
+  # schedule only fires on the default branch, so a topic branch rehearses the path
+  # with nightly=true and an empty sha.
   nightly:
     name: nightly batch
     # A fork inherits the cron. Only this repository owns the batch; a fork rehearses.
@@ -467,14 +449,13 @@ jobs:
     timeout-minutes: 15
     permissions:
       actions: write # workflow_dispatch is one of the two events GITHUB_TOKEN may raise
-      statuses: read # what an earlier batch already covered
+      statuses: read
     steps:
       - name: Dispatch one run per develop commit
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          # The copy of this file to run, not the commits to test. A rehearsal on a
-          # topic branch has to dispatch that branch's copy.
+          # The copy of this file to run, not the commits to test.
           REF: ${{ github.ref_name }}
           REHEARSAL: ${{ github.event_name == 'workflow_dispatch' }}
           IN_SUITE: ${{ inputs.suite }}
@@ -491,26 +472,23 @@ jobs:
           # schedule carries no inputs, and the batch's shape is all three suites.
           suite="${IN_SUITE:-all}"
           par="$IN_PAR"; limit="${IN_LIMIT:-0}"; tt="$IN_TT"
-          # A run posts every context or none, so one of them answers "was this commit
-          # covered". shell is the one the batch always asks for.
+          # A run posts every context or none, and the batch always asks for shell.
           ctx=$(jq -r '.shell.status_ctx' <<<"$SUITES")
           since=$(date -u -d "$WINDOW_HOURS hours ago" +%Y-%m-%dT%H:%M:%SZ)
 
-          # One call for the window. It lists every commit reachable from the branch,
-          # so a merge would put a side branch's commits in it too -- the first-parent
-          # walk below is what makes "merged" mean what it says.
+          # This lists every commit reachable from the branch, so a merge would put a
+          # side branch's in it too; the first-parent walk below is what says "merged".
           gh api "repos/${REPO}/commits?sha=${BRANCH}&since=${since}&per_page=100" \
             --jq '.[] | [.sha, (.parents[0].sha // "-"), (.commit.message | split("\n")[0])] | @tsv' \
             > /tmp/window.tsv
-          # A dash and not an empty field: read takes a tab for whitespace, so a run of
-          # them collapses and an empty parent would pull the title into its place.
+          # A dash, not an empty field: read takes a tab for whitespace, so a run of them
+          # collapses and an empty parent would pull the title into its place.
           declare -A parent title
           while IFS=$'\t' read -r c p t; do parent[$c]="$p"; title[$c]="$t"; done < /tmp/window.tsv
           echo "window: $(wc -l < /tmp/window.tsv) commits on $BRANCH since $since"
 
-          # A pending does not count: a run cancelled between the two status jobs
-          # leaves one behind, and that commit still has no verdict.
-          covered() { # sha -> true when a batch already reached a verdict for $ctx
+          # A pending does not count; that commit still has no verdict.
+          covered() {
             local body n
             body=$(gh api "repos/${REPO}/commits/$1/status") || {
               echo "::error::could not read the statuses of $1"; exit 1; }
@@ -521,7 +499,7 @@ jobs:
 
           : > /tmp/todo.list
           c=$(gh api "repos/${REPO}/commits/${BRANCH}" --jq .sha)
-          # The walk ends where the window does: a commit outside it has no parent here.
+          # The walk ends where the window does: outside it a commit has no parent here.
           while [ -n "$c" ] && [ -n "${parent[$c]+set}" ]; do
             if covered "$c"; then
               echo "  covered  ${c:0:10}  ${title[$c]}"
@@ -600,8 +578,7 @@ jobs:
           }
           # The build legs are one pair however many suites were asked for; the test
           # contexts are one per suite, and the table is the only thing that names them.
-          # Only build_status answers the pair, and it answers for a pull request alone,
-          # so a batch run must not leave a pending nothing ever resolves.
+          # build_status answers the pair for a pull request alone.
           if [ -n "$PR" ]; then
             pending "$CTX_BUILD_RELEASE" "release build running"
             pending "$CTX_BUILD_DEBUG" "debug build running"
