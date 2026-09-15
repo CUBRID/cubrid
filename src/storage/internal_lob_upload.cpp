@@ -24,6 +24,7 @@
 #include "heap_file.h"
 #include "internal_lob_file.hpp"
 #include <new>
+#include <unistd.h>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -39,15 +40,28 @@ static int
 internal_lob_upload_file_reader (void *ctx, DB_BIGINT offset, char *buf, int size)
 {
   FILE *file = (FILE *) ctx;
+  int fd;
+  int total;
 
   if (file == NULL || buf == NULL || size <= 0 || offset < 0)
     {
       return internal_lob_upload_set_error ("invalid internal LOB upload reader arguments");
     }
 
-  if (fseeko (file, (off_t) offset, SEEK_SET) != 0 || fread (buf, 1, (size_t) size, file) != (size_t) size)
+  /* A reused token (the same staged upload bound to more than one row) can be read by more than one
+   * consume () call at once, on different threads.  pread () addresses the file by an explicit offset
+   * instead of the FILE*'s shared position, so concurrent readers of the same fd cannot make each other
+   * seek out from under themselves the way a fseeko ()+fread () pair would. */
+  fd = fileno (file);
+  for (total = 0; total < size;)
     {
-      return internal_lob_upload_set_error ("failed to read staged internal LOB upload");
+      ssize_t n = pread (fd, buf + total, (size_t) (size - total), (off_t) (offset + total));
+
+      if (n <= 0)
+	{
+	  return internal_lob_upload_set_error ("failed to read staged internal LOB upload");
+	}
+      total += (int) n;
     }
 
   return NO_ERROR;
@@ -188,6 +202,13 @@ internal_lob_upload_store::abort (INT64 token)
     {
       return internal_lob_upload_set_error ("cannot abort unknown internal LOB upload token");
     }
+  if (found->second.use_count > 0)
+    {
+      /* A consume () for this token is reading entry.file on another thread; same deferred-erase
+       * reasoning as purge_consumed (). */
+      found->second.pending_erase = true;
+      return NO_ERROR;
+    }
   clear (found->second);
   m_payloads.erase (found);
   return NO_ERROR;
@@ -225,11 +246,30 @@ internal_lob_upload_store::consume (THREAD_ENTRY *thread_p, INT64 token, const O
      * "token does not belong to this session" after the first had already been written. */
     entry = found->second;
     found->second.consumed = true;
+    found->second.use_count++;
   }
 
   error = heap_internal_lob_insert_stream (thread_p, class_oid, internal_lob_upload_file_reader, entry.file,
 	  entry.data_length, expected_type == DB_TYPE_BLOB ? entry.logical_length : -1,
 	  &locator);
+
+  {
+    std::lock_guard<std::mutex> guard (m_mutex);
+    auto found = m_payloads.find (token);
+
+    /* use_count kept this node pinned for the whole read above: a concurrent purge_consumed () or
+     * abort () could only have set pending_erase, never erased it out from under entry.file. */
+    if (found != m_payloads.end ())
+      {
+	found->second.use_count--;
+	if (found->second.use_count == 0 && found->second.pending_erase)
+	  {
+	    clear (found->second);
+	    m_payloads.erase (found);
+	  }
+      }
+  }
+
   return error;
 }
 
@@ -240,14 +280,23 @@ internal_lob_upload_store::purge_consumed ()
 
   for (auto it = m_payloads.begin (); it != m_payloads.end ();)
     {
-      if (it->second.consumed)
+      if (!it->second.consumed)
 	{
-	  clear (it->second);
-	  it = m_payloads.erase (it);
+	  ++it;
+	  continue;
+	}
+      if (it->second.use_count > 0)
+	{
+	  /* A consume () for this (possibly reused) token is still reading entry.file on another thread;
+	   * closing it here would be a use-after-free.  Defer the erase to the moment that consume ()
+	   * finishes and finds use_count back at zero. */
+	  it->second.pending_erase = true;
+	  ++it;
 	}
       else
 	{
-	  ++it;
+	  clear (it->second);
+	  it = m_payloads.erase (it);
 	}
     }
 }

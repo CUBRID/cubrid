@@ -52,6 +52,10 @@ class internal_lob_upload_store
       DB_BIGINT received = 0;
       bool complete = false;
       bool consumed = false;	/* stored at least once; kept alive for the rest of the statement */
+      int use_count = 0;	/* consume () calls currently reading entry.file (a reused token may be
+				 * consumed by more than one row at once) */
+      bool pending_erase = false;	/* purge_consumed () or abort () arrived while use_count > 0; the
+					 * erase is deferred to the moment the last consume () finishes */
       FILE *file = NULL;
     };
 
