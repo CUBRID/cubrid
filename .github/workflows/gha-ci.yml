@@ -149,7 +149,6 @@ env:
   #               where the seed CronJob refreshes it hourly
   #   unit        what one line of a shard's share file holds, and so what the
   #               split moves around: one case, or one top-level directory.
-  #               A re-run always selects by case, whatever this says
   #   case_glob   find -path pattern that names one case file
   #   case_filter perl regex a case path must also match; shell alone has one,
   #               because there a case is <name>/cases/<name>.sh
@@ -1213,21 +1212,15 @@ jobs:
                 echo "::warning::run $RERUN_FROM left $short more cases assigned but never handled."
                 echo "::warning::  Nothing names them, so this re-run cannot carry them and cannot pass."
               fi
-              # Keep only what is in the tree now; cases deleted since are dropped.
+              # Nothing here separates a deleted unit from a renamed one, and a renamed
+              # one has to run under its new name, so the re-run cannot pass over any.
               grep -xF -f /tmp/want.list /tmp/all.list > /tmp/sel.list || : > /tmp/sel.list
               got=$(wc -l < /tmp/sel.list)
-              # A failed case that is gone is ambiguous -- deleting it can be the fix.
-              # One that never ran is not: nothing was ever recorded about it.
-              sort -u /tmp/unrun.list > /tmp/unrun.sorted
-              gone=$(comm -23 /tmp/unrun.sorted /tmp/all.list | wc -l)
-              if [ "$gone" -gt 0 ]; then
-                echo "::warning::$gone of the ${unit}s a dead shard held are no longer in the tree"
-                comm -23 /tmp/unrun.sorted /tmp/all.list | sed 's/^/  gone: /'
-              fi
+              gone=$((want - got))
               echo "re-running: $got of the $want ${unit}s from run $RERUN_FROM are still in the tree"
-              if [ "$got" -ne "$want" ]; then
-                echo "::warning::$((want - got)) are not in the tree now (deleted or renamed)"
-                comm -23 /tmp/want.list <(sort /tmp/sel.list) | sed 's/^/  missing: /'
+              if [ "$gone" -gt 0 ]; then
+                echo "::warning::$gone are no longer in the tree (deleted or renamed), so this re-run cannot pass."
+                comm -23 /tmp/want.list <(sort /tmp/sel.list) | sed 's/^/  gone: /'
               fi
             elif [ "$LIMIT" -gt 0 ]; then
               head -"$LIMIT" /tmp/all.list > /tmp/sel.list
@@ -2365,7 +2358,7 @@ jobs:
                 echo ">"
                 echo "> carried over: $total cases in $units unit(s) — its failures, plus $rerun_unrun cases that never ran because a shard died whole."
                 [ "${rerun_short:-0}" -eq 0 ] || echo "> **$rerun_short more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
-                [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of those that never ran are no longer in the tree, so this run cannot pass.**"
+                [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of them are no longer in the tree (deleted or renamed), so this run cannot pass.**"
                 echo ">"
                 echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
                 echo
@@ -2507,7 +2500,7 @@ jobs:
               srb=1
             fi
             # A re-run replaces the source run's commit status, so it must not go green
-            # over cases nothing can name. A dead shard's share is carried by plan; this
+            # over cases it did not run. A dead shard's share is carried by plan; this
             # is what is left.
             if [ -n "$RERUN_FROM" ] && [ "${rerun_short:-0}" -gt 0 ]; then
               echo "::error::run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them"
@@ -2515,9 +2508,9 @@ jobs:
               srb=1
             fi
             if [ -n "$RERUN_FROM" ] && [ "${rerun_gone:-0}" -gt 0 ]; then
-              echo "::error::$rerun_gone cases that never ran in run $RERUN_FROM are no longer in the tree"
-              echo "  A renamed case has to run under its new name, and nothing was ever recorded"
-              echo "  about these. Use /run $suite."
+              echo "::error::$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree"
+              echo "  Deleted or renamed, nothing here can tell which, and a renamed one has to"
+              echo "  run under its new name. Use /run $suite."
               srb=1
             fi
 
