@@ -109,6 +109,7 @@ qr_hash_str (const char *s)
 #define QR_CC_CMT     0x04	/* / or -  : possible comment or hint opener */
 #define QR_CC_WORD    0x08	/* token body: gluing two of these merges two tokens */
 #define QR_CC_IDQ     0x10	/* [ or `  : delimited-identifier opener */
+#define QR_CC_DIGIT   0x20	/* 0-9     : can build a numeric literal across a '.' */
 
 /* highest operator id qr_norm_glue can address; id 0 means "not an operator" */
 #define QR_NORM_NOPS  15
@@ -156,7 +157,7 @@ qr_build_norm_char_class (void)
 
   for (i = '0'; i <= '9'; i++)
     {
-      qr_norm_char_class[i] |= QR_CC_WORD;
+      qr_norm_char_class[i] |= QR_CC_WORD | QR_CC_DIGIT;
     }
   for (i = 'a'; i <= 'z'; i++)
     {
@@ -255,6 +256,31 @@ qr_norm_need_space (const char *dst, int len, char c)
       return true;
     }
 
+  /* a '.' beside a digit builds a numeric literal out of what were three tokens: "1 . 2" is a
+   * syntax error, "1.2" is one number, and merging them lets a rule for the valid query serve
+   * the invalid one.  "t . c" still merges with "t.c" -- the lexer accepts whitespace after a
+   * dot before an identifier -- unless the name ends in a digit, where this errs toward a miss. */
+  if ((c == '.' && (qr_norm_char_class[prev] & QR_CC_DIGIT))
+      || (prev == '.' && (qr_norm_char_class[(unsigned char) c] & QR_CC_DIGIT)))
+    {
+      return true;
+    }
+
+  /* the sign of an exponent belongs to the number the same way: "1e+5" is one token while
+   * "1e +5" and "1e+ 5" are syntax errors.  the digit before the 'e' is what tells an exponent
+   * from an identifier, so "a e + b" keeps merging. */
+  if ((c == '+' || c == '-') && (prev == 'e' || prev == 'E')
+      && len >= 2 && (qr_norm_char_class[(unsigned char) dst[len - 2]] & QR_CC_DIGIT))
+    {
+      return true;
+    }
+  if ((qr_norm_char_class[(unsigned char) c] & QR_CC_DIGIT) && (prev == '+' || prev == '-')
+      && len >= 3 && (dst[len - 2] == 'e' || dst[len - 2] == 'E')
+      && (qr_norm_char_class[(unsigned char) dst[len - 3]] & QR_CC_DIGIT))
+    {
+      return true;
+    }
+
   return false;
 }
 
@@ -313,13 +339,14 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	{
 	  /* inside a string literal: copy verbatim AND hash, so the returned
 	   * hash equals qr_hash_str(dst) even when the query contains a literal. */
-	  if (c == '\\')
+	  if (c == '\\' && *(s + 1) == quote)
 	    {
-	      /* whether "\\'" closes the literal or escapes a quote depends on
-	       * no_backslash_escapes, a session parameter the CAS cannot see.  guessing
-	       * wrong would mis-track the quote state and fold bytes that are really
-	       * literal content, and this text is both the match key and, after a demote,
-	       * the statement that gets recompiled. */
+	      /* whether "\\'" closes the literal or escapes the quote depends on
+	       * no_backslash_escapes, a session parameter the CAS cannot see, and guessing wrong
+	       * mis-tracks the quote state -- the rest of the statement would then be folded as
+	       * if it were code.  every other backslash ("C:\\dir", "a\\nb", the LIKE escapes)
+	       * closes the literal at the same byte under either reading, so only this one
+	       * costs the query its replacement. */
 	      return QR_NORM_ERR_LITERAL;
 	    }
 	  QR_PUT (c);
