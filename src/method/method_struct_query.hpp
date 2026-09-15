@@ -107,7 +107,11 @@ namespace cubmethod
     std::vector<DB_VALUE> dbval_args; /* # of num_args + 1 */
     std::vector<int> param_modes; /* # of num_args */
 
+#if !defined(SERVER_MODE)
+    /* client-side prepare path only (query_handler::prepare_call); the body
+     * uses the client-only skip_leading_whitespace_and_comment () helper */
     int set_is_first_out (std::string &sql_stmt);
+#endif /* !SERVER_MODE */
     int set_prepare_call_info (int num_args);
     void clear ();
 
