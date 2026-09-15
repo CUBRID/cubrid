@@ -434,6 +434,9 @@ struct qo_planner
 
 
   QO_INFO **node_info;
+  QO_INFO **distinct_info;	/* per node: the plans that read it once with the duplicates removed.  Kept
+				   apart from node_info because the two hold different numbers of rows, and
+				   only the SEMI JOIN examination is allowed to reach for the shorter one */
   QO_INFO **join_info;
   QO_INFO **cp_info;
   QO_INFO *best_info;
