@@ -26,6 +26,10 @@
 # once the default branch carries the file. push runs the pushed commit's copy, and
 # schedule the default branch's -- so the batch dispatches on its own ref.
 #
+# Two runner lanes, both self-hosted. plan, collect, a re-run's one shard and the
+# medium suite take cubrid-arc-light; build and the shell and sql shards take
+# cubrid-arc. Without the split a one-minute job queues behind another run's 50.
+#
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
 #   pod template   shareProcessNamespace, or the shell tests hang instead of
@@ -178,6 +182,9 @@ env:
   #               publish = plan publishes the tree, the shard copies its share.
   #                         Which is the only affordable way for 17k cases whose
   #                         seed is on GlusterFS -- CUBRIDQA-1523
+  #   runner      which lane a shard of this suite queues in. Expected duration,
+  #               not resource use: the queue is FIFO and a one-minute job holds
+  #               the same slot as a 28-minute one -- CUBRIDQA-1501 ticket 62
   SUITES: |-
     {
       "shell": {
@@ -187,6 +194,7 @@ env:
         "xml_src": "result/shell/current_runtime_logs",
         "verdict_src": "test_status.data",
         "unit": "case", "share_mode": "prune", "par_default": "50",
+        "runner": "cubrid-arc",
         "case_glob": "*/cases/*.sh", "case_filter": "/([^/]+)/cases/\\1\\.sh$",
         "exclude": "_25_unstable", "status_ctx": "gha-ci: test_shell"
       },
@@ -197,6 +205,7 @@ env:
         "xml_src": "sql/result",
         "verdict_src": "summary_info",
         "unit": "dir", "share_mode": "publish", "par_default": "10",
+        "runner": "cubrid-arc",
         "case_glob": "*/cases/*.sql", "case_filter": "",
         "exclude": "", "status_ctx": "gha-ci: test_sql"
       },
@@ -207,6 +216,7 @@ env:
         "xml_src": "sql/result",
         "verdict_src": "summary_info",
         "unit": "dir", "share_mode": "publish", "par_default": "1",
+        "runner": "cubrid-arc-light",
         "case_glob": "*/cases/*.sql", "case_filter": "",
         "exclude": "", "status_ctx": "gha-ci: test_medium"
       }
@@ -997,7 +1007,7 @@ jobs:
     # reason `build` publishes none. The suites are walked inside instead.
     if: ${{ !cancelled() && needs.gate.outputs.test == 'true' }}
     permissions: {} # testcases come from the App token; GITHUB_TOKEN is unused
-    runs-on: cubrid-arc
+    runs-on: cubrid-arc-light
     timeout-minutes: 30
     container:
       image: cubridci/cubridci:test_rl8.10
@@ -1266,18 +1276,19 @@ jobs:
             unit=$(attr "$suite" unit)
             excl=$(attr "$suite" exclude)
             mode=$(attr "$suite" share_mode)
+            runner=$(attr "$suite" runner)
             par="${PAR:-$(attr "$suite" par_default)}"
             # Every re-run goes to one shard, whatever the suite's width. That is a
             # runner-pool decision, not a speed one: a re-run spread over the suite's
             # width holds that many runners and pushes back the start of the first
             # full run of every other pull request. A longer re-run is the accepted
-            # cost. The known downside is that the one runner is held for longer,
-            # because the lanes are not separated.
+            # cost, and the light lane keeps that one long hold off the shards'
+            # runners.
             #
             # Bounded, and measured: the sql suite's ten shards were 56.5m of runner
             # time for 17,459 cases, 35.6m of it test work. Re-running every unit on
             # one shard is therefore about 38m, against a 120m shard timeout.
-            if [ -n "$RERUN_FROM" ]; then par=1; fi
+            if [ -n "$RERUN_FROM" ]; then par=1; runner=cubrid-arc-light; fi
             dir="$WORKDIR/$repo"
             root="$dir/$suite"
             out="$rundir/$suite"
@@ -1545,7 +1556,7 @@ jobs:
                 exit 1
               fi
               cp "/tmp/shards/$n.list" "$out/shards/$n.list"
-              printf '{"suite":"%s","i":"%02d"}\n' "$suite" "$i" >> /tmp/matrix.jsonl
+              printf '{"suite":"%s","i":"%02d","runner":"%s"}\n' "$suite" "$i" "$runner" >> /tmp/matrix.jsonl
             done
             cp /tmp/plan.tsv "$out/plan.tsv"
             cp /tmp/sel.list "$out/cases.list"
@@ -1662,7 +1673,9 @@ jobs:
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
     # 50 privileged pods running testcase code; testcases arrive via the App token.
     permissions: {}
-    runs-on: cubrid-arc
+    # The lane comes from plan, not an expression here: plan already owns the
+    # split, and a second copy of the rule is the one nobody updates.
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
       # One dying must not stop the rest. No max-parallel: maxRunners is the ceiling.
@@ -2163,7 +2176,7 @@ jobs:
       # The wall-clock step reads the run start time. Public repos need no scope --
       # stated so it does not fail silently if this repository ever becomes private.
       actions: read
-    runs-on: cubrid-arc
+    runs-on: cubrid-arc-light
     timeout-minutes: 30
     container:
       image: cubridci/cubridci:test_rl8.10
