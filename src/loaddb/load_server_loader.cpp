@@ -669,8 +669,7 @@ namespace cubload
 	    return;
 	  }
 
-	db_value &db_val = get_attribute_db_value (attr_index);
-	error_code = heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr_id (), &db_val, &m_attrinfo);
+	error_code = sink_heap (attr, get_attribute_db_value (attr_index));
 	if (error_code != NO_ERROR)
 	  {
 	    m_error_handler.on_syntax_failure ();
@@ -821,6 +820,12 @@ namespace cubload
   server_object_loader::get_rows_number ()
   {
     return m_rows;
+  }
+
+  int
+  server_object_loader::sink_heap (const attribute &attr, db_value &val)
+  {
+    return heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr_id (), &val, &m_attrinfo);
   }
 
   int

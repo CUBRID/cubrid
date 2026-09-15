@@ -607,8 +607,7 @@ static int ldr_convert_and_generic (LDR_CONTEXT *context, const char *str, size_
 				    data_type type);
 static int ldr_null_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_class_attr_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att,
-				      DB_VALUE *val);
+static int ldr_sink_class_object (LDR_CONTEXT *context, SM_ATTRIBUTE *att, DB_VALUE *val);
 static void ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type);
 static int ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sys_class_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
@@ -2512,6 +2511,54 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
 }
 
 /*
+ * Value sinks
+ *
+ *    A converted value has three possible destinations, and until now each
+ *    write site spelled its own out: the workspace instance being built, the
+ *    class object that holds class and shared attributes, and - on the server
+ *    side, in load_server_loader.cpp - the heap attribute info. Naming them
+ *    keeps the decoder that row_decoder introduces from having to know any of
+ *    it; it hands a value to a sink and stops there.
+ */
+
+/*
+ * ldr_sink_instance - the instance being built takes the value
+ *    return: NO_ERROR or an error code
+ *    context(in):
+ *    attdesc(in): descriptor of the attribute being set
+ *    val(in): the converted value
+ *    direct(in): write the attribute's memory image directly, rather than
+ *                going through the object template
+ *    bound_bit(in): for a direct write, whether the attribute carries a bound
+ *                   bit. Variable length attributes do not.
+ * Note:
+ *    ldr_act_add_attr () picks direct per (attribute domain, token type):
+ *    the token type that matches the domain exactly gets the direct write,
+ *    every other one goes through the template.
+ */
+static int
+ldr_sink_instance (LDR_CONTEXT *context, LDR_ATTDESC *attdesc, DB_VALUE *val, bool direct, bool bound_bit)
+{
+  SM_ATTRIBUTE *att = attdesc->att;
+  char *mem;
+  int err;
+
+  if (!direct)
+    {
+      return ldr_generic (context, val);
+    }
+
+  mem = context->mobj + att->offset;
+  err = att->domain->type->setmem (mem, att->domain, val);
+  if (err == NO_ERROR && bound_bit)
+    {
+      OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
+    }
+
+  return err;
+}
+
+/*
  * ldr_convert_and_setmem - convert, then write straight into the instance image
  *    return: NO_ERROR or an error code
  *    context(in):
@@ -2525,19 +2572,16 @@ static int
 ldr_convert_and_setmem (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc, data_type type,
 			bool bound_bit)
 {
-  SM_ATTRIBUTE *att = attdesc->att;
   DB_VALUE val;
-  char *mem;
   int err;
 
   CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, type, &val));
+  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, true, bound_bit));
 
-  mem = context->mobj + att->offset;
-  CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
-  if (bound_bit)
-    {
-      OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
-    }
+  /*
+   * No db_value_clear () here, unlike the template write below. A direct write hands the value's memory
+   * to the instance image, so clearing it afterwards would take it back out from under the instance.
+   */
 
 error_exit:
   return err;
@@ -2559,7 +2603,7 @@ ldr_convert_and_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_
   int err;
 
   CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, type, &val));
-  CHECK_ERR (err, ldr_generic (context, &val));
+  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, false, false));
 
 error_exit:
   db_value_clear (&val);
@@ -2619,19 +2663,18 @@ error_exit:
 }
 
 /*
- * ldr_class_attr_db_generic - set attribute of a class
+ * ldr_sink_class_object - the class object takes the value
  *    return: NO_ERROR if successful, error code otherwise
  *    context(in/out): context
- *    str(in): not used
- *    len(in): not used
  *    att(in): memory representation of attribute
  *    val(in): value to set
  * Note:
- *    This is a special setter, and is not called via the same process as the
- *    other setters. i.e., ldr_act(). This is called by ldr_act_class_attr().
+ *    Class and shared attributes live on the class, not on an instance,
+ *    so they go through obj_set () and obj_set_shared () rather than the instance image,
+ *    and a DEFAULT clause changes the attribute's default instead.
  */
 static int
-ldr_class_attr_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att, DB_VALUE *val)
+ldr_sink_class_object (LDR_CONTEXT *context, SM_ATTRIBUTE *att, DB_VALUE *val)
 {
   int err = NO_ERROR;
 
@@ -2727,7 +2770,7 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
 		  context->attrs[context->next_attr].att->header.name);
 	  CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, TP_DOMAIN_TYPE (domain), str);
 	}
-      CHECK_ERR (err, ldr_class_attr_db_generic (context, str, len, context->attrs[context->next_attr].att, val));
+      CHECK_ERR (err, ldr_sink_class_object (context, context->attrs[context->next_attr].att, val));
     }
 
 error_exit:
@@ -4487,7 +4530,7 @@ ldr_collection_db_collection (LDR_CONTEXT *context, const char *str, size_t len,
 	}
       else
 	{
-	  err = ldr_class_attr_db_generic (context, str, len, context->attrs[context->next_attr].att, &tmp);
+	  err = ldr_sink_class_object (context, context->attrs[context->next_attr].att, &tmp);
 	}
     }
   return err;

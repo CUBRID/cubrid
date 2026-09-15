@@ -88,6 +88,16 @@ namespace cubload
 
     private:
       int process_constant (constant_type *cons, const attribute &attr);
+
+      /*
+       * heap_value_sink - the heap attribute info takes the value.
+       *
+       * The server side's one destination for a converted value, named to
+       * match the two the standalone loader has (ldr_sink_instance () and
+       * ldr_sink_class_object () in load_sa_loader.cpp). A row decoder hands a
+       * value to a sink and stops there.
+       */
+      int sink_heap (const attribute &attr, db_value &val);
       int process_generic_constant (constant_type *cons, const attribute &attr, bool is_element);
       int process_monetary_constant (constant_type *cons, const attribute &attr, bool is_element);
       int process_collection_constant (constant_type *cons, const attribute &attr);
