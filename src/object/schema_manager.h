@@ -244,6 +244,7 @@ extern int sm_att_default_value (MOP classop, const char *name, DB_VALUE * value
 extern int sm_class_check_uniques (MOP classop);
 extern BTID *sm_find_index (MOP classop, char **att_names, int num_atts, bool unique_index_only,
 			    bool skip_prefix_length_index, BTID * btid);
+extern BTID *sm_find_index_for_count_star_optimization (MOP classop, BTID * btid);
 
 
 /* Query processor support functions */
