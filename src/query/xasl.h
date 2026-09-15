@@ -394,6 +394,9 @@ struct remote_dml_sink
   char *user;			/* DBLink connection user */
   char *pwd;			/* DBLink connection password */
   char *table_name;		/* remote target table name */
+  char *remote_key_col;		/* remote WHERE column the per-row value is compared to, NULL when the proc sends
+				 * no WHERE (INSERT SELECT, and the UPDATE shape that updates every remote row) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE, NULL together with remote_key_col */
 };
 
 typedef struct update_proc_node UPDATE_PROC_NODE;
@@ -418,8 +421,6 @@ struct update_proc_node
   REMOTE_DML_SINK sink;
   char *remote_set_text;	/* SET clause with a placeholder per bound value: "c1 = ?, c2 = c2 + 1" */
   int remote_num_set_binds;	/* placeholders in remote_set_text; that many aptrs supply values, in chain order */
-  char *remote_key_col;		/* remote WHERE column, NULL when there is no WHERE (every row, no driving aptr) */
-  char *remote_op;		/* comparison operator pushed to the remote WHERE, NULL together with remote_key_col */
 };
 
 typedef struct insert_proc_node INSERT_PROC_NODE;
@@ -460,8 +461,6 @@ struct delete_proc_node
 				 * in conditions */
   /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
   REMOTE_DML_SINK sink;
-  char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
-  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<>", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;

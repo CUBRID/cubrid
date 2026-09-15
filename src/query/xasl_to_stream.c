@@ -4163,26 +4163,13 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
 
   ptr = or_pack_int (ptr, update_info->remote_num_set_binds);
 
-  offset = xts_save_string (update_info->remote_key_col);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_string (update_info->remote_op);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   return ptr;
 }
 
 /*
  * xts_process_remote_dml_sink () - pack the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery procs.
+ *   url/user/pwd/table_name + the remote WHERE key column and operator), shared by the INSERT SELECT,
+ *   DELETE and UPDATE local-subquery procs.
  *   return: advanced ptr, or NULL on failure
  */
 static char *
@@ -4214,6 +4201,20 @@ xts_process_remote_dml_sink (char *ptr, const REMOTE_DML_SINK * sink)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_string (sink->table_name);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->remote_key_col);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->remote_op);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -4274,20 +4275,6 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
     {
       return NULL;
     }
-
-  offset = xts_save_string (delete_info->remote_key_col);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
-  offset = xts_save_string (delete_info->remote_op);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -6589,16 +6576,15 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 	   + PTR_SIZE		/* mvcc_cond_reev_classes */
 	   + xts_sizeof_remote_dml_sink ()	/* remote UPDATE + local subquery sink fields */
 	   + PTR_SIZE		/* remote_set_text */
-	   + OR_INT_SIZE	/* remote_num_set_binds */
-	   + PTR_SIZE		/* remote_key_col */
-	   + PTR_SIZE);		/* remote_op */
+	   + OR_INT_SIZE);	/* remote_num_set_binds */
 
   return size;
 }
 
 /*
  * xts_sizeof_remote_dml_sink () - size of the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name), shared by the INSERT SELECT, DELETE and UPDATE local-subquery procs.
+ *   url/user/pwd/table_name + the remote WHERE key column and operator), shared by the INSERT SELECT,
+ *   DELETE and UPDATE local-subquery procs.
  *   return:
  */
 static int
@@ -6608,7 +6594,9 @@ xts_sizeof_remote_dml_sink (void)
 	  + PTR_SIZE		/* url */
 	  + PTR_SIZE		/* user */
 	  + PTR_SIZE		/* pwd */
-	  + PTR_SIZE);		/* table_name */
+	  + PTR_SIZE		/* table_name */
+	  + PTR_SIZE		/* remote_key_col */
+	  + PTR_SIZE);		/* remote_op */
 }
 
 /*
@@ -6628,9 +6616,7 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
 	   + PTR_SIZE		/* mvcc_cond_reev_classes */
-	   + xts_sizeof_remote_dml_sink ()	/* remote DELETE + local subquery sink fields */
-	   + PTR_SIZE		/* remote_key_col */
-	   + PTR_SIZE);		/* remote_op */
+	   + xts_sizeof_remote_dml_sink ());	/* remote DELETE + local subquery sink fields */
 
   return size;
 }

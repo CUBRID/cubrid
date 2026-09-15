@@ -19527,6 +19527,9 @@ pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLI
       sink->table_name = pt_append_string (parser, sink->table_name, ".");
     }
   sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.original);
+
+  /* remote_key_col / remote_op stay as the freshly allocated node left them, NULL: a statement that sends
+   * no WHERE keeps them so, and the DELETE and UPDATE builders set them when theirs does. */
 }
 
 /*
@@ -19905,9 +19908,10 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   entity_name = from->info.spec.entity_name;
   pt_fill_remote_dml_sink (parser, entity_name, pdblink, &del->sink);
 
-  del->remote_key_col = pt_append_string (parser, NULL, key_col);
-  del->remote_op = pt_append_string (parser, NULL, op_sql);
-  if (del->sink.table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
+  del->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
+  del->sink.remote_op = pt_append_string (parser, NULL, op_sql);
+  if (del->sink.table_name == NULL || del->sink.remote_key_col == NULL || del->sink.remote_op == NULL
+      || pt_has_error (parser))
     {
       return NULL;
     }

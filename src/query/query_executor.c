@@ -12907,8 +12907,8 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	DELETE_PROC_NODE *del = &xasl->proc.delete_;
 
 	sink = &del->sink;
-	key_col = del->remote_key_col;
-	op = del->remote_op;
+	key_col = sink->remote_key_col;
+	op = sink->remote_op;
 	break;
       }
     default:
