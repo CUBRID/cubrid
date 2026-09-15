@@ -10391,16 +10391,14 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   error_code = file_get_num_user_pages (thread_p, &btid->vfid, &n_pages);
   if (error_code != NO_ERROR)
     {
-      /* n_pages only sizes the parallel degree, and serial never reads the file header -- a failure
-       * here does not mean the request failed. Propagate only a consumed interrupt; discard anything
-       * else so the serial run does not leave a stale error behind. Test the return value rather
-       * than er_errid (), which could still hold an older error. */
-      if (error_code == ER_INTERRUPTED)
+      /* a latch the session refused to wait for is not a failure: n_pages only sizes the degree,
+       * and serial never reads the file header */
+      if (error_code == ER_LK_PAGE_TIMEOUT || error_code == ER_PAGE_LATCH_TIMEDOUT)
 	{
-	  goto exit_on_error;
+	  er_clear ();
+	  goto fallback_serial;
 	}
-      er_clear ();
-      goto fallback_serial;
+      goto exit_on_error;
     }
   degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN, (UINT64) n_pages, -1);
   if (degree > (UINT32) key_cnt)
@@ -10443,16 +10441,24 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
     }
   root_free = spage_get_free_space (thread_p, root_ptr);
 
-  /* reserve workers (best-effort; may grant fewer) */
+  /* reserve workers (best-effort; may grant fewer). NULL is a pool shortage (nothing set) or the
+   * reservation's own alloc failure (ER_OUT_OF_VIRTUAL_MEMORY); clear first so er_errid () tells */
+  er_clear ();
   wm = parallel_query::worker_manager::try_reserve_workers ((int) degree);
   if (wm == NULL)
     {
+      if (er_errid () != NO_ERROR)
+	{
+	  /* the reservation failed, it did not decline */
+	  goto exit_on_error;
+	}
       goto fallback_serial;
     }
   n_workers = wm->get_reserved_workers ();
   if (n_workers < 2)
     {
-      /* not enough idle workers -> serial */
+      /* defensive: unreachable, worker_manager_global floors a non-zero grant at 2 and degree >= 2.
+       * Kept because that invariant lives in another module */
       wm->release_workers ();
       goto fallback_serial;
     }
