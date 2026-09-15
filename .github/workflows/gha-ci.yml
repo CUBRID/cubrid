@@ -1770,9 +1770,9 @@ jobs:
             mkdir -p "$TC_DIR"
           fi
 
-          # The lowerdir must be node-local -- pointed at the volume, every
-          # process launch in every case is a FUSE read. The write layer stays
-          # tmpfs: sql and medium create their databases under CUBRID_DIR.
+          # The lowerdir must live inside the pod -- pointed at the volume,
+          # every process launch in every case is a FUSE read. The write layer
+          # stays tmpfs: sql and medium create their databases under CUBRID_DIR.
           base="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug"
           lower=/build-lower/CUBRID
           mkdir -p /build-lower
@@ -1974,7 +1974,7 @@ jobs:
           # "Publish results for collect" reports the cgroup high-water mark.
           echo "/rw       : $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
           echo "/build-rw : $(df -h /build-rw | tail -1 | awk '{print $3" used of "$2}')"
-          # Not tmpfs: the unpacked build on node disk.
+          # Not tmpfs: the unpacked build, inside the pod.
           echo "/build-lower : $(du -sh /build-lower 2>/dev/null | awk '{print $1}')"
 
       - name: Run CTP
