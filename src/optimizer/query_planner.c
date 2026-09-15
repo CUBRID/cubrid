@@ -3054,12 +3054,6 @@ qo_sort_cost (QO_PLAN * planp)
       planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
       planp->variable_io_cost = pages;
 
-      if (planp->plan_un.sort.sort_type == SORT_DISTINCT)
-	{
-	  /* recognising a duplicate means looking at every row the subplan produced, once */
-	  planp->fixed_cpu_cost += (subplanp->info)->cardinality * (double) QO_CPU_WEIGHT;
-	}
-
       if (order != QO_UNORDERED && order != subplanp->order)
 	{
 	  double sort_io;
