@@ -208,6 +208,36 @@ flashback_reset ()
 }
 
 /*
+ * flashback_reset_if_owner - reset flashback global state, but only if the
+ *                            calling connection is the one it currently
+ *                            belongs to
+ *
+ * A handler-side error path can reach the shared cleanup without this
+ * connection ever having become the flashback owner (e.g. a bounds-check
+ * failure ahead of flashback_initialize(), or GET_LOGINFO sent without a
+ * preceding GET_SUMMARY). flashback_reset() itself has no notion of "whose"
+ * state it is clearing, so calling it unconditionally from such a path would
+ * silently tear down a different, unrelated connection's in-progress
+ * flashback session. Handler error paths must call this instead of
+ * flashback_reset() directly; flashback_initialize()'s own stale-entry
+ * takeover keeps calling flashback_reset() unconditionally, since that path
+ * has already established (via flashback_is_in_progress()) that the entry it
+ * is clearing is abandoned, not a live foreign session.
+ */
+void
+flashback_reset_if_owner (THREAD_ENTRY * thread_p)
+{
+  pthread_mutex_lock (&flashback_Conn_lock);
+
+  if (flashback_Current_conn == thread_p->conn_entry)
+    {
+      flashback_reset ();
+    }
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
+}
+
+/*
  * flashback_is_loginfo_generation_finished - check if it is finished to generate log infos
  *
  * return   : true or false

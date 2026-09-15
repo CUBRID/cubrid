@@ -11325,13 +11325,13 @@ error:
     {
       /* if flashback variables are reset by duplicated request error,
        * variables for existing connection (valid connection) can be reset */
-      flashback_reset ();
+      flashback_reset_if_owner (thread_p);
     }
 
   return;
 
 css_send_error:
-  flashback_reset ();
+  flashback_reset_if_owner (thread_p);
 
   return;
 }
@@ -11445,7 +11445,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   if (flashback_is_loginfo_generation_finished (&context.start_lsa, &context.end_lsa))
     {
-      flashback_reset ();
+      flashback_reset_if_owner (thread_p);
     }
   else
     {
@@ -11477,12 +11477,12 @@ error:
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
     }
 
-  flashback_reset ();
+  flashback_reset_if_owner (thread_p);
 
   return;
 css_send_error:
 
-  flashback_reset ();
+  flashback_reset_if_owner (thread_p);
   return;
 }
 
