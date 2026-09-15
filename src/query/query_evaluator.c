@@ -944,8 +944,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   res = V_TRUE;
   pr_type = list_id->type_list.domp[0]->type;
 
-  tplrec.size = 0;
-  tplrec.tpl = NULL;
+  tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   p_tplrec.size = DB_PAGESIZE;
   p_tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
   if (p_tplrec.tpl == NULL)
@@ -974,7 +973,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       if (list_on == true)
 	{
 	  /* private copy of the previous tuple: bind + reset the slot before reading it */
-	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, tplrec.type_list);
+	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, tplrec.type_list);
 	  if (qfile_slot_read_column_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) !=
 	      NO_ERROR || is_null)
 	    {
@@ -1037,7 +1036,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   if (list_on == true)
     {
       /* private copy of the last tuple (no unbound value): bind + reset the slot before reading it */
-      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, &s_id.list_id.type_list);
+      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, &s_id.list_id.type_list);
       if (qfile_slot_read_column_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) !=
 	  NO_ERROR || is_null)
 	{
@@ -1128,8 +1127,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   res = V_TRUE;
   pr_type = list_id1->type_list.domp[0]->type;
 
-  tplrec.size = 0;
-  tplrec.tpl = NULL;
+  tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   p_tplrec.size = DB_PAGESIZE;
   p_tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
   if (p_tplrec.tpl == NULL)
@@ -1158,7 +1156,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       if (list_on == true)
 	{
 	  /* private copy of the previous tuple: bind + reset the slot before reading it */
-	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, tplrec.type_list);
+	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, tplrec.type_list);
 	  if (qfile_slot_read_column_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) !=
 	      NO_ERROR || is_null)
 	    {
@@ -1222,7 +1220,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   if (list_on == true)
     {
       /* private copy of the last tuple (no unbound value): bind + reset the slot before reading it */
-      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, &s_id.list_id.type_list);
+      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, &s_id.list_id.type_list);
       if (qfile_slot_read_column_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) !=
 	  NO_ERROR || is_null)
 	{

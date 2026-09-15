@@ -2596,9 +2596,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
   value->tuple_count = 0;
 
   /* initialize tuple */
-  value->first_tuple.size = 0;
-  value->first_tuple.tpl = NULL;
-  value->first_tuple.type_list = NULL;
+  value->first_tuple = QFILE_TUPLE_RECORD_INITIALIZER;
 
   return value;
 }

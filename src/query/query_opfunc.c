@@ -7392,7 +7392,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
     }
 
   /* we start with tpl itself */
-  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
+  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, 0, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   do
     {
@@ -7515,7 +7515,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
       return false;
     }
 
-  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
+  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, 0, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   /* get the parent node */
   if (qexec_get_tuple_column_value (&tuple_rec, xptr->outptr_list->valptr_cnt - PCOL_PARENTPOS_TUPLE_OFFSET,
@@ -7545,7 +7545,7 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
   else
     {
       /* the parent tuple pos is null for the root node */
-      tuple_rec.tpl = NULL;
+      qfile_slot_reset (&tuple_rec);
     }
 
   if (tuple_rec.tpl != NULL)
@@ -7736,7 +7736,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
     }
 
   /* we start with tpl itself */
-  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
+  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, 0, &s_id.list_id.type_list);	/* raw CONNECT BY tuple: bind to the list's descriptor */
 
   len_result_path = SYS_CONNECT_BY_PATH_MEM_STEP;
   result_path = (char *) db_private_alloc (thread_p, sizeof (char) * len_result_path);

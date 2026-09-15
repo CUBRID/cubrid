@@ -202,12 +202,16 @@ qfile_slot_set_layout (QFILE_TUPLE_RECORD * tuple_slot, const QFILE_TUPLE_VALUE_
 }
 
 /*
- * qfile_slot_set_tuple_ptr () - point the record at another tuple and reset the deform cache.
+ * qfile_slot_set_tuple_ptr () - point the record at another tuple, record the buffer capacity and reset the deform
+ *   cache. size is the record's ownership mark: 0 when tuple_ptr PEEKs into a page or foreign memory, the allocated
+ *   capacity when the record owns tuple_ptr (pass tuple_slot->size to keep an already-owned buffer).
  */
 inline void
-qfile_slot_set_tuple_ptr (QFILE_TUPLE_RECORD * tuple_slot, char *tuple_ptr)
+qfile_slot_set_tuple_ptr (QFILE_TUPLE_RECORD * tuple_slot, char *tuple_ptr, int size)
 {
+  assert (size >= 0);
   tuple_slot->tpl = tuple_ptr;
+  tuple_slot->size = size;
   tuple_slot->cached_column_index_in_tuple = -1;
 }
 
@@ -215,11 +219,25 @@ qfile_slot_set_tuple_ptr (QFILE_TUPLE_RECORD * tuple_slot, char *tuple_ptr)
  * qfile_slot_set_tuple_ptr_and_layout () - bind + set_tuple in one step, used when filling a record from a list.
  */
 inline void
-qfile_slot_set_tuple_ptr_and_layout (QFILE_TUPLE_RECORD * tuple_slot, char *tuple_ptr,
+qfile_slot_set_tuple_ptr_and_layout (QFILE_TUPLE_RECORD * tuple_slot, char *tuple_ptr, int size,
 				     const QFILE_TUPLE_VALUE_TYPE_LIST * type_list)
 {
   tuple_slot->type_list = type_list;
-  qfile_slot_set_tuple_ptr (tuple_slot, tuple_ptr);
+  qfile_slot_set_tuple_ptr (tuple_slot, tuple_ptr, size);
+}
+
+/*
+ * qfile_slot_reset () - drop the per-tuple state of a live record: no tuple, non-owning, cache not started. The layout
+ *   binding is per scan and stays (qfile_slot_clear () unbinds it). It does not free anything, so the record must
+ *   not still own a buffer here. Use QFILE_TUPLE_RECORD_INITIALIZER to construct a record instead.
+ */
+inline void
+qfile_slot_reset (QFILE_TUPLE_RECORD * tuple_slot)
+{
+  assert (tuple_slot->size == 0 || tuple_slot->tpl == NULL);
+  tuple_slot->tpl = NULL;
+  tuple_slot->size = 0;
+  tuple_slot->cached_column_index_in_tuple = -1;
 }
 
 extern void qfile_slot_clear (QFILE_TUPLE_RECORD * tuple_slot);

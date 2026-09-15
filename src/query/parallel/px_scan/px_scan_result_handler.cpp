@@ -154,8 +154,7 @@ namespace parallel_scan
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
-	tl.tpl_buf.tpl = nullptr;
-	tl.tpl_buf.size = 0;
+	tl.tpl_buf = QFILE_TUPLE_RECORD_INITIALIZER;
       }
     else
       {

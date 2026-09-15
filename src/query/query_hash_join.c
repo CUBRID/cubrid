@@ -491,7 +491,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   probe->list_scan_id.status = S_CLOSED;
 
   // *INDENT-OFF*
-  probe->tuple_record = { NULL, 0 };
+  probe->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
   build->fill_record = NULL;
@@ -3099,7 +3099,7 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   assert (build->list_scan_id.status != S_CLOSED);
 
   // *INDENT-OFF*
-  build->tuple_record = { NULL, 0 };
+  build->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
   hash_scan = &context->hash_scan;
@@ -3438,8 +3438,8 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   assert (probe != NULL);
 
   // *INDENT-OFF*
-  probe->tuple_record = { NULL, 0 };
-  build->tuple_record = { NULL, 0 };
+  probe->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+  build->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
   hash_scan = &context->hash_scan;
@@ -3700,8 +3700,8 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   assert (probe != NULL);
 
   // *INDENT-OFF*
-  probe->tuple_record = { NULL, 0 };
-  build->tuple_record = { NULL, 0 };
+  probe->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+  build->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
   hash_scan = &context->hash_scan;
@@ -4077,14 +4077,13 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 	{
 	  /* in-memory hash entry payload: a raw tuple of the build list, bind it to that list's descriptor */
 	  qfile_slot_set_tuple_ptr_and_layout (tuple_record, (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry),
+					       0 /* PEEK: the payload is owned by the hash table */ ,
 					       &list_scan_id->list_id.type_list);
-	  tuple_record->size = 0;	/* PEEK: the payload is owned by the hash table */
 	}
       else
 	{
 	  /* not found */
-	  qfile_slot_set_tuple_ptr (tuple_record, NULL);
-	  tuple_record->size = 0;
+	  qfile_slot_reset (tuple_record);
 	}
       break;			/* HASH_METH_IN_MEM */
 
@@ -4118,8 +4117,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       else
 	{
 	  /* not found */
-	  qfile_slot_set_tuple_ptr (tuple_record, NULL);
-	  tuple_record->size = 0;
+	  qfile_slot_reset (tuple_record);
 	}
       break;			/* HASH_METH_HYBRID */
 
@@ -4148,8 +4146,7 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       else if (eh_search == EH_KEY_NOTFOUND)
 	{
 	  /* not found */
-	  qfile_slot_set_tuple_ptr (tuple_record, NULL);
-	  tuple_record->size = 0;
+	  qfile_slot_reset (tuple_record);
 	}
       else
 	{

@@ -3925,7 +3925,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		  data = page + key->s.original.offset;
 
 		  /* update orderby_num() in the tuple */
-		  qfile_slot_set_tuple_ptr (&tplslot, data);
+		  qfile_slot_set_tuple_ptr (&tplslot, data, 0);
 		  for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 		    {
 		      (void) qfile_slot_overwrite_value (&tplslot, ordby_info->ordbynum_pos[i], &tp_Bigint_domain,
@@ -3945,12 +3945,11 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		      || info->output_file->type_list.hdr_size != list_idp->type_list.hdr_size)
 		    {
 		      /* I think this way is very inefficient. */
-		      tplrec.size = 0;
-		      tplrec.tpl = NULL;
+		      qfile_slot_reset (&tplrec);
 		      qfile_get_tuple (thread_p, page, page + key->s.original.offset, &tplrec, list_idp);
 		      data = tplrec.tpl;
 		      /* update orderby_num() in the tuple */
-		      qfile_slot_set_tuple_ptr (&tplslot, data);
+		      qfile_slot_set_tuple_ptr (&tplslot, data, 0);
 		      for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 			{
 			  (void) qfile_slot_overwrite_value (&tplslot, ordby_info->ordbynum_pos[i], &tp_Bigint_domain,
@@ -3984,7 +3983,7 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 		{
 		  data = info->output_recdes.data;
 		  /* update orderby_num() in the tuple */
-		  qfile_slot_set_tuple_ptr (&tplslot, data);
+		  qfile_slot_set_tuple_ptr (&tplslot, data, 0);
 		  for (i = 0; ordby_info && i < ordby_info->ordbynum_pos_cnt; i++)
 		    {
 		      (void) qfile_slot_overwrite_value (&tplslot, ordby_info->ordbynum_pos[i], &tp_Bigint_domain,
@@ -4486,8 +4485,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, SORT_LIST * groupby_lis
   gbstate->gby_rec.type = 0;	/* Unused */
   gbstate->gby_rec.data = NULL;
   gbstate->output_tplrec = NULL;
-  gbstate->input_tpl.size = 0;
-  gbstate->input_tpl.tpl = 0;
+  gbstate->input_tpl = QFILE_TUPLE_RECORD_INITIALIZER;
   gbstate->input_recs = 0;
 
   gbstate->g_hk_regu_list = g_hk_regu_list;
@@ -4832,7 +4830,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  /* the stored tuple is later read in place (qexec_groupby, PEEK); a tuple pointer alone is not readable, so bind
 	   * the layout of the list it was saved for */
 	  qfile_slot_set_tuple_ptr_and_layout (&new_value->first_tuple, new_value->first_tuple.tpl,
-					       &groupby_list->type_list);
+					       new_value->first_tuple.size, &groupby_list->type_list);
 
 	  /* no need to output it, we're storing it in the hash table */
 	  *output_tuple = false;
@@ -5313,7 +5311,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	  data = info->gby_rec.data;
 	}
 
-      qfile_slot_set_tuple_ptr (&data_slot, data);
+      qfile_slot_set_tuple_ptr (&data_slot, data, 0);
 
       if (info->input_recs == 0)
 	{
@@ -17984,11 +17982,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
   while (listfile1->tuple_cnt > 0)
     {
-      tuple_rec.tpl = (QFILE_TUPLE) NULL;
-      tuple_rec.size = 0;
-
-      input_tuple_rec.tpl = (QFILE_TUPLE) NULL;
-      input_tuple_rec.size = 0;
+      tuple_rec = QFILE_TUPLE_RECORD_INITIALIZER;
+      input_tuple_rec = QFILE_TUPLE_RECORD_INITIALIZER;
 
       qp_input_lfscan = S_ERROR;
 
@@ -19106,7 +19101,7 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
     }
 
   /* we start with tpl itself, wrapped in a slot bound to the list's descriptor (type_list only supplies domains) */
-  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, &s_id.list_id.type_list);
+  qfile_slot_set_tuple_ptr_and_layout (&tuple_rec, tpl, 0, &s_id.list_id.type_list);
 
   do
     {
@@ -22806,10 +22801,8 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   func_state->curr_sort_key_tuple_count = 0;
 
   /* initialize tuple record */
-  func_state->group_tplrec.size = 0;
-  func_state->group_tplrec.tpl = NULL;
-  func_state->value_tplrec.size = 0;
-  func_state->value_tplrec.tpl = NULL;
+  func_state->group_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  func_state->value_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   /* initialize dbvals */
   db_make_null (&func_state->csktc_dbval);
@@ -22952,8 +22945,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   analytic_state->analytic_rec.type = 0;	/* Unused */
   analytic_state->analytic_rec.data = NULL;
   analytic_state->output_tplrec = NULL;
-  analytic_state->input_tplrec.size = 0;
-  analytic_state->input_tplrec.tpl = 0;
+  analytic_state->input_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   analytic_state->input_recs = 0;
 
   analytic_state->func_state_list = NULL;
@@ -23177,7 +23169,7 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  peek = PEEK;		/* avoid unnecessary COPY */
 	}
 
-      qfile_slot_set_tuple_ptr (&data_slot, data);
+      qfile_slot_set_tuple_ptr (&data_slot, data, 0);
 
       /*
        * process current sorted tuple
@@ -24525,10 +24517,8 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
     }
 
   /* initialize tuple record */
-  tplrec_scan.size = 0;
-  tplrec_scan.tpl = NULL;
-  tplrec_write.size = 0;
-  tplrec_write.tpl = NULL;
+  tplrec_scan = QFILE_TUPLE_RECORD_INITIALIZER;
+  tplrec_write = QFILE_TUPLE_RECORD_INITIALIZER;
 
   /* iterate files */
   while (sc == S_SUCCESS)
@@ -28573,8 +28563,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * initialize sort input tuple
    */
-  proc->agg_hash_context->input_tuple.size = 0;
-  proc->agg_hash_context->input_tuple.tpl = NULL;
+  proc->agg_hash_context->input_tuple = QFILE_TUPLE_RECORD_INITIALIZER;
 
   /*
    * initialize remaining fields

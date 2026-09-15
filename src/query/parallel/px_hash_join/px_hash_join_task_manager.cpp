@@ -272,7 +272,7 @@ namespace parallel_query
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  qfile_slot_set_tuple_ptr_and_layout (&tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE,
+	  qfile_slot_set_tuple_ptr_and_layout (&tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE, 0,
 					       &m_split_info->fetch_info->list_id->type_list);
 
 	  /* overflow page */
@@ -288,7 +288,7 @@ namespace parallel_query
 		  break;	/* error_exit */
 		}
 
-	      qfile_slot_set_tuple_ptr_and_layout (&tuple_record, overflow_record.tpl,
+	      qfile_slot_set_tuple_ptr_and_layout (&tuple_record, overflow_record.tpl, 0,
 						   &m_split_info->fetch_info->list_id->type_list);
 	    }
 
@@ -305,7 +305,7 @@ namespace parallel_query
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_record.tpl);
-		  qfile_slot_set_tuple_ptr (&tuple_record, tuple_record.tpl + tuple_length);	/* next tuple in page */
+		  qfile_slot_set_tuple_ptr (&tuple_record, tuple_record.tpl + tuple_length, 0);	/* next tuple in page */
 		}
 	      else
 		{
@@ -993,7 +993,7 @@ cleanup:
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE,
+	  qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE, 0,
 					       &probe->list_id->type_list);
 
 	  /* overflow page */
@@ -1010,7 +1010,7 @@ cleanup:
 		  break;	/* error_exit */
 		}
 
-	      qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, probe_overflow_record.tpl,
+	      qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, probe_overflow_record.tpl, 0,
 						   &probe->list_id->type_list);
 	    }
 
@@ -1029,7 +1029,7 @@ cleanup:
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (probe->tuple_record.tpl);
-		  qfile_slot_set_tuple_ptr (&probe->tuple_record, probe->tuple_record.tpl + tuple_length);
+		  qfile_slot_set_tuple_ptr (&probe->tuple_record, probe->tuple_record.tpl + tuple_length, 0);
 		}
 	      else
 		{
@@ -1298,7 +1298,7 @@ cleanup:
 	  tuple_index = -1;
 
 	  /* first tuple */
-	  qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE,
+	  qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, (char *) page + QFILE_PAGE_HEADER_SIZE, 0,
 					       &probe->list_id->type_list);
 
 	  /* overflow page */
@@ -1315,7 +1315,7 @@ cleanup:
 		  break;	/* error_exit */
 		}
 
-	      qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, probe_overflow_record.tpl,
+	      qfile_slot_set_tuple_ptr_and_layout (&probe->tuple_record, probe_overflow_record.tpl, 0,
 						   &probe->list_id->type_list);
 	    }
 
@@ -1334,7 +1334,7 @@ cleanup:
 		{
 		  /* next tuple */
 		  tuple_length = QFILE_GET_TUPLE_LENGTH (probe->tuple_record.tpl);
-		  qfile_slot_set_tuple_ptr (&probe->tuple_record, probe->tuple_record.tpl + tuple_length);
+		  qfile_slot_set_tuple_ptr (&probe->tuple_record, probe->tuple_record.tpl + tuple_length, 0);
 		}
 	      else
 		{

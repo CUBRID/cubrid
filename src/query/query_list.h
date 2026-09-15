@@ -295,7 +295,7 @@ typedef char *QFILE_TUPLE;	/* list file tuple */
  * The record keeps its historical owning/non-owning meaning (size > 0: private buffer owned by the record,
  * size == 0: tpl PEEKs into a list page). The slot fields bind the layout descriptor of the list the tuple
  * belongs to and cache the deform position; they are reset by qfile_slot_set_tuple_ptr (), the only sanctioned
- * way to point the record at another tuple. */
+ * way to point the record at another tuple, which also takes the size so ownership never trails the pointer. */
 struct qfile_tuple_value_type_list;
 typedef struct qfile_tuple_record QFILE_TUPLE_RECORD;
 struct qfile_tuple_record

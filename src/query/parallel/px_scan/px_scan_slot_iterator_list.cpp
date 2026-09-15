@@ -48,8 +48,7 @@ namespace parallel_scan
       m_on_trace (false)
   {
     m_scan_pred = { nullptr, nullptr, nullptr };
-    m_tplrec.size = 0;
-    m_tplrec.tpl = nullptr;
+    m_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   }
 
   slot_iterator_list::~slot_iterator_list ()
@@ -140,7 +139,7 @@ namespace parallel_scan
 
 	m_curr_tpl += QFILE_GET_TUPLE_LENGTH (m_curr_tpl);
 	m_curr_tplno++;
-	qfile_slot_set_tuple_ptr (&tpl_slot, tpl);
+	qfile_slot_set_tuple_ptr (&tpl_slot, tpl, 0);
 
 	if (m_val_list)
 	  {
@@ -186,7 +185,7 @@ namespace parallel_scan
 	if (m_tplrecp)
 	  {
 	    /* output record: carry the binding too */
-	    qfile_slot_set_tuple_ptr_and_layout (m_tplrecp, tpl, &m_list_id->type_list);
+	    qfile_slot_set_tuple_ptr_and_layout (m_tplrecp, tpl, 0, &m_list_id->type_list);
 	  }
 
 	return S_SUCCESS;

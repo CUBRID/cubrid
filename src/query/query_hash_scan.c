@@ -455,7 +455,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     {
       fprintf (fp, "data_size = [%d], data = { ", QFILE_GET_TUPLE_LENGTH ((QFILE_TUPLE) data));
 
-      qfile_slot_set_tuple_ptr_and_layout (&slot, (char *) data, type_list_p);
+      qfile_slot_set_tuple_ptr_and_layout (&slot, (char *) data, 0, type_list_p);
 
       for (i = 0; i < type_list_p->type_cnt; i++)
 	{
