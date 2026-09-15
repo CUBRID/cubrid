@@ -10553,6 +10553,9 @@ ux_stream_end (T_NET_BUF * net_buf, bool * auto_commit)
       return err_code;
     }
 
+  /* first field is the result code, as every other CAS reply has it; the
+   * binding's count follows, 64-bit so a value stream's byte count fits */
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
   net_buf_cp_bigint (net_buf, count, NULL);
   return 0;
 }
