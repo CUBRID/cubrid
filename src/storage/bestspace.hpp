@@ -75,6 +75,8 @@ namespace cubstorage
       static constexpr std::size_t MAX_CANDIDATES_QUEUE_SIZE = 128;
       static constexpr std::size_t MAX_SHARD_PAGE_COUNT = 4;
       static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
+      // CBRD-27325: pages visited by one bounded rediscovery scan of the heap chain
+      static constexpr std::size_t REDISCOVER_BATCH_SIZE = 64;
       static constexpr std::size_t L3_FANOUT = 8;
       static constexpr std::size_t L2_FANOUT = 8;
       static constexpr std::size_t ENTRIES_PER_SHARD = L3_FANOUT * L2_FANOUT;
@@ -255,6 +257,8 @@ namespace cubstorage
 
 	  void to_entries (bestspace_entry *entries);
 
+	  bool holds (const VPID &vpid);
+
 	private:
 	  // core
 	  atomic_wrapper<bool> m_allocating;
@@ -381,6 +385,11 @@ namespace cubstorage
 
       std::size_t get_num_shards ();
 
+      // CBRD-27325: scan a bounded slice of the heap chain and push free pages into the
+      // candidate queue. Returns the number of pages pushed. At most one scan runs at a time;
+      // a fruitless full sweep disables scanning until the queue sees a push again.
+      std::size_t rediscover (HFID *hfid);
+
       void to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates);
 
     private:
@@ -397,6 +406,12 @@ namespace cubstorage
       std::atomic<std::uint64_t> m_recs_sumlen;
 
       std::atomic<std::uint64_t> m_last_updated;
+
+      // CBRD-27325: rediscovery state. m_scan_cursor is only accessed while m_scanning is held.
+      std::atomic<bool> m_scanning;
+      std::atomic<bool> m_scan_enabled;
+      std::atomic<std::uint32_t> m_scan_fruitless;
+      VPID m_scan_cursor;
 
       int find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
 			    std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, bool is_newrec, PGBUF_WATCHER &page_watcher);
