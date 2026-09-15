@@ -598,7 +598,10 @@ do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
     {
       return;
     }
-  free_and_init (eval_set->entries);
+  if (eval_set->entries)
+    {
+      free_and_init (eval_set->entries);
+    }
   eval_set->count = 0;
   eval_set->smclass = NULL;
 }
