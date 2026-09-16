@@ -592,6 +592,15 @@ static int qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE 
 					     QFILE_TUPLE_RECORD * tplrec);
 static int qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
 					    QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int *are_equal);
+static bool qexec_regu_has_prior (const REGU_VARIABLE * regu);
+static bool qexec_pred_has_prior (const PRED_EXPR * pred);
+static bool qexec_connect_by_is_generator_candidate (XASL_NODE * xasl);
+static int qexec_execute_connect_by_generator (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					       QFILE_LIST_ID * start_with_list,
+					       QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_VALUE * level_valp,
+					       DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+					       DB_VALUE * parent_pos_valp, QFILE_TUPLE_RECORD * temp_tuple_rec,
+					       bool * handled);
 
 /* a materialized CONNECT BY tuple pending its depth-first visit; the hash of
  * its user columns feeds the active-path cycle-check filter */
@@ -18086,6 +18095,24 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 			   && (xasl->spec_list->s_id.s.llsid.hlsid.hash_list_scan_type == HASH_METH_IN_MEM
 			       || xasl->spec_list->s_id.s.llsid.hlsid.hash_list_scan_type == HASH_METH_HYBRID));
 
+  /* no-PRIOR LEVEL generator (e.g. CONNECT BY LEVEL <= N) over a single-row source is a per-root chain, not a tree;
+   * skip the DFS stack and emit it directly. The helper confirms |F| == 1 by pre-scan and otherwise falls through. */
+  if (qexec_connect_by_is_generator_candidate (xasl))
+    {
+      bool handled = false;
+
+      if (qexec_execute_connect_by_generator (thread_p, xasl, xasl_state, listfile1, &type_list, level_valp,
+					      isleaf_valp, iscycle_valp, parent_pos_valp, &temp_tuple_rec,
+					      &handled) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      if (handled)
+	{
+	  goto connect_by_emitted;
+	}
+    }
+
   if (qfile_open_list_scan (listfile1, &lfscan_id) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -18354,6 +18381,8 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
     }
 
+connect_by_emitted:
+
   qfile_close_scan (thread_p, &lfscan_id);
 
   qexec_end_scan (thread_p, xasl->spec_list);
@@ -18464,6 +18493,467 @@ exit_on_error:
 
   xasl->status = XASL_FAILURE;
 
+  return ER_FAILED;
+}
+
+/*
+ * qexec_regu_has_prior () - walk a regu variable tree for a T_PRIOR operator
+ *  return: true if a PRIOR reference is present
+ *  regu(in):
+ *
+ *  Note: mirrors qexec_replace_prior_regu_vars so detection covers exactly the
+ *  places the general path would substitute PRIOR pointers.
+ */
+static bool
+qexec_regu_has_prior (const REGU_VARIABLE * regu)
+{
+  if (regu == NULL)
+    {
+      return false;
+    }
+
+  switch (regu->type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu->value.arithptr->opcode == T_PRIOR)
+	{
+	  return true;
+	}
+      return (qexec_regu_has_prior (regu->value.arithptr->leftptr)
+	      || qexec_regu_has_prior (regu->value.arithptr->rightptr)
+	      || qexec_regu_has_prior (regu->value.arithptr->thirdptr));
+
+    case TYPE_SP:
+      for (REGU_VARIABLE_LIST r = regu->value.sp_ptr->args; r != NULL; r = r->next)
+	{
+	  if (qexec_regu_has_prior (&r->value))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+
+    case TYPE_FUNC:
+      for (REGU_VARIABLE_LIST r = regu->value.funcp->operand; r != NULL; r = r->next)
+	{
+	  if (qexec_regu_has_prior (&r->value))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * qexec_pred_has_prior () - walk a predicate for a T_PRIOR operator
+ *  return: true if a PRIOR reference is present
+ *  pred(in):
+ *
+ *  Note: mirrors qexec_replace_prior_regu_vars_pred; the esc_char/case_sensitive
+ *  operands are checked too so detection is at least as broad as substitution.
+ */
+static bool
+qexec_pred_has_prior (const PRED_EXPR * pred)
+{
+  if (pred == NULL)
+    {
+      return false;
+    }
+
+  switch (pred->type)
+    {
+    case T_PRED:
+      return (qexec_pred_has_prior (pred->pe.m_pred.lhs) || qexec_pred_has_prior (pred->pe.m_pred.rhs));
+
+    case T_EVAL_TERM:
+      switch (pred->pe.m_eval_term.et_type)
+	{
+	case T_COMP_EVAL_TERM:
+	  return (qexec_regu_has_prior (pred->pe.m_eval_term.et.et_comp.lhs)
+		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_comp.rhs));
+
+	case T_ALSM_EVAL_TERM:
+	  return (qexec_regu_has_prior (pred->pe.m_eval_term.et.et_alsm.elem)
+		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_alsm.elemset));
+
+	case T_LIKE_EVAL_TERM:
+	  return (qexec_regu_has_prior (pred->pe.m_eval_term.et.et_like.src)
+		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_like.pattern)
+		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_like.esc_char));
+
+	case T_RLIKE_EVAL_TERM:
+	  return (qexec_regu_has_prior (pred->pe.m_eval_term.et.et_rlike.src)
+		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_rlike.pattern)
+		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_rlike.case_sensitive));
+	}
+      return false;
+
+    case T_NOT_TERM:
+      return qexec_pred_has_prior (pred->pe.m_not_term);
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * qexec_connect_by_is_generator_candidate () - static test for the LEVEL
+ *    generator fast-path: no PRIOR reference (C1) and LEVEL used in CONNECT BY (C3)
+ *  return: true if the query may take the fast-path (|F| == 1 still checked at run time)
+ *  xasl(in):
+ */
+static bool
+qexec_connect_by_is_generator_candidate (XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  /* C3: LEVEL appears in the CONNECT BY clause */
+  if (xasl->level_val == NULL)
+    {
+      return false;
+    }
+
+  /* C1: no PRIOR anywhere the general path substitutes prior pointers (if_pred is evaluated outside the scan;
+   * where_pred/where_key/index key ranges/probe list carry PRIOR down to the child scan in single-table mode) */
+  if (qexec_pred_has_prior (xasl->if_pred))
+    {
+      return false;
+    }
+
+  for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
+    {
+      if (qexec_pred_has_prior (spec->where_pred) || qexec_pred_has_prior (spec->where_key)
+	  || qexec_pred_has_prior (spec->where_range))
+	{
+	  return false;
+	}
+
+      if (spec->type == TARGET_LIST)
+	{
+	  for (REGU_VARIABLE_LIST r = spec->s.list_node.list_regu_list_probe; r != NULL; r = r->next)
+	    {
+	      if (qexec_regu_has_prior (&r->value))
+		{
+		  return false;
+		}
+	    }
+	}
+
+      if (spec->access == ACCESS_METHOD_INDEX && spec->indexptr != NULL)
+	{
+	  KEY_INFO *key_info_p = &spec->indexptr->key_info;
+
+	  for (int j = 0; j < key_info_p->key_cnt; j++)
+	    {
+	      if (qexec_regu_has_prior (key_info_p->key_ranges[j].key1)
+		  || qexec_regu_has_prior (key_info_p->key_ranges[j].key2))
+		{
+		  return false;
+		}
+	    }
+	}
+    }
+
+  return true;
+}
+
+/*
+ * qexec_execute_connect_by_generator () - fast-path for a no-PRIOR LEVEL
+ *    generator over a single-row source (C2: |F| == 1)
+ *  return: NO_ERROR / ER_FAILED
+ *  handled(out): true when the fast-path produced the whole result; false when
+ *    the source is not single-row and the caller must run the general DFS
+ *
+ *  Note: With no PRIOR the child candidate set F is constant, so |F| == 1 makes
+ *  the tree a per-root chain R -> T -> T -> ... The child cycle status only takes
+ *  the two path shapes [R] and [R, T], computed once via the same hash/compare
+ *  functions the general path uses, so ISLEAF/ISCYCLE and emitted bytes match.
+ */
+static int
+qexec_execute_connect_by_generator (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				    QFILE_LIST_ID * start_with_list, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+				    DB_VALUE * level_valp, DB_VALUE * isleaf_valp, DB_VALUE * iscycle_valp,
+				    DB_VALUE * parent_pos_valp, QFILE_TUPLE_RECORD * temp_tuple_rec, bool * handled)
+{
+  CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
+  QFILE_TUPLE T = NULL, R_tpl = NULL;
+  QFILE_LIST_SCAN_ID lfscan_id;
+  QFILE_TUPLE_RECORD root_rec = { (QFILE_TUPLE) NULL, 0 };
+  SCAN_CODE qp;
+  int count = 0, tpl_len;
+  unsigned int child_hash = 0, T_hash = 0, R_hash = 0;
+  int cycle_R, cycle_RT, cycle, eq;
+  int level;
+  DB_LOGICAL ev_res;
+  bool lfscan_open = false;
+  QFILE_TUPLE_POSITION unknown_parent_pos;
+
+  *handled = false;
+  lfscan_id.status = S_CLOSED;
+  memset (&unknown_parent_pos, 0, sizeof (unknown_parent_pos));
+
+  /* the reload lists (§8-5): if the source has user columns but the positional regu lists were dropped, we cannot
+   * refill val_list/prior_val_list from a private tuple; let the general path handle it */
+  if (xasl->val_list != NULL && xasl->val_list->val_cnt > 0
+      && ((connect_by->regu_list_pred == NULL && connect_by->regu_list_rest == NULL)
+	  || (connect_by->prior_regu_list_pred == NULL && connect_by->prior_regu_list_rest == NULL)))
+    {
+      return NO_ERROR;
+    }
+
+  /* C2 pre-scan: count the child candidates, keep a private copy of the first, stop at the second */
+  xasl->next_scan_block_on = false;
+  qp = qexec_next_scan_block_iterations (thread_p, xasl);
+  while (qp == S_SUCCESS)
+    {
+      qp = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
+      if (qp != S_SUCCESS)
+	{
+	  break;
+	}
+      count++;
+      if (count == 1)
+	{
+	  if (qdata_copy_valptr_list_to_tuple (thread_p, xasl->outptr_list, &xasl_state->vd, temp_tuple_rec) !=
+	      NO_ERROR)
+	    {
+	      qp = S_ERROR;
+	      break;
+	    }
+	  tpl_len = QFILE_GET_TUPLE_LENGTH (temp_tuple_rec->tpl);
+	  T = (QFILE_TUPLE) db_private_alloc (thread_p, tpl_len);
+	  if (T == NULL)
+	    {
+	      qp = S_ERROR;
+	      break;
+	    }
+	  memcpy (T, temp_tuple_rec->tpl, tpl_len);
+	}
+      else
+	{
+	  break;		/* a second candidate: F is not single-row */
+	}
+    }
+  xasl->curr_spec = NULL;
+  qexec_end_scan (thread_p, xasl->spec_list);
+
+  if (qp == S_ERROR)
+    {
+      if (T != NULL)
+	{
+	  db_private_free_and_init (thread_p, T);
+	}
+      return ER_FAILED;
+    }
+  if (count != 1)
+    {
+      /* leaves the scan ended with curr_spec == NULL, exactly as between two general-path nodes */
+      if (T != NULL)
+	{
+	  db_private_free_and_init (thread_p, T);
+	}
+      return NO_ERROR;
+    }
+
+  /* val_list must read the single child T for if_pred/hash/compare, which all pertain to the child */
+  if (fetch_val_list (thread_p, connect_by->regu_list_pred, &xasl_state->vd, NULL, NULL, T, PEEK) != NO_ERROR
+      || fetch_val_list (thread_p, connect_by->regu_list_rest, &xasl_state->vd, NULL, NULL, T, PEEK) != NO_ERROR)
+    {
+      db_private_free_and_init (thread_p, T);
+      return ER_FAILED;
+    }
+  if (qexec_connect_by_hash_from_tuple (xasl->outptr_list, T, type_list, &T_hash) != NO_ERROR)
+    {
+      db_private_free_and_init (thread_p, T);
+      return ER_FAILED;
+    }
+  qexec_connect_by_hash_from_valptr (xasl->outptr_list, &child_hash);
+
+  if (qfile_open_list_scan (start_with_list, &lfscan_id) != NO_ERROR)
+    {
+      db_private_free_and_init (thread_p, T);
+      return ER_FAILED;
+    }
+  lfscan_open = true;
+
+  while (1)
+    {
+      root_rec.tpl = (QFILE_TUPLE) NULL;
+      root_rec.size = 0;
+
+      qp = qfile_scan_list_next (thread_p, &lfscan_id, &root_rec, PEEK);
+      if (qp == S_END)
+	{
+	  break;
+	}
+      if (qp != S_SUCCESS)
+	{
+	  goto gen_error;
+	}
+
+      tpl_len = QFILE_GET_TUPLE_LENGTH (root_rec.tpl);
+      R_tpl = (QFILE_TUPLE) db_private_alloc (thread_p, tpl_len);
+      if (R_tpl == NULL)
+	{
+	  goto gen_error;
+	}
+      memcpy (R_tpl, root_rec.tpl, tpl_len);
+
+      if (qexec_connect_by_hash_from_tuple (xasl->outptr_list, R_tpl, type_list, &R_hash) != NO_ERROR)
+	{
+	  goto gen_error;
+	}
+
+      /* cycle status of child T against path [R] and path [R, T]; the [R, T] check walks the deepest node first,
+       * as the general path does */
+      cycle_R = 0;
+      if (R_hash == child_hash)
+	{
+	  if (qexec_compare_valptr_with_tuple (xasl->outptr_list, R_tpl, type_list, &eq) != NO_ERROR)
+	    {
+	      goto gen_error;
+	    }
+	  cycle_R = eq;
+	}
+      cycle_RT = 0;
+      if (T_hash == child_hash)
+	{
+	  if (qexec_compare_valptr_with_tuple (xasl->outptr_list, T, type_list, &eq) != NO_ERROR)
+	    {
+	      goto gen_error;
+	    }
+	  cycle_RT = eq;
+	}
+      if (cycle_RT == 0 && R_hash == child_hash)
+	{
+	  if (qexec_compare_valptr_with_tuple (xasl->outptr_list, R_tpl, type_list, &eq) != NO_ERROR)
+	    {
+	      goto gen_error;
+	    }
+	  cycle_RT = eq;
+	}
+
+      /* prior_val_list carries the node being emitted; level 1 is R, every deeper node is T */
+      if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, R_tpl, PEEK) !=
+	  NO_ERROR
+	  || fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, R_tpl, PEEK) !=
+	  NO_ERROR)
+	{
+	  goto gen_error;
+	}
+
+      level = 1;
+      while (1)
+	{
+	  int isleaf_value = 1;
+	  int iscycle_value = 0;
+	  bool has_child = false;
+
+	  ev_res = V_TRUE;
+	  if (xasl->if_pred != NULL)
+	    {
+	      if (xasl->level_val)
+		{
+		  db_make_int (xasl->level_val, level + 1);
+		}
+	      ev_res = eval_pred (thread_p, xasl->if_pred, &xasl_state->vd, NULL);
+	      if (ev_res == V_ERROR)
+		{
+		  goto gen_error;
+		}
+	    }
+
+	  if (ev_res == V_TRUE)
+	    {
+	      cycle = (level == 1) ? cycle_R : cycle_RT;
+	      if (cycle == 0)
+		{
+		  isleaf_value = 0;
+		}
+
+	      if (cycle == 0 || XASL_IS_FLAGED (xasl, XASL_IGNORE_CYCLES))
+		{
+		  has_child = true;
+		}
+	      else if (!XASL_IS_FLAGED (xasl, XASL_HAS_NOCYCLE))
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CYCLE_DETECTED, 0);
+		  goto gen_error;
+		}
+	      else
+		{
+		  iscycle_value = 1;
+		}
+	    }
+
+	  db_make_int (level_valp, level);
+	  db_make_int (isleaf_valp, isleaf_value);
+	  db_make_int (iscycle_valp, iscycle_value);
+	  if (level == 1)
+	    {
+	      db_make_null (parent_pos_valp);
+	    }
+	  else
+	    {
+	      db_make_bit (parent_pos_valp, DB_DEFAULT_PRECISION, REINTERPRET_CAST (DB_C_BIT, &unknown_parent_pos),
+			   sizeof (unknown_parent_pos) * 8);
+	    }
+
+	  if (qdata_copy_valptr_list_to_tuple (thread_p, connect_by->prior_outptr_list, &xasl_state->vd,
+					       temp_tuple_rec) != NO_ERROR)
+	    {
+	      goto gen_error;
+	    }
+	  if (qfile_add_tuple_to_list (thread_p, xasl->list_id, temp_tuple_rec->tpl) != NO_ERROR)
+	    {
+	      goto gen_error;
+	    }
+
+	  if (!has_child)
+	    {
+	      break;
+	    }
+
+	  if (level == 1)
+	    {
+	      /* from level 2 on the emitted node is always T */
+	      if (fetch_val_list (thread_p, connect_by->prior_regu_list_pred, &xasl_state->vd, NULL, NULL, T, PEEK) !=
+		  NO_ERROR
+		  || fetch_val_list (thread_p, connect_by->prior_regu_list_rest, &xasl_state->vd, NULL, NULL, T,
+				     PEEK) != NO_ERROR)
+		{
+		  goto gen_error;
+		}
+	    }
+	  level++;
+	}
+
+      db_private_free_and_init (thread_p, R_tpl);
+    }
+
+  qfile_close_scan (thread_p, &lfscan_id);
+  db_private_free_and_init (thread_p, T);
+  *handled = true;
+  return NO_ERROR;
+
+gen_error:
+  if (R_tpl != NULL)
+    {
+      db_private_free_and_init (thread_p, R_tpl);
+    }
+  if (T != NULL)
+    {
+      db_private_free_and_init (thread_p, T);
+    }
+  if (lfscan_open)
+    {
+      qfile_close_scan (thread_p, &lfscan_id);
+    }
   return ER_FAILED;
 }
 
