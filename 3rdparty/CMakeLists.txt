@@ -15,8 +15,11 @@
 #   limitations under the License.
 # 
 
-set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
-set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
+# Unused: on Linux flex and bison come from the system, and only WIN_FLEX_BISON_URL
+# below is downloaded. Kept commented out in case bundling is ever revived - the
+# versions named here are NOT built or shipped, so they are not a CVE surface.
+#set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
+#set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
 set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.8.2.tar.gz")             # expat library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.2.tar.gz")                  # editline library sources URL
 set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0-250205.tar.gz")              # rapidjson library sources URL
@@ -368,21 +371,26 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
 
     # unix-Makefile.tmpl does an unconditional "use Time::Piece", which minimal Perl
     # installs do not ship. Check it up front so the user gets an actionable message
-    # instead of a cryptic failure deep inside the OpenSSL build. Only when OpenSSL
-    # has not been built yet: re-running cmake against a finished tree must not fail
-    # over a tool it no longer needs.
+    # instead of a cryptic failure deep inside the OpenSSL build. Whether OpenSSL will
+    # actually be rebuilt is only decided at build time, so the check always runs and
+    # only its severity depends on whether a build already produced the library.
     # (Configure also uses IPC::Cmd, but falls back to File::Spec when it is absent.)
-    if(NOT EXISTS ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
-      find_program(OPENSSL_PERL_EXECUTABLE perl)
-      if(NOT OPENSSL_PERL_EXECUTABLE)
-        message(FATAL_ERROR "Perl is required to build OpenSSL. Please install it (e.g. 'sudo dnf install -y perl-core').")
-      endif()
+    if(EXISTS ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
+      set(OPENSSL_PERL_SEVERITY WARNING)
+    else()
+      set(OPENSSL_PERL_SEVERITY FATAL_ERROR)
+    endif()
+    find_program(OPENSSL_PERL_EXECUTABLE perl)
+    if(NOT OPENSSL_PERL_EXECUTABLE)
+      message(${OPENSSL_PERL_SEVERITY}
+        "Perl is required to build OpenSSL. Please install it (e.g. 'sudo dnf install -y perl-core').")
+    else()
       execute_process(
         COMMAND ${OPENSSL_PERL_EXECUTABLE} -MTime::Piece -e "1"
         RESULT_VARIABLE OPENSSL_PERL_MODULES_RC
         OUTPUT_QUIET ERROR_QUIET)
       if(NOT OPENSSL_PERL_MODULES_RC EQUAL 0)
-        message(FATAL_ERROR
+        message(${OPENSSL_PERL_SEVERITY}
           "Building OpenSSL 3.x requires the Perl module Time::Piece, which is not "
           "available in the current Perl installation.\n"
           "  Rocky/RHEL/CentOS : sudo dnf install -y perl-core\n"
