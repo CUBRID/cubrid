@@ -1777,7 +1777,9 @@
 
 #define ER_SP_PARALLEL_ENABLE_NO_SQL                -1380
 
-#define ER_LAST_ERROR                               -1381
+#define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1381
+
+#define ER_LAST_ERROR                               -1382
 
 
 /*
