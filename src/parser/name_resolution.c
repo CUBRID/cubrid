@@ -1921,9 +1921,10 @@ pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *   return: true if server time synchronization is needed
  *   parser(in):
  *   attr(in): attribute carrying a Compact DEFAULT Tree stream
+ *   stmt(in): the INSERT/MERGE being resolved, for error reporting
  */
 static bool
-pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr)
+pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr, PT_NODE * stmt)
 {
   PT_NODE *residual;
   bool needs_si_datetime = false;
@@ -1934,7 +1935,14 @@ pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * a
   residual = pt_cdt_registry_tree (parser, attr, NULL);
   if (residual == NULL)
     {
-      /* let the evaluation path report the broken stream; synchronize conservatively */
+      /* the registry diagnosed the failure where it happened.  This probe is the statement's first reader of
+       * the stream, so it reports it rather than leaving the error set for a later reader to mistake for its
+       * own; synchronize conservatively for the statement that is about to fail anyway. */
+      assert (er_errid () != NO_ERROR);
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORc (parser, stmt, er_msg ());
+	}
       return true;
     }
 
@@ -1994,7 +2002,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 	       * synchronized before the Local Evaluation path evaluates it */
 	      || (attr->default_value.default_expr.default_expr_tree_stream != NULL
 		  && attr->default_value.default_expr.default_expr_tree_stream_size > 0
-		  && pt_residual_default_needs_si_datetime (parser, attr)))
+		  && pt_residual_default_needs_si_datetime (parser, attr, node)))
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
@@ -3969,15 +3977,11 @@ pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * at
 
       if (shared == NULL)
 	{
-	  if (!pt_has_error (parser))
+	  /* the registry diagnosed the failure where it happened; this level only carries it into the
+	   * parser's own error channel */
+	  assert (er_errid () != NO_ERROR);
+	  if (!pt_has_error (parser) && er_errid() != NO_ERROR)
 	    {
-	      /* a stored stream this build cannot interpret (version mismatch or corruption), not an
-	       * allocation failure -- the same diagnosis the Local Evaluation set gives, so the caller does
-	       * not misreport out-of-memory */
-	      if (er_errid () == NO_ERROR)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, att->header.name);
-		}
 	      PT_ERRORc (parser, name, er_msg ());
 	    }
 	  return NULL;

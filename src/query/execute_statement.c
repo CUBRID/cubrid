@@ -690,14 +690,12 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
       residual = pt_cdt_registry_tree (parser, att, &vol);
       if (residual == NULL)
 	{
-	  /* the registry reports only allocation failures itself; anything else is a stored stream this build
-	   * cannot restore (version mismatch or corruption) */
-	  if (er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, att->header.name);
-	    }
+	  int error;
+
+	  /* the registry diagnosed the failure where it happened; this level only propagates it */
+	  ASSERT_ERROR_AND_SET (error);
 	  do_clear_cdt_eval_set (eval_set);
-	  return er_errid ();
+	  return error;
 	}
 
       /* the volatility only picks the evaluation cadence of an already DDL-validated

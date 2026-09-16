@@ -11227,8 +11227,8 @@ struct pt_cdt_registry_entry
  * pt_cdt_registry_tree () - the rehydrated Compact DEFAULT Tree of a residual
  *	DEFAULT attribute, decoded once per parser and shared afterwards (see the
  *	registry note above).  The caller must not mutate or free the returned tree.
- *   return: shared tree, or NULL when att has no residual DEFAULT or the stream
- *	could not be decoded (the reader or er_set carries the cause)
+ *   return: shared tree, or NULL -- an attribute with no residual DEFAULT leaves the
+ *	error state untouched (the probe answer), any other NULL has set its error here
  *   parser(in): parser context owning the registry and the tree
  *   att(in): attribute
  *   volatility(out): effective volatility of the tree; may be NULL
@@ -11271,7 +11271,9 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
 					      default_expr->default_expr_tree_stream_size);
   if (tree == NULL)
     {
-      /* never register a failure: the next reader gets to diagnose it too */
+      /* a stored stream this build cannot restore. The failure is never registered: the next reader
+       * of the same attribute decodes again and diagnoses again. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, att->header.name);
       return NULL;
     }
 
