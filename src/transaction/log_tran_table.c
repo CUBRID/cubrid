@@ -3059,6 +3059,42 @@ logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_check
 }
 
 /*
+ * logtb_is_interruptible - can an interrupt on this thread be observed at all?
+ *
+ * return: true if logtb_is_interrupted is able to report an interrupt for this thread
+ *
+ *   thread_p(in): thread entry
+ *
+ * Note: logtb_is_interrupted answers false both for "not interrupted" and for "an interrupt could
+ *       not be seen from here": a thread without a transaction has nowhere to read one from, and a
+ *       transaction that is not active never reports one -- which is also why nothing sets an
+ *       interrupt on it (net_server_wakeup_workers). A caller that is about to block and relies on
+ *       the interrupt as its way out has to tell the two apart, because in the second case that way
+ *       out does not exist. This answers that question and nothing else; it neither reads nor
+ *       clears the flag.
+ */
+bool
+logtb_is_interruptible (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes;		/* Transaction descriptor */
+  int tran_index;
+
+  if (log_Gl.trantable.area == NULL)
+    {
+      return false;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      return false;
+    }
+
+  return LOG_ISTRAN_ACTIVE (tdes);
+}
+
+/*
  * logtb_is_interrupted_tran - find if the execution of the given transaction
  *			       must be stopped due to an interrupt (^C)
  *
