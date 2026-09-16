@@ -12600,6 +12600,20 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 
   ptr = or_unpack_int (ptr, &stream_kind);
 
+  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
+  {
+    stream_session *active = NULL;
+
+    (void) session_get_stream_session (thread_p, active);
+    if (active != NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+		"a stream session is already active on this connection");
+	error_code = ER_STREAM_SESSION_ERROR;
+	goto send_reply;
+      }
+  }
+
   session = stream_session_create (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
   if (session != NULL)
     {
