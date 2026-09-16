@@ -10748,10 +10748,24 @@ static char *
 cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char **out_string)
 {
   int declared_len;
-  char *after_len = or_unpack_int (ptr, &declared_len);
+  char *after_len;
 
-  if (declared_len < -1 || declared_len > (reqlen - (int) (after_len - request))
-      || (declared_len != -1 && declared_len % OR_INT_SIZE != 0))
+  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
+    {
+      return NULL;
+    }
+
+  after_len = or_unpack_int (ptr, &declared_len);
+
+  if (declared_len != -1
+      && (declared_len < OR_INT_SIZE || declared_len > (reqlen - (int) (after_len - request))
+	  || declared_len % OR_INT_SIZE != 0
+	  /* or_pack_string() always NUL-terminates before padding to declared_len, so a
+	   * legitimate peer's string always has a NUL within its own declared span; a
+	   * crafted one without it would let every downstream strlen()/strcmp() consumer
+	   * (and, on the classname-not-found error path, the byte count sent back to the
+	   * client) run past this buffer into adjacent heap memory. */
+	  || memchr (after_len, '\0', declared_len) == NULL))
     {
       return NULL;
     }
@@ -10776,6 +10790,19 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     {
       error_code = ER_CDC_NOT_AVAILABLE;
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
+      goto error;
+    }
+
+  /* CBRD-27437: a request with fewer than OR_INT_SIZE bytes (including a
+   * declared zero-length body, request == NULL) would otherwise reach the
+   * unconditional or_unpack_int() below and dereference NULL / read past a
+   * zero-byte allocation. Reject before the session-takeover side effects
+   * below, so a malformed request that will be rejected anyway does not
+   * also tear down an existing legitimate session for nothing. */
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
 
@@ -11174,6 +11201,17 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
+  /* CBRD-27437: a request with fewer than OR_INT_SIZE bytes (including a
+   * declared zero-length body, request == NULL) would otherwise reach the
+   * unconditional or_unpack_int() below and dereference NULL / read past a
+   * zero-byte allocation. */
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int (request, &context.num_class);
 
   /* CBRD-27437: bound the class count against the remaining request length
@@ -11354,6 +11392,17 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
+  /* CBRD-27437: a request with fewer than OR_INT_SIZE bytes (including a
+   * declared zero-length body, request == NULL) would otherwise reach the
+   * unconditional or_unpack_int() below and dereference NULL / read past a
+   * zero-byte allocation. */
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int (request, &context.trid);
   ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &context.user);
   if (ptr == NULL || context.user == NULL)
@@ -11389,10 +11438,13 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     {
       /* This bounds a client-supplied requested-batch-size, not a count of items
        * still to unpack from the request buffer, so it needs a sign check but not
-       * a reqlen-derived bound; it later feeds a db_private_alloc() size
-       * (area_size below), where a negative value is a real correctness bug, not
-       * only a large-response resource-consumption concern. An upper cap on how
-       * large a single requested batch may be remains a follow-up. */
+       * a reqlen-derived bound. context.num_loginfo itself is overwritten with the
+       * actual generated count on flashback_make_loginfo()'s success path below
+       * (flashback.c), so a negative client value never reaches the area_size
+       * computation directly; this is a client-input sanity check at the trust
+       * boundary, not a guard against a specific downstream miscalculation. An
+       * upper cap on how large a single requested batch may be remains a
+       * follow-up. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, context.num_loginfo);
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
