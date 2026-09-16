@@ -10793,63 +10793,19 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  /* CBRD-27437: a request with fewer than OR_INT_SIZE bytes (including a
+  /* CBRD-27437: a request with fewer than 4 * OR_INT_SIZE bytes (including a
    * declared zero-length body, request == NULL) would otherwise reach the
-   * unconditional or_unpack_int() below and dereference NULL / read past a
-   * zero-byte allocation. Reject before the session-takeover side effects
-   * below, so a malformed request that will be rejected anyway does not
-   * also tear down an existing legitimate session for nothing. */
-  if (request == NULL || reqlen < OR_INT_SIZE)
+   * unconditional or_unpack_int() calls below -- there are four of them before
+   * anything else validates this request further -- and dereference NULL /
+   * read past a too-small allocation. Reject before the session-takeover side
+   * effects below, so a malformed request that will be rejected anyway does
+   * not also tear down an existing legitimate session for nothing. */
+  if (request == NULL || reqlen < 4 * OR_INT_SIZE)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, 4 * OR_INT_SIZE);
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
-
-  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
-   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
-   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
-   * so that a restarted client can reconnect. */
-  if (cdc_Gl.conn.fd != -1)
-    {
-      SOCKET prev_fd = cdc_Gl.conn.fd;
-      int prev_client_id = cdc_Gl.conn.client_id;
-
-      if (thread_p->conn_entry->fd != prev_fd)
-	{
-	  /* A new client is requesting a session while the previous one still holds the CDC connection.
-	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
-	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
-
-	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
-	    {
-	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
-	      assert (r == NO_ERROR);
-
-	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
-		{
-		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
-			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
-		  prev_conn->status = CONN_CLOSING;
-		}
-
-	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
-	      assert (r == NO_ERROR);
-	    }
-	}
-
-      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
-      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
-	{
-	  cdc_pause_producer ();
-	}
-
-      LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
-    }
-
-  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
-  cdc_Gl.conn.status = thread_p->conn_entry->status;
-  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -10904,6 +10860,17 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	}
     }
 
+  /* CBRD-27437: num_extraction_class is unpacked unconditionally right after
+   * the loop above, whose iteration count is bounded but which may consume
+   * anywhere up to all remaining bytes -- check before reading it too. */
+  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (reqlen - (int) (ptr - request)), OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int (ptr, &num_extraction_class);
 
   /* CBRD-27437: bound the class count against the remaining request length
@@ -10945,6 +10912,60 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     {
       goto error;
     }
+
+  /* CBRD-27437: this request is now fully validated and configured. Only now
+   * -- not before parsing -- do the irreversible effects on any *other*
+   * connection's state happen: forcibly closing an incumbent CDC session and
+   * taking over cdc_Gl.conn. A request that fails any of the checks above (an
+   * allocation failure, or one of this ticket's own bounds/alignment checks)
+   * must not have killed a running consumer for nothing, nor left its own
+   * failed caller recorded as the session owner on the error path below,
+   * which never restores this.
+   *
+   * scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
+   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
+   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
+   * so that a restarted client can reconnect. */
+  if (cdc_Gl.conn.fd != -1)
+    {
+      SOCKET prev_fd = cdc_Gl.conn.fd;
+      int prev_client_id = cdc_Gl.conn.client_id;
+
+      if (thread_p->conn_entry->fd != prev_fd)
+	{
+	  /* A new client is requesting a session while the previous one still holds the CDC connection.
+	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
+	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
+
+	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
+	    {
+	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+
+	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
+		{
+		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
+			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
+		  prev_conn->status = CONN_CLOSING;
+		}
+
+	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+	    }
+	}
+
+      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
+      LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
+    }
+
+  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
+  cdc_Gl.conn.status = thread_p->conn_entry->status;
+  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
 
   or_pack_int (reply, error_code);
 
@@ -11255,6 +11276,18 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
+  /* CBRD-27437: start_time/end_time are unpacked unconditionally right after
+   * a bounds-checked but variable-length string field; a request crafted so
+   * context.user's parsing exactly exhausts reqlen would otherwise read
+   * these two int64s past the end of the request buffer. */
+  if (reqlen - (int) (ptr - request) < 2 * OR_INT64_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (reqlen - (int) (ptr - request)), 2 * OR_INT64_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int64 (ptr, &start_time);
   ptr = or_unpack_int64 (ptr, &end_time);
 
@@ -11411,6 +11444,18 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
+  /* CBRD-27437: context.num_class is unpacked unconditionally right after a
+   * bounds-checked but variable-length string field; a request crafted so
+   * context.user's parsing exactly exhausts reqlen would otherwise read this
+   * past the end of the request buffer. */
+  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (reqlen - (int) (ptr - request)), OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int (ptr, &context.num_class);
 
   /* CBRD-27437: bound the class count against the remaining request length
@@ -11429,6 +11474,18 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       OID classoid;
       ptr = or_unpack_oid (ptr, &classoid);
       context.classoid_set.emplace (classoid);
+    }
+
+  /* CBRD-27437: the class-oid loop above is bounded, but only to whatever it
+   * actually consumes -- it may exhaust the request buffer well before this
+   * point (e.g. context.num_class == 0). The four fields below are unpacked
+   * unconditionally, so check for all of them together before reading any. */
+  if (reqlen - (int) (ptr - request) < 2 * OR_LOG_LSA_ALIGNED_SIZE + 2 * OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (reqlen - (int) (ptr - request)), 2 * OR_LOG_LSA_ALIGNED_SIZE + 2 * OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
     }
 
   ptr = or_unpack_log_lsa (ptr, &context.start_lsa);
