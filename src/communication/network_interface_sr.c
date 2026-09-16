@@ -10726,6 +10726,53 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 }
 #endif
 
+/*
+ * cdc_flashback_unpack_bounded_string () - unpack a client-supplied length-prefixed
+ *   string, rejecting a declared length that would read past the request buffer or
+ *   leave later or_unpack_*() calls misaligned.
+ *   return: the advanced pointer on success; NULL if the declared length is out of
+ *           range (the caller must not dereference *out_string in that case).
+ *   ptr (in)         : current position in the request (at the length prefix)
+ *   request (in)     : start of the request buffer (for computing the byte budget)
+ *   reqlen (in)      : total length of the request buffer
+ *   out_string (out) : set to point into the request buffer on success
+ *
+ * CBRD-27436: or_unpack_string_nocopy() trusts its length prefix unconditionally
+ * (an unbounded "ptr += length"); this channel is attacker-controlled the same
+ * way CBRD-27437's CDC/flashback element counts are. or_pack_string() always
+ * writes an already-padded length, so a legitimate peer never produces a length
+ * that isn't -1 (NULL) or a multiple of OR_INT_SIZE; require that here too,
+ * since an unaligned length would abort an assert-enabled cub_server at the
+ * next ASSERT_ALIGN downstream.
+ */
+static char *
+cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char **out_string)
+{
+  int declared_len;
+  char *after_len;
+
+  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
+    {
+      return NULL;
+    }
+
+  after_len = or_unpack_int (ptr, &declared_len);
+
+  if (declared_len != -1
+      && (declared_len < OR_INT_SIZE || declared_len > (reqlen - (int) (after_len - request))
+	  || declared_len % OR_INT_SIZE != 0
+	  /* or_pack_string() always NUL-terminates before padding to declared_len, so a
+	   * legitimate peer's string always has a NUL within its own declared span; a
+	   * crafted one without it would let every downstream strlen()/strcmp() consumer
+	   * run past this buffer into adjacent heap memory. */
+	  || memchr (after_len, '\0', declared_len) == NULL))
+    {
+      return NULL;
+    }
+
+  return or_unpack_string_nocopy (ptr, out_string);
+}
+
 void
 scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -10770,29 +10817,8 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  {
-    int cdc_db_user_len;
-
-    ptr = or_unpack_int (request, &cdc_db_user_len);
-    /* A legitimate packer (or_pack_string()) always writes a length that already
-     * includes alignment padding, so or_unpack_string_nocopy()'s raw "ptr += length"
-     * leaves later or_unpack_*() calls correctly aligned. On this attacker-controlled
-     * channel that invariant does not hold on its own; require it explicitly (length
-     * -1, or a properly-aligned length within the remaining bytes), or a crafted
-     * unaligned length aborts an assert-enabled cub_server at the next ASSERT_ALIGN
-     * before authorization ever runs. */
-    if (cdc_db_user_len != -1
-	&& (cdc_db_user_len < OR_INT_SIZE || cdc_db_user_len > (reqlen - (int) (ptr - request))
-	    || cdc_db_user_len % OR_INT_SIZE != 0 || memchr (ptr, '\0', cdc_db_user_len) == NULL))
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-		(reqlen - (int) (ptr - request)), cdc_db_user_len);
-	error_code = ER_NET_DATASIZE_MISMATCH;
-	goto error;
-      }
-  }
-  ptr = or_unpack_string_nocopy (request, &cdc_db_user);
-  if (cdc_db_user == NULL)
+  ptr = cdc_flashback_unpack_bounded_string (request, request, reqlen, &cdc_db_user);
+  if (ptr == NULL || cdc_db_user == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
       error_code = ER_NET_DATASIZE_MISMATCH;
@@ -10809,14 +10835,44 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
    * have an irreversible effect on any *other* connection's state yet -- see
    * the incumbent-session takeover, deferred to just before the success
    * reply below, for why. */
+
+  /* CBRD-27436: the four fields below are unpacked unconditionally; only the
+   * first OR_INT_SIZE bytes of the request were guaranteed to exist by the
+   * db_user checks above (and only up to wherever db_user's own declared
+   * length left ptr). Without this check, a request just long enough to pass
+   * db_user validation but too short for what follows reads past the end of
+   * the request buffer here. */
+  if (reqlen - (int) (ptr - request) < 4 * OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (reqlen - (int) (ptr - request)), 4 * OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int (ptr, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
   ptr = or_unpack_int (ptr, &all_in_cond);
   ptr = or_unpack_int (ptr, &num_extraction_user);
 
+  /* CBRD-27436: bound the client-supplied count against the remaining request
+   * length before the unpack loop (each user needs at least a string length
+   * prefix), matching CBRD-27437's treatment of the same class of count. */
+  if (num_extraction_user < 0
+      || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), num_extraction_user);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   if (num_extraction_user > 0)
     {
-      extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
+      /* calloc, not malloc: on an early exit (below) the error path frees every
+       * slot up to num_extraction_user, including ones a failed strdup() never
+       * reached -- those must start out NULL, not uninitialized heap. */
+      extraction_user = (char **) calloc (num_extraction_user, sizeof (char *));
       if (extraction_user == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
@@ -10826,7 +10882,17 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
       for (int i = 0; i < num_extraction_user; i++)
 	{
-	  ptr = or_unpack_string_nocopy (ptr, &dummy_user);
+	  ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &dummy_user);
+	  if (ptr == NULL || dummy_user == NULL)
+	    {
+	      /* NULL covers both an out-of-range length (ptr == NULL) and a
+	       * declared-NULL (length -1) entry: this list is a set of usernames
+	       * to filter on, so an absent one is malformed either way, and
+	       * strdup (NULL) is undefined behavior. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+	      error_code = ER_NET_DATASIZE_MISMATCH;
+	      goto error;
+	    }
 
 	  extraction_user[i] = strdup (dummy_user);
 	  if (extraction_user[i] == NULL)
@@ -10838,7 +10904,30 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	}
     }
 
+  /* CBRD-27436: num_extraction_class is unpacked unconditionally right after
+   * the loop above, whose iteration count is bounded but which may consume
+   * anywhere up to all remaining bytes -- check before reading it too. */
+  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (reqlen - (int) (ptr - request)), OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int (ptr, &num_extraction_class);
+
+  /* CBRD-27436: bound the class count against the remaining request length
+   * before the unpack loop (each class oid is packed as an int64), matching
+   * CBRD-27437's treatment of the same class of count. */
+  if (num_extraction_class < 0
+      || (INT64) num_extraction_class > (INT64) (reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      (int) ((reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE), num_extraction_class);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
 
   if (num_extraction_class > 0)
     {
@@ -10972,6 +11061,16 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
       goto error;
     }
 
+  /* CBRD-27436: request/reqlen were never validated before this unconditional
+   * unpack; a short or absent (NULL, zero-length) request reads past a
+   * too-small buffer. */
+  if (request == NULL || reqlen < OR_INT64_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT64_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   ptr = or_unpack_int64 (request, &input_time);
   //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread 
 
@@ -11046,6 +11145,16 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
       error_code = ER_AU_DBA_ONLY;
+      goto error;
+    }
+
+  /* CBRD-27436: request/reqlen were never validated before this unconditional
+   * unpack; a short or absent (NULL, zero-length) request reads past a
+   * too-small buffer. */
+  if (request == NULL || reqlen < OR_LOG_LSA_ALIGNED_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_LOG_LSA_ALIGNED_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
 
