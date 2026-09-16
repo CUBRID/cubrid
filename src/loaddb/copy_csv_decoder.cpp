@@ -30,6 +30,9 @@
 #include "intl_support.h"
 #include "language_support.h"
 
+#include <cerrno>
+#include <climits>
+#include <cmath>
 #include <cstdlib>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -48,40 +51,70 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     {
     case DB_TYPE_INTEGER:
     {
+      errno = 0;
       long v = strtol (s.c_str (), &endp, 10);
       if (endp == s.c_str () || *endp != '\0')
 	{
 	  goto bad_value;
+	}
+      /* long is 64 bits here, so an integer past int's range parses cleanly and
+       * would wrap in the cast -- 2147483648 stored as -2147483648. ERANGE only
+       * covers what long itself cannot hold, so the range is tested directly. */
+      if (errno == ERANGE || v < INT_MIN || v > INT_MAX)
+	{
+	  goto out_of_range;
 	}
       db_make_int (val, (int) v);
       break;
     }
     case DB_TYPE_BIGINT:
     {
+      errno = 0;
       long long v = strtoll (s.c_str (), &endp, 10);
       if (endp == s.c_str () || *endp != '\0')
 	{
 	  goto bad_value;
+	}
+      if (errno == ERANGE)
+	{
+	  goto out_of_range;	/* strtoll would otherwise clamp to LLONG_MIN / LLONG_MAX */
 	}
       db_make_bigint (val, (DB_BIGINT) v);
       break;
     }
     case DB_TYPE_FLOAT:
     {
+      errno = 0;
       float v = strtof (s.c_str (), &endp);
       if (endp == s.c_str () || *endp != '\0')
 	{
 	  goto bad_value;
+	}
+      /* Refuse an infinite result whether it came from overflow or from a
+       * literal "inf" -- INSERT refuses both for FLOAT. Underflow to zero and
+       * NaN it accepts, so they pass here too. */
+      if (std::isinf (v))
+	{
+	  goto out_of_range;
 	}
       db_make_float (val, v);
       break;
     }
     case DB_TYPE_DOUBLE:
     {
+      errno = 0;
       double v = strtod (s.c_str (), &endp);
       if (endp == s.c_str () || *endp != '\0')
 	{
 	  goto bad_value;
+	}
+      /* Refuse only a parse that overflowed. strtod sets ERANGE on underflow as
+       * well, which INSERT accepts as zero, and a literal "infinity" parses
+       * without ERANGE and INSERT accepts that too -- unlike FLOAT. So the test
+       * is ERANGE and infinite, not either one alone. */
+      if (errno == ERANGE && std::isinf (v))
+	{
+	  goto out_of_range;
 	}
       db_make_double (val, v);
       break;
@@ -89,9 +122,13 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     case DB_TYPE_SHORT:
     {
       long v = strtol (s.c_str (), &endp, 10);
-      if (endp == s.c_str () || *endp != '\0' || v < -32768 || v > 32767)
+      if (endp == s.c_str () || *endp != '\0')
 	{
 	  goto bad_value;
+	}
+      if (v < -32768 || v > 32767)
+	{
+	  goto out_of_range;
 	}
       db_make_short (val, (short) v);
       break;
@@ -159,6 +196,13 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
     }
 
   return NO_ERROR;
+
+  /* The boundary is INSERT's -- a bound INSERT refuses exactly these values -- but
+   * not its error: that one reads "Cannot coerce host var", and a COPY value is not
+   * a host variable. */
+out_of_range:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, "value out of range for the column type");
+  return ER_COPY_CSV_FORMAT_ERROR;
 
 bad_value:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, "value parse error");
