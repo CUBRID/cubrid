@@ -59,14 +59,6 @@
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
 #include <openssl/provider.h>
 #include <mutex>
-
-#if defined (CUBRID_OPENSSL_BUILTIN_LEGACY)
-/* The bundled OpenSSL is built with no-module, which compiles the legacy provider
- * into libcrypto and renames its init function to this symbol. Any other OpenSSL
- * ships the provider as ossl-modules/legacy and does not export it, hence the
- * guard. extern "C" is needed because this file is compiled as C++. */
-extern "C" OSSL_provider_init_fn ossl_legacy_provider_init;
-#endif
 #endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -214,9 +206,7 @@ aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_
 }
 
 /*
- * crypt_ensure_openssl_providers() - Ensure the OpenSSL providers required by
- *   CUBRID are available.
- *   return: NO_ERROR, or ER_ENCRYPTION_LIB_FAILED when a provider is unavailable
+ * crypt_ensure_openssl_providers() - Activate the OpenSSL legacy provider.
  *
  *   Since OpenSSL 3.0, single-DES lives in the "legacy" provider, which is not
  *   loaded by default. CUBRID still relies on DES-ECB for the legacy encrypted
@@ -224,42 +214,24 @@ aes_default_gen_key (const char *key, int key_len, char *dest_key, int dest_key_
  *   encryption.c, which encrypt_password() runs on every login with a password),
  *   so without this EVP_EncryptInit()/EVP_DecryptInit() fail for DES.
  *
- *   Activating any provider programmatically disables the implicit auto-load of
- *   the default provider, so "default" has to be loaded explicitly as well.
- *   Providers are process-global and reference-counted; once is enough.
+ *   retain_fallbacks keeps the default provider auto-loading, which activating a
+ *   provider would otherwise switch off. A failure is not reported: everything
+ *   except DES lives in the default provider and keeps working, and DES then
+ *   fails at EVP_EncryptInit() where the error belongs. Providers are
+ *   process-global and reference-counted; once is enough.
  */
-static int
+static void
 crypt_ensure_openssl_providers (void)
 {
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-  static int provider_error = NO_ERROR;
-
   // *INDENT-OFF*
   static std::once_flag onetime_providers;
   std::call_once (onetime_providers, [] ()
     {
-#if defined (CUBRID_OPENSSL_BUILTIN_LEGACY)
-      if (OSSL_PROVIDER_add_builtin (NULL, "legacy", ossl_legacy_provider_init) != 1)
-        {
-          provider_error = ER_ENCRYPTION_LIB_FAILED;
-        }
-#endif
-      if (OSSL_PROVIDER_load (NULL, "default") == NULL || OSSL_PROVIDER_load (NULL, "legacy") == NULL)
-        {
-          provider_error = ER_ENCRYPTION_LIB_FAILED;
-        }
+      OSSL_PROVIDER_try_load (NULL, "legacy", 1 /* retain_fallbacks */);
     });
   // *INDENT-ON*
-
-  if (provider_error != NO_ERROR)
-    {
-      /* only the first caller runs the initialization, so re-raise on every call. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
-      return provider_error;
-    }
 #endif
-
-  return NO_ERROR;
 }
 
 /*
@@ -292,12 +264,6 @@ crypt_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
   char new_key[AES128_KEY_LEN + 1];
   const char *key_arg = NULL;
 
-  error_status = crypt_ensure_openssl_providers ();
-  if (error_status != NO_ERROR)
-    {
-      return error_status;
-    }
-
   switch (enc_type)
     {
     case AES_128_ECB:
@@ -308,6 +274,7 @@ crypt_default_encrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
       key_arg = new_key;
       break;
     case DES_ECB:
+      crypt_ensure_openssl_providers ();
       cipher = EVP_des_ecb ();
       block_len = DES_BLOCK_LEN;
       key_arg = key;
@@ -418,12 +385,6 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
   char new_key[AES128_KEY_LEN + 1];
   const char *key_arg = NULL;
 
-  error_status = crypt_ensure_openssl_providers ();
-  if (error_status != NO_ERROR)
-    {
-      return error_status;
-    }
-
   switch (enc_type)
     {
     case AES_128_ECB:
@@ -434,6 +395,7 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
       key_arg = new_key;
       break;
     case DES_ECB:
+      crypt_ensure_openssl_providers ();
       cipher = EVP_des_ecb ();
       block_len = DES_BLOCK_LEN;
       key_arg = key;

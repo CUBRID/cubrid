@@ -819,7 +819,7 @@ static int
 tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
 {
   EVP_MD_CTX *sha_ctx;
-  int err = ER_TDE_ENCRYPTION_ERROR;
+  int err = ER_TDE_KEY_CREATION_FAIL;
 
   assert (SHA256_DIGEST_LENGTH == TDE_MASTER_KEY_LENGTH);
   assert (master_key != NULL);
@@ -840,7 +840,6 @@ tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
       || EVP_DigestUpdate (sha_ctx, master_key, TDE_MASTER_KEY_LENGTH) != 1
       || EVP_DigestFinal_ex (sha_ctx, mk_hash, NULL) != 1)
     {
-      memset (mk_hash, 0, SHA256_DIGEST_LENGTH);
       goto cleanup;
     }
 
@@ -852,7 +851,7 @@ cleanup:
 exit:
   if (err != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_ENCRYPTION_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_KEY_CREATION_FAIL, 0);
     }
   return err;
 }

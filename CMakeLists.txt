@@ -314,10 +314,6 @@ set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/load_lexer.cpp)
 message("Including Third Party Libraries")
 add_subdirectory(3rdparty)
 
-if(OPENSSL_HAS_BUILTIN_LEGACY)
-  add_definitions(-DCUBRID_OPENSSL_BUILTIN_LEGACY)
-endif()
-
 # CSQL FLEX/BISON targets
 # replace old bison directives with new ones
 # use add_custom_command because we want to regenerate csql_grammar.yy

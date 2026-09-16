@@ -88,6 +88,14 @@ endmacro()
 # For external library options
 include(ExternalProject)
 
+# Timestamp extracted sources at extraction time, not with the timestamps stored in
+# the archive. Otherwise a changed URL can extract sources that look older than
+# objects built from the previous archive, and nothing rebuilds. Guarded because the
+# policy is CMake 3.24 and this project requires 3.21.
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
+
 set (3RDPARTY_LIBS_DIR ${CMAKE_BINARY_DIR}/3rdparty)
 set_property(DIRECTORY PROPERTY EP_BASE "${3RDPARTY_LIBS_DIR}")
 
@@ -109,11 +117,22 @@ set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3
 # Job count for the libraries whose BUILD_COMMAND drives make directly. CMake does
 # not forward its own -j to an ExternalProject's custom BUILD_COMMAND, and the
 # default generator here is Ninja, so there is no jobserver to inherit either.
+#
+# ProcessorCount() reports host cores and ignores a cgroup CPU quota, so on a
+# constrained CI runner it can be many times the share this build actually gets.
+# An explicit CMAKE_BUILD_PARALLEL_LEVEL wins; otherwise the count is capped.
 include(ProcessorCount)
-ProcessorCount(3RDPARTY_NPROC)
-if(3RDPARTY_NPROC EQUAL 0)
-  set(3RDPARTY_NPROC 1)
+if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" MATCHES "^[1-9][0-9]*$")
+  set(3RDPARTY_NPROC "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+else()
+  ProcessorCount(3RDPARTY_NPROC)
+  if(3RDPARTY_NPROC EQUAL 0)
+    set(3RDPARTY_NPROC 1)
+  elseif(3RDPARTY_NPROC GREATER 16)
+    set(3RDPARTY_NPROC 16)
+  endif()
 endif()
+message(STATUS "Build 3rdparty libraries with make -j${3RDPARTY_NPROC}")
 
 # For Windows
 if(WIN32)
@@ -212,10 +231,11 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       DOWNLOAD_NO_PROGRESS 1
       # CentOS 6 (glibc 2.12, kernel headers 2.6.32) exposes no getrandom/getentropy/
       # arc4random nor the SYS_getrandom syscall, so expat's build-time entropy source
-      # detection fails with an #error. Use /dev/urandom (XML_DEV_URANDOM), the option
-      # documented by expat for older Linux. CPPFLAGS is separate from the CFLAGS=-w set
-      # in DEFAULT_CONFIGURE_OPTS, so this does not clash.
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook CPPFLAGS=-DXML_DEV_URANDOM
+      # detection fails with an #error. --with-dev-urandom adds /dev/urandom as a further
+      # fallback; newer hosts still pick getentropy or getrandom ahead of it. Prefer the
+      # configure option over defining XML_DEV_URANDOM through CPPFLAGS, so that the
+      # configure summary and expat_config.h record what was actually built.
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook --with-dev-urandom
       BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEXPAT_BYPRODUCTS}"
@@ -346,31 +366,30 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
 
-    # Only a no-module build (see CONFIGURE_COMMAND below) compiles the legacy
-    # provider into libcrypto and exports ossl_legacy_provider_init. A SYSTEM
-    # OpenSSL is normally a module build, where that symbol does not exist.
-    set(OPENSSL_HAS_BUILTIN_LEGACY TRUE)
-
-    # OpenSSL 3.x's build scripts (Configure / Makefile) need several Perl modules
-    # (IPC::Cmd, Time::Piece, Digest::SHA, ...) that are missing from minimal Perl
-    # installs. Check them up front so the user gets an actionable message instead
-    # of a cryptic failure deep inside the OpenSSL build.
-    find_program(OPENSSL_PERL_EXECUTABLE perl)
-    if(NOT OPENSSL_PERL_EXECUTABLE)
-      message(FATAL_ERROR "Perl is required to build OpenSSL. Please install it (e.g. 'sudo dnf install -y perl-core').")
-    endif()
-    execute_process(
-      COMMAND ${OPENSSL_PERL_EXECUTABLE} -MIPC::Cmd -MTime::Piece -e "1"
-      RESULT_VARIABLE OPENSSL_PERL_MODULES_RC
-      OUTPUT_QUIET ERROR_QUIET)
-    if(NOT OPENSSL_PERL_MODULES_RC EQUAL 0)
-      message(FATAL_ERROR
-        "Building OpenSSL 3.x requires Perl modules (IPC::Cmd, Time::Piece) that are not "
-        "available in the current Perl installation.\n"
-        "  Rocky/RHEL/CentOS : sudo dnf install -y perl-core\n"
-        "                      (minimal: perl-IPC-Cmd perl-Time-Piece)\n"
-        "  Debian/Ubuntu     : sudo apt-get install -y perl\n"
-        "Then re-run the build.")
+    # unix-Makefile.tmpl does an unconditional "use Time::Piece", which minimal Perl
+    # installs do not ship. Check it up front so the user gets an actionable message
+    # instead of a cryptic failure deep inside the OpenSSL build. Only when OpenSSL
+    # has not been built yet: re-running cmake against a finished tree must not fail
+    # over a tool it no longer needs.
+    # (Configure also uses IPC::Cmd, but falls back to File::Spec when it is absent.)
+    if(NOT EXISTS ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
+      find_program(OPENSSL_PERL_EXECUTABLE perl)
+      if(NOT OPENSSL_PERL_EXECUTABLE)
+        message(FATAL_ERROR "Perl is required to build OpenSSL. Please install it (e.g. 'sudo dnf install -y perl-core').")
+      endif()
+      execute_process(
+        COMMAND ${OPENSSL_PERL_EXECUTABLE} -MTime::Piece -e "1"
+        RESULT_VARIABLE OPENSSL_PERL_MODULES_RC
+        OUTPUT_QUIET ERROR_QUIET)
+      if(NOT OPENSSL_PERL_MODULES_RC EQUAL 0)
+        message(FATAL_ERROR
+          "Building OpenSSL 3.x requires the Perl module Time::Piece, which is not "
+          "available in the current Perl installation.\n"
+          "  Rocky/RHEL/CentOS : sudo dnf install -y perl-core\n"
+          "                      (minimal: perl-Time-Piece)\n"
+          "  Debian/Ubuntu     : sudo apt-get install -y perl\n"
+          "Then re-run the build.")
+      endif()
     endif()
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
@@ -378,7 +397,10 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
-      TIMEOUT              600
+      # 50 MB, an order of magnitude larger than the other tarballs: 600s would demand
+      # a sustained 87 KB/s. INACTIVITY_TIMEOUT still fails a dead connection fast.
+      TIMEOUT              1800
+      INACTIVITY_TIMEOUT   60
       DOWNLOAD_NO_PROGRESS 1
       # no-shared + no-module: build static libs only and compile the legacy
       # provider into libcrypto so DES-ECB is usable via OSSL_PROVIDER_add_builtin()
@@ -528,8 +550,8 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBTBB_CONFIGURE}
       BUILD_IN_SOURCE      TRUE
-      BUILD_COMMAND        make -j
-      INSTALL_COMMAND      make -j install
+      BUILD_COMMAND        make -j${3RDPARTY_NPROC}
+      INSTALL_COMMAND      make -j${3RDPARTY_NPROC} install
       "${LIBTBB_BYPRODUCTS}"
     )
 
@@ -543,7 +565,6 @@ endif()
 set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
 set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
 set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
-set (OPENSSL_HAS_BUILTIN_LEGACY ${OPENSSL_HAS_BUILTIN_LEGACY} PARENT_SCOPE)
 
 # TODO: EP_TARGETS, EP_LIBS, and EP_INCLUDES are currently linked across all targets.
 # However, TBB is only required on the server side and should only be linked to libcubrid.so.
