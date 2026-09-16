@@ -71,6 +71,9 @@
 #define AUTH_CHECK_DBA \
   "{'DBA'} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")"
 
+#define AUTH_CHECK_DBA_OR_CATALOG_READER \
+  "{'DBA', 'DB_CATALOG_READER'} * (" CURRENT_USER_GROUPS_SUBQUERY ") SETNEQ {}"
+
 #define AUTH_CHECK_OWNER(owner_name_expr) \
   "{" owner_name_expr "} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")"
 
@@ -100,21 +103,21 @@
 
 #define AUTH_CHECK_OBJECT_ANY(owner_name_expr, object_of_expr) \
   "(" \
-    AUTH_CHECK_DBA " " \
+    AUTH_CHECK_DBA_OR_CATALOG_READER " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
     "OR " AUTH_CHECK_ANY_GRANT(object_of_expr) \
   ")"
 
 #define AUTH_CHECK_OBJECT_WRITE(owner_name_expr, object_of_expr) \
   "(" \
-    AUTH_CHECK_DBA " " \
+    AUTH_CHECK_DBA_OR_CATALOG_READER " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
     "OR " AUTH_CHECK_WRITE_GRANT(object_of_expr) \
   ")"
 
 #define AUTH_CHECK_SCHEMA(user_name_expr, user_expr) \
   "(" \
-    AUTH_CHECK_DBA " " \
+    AUTH_CHECK_DBA_OR_CATALOG_READER " " \
     "OR " AUTH_CHECK_OWNER(user_name_expr) " " \
     "OR EXISTS (" \
       "SELECT 1 FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
@@ -125,21 +128,21 @@
 
 #define AUTH_CHECK_PRIVILEGE(grantee_name_expr, grantor_name_expr) \
   "(" \
-    "{'DBA', " grantee_name_expr ", " grantor_name_expr "} * (" \
+    "{'DBA', 'DB_CATALOG_READER', " grantee_name_expr ", " grantor_name_expr "} * (" \
       CURRENT_USER_GROUPS_SUBQUERY \
     ") SETNEQ {}" \
   ")"
 
 #define AUTH_CHECK_SYNONYM(is_public_expr, owner_name_expr) \
   "(" \
-    AUTH_CHECK_DBA " " \
+    AUTH_CHECK_DBA_OR_CATALOG_READER " " \
     "OR " is_public_expr " = 1 " \
     "OR (" is_public_expr " = 0 AND " AUTH_CHECK_OWNER(owner_name_expr) ")" \
   ")"
 
 #define AUTH_CHECK_STORED_PROC(owner_name_expr, sp_of_expr) \
   "(" \
-    AUTH_CHECK_DBA " " \
+    AUTH_CHECK_DBA_OR_CATALOG_READER " " \
     "OR " AUTH_CHECK_OWNER(owner_name_expr) " " \
     "OR " AUTH_CHECK_EXECUTE_GRANT(sp_of_expr) \
   ")"
