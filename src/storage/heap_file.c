@@ -5456,7 +5456,6 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
-  cubstorage::bestspaces.destroy (hfid);
 
   return NO_ERROR;
 }
@@ -5500,7 +5499,6 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
 
-  cubstorage::bestspaces.destroy (hfid);
 
   return ret;
 }
