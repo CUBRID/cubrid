@@ -46,6 +46,11 @@ enum STREAM_KIND
 {
   STREAM_KIND_MIN = 0,
 
+  /* Allocated so far -- a consumer takes the next free value and names it in
+   * its own header, and this list is what stops two of them colliding:
+   *   0  COPY          (src/loaddb/copy_stream_kind.h)
+   *   1  internal-LOB  (not landed)
+   */
   STREAM_KIND_MAX = 4		/* factory slots; raise when a fifth consumer lands */
 };
 
