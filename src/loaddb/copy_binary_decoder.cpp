@@ -56,6 +56,26 @@ read_int32 (const char *buf)
   return (int32_t) ntohl (v);
 }
 
+/* Length of a day in the units DB_TIME and DB_DATETIME.time count. The engine
+ * defines the same values in query/numeric_opfunc.h; they are restated rather
+ * than pulling a query header into the loader. */
+static const unsigned int COPY_SECONDS_OF_ONE_DAY = 86400;
+static const unsigned int COPY_MILLISECONDS_OF_ONE_DAY = 86400000;
+
+/*
+ * copy_date_is_valid () - Could SQL have produced this julian day?
+ *
+ * The zero date, or a day from 0001-01-01 (DB_DATE_MIN) to 9999-12-31
+ * (DB_DATE_MAX). Julian days are contiguous, so this is exactly the set
+ * db_date_encode () accepts. It is not called here because it er_set ()s on a
+ * failure, which would put a date conversion error in the log under COPY's own.
+ */
+static bool
+copy_date_is_valid (DB_DATE date)
+{
+  return date == DB_DATE_ZERO || (date >= DB_DATE_MIN && date <= DB_DATE_MAX);
+}
+
 /* read int64 from buffer in network byte order */
 static inline int64_t
 read_int64 (const char *buf)
@@ -232,7 +252,14 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       {
+	/* A raw julian day goes straight into the value, so nothing else stops a
+	 * year of 10000 or -4713 from reaching the heap and its indexes. */
 	DB_DATE d = (DB_DATE) read_int32 (data);
+	if (!copy_date_is_valid (d))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DATE out of range");
+	    return ER_COPY_BINARY_FORMAT_ERROR;
+	  }
 	db_value_put_encoded_date (val, &d);
       }
       break;
@@ -245,7 +272,14 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       {
+	/* db_time_encode () only produces 0..86399. DB_TIME_MAX is the width of
+	 * the type, not that range, so it is no bound here. */
 	DB_TIME t = (DB_TIME) read_int32 (data);
+	if (t >= COPY_SECONDS_OF_ONE_DAY)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "TIME out of range");
+	    return ER_COPY_BINARY_FORMAT_ERROR;
+	  }
 	db_value_put_encoded_time (val, &t);
       }
       break;
@@ -258,8 +292,16 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       {
-	DB_TIMESTAMP ts = (DB_TIMESTAMP) read_int32 (data);
-	db_make_timestamp (val, ts);
+	/* The timestamp encoder refuses a negative epoch, and a signed 32-bit
+	 * value cannot pass its upper bound. Test before the unsigned cast, which
+	 * would turn -1 into a date in 2106. */
+	int32_t raw = read_int32 (data);
+	if (raw < 0)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "TIMESTAMP out of range");
+	    return ER_COPY_BINARY_FORMAT_ERROR;
+	  }
+	db_make_timestamp (val, (DB_TIMESTAMP) raw);
       }
       break;
 
@@ -274,6 +316,13 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	DB_DATETIME dt;
 	dt.date = (unsigned int) read_int32 (data);
 	dt.time = (unsigned int) read_int32 (data + 4);
+	/* db_datetime_encode () validates the date part only -- encode_mtime ()
+	 * does not bound the time -- so the time part is tested here directly. */
+	if (!copy_date_is_valid (dt.date) || dt.time >= COPY_MILLISECONDS_OF_ONE_DAY)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DATETIME out of range");
+	    return ER_COPY_BINARY_FORMAT_ERROR;
+	  }
 	db_make_datetime (val, &dt);
       }
       break;

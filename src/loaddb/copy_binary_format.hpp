@@ -43,7 +43,19 @@
  *   DB_TYPE_FLOAT:    4 bytes, IEEE 754
  *   DB_TYPE_DOUBLE:   8 bytes, IEEE 754
  *   DB_TYPE_VARCHAR:  raw UTF-8 bytes (no NUL terminator)
+ *   DB_TYPE_DATE:     4 bytes, network byte order: a julian day number, NOT
+ *                     unix epoch seconds. 0 is the zero date; otherwise
+ *                     1721424 (0001-01-01) .. 5373484 (9999-12-31).
+ *   DB_TYPE_TIME:     4 bytes, network byte order: seconds since midnight,
+ *                     0 .. 86399.
+ *   DB_TYPE_TIMESTAMP: 4 bytes, network byte order: unix epoch seconds (UTC),
+ *                     0 .. 2147483647.
+ *   DB_TYPE_DATETIME: 8 bytes, network byte order: the DATE julian day above,
+ *                     then milliseconds since midnight, 0 .. 86399999.
  *   NULL:             field_len = -1, no data bytes
+ *
+ * A date or time value outside its range is refused, so a stream carrying epoch
+ * seconds where a julian day belongs fails instead of loading a year like 4000.
  */
 
 #define COPY_BINARY_NULL_FIELD_LEN  (-1)
