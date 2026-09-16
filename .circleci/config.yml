@@ -671,6 +671,11 @@ jobs:
 # Test jobs are gated by expression-based filters (evaluated server-side).
 workflows:
   build_test:
+    # develop, and every branch cut from it, runs on GitHub Actions instead
+    # (.github/workflows/gha-ci.yml, CUBRIDQA-1501). CircleCI reads this file
+    # from the commit it builds, so only develop's lineage reaches it and the
+    # whole workflow stops here. release/11.x carry their own copy.
+    when: false
     jobs:
       - build
       - build_debug
