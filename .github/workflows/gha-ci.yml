@@ -161,7 +161,9 @@ env:
   CI_ROOT: /home/gha-ci
   CI_BUILD_ROOT: /home/gha-ci/builds
   TIMINGS: /home/gha-ci/timings/shell.tsv
-  STAMPS: /home/gha-ci/runs/${{ github.run_id }}/stamps
+  # Per attempt: run_id does not change on a re-run, so attempt 2 would read the
+  # stamps attempt 1 left and subtract times taken in different attempts.
+  STAMPS: /home/gha-ci/runs/${{ github.run_id }}/stamps/${{ github.run_attempt }}
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
   # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
@@ -1745,6 +1747,9 @@ jobs:
       - name: Check the pod template assumptions
         run: |
           set -eo pipefail
+          # plan does not run again under "Re-run failed jobs", so nothing has made
+          # this attempt's stamps directory.
+          mkdir -p "$(dirname "$STAMP")"
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMP"
 
           # Dying here, before the share is read, is the shape a pod lost at the hook
@@ -2315,7 +2320,10 @@ jobs:
 
           build_sec=$(dur "$STAMPS/build.tsv")
           plan_sec=$(dur "$STAMPS/plan.tsv")
-          build_start=$(awk -F'\t' '$1=="start"{print $2}' "$STAMPS/build.tsv" 2>/dev/null)
+          # Gone on a later attempt: build succeeded, so "Re-run failed jobs" did not
+          # run it again and this attempt's stamps hold nothing for it. Without `|| :`
+          # awk's exit 2 would end the step under set -e.
+          build_start=$(awk -F'\t' '$1=="start"{print $2}' "$STAMPS/build.tsv" 2>/dev/null || :)
           queue_sec=""
           [ -n "$run_started" ] && [ -n "$build_start" ] && queue_sec=$((build_start - run_started))
           total_sec=""
@@ -2592,6 +2600,10 @@ jobs:
                 [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of them are no longer in the tree (deleted or renamed), so this run cannot pass.**"
                 echo ">"
                 echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
+                echo
+              fi
+              if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+                echo "> **Attempt $GITHUB_RUN_ATTEMPT.** GitHub's _Re-run failed jobs_ ran only the jobs that failed, so a stage that did not run again reads \`(not measured)\` below. This is not \`/run rerun\`, which starts a new run."
                 echo
               fi
               echo "### Coverage"
