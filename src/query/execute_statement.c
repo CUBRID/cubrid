@@ -22836,7 +22836,10 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      }
 	    if (db_attribute_is_shared (attr))
 	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, db_attribute_name (attr));
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 32];
+
+		snprintf (detail, sizeof (detail), "shared column %s", db_attribute_name (attr));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
 		error = ER_COPY_NOT_SUPPORTED;
 		goto end;
 	      }
@@ -22857,8 +22860,11 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      {
 		if (col_ids[j] == col_ids[i])
 		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, db_attribute_name (attr));
-		    error = ER_COPY_NOT_SUPPORTED;
+		    char detail[DB_MAX_IDENTIFIER_LENGTH + 40];
+
+		    snprintf (detail, sizeof (detail), "column %s is named more than once", db_attribute_name (attr));
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, detail);
+		    error = ER_COPY_INVALID_OPTION;
 		    goto end;
 		  }
 	      }
@@ -22918,18 +22924,18 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       && (statement->info.copy.fmt.csv.delimiter != 0 || statement->info.copy.fmt.csv.quote != 0
 	  || statement->info.copy.fmt.csv.header != 0))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
-	      "DELIMITER/QUOTE/HEADER are only valid with FORMAT CSV");
-      error = ER_COPY_NOT_SUPPORTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+	      "DELIMITER, QUOTE and HEADER are only valid with FORMAT CSV");
+      error = ER_COPY_INVALID_OPTION;
       goto end;
     }
 
   /* The grammar marks a DELIMITER / QUOTE literal that is not exactly one character as -1. */
   if (statement->info.copy.fmt.csv.delimiter < 0 || statement->info.copy.fmt.csv.quote < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
 	      "DELIMITER and QUOTE must be exactly one character");
-      error = ER_COPY_NOT_SUPPORTED;
+      error = ER_COPY_INVALID_OPTION;
       goto end;
     }
 
@@ -22945,16 +22951,16 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (delim == quote)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
-		  "DELIMITER and QUOTE that are the same character");
-	  error = ER_COPY_NOT_SUPPORTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		  "DELIMITER and QUOTE must be different characters");
+	  error = ER_COPY_INVALID_OPTION;
 	  goto end;
 	}
       if (delim == '\n' || delim == '\r' || quote == '\n' || quote == '\r')
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
-		  "a DELIMITER or QUOTE that is a line terminator");
-	  error = ER_COPY_NOT_SUPPORTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		  "DELIMITER and QUOTE cannot be a line terminator");
+	  error = ER_COPY_INVALID_OPTION;
 	  goto end;
 	}
     }

@@ -1497,7 +1497,9 @@ $ LOADDB
 
 1386 COPY CSV 형식 오류: %1$s.
 
-1387 마지막 에러
+1387 COPY FROM: %1$s.
+
+1388 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

@@ -1498,7 +1498,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1386 COPY CSV format error: %1$s.
 
-1387 Last Error
+1387 COPY FROM: %1$s.
+
+1388 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
