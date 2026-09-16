@@ -758,6 +758,8 @@ extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID
 				bool conditional);
 extern bool heap_oos_find_vfid_by_type (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_TYPE file_type, VFID * vfid,
 					bool docreate, bool conditional);
+extern bool heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
+				      VFID * internal_lob_vfid);
 extern bool heap_internal_lob_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * lob_vfid, bool docreate);
 extern bool heap_recdes_contains_oos (const RECDES * record);
 

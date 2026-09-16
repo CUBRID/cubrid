@@ -721,6 +721,11 @@ struct heap_oos_column_plan
   bool selected = false;
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
+  /* What the chain behind `oid` holds, and therefore how `length` is to be read: OR_OOS_KIND_OOS
+   * (bytes), _CLOB (bytes) or _BLOB (BITS). Every producer of a selected plan must set this --
+   * it is what or_put_oos_stub () stamps into the record. See the OOS inline stub block in
+   * object_representation.h. */
+  int kind = OR_OOS_KIND_OOS;
 };
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
@@ -10693,11 +10698,14 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
 	{
 	  INTERNAL_LOB_LOCATOR locator;
 	  DB_BIGINT disk_length;
-	  int rc = NO_ERROR;
+	  int stub_kind;
+	  /* The column is a BLOB/CLOB, so demand that the stub says the same: a stub that claims to be
+	   * an ordinary OOS value here means the record and the schema disagree, and expanding it as
+	   * one would hand the reader raw content in place of a locator. */
+	  const int expect_kind = (TP_DOMAIN_TYPE (attrepr->domain) == DB_TYPE_BLOB
+				   ? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
 
-	  or_get_oid (&buf, &locator.oid);
-	  disk_length = or_get_bigint (&buf, &rc);
-	  if (rc != NO_ERROR)
+	  if (or_get_oos_stub (&buf, &locator.oid, &stub_kind, &disk_length, expect_kind) != NO_ERROR)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	      return ER_GENERIC_ERROR;
@@ -10976,11 +10984,10 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	{
 	  INTERNAL_LOB_LOCATOR locator;
 	  DB_BIGINT disk_length;
-	  int rc = NO_ERROR;
+	  int stub_kind;
+	  const int expect_kind = (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_BLOB ? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
 
-	  or_get_oid (&buf, &locator.oid);
-	  disk_length = or_get_bigint (&buf, &rc);
-	  if (rc != NO_ERROR)
+	  if (or_get_oos_stub (&buf, &locator.oid, &stub_kind, &disk_length, expect_kind) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -11075,11 +11082,17 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
       return 0;
     }
 
-  or_get_oid (&buf, &oos_oid);
+  /* Read the OOS stub directly from recdes inline data (no I/O needed). Any kind is acceptable
+   * here -- this only sizes a buffer -- but the length must still be taken apart from the kind
+   * bits, or a CLOB/BLOB stub would size the buffer from a number in the exabytes. */
+  DB_BIGINT length = 0;
+  int stub_kind = OR_OOS_KIND_OOS;
 
-  /* Read OOS length directly from recdes inline data (no I/O needed) */
-  DB_BIGINT length = or_get_bigint (&buf, &rc);
-  if (rc != NO_ERROR || OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
+  if (or_get_oos_stub (&buf, &oos_oid, &stub_kind, &length, OR_OOS_KIND_ANY) != NO_ERROR)
+    {
+      return 0;
+    }
+  if (OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
     {
       return 0;
     }
@@ -12701,6 +12714,58 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 }
 
 /*
+ * heap_oos_find_both_vfids () - Read the heap's OOS and Internal LOB file ids under a single header latch.
+ *   return: true on success; either vfid may come back NULL, which simply means the heap has no such file
+ *   hfid(in): heap file
+ *   oos_vfid(out): the heap's FILE_OOS file, or NULL VFID
+ *   internal_lob_vfid(out): the heap's FILE_INTERNAL_LOB file, or NULL VFID
+ *
+ * Both ids live in the same HEAP_HDR_STATS record, but heap_oos_find_vfid_by_type () fixes the header page
+ * once per call, so asking for them one at a time pays for that twice.  Vacuum needs both together for
+ * every heap it touches, so it reads them under one latch.  Read-only on purpose: creating a missing file
+ * needs the write latch and a system operation, which stays in heap_oos_find_vfid_by_type ().
+ */
+bool
+heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, VFID * internal_lob_vfid)
+{
+  HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
+  PAGE_PTR hdr_pgptr = NULL;	/* Header page */
+  VPID vpid;			/* Page-volume identifier */
+  RECDES hdr_recdes;		/* Header record descriptor */
+  bool success = true;
+
+  VFID_SET_NULL (oos_vfid);
+  VFID_SET_NULL (internal_lob_vfid);
+
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+
+  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (hdr_pgptr == NULL)
+    {
+      return false;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
+
+  if (spage_get_record (thread_p, hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
+    {
+      success = false;
+    }
+  else
+    {
+      heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
+      VFID_COPY (oos_vfid, &heap_hdr->oos_vfid);
+      heap_get_internal_lob_vfid (heap_hdr, internal_lob_vfid);
+    }
+
+  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+  return success;
+}
+
+/*
  * heap_internal_lob_find_vfid () - find (or optionally create) the internal LOB file of a heap
  *   return         : true when the file exists (or was created); false otherwise
  *   hfid (in)      : heap file identifier
@@ -13435,6 +13500,10 @@ heap_attrinfo_insert_internal_lob_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
   plan->selected = true;
   plan->oid = lob_locator.oid;
   plan->length = disk_length;
+  /* disk_length is a byte count for CLOB and a BIT count for BLOB; the kind is what tells the
+   * reader which, so it has to come from the column's own type. */
+  plan->kind = (TP_DOMAIN_TYPE (attr_info->values[index].last_attrepr->domain) == DB_TYPE_BLOB
+		? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
 
   if (thread_p->oos_oids.size () == oos_oid_count_before)
     {
@@ -13522,6 +13591,7 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
 	}
 
       plan.length = (DB_BIGINT) payload.length;
+      plan.kind = OR_OOS_KIND_OOS;	/* a serialized value, not an Internal LOB chain */
       oos_insert_request request = { oos_buffer (payload.data, (size_t) payload.length), &plan.oid };
       payloads->push_back (payload);
       requests->push_back (request);
@@ -13935,8 +14005,10 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	}
 
       buf->ptr = *ptr_varvals;
-      or_put_oid (buf, &oos_plan->oid);
-      or_put_bigint (buf, oos_plan->length);
+      if (or_put_oos_stub (buf, &oos_plan->oid, oos_plan->kind, oos_plan->length) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
       *ptr_varvals = buf->ptr;
     }
   else if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
@@ -26321,6 +26393,8 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
   int max_num_slots, i;
   OID temp_oid;
   bool reusable;
+  /* Every page below belongs to the same heap, so its OOS / Internal LOB file ids are resolved once. */
+  VACUUM_HEAP_OOS_FILES oos_files = VACUUM_HEAP_OOS_FILES_INITIALIZER;
   int error_code = NO_ERROR;
 
   assert (upd_scancache != NULL);
@@ -26392,7 +26466,7 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
 
 	  error_code =
 	    vacuum_heap_page (thread_p, worker.heap_objects, worker.n_heap_objects, threshold_mvccid,
-			      &upd_scancache->node.hfid, &reusable, false);
+			      &upd_scancache->node.hfid, &oos_files, &reusable, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto exit;
@@ -29246,21 +29320,19 @@ heap_recdes_get_oos_slots (const RECDES * recdes, HEAP_OOS_REFERENCE_VECTOR & oo
 	      goto end;
 	    }
 	  OR_BUF buf;
+	  int stub_kind = OR_OOS_KIND_OOS;
 	  or_init (&buf, (char *) oid_ptr, OR_OOS_INLINE_SIZE);
-	  int err = or_get_oid (&buf, &reference.oid);
-	  if (err != NO_ERROR)
+	  if (or_get_oos_stub (&buf, &reference.oid, &stub_kind, &reference.disk_length, OR_OOS_KIND_ANY) != NO_ERROR)
 	    {
-	      assert (false && "or_get_oid failed unexpectedly");
+	      assert (false && "invalid OOS inline stub");
 	      error = ER_FAILED;
 	      goto end;
 	    }
-	  reference.disk_length = or_get_bigint (&buf, &err);
-	  if (err != NO_ERROR || reference.disk_length < 0)
-	    {
-	      assert (false && "invalid OOS disk length");
-	      error = ER_FAILED;
-	      goto end;
-	    }
+	  /* The stub carries what the chain holds, so the reference is typed without consulting the
+	   * class representation at all. heap_recdes_get_oos_references () still refines this from the
+	   * schema where it has one, but every caller can rely on this much on its own. */
+	  reference.type = (stub_kind == OR_OOS_KIND_BLOB ? DB_TYPE_BLOB
+			    : stub_kind == OR_OOS_KIND_CLOB ? DB_TYPE_CLOB : DB_TYPE_NULL);
 	  if (OID_ISNULL (&reference.oid))
 	    {
 	      assert (false && "OID read from OOS slot is null — corrupted record?");

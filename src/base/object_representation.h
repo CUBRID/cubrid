@@ -465,6 +465,76 @@ OR_PUT_DOUBLE (char *ptr, double val)
 /* OOS inline size: OOS OID (8 bytes) + OOS length (8 bytes) */
 #define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE)
 
+/*
+ * ===========================================================================
+ * OOS inline stub -- THE canonical description of the 16-byte slot.
+ * ===========================================================================
+ *
+ * A variable attribute whose offset table entry has OR_VAR_BIT_OOS holds this
+ * stub instead of the value:
+ *
+ *      byte 0 ........ 7   byte 8 ....... 15
+ *     +-------------------+-------------------+
+ *     |  OID of the head  |  packed length    |
+ *     |  chunk (8 bytes)  |  (DB_BIGINT, 8B)  |
+ *     +-------------------+-------------------+
+ *
+ * Three different things are stored this way, and they are NOT interchangeable:
+ *
+ *   kind          chain lives in     the length counts   read path must produce
+ *   ------------  -----------------  ------------------  -----------------------
+ *   OOS           class' FILE_OOS    bytes               the value bytes inline
+ *   CLOB          FILE_INTERNAL_LOB  bytes               a locator, never bytes
+ *   BLOB          FILE_INTERNAL_LOB  *** BITS ***        a locator, never bytes
+ *
+ * The chain itself is byte-identical for all three, so the kind cannot be
+ * recovered from the chunks: it exists ONLY in the high bits of this length
+ * field.  Getting it wrong is silent data corruption, not an error -- an
+ * Internal LOB expanded as if it were an ordinary OOS value hands the reader
+ * raw content where a length-prefixed value is expected, and the first content
+ * byte becomes the value's length.
+ *
+ * Layout of the packed length:
+ *
+ *      bit 63     sign, always 0 (readers reject a negative stub length)
+ *      bits 62-61 kind, one of OR_OOS_KIND_*
+ *      bits 60-0  the length itself
+ *
+ * 61 bits of length is far beyond any reachable value: the largest is a BLOB
+ * bit length, DB_MAX_INTERNAL_LOB_LENGTH * 8 = 2^35, and an ordinary OOS value
+ * stops at DB_MAX_STRING_LENGTH = 2^30.  Raising either limit does not threaten
+ * this encoding.
+ *
+ * ---------------------------------------------------------------------------
+ * RULES FOR ANYONE TOUCHING THIS SLOT -- please keep them:
+ *
+ *   1. Never read the length with or_get_bigint () and never write it with
+ *      or_put_bigint ().  Use or_get_oos_stub () / or_put_oos_stub (), which
+ *      cannot hand you a length without also handing you its kind.  That is
+ *      deliberate: a raw read would silently include the kind bits in the
+ *      length.
+ *   2. Copying the 16 bytes verbatim (memcpy, or_put_data) is fine and carries
+ *      the kind along.  Do not "helpfully" parse a length out of a copy.
+ *   3. A reader that already knows what the column must be should say so --
+ *      pass the expected kind to or_get_oos_stub () and let it reject a
+ *      mismatch loudly instead of misreading it quietly.
+ * ---------------------------------------------------------------------------
+ */
+
+#define OR_OOS_KIND_OOS      0	/* ordinary out-of-row value; length is bytes */
+#define OR_OOS_KIND_CLOB     1	/* Internal LOB, CLOB; length is bytes */
+#define OR_OOS_KIND_BLOB     2	/* Internal LOB, BLOB; length is BITS */
+#define OR_OOS_KIND_RESERVED 3	/* never written; readers reject it */
+
+/* Pass as expect_kind to or_get_oos_stub () when the caller cannot know it up front. */
+#define OR_OOS_KIND_ANY      (-1)
+
+#define OR_OOS_KIND_SHIFT    61
+#define OR_OOS_LENGTH_MASK   ((DB_BIGINT) (((UINT64) 1 << OR_OOS_KIND_SHIFT) - 1))
+#define OR_OOS_KIND_OF(packed)   ((int) (((UINT64) (packed) >> OR_OOS_KIND_SHIFT) & 0x3))
+#define OR_OOS_LENGTH_OF(packed) ((DB_BIGINT) ((packed) & OR_OOS_LENGTH_MASK))
+#define OR_OOS_IS_LOB_KIND(kind) ((kind) == OR_OOS_KIND_CLOB || (kind) == OR_OOS_KIND_BLOB)
+
 /* variable offset */
 
 #define OR_VAR_TABLE_SIZE(vars) \
@@ -1710,6 +1780,94 @@ or_get_short (OR_BUF * buf, int *error)
   buf->ptr += OR_SHORT_SIZE;
   *error = NO_ERROR;
   return value;
+}
+
+/*
+ * or_put_oos_stub - write the 16-byte OOS inline stub
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer positioned at the stub
+ *    oid(in): head chunk OID (NULL OID only for an empty value, with length 0)
+ *    kind(in): OR_OOS_KIND_OOS / _CLOB / _BLOB
+ *    length(in): bytes for OOS and CLOB, BITS for BLOB
+ *
+ * The ONLY way a stub is written. See the OOS inline stub block above for why
+ * the kind must travel with the length and must never be written separately.
+ */
+STATIC_INLINE int
+or_put_oos_stub (OR_BUF * buf, const OID * oid, int kind, DB_BIGINT length)
+{
+  int rc;
+
+  /* A kind the reader would reject must never reach the disk. */
+  assert (kind == OR_OOS_KIND_OOS || kind == OR_OOS_KIND_CLOB || kind == OR_OOS_KIND_BLOB);
+  /* A length that reaches into the kind bits would come back as a different kind. */
+  assert (length >= 0 && length <= OR_OOS_LENGTH_MASK);
+  if (kind < OR_OOS_KIND_OOS || kind > OR_OOS_KIND_BLOB || length < 0 || length > OR_OOS_LENGTH_MASK)
+    {
+      return ER_FAILED;
+    }
+
+  rc = or_put_oid (buf, oid);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  return or_put_bigint (buf, (DB_BIGINT) (((UINT64) kind << OR_OOS_KIND_SHIFT) | (UINT64) length));
+}
+
+/*
+ * or_get_oos_stub - read the 16-byte OOS inline stub
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer positioned at the stub
+ *    oid(out): head chunk OID
+ *    kind(out): OR_OOS_KIND_OOS / _CLOB / _BLOB
+ *    length(out): bytes for OOS and CLOB, BITS for BLOB -- kind decides which
+ *    expect_kind(in): the kind the caller requires, or OR_OOS_KIND_ANY
+ *
+ * The ONLY way a stub is read. It deliberately cannot return a length without
+ * its kind: a raw or_get_bigint () here would fold the kind bits into the
+ * length and corrupt silently. When the caller already knows what the column
+ * is, passing expect_kind turns a format/schema mismatch into a loud failure.
+ */
+STATIC_INLINE int
+or_get_oos_stub (OR_BUF * buf, OID * oid, int *kind, DB_BIGINT * length, int expect_kind)
+{
+  DB_BIGINT packed;
+  int rc = NO_ERROR;
+
+  rc = or_get_oid (buf, oid);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  packed = or_get_bigint (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  /* Bit 63 is the sign and is never set by or_put_oos_stub (). */
+  if (packed < 0)
+    {
+      return ER_FAILED;
+    }
+
+  *kind = OR_OOS_KIND_OF (packed);
+  *length = OR_OOS_LENGTH_OF (packed);
+
+  /* OR_OOS_KIND_RESERVED is never written; seeing it means corruption or a
+   * newer format this build does not understand. Refuse rather than guess. */
+  if (*kind == OR_OOS_KIND_RESERVED)
+    {
+      return ER_FAILED;
+    }
+  if (expect_kind != OR_OOS_KIND_ANY && *kind != expect_kind)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 /*

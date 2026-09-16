@@ -152,6 +152,7 @@ desc_read_internal_lob_locator (OR_BUF * buf, DB_VALUE * value, DB_TYPE lob_type
   OID locator_oid;
   DB_BIGINT disk_length;
   DB_BIGINT logical_length;
+  int stub_kind = OR_OOS_KIND_OOS;
   char stack_buf[128];
   char *locator_buf_string = NULL;
   int locator_len;
@@ -164,9 +165,12 @@ desc_read_internal_lob_locator (OR_BUF * buf, DB_VALUE * value, DB_TYPE lob_type
       return ER_TF_BUFFER_UNDERFLOW;
     }
 
+  /* The stub states its own kind; require it to agree with the column being loaded, so an unload
+   * file whose stub and schema disagree fails here instead of loading a wrong value. See the OOS
+   * inline stub block in object_representation.h. */
   or_init (&locator_buf, buf->ptr, OR_OOS_INLINE_SIZE);
-  or_get_oid (&locator_buf, &locator_oid);
-  disk_length = or_get_bigint (&locator_buf, &rc);
+  rc = or_get_oos_stub (&locator_buf, &locator_oid, &stub_kind, &disk_length,
+			lob_type == DB_TYPE_BLOB ? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
   if (rc != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
@@ -251,6 +255,9 @@ desc_keep_oos_stub (OR_BUF * buf, DESC_OBJ * obj, int value_index)
       return ER_TF_BUFFER_UNDERFLOW;
     }
 
+  /* Kept verbatim -- the 16 bytes carry the stub's kind along with them, and they are handed back
+   * unchanged by or_put_data () below. Do not parse a length out of this copy; use
+   * or_get_oos_stub () if a caller ever needs to look inside. */
   memcpy (obj->oos_stubs + (size_t) value_index * OR_OOS_INLINE_SIZE, buf->ptr, OR_OOS_INLINE_SIZE);
   obj->oos_stub_valid[value_index] = true;
   or_advance (buf, OR_OOS_INLINE_SIZE);

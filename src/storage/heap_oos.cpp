@@ -34,6 +34,7 @@
 #include "heap_show_scan_context.hpp"
 #include "internal_lob_file.hpp"
 #include "log_impl.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
@@ -134,6 +135,166 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 }
 
 /*
+ * heap_oos_peek_stub_kind () - What does this OOS slot hold: a serialized value, a CLOB or a BLOB?
+ *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the stub is corrupted
+ *   state(in): expansion state (only src/src_length are read)
+ *   value_offset(in): offset of the stub inside the source record
+ *   kind(out): OR_OOS_KIND_OOS / _CLOB / _BLOB
+ *
+ * The answer comes from the record and nothing else -- see the OOS inline stub block in
+ * object_representation.h.
+ */
+static int
+heap_oos_peek_stub_kind (const HEAP_OOS_EXPAND_STATE *state, int value_offset, int *kind)
+{
+  OR_BUF buf;
+  OID ignored_oid;
+  DB_BIGINT ignored_len;
+
+  *kind = OR_OOS_KIND_OOS;
+  /* Both failure paths below report this OID, and neither is guaranteed to have read it:
+   * the short-buffer branch returns before any read, and or_get_oos_stub () can fail on the
+   * OID itself. NULL is the honest value for "the stub was never readable". */
+  OID_SET_NULL (&ignored_oid);
+
+  buf.ptr = (char *) state->src + value_offset;
+  buf.endptr = (char *) state->src + state->src_length;
+  if (buf.endptr - buf.ptr < OR_OOS_INLINE_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&ignored_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  if (or_get_oos_stub (&buf, &ignored_oid, kind, &ignored_len, OR_OOS_KIND_ANY) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&ignored_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_read_lob_stub () - Read the inline stub of an Internal LOB variable attribute.
+ *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the stub is corrupted
+ *   state(in): expansion state (only src/src_length are read)
+ *   value_offset(in): offset of the stub inside the source record
+ *   oos_oid(out): head-chunk OID; NULL OID for an empty LOB
+ *   oos_len(out): stub length field (bit length for BLOB, byte length for CLOB); 0 for an empty LOB
+ *
+ * heap_oos_parse_inline_ref () cannot be used here, because two of the validity rules it applies are
+ * rules for an ordinary OOS value and are wrong for an Internal LOB: an empty LOB is legitimately a
+ * NULL OID with length 0, and a BLOB states its length in BITS, so that function's DB_MAX_STRING_LENGTH
+ * ceiling would cap a BLOB at 128MiB in a feature that stores up to 4GB. The attribute layer reads the
+ * same stub with the same rules -- see heap_attrvalue_transform_to_dbvalue ().
+ */
+static int
+heap_oos_read_lob_stub (const HEAP_OOS_EXPAND_STATE *state, int value_offset, OID *oos_oid, int *lob_kind,
+			DB_BIGINT *oos_len)
+{
+  OR_BUF buf;
+  int rc = NO_ERROR;
+
+  OID_SET_NULL (oos_oid);
+  *lob_kind = OR_OOS_KIND_OOS;
+  *oos_len = 0;
+
+  buf.ptr = (char *) state->src + value_offset;
+  buf.endptr = (char *) state->src + state->src_length;
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  rc = or_get_oos_stub (&buf, oos_oid, lob_kind, oos_len, OR_OOS_KIND_ANY);
+
+  /* An empty LOB is length 0, with or without a chain, so length 0 is not corruption here the way it is
+   * for an ordinary OOS value. A NULL chain OID carrying a non-zero length is, though: there would be no
+   * chain to read that length from. The kind has to be a LOB kind: this reader is only reached for a
+   * slot the record itself declared to be an Internal LOB. */
+  if (rc != NO_ERROR || !OR_OOS_IS_LOB_KIND (*lob_kind) || *oos_len < 0
+      || (OID_ISNULL (oos_oid) && *oos_len != 0))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_make_lob_image () - Build the on-record image of an Internal LOB attribute from its OOS stub.
+ *   return: NO_ERROR or error code
+ *   lob_type(in): DB_TYPE_BLOB or DB_TYPE_CLOB
+ *   oos_oid(in): head-chunk OID parsed out of the inline stub
+ *   oos_len(in): stub length field (bit length for BLOB, byte length for CLOB)
+ *   image(out): the replacement bytes for this variable index
+ *
+ * A heap record holds a BLOB/CLOB as a locator, never as payload.  Inlining the chunk chain the way
+ * an ordinary OOS value is inlined would be wrong twice over: it materializes the whole LOB (up to
+ * 4GB) in the server, and it hands every reader of the expanded record raw content where a LOB
+ * attribute is parsed as the length-prefixed varchar/varbit a locator is stored in -- so the first
+ * content byte would be taken for the value's length.  Emit the locator instead, in exactly the disk
+ * image any other LOB attribute carries: a plain value, without the transport marker that the query
+ * path adds on top of it, because the consumers of an expanded record (the client workspace among
+ * them) parse these bytes with the ordinary primitive readers.
+ */
+static int
+heap_oos_make_lob_image (DB_TYPE lob_type, const OID &oos_oid, DB_BIGINT oos_len, std::vector<char> &image)
+{
+  INTERNAL_LOB_LOCATOR locator = { oos_oid, 0 };
+  char locator_str[128];
+  int locator_len;
+  DB_VALUE value;
+  OR_BUF buf;
+  int size;
+  int error;
+
+  error = internal_lob_decode_disk_length (locator, oos_len);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  locator_len = internal_lob_format_locator_string (locator, locator_str, sizeof (locator_str));
+  if (locator_len <= 0 || locator_len >= (int) sizeof (locator_str))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  db_make_null (&value);
+  if (lob_type == DB_TYPE_CLOB)
+    {
+      error = db_make_clob (&value, DB_MAX_LOB_PRECISION, locator_str, locator_len);
+    }
+  else
+    {
+      error = db_make_blob (&value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) locator_str, locator_len * 8);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  size = pr_data_writeval_disk_size (&value);
+  if (size <= 0)
+    {
+      pr_clear_value (&value);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  image.resize ((std::size_t) size);
+  or_init (&buf, image.data (), size);
+  pr_data_writeval (&buf, &value);
+  pr_clear_value (&value);
+
+  return NO_ERROR;
+}
+
+/*
  * heap_oos_read_values () - Read the OOS value for every OOS-tagged variable index.
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
@@ -154,6 +315,35 @@ heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
       const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_entries[i]);
       OID oos_oid;
       DB_BIGINT oos_len;
+      int stub_kind = OR_OOS_KIND_OOS;
+
+      /* Which of the three kinds this slot holds is stamped in the stub itself, so this stays what
+       * CBRD-26729 made it: a reconstruction from oos_read () and the record's own offset table,
+       * with no class representation and therefore no schema-change hazard and no page fix while
+       * the heap page is latched. */
+      if (heap_oos_peek_stub_kind (state, value_offset, &stub_kind) != NO_ERROR)
+	{
+	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
+	}
+
+      if (OR_OOS_IS_LOB_KIND (stub_kind))
+	{
+	  /* Internal LOB: store the locator, never the chunk chain. */
+	  int lob_err = heap_oos_read_lob_stub (state, value_offset, &oos_oid, &stub_kind, &oos_len);
+
+	  if (lob_err == NO_ERROR)
+	    {
+	      const DB_TYPE lob_type = (stub_kind == OR_OOS_KIND_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB);
+
+	      lob_err = heap_oos_make_lob_image (lob_type, oos_oid, oos_len, state->oos_payloads[i]);
+	    }
+	  if (lob_err != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return lob_err;
+	    }
+	  continue;
+	}
 
       /* Reuse the single inline-reference parser (same [OID (8B) | full_length (8B)] layout and
        * the same corruption checks the lazy Resolve path uses). It has already er_set on error. */
@@ -432,6 +622,7 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid,
 {
   OR_BUF buf;
   int rc = NO_ERROR;
+  int stub_kind = OR_OOS_KIND_OOS;
 
   /* Keep the OOS OID well-defined for corruption errors raised before it is read. */
   OID_SET_NULL (oos_oid);
@@ -447,8 +638,10 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid,
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
     }
 
-  or_get_oid (&buf, oos_oid);
-  *oos_len = or_get_bigint (&buf, &rc);
+  /* Demand OR_OOS_KIND_OOS: this parser inlines the chain's bytes into the record, which is only ever
+   * right for a serialized value. An Internal LOB reaching here would be expanded as raw content and
+   * silently corrupt the value, so a kind mismatch has to fail loudly instead. */
+  rc = or_get_oos_stub (&buf, oos_oid, &stub_kind, oos_len, OR_OOS_KIND_OOS);
 
   /* Reject an unreadable length, a NULL OOS OID, or a length outside the stored-value range. */
   if (rc != NO_ERROR || OID_ISNULL (oos_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
