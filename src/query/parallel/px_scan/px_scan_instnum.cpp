@@ -322,7 +322,7 @@ namespace parallel_scan
 	  {
 	    return ER_FAILED;
 	  }
-	QFILE_TUPLE_RECORD tuple_rec = { NULL, 0 };
+	QFILE_TUPLE_RECORD tuple_rec = QFILE_TUPLE_RECORD_INITIALIZER;
 	SCAN_CODE sc;
 	while ((sc = qfile_scan_list_next (thread_p, &s_id, &tuple_rec, PEEK)) == S_SUCCESS)
 	  {
