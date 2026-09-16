@@ -11972,6 +11972,24 @@ stream_from_is_open (void)
 }
 
 /*
+ * stream_from_reset () - Forget the stream session this connection was holding
+ *
+ * Called where the server-side session is known to be gone: ending the client
+ * session, shutting the database connection down, or ending the transaction the
+ * stream was opened in. A client that goes away mid-stream never sends END, and
+ * this flag would otherwise survive into the next client the CAS process serves
+ * -- where do_commit_after_execute () would read it and defer every auto-commit
+ * forever.
+ */
+void
+stream_from_reset (void)
+{
+#if defined(CS_MODE)
+  stream_Is_open = false;
+#endif /* CS_MODE */
+}
+
+/*
  * stream_from_init () - Open a client->server byte-stream session on the server
  *   return: error code
  *   stream_kind(in): the consumer's own STREAM_KIND_* tag

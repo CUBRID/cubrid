@@ -620,6 +620,8 @@ ux_database_shutdown (bool request_server)
   memset (database_passwd, 0, sizeof (database_passwd));
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
+
+  ux_stream_reset ();
 }
 
 int
@@ -913,6 +915,10 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   int err_code = 0;
 
   ux_end_tran_cleanup (tran_type);
+
+  /* the server ends any open stream session with the transaction, so this
+   * connection is no longer holding one either */
+  ux_stream_reset ();
 
   if (tran_type == CCI_TRAN_COMMIT)
     {
@@ -10515,6 +10521,20 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
   srv_handle->q_result->stmt_id = stmt_id;
 
   return err_code;
+}
+
+/*
+ * ux_stream_reset () - Drop the stream state this connection was carrying
+ *
+ * Called where the server-side session is known to be gone. Without it the
+ * deferred auto-commit of a client that vanished mid-stream would be read by
+ * the next client the CAS process serves.
+ */
+void
+ux_stream_reset (void)
+{
+  stream_from_reset ();
+  stream_Deferred_auto_commit = false;
 }
 
 int

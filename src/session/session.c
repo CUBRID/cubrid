@@ -3315,6 +3315,39 @@ session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
   return NO_ERROR;
 }
 
+/*
+ * session_end_stream_session () - End the stream session at a transaction boundary
+ *   thread_p(in): this thread handle
+ *
+ * A stream session cannot outlive the transaction it was opened in. Its
+ * consumer has already put work into that transaction, so a chunk arriving
+ * after the transaction ended would build on state that was committed or
+ * rolled back. Ending the transaction therefore ends the stream, and the next
+ * chunk is refused with "no active stream session".
+ *
+ * Unlike the interrupt path, this is safe to free here: the transaction is
+ * ended by the same worker that would be running receive_chunk, and the stream
+ * protocol is lockstep, so no chunk can be in flight.
+ */
+void
+session_end_stream_session (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL || state_p->stream_session_p == NULL)
+    {
+      return;
+    }
+
+  state_p->stream_session_p->abort (thread_p);
+
+  delete state_p->stream_session_p;
+  state_p->stream_session_p = NULL;
+#endif /* SERVER_MODE */
+}
+
 bool
 session_is_pl_session_running (THREAD_ENTRY * thread_p)
 {

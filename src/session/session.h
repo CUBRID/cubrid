@@ -94,6 +94,7 @@ extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_sessi
 
 extern int session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p);
 extern int session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr));
+extern void session_end_stream_session (THREAD_ENTRY * thread_p);
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);

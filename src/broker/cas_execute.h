@@ -94,6 +94,7 @@ extern int ux_lob_new (int lob_type, T_NET_BUF * net_buf);
 extern int ux_lob_write (DB_VALUE * lob_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
 extern int ux_lob_read (DB_VALUE * lob_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
 
+extern void ux_stream_reset (void);
 extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf);
 extern int ux_stream_end (T_NET_BUF * net_buf, bool * auto_commit);
 

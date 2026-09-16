@@ -166,6 +166,9 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   assert (should_conn_reset != NULL);
   has_updated = logtb_has_updated (thread_p);
 
+  /* the transaction ends here, and with it any stream session opened in it */
+  session_end_stream_session (thread_p);
+
   state = xtran_server_commit (thread_p, retain_lock);
 
   PL_SESSION *session = cubpl::get_session ();
@@ -203,6 +206,9 @@ stran_server_abort_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool *sho
   bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
+
+  /* the transaction ends here, and with it any stream session opened in it */
+  session_end_stream_session (thread_p);
 
   state = xtran_server_abort (thread_p);
 
