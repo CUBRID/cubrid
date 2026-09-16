@@ -429,4 +429,8 @@ extern int stream_from_end (INT64 * count);
 extern bool stream_from_is_open (void);
 extern void stream_from_reset (void);
 
+/* COPY FROM STDIN binding over the stream transport */
+extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols,
+			   int format, int delimiter, int quote, int header, int bulk);
+
 #endif /* _NETWORK_INTERFACE_CL_H_ */
