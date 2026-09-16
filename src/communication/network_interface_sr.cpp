@@ -166,6 +166,9 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   assert (should_conn_reset != NULL);
   has_updated = logtb_has_updated (thread_p);
 
+  /* the transaction ends here, and with it any stream session opened in it */
+  session_end_stream_session (thread_p);
+
   state = xtran_server_commit (thread_p, retain_lock);
 
   PL_SESSION *session = cubpl::get_session ();
@@ -203,6 +206,9 @@ stran_server_abort_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool *sho
   bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
+
+  /* the transaction ends here, and with it any stream session opened in it */
+  session_end_stream_session (thread_p);
 
   state = xtran_server_abort (thread_p);
 
@@ -11169,9 +11175,9 @@ ssession_interrupt_attached_threads (THREAD_ENTRY *thread_p, void *session)
 }
 
 void
-ssession_destroy_load_session (THREAD_ENTRY *thread_p, void *session)
+ssession_destroy_attached_sessions (THREAD_ENTRY *thread_p, void *session)
 {
-  session_destroy_load_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -12592,6 +12598,14 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	  delete session;
 	}
     }
+  else if (error_code == NO_ERROR)
+    {
+      /* a factory lives outside the transport and cannot be checked at compile
+       * time; without this the client would read "opened" and start sending */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "stream session was not opened");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
 
 send_reply:
   /* On error, stage the error (code + message) so it travels with the reply;
@@ -12634,7 +12648,7 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	{
 	  session->abort (thread_p);
 	  delete session;
-	  session_set_stream_session (thread_p, NULL);
+	  (void) session_set_stream_session (thread_p, NULL);
 	}
     }
 
@@ -12654,7 +12668,7 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 /*
  * sstream_end () - End the stream and report the session's result
  *   request format: (empty)
- *   reply format: error_code (int), count (int) -- rows for COPY, bytes for a
+ *   reply format: error_code (int), count (int64) -- rows for COPY, bytes for a
  *                 value stream; the binding interprets it
  */
 void
@@ -12672,17 +12686,14 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     }
   else
     {
-      stream_result result;
-      result.count = 0;
-      error_code = session->finish (thread_p, &result);	/* may flush a trailing CSV record */
-      count = result.count;
+      error_code = session->finish (thread_p, &count);	/* the binding may still have buffered work */
 
       if (error_code != NO_ERROR)
 	{
 	  session->abort (thread_p);
 	}
       delete session;
-      session_set_stream_session (thread_p, NULL);
+      (void) session_set_stream_session (thread_p, NULL);
     }
 
   if (error_code != NO_ERROR)
@@ -12697,6 +12708,7 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     char *ptr;
 
     ptr = or_pack_int (reply, error_code);
+    ptr = or_pack_int (ptr, 0);	/* the padding or_pack_int64 () would skip over */
     ptr = or_pack_int64 (ptr, count);
     css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   }

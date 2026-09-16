@@ -25,8 +25,8 @@
  * session. The session kind is fixed when it is opened by a binding (COPY
  * opens a copy_session; internal-LOB will open a lob_input_session). The
  * SEND_DATA / END handlers route bytes through this seam without knowing the
- * kind, so a new consumer is added by implementing this interface plus an
- * open path -- no transport change.
+ * kind, so a new consumer is added by implementing this interface, naming its
+ * own kind tag and registering a factory for it -- no transport change.
  */
 
 #ifndef _STREAM_SESSION_HPP_
@@ -38,21 +38,20 @@
 
 /* Consumer kind tag carried on the wire by the generic open path
  * (NET_SERVER_STREAM_INIT). The server factory dispatches on this to build the
- * matching session, so a new consumer is added by appending a value here plus a
- * factory registration -- the transport stays unchanged. */
+ * matching session. The tag values belong to the consumers -- each one names its
+ * own in its own header and registers a factory for it -- so this branch, which
+ * carries the transport alone, names none of them and declares only the bound
+ * the wire check and the factory table need. */
 enum STREAM_KIND
 {
-  STREAM_KIND_COPY = 0,		/* room for STREAM_KIND_LOB, etc. */
+  STREAM_KIND_MIN = 0,
 
-  STREAM_KIND_MAX		/* number of kinds; keep last */
-};
-
-/* Result reported by finish(). The 64-bit count is interpreted by the binding:
- * rows_loaded for COPY, bytes written for internal-LOB. 64-bit so a 4GB LOB
- * value fits (CBRD-26780 wire length widening). */
-struct stream_result
-{
-  std::int64_t count;
+  /* Allocated so far -- a consumer takes the next free value and names it in
+   * its own header, and this list is what stops two of them colliding:
+   *   0  COPY          (src/loaddb/copy_stream_kind.h)
+   *   1  internal-LOB  (not landed)
+   */
+  STREAM_KIND_MAX = 4		/* factory slots; raise when a fifth consumer lands */
 };
 
 class stream_session
@@ -64,8 +63,9 @@ class stream_session
      * payload needs is the implementation's concern. */
     virtual int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) = 0;
 
-    /* Flush pending work and report the binding's result. */
-    virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
+    /* Flush pending work and report the binding's count: rows_loaded for COPY,
+     * bytes written for internal-LOB. 64-bit so a 4GB LOB value fits. */
+    virtual int finish (THREAD_ENTRY *thread_p, std::int64_t *count) = 0;
 
     /* Discard in-flight state so no partial result survives an error. */
     virtual void abort (THREAD_ENTRY *thread_p) = 0;
@@ -73,13 +73,13 @@ class stream_session
 
 /* Build a session of one kind from that kind's config blob. The blob comes
  * straight off the wire, so the factory decodes it bounded by config_len. */
-using stream_session_factory = stream_session *(*) (THREAD_ENTRY *thread_p, const char *config, int config_len,
-    int *error_code);
+using stream_session_factory = stream_session * (*) (THREAD_ENTRY *thread_p, const char *config, int config_len,
+			       int *error_code);
 
 /* A consumer registers the factory for its own kind; the transport dispatches
  * through the table and never names a concrete session type. Registration
  * happens once, at load time, before any connection can open a session. */
-extern void stream_session_register (STREAM_KIND kind, stream_session_factory factory);
+extern void stream_session_register (int kind, stream_session_factory factory);
 
 /* Open path, called by the transport: dispatch to the registered factory. */
 extern stream_session *stream_session_create (THREAD_ENTRY *thread_p, int kind, const char *config, int config_len,

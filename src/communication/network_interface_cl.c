@@ -89,7 +89,6 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
-#include "stream_session.hpp"	/* STREAM_KIND_* */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -11952,14 +11951,14 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 }
 
 #if defined(CS_MODE)
-/* Whether this connection holds an open stream session. The caller of a
- * statement that opened one needs to know that bytes are still to come,
- * without knowing which consumer opened it. */
+/* Whether this client holds an open stream session. The caller of a statement
+ * that opened one needs to know that bytes are still to come, without knowing
+ * which consumer opened it. */
 static bool stream_Is_open = false;
 #endif /* CS_MODE */
 
 /*
- * stream_from_is_open () - Is a stream session open on this connection?
+ * stream_from_is_open () - Is a stream session open for this client?
  *   return: true between a successful stream_from_init () and stream_from_end ()
  */
 bool
@@ -11973,9 +11972,27 @@ stream_from_is_open (void)
 }
 
 /*
+ * stream_from_reset () - Forget the stream session this connection was holding
+ *
+ * Called where the server-side session is known to be gone: ending the client
+ * session, shutting the database connection down, or ending the transaction the
+ * stream was opened in. A client that goes away mid-stream never sends END, and
+ * this flag would otherwise survive into the next client the CAS process serves
+ * -- where do_commit_after_execute () would read it and defer every auto-commit
+ * forever.
+ */
+void
+stream_from_reset (void)
+{
+#if defined(CS_MODE)
+  stream_Is_open = false;
+#endif /* CS_MODE */
+}
+
+/*
  * stream_from_init () - Open a client->server byte-stream session on the server
  *   return: error code
- *   stream_kind(in): STREAM_KIND_* consumer tag (e.g. STREAM_KIND_COPY)
+ *   stream_kind(in): the consumer's own STREAM_KIND_* tag
  *   config(in): consumer-specific config blob (already or_pack_*'d by the caller)
  *   config_len(in): length of config in bytes
  *
@@ -12017,6 +12034,16 @@ stream_from_init (int stream_kind, const char *config, int config_len)
     {
       or_unpack_int (reply, &rc);
     }
+  else
+    {
+      /* server returned a standard error reply; propagate its code (and the
+       * message net_client_request placed in the error stack) to the caller */
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
 
   stream_Is_open = (rc == NO_ERROR);
 
@@ -12024,7 +12051,10 @@ stream_from_init (int stream_kind, const char *config, int config_len)
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  /* there is no client->server hop in standalone mode, and reporting success
+   * would let a consumer stream into nothing and call it a zero-row load */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -12227,7 +12257,8 @@ stream_from_send_data (const char *data, int data_len)
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -12269,6 +12300,7 @@ stream_from_end (INT64 * count)
   return rc;
 #else /* CS_MODE */
   *count = 0;
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }

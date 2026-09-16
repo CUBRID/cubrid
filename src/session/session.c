@@ -3261,7 +3261,7 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
     }
 
   /* The session state can outlive its load session: connection teardown (see
-   * session_destroy_load_session) frees the load session while the state is still
+   * session_destroy_attached_sessions) frees the load session while the state is still
    * reachable. Report an error here so sloaddb_* handlers take the error path
    * instead of dereferencing a NULL load session. */
   if (state_p->load_session_p == NULL)
@@ -3286,7 +3286,7 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
       return ER_FAILED;
     }
 
-  /* one stream session per connection (the invariant the transport seam depends on) */
+  /* one stream session per session (the invariant the transport seam depends on) */
   if (stream_session_p != NULL && state_p->stream_session_p != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
@@ -3313,6 +3313,39 @@ session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
   stream_session_ref_ptr = state_p->stream_session_p;
 
   return NO_ERROR;
+}
+
+/*
+ * session_end_stream_session () - End the stream session at a transaction boundary
+ *   thread_p(in): this thread handle
+ *
+ * A stream session cannot outlive the transaction it was opened in. Its
+ * consumer has already put work into that transaction, so a chunk arriving
+ * after the transaction ended would build on state that was committed or
+ * rolled back. Ending the transaction therefore ends the stream, and the next
+ * chunk is refused with "no active stream session".
+ *
+ * Unlike the interrupt path, this is safe to free here: the transaction is
+ * ended by the same worker that would be running receive_chunk, and the stream
+ * protocol is lockstep, so no chunk can be in flight.
+ */
+void
+session_end_stream_session (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL || state_p->stream_session_p == NULL)
+    {
+      return;
+    }
+
+  state_p->stream_session_p->abort (thread_p);
+
+  delete state_p->stream_session_p;
+  state_p->stream_session_p = NULL;
+#endif /* SERVER_MODE */
 }
 
 bool
@@ -3395,7 +3428,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
   /* Interrupt only; keep the load session object alive so that in-flight requests
    * still holding a reference (via session_get_load_session) do not access freed
-   * memory. The object is freed later by session_destroy_load_session, once the
+   * memory. The object is freed later by session_destroy_attached_sessions, once the
    * connection workers have drained. */
   if (session->load_session_p != NULL)
     {
@@ -3404,7 +3437,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
   /* The stream session (COPY / LOB / ...) is left alone here for the same reason
    * as the load session: a worker may still be inside receive_chunk. It is
-   * aborted and freed by session_destroy_load_session, once the workers have
+   * aborted and freed by session_destroy_attached_sessions, once the workers have
    * drained. */
 
   if (session->pl_session_p)
@@ -3419,7 +3452,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 }
 
 void
-session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
+session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3457,6 +3490,6 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
   /* Session-state uninit path: no concurrent worker can reach this session, so
    * interrupt and destroy in one shot. */
   session_interrupt_attached_threads (thread_p, session);
-  session_destroy_load_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session);
 #endif
 }
