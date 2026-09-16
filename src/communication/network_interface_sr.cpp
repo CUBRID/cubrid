@@ -12598,6 +12598,14 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	  delete session;
 	}
     }
+  else if (error_code == NO_ERROR)
+    {
+      /* a factory lives outside the transport and cannot be checked at compile
+       * time; without this the client would read "opened" and start sending */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "stream session was not opened");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
 
 send_reply:
   /* On error, stage the error (code + message) so it travels with the reply;

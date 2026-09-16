@@ -12034,6 +12034,16 @@ stream_from_init (int stream_kind, const char *config, int config_len)
     {
       or_unpack_int (reply, &rc);
     }
+  else
+    {
+      /* server returned a standard error reply; propagate its code (and the
+       * message net_client_request placed in the error stack) to the caller */
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
 
   stream_Is_open = (rc == NO_ERROR);
 
@@ -12041,7 +12051,10 @@ stream_from_init (int stream_kind, const char *config, int config_len)
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  /* there is no client->server hop in standalone mode, and reporting success
+   * would let a consumer stream into nothing and call it a zero-row load */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -12183,7 +12196,8 @@ stream_from_send_data (const char *data, int data_len)
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -12225,6 +12239,7 @@ stream_from_end (INT64 * count)
   return rc;
 #else /* CS_MODE */
   *count = 0;
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
