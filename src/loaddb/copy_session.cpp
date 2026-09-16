@@ -425,9 +425,16 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
        * is - locator_multi_insert_force settles that itself, so this caller no
        * longer has to ask whether HA is on. */
       log_sysop_start (thread_p);
+      /* Check foreign keys, unlike loaddb, which passes dont_check_fk here.
+       * loaddb restores an unloaddb image: the rows satisfied their constraints
+       * once already, and checking per row would fail on table order anyway.
+       * COPY takes arbitrary client data, so that assumption does not hold --
+       * and skipping the check does not disable the constraint, it leaves rows
+       * that violate a constraint the table still enforces for every INSERT,
+       * with nothing that ever finds them again. */
       error = locator_multi_insert_force (thread_p, &m_hfid, &m_class_oid, m_recdes_collected, true,
 					  MULTI_ROW_INSERT, &scancache, &force_count, DB_NOT_PARTITIONED_CLASS,
-					  NULL, NULL, UPDATE_INPLACE_NONE, true);
+					  NULL, NULL, UPDATE_INPLACE_NONE, false);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -447,7 +454,7 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
 	  RECDES local_record = m_recdes_collected[i].get_recdes ();
 	  error = locator_insert_force (thread_p, &m_hfid, &m_class_oid, &dummy_oid, &local_record, true,
 					MULTI_ROW_INSERT, &scancache, &force_count, DB_NOT_PARTITIONED_CLASS,
-					NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock, true, false);
+					NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock, false, false);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
