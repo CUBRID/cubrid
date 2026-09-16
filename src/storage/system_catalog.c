@@ -123,20 +123,15 @@ static int rv;
 #define CATALOG_BT_STATS_KEYS_OFF        24
 #define CATALOG_BT_STATS_FUNC_INDEX_OFF	 28
 #define CATALOG_BT_STATS_PKEYS_OFF       32
-#define CATALOG_BT_STATS_RESERVED_OFF    (CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * BTREE_STATS_PKEYS_NUM))	/* 64 */
-#define CATALOG_BT_STATS_V0_SIZE         (CATALOG_BT_STATS_RESERVED_OFF + (OR_INT_SIZE * BTREE_STATS_RESERVED_NUM))	/* 64 + (4 * R_NUM) = 80 */
 
-/* CATALOG_STATS_LAYOUT_V1 (CBRD-27140): the V0 prefix above stays where it is (KEYS_OFF keeps a saturated 32-bit copy of
- * keys, PKEYS_OFF is unused) and the INT64 key counts follow it. Readers pick the layout from DISK_REPR.stats_layout;
- * writers always emit V1, so a V0 record disappears the next time the representation is rewritten (UPDATE STATISTICS,
- * schema change). */
+/* The record is CATALOG_STATS_LAYOUT_V1 (CBRD-27140): the INT64 key counts start where the 32-bit pkeys used to. The
+ * two slots the 32-bit layout used for counts (KEYS_OFF, and PKEYS_OFF up to V1_KEYS_OFF) are written as zero and are
+ * not read. Only V1 is accepted; see catalog_get_disk_representation (CBRD-27429). */
 #define CATALOG_BT_STATS_V1_KEYS_OFF     (CATALOG_BT_STATS_PKEYS_OFF)	/* 32, INT64 */
 #define CATALOG_BT_STATS_V1_PKEYS_OFF    (CATALOG_BT_STATS_V1_KEYS_OFF + OR_INT64_SIZE)	/* 40, INT64 x PKEYS_NUM */
 #define CATALOG_BT_STATS_V1_RESERVED_OFF (CATALOG_BT_STATS_V1_PKEYS_OFF + (OR_INT64_SIZE * BTREE_STATS_PKEYS_NUM))	/* 104 */
 #define CATALOG_BT_STATS_V1_SIZE         (CATALOG_BT_STATS_V1_RESERVED_OFF + (OR_INT_SIZE * BTREE_STATS_RESERVED_NUM))	/* 120 */
-#define CATALOG_BT_STATS_SIZE            CATALOG_BT_STATS_V1_SIZE	/* what writers emit */
-#define CATALOG_BT_STATS_SIZE_OF(layout) \
-  ((layout) == CATALOG_STATS_LAYOUT_V0 ? CATALOG_BT_STATS_V0_SIZE : CATALOG_BT_STATS_V1_SIZE)
+#define CATALOG_BT_STATS_SIZE            CATALOG_BT_STATS_V1_SIZE
 
 #define CATALOG_GET_BT_STATS_BTID(var, ptr) \
     OR_GET_BTID((ptr) + CATALOG_BT_STATS_BTID_OFF, (var))
@@ -146,9 +141,8 @@ static int rv;
 #define CATALOG_CLS_INFO_TOT_OBJS_OFF      16
 #define CATALOG_CLS_INFO_TIME_STAMP_OFF    20
 #define CATALOG_CLS_INFO_REP_DIR_OFF       24
-#define CATALOG_CLS_INFO_TOT_OBJS64_OFF    32	/* INT64 row count (CBRD-27140); lives in the once-reserved tail, which
-						 * every writer zero-fills, so 0 here means "pre-CBRD-27140 record:
-						 * use the 32-bit field" */
+#define CATALOG_CLS_INFO_TOT_OBJS64_OFF    32	/* INT64 row count (CBRD-27140), in the once-reserved tail. The 32-bit
+						 * TOT_OBJS slot above is written as zero and is not read. */
 #define CATALOG_CLS_INFO_SIZE              56
 #define CATALOG_CLS_INFO_RESERVED          16	/* bytes after TOT_OBJS64 that writers still zero-fill */
 
@@ -342,7 +336,7 @@ static int catalog_fetch_disk_representation (THREAD_ENTRY * thread_p, DISK_REPR
 static int catalog_fetch_disk_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attrp, CATALOG_RECORD * ct_recordp);
 static int catalog_fetch_attribute_value (THREAD_ENTRY * thread_p, void *value, int length,
 					  CATALOG_RECORD * ct_recordp);
-static int catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * bt_statsp, int stats_layout,
+static int catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * bt_statsp,
 					   CATALOG_RECORD * ct_recordp);
 static int catalog_drop_disk_representation_from_page (THREAD_ENTRY * thread_p, VPID * page_id, PGSLOTID slot_id);
 static int catalog_drop_representation_class_from_page (THREAD_ENTRY * thread_p, VPID * dir_pgid, PAGE_PTR * dir_pgptr,
@@ -383,7 +377,7 @@ static void catalog_dump_representation (DISK_REPR * dr);
 static void catalog_clear_hash_table (THREAD_ENTRY * thread_p);
 
 static void catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p);
-static void catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p);
+static int catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p);
 static void catalog_put_disk_representation (char *rec_p, DISK_REPR * disk_repr_p);
 static void catalog_get_disk_attribute (DISK_ATTR * attr_p, char *rec_p);
 static void catalog_put_disk_attribute (char *rec_p, DISK_ATTR * attr_p);
@@ -392,7 +386,7 @@ static void catalog_get_class_info_from_record (CLS_INFO * class_info_p, char *r
 static void catalog_put_class_info_to_record (char *rec_p, CLS_INFO * class_info_p);
 static void catalog_get_repr_item_from_record (CATALOG_REPR_ITEM * item_p, char *rec_p);
 static void catalog_put_repr_item_to_record (char *rec_p, CATALOG_REPR_ITEM * item_p);
-static int catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, int stats_layout,
+static int catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p,
 				     CATALOG_RECORD * catalog_record_p);
 
 #if defined (SA_MODE)
@@ -410,7 +404,7 @@ catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p)
   CATALOG_PUT_PGHEADER_PG_OVFL (rec_p, header_p->is_overflow_page);
 }
 
-static void
+static int
 catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p)
 {
   disk_repr_p->id = (REPR_ID) OR_GET_INT (rec_p + CATALOG_DISK_REPR_ID_OFF);
@@ -420,9 +414,18 @@ catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p)
   disk_repr_p->n_variable = OR_GET_INT (rec_p + CATALOG_DISK_REPR_N_VARIABLE_OFF);
   disk_repr_p->variable = NULL;
 
-  /* pre-CBRD-27140 writers stored 0 in this slot, which is CATALOG_STATS_LAYOUT_V0 */
+  /* Only the current layout is read. A record written before CBRD-27140 carries CATALOG_STATS_LAYOUT_V0 here (those
+   * writers left the slot at 0) and its BTREE_STATS are 40 bytes shorter, so parsing it as V1 would walk off the
+   * record; such a database predates 11.5 and has to be recreated (CBRD-27429). */
   disk_repr_p->stats_layout = OR_GET_INT (rec_p + CATALOG_DISK_REPR_RESERVED_1_OFF);
-  assert (disk_repr_p->stats_layout == CATALOG_STATS_LAYOUT_V0 || disk_repr_p->stats_layout == CATALOG_STATS_LAYOUT_V1);
+  if (disk_repr_p->stats_layout != CATALOG_STATS_LAYOUT_V1)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_UNSUPPORTED_STATS_LAYOUT, 1, disk_repr_p->stats_layout);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 static void
@@ -454,7 +457,7 @@ catalog_get_disk_attribute (DISK_ATTR * attr_p, char *rec_p)
 }
 
 static void
-catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p, int stats_layout)
+catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p)
 {
   int i;
 
@@ -464,22 +467,10 @@ catalog_get_btree_statistics (BTREE_STATS * stat_p, char *rec_p, int stats_layou
   stat_p->has_function = OR_GET_INT (rec_p + CATALOG_BT_STATS_FUNC_INDEX_OFF);
 
   assert (stat_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
-  if (stats_layout == CATALOG_STATS_LAYOUT_V0)
+  OR_GET_INT64 (rec_p + CATALOG_BT_STATS_V1_KEYS_OFF, &stat_p->keys);
+  for (i = 0; i < stat_p->pkeys_size; i++)
     {
-      /* record written before CBRD-27140: 32-bit counts */
-      stat_p->keys = OR_GET_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF);
-      for (i = 0; i < stat_p->pkeys_size; i++)
-	{
-	  stat_p->pkeys[i] = OR_GET_INT (rec_p + CATALOG_BT_STATS_PKEYS_OFF + (OR_INT_SIZE * i));
-	}
-    }
-  else
-    {
-      OR_GET_INT64 (rec_p + CATALOG_BT_STATS_V1_KEYS_OFF, &stat_p->keys);
-      for (i = 0; i < stat_p->pkeys_size; i++)
-	{
-	  OR_GET_INT64 (rec_p + CATALOG_BT_STATS_V1_PKEYS_OFF + (OR_INT64_SIZE * i), &stat_p->pkeys[i]);
-	}
+      OR_GET_INT64 (rec_p + CATALOG_BT_STATS_V1_PKEYS_OFF + (OR_INT64_SIZE * i), &stat_p->pkeys[i]);
     }
 #if 0				/* reserved for future use */
   for (i = 0; i < BTREE_STATS_RESERVED_NUM; i++)
@@ -512,7 +503,7 @@ catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_LEAFS_OFF, stat_p->leafs);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_PAGES_OFF, stat_p->pages);
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_HEIGHT_OFF, stat_p->height);
-  OR_PUT_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF, STATS_CLAMP_TO_INT (stat_p->keys));	/* V0 slot: saturated copy */
+  OR_PUT_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF, 0);	/* the 32-bit slot is no longer read */
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_FUNC_INDEX_OFF, stat_p->has_function);
 
   /* CATALOG_STATS_LAYOUT_V1: INT64 counts */
@@ -539,11 +530,6 @@ catalog_get_class_info_from_record (CLS_INFO * class_info_p, char *rec_p)
 
   class_info_p->ci_tot_pages = OR_GET_INT (rec_p + CATALOG_CLS_INFO_TOT_PAGES_OFF);
   OR_GET_INT64 (rec_p + CATALOG_CLS_INFO_TOT_OBJS64_OFF, &class_info_p->ci_tot_objects);
-  if (class_info_p->ci_tot_objects == 0)
-    {
-      /* record written before CBRD-27140 (writers zero-filled this tail): the 32-bit field is the count */
-      class_info_p->ci_tot_objects = OR_GET_INT (rec_p + CATALOG_CLS_INFO_TOT_OBJS_OFF);
-    }
   class_info_p->ci_time_stamp = OR_GET_INT (rec_p + CATALOG_CLS_INFO_TIME_STAMP_OFF);
 
   OR_GET_OID (rec_p + CATALOG_CLS_INFO_REP_DIR_OFF, &(class_info_p->ci_rep_dir));
@@ -558,7 +544,7 @@ catalog_put_class_info_to_record (char *rec_p, CLS_INFO * class_info_p)
   OR_PUT_HFID (rec_p + CATALOG_CLS_INFO_HFID_OFF, &class_info_p->ci_hfid);
 
   OR_PUT_INT (rec_p + CATALOG_CLS_INFO_TOT_PAGES_OFF, class_info_p->ci_tot_pages);
-  OR_PUT_INT (rec_p + CATALOG_CLS_INFO_TOT_OBJS_OFF, STATS_CLAMP_TO_INT (class_info_p->ci_tot_objects));	/* saturated copy */
+  OR_PUT_INT (rec_p + CATALOG_CLS_INFO_TOT_OBJS_OFF, 0);	/* the 32-bit slot is no longer read */
   OR_PUT_INT (rec_p + CATALOG_CLS_INFO_TIME_STAMP_OFF, class_info_p->ci_time_stamp);
 
   OR_PUT_OID (rec_p + CATALOG_CLS_INFO_REP_DIR_OFF, &(class_info_p->ci_rep_dir));
@@ -1442,7 +1428,11 @@ catalog_fetch_disk_representation (THREAD_ENTRY * thread_p, DISK_REPR * disk_rep
       return ER_FAILED;
     }
 
-  catalog_get_disk_representation (disk_repr_p, catalog_record_p->recdes.data + catalog_record_p->offset);
+  if (catalog_get_disk_representation (disk_repr_p, catalog_record_p->recdes.data + catalog_record_p->offset)
+      != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
   catalog_record_p->offset += CATALOG_DISK_REPR_SIZE;
 
   return NO_ERROR;
@@ -1536,8 +1526,7 @@ catalog_fetch_attribute_value (THREAD_ENTRY * thread_p, void *value, int length,
  * Fetch BTREE_STATS structure from catalog record.
  */
 static int
-catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_stats_p, int stats_layout,
-				CATALOG_RECORD * catalog_record_p)
+catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_stats_p, CATALOG_RECORD * catalog_record_p)
 {
   VPID root_vpid;
   PAGE_PTR root_page_p;
@@ -1545,7 +1534,7 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
   int i;
   OR_BUF buf;
 
-  if (catalog_read_unread_portion (thread_p, catalog_record_p, CATALOG_BT_STATS_SIZE_OF (stats_layout)) != NO_ERROR)
+  if (catalog_read_unread_portion (thread_p, catalog_record_p, CATALOG_BT_STATS_SIZE) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1619,8 +1608,8 @@ catalog_fetch_btree_statistics (THREAD_ENTRY * thread_p, BTREE_STATS * btree_sta
 
 exit_on_end:
 
-  catalog_get_btree_statistics (btree_stats_p, catalog_record_p->recdes.data + catalog_record_p->offset, stats_layout);
-  catalog_record_p->offset += CATALOG_BT_STATS_SIZE_OF (stats_layout);
+  catalog_get_btree_statistics (btree_stats_p, catalog_record_p->recdes.data + catalog_record_p->offset);
+  catalog_record_p->offset += CATALOG_BT_STATS_SIZE;
 
   return NO_ERROR;
 }
@@ -3840,8 +3829,7 @@ end:
  *   catalog_record_p(in): pointer to CATALOG_RECORD structure (catalog record)
  */
 static int
-catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, int stats_layout,
-			  CATALOG_RECORD * catalog_record_p)
+catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, CATALOG_RECORD * catalog_record_p)
 {
   BTREE_STATS *btree_stats_p;
   int i, n_btstats;
@@ -3882,7 +3870,7 @@ catalog_assign_attribute (THREAD_ENTRY * thread_p, DISK_ATTR * disk_attr_p, int 
 	{
 	  btree_stats_p = &disk_attr_p->bt_stats[i];
 
-	  if (catalog_fetch_btree_statistics (thread_p, btree_stats_p, stats_layout, catalog_record_p) != NO_ERROR)
+	  if (catalog_fetch_btree_statistics (thread_p, btree_stats_p, catalog_record_p) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -4054,8 +4042,7 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 
   for (i = 0; i < disk_repr_p->n_fixed; i++)
     {
-      if (catalog_assign_attribute (thread_p, &disk_repr_p->fixed[i], disk_repr_p->stats_layout, &catalog_record) !=
-	  NO_ERROR)
+      if (catalog_assign_attribute (thread_p, &disk_repr_p->fixed[i], &catalog_record) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -4063,8 +4050,7 @@ catalog_get_representation (THREAD_ENTRY * thread_p, OID * class_id_p, REPR_ID r
 
   for (i = 0; i < disk_repr_p->n_variable; i++)
     {
-      if (catalog_assign_attribute (thread_p, &disk_repr_p->variable[i], disk_repr_p->stats_layout, &catalog_record) !=
-	  NO_ERROR)
+      if (catalog_assign_attribute (thread_p, &disk_repr_p->variable[i], &catalog_record) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
