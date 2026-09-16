@@ -473,7 +473,7 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
 	  goto done;
 	}
       log_sysop_attach_to_outer (thread_p);
-      m_rows_loaded += (int) m_recdes_collected.size ();
+      m_rows_loaded += (std::int64_t) m_recdes_collected.size ();
     }
   else
     {

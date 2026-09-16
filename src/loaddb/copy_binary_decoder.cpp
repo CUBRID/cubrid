@@ -81,9 +81,16 @@ static inline int64_t
 read_int64 (const char *buf)
 {
   uint32_t hi, lo;
+  uint64_t u;
+  int64_t v;
+
   memcpy (&hi, buf, sizeof (hi));
   memcpy (&lo, buf + 4, sizeof (lo));
-  return ((int64_t) ntohl (hi) << 32) | (uint32_t) ntohl (lo);
+  /* Assembled unsigned: any BIGINT with the sign bit set shifts a value into
+   * the sign bit of an int64_t, which is signed overflow. */
+  u = ((uint64_t) ntohl (hi) << 32) | (uint64_t) ntohl (lo);
+  memcpy (&v, &u, sizeof (v));
+  return v;
 }
 
 /* read float from buffer (IEEE 754, same byte order as int32) */
