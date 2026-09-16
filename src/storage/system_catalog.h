@@ -68,13 +68,7 @@ struct disk_representation
   int fixed_length;		/* total length of fixed attributes */
   int n_variable;		/* number of variable attributes */
   struct disk_attribute *variable;	/* variable attribute structures */
-  int stats_layout;		/* on-disk layout of the BTREE_STATS that follow each attribute. Only
-				 * CATALOG_STATS_LAYOUT_V1 (INT64 counts) is written and read; a record still carrying
-				 * CATALOG_STATS_LAYOUT_V0 is refused (CBRD-27429). */
 };				/* object disk representation */
-
-#define CATALOG_STATS_LAYOUT_V0  0	/* what pre-CBRD-27140 writers left in the reserved slot; refused on read */
-#define CATALOG_STATS_LAYOUT_V1  1
 
 
 

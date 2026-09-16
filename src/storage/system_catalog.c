@@ -125,9 +125,8 @@ static int rv;
 #define CATALOG_BT_STATS_FUNC_INDEX_OFF	 28
 #define CATALOG_BT_STATS_PKEYS_OFF       32
 
-/* The record is CATALOG_STATS_LAYOUT_V1 (CBRD-27140): the INT64 key counts start where the 32-bit pkeys used to. The
- * two slots the 32-bit layout used for counts (KEYS_OFF, and PKEYS_OFF up to V1_KEYS_OFF) are written as zero and are
- * not read. Only V1 is accepted; see catalog_get_disk_representation (CBRD-27429). */
+/* The INT64 key counts (CBRD-27140) start where the 32-bit pkeys used to. The two slots the 32-bit counts lived in
+ * (KEYS_OFF, and PKEYS_OFF up to V1_KEYS_OFF) are written as zero and are not read. */
 #define CATALOG_BT_STATS_V1_KEYS_OFF     (CATALOG_BT_STATS_PKEYS_OFF)	/* 32, INT64 */
 #define CATALOG_BT_STATS_V1_PKEYS_OFF    (CATALOG_BT_STATS_V1_KEYS_OFF + OR_INT64_SIZE)	/* 40, INT64 x PKEYS_NUM */
 #define CATALOG_BT_STATS_V1_RESERVED_OFF (CATALOG_BT_STATS_V1_PKEYS_OFF + (OR_INT64_SIZE * BTREE_STATS_PKEYS_NUM))	/* 104 */
@@ -378,7 +377,7 @@ static void catalog_dump_representation (DISK_REPR * dr);
 static void catalog_clear_hash_table (THREAD_ENTRY * thread_p);
 
 static void catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p);
-static int catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p);
+static void catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p);
 static void catalog_put_disk_representation (char *rec_p, DISK_REPR * disk_repr_p);
 static void catalog_get_disk_attribute (DISK_ATTR * attr_p, char *rec_p);
 static void catalog_put_disk_attribute (char *rec_p, DISK_ATTR * attr_p);
@@ -405,7 +404,7 @@ catalog_put_page_header (char *rec_p, CATALOG_PAGE_HEADER * header_p)
   CATALOG_PUT_PGHEADER_PG_OVFL (rec_p, header_p->is_overflow_page);
 }
 
-static int
+static void
 catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p)
 {
   disk_repr_p->id = (REPR_ID) OR_GET_INT (rec_p + CATALOG_DISK_REPR_ID_OFF);
@@ -415,20 +414,9 @@ catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p)
   disk_repr_p->n_variable = OR_GET_INT (rec_p + CATALOG_DISK_REPR_N_VARIABLE_OFF);
   disk_repr_p->variable = NULL;
 
-  /* Only the current layout is read. A record written before CBRD-27140 carries CATALOG_STATS_LAYOUT_V0 here (those
-   * writers left the slot at 0) and its BTREE_STATS are 40 bytes shorter, so parsing it as V1 would walk off the
-   * record; such a database predates 11.5 and has to be recreated (CBRD-27429). */
-  disk_repr_p->stats_layout = OR_GET_INT (rec_p + CATALOG_DISK_REPR_RESERVED_1_OFF);
-  if (disk_repr_p->stats_layout != CATALOG_STATS_LAYOUT_V1)
-    {
-      assert (false);
-      er_log_debug (ARG_FILE_LINE, "catalog: statistics layout %d is not the current one (%d)\n",
-		    disk_repr_p->stats_layout, CATALOG_STATS_LAYOUT_V1);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_INCOMPATIBLE_DATABASE, 2, rel_name (), rel_release_string ());
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
+#if 0				/* reserved for future use */
+  disk_repr_p->repr_reserved_1 = OR_GET_INT (rec_p + CATALOG_DISK_REPR_RESERVED_1_OFF);
+#endif
 }
 
 static void
@@ -439,9 +427,8 @@ catalog_put_disk_representation (char *rec_p, DISK_REPR * disk_repr_p)
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_FIXED_LENGTH_OFF, disk_repr_p->fixed_length);
   OR_PUT_INT (rec_p + CATALOG_DISK_REPR_N_VARIABLE_OFF, disk_repr_p->n_variable);
 
-  /* the BTREE_STATS that follow are always written in the current layout */
-  disk_repr_p->stats_layout = CATALOG_STATS_LAYOUT_V1;
-  OR_PUT_INT (rec_p + CATALOG_DISK_REPR_RESERVED_1_OFF, disk_repr_p->stats_layout);
+  /* reserved for future use */
+  OR_PUT_INT (rec_p + CATALOG_DISK_REPR_RESERVED_1_OFF, 0);
 }
 
 static void
@@ -509,7 +496,7 @@ catalog_put_btree_statistics (char *rec_p, BTREE_STATS * stat_p)
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_KEYS_OFF, 0);	/* the 32-bit slot is no longer read */
   OR_PUT_INT (rec_p + CATALOG_BT_STATS_FUNC_INDEX_OFF, stat_p->has_function);
 
-  /* CATALOG_STATS_LAYOUT_V1: INT64 counts */
+  /* INT64 counts (CBRD-27140) */
   OR_PUT_INT64 (rec_p + CATALOG_BT_STATS_V1_KEYS_OFF, &stat_p->keys);
   assert (stat_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
   for (i = 0; i < BTREE_STATS_PKEYS_NUM; i++)
@@ -1431,11 +1418,7 @@ catalog_fetch_disk_representation (THREAD_ENTRY * thread_p, DISK_REPR * disk_rep
       return ER_FAILED;
     }
 
-  if (catalog_get_disk_representation (disk_repr_p, catalog_record_p->recdes.data + catalog_record_p->offset)
-      != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
+  catalog_get_disk_representation (disk_repr_p, catalog_record_p->recdes.data + catalog_record_p->offset);
   catalog_record_p->offset += CATALOG_DISK_REPR_SIZE;
 
   return NO_ERROR;
