@@ -99,10 +99,11 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
  *   return: NO_ERROR, or an error code
  *   class_id_p(in): class whose statistics are about to be (re)collected
  *   out_stats_fresh(out): true when another session committed a collection of this class
- *                         while we waited on the gate -- the caller may then skip its own
- *                         (now redundant) scan / histogram build / store (piggyback), provided
- *                         that collection also satisfies its options (out_stored_fullscan;
- *                         see do_update_stats ())
+ *                         while we waited on the gate -- a precondition for the caller to skip
+ *                         its own (now redundant) scan / histogram build / store (piggyback).
+ *                         The caller must still check that the collection satisfies its options
+ *                         (out_stored_fullscan) and that it rebuilt the histograms; see
+ *                         do_update_stats ()
  *   out_stored_fullscan(out): the stored statistics_strategy once the gate is granted
  *                             (nonzero: the last collection was a FULLSCAN)
  *
@@ -119,12 +120,20 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
  *
  *   Freshness is judged from the _db_class row's cache coherency number (chn), which every
  *   statistics write bumps (catcls_update_class_stats () stores old_chn + 1): a changed chn,
- *   or bookkeeping appearing where there was none, means a concurrent collection committed
+ *   or bookkeeping appearing where there was none, means a concurrent collection COMMITTED
  *   while we waited.  Unlike the second-granular timestamp this also catches two collections
- *   within the same second.  An unchanged row (e.g. the previous holder rolled back) leaves
- *   it false.  (A DDL rewriting the same _db_class row inside the window would also bump
- *   chn; that race is pathological next to a statistics storm and costs at most one skipped
- *   collection, corrected by the next UPDATE STATISTICS.)
+ *   within the same second.  Both probes read the latest committed version (see
+ *   catcls_get_class_stats ()), so a holder that rolled back leaves the chn -- and this flag --
+ *   unchanged.
+ *
+ *   A DDL cannot slip into the window and bump that chn itself: the caller holds SCH_S on the
+ *   class from its authorization fetch (au_check_class_authorization () / au_fetch_class_force ()
+ *   in do_update_stats ()) for the whole wait, so a concurrent SCH_M blocks until the caller's
+ *   statement is done.
+ *
+ *   Fresh class statistics are necessary but not sufficient for the caller to skip its own
+ *   collection: the collection we waited for may have been WITH ... NO HISTOGRAM or DROP
+ *   HISTOGRAM.  do_update_stats () proves separately that the histograms were rebuilt.
  */
 int
 xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_stats_fresh, int *out_stored_fullscan)

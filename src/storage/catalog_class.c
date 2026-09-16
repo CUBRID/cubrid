@@ -4462,10 +4462,14 @@ error:
  *   out_found(out): false when the class has no statistics bookkeeping yet (the
  *                   checked_time / statistics_strategy columns are NULL)
  *
- * Note: the read half of catcls_update_class_stats (), done through a scan cache without an
- *       MVCC snapshot so the *latest committed* row is returned regardless of the caller's own
- *       snapshot -- xstats_enter_update_gate () must see what a concurrent session committed
- *       while the caller waited on the gate.  The record buffer belongs to the scan cache.
+ * Note: the read half of catcls_update_class_stats (), done under mvcc_satisfies_committed so the
+ *       *latest committed* row is returned regardless of the caller's own snapshot:
+ *       xstats_enter_update_gate () must see what a concurrent session committed while the caller
+ *       waited on the gate, and must NOT see what an uncommitted one wrote -- a NULL snapshot
+ *       would skip the visibility check altogether and return the last physical version, so a
+ *       gate holder that later rolled back would leave the waiter comparing against a chn that
+ *       no longer exists and skipping its own collection (CBRD-27369 review).  The record buffer
+ *       belongs to the scan cache.
  */
 int
 catcls_get_class_stats (THREAD_ENTRY * thread_p, const char *class_name, int *out_chn, int *out_with_fullscan,
@@ -4476,6 +4480,7 @@ catcls_get_class_stats (THREAD_ENTRY * thread_p, const char *class_name, int *ou
   OID *catalog_class_oid_p = NULL;
   CLS_INFO *cls_info_p = NULL;
   HEAP_SCANCACHE scan;
+  MVCC_SNAPSHOT committed_snapshot;
   bool is_scan_inited = false;
   OR_VALUE *value_p = NULL;
   RECDES record = RECDES_INITIALIZER;
@@ -4505,8 +4510,10 @@ catcls_get_class_stats (THREAD_ENTRY * thread_p, const char *class_name, int *ou
       goto end;
     }
 
-  /* no snapshot: the latest committed version, straight from the heap */
-  if (heap_scancache_start (thread_p, &scan, &cls_info_p->ci_hfid, catalog_class_oid_p, true, NULL, false) != NO_ERROR)
+  /* the latest committed version, independently of this transaction's own snapshot */
+  committed_snapshot.snapshot_fnc = mvcc_satisfies_committed;
+  if (heap_scancache_start (thread_p, &scan, &cls_info_p->ci_hfid, catalog_class_oid_p, true, &committed_snapshot,
+			    false) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
       goto end;

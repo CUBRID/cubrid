@@ -6146,8 +6146,10 @@ end:
  * stats_enter_update_gate () - client stub for xstats_enter_update_gate ()
  *   return: NO_ERROR, or an error code
  *   classop(in): class about to have its statistics (re)collected
- *   out_stats_fresh(out): true if a concurrent session already refreshed the statistics
- *                         while we waited on the per-class gate (caller may then skip)
+ *   out_stats_fresh(out): true if a concurrent session committed a statistics refresh of this
+ *                         class while we waited on the per-class gate (a precondition for the
+ *                         caller to skip its own collection, not a sufficient one -- see
+ *                         do_update_stats ())
  *   out_stored_fullscan(out): the stored statistics_strategy after the gate was granted
  */
 int

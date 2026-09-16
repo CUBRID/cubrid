@@ -128,6 +128,12 @@ bool histogram_get_total_rows (PT_NODE *lhs, double *total_rows);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 int db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
+/* generation of a class's stored histograms: one entry per attribute, for telling whether a
+ * concurrent session rebuilt them (CBRD-27369).  See stats_get_histogram_generation (). */
+#define HIST_GEN_NOT_HISTOGRAMMABLE (-2)
+#define HIST_GEN_NO_ROW             (-1)
+int stats_get_histogram_generation (MOP classop, int **out_generation, int *out_count);
+int stats_histograms_rebuilt_since (MOP classop, const int *generation_before, int count_before, bool *rebuilt);
 bool is_histogrammable_type (DB_TYPE type);
 int stats_get_histogram (MOP classop, HIST_STATS **histogram);
 int stats_free_histogram_and_init (HIST_STATS *histogram);

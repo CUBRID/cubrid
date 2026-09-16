@@ -95,6 +95,7 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
+#include "histogram_cl.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4927,15 +4928,32 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      bool stats_updated = false;
 	      bool stats_fresh = false;
 	      int stored_fullscan = 0;
+	      int *histogram_generation = NULL;
+	      int histogram_generation_count = 0;
 
 	      /* CBRD-27369: serialize concurrent UPDATE STATISTICS on this class through a
 	       * per-class gate held to commit, so at most one session at a time writes its
 	       * statistics and _db_histogram rows (concurrent collectors otherwise deadlock-
 	       * storm on those catalog rows).  When another session already refreshed the
-	       * statistics while we waited, skip our now-redundant collection (piggyback). */
+	       * statistics AND the histograms while we waited, skip our now-redundant
+	       * collection (piggyback).  Read the histogram generation before we start
+	       * waiting, so it can be compared with the one the gate hands us. */
+	      if (!statement->info.update_stats.drop_histogram && !statement->info.update_stats.no_histogram)
+		{
+		  if (stats_get_histogram_generation (class_mop, &histogram_generation,
+						      &histogram_generation_count) != NO_ERROR)
+		    {
+		      /* a probe failure only costs the piggyback shortcut */
+		      er_clear ();
+		      histogram_generation = NULL;
+		      histogram_generation_count = 0;
+		    }
+		}
+
 	      error = stats_enter_update_gate (class_mop, &stats_fresh, &stored_fullscan);
 	      if (error != NO_ERROR)
 		{
+		  free_and_init (histogram_generation);
 		  return error;
 		}
 	      /* piggyback only on a collection equivalent to (or stronger than) this request: never for
@@ -4947,8 +4965,20 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  && !statement->info.update_stats.random_seed
 		  && (!statement->info.update_stats.with_fullscan || stored_fullscan))
 		{
-		  stats_updated = true;
+		  /* ... and only when that collection rebuilt the histograms as well: fresh class
+		   * statistics alone can come from a WITH ... NO HISTOGRAM (histograms left stale) or a
+		   * DROP HISTOGRAM (none left), neither of which satisfies this request */
+		  bool histograms_rebuilt = false;
+
+		  if (stats_histograms_rebuilt_since (class_mop, histogram_generation, histogram_generation_count,
+						      &histograms_rebuilt) != NO_ERROR)
+		    {
+		      er_clear ();
+		      histograms_rebuilt = false;
+		    }
+		  stats_updated = histograms_rebuilt;
 		}
+	      free_and_init (histogram_generation);
 
 	      if (!stats_updated && statement->info.update_stats.drop_histogram)
 		{

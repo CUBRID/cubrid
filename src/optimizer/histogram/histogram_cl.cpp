@@ -2260,6 +2260,205 @@ db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **hist
   return NO_ERROR;
 }
 
+/*
+ * stats_get_histogram_generation () - the generation of a class's stored histograms: the cache
+ *   coherency number of every histogrammable column's _db_histogram row
+ *   return: NO_ERROR, or an error code
+ *   classop(in): class
+ *   out_generation(out): malloc'ed array, one entry per attribute in attribute order --
+ *                        HIST_GEN_NOT_HISTOGRAMMABLE for a column that never gets a histogram,
+ *                        HIST_GEN_NO_ROW when the column has no _db_histogram row, else the row's
+ *                        chn.  The caller frees it.
+ *   out_count(out): number of entries
+ *
+ * Note (CBRD-27369): every histogram store rewrites the column's row (store_one_histogram ()), so a
+ *   changed chn means that row was rebuilt.  The rows are read as of the latest committed version
+ *   (db_get_histogram_committed ()) and DECACHED right after, because both probes of a gated
+ *   UPDATE STATISTICS run inside one statement: the workspace would otherwise answer the second
+ *   probe from the copy cached by the first (same snapshot version) and never see the rebuild.
+ */
+int
+stats_get_histogram_generation (MOP classop, int **out_generation, int *out_count)
+{
+  int error = NO_ERROR;
+  int au_save, n_attrs = 0, i = 0;
+  int *generation = NULL;
+  char **attr_names = NULL;
+  DB_ATTRIBUTE *att = NULL;
+
+  assert (classop != NULL && out_generation != NULL && out_count != NULL);
+
+  *out_generation = NULL;
+  *out_count = 0;
+
+  AU_SAVE_AND_DISABLE (au_save);
+
+  for (att = db_get_attributes_force (classop); att != NULL; att = db_attribute_next (att))
+    {
+      n_attrs++;
+    }
+  if (n_attrs == 0)
+    {
+      AU_RESTORE (au_save);
+      return NO_ERROR;
+    }
+
+  generation = (int *) malloc (sizeof (int) * n_attrs);
+  attr_names = (char **) calloc (n_attrs, sizeof (char *));
+  if (generation == NULL || attr_names == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (int) * n_attrs);
+      goto end;
+    }
+
+  /* Take the names first and let go of the schema: the lookups below are server round trips, and
+   * one of them can DECACHE the class -- which would leave this loop walking freed SM_ATTRIBUTEs
+   * (the hazard do_update_stats () documents for the same reason). */
+  for (att = db_get_attributes_force (classop); att != NULL && i < n_attrs; att = db_attribute_next (att), i++)
+    {
+      /* exactly the test the histogram build applies (update_or_drop_histogram_helper ()) */
+      if (!is_histogrammable_type (db_domain_type (db_attribute_domain (att))))
+	{
+	  generation[i] = HIST_GEN_NOT_HISTOGRAMMABLE;
+	  continue;
+	}
+      generation[i] = HIST_GEN_NO_ROW;
+      attr_names[i] = strdup ((const char *) att->header.name);
+      if (attr_names[i] == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, strlen ((const char *) att->header.name) + 1);
+	  goto end;
+	}
+    }
+
+  for (i = 0; i < n_attrs; i++)
+    {
+      DB_OBJECT *histogram_obj = NULL;
+      MOBJ histogram_instance = NULL;
+
+      if (attr_names[i] == NULL)
+	{
+	  continue;
+	}
+
+      error = db_get_histogram_committed (classop, attr_names[i], &histogram_obj);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+      if (histogram_obj == NULL)
+	{
+	  continue;		/* HIST_GEN_NO_ROW */
+	}
+
+      (void) ws_find (histogram_obj, &histogram_instance);
+      if (histogram_instance != NULL)
+	{
+	  generation[i] = ws_chn (histogram_instance);
+	}
+      ws_decache (histogram_obj);
+    }
+
+  *out_generation = generation;
+  *out_count = n_attrs;
+  generation = NULL;
+
+end:
+  if (attr_names != NULL)
+    {
+      for (i = 0; i < n_attrs; i++)
+	{
+	  if (attr_names[i] != NULL)
+	    {
+	      free_and_init (attr_names[i]);
+	    }
+	}
+      free_and_init (attr_names);
+    }
+  if (generation != NULL)
+    {
+      free_and_init (generation);
+    }
+
+  AU_RESTORE (au_save);
+
+  return error;
+}
+
+/*
+ * stats_histograms_rebuilt_since () - did a concurrent session rebuild every histogram of this class?
+ *   return: NO_ERROR, or an error code
+ *   classop(in): class
+ *   generation_before(in): generation read before waiting (stats_get_histogram_generation ())
+ *   count_before(in): its entry count
+ *   rebuilt(out): true only when every histogrammable column has a row now AND that row is not the
+ *                 one seen before -- i.e. the collection we waited for wrote the histograms too
+ *
+ * Note (CBRD-27369): this is what lets an UPDATE STATISTICS skip its own collection after waiting on
+ *   the per-class gate.  The class statistics alone are not enough evidence: the session we waited
+ *   for may have run WITH ... NO HISTOGRAM (leaving the histograms stale) or DROP HISTOGRAM (leaving
+ *   none at all), and piggybacking on it would return success without the histograms the caller
+ *   asked for.  Anything we cannot prove -- a probe error, a different attribute count (concurrent
+ *   DDL), a missing or untouched row -- answers false, so the caller collects.
+ */
+int
+stats_histograms_rebuilt_since (MOP classop, const int *generation_before, int count_before, bool *rebuilt)
+{
+  int error = NO_ERROR;
+  int *generation_now = NULL;
+  int count_now = 0, i;
+
+  assert (rebuilt != NULL);
+
+  *rebuilt = false;
+
+  if (generation_before == NULL || count_before <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  error = stats_get_histogram_generation (classop, &generation_now, &count_now);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (generation_now == NULL || count_now != count_before)
+    {
+      /* the class changed shape while we waited: not comparable */
+      free_and_init (generation_now);
+      return NO_ERROR;
+    }
+
+  for (i = 0; i < count_now; i++)
+    {
+      if (generation_now[i] == HIST_GEN_NOT_HISTOGRAMMABLE)
+	{
+	  if (generation_before[i] != HIST_GEN_NOT_HISTOGRAMMABLE)
+	    {
+	      goto end;	/* column type changed under us */
+	    }
+	  continue;
+	}
+      if (generation_now[i] == HIST_GEN_NO_ROW)
+	{
+	  goto end;		/* no histogram for a column that needs one (e.g. DROP HISTOGRAM) */
+	}
+      if (generation_before[i] != HIST_GEN_NO_ROW && generation_now[i] == generation_before[i])
+	{
+	  goto end;		/* this row was not rewritten (e.g. NO HISTOGRAM) */
+	}
+    }
+
+  *rebuilt = true;
+
+end:
+  free_and_init (generation_now);
+
+  return NO_ERROR;
+}
+
 int
 stats_get_histogram (MOP classop, HIST_STATS **histogram)
 {
