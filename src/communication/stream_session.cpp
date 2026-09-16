@@ -49,11 +49,11 @@ namespace
 
 /*
  * stream_session_register () - Register the factory that builds sessions of one kind
- *   kind(in): STREAM_KIND_* the consumer owns
+ *   kind(in): the STREAM_KIND_* value the consumer owns
  *   factory(in): builder for that kind
  */
 void
-stream_session_register (STREAM_KIND kind, stream_session_factory factory)
+stream_session_register (int kind, stream_session_factory factory)
 {
   assert (kind >= STREAM_KIND_MIN && kind < STREAM_KIND_MAX);
   assert (factory != NULL);

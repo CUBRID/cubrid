@@ -79,7 +79,7 @@ using stream_session_factory = stream_session * (*) (THREAD_ENTRY *thread_p, con
 /* A consumer registers the factory for its own kind; the transport dispatches
  * through the table and never names a concrete session type. Registration
  * happens once, at load time, before any connection can open a session. */
-extern void stream_session_register (STREAM_KIND kind, stream_session_factory factory);
+extern void stream_session_register (int kind, stream_session_factory factory);
 
 /* Open path, called by the transport: dispatch to the registered factory. */
 extern stream_session *stream_session_create (THREAD_ENTRY *thread_p, int kind, const char *config, int config_len,

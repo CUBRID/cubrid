@@ -139,8 +139,8 @@ namespace
 
       if (!registered)
 	{
-	  stream_session_register ((STREAM_KIND) KIND_A, make_fake<'A'>);
-	  stream_session_register ((STREAM_KIND) KIND_B, make_fake<'B'>);
+	  stream_session_register (KIND_A, make_fake<'A'>);
+	  stream_session_register (KIND_B, make_fake<'B'>);
 	  registered = true;
 	}
 
@@ -196,13 +196,13 @@ TEST_CASE_METHOD (registry_fixture, "the factory's own refusal is passed through
 {
   int error_code = NO_ERROR;
 
-  stream_session_register ((STREAM_KIND) KIND_UNREGISTERED, refuse);
+  stream_session_register (KIND_UNREGISTERED, refuse);
 
   CHECK (stream_session_create (NULL, KIND_UNREGISTERED, NULL, 0, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_SESSION_ERROR);
 
   /* put the slot back so the case above keeps meaning what it says */
-  stream_session_register ((STREAM_KIND) KIND_UNREGISTERED, NULL);
+  stream_session_register (KIND_UNREGISTERED, NULL);
 }
 
 TEST_CASE_METHOD (registry_fixture, "the config blob reaches the factory bounded by its length", "[stream_session]")
