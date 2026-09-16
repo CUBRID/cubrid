@@ -40,8 +40,10 @@
  *   types/ncols(in): expected column types
  *   domains(in): per-column target domain (precision / codeset / collation)
  *   out_vals(out): decoded DB_VALUE array (caller-allocated, size >= ncols)
- *   field_storage/quoted(in/out): caller-owned scratch reused per row. VARCHAR
- *     out_vals point into field_storage, so it must outlive the row's insert.
+ *   field_storage/quoted(in/out): caller-owned scratch reused per row, and its
+ *     buffers are kept between rows rather than freed, so a row in steady state
+ *     allocates nothing. VARCHAR out_vals point into field_storage, so it must
+ *     outlive the row's insert. Only the first ncols entries are meaningful.
  *   bytes_consumed(out): bytes consumed (including the line terminator)
  */
 extern int decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains,

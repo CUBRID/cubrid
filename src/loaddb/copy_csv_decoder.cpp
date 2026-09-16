@@ -224,11 +224,26 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_C
       content_end--;			/* tolerate CRLF */
     }
 
-  /* 2. split into fields, honoring quotes and "" escapes */
-  field_storage.clear ();
-  quoted.clear ();
-  std::string cur;
+  /* 2. split into fields, honoring quotes and "" escapes.
+   *
+   * Each field is built in place in the caller's scratch, which keeps its
+   * buffers between rows: a payload byte is copied once, into the very string
+   * the coercion will read, and a row costs no allocation once the buffers have
+   * grown. The fields cannot be views into the chunk instead -- the coercions
+   * below read c_str () and the chunk has a delimiter where the NUL would be.
+   *
+   * num_cols <= 0 is refused when the session opens, so index 0 exists. */
+  if ((int) field_storage.size () < ncols)
+    {
+      field_storage.resize (ncols);
+      quoted.resize (ncols);
+    }
+
+  int nfields = 0;
+  bool too_many_fields = false;
   bool cur_quoted = false;
+
+  field_storage[0].clear ();
   in_quotes = false;
   for (int p = 0; p < content_end; p++)
     {
@@ -239,7 +254,7 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_C
 	    {
 	      if (p + 1 < content_end && buf[p + 1] == quote)
 		{
-		  cur.push_back (quote);
+		  field_storage[nfields].push_back (quote);
 		  p++;
 		}
 	      else
@@ -249,7 +264,7 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_C
 	    }
 	  else
 	    {
-	      cur.push_back (c);
+	      field_storage[nfields].push_back (c);
 	    }
 	}
       else
@@ -261,21 +276,30 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_C
 	    }
 	  else if (c == delimiter)
 	    {
-	      field_storage.push_back (cur);
-	      quoted.push_back (cur_quoted ? 1 : 0);
-	      cur.clear ();
+	      quoted[nfields] = cur_quoted ? 1 : 0;
+	      nfields++;
+	      if (nfields >= ncols)
+		{
+		  too_many_fields = true;	/* a delimiter past the last column */
+		  break;
+		}
+	      field_storage[nfields].clear ();
 	      cur_quoted = false;
 	    }
 	  else
 	    {
-	      cur.push_back (c);
+	      field_storage[nfields].push_back (c);
 	    }
 	}
     }
-  field_storage.push_back (cur);
-  quoted.push_back (cur_quoted ? 1 : 0);
 
-  if ((int) field_storage.size () != ncols)
+  if (!too_many_fields)
+    {
+      quoted[nfields] = cur_quoted ? 1 : 0;
+      nfields++;
+    }
+
+  if (too_many_fields || nfields != ncols)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, "field count mismatch");
       return ER_COPY_CSV_FORMAT_ERROR;
