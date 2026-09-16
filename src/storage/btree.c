@@ -10115,6 +10115,8 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
 {
   const BTREE_CAPACITY_SCAN_CTX *ctx = arg->ctx;
   BTREE_STATS_ENV env;
+  bool first_failure;
+  int scan_error;
   int i;
 
   /* inherit the caller's transaction/connection context */
@@ -10151,10 +10153,9 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
       child_page = pgbuf_fix (&thread_ref, &ctx->children[i], OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (child_page == NULL)
 	{
-	  arg->fail_errid->store (er_errid (), std::memory_order_relaxed);
-	  arg->failed->store (true, std::memory_order_relaxed);
-	  er_clear ();
-	  break;
+	  /* pgbuf_fix signals by NULL, so the code has to come from the error stack */
+	  scan_error = er_errid ();
+	  goto worker_failed;
 	}
 
 #if !defined (NDEBUG)
@@ -10162,17 +10163,26 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
 #endif /* !NDEBUG */
 
       /* btree_get_subtree_capacity memsets child_cpc on entry */
-      if (btree_get_subtree_capacity (&thread_ref, child_page, &child_cpc, &env) != NO_ERROR)
+      scan_error = btree_get_subtree_capacity (&thread_ref, child_page, &child_cpc, &env);
+      if (scan_error != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init (&thread_ref, child_page);
-	  arg->fail_errid->store (er_errid (), std::memory_order_relaxed);
-	  arg->failed->store (true, std::memory_order_relaxed);
-	  er_clear ();
-	  break;
+	  goto worker_failed;
 	}
       pgbuf_unfix_and_init (&thread_ref, child_page);
 
       btree_capacity_accum_fold (arg->accum, &child_cpc);
+      continue;			/* next child; do not fall into worker_failed */
+
+    worker_failed:
+      /* first error wins: a later failure must not overwrite the root cause, e.g. ER_INTERRUPTED */
+      first_failure = false;
+      if (arg->failed->compare_exchange_strong (first_failure, true, std::memory_order_relaxed))
+	{
+	  arg->fail_errid->store (scan_error, std::memory_order_relaxed);
+	}
+      er_clear ();
+      break;
     }
 
   btree_scan_clear_key (&env.btree_scan);
