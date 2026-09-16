@@ -2276,6 +2276,8 @@ db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **hist
  *   (db_get_histogram_committed ()) and DECACHED right after, because both probes of a gated
  *   UPDATE STATISTICS run inside one statement: the workspace would otherwise answer the second
  *   probe from the copy cached by the first (same snapshot version) and never see the rebuild.
+ *   A row this transaction has itself modified and not yet flushed (dirty) is neither decached nor
+ *   counted -- it is reported as HIST_GEN_NO_ROW, which disables the piggyback for this statement.
  */
 int
 stats_get_histogram_generation (MOP classop, int **out_generation, int *out_count)
@@ -2351,6 +2353,15 @@ stats_get_histogram_generation (MOP classop, int **out_generation, int *out_coun
       if (histogram_obj == NULL)
 	{
 	  continue;		/* HIST_GEN_NO_ROW */
+	}
+
+      if (ws_is_dirty (histogram_obj))
+	{
+	  /* this transaction itself has modified (or created) the row and not flushed it yet -- e.g. an
+	   * earlier UPDATE STATISTICS or DROP HISTOGRAM in the same transaction. Its committed version is not
+	   * what the caller would piggyback on, and a dirty object must never be decached (its pending
+	   * write would be lost). Report "no usable row": the caller then collects. */
+	  continue;
 	}
 
       (void) ws_find (histogram_obj, &histogram_instance);
