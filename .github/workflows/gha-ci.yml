@@ -508,13 +508,14 @@ jobs:
           while IFS=$'\t' read -r c p t; do parent[$c]="$p"; title[$c]="$t"; done < /tmp/window.tsv
           echo "window: $(wc -l < /tmp/window.tsv) commits on $BRANCH since $since"
 
-          # A pending does not count; that commit still has no verdict.
+          # pending and error are what a run that never judged this commit leaves
+          # behind, so the batch takes it again.
           covered() {
             local body missing
             body=$(gh api "repos/${REPO}/commits/$1/status") || {
               echo "::error::could not read the statuses of $1"; exit 1; }
             missing=$(jq -r --argjson want "$want_ctx" \
-                '[.statuses[] | select(.state != "pending") | .context] as $done
+                '[.statuses[] | select(.state == "success" or .state == "failure") | .context] as $done
                  | ($want - $done) | join(", ")' <<<"$body")
             [ -z "$missing" ]
           }
@@ -2909,7 +2910,10 @@ jobs:
             pass) state=success; desc="$SUITE suite passed" ;;
             fail) state=failure; desc="$SUITE suite failed -- see the run" ;;
             *)
-              state=failure
+              # error, not failure: collect reached no verdict for this suite, so the
+              # commit has not been judged. The batch takes such a commit again, and
+              # branch protection refuses an error the way it refuses a failure.
+              state=error
               if [ "$COLLECT" = cancelled ]; then
                 desc="run was superseded or cancelled"
               else
