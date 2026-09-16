@@ -493,7 +493,7 @@ done:
 }
 
 int
-copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
+copy_session::finish (THREAD_ENTRY *thread_p, std::int64_t *count)
 {
   /* CSV has no in-band footer; a final line without a trailing newline is held
    * in m_leftover. Feed a synthetic newline so that last record is decoded and
@@ -515,7 +515,7 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
       return error;
     }
 
-  result->count = m_rows_loaded;
+  *count = m_rows_loaded;
   return NO_ERROR;
 }
 
