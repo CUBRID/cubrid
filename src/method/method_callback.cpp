@@ -136,11 +136,11 @@ namespace cubmethod
       case METHOD_CALLBACK_GET_CODE_BY_NAME:
 	error = get_code_by_name (unpacker);
 	break;
-      case METHOD_CALLBACK_CHANGE_RIGHTS:
-	error = change_rights (unpacker);
-	break;
       case METHOD_CALLBACK_CHECK_EXECUTE_AUTH:
 	error = check_execute_auth (unpacker);
+	break;
+      case METHOD_CALLBACK_CHANGE_EXEC_RIGHTS:
+	error = change_exec_rights (unpacker);
 	break;
       default:
 	assert (false);
@@ -1299,38 +1299,6 @@ exit:
   }
 
   int
-  callback_handler::change_rights (packing_unpacker &unpacker)
-  {
-    int error = NO_ERROR;
-
-    int command;
-    std::string auth_user_name;
-    unpacker.unpack_int (command);
-
-    if (command == 0) // PUSH
-      {
-	unpacker.unpack_string (auth_user_name);
-	MOP user = au_find_user (auth_user_name.c_str ());
-	if (user == NULL)
-	  {
-	    error = ER_FAILED;
-	  }
-	else
-	  {
-	    au_perform_push_user (user);
-	  }
-      }
-    else // POP
-      {
-	au_perform_pop_user ();
-      }
-
-    // no response
-
-    return error;
-  }
-
-  int
   callback_handler::get_code_by_name (packing_unpacker &unpacker)
   {
     // Look up the object code (ocode) of a stored procedure or package by its generated Java class
@@ -1455,12 +1423,69 @@ exit:
   }
 
   int
+  callback_handler::change_exec_rights (packing_unpacker &unpacker)
+  {
+    // Push/pop the execution rights around a direct call of an external PL/CSQL routine, so that the
+    // callee's body runs with its own owner's rights rather than the caller's. This does the same
+    // callee's body runs with its own owner's rights rather than the caller's. The outcome is
+    // reported back: neither the server nor the PL server may proceed if the switch did not happen.
+    int command;
+    std::string owner_name;
+
+    unpacker.unpack_int (command);
+
+    int error = NO_ERROR;
+
+    if (command == EXEC_RIGHTS_PUSH)
+      {
+	unpacker.unpack_string (owner_name);
+
+	MOP user = au_find_user (owner_name.c_str ());
+	if (user == NULL)
+	  {
+	    error = er_errid ();
+	    if (error == NO_ERROR)
+	      {
+		error = ER_AU_INVALID_USER;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, owner_name.c_str ());
+	      }
+	  }
+	else if (au_perform_push_user (user) != NO_ERROR)
+	  {
+	    error = er_errid ();
+	    if (error == NO_ERROR)
+	      {
+		error = ER_FAILED;
+	      }
+	  }
+      }
+    else if (command == EXEC_RIGHTS_POP)
+      {
+	if (au_perform_pop_user () != NO_ERROR)
+	  {
+	    error = er_errid ();
+	    if (error == NO_ERROR)
+	      {
+		error = ER_FAILED;
+	      }
+	  }
+      }
+    else
+      {
+	error = ER_OBJ_INVALID_ARGUMENTS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      }
+
+    return xs_pack_and_queue (error);
+  }
+
+  int
   callback_handler::check_execute_auth (packing_unpacker &unpacker)
   {
     // Runtime EXECUTE check for a directly-called PL/CSQL routine/package member. This mirrors the
     // compile-time check in get_user_defined_routine_info, re-evaluated here at run time so that a
     // grant revoked after the caller was compiled takes effect. Au_user is the definer (pushed via
-    // METHOD_CALLBACK_CHANGE_RIGHTS), which is the correct principal for a definer's-rights routine.
+    // METHOD_CALLBACK_CHANGE_EXEC_RIGHTS), which is the correct principal for a definer's-rights routine.
     std::string unique_name;
     unpacker.unpack_all (unique_name);
 

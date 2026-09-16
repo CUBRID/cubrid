@@ -75,6 +75,39 @@ public class SpLib {
         }
     }
 
+    // Execution rights around a direct call of an external PL/CSQL routine.
+    //
+    // A routine invoked through the server runs with its own owner's rights. A routine called
+    // directly from generated code would otherwise inherit the caller's, which both breaks
+    // AUTHID OWNER and opens a privilege escalation path in either direction. Generated code
+    // wraps such a call as
+    //
+    //     SpLib.pushExecRights("<owner of the callee>");
+    //     try {
+    //         ... the direct call ...
+    //     } finally {
+    //         SpLib.popExecRights();
+    //     }
+    //
+    // The CAS keeps a stack of users, so these nest correctly with the switch the server already
+    // performs for the routine being invoked.
+    public static void pushExecRights(String ownerName) {
+        try {
+            ClassAccess.pushExecRights(ownerName);
+        } catch (Exception e) {
+            throw new SQL_ERROR("failed to switch the execution rights to " + ownerName);
+        }
+    }
+
+    public static void popExecRights() {
+        try {
+            ClassAccess.popExecRights();
+        } catch (Exception e) {
+            // leaving the switched-in rights in effect would be worse than failing the call
+            throw new SQL_ERROR("failed to restore the execution rights");
+        }
+    }
+
     public static final Date ZERO_DATE = new Date(0 - 1900, 0 - 1, 0);
     public static final Timestamp ZERO_DATETIME = new Timestamp(0 - 1900, 0 - 1, 0, 0, 0, 0, 0);
 

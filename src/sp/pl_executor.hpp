@@ -92,6 +92,8 @@ namespace cubpl
       std::vector <std::reference_wrapper <DB_VALUE>> m_args;
       std::vector <DB_VALUE> m_out_args;
 
+      int m_exec_rights_depth;
+
       // check
       int check_unsupported_dbtype ();
       bool is_supported_dbtype (const DB_VALUE &val);
@@ -107,6 +109,7 @@ namespace cubpl
       int response_result (int code, DB_VALUE &returnval);
       int response_callback_command ();
 
+      int callback_change_exec_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_get_db_parameter (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_prepare (cubthread::entry &thread_ref, packing_unpacker &unpacker);
       int callback_execute (cubthread::entry &thread_ref, packing_unpacker &unpacker);
