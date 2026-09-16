@@ -22,7 +22,7 @@ jobs:
       - name: Validate Command and Base Branch
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.issue.number }}
         run: |
