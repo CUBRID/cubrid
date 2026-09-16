@@ -10538,7 +10538,7 @@ ux_stream_reset (void)
 }
 
 int
-ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
+ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
 
@@ -10548,6 +10548,17 @@ ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
       errors_in_transaction++;
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
+
+      /* The server dropped the session on the failed chunk, so the statement
+       * that opened the stream ends here. Whatever it already flushed is still
+       * in the transaction, so the auto-commit it deferred is paid back as a
+       * rollback -- otherwise the next statement's auto-commit commits it. */
+      if (stream_Deferred_auto_commit)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	  stream_Deferred_auto_commit = false;
+	}
+
       return err_code;
     }
 
@@ -10556,12 +10567,15 @@ ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
 }
 
 int
-ux_stream_end (T_NET_BUF * net_buf, bool * auto_commit)
+ux_stream_end (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
   INT64 count = 0;
+  bool auto_commit_owed;
 
-  *auto_commit = stream_Deferred_auto_commit;
+  /* The statement that opened the stream deferred its auto-commit to here; it
+   * is owed only if that statement ran in auto-commit mode. */
+  auto_commit_owed = stream_Deferred_auto_commit;
   stream_Deferred_auto_commit = false;
 
   err_code = stream_from_end (&count);
@@ -10570,7 +10584,18 @@ ux_stream_end (T_NET_BUF * net_buf, bool * auto_commit)
       errors_in_transaction++;
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
+
+      if (auto_commit_owed)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	}
+
       return err_code;
+    }
+
+  if (auto_commit_owed)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   /* first field is the result code, as every other CAS reply has it; the
