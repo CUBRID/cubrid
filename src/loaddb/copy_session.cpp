@@ -527,6 +527,18 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
 	}
     }
 
+  /* Bytes still carried here are the front of a row whose rest never arrived:
+   * an encoder that died part-way, or a connection cut mid-row. Reporting the
+   * rows that did land would call a truncated load a success. For CSV the
+   * newline above has already completed a final line that simply lacked one, so
+   * anything left after it is genuinely unfinished. */
+  if (!m_leftover.empty ())
+    {
+      int format_error = (m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR : ER_COPY_BINARY_FORMAT_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, format_error, 1, "the stream ended in the middle of a row");
+      return format_error;
+    }
+
   /* flush any rows still queued from the last (sub-threshold) batch */
   int error = flush_batch (thread_p);
   if (error != NO_ERROR)
