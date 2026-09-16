@@ -12,7 +12,7 @@
 #   - TC PR state is MERGED or CLOSED    →  pass
 #
 # Fail condition:
-#   - TC PR is OPEN (including draft)    →  fail  (merge blocked)
+#   - TC PR is OPEN and ready for review →  fail  (merge blocked)
 #
 # After TC PRs are merged/closed, re-run this check via:
 #   GitHub Actions UI → "Re-run failed jobs"
@@ -94,11 +94,14 @@ jobs:
             else
               IS_DRAFT=$(echo "${OPEN_PR}" | jq -r '.isDraft')
               URL=$(echo "${OPEN_PR}" | jq -r '.url')
-              STATE_DISPLAY=$( [ "${IS_DRAFT}" == "true" ] && echo "open (draft)" || echo "open" )
-
-              echo "::error::${TC_REPO}: TC PR is ${STATE_DISPLAY}: ${URL}"
-              TC_TEXT_BLOCK+="- ❌ **${TC_REPO}**: TC PR [\`${BRANCH_NAME}\`](${URL}) is ${STATE_DISPLAY} — must be merged or closed first"$'\n'
-              OVERALL_PASS=false
+              if [ "${IS_DRAFT}" == "true" ]; then
+                echo "::notice::${TC_REPO}: TC PR is open (draft): ${URL} — pass"
+                TC_TEXT_BLOCK+="- ✅ **${TC_REPO}**: TC PR [\`${BRANCH_NAME}\`](${URL}) is open (draft) (non-blocking)"$'\n'
+              else
+                echo "::error::${TC_REPO}: TC PR is open: ${URL}"
+                TC_TEXT_BLOCK+="- ❌ **${TC_REPO}**: TC PR [\`${BRANCH_NAME}\`](${URL}) is open — must be merged or closed first"$'\n'
+                OVERALL_PASS=false
+              fi
             fi
           done
 
@@ -106,7 +109,7 @@ jobs:
             COMMENT_BODY=$(cat <<EOF
           ## ❌ TC Merge Gate — Merge Blocked
 
-          One or more TC PRs are still open. Please merge or close them before merging this PR.
+          One or more non-draft TC PRs are still open. Please merge or close them before merging this PR.
 
           **TC Repositories & Branches:**
           ${TC_TEXT_BLOCK}
@@ -142,7 +145,7 @@ jobs:
           } || echo "::warning::Failed to post PR comment — check result is unaffected"
 
           if [ "${OVERALL_PASS}" == "false" ]; then
-            echo "TC Merge Gate FAILED: One or more TC PRs are still open."
+            echo "TC Merge Gate FAILED: One or more non-draft TC PRs are still open."
             exit 1
           fi
 
