@@ -194,12 +194,10 @@ flashback_reset ()
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
-  /* CBRD-27437: flashback_Current_conn is only assigned once flashback processing
-   * for this connection has actually started (see flashback_initialize()). A
-   * request that fails before that point (e.g. FLASHBACK_GET_LOGINFO sent without
-   * a preceding FLASHBACK_GET_SUMMARY, or a request rejected by a bounds/parameter
-   * check) still routes through this shared reset on its error path, so guard
-   * against a NULL flashback_Current_conn here rather than crashing. */
+  /* flashback_Current_conn is only set once flashback_initialize() has run;
+   * a request that fails before that (e.g. GET_LOGINFO with no preceding
+   * GET_SUMMARY) still routes through this shared reset, so guard against
+   * NULL here rather than crashing. */
   if (flashback_Current_conn != NULL)
     {
       flashback_Current_conn->in_flashback = false;
@@ -209,20 +207,15 @@ flashback_reset ()
 
 /*
  * flashback_reset_if_owner - reset flashback global state, but only if the
- *                            calling connection is the one it currently
- *                            belongs to
+ *                            calling connection is the current owner
  *
- * A handler-side error path can reach the shared cleanup without this
- * connection ever having become the flashback owner (e.g. a bounds-check
- * failure ahead of flashback_initialize(), or GET_LOGINFO sent without a
- * preceding GET_SUMMARY). flashback_reset() itself has no notion of "whose"
- * state it is clearing, so calling it unconditionally from such a path would
- * silently tear down a different, unrelated connection's in-progress
- * flashback session. Handler error paths must call this instead of
- * flashback_reset() directly; flashback_initialize()'s own stale-entry
- * takeover keeps calling flashback_reset() unconditionally, since that path
- * has already established (via flashback_is_in_progress()) that the entry it
- * is clearing is abandoned, not a live foreign session.
+ * A handler error path can reach the shared cleanup without this connection
+ * ever having become the owner (e.g. GET_LOGINFO with no preceding
+ * GET_SUMMARY) -- flashback_reset() itself doesn't check, so calling it
+ * unconditionally there would tear down an unrelated connection's live
+ * session. Handler error paths use this instead; flashback_initialize()'s
+ * own stale-entry takeover still calls flashback_reset() directly, since it
+ * already confirmed (via flashback_is_in_progress()) the entry is abandoned.
  */
 void
 flashback_reset_if_owner (THREAD_ENTRY * thread_p)
