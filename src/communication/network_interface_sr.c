@@ -10805,55 +10805,10 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
-   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
-   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
-   * so that a restarted client can reconnect. */
-  if (cdc_Gl.conn.fd != -1)
-    {
-      SOCKET prev_fd = cdc_Gl.conn.fd;
-      int prev_client_id = cdc_Gl.conn.client_id;
-
-      if (thread_p->conn_entry->fd != prev_fd)
-	{
-	  /* A new client is requesting a session while the previous one still holds the CDC connection.
-	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
-	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
-
-	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
-	    {
-	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
-	      assert (r == NO_ERROR);
-
-	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
-		{
-		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
-			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
-		  prev_conn->status = CONN_CLOSING;
-		}
-
-	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
-	      assert (r == NO_ERROR);
-	    }
-	}
-
-      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
-      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
-	{
-	  cdc_pause_producer ();
-	}
-
-      LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
-    }
-
-  /* CBRD-27436: cdc_Gl.conn is not just bookkeeping -- cdc_check_session_owner()
-   * authorizes every other CDC opcode by comparing its caller against this field.
-   * Setting it here, before the rest of this request is even parsed, would let a
-   * caller who passed the DBA check above but then fails later (an allocation
-   * failure here, or a malformed count/string CBRD-27437 rejects) still end up
-   * recorded as the session owner on the error path below, which never restores
-   * it. The assignment is deferred to just before the success reply, once this
-   * session is actually fully established. */
+  /* CBRD-27436: this request is not yet fully validated, so nothing below may
+   * have an irreversible effect on any *other* connection's state yet -- see
+   * the incumbent-session takeover, deferred to just before the success
+   * reply below, for why. */
   ptr = or_unpack_int (ptr, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
   ptr = or_unpack_int (ptr, &all_in_cond);
@@ -10914,9 +10869,52 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  /* This request is now fully validated and configured; only now does the
-   * caller actually become the CDC session owner (see the comment above the
-   * incumbent-session teardown block for why this is deferred this far). */
+  /* This request is now fully validated and configured. Only now -- not
+   * before parsing, as this used to -- do the irreversible effects on any
+   * *other* connection's state happen: forcibly closing an incumbent CDC
+   * session and taking over cdc_Gl.conn (which cdc_check_session_owner()
+   * uses to authorize every other CDC opcode). A request that fails
+   * anywhere above (an allocation failure, or a bounds/alignment check
+   * CBRD-27437 adds to this same function) must not have killed a running
+   * consumer for nothing, nor left its own failed caller recorded as the
+   * session owner on the error path below, which never restores this. */
+  if (cdc_Gl.conn.fd != -1)
+    {
+      SOCKET prev_fd = cdc_Gl.conn.fd;
+      int prev_client_id = cdc_Gl.conn.client_id;
+
+      if (thread_p->conn_entry->fd != prev_fd)
+	{
+	  /* A new client is requesting a session while the previous one still holds the CDC connection.
+	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
+	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
+
+	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
+	    {
+	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+
+	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
+		{
+		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
+			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
+		  prev_conn->status = CONN_CLOSING;
+		}
+
+	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+	    }
+	}
+
+      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
+      LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
+    }
+
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
   cdc_Gl.conn.status = thread_p->conn_entry->status;
   cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
