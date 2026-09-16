@@ -57,6 +57,11 @@
 
 #define EXPR_MAX_STEPS 128	/* a list needing more is left to the interpreted path */
 
+/* how often the value in a cell can change (EXPR_BUILD_CTX.cell_fixed) */
+#define EXPR_CELL_ROW 0		/* per row */
+#define EXPR_CELL_LITERAL 1	/* never: a literal or computed from literals only */
+#define EXPR_CELL_EXEC 2	/* between executions: a host variable is involved */
+
 #define EXPR_CACHE_LINE 64
 
 /* argument cells are carried 1-BASED through the build phase (0 must stay
@@ -68,6 +73,9 @@
  * on V_ERROR, comparison terms yield V_UNKNOWN when either side is NULL */
 enum expr_pred_kind
 { EXPR_PRED_COMP, EXPR_PRED_COMP_TORDER, EXPR_PRED_AND, EXPR_PRED_OR, EXPR_PRED_NOT, EXPR_PRED_ISNULL,
+  /* a chain of one connective flattened into one node (scan filters): kids[] in evaluation
+   * order, one loop instead of a recursive descent per row */
+  EXPR_PRED_AND_N, EXPR_PRED_OR_N,
   EXPR_PRED_LIKE, EXPR_PRED_COMP_FETCH, EXPR_PRED_INTERP, EXPR_PRED_INTERP_COMP0
 };
 
@@ -89,6 +97,8 @@ struct expr_pred
 
   EXPR_PRED *lhs;		/* and/or/not */
   EXPR_PRED *rhs;		/* and/or */
+  EXPR_PRED **kids;		/* and_n/or_n: the flattened operands, in evaluation order */
+  int n_kids;
 
   DB_VALUE **arg1p;		/* comp/isnull/like operand cells (1-based indexes until materialized) */
   DB_VALUE **arg2p;
@@ -159,6 +169,13 @@ struct expr_build_ctx
   /* step reads only host variables (publish or coerce); hoisted to run once per
    * execution (see expr_prog.n_exec_prologue) */
   bool step_exec_prologue[EXPR_MAX_STEPS];
+
+  /* How often can the value in a cell change?  A literal never does, a host variable only
+   * between executions, everything else per row.  A computing step whose inputs are all
+   * fixed produces a fixed value itself, so the class is derived bottom-up as the tree is
+   * compiled (expr_step_hoist ()): that is what lets "? * 2" or "1 + 2" run once instead
+   * of once per row, where before only the leaf publish and its coercion were hoisted. */
+  signed char cell_fixed[EXPR_MAX_STEPS];
 
   int in_branch;		/* > 0 while compiling a CASE branch: emitted steps run only when the branch is taken,
 				 * prologue hoisting is off, and nested CASE nodes are rejected */
@@ -915,6 +932,39 @@ expr_pred_cmp_leaf (DB_TYPE fast_type, REL_OP rel_op)
   return expr_pred_generic_cmp;
 }
 
+typedef struct expr_eval_ctx EXPR_EVAL_CTX;
+static DB_LOGICAL expr_scan_pred_eval_node (EXPR_PRED * pred, EXPR_EVAL_CTX * ctx);
+static DB_LOGICAL expr_pred_eval (const EXPR_PRED * pred);
+
+/* One flattened AND / OR chain for the current row: the operands in order, leaving at the
+ * first V_FALSE (AND) or V_TRUE (OR) and at the first V_ERROR, exactly where the recursive
+ * evaluation of the nested pairs would have stopped -- the interpreter evaluates
+ * "(a AND b) AND c" and "a AND (b AND c)" both as a, b, c.  What the chain saves is the
+ * descent: one call and one kind switch per operand instead of per nesting level.  ctx is
+ * NULL for a value predicate (CASE), set for a scan filter. */
+static DB_LOGICAL
+expr_pred_eval_chain (const EXPR_PRED * pred, EXPR_EVAL_CTX * ctx, bool is_and)
+{
+  DB_LOGICAL acc = is_and ? V_TRUE : V_FALSE;
+  DB_LOGICAL exit_on = is_and ? V_FALSE : V_TRUE;
+  int i;
+
+  for (i = 0; i < pred->n_kids; i++)
+    {
+      DB_LOGICAL r = (ctx != NULL) ? expr_scan_pred_eval_node (pred->kids[i], ctx) : expr_pred_eval (pred->kids[i]);
+
+      if (r == exit_on || r == V_ERROR)
+	{
+	  return r;
+	}
+      if (r == V_UNKNOWN)
+	{
+	  acc = V_UNKNOWN;
+	}
+    }
+  return acc;
+}
+
 static DB_LOGICAL
 expr_pred_eval (const EXPR_PRED * pred)
 {
@@ -1046,6 +1096,11 @@ expr_pred_eval (const EXPR_PRED * pred)
 	}
       return (r1 == V_UNKNOWN || r2 == V_UNKNOWN) ? V_UNKNOWN : V_FALSE;
 
+    case EXPR_PRED_AND_N:
+      return expr_pred_eval_chain (pred, NULL, true);
+    case EXPR_PRED_OR_N:
+      return expr_pred_eval_chain (pred, NULL, false);
+
     case EXPR_PRED_NOT:
       /* mirror of eval_negative () */
       r1 = expr_pred_eval (pred->lhs);
@@ -1073,6 +1128,16 @@ expr_pred_free (EXPR_PRED * pred)
     }
   expr_pred_free (pred->lhs);
   expr_pred_free (pred->rhs);
+  if (pred->kids != NULL)
+    {
+      int i;
+
+      for (i = 0; i < pred->n_kids; i++)
+	{
+	  expr_pred_free (pred->kids[i]);
+	}
+      free_and_init (pred->kids);
+    }
   if (pred->rhs_pinned)
     {
       pr_clear_value (&pred->pinned_rhs);
@@ -1441,7 +1506,49 @@ expr_new_cell (EXPR_BUILD_CTX * bctx, DB_VALUE * stable_addr)
     }
   bctx->cells[bctx->n_cells] = stable_addr;	/* NULL when a step will publish it */
   bctx->cell_is_slot[bctx->n_cells] = (stable_addr == NULL);
+  bctx->cell_fixed[bctx->n_cells] = EXPR_CELL_ROW;
   return bctx->n_cells++;
+}
+
+/* Hoisting class of a step from the classes of its input cells (a missing input counts as
+ * fixed): fixed for the program's lifetime when every input is a literal or was itself
+ * derived from literals only, fixed per execution when a host variable is involved, per
+ * row otherwise.  Mirrors the once-eval lattice of a register machine: constants seed it
+ * and an operation is hoistable exactly when all its operands are. */
+static int
+expr_cells_fixed_class (const EXPR_BUILD_CTX * bctx, int c1, int c2)
+{
+  int f1 = (c1 >= 0) ? bctx->cell_fixed[c1] : EXPR_CELL_LITERAL;
+  int f2 = (c2 >= 0) ? bctx->cell_fixed[c2] : EXPR_CELL_LITERAL;
+
+  if (f1 == EXPR_CELL_ROW || f2 == EXPR_CELL_ROW)
+    {
+      return EXPR_CELL_ROW;
+    }
+  return (f1 == EXPR_CELL_EXEC || f2 == EXPR_CELL_EXEC) ? EXPR_CELL_EXEC : EXPR_CELL_LITERAL;
+}
+
+/* Decide whether the step just emitted for cell runs once (literal prologue), once per
+ * execution (host-variable prologue) or per row, and record the class on its cell for the
+ * steps built on top of it.  Never inside a CASE branch (a branch's steps are a region the
+ * branch jump skips).  A step that can fail is hoisted only from the main loop, not from a
+ * guarded right-hand side: the interpreter reaches such a side only for the rows whose left
+ * operand is not NULL, so computing it unconditionally could raise an error it never would
+ * have (1 / ? for a NULL divisor is skipped by "a + 1 / ?" when a is NULL).  A step that
+ * cannot fail is hoisted from anywhere but a branch, as the leaf coercions were before. */
+static void
+expr_step_hoist (EXPR_BUILD_CTX * bctx, EXPR_STEP * step, int cell, int c1, int c2, bool fallible)
+{
+  int cls = EXPR_CELL_ROW;
+  int idx = (int) (step - bctx->steps);
+
+  if (bctx->in_branch == 0 && (!fallible || bctx->cur_guard == 0))
+    {
+      cls = expr_cells_fixed_class (bctx, c1, c2);
+    }
+  bctx->step_prologue[idx] = (cls == EXPR_CELL_LITERAL);
+  bctx->step_exec_prologue[idx] = (cls == EXPR_CELL_EXEC);
+  bctx->cell_fixed[cell] = (signed char) cls;
 }
 
 static EXPR_STEP *
@@ -2263,10 +2370,81 @@ expr_scan_side_compile (EXPR_BUILD_CTX * bctx, EXPR_PRED * pred, REGU_VARIABLE *
  * comparison leaf have then run for that row and their compiled values are current when
  * the node's projection or aggregates look at the row.  Under an OR the term may have been
  * skipped for an accepted row, so nothing below it is offered for sharing. */
+static EXPR_PRED *expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, int depth_limit,
+					bool shareable);
+
+/* the operands of a chain of one connective, left to right -- the order eval_pred () visits
+ * them whichever way the parser nested the pairs; -1 when the chain is longer than cap */
+static int
+expr_scan_pred_chain_collect (const PRED_EXPR * pr, BOOL_OP op, const PRED_EXPR ** out, int n, int cap)
+{
+  if (pr->type == T_PRED && pr->pe.m_pred.bool_op == op)
+    {
+      n = expr_scan_pred_chain_collect (pr->pe.m_pred.lhs, op, out, n, cap);
+      if (n < 0)
+	{
+	  return -1;
+	}
+      return expr_scan_pred_chain_collect (pr->pe.m_pred.rhs, op, out, n, cap);
+    }
+  if (n >= cap)
+    {
+      return -1;
+    }
+  out[n] = pr;
+  return n + 1;
+}
+
+/* A chain of ANDs (or ORs) becomes ONE node holding every operand: the per-row evaluation
+ * is a loop over kids[] (expr_pred_eval_chain ()) instead of a descent through the nested
+ * pairs the plan carries.  Short-circuit points and evaluation order are those of the
+ * nested form, so what a qualifying row is guaranteed to have evaluated -- every operand of
+ * an AND chain -- is unchanged, and so is the share registry built from it.  A chain longer
+ * than EXPR_MAX_STEPS operands stays interpreted, as a tree deeper than depth_limit does. */
+static EXPR_PRED *
+expr_scan_pred_build_chain (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, int depth_limit, bool shareable)
+{
+  const PRED_EXPR *terms[EXPR_MAX_STEPS];
+  BOOL_OP op = pr->pe.m_pred.bool_op;
+  EXPR_PRED *pred;
+  int n, i;
+
+  n = expr_scan_pred_chain_collect (pr, op, terms, 0, EXPR_MAX_STEPS);
+  if (n < 2)
+    {
+      return NULL;
+    }
+  pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
+  if (pred == NULL)
+    {
+      return NULL;
+    }
+  memset (pred, 0, sizeof (*pred));
+  pred->kind = (op == B_AND) ? EXPR_PRED_AND_N : EXPR_PRED_OR_N;
+  pred->kids = (EXPR_PRED **) malloc (sizeof (EXPR_PRED *) * n);
+  if (pred->kids == NULL)
+    {
+      free_and_init (pred);
+      return NULL;
+    }
+  memset (pred->kids, 0, sizeof (EXPR_PRED *) * n);
+  pred->n_kids = n;		/* set first, so a partial build frees what it made */
+  for (i = 0; i < n; i++)
+    {
+      pred->kids[i] = expr_scan_pred_build (bctx, terms[i], depth + 1, depth_limit, shareable && op == B_AND);
+      if (pred->kids[i] == NULL)
+	{
+	  expr_pred_free (pred);
+	  return NULL;
+	}
+    }
+  return pred;
+}
+
 static EXPR_PRED *
 expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, int depth_limit, bool shareable)
 {
-  EXPR_PRED *pred = NULL, *lhs = NULL, *rhs = NULL;
+  EXPR_PRED *pred = NULL, *lhs = NULL;
 
   if (pr == NULL || depth >= depth_limit)
     {
@@ -2280,31 +2458,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	{
 	  return expr_scan_pred_interp_leaf (pr, false);
 	}
-      lhs = expr_scan_pred_build (bctx, pr->pe.m_pred.lhs, depth + 1, depth_limit,
-				  shareable && pr->pe.m_pred.bool_op == B_AND);
-      if (lhs == NULL)
-	{
-	  return NULL;
-	}
-      rhs = expr_scan_pred_build (bctx, pr->pe.m_pred.rhs, depth + 1, depth_limit,
-				  shareable && pr->pe.m_pred.bool_op == B_AND);
-      if (rhs == NULL)
-	{
-	  expr_pred_free (lhs);
-	  return NULL;
-	}
-      pred = (EXPR_PRED *) malloc (sizeof (EXPR_PRED));
-      if (pred == NULL)
-	{
-	  expr_pred_free (lhs);
-	  expr_pred_free (rhs);
-	  return NULL;
-	}
-      memset (pred, 0, sizeof (*pred));
-      pred->kind = (pr->pe.m_pred.bool_op == B_AND) ? EXPR_PRED_AND : EXPR_PRED_OR;
-      pred->lhs = lhs;
-      pred->rhs = rhs;
-      return pred;
+      return expr_scan_pred_build_chain (bctx, pr, depth, depth_limit, shareable);
 
     case T_NOT_TERM:
       lhs = expr_scan_pred_build (bctx, pr->pe.m_not_term, depth + 1, depth_limit, shareable);
@@ -2478,6 +2632,16 @@ expr_scan_pred_fetch_leaves (const EXPR_PRED * pred)
     {
       return 1;
     }
+  if (pred->kids != NULL)
+    {
+      int i, n = 0;
+
+      for (i = 0; i < pred->n_kids; i++)
+	{
+	  n += expr_scan_pred_fetch_leaves (pred->kids[i]);
+	}
+      return n;
+    }
   return expr_scan_pred_fetch_leaves (pred->lhs) + expr_scan_pred_fetch_leaves (pred->rhs);
 }
 
@@ -2492,6 +2656,19 @@ expr_scan_pred_has_compiled_side (const EXPR_PRED * pred)
   if (pred->kind == EXPR_PRED_COMP_FETCH && (pred->lhs_compiled || pred->rhs_compiled))
     {
       return true;
+    }
+  if (pred->kids != NULL)
+    {
+      int i;
+
+      for (i = 0; i < pred->n_kids; i++)
+	{
+	  if (expr_scan_pred_has_compiled_side (pred->kids[i]))
+	    {
+	      return true;
+	    }
+	}
+      return false;
     }
   return expr_scan_pred_has_compiled_side (pred->lhs) || expr_scan_pred_has_compiled_side (pred->rhs);
 }
@@ -2714,6 +2891,11 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, EXPR_EVAL_CTX * ctx)
 	  return r2;
 	}
       return (r1 == V_UNKNOWN || r2 == V_UNKNOWN) ? V_UNKNOWN : V_FALSE;
+
+    case EXPR_PRED_AND_N:
+      return expr_pred_eval_chain (pred, ctx, true);
+    case EXPR_PRED_OR_N:
+      return expr_pred_eval_chain (pred, ctx, false);
 
     case EXPR_PRED_NOT:
       /* mirror of eval_negative () */
@@ -3201,6 +3383,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    cell = expr_new_cell (bctx, &regu->value.dbval);
 	    if (cell >= 0)
 	      {
+		bctx->cell_fixed[cell] = EXPR_CELL_LITERAL;
 		expr_cse_add (bctx, &regu->value.dbval, -1, -1, -1, -1, cell, 0);
 		if (shareable)
 		  {
@@ -3241,6 +3424,9 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	/* the bound value array is fixed for a whole execution: publish once per
 	 * execution, not per row */
 	bctx->step_exec_prologue[step - bctx->steps] = (bctx->in_branch == 0);
+	/* inside a branch the publish is a row step of that branch: a consumer must not be
+	 * hoisted above it */
+	bctx->cell_fixed[cell] = (bctx->in_branch == 0) ? EXPR_CELL_EXEC : EXPR_CELL_ROW;
 	return cell;
       }
 
@@ -3556,6 +3742,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    bctx->n_slots++;
 	    step->aux = (int) arith->misc_operand;
 	    step->regu = regu;
+	    expr_step_hoist (bctx, step, cell, c1, -1, false);	/* extract (year from ?) */
 	    expr_cse_add (bctx, NULL, T_EXTRACT, c1, (int) arith->misc_operand, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
@@ -3655,6 +3842,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    step->regu = regu;
 	    step->out = (DB_VALUE *) 1;	/* needs an owned slot; materialized later */
 	    bctx->n_slots++;
+	    expr_step_hoist (bctx, step, cell, c1, -1, true);	/* cast (? as int), cast ('1' as int) */
 	    expr_cse_add (bctx, regu->domain, T_CAST, c1, -1, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
@@ -3719,12 +3907,9 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      step->arg1p = EXPR_ARG_ENCODE (c1);
 	      step->out = (DB_VALUE *) 1;
 	      bctx->n_slots++;
-	      /* an inline literal never changes: coerce it once, not per row (a
-	       * TYPE_CONSTANT dbvalptr CAN change between rows -- not hoistable); a host
-	       * variable is fixed per execution: coerce it once per execution */
-	      bctx->step_prologue[step - bctx->steps] = (arith->leftptr->type == TYPE_DBVAL && bctx->in_branch == 0);
-	      bctx->step_exec_prologue[step - bctx->steps] =
-		(arith->leftptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
+	      /* coercing cannot fail: run it once when the operand is fixed (a literal, a
+	       * host variable, or anything computed from those alone) */
+	      expr_step_hoist (bctx, step, cell, c1, -1, false);
 	      c1 = cell;
 	    }
 
@@ -3751,10 +3936,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		  step->arg1p = EXPR_ARG_ENCODE (c2);
 		  step->out = (DB_VALUE *) 1;
 		  bctx->n_slots++;
-		  bctx->step_prologue[step - bctx->steps] =
-		    (arith->rightptr->type == TYPE_DBVAL && bctx->in_branch == 0);
-		  bctx->step_exec_prologue[step - bctx->steps] =
-		    (arith->rightptr->type == TYPE_POS_VALUE && bctx->in_branch == 0);
+		  expr_step_hoist (bctx, step, cell, c2, -1, false);
 		  c2 = cell;
 		}
 	    }
@@ -3799,6 +3981,13 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  step->regu = regu;
 	  step->out = (DB_VALUE *) 1;	/* owned slot */
 	  bctx->n_slots++;
+	  if (!lazy)
+	    {
+	      /* both operands fixed -> the node is: "? * 2", "1 - 0.05".  A lazy node stays in
+	       * the row loop: its NULL check is a row step aliased to this slot, and the right
+	       * side it skips must not be computed unconditionally. */
+	      expr_step_hoist (bctx, step, cell, c1, c2, true);
+	    }
 	  if (lazy)
 	    {
 	      /* fetch_peek_arith () fetches the right operand only for a non-NULL left one: the
@@ -3857,6 +4046,15 @@ expr_pred_materialize (EXPR_PRED * pred, EXPR_PROG * prog, const int *remap)
     }
   expr_pred_materialize (pred->lhs, prog, remap);
   expr_pred_materialize (pred->rhs, prog, remap);
+  if (pred->kids != NULL)
+    {
+      int i;
+
+      for (i = 0; i < pred->n_kids; i++)
+	{
+	  expr_pred_materialize (pred->kids[i], prog, remap);
+	}
+    }
   if (pred->kind == EXPR_PRED_COMP_FETCH)
     {
       /* a fetched side keeps its holder address; only a compiled side carries an index */
@@ -3939,6 +4137,7 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
   EXPR_PROG *prog;
   int i, slot_next = 0;
   int remap[EXPR_MAX_STEPS];
+  int remap_boundary[EXPR_MAX_STEPS];
 
   prog = (EXPR_PROG *) malloc (sizeof (EXPR_PROG));
   if (prog == NULL)
@@ -4032,8 +4231,26 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	  }
       }
 
-    /* jump targets and slot aliases were build-order indexes; a jump target that was the
-     * end of the build (n_steps) becomes the end of the layout */
+    /* Jump targets and slot aliases were build-order indexes.  An alias names a step and
+     * follows it wherever the layout put it.  A jump target is a BOUNDARY of the row loop --
+     * "continue before the step that was here" -- so when the step that was there has been
+     * hoisted into a prologue, the row continues at the first step at or after that position
+     * that is still in the row loop (or at the end): the remapped index of the hoisted step
+     * itself lies before row_start, and jumping there would run the prologue again and loop
+     * for ever ("a + (? + 1), (? - 1) * n": the lazy node's check jumps to the next root's
+     * first step, the host-variable publish, which is an exec-prologue step). */
+    {
+      int next_row = prog->n_steps;
+
+      for (i = bctx->n_steps - 1; i >= 0; i--)
+	{
+	  if (!bctx->step_prologue[i] && !bctx->step_exec_prologue[i])
+	    {
+	      next_row = remap[i];
+	    }
+	  remap_boundary[i] = next_row;
+	}
+    }
     prog->n_compute = 0;
     for (i = 0; i < prog->n_steps; i++)
       {
@@ -4041,7 +4258,7 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 
 	if (step->jump_to >= 0)
 	  {
-	    step->jump_to = (step->jump_to >= bctx->n_steps) ? prog->n_steps : remap[step->jump_to];
+	    step->jump_to = (step->jump_to >= bctx->n_steps) ? prog->n_steps : remap_boundary[step->jump_to];
 	  }
 	if (step->alias_of >= 0)
 	  {
@@ -4481,6 +4698,23 @@ expr_pred_dump (FILE * fp, const EXPR_PRED * pred, const EXPR_PROG * prog)
       fprintf (fp, " %s ", (pred->kind == EXPR_PRED_AND) ? "AND" : "OR");
       expr_pred_dump (fp, pred->rhs, prog);
       fprintf (fp, ")");
+      break;
+    case EXPR_PRED_AND_N:
+    case EXPR_PRED_OR_N:
+      {
+	int i;
+
+	fprintf (fp, "(");
+	for (i = 0; i < pred->n_kids; i++)
+	  {
+	    if (i > 0)
+	      {
+		fprintf (fp, " %s ", (pred->kind == EXPR_PRED_AND_N) ? "AND" : "OR");
+	      }
+	    expr_pred_dump (fp, pred->kids[i], prog);
+	  }
+	fprintf (fp, ")");
+      }
       break;
     case EXPR_PRED_NOT:
       fprintf (fp, "NOT ");
