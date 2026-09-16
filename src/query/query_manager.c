@@ -1607,8 +1607,12 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      goto end;
 	    }
 
-	  /* the type of the result file should be FILE_QUERY_AREA in order not to deleted at the time of query_end */
-	  if (list_id_p->tfile_vfid != NULL && list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA)
+	  /* Cache entries outlive the query, so the result must be a self-contained FILE_QUERY_AREA. A parallel-scan
+	   * merge leaves a FILE_QUERY_AREA base that still borrows worker FILE_TEMP pages via dependent_list_id
+	   * (qfile_connect_list); those worker files are retired at query end, so flatten whenever the base is not
+	   * FILE_QUERY_AREA or a dependent chain is present. */
+	  if (list_id_p->tfile_vfid != NULL
+	      && (list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA || list_id_p->dependent_list_id != NULL))
 	    {
 	      /* duplicate the list file */
 	      tmp_list_id_p = qfile_duplicate_list (thread_p, list_id_p, QFILE_FLAG_RESULT_FILE);
