@@ -768,7 +768,11 @@ jobs:
 
       # cancel-in-progress makes cancellation a normal exit, so staging survives;
       # one build is 745MB and the cleanup CronJob does not look at this path.
+      #
+      # The globs below reach outside this run, so two matrix legs unlink one tree
+      # at once and leave stale handles that break the node's FUSE client.
       - name: 3b. Sweep what cancelled runs left behind
+        if: matrix.mode == 'release'
         run: |
           set -eo pipefail
           swept=0
