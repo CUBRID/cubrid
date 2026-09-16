@@ -1267,6 +1267,13 @@ end:
 
   if (xasl_buf_info)
     {
+      /* a one-shot XASL (not a cached clone): release what qexec_execute_query () keeps for a
+       * clone's next execution -- the compiled expression programs -- before the tree goes */
+      if (xasl_p != NULL)
+	{
+	  XASL_SET_FLAG (xasl_p, XASL_DECACHE_CLONE);
+	  (void) qexec_clear_xasl (thread_p, xasl_p, true, false);
+	}
       /* free the XASL tree */
       free_xasl_unpack_info (thread_p, xasl_buf_info);
     }

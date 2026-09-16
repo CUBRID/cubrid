@@ -34,6 +34,7 @@
 
 #include "system_parameter.h"
 #include "error_manager.h"
+#include "expr_compile.h"
 #include "fetch.h"
 #include "list_file.h"
 #include "object_domain.h"
@@ -408,6 +409,339 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, char *tuple_val_p, int *
 }
 
 /*
+ * qdata_valptr_prog_compile () - lazily compile a value pointer list's expressions into
+ *				  one program (expr_compile.h)
+ *
+ * Hidden columns are excluded: the consumers below never evaluate them.  Columns whose
+ * fetch semantics depend on runtime regu flags (strict casts of INSERT/UPDATE value
+ * lists, analytic windows) are excluded the same way and keep their per-column
+ * interpreted fetch, as does every column the expression compiler cannot cover purely.
+ * A program that would only repeat leaf fetches (no computing step) is dropped.
+ */
+static void
+qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p)
+{
+  REGU_VARIABLE *roots[128];
+  REGU_VARIABLE_LIST reg_var_p;
+  int *idx = NULL;
+  int n = 0, k;
+  EXPR_PROG *prog;
+
+  if (valptr_list_p->valptr_cnt <= 0 || valptr_list_p->valptr_cnt > (int) DIM (roots))
+    {
+      valptr_list_p->eval_prog_state = 2;
+      return;
+    }
+
+  /* An expression over a host variable has no resolved result domain until the interpreted
+   * path evaluates it once (expr_compile.h).  Leave the state untried so this row runs
+   * interpreted and the next one compiles against the domain the interpreter resolved,
+   * instead of declining the whole list for the execution. */
+  if (valptr_list_p->eval_prog_defer < EXPR_DOMAIN_DEFER_ROWS)
+    {
+      for (reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next)
+	{
+	  if (expr_regu_domain_unresolved (&reg_var_p->value))
+	    {
+	      valptr_list_p->eval_prog_defer++;
+	      return;
+	    }
+	}
+    }
+
+  valptr_list_p->eval_prog_state = 2;	/* disabled unless everything below succeeds */
+
+  for (reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next)
+    {
+      bool excluded = (reg_var_p->value.flags
+		       & (REGU_VARIABLE_HIDDEN_COLUMN | REGU_VARIABLE_UPD_INS_LIST
+			  | REGU_VARIABLE_ANALYTIC_WINDOW)) != 0;
+
+      roots[n++] = excluded ? NULL : &reg_var_p->value;
+    }
+
+  idx = (int *) malloc (sizeof (int) * n);
+  if (idx == NULL)
+    {
+      return;
+    }
+
+  prog = expr_prog_compile_roots (thread_p, roots, n, val_desc_p, false, false, true, idx,
+				  valptr_list_p->eval_prog_share_spec);
+  if (prog == NULL)
+    {
+      free_and_init (idx);
+      return;
+    }
+  if (prog->n_compute == 0 && prog->n_shared == 0)
+    {
+      /* only leaf fetches: the per-column interpreted path does the same work without
+       * the program indirection (a column served from the data filter's slot is a
+       * computed value, even though no step of this program computes it) */
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  /* keep only fully-covered columns on the program path; a column whose root fell out
+   * keeps the interpreted per-column fetch */
+  for (k = 0; k < n; k++)
+    {
+      if (idx[k] >= 0)
+	{
+	  break;
+	}
+    }
+  if (k == n)
+    {
+      expr_prog_free (prog);
+      free_and_init (idx);
+      return;
+    }
+
+  valptr_list_p->eval_prog = prog;
+  valptr_list_p->eval_prog_idx = idx;
+  valptr_list_p->eval_prog_state = 1;
+
+  /* does any covered column carry a domain the plan could not type?  Such a domain is
+   * resolved per execution and restored at every execution end, so the program has to
+   * resolve it from its own result (qdata_valptr_prog_resolve_domains ()). */
+  valptr_list_p->eval_prog_dom_any = false;
+  valptr_list_p->eval_prog_dom_stamp = 0;
+  for (k = 0, reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next, k++)
+    {
+      if (idx[k] >= 0 && reg_var_p->value.original_domain != NULL
+	  && TP_DOMAIN_TYPE (reg_var_p->value.original_domain) == DB_TYPE_VARIABLE)
+	{
+	  valptr_list_p->eval_prog_dom_any = true;
+	  break;
+	}
+    }
+}
+
+/*
+ * qdata_valptr_prog_resolve_domains () - give the columns the plan could not type the
+ *					  domain the interpreted path would have resolved
+ *
+ * The optimizer cannot type an expression over a host variable, so the node's domain stays
+ * DB_TYPE_VARIABLE in the plan.  fetch_peek_arith () resolves it from the node's first
+ * non-NULL result and qexec_clear_regu_var () restores DB_TYPE_VARIABLE when the execution
+ * ends, so the resolution is redone once per execution.  A column served by the program
+ * never reaches fetch_peek_arith (), so the same resolution happens here, from the value
+ * the program just produced, before the consumer copies it into the tuple.  A row whose
+ * value is NULL resolves nothing and leaves the column for the next row, exactly as the
+ * interpreted path does.
+ */
+static void
+qdata_valptr_prog_resolve_domains (valptr_list_node * valptr_list_p, EXPR_PROG * prog, unsigned long long exec_stamp)
+{
+  REGU_VARIABLE_LIST reg_var_p;
+  bool pending = false;
+  int k;
+
+  for (k = 0, reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next, k++)
+    {
+      REGU_VARIABLE *regu = &reg_var_p->value;
+      TP_DOMAIN *resolved;
+      DB_VALUE *val;
+
+      if (valptr_list_p->eval_prog_idx[k] < 0 || regu->original_domain == NULL
+	  || TP_DOMAIN_TYPE (regu->original_domain) != DB_TYPE_VARIABLE
+	  || TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_VARIABLE)
+	{
+	  continue;
+	}
+      val = expr_prog_value (prog, valptr_list_p->eval_prog_idx[k]);
+      resolved = (val != NULL && !DB_IS_NULL (val)) ? tp_domain_resolve_value (val, NULL) : NULL;
+      if (resolved == NULL || TP_DOMAIN_TYPE (resolved) == DB_TYPE_NULL)
+	{
+	  pending = true;
+	  continue;
+	}
+      regu->domain = resolved;
+      if ((regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL)
+	{
+	  regu->value.arithptr->domain = resolved;
+	}
+    }
+
+  if (!pending && exec_stamp != 0)
+    {
+      valptr_list_p->eval_prog_dom_stamp = exec_stamp;
+    }
+}
+
+/*
+ * qdata_valptr_prog_ensure () - the list's active program with this row already
+ *				 evaluated, or NULL to use the interpreted path
+ *
+ * reuse_row: the caller is qdata_copy_valptr_list_to_tuple () taking over a row whose
+ * tuple-descriptor pass just returned QPROC_TPLDESCR_RETRY_*.  That pass already ran the
+ * program for this row (eval_prog_row_ready), so the slots still hold the row's values and
+ * running it again would only repeat the work -- the interpreted path fetches every column
+ * twice on this route, once for the descriptor and once for the copy, because
+ * fetch_peek_arith () keeps no per-row result.  The mark is consumed by whichever
+ * ensure () comes next, so it cannot outlive the row it was set for: a fresh evaluation
+ * always drops it first.
+ */
+static EXPR_PROG *
+qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p,
+			  bool reuse_row, int *error_p)
+{
+  EXPR_PROG *prog = NULL;
+
+  *error_p = NO_ERROR;
+
+  if (valptr_list_p->eval_prog_row_ready)
+    {
+      valptr_list_p->eval_prog_row_ready = false;
+      if (reuse_row)
+	{
+	  return (EXPR_PROG *) valptr_list_p->eval_prog;
+	}
+    }
+
+  if (valptr_list_p->eval_prog_state == 0)
+    {
+      qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
+    }
+  if (valptr_list_p->eval_prog_state == 1)
+    {
+      prog = (EXPR_PROG *) valptr_list_p->eval_prog;
+      if (!expr_prog_signature_ok (prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p))
+	  || !expr_prog_share_current (prog, valptr_list_p->eval_prog_share_spec))
+	{
+	  /* different bind types than the program was specialized for, or the scan filter
+	   * whose slots it reads was recompiled: recompile */
+	  qdata_free_valptr_list_prog (thread_p, valptr_list_p);
+	  valptr_list_p->eval_prog_state = 0;
+	  /* a recompile starts its own deferral budget: the domains this execution resolves
+	   * are the ones the new program must be specialized for */
+	  valptr_list_p->eval_prog_defer = 0;
+	  qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
+	  prog = (valptr_list_p->eval_prog_state == 1) ? (EXPR_PROG *) valptr_list_p->eval_prog : NULL;
+	}
+    }
+
+  if (prog != NULL && expr_prog_eval (prog, thread_p, val_desc_p, NULL, NULL) != NO_ERROR)
+    {
+      *error_p = ER_FAILED;
+      return NULL;
+    }
+  /* a value descriptor without an execution identity cannot be stamped: stay pessimistic
+   * and check the domains on every row */
+  if (prog != NULL && valptr_list_p->eval_prog_dom_any
+      && (EXPR_PROG_EXEC_STAMP (val_desc_p) == 0
+	  || valptr_list_p->eval_prog_dom_stamp != EXPR_PROG_EXEC_STAMP (val_desc_p)))
+    {
+      qdata_valptr_prog_resolve_domains (valptr_list_p, prog, EXPR_PROG_EXEC_STAMP (val_desc_p));
+    }
+  return prog;
+}
+
+/*
+ * qdata_free_valptr_list_prog () - release a value pointer list's compiled program
+ *
+ * Note: the state goes back to 0 (compile on next use).  State 2 is reserved for
+ * "compilation declined" set by the compile step.
+ */
+void
+qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p)
+{
+  if (valptr_list_p == NULL || valptr_list_p->eval_prog == NULL)
+    {
+      return;
+    }
+  expr_prog_free ((EXPR_PROG *) valptr_list_p->eval_prog);
+  valptr_list_p->eval_prog = NULL;
+  free_and_init (valptr_list_p->eval_prog_idx);
+  valptr_list_p->eval_prog_state = 0;
+  valptr_list_p->eval_prog_row_ready = false;
+}
+
+/*
+ * qdata_release_valptr_list_prog () - end of an execution for the list's compiled program
+ *
+ * free_it: the XASL clone is being released (XASL_DECACHE_CLONE): free the program.
+ * Otherwise the program stays with the clone for its next execution and only its slot
+ * values are released (expr_prog_reset ()); the row-ready mark cannot survive the execution.
+ */
+void
+qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool free_it)
+{
+  if (valptr_list_p == NULL || valptr_list_p->eval_prog == NULL)
+    {
+      return;
+    }
+  if (free_it)
+    {
+      qdata_free_valptr_list_prog (thread_p, valptr_list_p);
+      return;
+    }
+  expr_prog_reset ((EXPR_PROG *) valptr_list_p->eval_prog);
+  valptr_list_p->eval_prog_row_ready = false;
+}
+
+/*
+ * qdata_get_dbval_from_prog () - a column's value from the evaluated program, run
+ *				  through the same trailing domain enforcement as
+ *				  qdata_get_dbval_from_constant_regu_variable ()
+ */
+static DB_VALUE *
+qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, EXPR_PROG * prog, int root_idx)
+{
+  DB_VALUE *peek_value_p = expr_prog_value (prog, root_idx);
+  DB_TYPE dom_type, val_type;
+  TP_DOMAIN_STATUS dom_status;
+  HL_HEAPID save_heapid = 0;
+
+  assert (regu_var_p != NULL);
+  assert (regu_var_p->domain != NULL);
+  /* flag-dependent fetch semantics were excluded at compile time */
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_UPD_INS_LIST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW));
+
+  if (!DB_IS_NULL (peek_value_p))
+    {
+      val_type = DB_VALUE_TYPE (peek_value_p);
+      dom_type = TP_DOMAIN_TYPE (regu_var_p->domain);
+
+      if (dom_type != DB_TYPE_NULL)
+	{
+	  if (val_type == DB_TYPE_OID)
+	    {
+	      assert ((dom_type == DB_TYPE_OID) || (dom_type == DB_TYPE_VOBJ));
+	    }
+	  else if (val_type != dom_type
+		   || (val_type == DB_TYPE_NUMERIC
+		       && (peek_value_p->domain.numeric_info.precision != regu_var_p->domain->precision
+			   || peek_value_p->domain.numeric_info.scale != regu_var_p->domain->scale)))
+	    {
+	      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		{
+		  save_heapid = db_change_private_heap (thread_p, 0);
+		}
+
+	      dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+	      if (save_heapid != 0)
+		{
+		  (void) db_change_private_heap (thread_p, save_heapid);
+		}
+	      if (dom_status != DOMAIN_COMPATIBLE)
+		{
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
+		  return NULL;
+		}
+	      assert (dom_type == DB_VALUE_TYPE (peek_value_p)
+		      || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) && DB_IS_NULL (peek_value_p)));
+	    }
+	}
+    }
+
+  return peek_value_p;
+}
+
+/*
  * qdata_copy_valptr_list_to_tuple () -
  *   return: NO_ERROR, or ER_code
  *   valptr_list(in)    : Value pointer list
@@ -428,6 +762,15 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   int k, tval_size, tlen, tpl_size;
   int n_size, toffset;
   int flags;
+  EXPR_PROG *eval_prog;
+  int prog_error;
+
+  /* a QPROC_TPLDESCR_RETRY_* on this same row has already evaluated the program: reuse it */
+  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, true, &prog_error);
+  if (prog_error != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   tpl_size = 0;
   tlen = QFILE_TUPLE_LENGTH_SIZE;
@@ -447,7 +790,14 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 	{
 	  continue;
 	}
-      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+      if (eval_prog != NULL && valptr_list_p->eval_prog_idx[k] >= 0)
+	{
+	  dbval_p = qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[k]);
+	}
+      else
+	{
+	  dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+	}
       if (dbval_p == NULL)
 	{
 	  return ER_FAILED;
@@ -632,6 +982,14 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
   int flags;
   QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
   DB_TYPE dbval_type;
+  EXPR_PROG *eval_prog;
+  int prog_error;
+
+  eval_prog = qdata_valptr_prog_ensure (thread_p, valptr_list_p, val_desc_p, false, &prog_error);
+  if (prog_error != NO_ERROR)
+    {
+      return QPROC_TPLDESCR_FAILURE;
+    }
 
   tuple_desc_p->tpl_size = QFILE_TUPLE_LENGTH_SIZE;	/* set tuple size as header size */
   tuple_desc_p->f_cnt = 0;
@@ -646,8 +1004,16 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
 	{
 	  continue;
 	}
-      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
-	qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+      if (eval_prog != NULL && valptr_list_p->eval_prog_idx[i] >= 0)
+	{
+	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
+	    qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[i]);
+	}
+      else
+	{
+	  tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
+	    qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+	}
 
       if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
 	{
@@ -686,6 +1052,15 @@ qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_
     }
 
 exit_with_status:
+
+  /* A retry sends the caller to qdata_copy_valptr_list_to_tuple () for this same row before
+   * it touches another one (the query_executor.c callers and the parallel result handler
+   * alike), and this pass has already run the program for the row: hand it over instead of
+   * letting that copy evaluate it a second time. */
+  if (eval_prog != NULL && (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
+    {
+      valptr_list_p->eval_prog_row_ready = true;
+    }
 
   return status;
 }
@@ -758,9 +1133,9 @@ qdata_add_int (int i1, int i2, DB_VALUE * result_p)
 {
   int result;
 
-  result = i1 + i2;
-
-  if (OR_CHECK_ADD_OVERFLOW (i1, i2, result))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_ADD_OVERFLOW) */
+  if (OR_ADD_OVERFLOW (i1, i2, &result))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -775,9 +1150,9 @@ qdata_add_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 {
   DB_BIGINT result;
 
-  result = bi1 + bi2;
-
-  if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_ADD_OVERFLOW) */
+  if (OR_ADD_OVERFLOW (bi1, bi2, &result))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -3279,9 +3654,9 @@ qdata_subtract_int (int i1, int i2, DB_VALUE * result_p)
 {
   int itmp;
 
-  itmp = i1 - i2;
-
-  if (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_SUB_OVERFLOW) */
+  if (OR_SUB_OVERFLOW (i1, i2, &itmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;
@@ -3296,9 +3671,9 @@ qdata_subtract_bigint (DB_BIGINT bi1, DB_BIGINT bi2, DB_VALUE * result_p)
 {
   DB_BIGINT bitmp;
 
-  bitmp = bi1 - bi2;
-
-  if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, bitmp))
+  /* the wrapped result is undefined behavior for signed operands: compute and test the
+   * overflow flag together so the optimizer cannot discard the test (OR_SUB_OVERFLOW) */
+  if (OR_SUB_OVERFLOW (bi1, bi2, &bitmp))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
       return ER_FAILED;

@@ -66,6 +66,7 @@ namespace cubxasl
     db_value *value;		/* value of the aggregate */
     db_value *value2;		/* for GROUP_CONCAT, STTDEV and VARIANCE */
     INT64 curr_cnt;			/* current number of items */
+
     bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
     bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
     SUM_ACC sum_acc;	        /* word accumulator for NUMERIC SUM/AVG */
@@ -98,6 +99,27 @@ namespace cubxasl
     aggregate_accumulator accumulator;	/* holds runtime values, only for evaluation */
 #if defined (SERVER_MODE) || defined (SA_MODE)
     aggregate_accumulator_domain accumulator_domain;	/* holds domain info on accumulator */
+
+    /* compiled operand-evaluation program covering the WHOLE aggregate list; kept on the
+     * list HEAD node only.  Server-side runtime state -- never serialized.  See
+     * expr_compile.h; built lazily on the first evaluated row when the bound host
+     * variable types are known.
+     * Concurrency contract: these fields (and the program they point to) are written with
+     * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
+     * exactly one executing thread at a time (the xcache clone mutex publishes the stores
+     * when the clone changes hands).  Nothing here tolerates two threads sharing one clone
+     * -- do not add such a caller without making this state per-thread or synchronized. */
+    void *operand_prog;		/* EXPR_PROG *, head node only */
+    int *operand_prog_idx;	/* program root index per operand ordinal or -1; head only */
+    int operand_prog_state;	/* 0 = untried, 1 = active, 2 = declined, 3 = nothing to compute (the
+				 * fast path peeks the plain operands in place); head only */
+    int operand_prog_base;	/* THIS node's first ordinal in operand_prog_idx, or -1 */
+    void *operand_prog_share_spec;	/* head only: the node's only heap scan (ACCESS_SPEC_TYPE *) whose
+					 * compiled data filter may serve operand values, or NULL
+					 * (qexec_set_expr_share_spec ()); runtime only */
+    unsigned long long operand_prog_link_stamp;	/* head only: the execution (query id) whose first
+						 * evaluation derived the cell-based accumulator links
+						 * (qdata_link_shared_accumulators_by_cell ()) */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
     struct
     {

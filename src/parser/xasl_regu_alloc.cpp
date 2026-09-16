@@ -265,6 +265,9 @@ regu_init (cubxasl::pred_expr &pr)
 {
   pr.type = T_NOT_TERM;
   pr.pe.m_not_term = NULL;
+  pr.scan_prog = NULL;
+  pr.scan_prog_state = 0;
+  pr.scan_prog_gen = 0;
 }
 
 void
@@ -341,6 +344,15 @@ regu_init (cubxasl::aggregate_list_node &agg)
   agg.accumulator.shared_from = 0;
   agg.accumulator.sum_acc.is_active = false;
   std::memset (&agg.info, 0, sizeof (AGGREGATE_SPECIFIC_FUNCTION_INFO));
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  /* SA_MODE executes this parser-built node directly (no stream_to_xasl pass) */
+  agg.operand_prog = NULL;
+  agg.operand_prog_idx = NULL;
+  agg.operand_prog_state = 0;
+  agg.operand_prog_base = -1;
+  agg.operand_prog_share_spec = NULL;
+  agg.operand_prog_link_stamp = 0;
+#endif
 
   regu_alloc (agg.accumulator.value);
   regu_alloc (agg.accumulator.value2);
