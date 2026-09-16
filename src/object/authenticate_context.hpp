@@ -178,7 +178,7 @@ class EXPORT_IMPORT authenticate_context
     int set_password (MOP user, const char *password, int encode, char encrypt_prefix); // au_set_password_encrypt ()
 
     int set_loginable (MOP user, bool loginable);
-    int is_loginable_user (MOP user);
+    int get_loginable (MOP user, bool *loginable);
 
     void disable_passwords (void); // au_disable_passwords ()
 
