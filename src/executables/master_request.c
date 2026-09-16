@@ -2050,24 +2050,20 @@ css_process_info_request (CSS_CONN_ENTRY * conn)
   rc = __gv_cvar.css_receive_request (conn, &request_id, &request, &buffer_size);
   if (rc == NO_ERRORS)
     {
-      if (buffer_size
-	  && __gv_cvar.css_receive_data (conn, request_id, &buffer, &buffer_size,
-					 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000) != NO_ERRORS)
-	{
-	  if (buffer != NULL)
-	    {
-	      free_and_init (buffer);
-	    }
-	  css_cleanup_info_connection (conn);
-	  return;
-	}
-
       /* the master listens on INADDR_ANY and applies no
        * authentication, so administrative requests must be restricted here.
        * Requests not explicitly allowed on remote are honored only from a
        * local peer; the remote-allowed HA requests are further checked by
        * hb_check_request_eligibility() in their handlers. */
       if (!IS_MASTER_REQUEST_ALLOWED_ON_REMOTE (request) && !css_master_request_is_local (conn->fd))
+	{
+	  css_cleanup_info_connection (conn);
+	  return;
+	}
+
+      if (buffer_size
+	  && __gv_cvar.css_receive_data (conn, request_id, &buffer, &buffer_size,
+					 prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000) != NO_ERRORS)
 	{
 	  if (buffer != NULL)
 	    {
