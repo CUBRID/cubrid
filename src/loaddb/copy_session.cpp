@@ -138,6 +138,7 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
 
     m_attr_ids.resize (num_cols);
     m_col_domains.resize (num_cols);
+    m_col_notnull.resize (num_cols);
     for (int i = 0; i < num_cols; i++)
       {
 	int j;
@@ -163,6 +164,7 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
 	m_col_domains[i].precision = (dom != NULL) ? dom->precision : 0;
 	m_col_domains[i].codeset = (dom != NULL) ? (int) dom->codeset : (int) LANG_SYS_CODESET;
 	m_col_domains[i].collation_id = (dom != NULL) ? dom->collation_id : LANG_SYS_COLLATION;
+	m_col_notnull[i] = attrs[j].is_notnull ? 1 : 0;
       }
   }
 
@@ -338,6 +340,16 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
       /* pack the row into a record_descriptor and queue it for batch insert */
       for (int i = 0; i < m_num_cols; i++)
 	{
+	  /* Neither the heap nor the locator enforces NOT NULL -- it is the
+	   * inserter's job, as it is the executor's for INSERT. An unquoted empty
+	   * CSV field decodes to NULL, so this is one character away. */
+	  if (m_col_notnull[i] && DB_IS_NULL (&vals[i]))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+	      error = ER_NULL_CONSTRAINT_VIOLATION;
+	      goto cleanup;
+	    }
+
 	  error = heap_attrinfo_set (&m_class_oid, m_attr_ids[i], &vals[i], &attrinfo);
 	  if (error != NO_ERROR)
 	    {

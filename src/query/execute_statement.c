@@ -22844,6 +22844,27 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
     assert (i == ncols);
   }
 
+  /* A column list may leave a NOT NULL column out. INSERT refuses that unless
+   * the column has somewhere else to get a value -- a default, a default
+   * expression, or AUTO_INCREMENT -- and COPY applies defaults the same way, so
+   * it refuses the same set. Same conditions as check_missing_non_null_attrs ();
+   * without a column list every instance attribute is supplied. */
+  if (statement->info.copy.column_list != NULL)
+    {
+      for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	{
+	  if (db_attribute_is_non_null (attr) && db_value_is_null (db_attribute_default (attr))
+	      && attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+	      && is_attr_not_in_insert_list (parser, statement->info.copy.column_list, db_attribute_name (attr))
+	      && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_MISSING_NON_NULL_ASSIGN, 1, db_attribute_name (attr));
+	      error = ER_OBJ_MISSING_NON_NULL_ASSIGN;
+	      goto end;
+	    }
+	}
+    }
+
   /* CSV-only options are rejected for the BINARY format (DDL-time error). */
   if (statement->info.copy.format != 1
       && (statement->info.copy.fmt.csv.delimiter != 0 || statement->info.copy.fmt.csv.quote != 0

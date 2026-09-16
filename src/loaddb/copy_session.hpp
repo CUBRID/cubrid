@@ -66,6 +66,7 @@ class copy_session : public stream_session
     /* per-column target domain, captured at open (see COPY_COL_DOMAIN) */
     std::vector<COPY_COL_DOMAIN> m_col_domains;
     std::vector<ATTR_ID> m_attr_ids;	/* attribute repr IDs in column order */
+    std::vector<char> m_col_notnull;	/* column is NOT NULL, in column order */
     std::vector<char> m_leftover;		/* bytes at the tail of a receive_data
 					   call that form a partial row and need
 					   to be combined with the next chunk */
