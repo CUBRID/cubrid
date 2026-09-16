@@ -11113,6 +11113,16 @@ mr_getmem_string_internal (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, b
 	      value->need_clear = true;
 	    }
 	}
+
+      /* Instance memory keeps a CLOB as plain [length][bytes] and cannot carry the Internal LOB marker, so a
+       * locator read back out of the workspace would look like ordinary text to everyone downstream (CAS would
+       * ship the locator itself instead of the payload). Restore the marker from the text, which is safe because
+       * the locator carries a token over its own fields. */
+      if (error == NO_ERROR && type == DB_TYPE_CLOB
+	  && internal_lob_marker_parse_locator (db_get_string (value), db_get_string_size (value), NULL))
+	{
+	  db_value_mark_internal_lob (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR);
+	}
     }
   return error;
 }
@@ -11356,7 +11366,6 @@ mr_setval_string_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_
 {
   int error = NO_ERROR;
   int src_precision, src_length;
-  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
   const char *src_str;
   char *new_, *new_compressed_buf;
 
@@ -11387,7 +11396,6 @@ mr_setval_string_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_
     }
   else
     {
-      marker = mr_internal_lob_marker_from_value (src);
       /* Get information from the value. */
       src_precision = db_value_precision (src);
       src_length = db_get_string_size (src);
@@ -11449,11 +11457,8 @@ mr_setval_string_internal (DB_VALUE * dest, const DB_VALUE * src, bool copy, DB_
 	    }
 	}
 
-      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
-	{
-	  db_value_mark_internal_lob (dest, marker);
-	}
-
+      /* The marker IS src's compressed_size, so copying it below already carries it over; marking here
+       * would only be undone by that same copy. */
       dest->data.ch.medium.length = src->data.ch.medium.length;
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
     }
@@ -12692,7 +12697,6 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length;
-  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
   const char *src_str;
   char *new_, *new_compressed_buf;
 
@@ -12707,7 +12711,6 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
-      marker = mr_internal_lob_marker_from_value (src);
       /* Get information from the value. */
       src_precision = DB_GET_STRING_PRECISION (src);
       if (src_precision == 0)
@@ -12772,11 +12775,8 @@ mr_setval_char (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	    }
 	}
 
-      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
-	{
-	  db_value_mark_internal_lob (dest, marker);
-	}
-
+      /* The marker IS src's compressed_size, so copying it below already carries it over; marking here
+       * would only be undone by that same copy. */
       dest->data.ch.medium.length = src->data.ch.medium.length;
       dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
     }
@@ -16591,9 +16591,20 @@ mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	  else
 	    {
 	      memcpy (new_, cur, BITS_TO_BYTES (mem_bit_length));
+	      /* The extra byte allocated above is the terminator: an internal LOB locator is read back as
+	       * text by CAS and csql, and a BLOB buffer carries no NUL of its own. */
+	      new_[BITS_TO_BYTES (mem_bit_length)] = '\0';
 	      db_make_blob (value, domain->precision, new_, mem_bit_length);
 	      value->need_clear = true;
 	    }
+	}
+
+      /* Same marker restore as the CLOB side of mr_getmem_string_internal (). */
+      if (error == NO_ERROR
+	  && internal_lob_marker_parse_locator ((const char *) db_get_bit (value, &mem_bit_length),
+						BITS_TO_BYTES (mem_bit_length), NULL))
+	{
+	  db_value_mark_internal_lob (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR);
 	}
     }
 

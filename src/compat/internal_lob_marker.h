@@ -56,8 +56,10 @@ db_value_mark_internal_lob (DB_VALUE * value, int marker)
 {
   if (value != NULL)
     {
+      /* The marker lives in compressed_size, so marking loses that field's original meaning.  Do NOT touch
+       * compressed_need_clear here: it records who owns compressed_buf, and pr_clear_value () frees the
+       * buffer from that flag alone (it never consults compressed_size).  Clearing it leaked the buffer. */
       value->data.ch.medium.compressed_size = marker;
-      value->data.ch.info.compressed_need_clear = false;
     }
 }
 
@@ -84,6 +86,50 @@ db_value_has_internal_lob_marker (const DB_VALUE * value, int marker)
 }
 
 /*
+ * internal_lob_marker_locator_token () - The token a locator text carries over its own fields.
+ *
+ * A locator is handed to clients as plain text, so a reader has to be able to tell a real locator from a user
+ * string that merely looks like one.  The token is a hash over the OID, the length and the adopted flag, and a
+ * reader recomputes it: prefix plus token is what makes the classification safe, never the prefix alone.  It
+ * lives here, free of DB_VALUE and of the storage headers, so the engine, CAS and the client primitives all
+ * compute it the same way.
+ */
+static inline unsigned long long
+internal_lob_marker_mix_u64 (unsigned long long value)
+{
+  value ^= value >> 33;
+  value *= 0xff51afd7ed558ccdULL;
+  value ^= value >> 33;
+  value *= 0xc4ceb9fe1a85ec53ULL;
+  value ^= value >> 33;
+  return value;
+}
+
+static inline unsigned long long
+internal_lob_marker_locator_token (int volid, int pageid, int slotid, DB_BIGINT length, bool adopted)
+{
+  unsigned long long token = 0x26914cbfd15cafe1ULL;
+
+  token ^= (unsigned long long) (unsigned short) volid;
+  token = internal_lob_marker_mix_u64 (token);
+  token ^= (unsigned long long) (unsigned int) pageid;
+  token = internal_lob_marker_mix_u64 (token);
+  token ^= (unsigned long long) (unsigned short) slotid;
+  token = internal_lob_marker_mix_u64 (token);
+  token ^= (unsigned long long) length;
+  token = internal_lob_marker_mix_u64 (token);
+  token ^= adopted ? 0xad0f7edULL : 0x10c07edULL;
+  token = internal_lob_marker_mix_u64 (token);
+
+  if (token == 0)
+    {
+      token = 1;
+    }
+
+  return token;
+}
+
+/*
  * internal_lob_marker_parse_locator () - Pull the payload length out of a locator text.
  *
  * A locator reads "@internal_lob:[A:]volid|pageid|slotid:length:token".  The length is the only field a reader
@@ -103,6 +149,7 @@ internal_lob_marker_parse_locator (const char *data, int size, DB_BIGINT * lengt
   int token_consumed = 0;
   int prefix_len = (int) strlen (INTERNAL_LOB_LOCATOR_PREFIX);
   const char *oid_part = NULL;
+  bool adopted = false;
 
   if (length != NULL)
     {
@@ -125,6 +172,7 @@ internal_lob_marker_parse_locator (const char *data, int size, DB_BIGINT * lengt
   if (oid_part[0] == 'A' && oid_part[1] == ':')
     {
       /* adopted-chain locators carry an "A:" tag ahead of the OID */
+      adopted = true;
       oid_part += 2;
     }
 
@@ -133,13 +181,15 @@ internal_lob_marker_parse_locator (const char *data, int size, DB_BIGINT * lengt
     {
       return false;
     }
-  (void) volid;
-  (void) pageid;
-  (void) slotid;
-
   if (oid_part[consumed] != ':'
       || sscanf (oid_part + consumed + 1, "%llx%n", &parsed_token, &token_consumed) != 1
       || parsed_token == 0 || token_consumed <= 0 || oid_part[consumed + 1 + token_consumed] != '\0')
+    {
+      return false;
+    }
+
+  /* The token is what separates a locator from a user string shaped like one. */
+  if (parsed_token != internal_lob_marker_locator_token (volid, pageid, slotid, (DB_BIGINT) parsed_length, adopted))
     {
       return false;
     }

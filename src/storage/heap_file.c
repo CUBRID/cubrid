@@ -13079,7 +13079,9 @@ heap_internal_lob_insert_stream (THREAD_ENTRY * thread_p, const OID * class_oid,
   INTERNAL_LOB_REVERSE_WRITER writer;
   DB_TYPE lob_type = (bit_length >= 0) ? DB_TYPE_BLOB : DB_TYPE_CLOB;
   DB_BIGINT offset;
-  char buffer[64 * 1024];
+  /* The reverse writer emits one chunk per page, so a page-sized slice is the unit; bigger only costs
+   * server worker stack. */
+  char buffer[IO_MAX_PAGE_SIZE];
   int error = NO_ERROR;
 
   if (class_oid == NULL || reader == NULL || locator == NULL || bit_length < -1 || total_bytes < 0

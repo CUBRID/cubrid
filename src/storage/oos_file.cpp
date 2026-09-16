@@ -2557,6 +2557,15 @@ oos_chain_read_chunk (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest, i
     pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
   });
 
+  if (pgbuf_get_page_ptype (thread_p, page_ptr) != PAGE_OOS)
+    {
+      /* Not a live OOS page: a forged or stale locator OID. Reject cleanly rather than reading whatever
+       * the slot happens to hold as a chunk header. Same guard as oos_read_pull (). */
+      oos_error ("oos_chain_read_chunk: non-OOS page at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
+
   OOS_RECDES oos_recdes;
   SCAN_CODE code = spage_get_record (thread_p, page_ptr, oid.slotid, &oos_recdes, PEEK);
   if (code != S_SUCCESS || oos_recdes.length < OOS_RECORD_HEADER_SIZE)

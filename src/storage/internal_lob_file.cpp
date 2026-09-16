@@ -134,45 +134,13 @@ internal_lob_reverse_writer_clear (INTERNAL_LOB_REVERSE_WRITER &writer)
   writer.finished = false;
 }
 
-static unsigned long long
-internal_lob_mix_u64 (unsigned long long value)
-{
-  value ^= value >> 33;
-  value *= 0xff51afd7ed558ccdULL;
-  value ^= value >> 33;
-  value *= 0xc4ceb9fe1a85ec53ULL;
-  value ^= value >> 33;
-  return value;
-}
-
-static unsigned long long
-internal_lob_locator_secret (void)
-{
-  return 0x26914cbfd15cafe1ULL;
-}
-
+/* One implementation of the locator token, shared with CAS and the client primitives so every reader
+ * classifies a locator text the same way. See internal_lob_marker_locator_token (). */
 static unsigned long long
 internal_lob_locator_token (const INTERNAL_LOB_LOCATOR &locator, bool adopted)
 {
-  unsigned long long token = internal_lob_locator_secret ();
-
-  token ^= (unsigned long long) (unsigned short) locator.oid.volid;
-  token = internal_lob_mix_u64 (token);
-  token ^= (unsigned long long) (unsigned int) locator.oid.pageid;
-  token = internal_lob_mix_u64 (token);
-  token ^= (unsigned long long) (unsigned short) locator.oid.slotid;
-  token = internal_lob_mix_u64 (token);
-  token ^= (unsigned long long) locator.length;
-  token = internal_lob_mix_u64 (token);
-  token ^= adopted ? 0xad0f7edULL : 0x10c07edULL;
-  token = internal_lob_mix_u64 (token);
-
-  if (token == 0)
-    {
-      token = 1;
-    }
-
-  return token;
+  return internal_lob_marker_locator_token (locator.oid.volid, locator.oid.pageid, locator.oid.slotid,
+	 locator.length, adopted);
 }
 
 int
@@ -668,7 +636,9 @@ internal_lob_read (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, 
 int
 internal_lob_read_skip (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, DB_BIGINT count)
 {
-  char skip_buffer[64 * 1024];
+  /* A chunk never spans more than a page, so this drains one per oos_read_pull () and fixes the page
+   * once.  Smaller re-fixes the same page to finish a chunk; larger only costs server worker stack. */
+  char skip_buffer[IO_MAX_PAGE_SIZE];
 
   while (count > 0)
     {
