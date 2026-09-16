@@ -34,8 +34,13 @@
  *     int32_t  field_len   -- byte length of field data, or -1 for NULL
  *     byte[]   data        -- raw field bytes (only if field_len >= 0)
  *
- * Footer sentinel:
+ * Footer sentinel (required):
  *   int16_t  -1            -- marks end of data stream
+ *
+ * The footer is what tells the two sides the stream is whole. Without it a cut
+ * that lands exactly on a row boundary is indistinguishable from a complete
+ * file, so a stream that ends without one is refused, as is anything that
+ * arrives after it. A COPY that sends no rows still sends the footer.
  *
  * Field encoding by type:
  *   DB_TYPE_INTEGER:  4 bytes, network byte order (big-endian)

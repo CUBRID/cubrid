@@ -76,6 +76,7 @@ class copy_session : public stream_session
     char m_quote;			/* CSV quote char (default '"') */
     bool m_skip_header;			/* CSV: a leading header line is still to be skipped */
     bool m_bulk;			/* bulk-load mode requested (BU_LOCK acquired at open) */
+    bool m_footer_seen;			/* BINARY: the end-of-data marker has arrived */
     int m_rows_loaded;
 
     /* savepoint taken at open, so that a failure part-way through the stream

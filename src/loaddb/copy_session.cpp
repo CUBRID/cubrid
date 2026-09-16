@@ -76,6 +76,7 @@ copy_session::copy_session ()
   , m_quote ('"')
   , m_skip_header (false)
   , m_bulk (false)
+  , m_footer_seen (false)
   , m_rows_loaded (0)
   , m_savepoint_lsa (NULL_LSA)
   , m_recdes_collected ()
@@ -204,6 +205,15 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
       return format_error;
     }
 
+  /* The footer says the encoder is done. Anything after it is a stream the two
+   * sides disagree about, not data to append. */
+  if (m_footer_seen && data_len > 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1,
+	      "data arrived after the end-of-data marker");
+      return ER_COPY_BINARY_FORMAT_ERROR;
+    }
+
   /* The chunk is the transport's receive buffer and is decoded where it lies.
    * Only a row that straddles the boundary is carried, in m_leftover: the tail
    * of the previous chunk, completed here by appending from this one. */
@@ -326,7 +336,16 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
       if (error == COPY_DECODE_FOOTER)
 	{
 	  pos += advance;
+	  m_footer_seen = true;
 	  error = NO_ERROR;
+
+	  if (pos < data_len)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1,
+		      "data follows the end-of-data marker in the same chunk");
+	      error = ER_COPY_BINARY_FORMAT_ERROR;
+	      goto cleanup;
+	    }
 	  break;
 	}
 
@@ -537,6 +556,16 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
       int format_error = (m_format == COPY_FORMAT_CSV) ? ER_COPY_CSV_FORMAT_ERROR : ER_COPY_BINARY_FORMAT_ERROR;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, format_error, 1, "the stream ended in the middle of a row");
       return format_error;
+    }
+
+  /* A BINARY stream ends with the footer, so its absence means the encoder did
+   * not get to the end -- a cut exactly on a row boundary otherwise looks like
+   * a whole file. CSV has no such marker and cannot be checked this way. */
+  if (m_format == COPY_FORMAT_BINARY && !m_footer_seen)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1,
+	      "the stream ended without the end-of-data marker");
+      return ER_COPY_BINARY_FORMAT_ERROR;
     }
 
   /* flush any rows still queued from the last (sub-threshold) batch */
