@@ -3261,7 +3261,7 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
     }
 
   /* The session state can outlive its load session: connection teardown (see
-   * session_destroy_load_session) frees the load session while the state is still
+   * session_destroy_attached_sessions) frees the load session while the state is still
    * reachable. Report an error here so sloaddb_* handlers take the error path
    * instead of dereferencing a NULL load session. */
   if (state_p->load_session_p == NULL)
@@ -3395,7 +3395,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
   /* Interrupt only; keep the load session object alive so that in-flight requests
    * still holding a reference (via session_get_load_session) do not access freed
-   * memory. The object is freed later by session_destroy_load_session, once the
+   * memory. The object is freed later by session_destroy_attached_sessions, once the
    * connection workers have drained. */
   if (session->load_session_p != NULL)
     {
@@ -3404,7 +3404,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
   /* The stream session (COPY / LOB / ...) is left alone here for the same reason
    * as the load session: a worker may still be inside receive_chunk. It is
-   * aborted and freed by session_destroy_load_session, once the workers have
+   * aborted and freed by session_destroy_attached_sessions, once the workers have
    * drained. */
 
   if (session->pl_session_p)
@@ -3419,7 +3419,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 }
 
 void
-session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
+session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3457,6 +3457,6 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
   /* Session-state uninit path: no concurrent worker can reach this session, so
    * interrupt and destroy in one shot. */
   session_interrupt_attached_threads (thread_p, session);
-  session_destroy_load_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session);
 #endif
 }
