@@ -2649,18 +2649,21 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    if (buildlist->a_outptr_list)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list->valptrp, is_final, false);
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list,
+						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_outptr_list_ex)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_ex->valptrp, is_final, false);
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex,
+						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_outptr_list_interm)
 	      {
 		pg_cnt +=
 		  qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_interm->valptrp, is_final, false);
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm,
+						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_val_list)
 	      {
@@ -3194,7 +3197,8 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  }
 	if (connect_by->prior_outptr_list)
 	  {
-	    qdata_release_valptr_list_prog (thread_p, connect_by->prior_outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+	    qdata_release_valptr_list_prog (thread_p, connect_by->prior_outptr_list,
+					    XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_outptr_list->valptrp, is_final, true);
 	  }
 
@@ -3242,7 +3246,8 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  {
 	    if (buildlist->g_outptr_list)
 	      {
-		qdata_release_valptr_list_prog (thread_p, buildlist->g_outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+		qdata_release_valptr_list_prog (thread_p, buildlist->g_outptr_list,
+						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_outptr_list->valptrp, is_final, true);
 	      }
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_regu_list, is_final, true);
@@ -3279,17 +3284,20 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 
 	    if (buildlist->a_outptr_list)
 	      {
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list,
+						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list->valptrp, is_final, true);
 	      }
 	    if (buildlist->a_outptr_list_ex)
 	      {
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex,
+						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_ex->valptrp, is_final, true);
 	      }
 	    if (buildlist->a_outptr_list_interm)
 	      {
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm,
+						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt +=
 		  qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_interm->valptrp, is_final, true);
 	      }

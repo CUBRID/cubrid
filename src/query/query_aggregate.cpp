@@ -1255,7 +1255,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  DB_VALUE *peek_val = NULL;
 	  int prog_root = (operand_prog != NULL && agg_p->operand_prog_base >= 0)
-	    ? agg_list_p->operand_prog_idx[agg_p->operand_prog_base] : -1;
+			  ? agg_list_p->operand_prog_idx[agg_p->operand_prog_base] : -1;
 
 	  if (prog_root >= 0)
 	    {
