@@ -1536,6 +1536,8 @@ expr_cells_fixed_class (const EXPR_BUILD_CTX * bctx, int c1, int c2)
  * operand is not NULL, so computing it unconditionally could raise an error it never would
  * have (1 / ? for a NULL divisor is skipped by "a + 1 / ?" when a is NULL).  A step that
  * cannot fail is hoisted from anywhere but a branch, as the leaf coercions were before. */
+static bool expr_step_is_fallible (const EXPR_STEP * step);
+
 static void
 expr_step_hoist (EXPR_BUILD_CTX * bctx, EXPR_STEP * step, int cell, int c1, int c2, bool fallible)
 {
@@ -1545,6 +1547,24 @@ expr_step_hoist (EXPR_BUILD_CTX * bctx, EXPR_STEP * step, int cell, int c1, int 
   if (bctx->in_branch == 0 && (!fallible || bctx->cur_guard == 0))
     {
       cls = expr_cells_fixed_class (bctx, c1, c2);
+    }
+  if (cls != EXPR_CELL_ROW && fallible)
+    {
+      /* Keep the interpreter's error order.  A hoisted step runs on the first row before
+       * every row step, so if a step that can fail was emitted before it -- an earlier
+       * column, an earlier operand -- and both fail on that first row, the hoisted one
+       * would report its error first where the interpreter reports the other.  Hoist a
+       * fallible step only when nothing fallible precedes it in the row loop. */
+      int j;
+
+      for (j = 0; j < idx; j++)
+	{
+	  if (!bctx->step_prologue[j] && !bctx->step_exec_prologue[j] && expr_step_is_fallible (&bctx->steps[j]))
+	    {
+	      cls = EXPR_CELL_ROW;
+	      break;
+	    }
+	}
     }
   bctx->step_prologue[idx] = (cls == EXPR_CELL_LITERAL);
   bctx->step_exec_prologue[idx] = (cls == EXPR_CELL_EXEC);
