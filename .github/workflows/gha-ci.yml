@@ -340,9 +340,13 @@ jobs:
 
             issue_comment)
               pr="$ISSUE"
+              # The body ends in CRLF, and CR is not an IFS character: left in, it rides
+              # on the last suite word below and fails its case match, so a comment that
+              # used to be ignored would run nothing and say nothing. The newline is why
+              # both grammars end in [[:space:]]*$.
+              req=$(printf '%s' "$BODY" | tr -d '\r')
               # A trailing testtools=<branch> is taken off first, so both grammars below
               # read the request without it and neither regex had to change.
-              req="$BODY"
               if [[ "$req" =~ ^(/run[[:space:]].*)[[:space:]]+testtools=([^[:space:]]+)[[:space:]]*$ ]]; then
                 req="${BASH_REMATCH[1]}"
                 tt="${BASH_REMATCH[2]}"
@@ -374,7 +378,7 @@ jobs:
                 test_run=true
                 echo "comment: re-run the failures of run ${rerun} / suites: $(echo $sel)"
               # Regex must stay identical to comment_trigger.yml: one syntax to learn.
-              elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
+              elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}[[:space:]]*$ ]]; then
                 for w in $req; do
                   case "$w" in
                     all)              sel="shell sql medium" ;;
