@@ -10727,23 +10727,17 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 #endif
 
 /*
- * cdc_flashback_unpack_bounded_string () - unpack a client-supplied length-prefixed
- *   string, rejecting a declared length that would read past the request buffer or
- *   leave later or_unpack_*() calls misaligned.
- *   return: the advanced pointer on success; NULL if the declared length is out of
- *           range (the caller must not dereference *out_string in that case).
- *   ptr (in)         : current position in the request (at the length prefix)
- *   request (in)     : start of the request buffer (for computing the byte budget)
- *   reqlen (in)      : total length of the request buffer
- *   out_string (out) : set to point into the request buffer on success
+ * cdc_flashback_unpack_bounded_string () - unpack a length-prefixed string,
+ *   rejecting a length that would read past the request or misalign later unpacks.
+ *   return: advanced pointer on success, NULL if the length is out of range.
+ *   ptr (in)         : position at the length prefix
+ *   request (in)     : start of the request buffer
+ *   reqlen (in)      : total request length
+ *   out_string (out) : set on success
  *
- * CBRD-27436: or_unpack_string_nocopy() trusts its length prefix unconditionally
- * (an unbounded "ptr += length"); this channel is attacker-controlled the same
- * way CBRD-27437's CDC/flashback element counts are. or_pack_string() always
- * writes an already-padded length, so a legitimate peer never produces a length
- * that isn't -1 (NULL) or a multiple of OR_INT_SIZE; require that here too,
- * since an unaligned length would abort an assert-enabled cub_server at the
- * next ASSERT_ALIGN downstream.
+ * or_unpack_string_nocopy() trusts its length prefix unconditionally; a
+ * legitimate peer's length is always -1 or a multiple of OR_INT_SIZE, so
+ * require that here too.
  */
 static char *
 cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char **out_string)
@@ -10794,22 +10788,10 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  /* CBRD-27436: The CDC log-server channel carries no server-side client identity
-   * (it is opened after db_shutdown and never runs boot_register_client), so the
-   * central CHECK_AUTHORIZATION gate cannot protect it. Enforce DBA here from the db
-   * user that the client library declares as the first field of the request.
-   *
-   * The declared length is attacker-controlled, so bound it against the remaining
-   * request length before trusting it (same class of check as CBRD-27437's count
-   * validation) -- otherwise a crafted length here reads past the request buffer
-   * exactly like the unbounded counts that ticket closes elsewhere. */
-  /* CBRD-27437 (companion ticket) hardens this same class of check further:
-   * this block must also reject a request too short to even contain the
-   * length field (including request == NULL, reqlen == 0), and must confirm
-   * the declared span actually contains a NUL terminator before trusting it
-   * as a C string -- or_unpack_string_nocopy() returns a raw pointer with no
-   * copy and no termination check, and cdc_check_dba_authorization() below
-   * calls strcasecmp() on it, which reads until it finds one. */
+  /* CBRD-27436: the CDC channel has no server-side client identity (opened after
+   * db_shutdown, never runs boot_register_client), so the central
+   * CHECK_AUTHORIZATION gate can't protect it -- enforce DBA here instead, from
+   * the db user the client declares as the request's first field. */
   if (request == NULL || reqlen < OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
@@ -10831,17 +10813,12 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  /* CBRD-27436: this request is not yet fully validated, so nothing below may
-   * have an irreversible effect on any *other* connection's state yet -- see
-   * the incumbent-session takeover, deferred to just before the success
-   * reply below, for why. */
+  /* CBRD-27436: not yet fully validated -- nothing below may affect *other*
+   * connections' state yet (see the deferred takeover before the success reply). */
 
-  /* CBRD-27436: the four fields below are unpacked unconditionally; only the
-   * first OR_INT_SIZE bytes of the request were guaranteed to exist by the
-   * db_user checks above (and only up to wherever db_user's own declared
-   * length left ptr). Without this check, a request just long enough to pass
-   * db_user validation but too short for what follows reads past the end of
-   * the request buffer here. */
+  /* These 4 ints are unpacked unconditionally and weren't covered by the
+   * db_user check above -- a short-but-valid request would otherwise read
+   * past the buffer here. */
   if (reqlen - (int) (ptr - request) < 4 * OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
@@ -10855,9 +10832,8 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   ptr = or_unpack_int (ptr, &all_in_cond);
   ptr = or_unpack_int (ptr, &num_extraction_user);
 
-  /* CBRD-27436: bound the client-supplied count against the remaining request
-   * length before the unpack loop (each user needs at least a string length
-   * prefix), matching CBRD-27437's treatment of the same class of count. */
+  /* Bound the count against the remaining request length before the unpack
+   * loop -- each user needs at least a length prefix. */
   if (num_extraction_user < 0
       || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
     {
@@ -10885,10 +10861,8 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	  ptr = cdc_flashback_unpack_bounded_string (ptr, request, reqlen, &dummy_user);
 	  if (ptr == NULL || dummy_user == NULL)
 	    {
-	      /* NULL covers both an out-of-range length (ptr == NULL) and a
-	       * declared-NULL (length -1) entry: this list is a set of usernames
-	       * to filter on, so an absent one is malformed either way, and
-	       * strdup (NULL) is undefined behavior. */
+	      /* NULL covers both an out-of-range length and a declared-NULL (-1)
+	       * entry -- either way strdup (NULL) would be undefined behavior. */
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
 	      error_code = ER_NET_DATASIZE_MISMATCH;
 	      goto error;
@@ -10904,9 +10878,8 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	}
     }
 
-  /* CBRD-27436: num_extraction_class is unpacked unconditionally right after
-   * the loop above, whose iteration count is bounded but which may consume
-   * anywhere up to all remaining bytes -- check before reading it too. */
+  /* Unpacked unconditionally right after a loop that may have already
+   * consumed all remaining bytes -- check before reading it. */
   if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
@@ -10917,9 +10890,8 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   ptr = or_unpack_int (ptr, &num_extraction_class);
 
-  /* CBRD-27436: bound the class count against the remaining request length
-   * before the unpack loop (each class oid is packed as an int64), matching
-   * CBRD-27437's treatment of the same class of count. */
+  /* Bound the count against the remaining request length -- each class oid
+   * is packed as an int64. */
   if (num_extraction_class < 0
       || (INT64) num_extraction_class > (INT64) (reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE)
     {
@@ -10958,15 +10930,10 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  /* This request is now fully validated and configured. Only now -- not
-   * before parsing, as this used to -- do the irreversible effects on any
-   * *other* connection's state happen: forcibly closing an incumbent CDC
-   * session and taking over cdc_Gl.conn (which cdc_check_session_owner()
-   * uses to authorize every other CDC opcode). A request that fails
-   * anywhere above (an allocation failure, or a bounds/alignment check
-   * CBRD-27437 adds to this same function) must not have killed a running
-   * consumer for nothing, nor left its own failed caller recorded as the
-   * session owner on the error path below, which never restores this. */
+  /* Only now, fully validated, do we affect *other* connections: close an
+   * incumbent session and take cdc_Gl.conn (used by cdc_check_session_owner()
+   * for every other CDC opcode). Doing this earlier would let a request that
+   * fails a later check still kill a running consumer for nothing. */
   if (cdc_Gl.conn.fd != -1)
     {
       SOCKET prev_fd = cdc_Gl.conn.fd;
@@ -11051,9 +11018,8 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   time_t input_time;
   int error_code;
 
-  /* CBRD-27436: scdc_start_session() is the only CDC request that carries a
-   * client-declared identity to check; this request had none at all, so a
-   * client could skip START_SESSION entirely and reach it directly. */
+  /* CBRD-27436: unlike scdc_start_session(), this request had no identity
+   * check at all -- a client could skip START_SESSION and reach it directly. */
   if (!cdc_check_session_owner (thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
@@ -11061,9 +11027,8 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
       goto error;
     }
 
-  /* CBRD-27436: request/reqlen were never validated before this unconditional
-   * unpack; a short or absent (NULL, zero-length) request reads past a
-   * too-small buffer. */
+  /* Never checked before this unconditional unpack -- a short/absent request
+   * reads past a too-small buffer. */
   if (request == NULL || reqlen < OR_INT64_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT64_SIZE);
@@ -11139,8 +11104,8 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 
   int rc;
 
-  /* CBRD-27436: no authorization of any kind guarded this request; a client could
-   * skip CDC_START_SESSION entirely and reach it directly (see scdc_find_lsa()). */
+  /* CBRD-27436: unguarded -- a client could skip CDC_START_SESSION entirely
+   * and reach it directly (see scdc_find_lsa()). */
   if (!cdc_check_session_owner (thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
@@ -11148,9 +11113,8 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
       goto error;
     }
 
-  /* CBRD-27436: request/reqlen were never validated before this unconditional
-   * unpack; a short or absent (NULL, zero-length) request reads past a
-   * too-small buffer. */
+  /* Never checked before this unconditional unpack -- a short/absent request
+   * reads past a too-small buffer. */
   if (request == NULL || reqlen < OR_LOG_LSA_ALIGNED_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_LOG_LSA_ALIGNED_SIZE);
@@ -11244,15 +11208,10 @@ error:
 void
 scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  /* CBRD-27436: no authorization of any kind guarded this request; a client could
-   * skip CDC_START_SESSION entirely and reach it directly (see scdc_find_lsa()).
-   * This reply has no error-code framing (it sends the raw change-log buffer
-   * directly), so there is no clean error to send back; simply withhold the
-   * buffer and return. A rejected caller's own blocking receive then runs out
-   * the extraction timeout before reporting a connection failure -- not
-   * ideal, but this request is never reachable without first passing the
-   * DBA check in scdc_start_session(), so this path is a defense-in-depth
-   * backstop, not the primary rejection a client is expected to see. */
+  /* CBRD-27436: unguarded, reachable by skipping START_SESSION (see
+   * scdc_find_lsa()). No error-code framing exists for this reply, so just
+   * withhold the buffer -- a rejected caller's receive times out instead of
+   * getting a clean error, but this is a defense-in-depth backstop only. */
   if (!cdc_check_session_owner (thread_p))
     {
       return;
@@ -11272,10 +11231,8 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  /* CBRD-27436: no authorization of any kind guarded this request; any client could
-   * end (and reset the global state of) a CDC session it never started, forcibly
-   * disconnecting a legitimate consumer. Check ownership before touching any of
-   * that shared state. */
+  /* CBRD-27436: unguarded -- any client could end a session it never started,
+   * force-disconnecting a legitimate consumer. Check ownership first. */
   if (!cdc_check_session_owner (thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");

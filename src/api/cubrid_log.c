@@ -117,8 +117,7 @@ int g_extraction_user_count = 0;
 
 char g_dbname[CUBRID_LOG_MAX_DBNAME_LEN + 1] = "";
 
-/* CBRD-27436: authenticated db user, sent to the server so it can enforce DBA
- * server-side on the identity-less CDC log channel. */
+/* Authenticated db user, sent so the server can enforce DBA on the identity-less CDC channel. */
 char g_db_user[DB_MAX_USER_LENGTH + 1] = "";
 
 FILE *g_trace_log = NULL;
@@ -915,13 +914,9 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
       goto error;
     }
 
-  /* CBRD-27436: cdc_check_dba_authorization() on the server only accepts the
-   * literal "DBA" account for now (DBA-group resolution on that channel is a
-   * separate follow-up, see log_manager.c), so any other DBA-group member
-   * would pass this check, get remembered here, and only then be rejected by
-   * the server once it tries to actually open the CDC channel -- a confusing
-   * failure at an unrelated later step instead of an accurate one at login
-   * time. Enforce the same restriction here so the two agree. */
+  /* The server only accepts the literal "DBA" account on the CDC channel (group
+   * resolution is a follow-up, see log_manager.c) -- match that here so a group
+   * member fails at login, not later when the CDC channel itself rejects it. */
   if (strcasecmp (username, "DBA") != 0)
     {
       cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN,
