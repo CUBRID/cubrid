@@ -5206,7 +5206,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
       root_tmpl->partition =
 	pt_node_to_partition_info (parser, alter_info, entity_name, class_name, class_name, &partsize);
-      if (root_tmpl->partition == NULL)
+      if (root_tmpl->partition == NULL || (er_errid () != NO_ERROR))
 	{
 	  error = er_errid ();
 	  if (abort_template == true)
@@ -12035,6 +12035,10 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
     {
       attr_chg_properties->new_name_space = ID_SHARED_ATTRIBUTE;
     }
+  else if (attr_def->info.attr_def.attr_type == PT_META_ATTR)
+    {
+      attr_chg_properties->new_name_space = ID_CLASS_ATTRIBUTE;
+    }
 
   if (attr_def->info.attr_def.data_default != NULL)
     {
@@ -14970,6 +14974,18 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
 	}
     }
 
+  /* visibility can be set only on normal attributes; CREATE and ADD reject it at parse time, but for MODIFY/CHANGE
+   * the attribute's actual namespace is known only after build_attr_change_map(). This must precede the
+   * is_att_change_needed() early return: an explicit VISIBLE on an already visible attribute counts as "no change"
+   * and would silently succeed otherwise. */
+  if (attribute->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET && attr_chg_prop->name_space != ID_ATTRIBUTE)
+    {
+      PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_VISIBILITY, attr_name);
+      error = ER_PT_SEMANTIC;
+      goto exit;
+    }
+
   if (!is_att_change_needed (attr_chg_prop))
     {
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ALTER_CHANGE_WARN_NO_CHANGE, 1, attr_name);
@@ -16328,8 +16344,8 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
 
 	  goto fail_return;
 	}
-      db_make_char (&expr, part_expr->expr_stream_size, part_expr->expr_stream, part_expr->expr_stream_size,
-		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&expr, part_expr->expr_stream_size, part_expr->expr_stream, part_expr->expr_stream_size,
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       set_add_element (dbc, &expr);
 
       /* Notice that we're not calling pr_clear_value on expr here because memory allocated for expr_stream is

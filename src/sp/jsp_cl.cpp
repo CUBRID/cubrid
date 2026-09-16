@@ -100,6 +100,9 @@
 #define PT_NODE_SP_DETERMINISTIC_TYPE(node) \
   ((node)->info.sp.dtrm_type)
 
+#define PT_NODE_SP_PARALLEL_ENABLE(node) \
+  ((node)->info.sp.parallel_enable)
+
 #define PT_NODE_SP_COMMENT(node) \
   (((node)->info.sp.comment == NULL) ? "" : \
    (char *) (node)->info.sp.comment->info.value.data_value.str->bytes)
@@ -501,6 +504,48 @@ jsp_get_sp_type (const char *name)
 
   AU_RESTORE (save);
   return jsp_map_sp_type_to_pt_misc ((SP_TYPE_ENUM) db_get_int (&sp_type_val));
+}
+
+/*
+ * jsp_is_sp_parallel_eligible - check whether the named stored procedure may run inside
+ *                               a parallel execution path
+ *   return: true only when the SP carries the PARALLEL_ENABLE declaration (same policy as
+ *           px_sp_is_parallel_eligible; the declaration is trusted without verification)
+ *   name(in): stored procedure name
+ *
+ * Note: name-based catalog lookup for judges that see the parse tree instead of a
+ *       pl_signature (parallel hash join). Any lookup failure means "not eligible";
+ *       no error is propagated (the caller is an optimizer check).
+ */
+bool
+jsp_is_sp_parallel_eligible (const char *name)
+{
+#if defined (CS_MODE)
+  DB_OBJECT *mop_p;
+  DB_VALUE directive_val;
+  int save;
+  bool eligible = false;
+
+  AU_SAVE_AND_DISABLE (save);
+  er_stack_push ();
+
+  mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  if (mop_p != NULL && db_get (mop_p, SP_ATTR_DIRECTIVE, &directive_val) == NO_ERROR)
+    {
+      eligible = (db_get_int (&directive_val) & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE) != 0;
+    }
+
+  er_stack_pop ();
+  AU_RESTORE (save);
+
+  return eligible;
+#else
+  /* Only the client compiles a plan that a server can run in parallel; SA_MODE has no parallel
+   * hash join at all (px_hash_join is built into the server target alone), so answering "not
+   * eligible" here costs nothing. */
+  (void) name;
+  return false;
+#endif
 }
 
 MOP
@@ -1031,6 +1076,14 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_INVOKERS_RIGHTS_NOT_SUPPORTED, 0);
       return er_errid ();
+    }
+
+  // PARALLEL_ENABLE is refused for procedures by the parser, next to the same refusal for
+  // DETERMINISTIC, so only functions reach here with the flag set
+  if (PT_NODE_SP_PARALLEL_ENABLE (statement))
+    {
+      sp_info.directive = static_cast<SP_DIRECTIVE_ENUM> (static_cast<int> (sp_info.directive) | static_cast<int>
+			  (SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE));
     }
 
   temp = jsp_check_stored_procedure_name (PT_NODE_SP_NAME (statement));
@@ -2147,6 +2200,15 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	else
 	  {
 	    sig.is_deterministic = false;
+	  }
+
+	if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE)
+	  {
+	    sig.is_parallel_enabled = true;
+	  }
+	else
+	  {
+	    sig.is_parallel_enabled = false;
 	  }
 #endif
 
