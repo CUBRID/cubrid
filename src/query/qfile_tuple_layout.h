@@ -763,9 +763,73 @@ qfile_tuple_fill (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, const QFILE_TUP
 }
 
 /*
+ * qfile_tuple_size_add_value () - measure one value with a settled column layout and append its aligned size.
+ *   return: accumulated payload size, or ER_FAILED
+ *   The caller resolves late domains before using this helper; it does not change the layout.
+ */
+inline int qfile_tuple_size_add_value (const QFILE_COL_LAYOUT * column_layout, const DB_VALUE * value, int *len,
+				       int values_size, bool * has_null) __attribute__ ((ALWAYS_INLINE));
+
+inline int
+qfile_tuple_size_add_value (const QFILE_COL_LAYOUT * column_layout, const DB_VALUE * value, int *len,
+			    int values_size, bool * has_null)
+{
+  int column_data_size;
+
+  if (qfile_col_stores_null (column_layout, value))
+    {
+      *has_null = true;
+      *len = 0;
+      return values_size;
+    }
+
+  if (DB_VALUE_DOMAIN_TYPE (value) == (DB_TYPE) column_layout->type_id)
+    {
+      /* The column entry describes the encoding when the value has the column's type. */
+      if (column_layout->kind == QFILE_COL_FIXED)
+	{
+	  column_data_size = column_layout->size;
+	}
+      else if (column_layout->value_format == QFILE_VALUE_DIRECT)
+	{
+	  column_data_size = qfile_value_pr_type (value)->get_index_size_of_value (value);
+	}
+      else
+	{
+	  column_data_size = qfile_value_pr_type (value)->get_disk_size_of_value (value);
+	}
+      assert (column_data_size == qfile_value_body_size (column_layout, value));
+    }
+  else
+    {
+      column_data_size = qfile_value_body_size (column_layout, value);
+      if (column_data_size < 0)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  *len = column_data_size;
+  values_size = DB_ALIGN (values_size, column_layout->alignby);
+  if (column_layout->kind == QFILE_COL_FIXED)
+    {
+      return values_size + column_layout->size;
+    }
+  return values_size + qfile_col_var_hdr_size (column_layout, column_data_size) + column_data_size;
+}
+
+/* Add the header only after all values have established whether a NULL bitmap is needed. */
+inline int
+qfile_tuple_size_finalize (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int values_size, bool has_null)
+{
+  assert (type_list->data_offset[0] % QFILE_TUPLE_ALIGNMENT == 0
+	  && type_list->data_offset[1] % QFILE_TUPLE_ALIGNMENT == 0);
+  return DB_ALIGN (type_list->data_offset[has_null ? 1 : 0] + values_size, QFILE_TUPLE_ALIGNMENT);
+}
+
+/*
  * qfile_tuple_size_from_values () / qfile_tuple_fill_from_values () - T_NORMAL overload over f_valp[]; the size pass
- *   records each column_data length in lens[] so the fill pass need not recompute it; a value matching its column's type is
- *   measured directly, others go through qfile_value_body_size ().
+ *   records each column_data length in lens[] so the fill pass need not recompute it.
  */
 inline int
 qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_VALUE ** vals, int *lens, int n,
@@ -773,78 +837,37 @@ qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_VALUE 
 {
   const QFILE_COL_LAYOUT *column_layout;
   const DB_VALUE *v;
-  DB_TYPE vt;
-  int i, column_data_size, values_size;
+  int i, values_size;
   bool hn;
 
   assert (type_list != NULL && type_list->layout_ready && type_list->type_cnt == n);
-  assert (lens != NULL || n == 0);	/* a zero-column list never allocates f_valp/f_len (INSERT ... SELECT inner block) */
-  assert (type_list->data_offset[0] % QFILE_TUPLE_ALIGNMENT == 0
-	  && type_list->data_offset[1] % QFILE_TUPLE_ALIGNMENT == 0);
+  assert (lens != NULL || n == 0);	/* a zero-column list never allocates f_valp/f_len */
 
 restart:
-  /* one pass: values_size summed from 0, data_offset added at the end (has-null verdict is only known after the pass) */
   values_size = 0;
   hn = false;
   for (i = 0; i < n; i++)
     {
       v = vals[i];
       column_layout = &type_list->column_layout_array[i];
-      if (qfile_col_stores_null (column_layout, v))
+      if (column_layout->type_id == DB_TYPE_VARIABLE && !DB_IS_NULL (v)
+	  && DB_VALUE_DOMAIN_TYPE (v) != DB_TYPE_VARIABLE && qfile_tuple_resolve_column (type_list, i, v))
 	{
-	  hn = true;
-	  lens[i] = 0;
-	  continue;
+	  /* A late domain changed the layout; measure all columns again, without re-evaluating the values. */
+	  qfile_set_layout (type_list);
+	  goto restart;
 	}
-      vt = DB_VALUE_DOMAIN_TYPE (v);
-      if (vt == (DB_TYPE) column_layout->type_id)
+      values_size = qfile_tuple_size_add_value (column_layout, v, &lens[i], values_size, &hn);
+      if (values_size < 0)
 	{
-	  /* the value has the column's type: the column entry is the encoding (kind/value_format were derived from it) */
-	  if (column_layout->kind == QFILE_COL_FIXED)
-	    {
-	      column_data_size = column_layout->size;
-	    }
-	  else if (column_layout->value_format == QFILE_VALUE_DIRECT)
-	    {
-	      column_data_size = qfile_value_pr_type (v)->get_index_size_of_value (v);
-	    }
-	  else
-	    {
-	      column_data_size = qfile_value_pr_type (v)->get_disk_size_of_value (v);
-	    }
-	  assert (column_data_size == qfile_value_body_size (column_layout, v));
-	}
-      else
-	{
-	  if (column_layout->type_id == DB_TYPE_VARIABLE && qfile_tuple_resolve_column (type_list, i, v))
-	    {
-	      /* late resolution: the layout changed under us; measure again with the settled descriptor */
-	      qfile_set_layout (type_list);
-	      goto restart;
-	    }
-	  column_data_size = qfile_value_body_size (column_layout, v);
-	  if (column_data_size < 0)
-	    {
-	      return ER_FAILED;
-	    }
-	}
-      lens[i] = column_data_size;
-      if (column_layout->kind == QFILE_COL_FIXED)
-	{
-	  values_size = DB_ALIGN (values_size, column_layout->alignby) + column_layout->size;
-	}
-      else
-	{
-	  values_size =
-	    DB_ALIGN (values_size, column_layout->alignby) + qfile_col_var_hdr_size (column_layout,
-										     column_data_size) +
-	    column_data_size;
+	  return ER_FAILED;
 	}
     }
 
   *has_null = hn;
-  return DB_ALIGN (type_list->data_offset[hn ? 1 : 0] + values_size, QFILE_TUPLE_ALIGNMENT);
+  return qfile_tuple_size_finalize (type_list, values_size, hn);
 }
+
 
 inline int
 qfile_tuple_fill_from_values (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_VALUE ** vals, const int *lens, int n,

@@ -968,10 +968,6 @@ static QPROC_TPLDESCR_STATUS
 qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, VALPTR_LIST * outptr_list,
 				 VAL_DESCR * vd)
 {
-  QPROC_TPLDESCR_STATUS status;
-
-  status = QPROC_TPLDESCR_FAILURE;	/* init */
-
   /* make f_valp / f_len arrays */
   if (list_id->tpl_descr.f_valp == NULL && list_id->type_list.type_cnt > 0)
     {
@@ -981,33 +977,7 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 	}
     }
 
-  /* collect the tuple values */
-  status = qdata_generate_tuple_desc_for_valptr_list (thread_p, outptr_list, vd, &(list_id->tpl_descr));
-  if (status == QPROC_TPLDESCR_FAILURE)
-    {
-      goto exit_on_error;
-    }
-
-  if (list_id->is_domain_resolved == false)
-    {
-      /* resolve DB_TYPE_VARIABLE domains before the size pass, so size and fill see the same layout */
-      if (qfile_update_domains_on_type_list (thread_p, list_id, outptr_list) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
-    }
-
-  if (status == QPROC_TPLDESCR_SUCCESS)
-    {
-      /* size pass with the (possibly just finalized) descriptor */
-      status = qdata_size_tuple_desc (&list_id->type_list, &list_id->tpl_descr);
-      if (status == QPROC_TPLDESCR_FAILURE)
-	{
-	  goto exit_on_error;
-	}
-    }
-
-  return status;
+  return qdata_generate_tuple_desc_for_valptr_list (thread_p, outptr_list, vd, list_id);
 
 exit_on_error:
 

@@ -71,6 +71,12 @@ static int qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined(__GNUC__)
+#define QDATA_NOINLINE __attribute__ ((noinline))
+#else
+#define QDATA_NOINLINE
+#endif
+
 #define NOT_NULL_VALUE(a, b)	((a) ? (a) : (b))
 #define INITIAL_OID_STACK_SIZE  1
 
@@ -533,93 +539,137 @@ qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * 
 }
 
 /*
- * qdata_generate_tuple_desc_for_valptr_list () -
- *   return: QPROC_TPLDESCR_SUCCESS on success or
- *           QP_TPLDESCR_RETRY_xxx,
- *           QPROC_TPLDESCR_FAILURE
- *   valptr_list(in)    : Value pointer list
- *   vd(in)     : Value descriptor
- *   tdp(in)    : Tuple descriptor
- *
- * Note: Collect the valptr_list values into the tuple descriptor (f_valp / f_cnt). The size pass is a separate
- * step, qdata_size_tuple_desc (), so the caller can resolve the list's late domains from these values in between.
- * Regu variables that are hidden columns are not copied
- * to the list file tuple
+ * qdata_collect_tuple_values () - collect visible values and optionally measure them against a settled layout.
+ *   Specialize the loop so the collect-only path does not test a sizing mode for every column.
  */
-QPROC_TPLDESCR_STATUS
-qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
-					   val_descr * val_desc_p, qfile_tuple_descriptor * tuple_desc_p)
+template < bool size_values > static QPROC_TPLDESCR_STATUS
+qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, val_descr * val_desc_p,
+			    qfile_tuple_descriptor * tuple_desc_p, const qfile_tuple_value_type_list * type_list)
 {
   REGU_VARIABLE_LIST reg_var_p;
   REGU_VARIABLE *regu_var_p;
-  int i;
-  int flags;
-  QPROC_TPLDESCR_STATUS status = QPROC_TPLDESCR_SUCCESS;
-  DB_TYPE dbval_type;
+  DB_VALUE *value;
+  int i, values_size = 0;
+  bool has_null = false;
 
   tuple_desc_p->tpl_size = 0;
   tuple_desc_p->f_cnt = 0;
 
-  /* copy each value pointer into the each tdp field */
+  if (size_values)
+    {
+      assert (type_list != NULL && type_list->layout_ready);
+      assert (tuple_desc_p->f_len != NULL || type_list->type_cnt == 0);
+    }
+
   reg_var_p = valptr_list_p->valptrp;
   for (i = 0; i < valptr_list_p->valptr_cnt; i++, reg_var_p = reg_var_p->next)
     {
       regu_var_p = &reg_var_p->value;
-      flags = regu_var_p->flags;
-      if (unlikely (flags & REGU_VARIABLE_HIDDEN_COLUMN))
+      if (unlikely (regu_var_p->flags & REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  continue;
 	}
-      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] =
-	qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
-
-      if (tuple_desc_p->f_valp[tuple_desc_p->f_cnt] == NULL)
+      value = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+      tuple_desc_p->f_valp[tuple_desc_p->f_cnt] = value;
+      if (value == NULL)
 	{
-	  status = QPROC_TPLDESCR_FAILURE;
-	  goto exit_with_status;
+	  return QPROC_TPLDESCR_FAILURE;
 	}
 
-      dbval_type = DB_VALUE_DOMAIN_TYPE (tuple_desc_p->f_valp[tuple_desc_p->f_cnt]);
-
-      /* SET data-type cannot use tuple descriptor */
-      if (unlikely (pr_is_set_type (dbval_type)))
+      /* SET data-type cannot use tuple descriptor. */
+      if (unlikely (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (value))))
 	{
-	  status = QPROC_TPLDESCR_RETRY_SET_TYPE;
-	  goto exit_with_status;
+	  return QPROC_TPLDESCR_RETRY_SET_TYPE;
 	}
 
-      tuple_desc_p->f_cnt += 1;	/* increase field number */
+      if (size_values)
+	{
+	  assert (tuple_desc_p->f_cnt < type_list->type_cnt);
+	  values_size = qfile_tuple_size_add_value (&type_list->column_layout_array[tuple_desc_p->f_cnt], value,
+						    &tuple_desc_p->f_len[tuple_desc_p->f_cnt], values_size, &has_null);
+	  if (values_size < 0)
+	    {
+	      return QPROC_TPLDESCR_FAILURE;
+	    }
+	}
+      tuple_desc_p->f_cnt++;
     }
 
-exit_with_status:
-
-  return status;
+  if (size_values)
+    {
+      assert (tuple_desc_p->f_cnt == type_list->type_cnt);
+      tuple_desc_p->has_null = has_null;
+      tuple_desc_p->tpl_size = qfile_tuple_size_finalize (type_list, values_size, has_null);
+      /* Finish collecting before deciding to retry a BIG record. */
+      if (tuple_desc_p->tpl_size >= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
+	{
+	  return QPROC_TPLDESCR_RETRY_BIG_REC;
+	}
+    }
+  return QPROC_TPLDESCR_SUCCESS;
 }
 
 /*
- * qdata_size_tuple_desc () - size pass over the values from qdata_generate_tuple_desc_for_valptr_list ()
- *   return: QPROC_TPLDESCR_SUCCESS, QPROC_TPLDESCR_RETRY_BIG_REC or QPROC_TPLDESCR_FAILURE
- *   type_list(in): layout-ready descriptor of the destination list
+ * qdata_generate_tuple_desc_unresolved () - collect, resolve this list's late domains, then size (cold path).
+ *   return: QPROC_TPLDESCR_SUCCESS, QPROC_TPLDESCR_RETRY_xxx, or QPROC_TPLDESCR_FAILURE
+ *
+ * Kept out of line on purpose: with both loop specializations inlined into one function, GCC 8 stopped inlining
+ * qdata_get_dbval_from_constant_regu_variable () into the hot fused loop and every column paid a call (Q01 perf).
+ * NULL-only or unresolved-collation columns can keep this path active across several rows.
  */
-QPROC_TPLDESCR_STATUS
-qdata_size_tuple_desc (qfile_tuple_value_type_list * type_list, qfile_tuple_descriptor * tuple_desc_p)
+static QDATA_NOINLINE QPROC_TPLDESCR_STATUS
+qdata_generate_tuple_desc_unresolved (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
+				      val_descr * val_desc_p, qfile_list_id * list_id)
 {
-  /* the compressed string, if any, is deallocated later, after copying the db_value into the tuple */
+  qfile_tuple_descriptor *tuple_desc_p = &list_id->tpl_descr;
+  QPROC_TPLDESCR_STATUS status;
+
+  status = qdata_collect_tuple_values < false > (thread_p, valptr_list_p, val_desc_p, tuple_desc_p, NULL);
+  if (status == QPROC_TPLDESCR_FAILURE)
+    {
+      return status;
+    }
+  if (!list_id->is_domain_resolved && qfile_update_domains_on_type_list (thread_p, list_id, valptr_list_p) != NO_ERROR)
+    {
+      return QPROC_TPLDESCR_FAILURE;
+    }
+  if (status != QPROC_TPLDESCR_SUCCESS)
+    {
+      return status;
+    }
+
   tuple_desc_p->tpl_size =
-    qfile_tuple_size_from_values (type_list, tuple_desc_p->f_valp, tuple_desc_p->f_len, tuple_desc_p->f_cnt,
+    qfile_tuple_size_from_values (&list_id->type_list, tuple_desc_p->f_valp, tuple_desc_p->f_len, tuple_desc_p->f_cnt,
 				  &tuple_desc_p->has_null);
   if (tuple_desc_p->tpl_size < 0)
     {
       return QPROC_TPLDESCR_FAILURE;
     }
-
-  /* BIG RECORD cannot use tuple descriptor */
   if (tuple_desc_p->tpl_size >= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
     {
       return QPROC_TPLDESCR_RETRY_BIG_REC;
     }
-
   return QPROC_TPLDESCR_SUCCESS;
+}
+
+/*
+ * qdata_generate_tuple_desc_for_valptr_list () - collect and size the destination list's tuple descriptor.
+ *   return: QPROC_TPLDESCR_SUCCESS, QPROC_TPLDESCR_RETRY_xxx, or QPROC_TPLDESCR_FAILURE
+ *   list_id(in/out): destination with f_valp/f_len already allocated
+ *
+ * Fuse collection and sizing only when this list's domains are settled. Otherwise collection must precede domain
+ * resolution and sizing. The compressed string, if any, is deallocated later, after copying the db_value into the tuple.
+ */
+QPROC_TPLDESCR_STATUS
+qdata_generate_tuple_desc_for_valptr_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
+					   val_descr * val_desc_p, qfile_list_id * list_id)
+{
+  if (list_id->is_domain_resolved && list_id->type_list.layout_ready)
+    {
+      return qdata_collect_tuple_values < true > (thread_p, valptr_list_p, val_desc_p, &list_id->tpl_descr,
+						  &list_id->type_list);
+    }
+  return qdata_generate_tuple_desc_unresolved (thread_p, valptr_list_p, val_desc_p, list_id);
 }
 
 /*

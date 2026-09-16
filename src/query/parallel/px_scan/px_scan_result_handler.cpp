@@ -98,7 +98,6 @@ namespace parallel_scan
       {
 	m_.orig_xasl = orig_xasl_tree_for_domain_resolve;
 	m_.active_results = parallelism;
-	m_.is_list_id_domain_resolved = false;
 	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
 
 	m_.instnum_mode = parallel_scan::detect_instnum_mode (orig_xasl_tree_for_domain_resolve,
@@ -885,17 +884,13 @@ namespace parallel_scan
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
-	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, & (tl.writer_result_p->tpl_descr));
-
-	if (unlikely (!m_.is_list_id_domain_resolved))
+	/* Each worker resolves and sizes against its own destination list. */
+	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, tl.writer_result_p);
+	if (unlikely (status == QPROC_TPLDESCR_FAILURE))
 	  {
-	    /* resolve this worker's list domains from the collected values before the size pass */
-	    qfile_update_domains_on_type_list (thread_p, tl.writer_result_p, input);
-	    m_.is_list_id_domain_resolved = tl.writer_result_p->is_domain_resolved;
-	  }
-	if (status == QPROC_TPLDESCR_SUCCESS)
-	  {
-	    status = qdata_size_tuple_desc (&tl.writer_result_p->type_list, &tl.writer_result_p->tpl_descr);
+	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	    return false;
 	  }
 	if (unlikely (!tl.val_list_domain_resolved))
 	  {
@@ -1000,12 +995,6 @@ namespace parallel_scan
 		    return false;
 		  }
 	      }
-	  }
-	else if (unlikely (status == QPROC_TPLDESCR_FAILURE))
-	  {
-	    m_err_messages_p->move_top_error_message_to_this();
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    return false;
 	  }
 	else if (unlikely (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
 	  {
