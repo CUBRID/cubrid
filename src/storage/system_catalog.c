@@ -30,6 +30,7 @@
 #include "system_catalog.h"
 
 #include "error_manager.h"
+#include "release_string.h"
 #include "file_manager.h"
 #include "log_append.hpp"
 #include "slotted_page.h"
@@ -421,7 +422,9 @@ catalog_get_disk_representation (DISK_REPR * disk_repr_p, char *rec_p)
   if (disk_repr_p->stats_layout != CATALOG_STATS_LAYOUT_V1)
     {
       assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CT_UNSUPPORTED_STATS_LAYOUT, 1, disk_repr_p->stats_layout);
+      er_log_debug (ARG_FILE_LINE, "catalog: statistics layout %d is not the current one (%d)\n",
+		    disk_repr_p->stats_layout, CATALOG_STATS_LAYOUT_V1);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_INCOMPATIBLE_DATABASE, 2, rel_name (), rel_release_string ());
       return ER_FAILED;
     }
 
