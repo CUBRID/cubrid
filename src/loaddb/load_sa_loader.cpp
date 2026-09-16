@@ -947,9 +947,6 @@ error_exit:
 	switch (c->type)
 	  {
 	  case LDR_NULL:
-	    ldr_act_value (ldr_Current_context, NULL, 0, LDR_NULL, is_element);
-	    break;
-
 	  case LDR_INT:
 	  case LDR_FLOAT:
 	  case LDR_DOUBLE:
@@ -963,43 +960,7 @@ error_exit:
 	  case LDR_DATETIMELTZ:
 	  case LDR_DATETIMETZ:
 	  case LDR_STR:
-	  {
-	    string_type *str = (string_type *) c->val;
-
-	    ldr_act_value (ldr_Current_context, str->val, str->size, c->type, is_element);
-	  }
-	  break;
-
 	  case LDR_MONETARY:
-	  {
-	    monetary_type *mon = (monetary_type *) c->val;
-	    string_type *str = (string_type *) mon->amount;
-	    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
-	    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
-	    char *full_mon_str_p = full_mon_str;
-	    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-	    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-	    size_t full_mon_str_len = (str->size + strlen (curr_str));
-
-	    if (full_mon_str_len >= sizeof (full_mon_str))
-	      {
-		full_mon_str_p = new char[full_mon_str_len + 1];
-	      }
-
-	    strcpy (full_mon_str_p, curr_str);
-	    strcat (full_mon_str_p, str->val);
-
-	    ldr_act_value (ldr_Current_context, full_mon_str_p, strlen (full_mon_str_p), c->type,
-			   is_element);
-	    if (full_mon_str_p != full_mon_str)
-	      {
-		delete [] full_mon_str_p;
-	      }
-
-	    delete mon;
-	  }
-	  break;
-
 	  case LDR_BSTR:
 	  case LDR_XSTR:
 	  case LDR_ELO_INT:
@@ -1007,9 +968,9 @@ error_exit:
 	  case LDR_SYS_USER:
 	  case LDR_SYS_CLASS:
 	  {
-	    string_type *str = (string_type *) c->val;
+	    text_token tok (c);
 
-	    ldr_act_value (ldr_Current_context, str->val, str->size, c->type, is_element);
+	    ldr_act_value (ldr_Current_context, tok.text (), tok.size (), c->type, is_element);
 	  }
 	  break;
 

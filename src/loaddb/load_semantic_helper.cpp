@@ -197,7 +197,12 @@ namespace cubload
   constant_type *
   semantic_helper::make_monetary_constant (int currency_type, string_type *amount)
   {
-    return make_constant (LDR_MONETARY, new monetary_type (amount, currency_type));
+    monetary_type *mon = new monetary_type (amount, currency_type);
+
+    // collect it in order to free the memory later, the same way strings and constants are collected.
+    m_monetary_list.push_front (mon);
+
+    return make_constant (LDR_MONETARY, mon);
   }
 
   void
@@ -327,6 +332,12 @@ namespace cubload
 	delete con;
       }
     m_constant_list.clear ();
+
+    for (monetary_type *mon : m_monetary_list)
+      {
+	delete mon;
+      }
+    m_monetary_list.clear ();
   }
 
   template<typename T>

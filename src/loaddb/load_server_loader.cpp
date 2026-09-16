@@ -854,11 +854,8 @@ namespace cubload
       case LDR_XSTR:
       case LDR_ELO_INT:
       case LDR_ELO_EXT:
-	error_code = process_generic_constant (cons, attr, false);
-	break;
-
       case LDR_MONETARY:
-	error_code = process_monetary_constant (cons, attr, false);
+	error_code = process_generic_constant (cons, attr, false);
 	break;
 
       case LDR_COLLECTION:
@@ -925,17 +922,15 @@ namespace cubload
   int
   server_object_loader::process_generic_constant (constant_type *cons, const attribute &attr, bool is_element)
   {
-    string_type *str = reinterpret_cast<string_type *> (cons->val);
-    char *token = str != NULL ? str->val : NULL;
-    size_t str_size = str != NULL ? str->size : 0;
+    text_token tok (cons);
 
     db_value &db_val = get_attribute_db_value (attr.get_index ());
     conv_func &func = conv_func_for (cons, attr, is_element);
 
-    int error_code = func (token, str_size, &attr, &db_val);
+    int error_code = func (tok.text (), tok.size (), &attr, &db_val);
     if (error_code == ER_DATE_CONVERSION)
       {
-	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
+	m_error_handler.log_date_time_conversion_error (tok.text (), pr_type_name (attr.get_domain ().type->get_id ()));
       }
     else if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
       {
@@ -944,51 +939,6 @@ namespace cubload
 	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
       }
-
-    return error_code;
-  }
-
-  int
-  server_object_loader::process_monetary_constant (constant_type *cons, const attribute &attr, bool is_element)
-  {
-    int error_code = NO_ERROR;
-    monetary_type *mon = reinterpret_cast<monetary_type *> (cons->val);
-    string_type *str = mon->amount;
-
-    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
-    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
-    char *full_mon_str_p = full_mon_str;
-
-    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-    size_t full_mon_str_len = (str->size + strlen (curr_str));
-
-    if (full_mon_str_len >= sizeof (full_mon_str))
-      {
-	full_mon_str_p = new char[full_mon_str_len + 1];
-      }
-
-    std::strcpy (full_mon_str_p, curr_str);
-    std::strcat (full_mon_str_p, str->val);
-
-    db_value &db_val = get_attribute_db_value (attr.get_index ());
-    conv_func &func = conv_func_for (cons, attr, is_element);
-
-    error_code = func (full_mon_str_p, full_mon_str_len, &attr, &db_val);
-    if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
-      {
-	char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
-
-	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
-      }
-
-    if (full_mon_str_p != full_mon_str)
-      {
-	delete [] full_mon_str_p;
-      }
-
-    delete mon;
 
     return error_code;
   }
@@ -1025,10 +975,6 @@ namespace cubload
 	  case LDR_COLLECTION:
 	    error_code = ER_LDR_NESTED_SET;
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	    break;
-
-	  case LDR_MONETARY:
-	    error_code = process_monetary_constant (c, attr, true);
 	    break;
 
 	  case LDR_OID:

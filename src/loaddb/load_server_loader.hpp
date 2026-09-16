@@ -99,7 +99,6 @@ namespace cubload
        */
       int sink_heap (const attribute &attr, db_value &val);
       int process_generic_constant (constant_type *cons, const attribute &attr, bool is_element);
-      int process_monetary_constant (constant_type *cons, const attribute &attr, bool is_element);
       int process_collection_constant (constant_type *cons, const attribute &attr);
 
       void clear_db_values ();
