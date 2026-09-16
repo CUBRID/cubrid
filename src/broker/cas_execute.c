@@ -10537,6 +10537,18 @@ ux_stream_reset (void)
   stream_Deferred_auto_commit = false;
 }
 
+/*
+ * ux_stream_is_open () - Does this connection hold an open stream session?
+ *
+ * The reply header carries this so a driver that runs auto-commit from its own
+ * side can hold its commit back the way the CAS holds its own.
+ */
+bool
+ux_stream_is_open (void)
+{
+  return stream_from_is_open ();
+}
+
 int
 ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {

@@ -1297,6 +1297,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
 	(as_info->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
 
+      /* Cleared as well as set: init_msg_header () leaves this bit at 1. */
+      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_STREAM_OPEN;
+      if (ux_stream_is_open ())
+	{
+	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |= CAS_INFO_FLAG_MASK_STREAM_OPEN;
+	}
+
       if (cas_shard_flag == ON)
 	{
 	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;

@@ -116,6 +116,14 @@ extern "C"
 #define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
 #define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
 #define CAS_INFO_FLAG_MASK_NEW_SESSION_ID       0x04
+/* A stream session is open on this connection, so the statement that opened it
+ * is not finished and its auto-commit is owed to END. A driver that commits
+ * from its own side reads this and holds that commit back; the CAS pays it.
+ *
+ * Only a PROTOCOL_V13 client may read it. init_msg_header () fills this byte
+ * with CAS_INFO_RESERVED_DEFAULT, so every bit above the three older masks
+ * reads as 1 from any earlier server. */
+#define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
