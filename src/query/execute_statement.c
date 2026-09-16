@@ -71,6 +71,7 @@
 #include "memory_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "copy_column_types.h"
 #include "object_representation.h"
 #include "trigger_manager.h"
 #include "release_string.h"
@@ -22839,6 +22840,16 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 		error = ER_COPY_NOT_SUPPORTED;
 		goto end;
 	      }
+	    if (!copy_type_is_supported (db_attribute_type (attr)))
+	      {
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 64];
+
+		snprintf (detail, sizeof (detail), "column %s of type %s", db_attribute_name (attr),
+			  pr_type_name (db_attribute_type (attr)));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
 	    col_types[i] = db_attribute_type (attr);
 	    col_ids[i] = db_attribute_id (attr);
 
@@ -22861,6 +22872,16 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    if (db_attribute_is_shared (attr))
 	      {
 		continue;
+	      }
+	    if (!copy_type_is_supported (db_attribute_type (attr)))
+	      {
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 64];
+
+		snprintf (detail, sizeof (detail), "column %s of type %s", db_attribute_name (attr),
+			  pr_type_name (db_attribute_type (attr)));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
 	      }
 	    col_types[i] = db_attribute_type (attr);
 	    col_ids[i] = db_attribute_id (attr);
