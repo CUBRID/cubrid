@@ -1295,8 +1295,6 @@ static int btree_index_capacity_serial (THREAD_ENTRY * thread_p, BTID * btid, BT
 struct btree_capacity_accum;
 struct btree_capacity_scan_ctx;
 struct btree_capacity_worker_arg;
-static void btree_capacity_accum_fold (struct btree_capacity_accum *accum, const BTREE_CAPACITY * subtree_cpc);
-static void btree_capacity_accum_merge (struct btree_capacity_accum *total, const struct btree_capacity_accum *part);
 static void btree_capacity_accum_to_cpc (const struct btree_capacity_accum *total, int root_free, BTREE_CAPACITY * cpc);
 static void btree_capacity_parallel_worker (cubthread::entry & thread_ref, struct btree_capacity_worker_arg *arg);
 static int btree_capacity_reduce (THREAD_ENTRY * thread_p, const struct btree_capacity_scan_ctx *ctx, int root_free,
@@ -9941,7 +9939,8 @@ exit_on_error:
  * avg_key_len may differ by 1 on large indexes (the INT64 result is the accurate one). */
 
 /* btree_capacity_accum - per-worker INT64 partial sums, merged after join. Zero-initialize.
- *   tot_used_space and height are not accumulated; the reduce derives them. */
+ *   tot_used_space is not accumulated; the reduce derives it. The fields are named after their
+ *   BTREE_CAPACITY counterparts so that one template adds either kind into an accumulator. */
 typedef struct btree_capacity_accum BTREE_CAPACITY_ACCUM;
 struct btree_capacity_accum
 {
@@ -9956,79 +9955,53 @@ struct btree_capacity_accum
   INT64 sum_key_len;
   INT64 tot_free_space;
   INT64 tot_space;
-  INT64 ovf_tot_free_space;
-  INT64 ovf_tot_space;
-  INT64 ovf_tot_pg_cnt;
-  INT64 ovf_dis_key_cnt;
-  INT64 ovf_tot_val_cnt;
-  int ovf_max_pg_cnt_per_key;
-  int child_height;		/* height of a root-child subtree (all children are co-level) */
-  bool has_data;
+  struct
+  {
+    INT64 dis_key_cnt;
+    INT64 tot_val_cnt;
+    INT64 tot_pg_cnt;
+    INT64 tot_free_space;
+    INT64 tot_space;
+    int max_pg_cnt_per_key;
+  } ovfl_oid_pg;
+  int height;			/* height of a root-child subtree (all children are co-level) */
 };
 
 /*
- * btree_capacity_accum_fold () - fold one root-child subtree's capacity into an accumulator
+ * btree_capacity_accum_merge () - merge one source's capacity into an accumulator
+ *   Src is BTREE_CAPACITY when a worker folds a root-child subtree it has just scanned, and
+ *   BTREE_CAPACITY_ACCUM when the reduce merges one worker's partial into the total. Both name
+ *   these fields alike, so the two directions are this one body: the sums add, and
+ *   max_pg_cnt_per_key and height take the larger of the two.
+ *   height is a max, not a copy: root children are co-level so every fold reports the same height,
+ *   and 0 is the identity - a worker that folded nothing, or a keyless page, drops out here.
  */
-static void
-btree_capacity_accum_fold (BTREE_CAPACITY_ACCUM * accum, const BTREE_CAPACITY * subtree_cpc)
+template < typename Src > static inline void
+btree_capacity_accum_merge (BTREE_CAPACITY_ACCUM * dst, const Src * src)
 {
-  accum->fence_key_cnt += subtree_cpc->fence_key_cnt;
-  accum->dis_key_cnt += subtree_cpc->dis_key_cnt;
-  accum->tot_val_cnt += subtree_cpc->tot_val_cnt;
-  accum->deduplicate_dis_key_cnt += subtree_cpc->deduplicate_dis_key_cnt;
-  accum->leaf_pg_cnt += subtree_cpc->leaf_pg_cnt;
-  accum->nleaf_pg_cnt += subtree_cpc->nleaf_pg_cnt;
-  accum->tot_pg_cnt += subtree_cpc->tot_pg_cnt;
-  accum->sum_rec_len += (INT64) subtree_cpc->sum_rec_len;
-  accum->sum_key_len += (INT64) subtree_cpc->sum_key_len;
-  accum->tot_free_space += (INT64) subtree_cpc->tot_free_space;
-  accum->tot_space += (INT64) subtree_cpc->tot_space;
-  accum->ovf_tot_free_space += (INT64) subtree_cpc->ovfl_oid_pg.tot_free_space;
-  accum->ovf_tot_space += (INT64) subtree_cpc->ovfl_oid_pg.tot_space;
-  accum->ovf_tot_pg_cnt += subtree_cpc->ovfl_oid_pg.tot_pg_cnt;
-  accum->ovf_dis_key_cnt += subtree_cpc->ovfl_oid_pg.dis_key_cnt;
-  accum->ovf_tot_val_cnt += subtree_cpc->ovfl_oid_pg.tot_val_cnt;
-  if (accum->ovf_max_pg_cnt_per_key < subtree_cpc->ovfl_oid_pg.max_pg_cnt_per_key)
+  dst->fence_key_cnt += (INT64) src->fence_key_cnt;
+  dst->dis_key_cnt += (INT64) src->dis_key_cnt;
+  dst->tot_val_cnt += (INT64) src->tot_val_cnt;
+  dst->deduplicate_dis_key_cnt += (INT64) src->deduplicate_dis_key_cnt;
+  dst->leaf_pg_cnt += (INT64) src->leaf_pg_cnt;
+  dst->nleaf_pg_cnt += (INT64) src->nleaf_pg_cnt;
+  dst->tot_pg_cnt += (INT64) src->tot_pg_cnt;
+  dst->sum_rec_len += (INT64) src->sum_rec_len;
+  dst->sum_key_len += (INT64) src->sum_key_len;
+  dst->tot_free_space += (INT64) src->tot_free_space;
+  dst->tot_space += (INT64) src->tot_space;
+  dst->ovfl_oid_pg.dis_key_cnt += (INT64) src->ovfl_oid_pg.dis_key_cnt;
+  dst->ovfl_oid_pg.tot_val_cnt += (INT64) src->ovfl_oid_pg.tot_val_cnt;
+  dst->ovfl_oid_pg.tot_pg_cnt += (INT64) src->ovfl_oid_pg.tot_pg_cnt;
+  dst->ovfl_oid_pg.tot_free_space += (INT64) src->ovfl_oid_pg.tot_free_space;
+  dst->ovfl_oid_pg.tot_space += (INT64) src->ovfl_oid_pg.tot_space;
+  if (dst->ovfl_oid_pg.max_pg_cnt_per_key < src->ovfl_oid_pg.max_pg_cnt_per_key)
     {
-      accum->ovf_max_pg_cnt_per_key = subtree_cpc->ovfl_oid_pg.max_pg_cnt_per_key;
+      dst->ovfl_oid_pg.max_pg_cnt_per_key = src->ovfl_oid_pg.max_pg_cnt_per_key;
     }
-  accum->child_height = subtree_cpc->height;
-  accum->has_data = true;
-}
-
-/*
- * btree_capacity_accum_merge () - merge one worker's accum into a running total accum.
- *   Keep the field list in sync with btree_capacity_accum_fold above. Sums are associative;
- *   ovf_max_pg_cnt_per_key is a max; child_height is copied only from a scanner that saw data
- *   (root children are co-level, so any data-bearing scanner reports the same height).
- */
-static void
-btree_capacity_accum_merge (BTREE_CAPACITY_ACCUM * total, const BTREE_CAPACITY_ACCUM * part)
-{
-  total->fence_key_cnt += part->fence_key_cnt;
-  total->dis_key_cnt += part->dis_key_cnt;
-  total->tot_val_cnt += part->tot_val_cnt;
-  total->deduplicate_dis_key_cnt += part->deduplicate_dis_key_cnt;
-  total->leaf_pg_cnt += part->leaf_pg_cnt;
-  total->nleaf_pg_cnt += part->nleaf_pg_cnt;
-  total->tot_pg_cnt += part->tot_pg_cnt;
-  total->sum_rec_len += part->sum_rec_len;
-  total->sum_key_len += part->sum_key_len;
-  total->tot_free_space += part->tot_free_space;
-  total->tot_space += part->tot_space;
-  total->ovf_tot_free_space += part->ovf_tot_free_space;
-  total->ovf_tot_space += part->ovf_tot_space;
-  total->ovf_tot_pg_cnt += part->ovf_tot_pg_cnt;
-  total->ovf_dis_key_cnt += part->ovf_dis_key_cnt;
-  total->ovf_tot_val_cnt += part->ovf_tot_val_cnt;
-  if (total->ovf_max_pg_cnt_per_key < part->ovf_max_pg_cnt_per_key)
+  if (dst->height < src->height)
     {
-      total->ovf_max_pg_cnt_per_key = part->ovf_max_pg_cnt_per_key;
-    }
-  if (part->has_data)
-    {
-      total->child_height = part->child_height;
-      total->has_data = true;
+      dst->height = src->height;
     }
 }
 
@@ -10056,20 +10029,20 @@ btree_capacity_accum_to_cpc (const BTREE_CAPACITY_ACCUM * total, int root_free, 
   cpc->leaf_pg_cnt = (int) total->leaf_pg_cnt;
   cpc->nleaf_pg_cnt = (int) t_nleaf;
   cpc->tot_pg_cnt = (int) t_pg;
-  cpc->height = total->child_height + 1;	/* root children are co-level */
+  cpc->height = total->height + 1;	/* root children are co-level */
   cpc->sum_rec_len = (float) total->sum_rec_len;
   cpc->sum_key_len = (float) total->sum_key_len;
   cpc->tot_free_space = (float) t_free;
   cpc->tot_space = (float) t_space;
   cpc->tot_used_space = (float) (t_space - t_free);
 
-  cpc->ovfl_oid_pg.max_pg_cnt_per_key = total->ovf_max_pg_cnt_per_key;
-  cpc->ovfl_oid_pg.dis_key_cnt = (int) total->ovf_dis_key_cnt;
-  cpc->ovfl_oid_pg.tot_val_cnt = total->ovf_tot_val_cnt;
-  cpc->ovfl_oid_pg.tot_pg_cnt = (int) total->ovf_tot_pg_cnt;
-  cpc->ovfl_oid_pg.tot_free_space = (float) total->ovf_tot_free_space;
-  cpc->ovfl_oid_pg.tot_space = (float) total->ovf_tot_space;
-  cpc->ovfl_oid_pg.tot_used_space = (float) (total->ovf_tot_space - total->ovf_tot_free_space);
+  cpc->ovfl_oid_pg.max_pg_cnt_per_key = total->ovfl_oid_pg.max_pg_cnt_per_key;
+  cpc->ovfl_oid_pg.dis_key_cnt = (int) total->ovfl_oid_pg.dis_key_cnt;
+  cpc->ovfl_oid_pg.tot_val_cnt = total->ovfl_oid_pg.tot_val_cnt;
+  cpc->ovfl_oid_pg.tot_pg_cnt = (int) total->ovfl_oid_pg.tot_pg_cnt;
+  cpc->ovfl_oid_pg.tot_free_space = (float) total->ovfl_oid_pg.tot_free_space;
+  cpc->ovfl_oid_pg.tot_space = (float) total->ovfl_oid_pg.tot_space;
+  cpc->ovfl_oid_pg.tot_used_space = (float) (total->ovfl_oid_pg.tot_space - total->ovfl_oid_pg.tot_free_space);
 
   /* averages: same formulas as serial */
   if (cpc->dis_key_cnt > 0)
@@ -10184,7 +10157,7 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
 	}
       pgbuf_unfix_and_init (&thread_ref, child_page);
 
-      btree_capacity_accum_fold (arg->accum, &child_cpc);
+      btree_capacity_accum_merge (arg->accum, &child_cpc);
       continue;			/* next child; do not fall into worker_failed */
 
     worker_failed:
