@@ -3771,8 +3771,8 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
     {
       /* every candidate operand is a plain column or a wired constant: no program is
        * needed, the accumulator's fast path reads such an operand in place */
-      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): plain operands (peeked in place, no program)%s\n", indent, ' ',
-	       sfx);
+      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): plain operands (peeked in place, no program)%s\n", indent,
+	       ' ', sfx);
     }
   else if (agg_list != NULL && agg_list->operand_prog_state != 0)
     {
@@ -3807,9 +3807,17 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 		{
 		  int root = agg_list->operand_prog_idx[agg->operand_prog_base];
 
-		  fprintf (fp, "%*cagg[%d]: %s%s\n", indent + 2, ' ',
-			   i, (root >= 0) ? "operand from program" : "operand interpreted",
-			   (agg->accumulator.shared_from > 0) ? ", shares the owner's accumulator" : "");
+		  fprintf (fp, "%*cagg[%d]: %s", indent + 2, ' ', i,
+			   (root >= 0) ? "operand from program" : "operand interpreted");
+		  if (agg->accumulator.shared_from > 0)
+		    {
+		      /* a sharer adds nothing per row: it reads the owner's accumulator at finalize
+		       * -- an AVG divides that sum by the shared count, a SUM takes it as is */
+		      fprintf (fp, ", shares agg[%d]'s accumulator (%s)", agg->accumulator.shared_from - 1,
+			       (agg->function == PT_AVG) ? "avg = its sum / count at finalize"
+			       : (agg->function == PT_SUM) ? "sum read from it at finalize" : "read at finalize");
+		    }
+		  fprintf (fp, "\n");
 		}
 	    }
 	  expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
