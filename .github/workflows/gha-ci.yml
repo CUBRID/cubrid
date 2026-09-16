@@ -342,9 +342,13 @@ jobs:
 
             issue_comment)
               pr="$ISSUE"
+              # The body ends in CRLF, and CR is not an IFS character: left in, it rides
+              # on the last suite word below and fails its case match, so a comment that
+              # used to be ignored would run nothing and say nothing. The newline is why
+              # both grammars end in [[:space:]]*$.
+              req=$(printf '%s' "$BODY" | tr -d '\r')
               # A trailing testtools=<branch> is taken off first, so both grammars below
               # read the request without it and neither regex had to change.
-              req="$BODY"
               if [[ "$req" =~ ^(/run[[:space:]].*)[[:space:]]+testtools=([^[:space:]]+)[[:space:]]*$ ]]; then
                 req="${BASH_REMATCH[1]}"
                 tt="${BASH_REMATCH[2]}"
@@ -376,7 +380,6 @@ jobs:
                 test_run=true
                 echo "comment: re-run the failures of run ${rerun} / suites: $(echo $sel)"
               # Regex must stay identical to comment_trigger.yml: one syntax to learn.
-              # [[:space:]]*$ because a comment body arrives with its trailing CRLF.
               elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}[[:space:]]*$ ]]; then
                 for w in $req; do
                   case "$w" in
@@ -511,8 +514,8 @@ jobs:
           while IFS=$'\t' read -r c p t; do parent[$c]="$p"; title[$c]="$t"; done < /tmp/window.tsv
           echo "window: $(wc -l < /tmp/window.tsv) commits on $BRANCH since $since"
 
-          # Only success and failure are verdicts. pending and error are what a run
-          # that never judged this commit leaves behind, so the batch takes it again.
+          # pending and error are what a run that never judged this commit leaves
+          # behind, so the batch takes it again.
           covered() {
             local body missing
             body=$(gh api "repos/${REPO}/commits/$1/status") || {
@@ -793,13 +796,14 @@ jobs:
               rm -rf "$pat" && swept=$((swept + 1))
             done
           }
-          # Staging is dead the moment its run ended, so a day is generous.
+          # Staging is dead the moment its run ended, so a day is generous. The second
+          # testtools glob of each sweep is where runs made before the relayout put the
+          # seed; both carry it until the last of those runs is gone.
           sweep 0 "$CI_BUILD_ROOT"/*/*/*.tmp.* "$CI_BUILD_ROOT"/*/*/*.old.* \
-                  "$CI_ROOT"/runs/*/plan/testtools.tmp.*
+                  "$CI_ROOT"/runs/*/plan/testtools.tmp.* "$CI_ROOT"/runs/*/testtools.tmp.*
           # The CTP seed is what a native "Re-run failed jobs" reads: plan does not run
           # again, so deleting the seed makes every re-run shard die at "no CTP seed".
           # GitHub keeps that button for 30 days; this window is 7 (59MB per run).
-          # The second glob is where runs made before the relayout put the seed.
           sweep 7 "$CI_ROOT"/runs/*/plan/testtools "$CI_ROOT"/runs/*/testtools
           echo "swept: $swept"
 
@@ -2042,15 +2046,16 @@ jobs:
         run: |
           set -eo pipefail
           out="$SHARD_DIR"
-          # test-results/ is what a machine parses, artifacts/ what a person
-          # downloads, and the shard root this shard's own control and provenance.
-          mkdir -p "$out/test-results" "$out/artifacts"
+          # The verdict file stays at the shard root next to build.read and shard.done:
+          # it is this shard's control record, not a result anyone else reads.
+          mkdir -p "$out/artifacts"
           logs="$CTP_HOME/$XML_SRC"
 
           if [ -d "$logs" ]; then
             case "$VERDICT_SRC" in
               test_status.data)
                 real=$(readlink -f "$logs")
+                mkdir -p "$out/test-results"
                 cp -f "$real/test_status.data" "$out/test_status.data" 2>/dev/null || true
                 cp -f "$real/test-shell.xml" "$out/test-results/" 2>/dev/null || true
                 cp -f "$real/feedback.log" "$out/artifacts/" 2>/dev/null || true
@@ -2492,9 +2497,10 @@ jobs:
             mkdir -p "/tmp/failed-logs/$suite"
             case "$vsrc" in
               test_status.data)
-                for x in "$d"/shard/*/test-results/test-shell.xml; do
+                for sdir in "$d"/shard/*/; do
+                  x="$sdir/test-results/test-shell.xml"
                   [ -f "$x" ] || continue
-                  i=$(basename "$(dirname "$(dirname "$x")")")
+                  i=$(basename "$sdir")
                   # Line k of failed.list is /tmp/failed-logs/<suite>/k.log. The offset
                   # carries that numbering across the shards.
                   off=$(wc -l < /tmp/failed.list)
@@ -2596,8 +2602,6 @@ jobs:
                 echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
                 echo
               fi
-              # Stamps are per attempt, so a stage that did not run again has no
-              # times to report.
               if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
                 echo "> **Attempt $GITHUB_RUN_ATTEMPT.** GitHub's _Re-run failed jobs_ ran only the jobs that failed, so a stage that did not run again reads \`(not measured)\` below. This is not \`/run rerun\`, which starts a new run."
                 echo
