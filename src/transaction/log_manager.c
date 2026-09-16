@@ -14401,16 +14401,22 @@ cdc_wakeup_consumer ()
 }
 
 /*
- * cdc_check_dba_authorization () - shared DBA check for CDC and flashback requests.
+ * cdc_check_dba_authorization () - DBA check for the CDC log-server channel.
  *   return: true if the requester is authorized (DBA), false otherwise.
  *   thread_p (in):
- *   declared_user (in): db user declared by the client on an identity-less channel
- *                       (CDC); NULL for a booted connection (flashback).
+ *   declared_user (in): db user declared by the client on the CDC channel, which
+ *                       carries no server-side identity of its own.
  *
- * A booted connection carries a server-verified client identity and is checked
- * directly. The CDC log-server channel has no server-side identity, so it falls
- * back to the db user the client library declares. DBA account only for now; DBA
- * group resolution is to be added here (see CBRD-27436 analysis).
+ * A booted connection carries a server-verified client identity that could be
+ * checked directly via logtb_am_i_dba_client(); the CDC log-server channel has no
+ * such identity, so this falls back to the db user the client library declares.
+ * DBA account only for now; DBA group resolution is to be added here (see
+ * CBRD-27436 analysis).
+ *
+ * Flashback (CBRD-27435) does not call this helper: it runs over a booted
+ * connection, so its dispatcher-level CHECK_AUTHORIZATION gate already resolves
+ * to the same logtb_am_i_dba_client() check directly, with no need for the
+ * declared_user fallback that only the identity-less CDC channel requires.
  */
 bool
 cdc_check_dba_authorization (THREAD_ENTRY * thread_p, const char *declared_user)

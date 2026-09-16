@@ -10756,6 +10756,20 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
    * request length before trusting it (same class of check as CBRD-27437's count
    * validation) -- otherwise a crafted length here reads past the request buffer
    * exactly like the unbounded counts that ticket closes elsewhere. */
+  /* CBRD-27437 (companion ticket) hardens this same class of check further:
+   * this block must also reject a request too short to even contain the
+   * length field (including request == NULL, reqlen == 0), and must confirm
+   * the declared span actually contains a NUL terminator before trusting it
+   * as a C string -- or_unpack_string_nocopy() returns a raw pointer with no
+   * copy and no termination check, and cdc_check_dba_authorization() below
+   * calls strcasecmp() on it, which reads until it finds one. */
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
+
   {
     int cdc_db_user_len;
 
@@ -10767,8 +10781,9 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
      * -1, or a properly-aligned length within the remaining bytes), or a crafted
      * unaligned length aborts an assert-enabled cub_server at the next ASSERT_ALIGN
      * before authorization ever runs. */
-    if (cdc_db_user_len < -1 || cdc_db_user_len > (reqlen - (int) (ptr - request))
-	|| (cdc_db_user_len != -1 && cdc_db_user_len % OR_INT_SIZE != 0))
+    if (cdc_db_user_len != -1
+	&& (cdc_db_user_len < OR_INT_SIZE || cdc_db_user_len > (reqlen - (int) (ptr - request))
+	    || cdc_db_user_len % OR_INT_SIZE != 0 || memchr (ptr, '\0', cdc_db_user_len) == NULL))
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
 		(reqlen - (int) (ptr - request)), cdc_db_user_len);
@@ -10777,6 +10792,12 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       }
   }
   ptr = or_unpack_string_nocopy (request, &cdc_db_user);
+  if (cdc_db_user == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, -1);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
   if (!cdc_check_dba_authorization (thread_p, cdc_db_user))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
@@ -10825,10 +10846,14 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
     }
 
-  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
-  cdc_Gl.conn.status = thread_p->conn_entry->status;
-  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
-
+  /* CBRD-27436: cdc_Gl.conn is not just bookkeeping -- cdc_check_session_owner()
+   * authorizes every other CDC opcode by comparing its caller against this field.
+   * Setting it here, before the rest of this request is even parsed, would let a
+   * caller who passed the DBA check above but then fails later (an allocation
+   * failure here, or a malformed count/string CBRD-27437 rejects) still end up
+   * recorded as the session owner on the error path below, which never restores
+   * it. The assignment is deferred to just before the success reply, once this
+   * session is actually fully established. */
   ptr = or_unpack_int (ptr, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
   ptr = or_unpack_int (ptr, &all_in_cond);
@@ -10888,6 +10913,13 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     {
       goto error;
     }
+
+  /* This request is now fully validated and configured; only now does the
+   * caller actually become the CDC session owner (see the comment above the
+   * incumbent-session teardown block for why this is deferred this far). */
+  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
+  cdc_Gl.conn.status = thread_p->conn_entry->status;
+  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
 
   or_pack_int (reply, error_code);
 
