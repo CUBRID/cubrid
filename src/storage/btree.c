@@ -1289,7 +1289,20 @@ static DISK_ISVALID btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * c
 					  const char *btname, PAGE_PTR pg_ptr, VPID * pg_vpid, BTREE_NODE_INFO * INFO);
 static int btree_get_subtree_capacity (THREAD_ENTRY * thread_p, PAGE_PTR pg_ptr, BTREE_CAPACITY * cpc,
 				       BTREE_STATS_ENV * env /* support for SUPPORT_DEDUPLICATE_KEY_MODE */ );
-static int btree_index_capacity_internal_serial (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc);
+static int btree_index_capacity_serial (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc);
+/* the accumulator/argument structs are defined next to the implementations below */
+#if defined (SERVER_MODE)
+struct btree_capacity_accum;
+struct btree_capacity_scan_ctx;
+struct btree_capacity_worker_arg;
+static void btree_capacity_accum_fold (struct btree_capacity_accum *accum, const BTREE_CAPACITY * subtree_cpc);
+static void btree_capacity_accum_merge (struct btree_capacity_accum *total, const struct btree_capacity_accum *part);
+static void btree_capacity_accum_to_cpc (const struct btree_capacity_accum *total, int root_free, BTREE_CAPACITY * cpc);
+static void btree_capacity_parallel_worker (cubthread::entry & thread_ref, struct btree_capacity_worker_arg *arg);
+static int btree_capacity_reduce (THREAD_ENTRY * thread_p, const struct btree_capacity_scan_ctx *ctx, int root_free,
+				  parallel_query::worker_manager * wm, int n_workers, BTREE_CAPACITY * cpc);
+static int btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc, bool * applied);
+#endif /* SERVER_MODE */
 static void btree_print_space (FILE * fp, int n);
 static int btree_delete_meta_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, int slot_id);
 static int btree_merge_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR Q, PAGE_PTR R);
@@ -9826,7 +9839,7 @@ exit_on_error:
 }
 
 /*
- * btree_index_capacity_internal_serial () - serial implementation behind btree_index_capacity
+ * btree_index_capacity_serial () - serial implementation behind btree_index_capacity
  *   return: NO_ERROR
  *   btid(in): B+tree index identifier
  *   cpc(out): Set to contain index capacity information
@@ -9834,7 +9847,7 @@ exit_on_error:
  * Note: Form and return index capacity/space related information
  */
 static int
-btree_index_capacity_internal_serial (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
+btree_index_capacity_serial (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
 {
   VPID root_vpid;		/* root page identifier */
   PAGE_PTR root = NULL;		/* root page pointer */
@@ -9922,7 +9935,7 @@ exit_on_error:
 }
 
 #if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA / CS) */
-/* Parallel reducer for SHOW INDEX CAPACITY (entry point: btree_index_capacity_internal_parallel).
+/* Parallel reducer for SHOW INDEX CAPACITY (entry point: btree_capacity_reduce).
  * Workers claim root-child subtrees and fold per-worker partials, reduced in INT64 (deterministic,
  * worker-count independent). Serial's float sums lose precision above 2^24, so avg_rec_len /
  * avg_key_len may differ by 1 on large indexes (the INT64 result is the accurate one). */
@@ -10022,7 +10035,7 @@ btree_capacity_accum_merge (BTREE_CAPACITY_ACCUM * total, const BTREE_CAPACITY_A
 /*
  * btree_capacity_accum_to_cpc () - fold in the root page and convert the merged total into the
  *   BTREE_CAPACITY output (INT64 -> int/float casts + one-shot averages), mirroring the tail of
- *   btree_index_capacity_internal_serial.
+ *   btree_index_capacity_serial.
  *   total(in): merged partials from all workers
  *   root_free(in): free space of the (non-leaf) root page, counted once here
  */
@@ -10192,7 +10205,7 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
 }
 
 /*
- * btree_index_capacity_internal_parallel () - parallel implementation behind btree_index_capacity.
+ * btree_capacity_reduce () - parallel implementation behind btree_index_capacity.
  *   return: NO_ERROR, or ER_INTERRUPTED / ER_FAILED propagated from a worker
  *   ctx(in): read-only scan inputs (index config + root children)
  *   root_free(in): root page free space; the root itself is folded in by the reduce
@@ -10204,17 +10217,18 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
  *       valid under concurrent SMO.
  */
 static int
-btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * ctx, int root_free,
-					parallel_query::worker_manager * wm, int n_workers, BTREE_CAPACITY * cpc)
+btree_capacity_reduce (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * ctx, int root_free,
+		       parallel_query::worker_manager * wm, int n_workers, BTREE_CAPACITY * cpc)
 {
-  std::atomic < bool > failed (false);
-  std::atomic < int >fail_errid (NO_ERROR);
-  std::atomic < int >next_child (0);
+// *INDENT-OFF*
+  std::atomic<bool> failed (false);
+  std::atomic<int> fail_errid (NO_ERROR);
+  std::atomic<int> next_child (0);
+// *INDENT-ON*
   BTREE_CAPACITY_ACCUM *accums = NULL;
-  BTREE_CAPACITY_WORKER_ARG *args = NULL;
+  BTREE_CAPACITY_WORKER_ARG *worker_args = NULL;
   size_t accums_size = sizeof (BTREE_CAPACITY_ACCUM) * n_workers;
-  size_t args_size = sizeof (BTREE_CAPACITY_WORKER_ARG) * n_workers;
-  BTREE_CAPACITY_WORKER_ARG *arg_p = NULL;
+  size_t worker_args_size = sizeof (BTREE_CAPACITY_WORKER_ARG) * n_workers;
   int pushed = 0;
   int error_code = NO_ERROR;
   int errid;
@@ -10224,34 +10238,34 @@ btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAP
    * through the throwing ::operator new (memory_wrapper replaces only the placement form that a
    * new-expression uses). db_private_alloc reports OOM as an error. Both structs are PODs. */
   accums = (BTREE_CAPACITY_ACCUM *) db_private_alloc (thread_p, accums_size);
-  args = (BTREE_CAPACITY_WORKER_ARG *) db_private_alloc (thread_p, args_size);
-  if (accums == NULL || args == NULL)
+  worker_args = (BTREE_CAPACITY_WORKER_ARG *) db_private_alloc (thread_p, worker_args_size);
+  if (accums == NULL || worker_args == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, accums_size + args_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, accums_size + worker_args_size);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto cleanup;
     }
   memset (accums, 0, accums_size);
-  memset (args, 0, args_size);
+  memset (worker_args, 0, worker_args_size);
 
   for (i = 0; i < n_workers; i++)
     {
       parallel_query::callable_task * task;
+      BTREE_CAPACITY_WORKER_ARG *worker_arg_p = &worker_args[i];
 
-      args[i].main_thread_p = thread_p;
-      args[i].ctx = ctx;
-      args[i].accum = &accums[i];
-      args[i].next_child = &next_child;
-      args[i].failed = &failed;
-      args[i].fail_errid = &fail_errid;
+      worker_args[i].main_thread_p = thread_p;
+      worker_args[i].ctx = ctx;
+      worker_args[i].accum = &accums[i];
+      worker_args[i].next_child = &next_child;
+      worker_args[i].failed = &failed;
+      worker_args[i].fail_errid = &fail_errid;
 
       /* A one-pointer lambda is trivially copyable, so std::function stores it in place. std::bind is
        * not (libstdc++ gates the small-object buffer on is_trivially_copyable), and would allocate
        * through the THROWING ::operator new -- the one path this function must not have. */
-      arg_p = &args[i];
 // *INDENT-OFF*
-      task = new parallel_query::callable_task (wm, [arg_p] (cubthread::entry &thread_ref)
-                                                    { btree_capacity_parallel_worker (thread_ref, arg_p); });
+      task = new parallel_query::callable_task (wm, [worker_arg_p] (cubthread::entry &thread_ref)
+                                                    { btree_capacity_parallel_worker (thread_ref, worker_arg_p); });
 // *INDENT-ON*
       if (task == NULL)
 	{
@@ -10265,6 +10279,9 @@ btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAP
       pushed++;
     }
 
+  /* the join, and the only synchronization here: wait_workers loads m_active_tasks with acquire and
+   * each task releases it in retire (), so every worker's writes to its accums[] slot happen-before
+   * the reduce below. That edge is also why the atomics above can be relaxed. */
   wm->wait_workers ();
 
   if (failed.load ())
@@ -10272,8 +10289,7 @@ btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAP
       /* propagate the scanner error; no serial retry (the one-shot interrupt flag is consumed).
        * Only ER_INTERRUPTED can be re-raised (0 args); otherwise ER_FAILED, as serial does. */
       errid = fail_errid.load ();
-      er_log_debug (ARG_FILE_LINE,
-		    "btree_index_capacity_internal_parallel: worker error errid=%d; aborting parallel\n", errid);
+      er_log_debug (ARG_FILE_LINE, "btree_capacity_reduce: worker error errid=%d; aborting parallel\n", errid);
       if (errid == ER_INTERRUPTED)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -10294,7 +10310,7 @@ btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAP
       /* a child was never claimed: no task could be allocated, or the pool retired tasks without
        * running them (server shutting down). The partials are incomplete, so do not report them. */
       er_log_debug (ARG_FILE_LINE,
-		    "btree_index_capacity_internal_parallel: only %d of %d children claimed, %d tasks pushed\n",
+		    "btree_capacity_reduce: only %d of %d children claimed, %d tasks pushed\n",
 		    next_child.load (), ctx->n_children, pushed);
       if (pushed == n_workers)
 	{
@@ -10315,9 +10331,9 @@ btree_index_capacity_internal_parallel (THREAD_ENTRY * thread_p, const BTREE_CAP
   btree_capacity_accum_to_cpc (&accums[0], root_free, cpc);
 
 cleanup:
-  if (args != NULL)
+  if (worker_args != NULL)
     {
-      db_private_free_and_init (thread_p, args);
+      db_private_free_and_init (thread_p, worker_args);
     }
   if (accums != NULL)
     {
@@ -10325,29 +10341,29 @@ cleanup:
     }
   return error_code;
 }
-#endif /* SERVER_MODE */
 
 /*
- * btree_index_capacity () - Form and return index capacity/space related information
- *   return: NO_ERROR (or a propagated error from a parallel worker)
+ * btree_index_capacity_parallel () - parallel implementation behind btree_index_capacity.
+ *   return: NO_ERROR when the capacity was produced in parallel or parallel was declined;
+ *           otherwise the error that made the attempt fail
  *   btid(in): B+tree index identifier
- *   cpc(out): Set to contain index capacity information
+ *   cpc(out): index capacity, valid only when *applied is true
+ *   applied(out): true means *cpc holds the result; false together with NO_ERROR means parallel was
+ *                 declined and the caller must run btree_index_capacity_serial
  *
- * Note: dispatches to the parallel implementation when eligible; otherwise runs serial.
+ * Note: owns the whole parallel attempt -- root latch, eligibility, child enumeration, worker
+ *       reservation and release -- so the caller only picks between *cpc and serial.
+ *
+ *       The root stays READ-latched until the workers join. The class lock (SCH_S_LOCK; S_LOCK for
+ *       the ALL variants) blocks only DDL, so concurrent DML and vacuum SMOs are live -- the root
+ *       latch is what keeps children[] valid for a worker's plain fix. Every SMO that would change
+ *       the root's records (child merge, root split) must promote the root to WRITE first, which
+ *       cannot succeed while we hold READ. Below the root, btree_get_subtree_capacity couples node
+ *       latches; an overflow-OID chain is covered by its leaf's latch instead.
  */
-int
-btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
+static int
+btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc, bool * applied)
 {
-#if defined (SERVER_MODE)
-  /* "goto fallback_serial" declines parallelism for an index this path cannot split and runs the
-   * serial implementation; "goto exit_on_error" reports a real failure to the caller.
-   *
-   * The root stays READ-latched until the workers join. The class lock (SCH_S_LOCK; S_LOCK for the
-   * ALL variants) blocks only DDL, so concurrent DML and vacuum SMOs are live -- the root latch is
-   * what keeps children[] valid for a worker's plain fix. Every SMO that would change the root's
-   * records (child merge, root split) must promote the root to WRITE first, which cannot succeed
-   * while we hold READ. Below the root, btree_get_subtree_capacity couples node latches; an
-   * overflow-OID chain is covered by its leaf's latch instead. */
   VPID root_vpid;
   PAGE_PTR root_ptr = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
@@ -10360,16 +10376,22 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   int root_free;
   int n_pages = 0;
   int n_workers;
-  int error_code;
+  int error_code = NO_ERROR;
   int i;
   UINT32 degree;
+
+  *applied = false;
+
+  /* Every path leaves through "exit": error_code says what to report, and NO_ERROR with *applied
+   * still false is the normal "declined, run serial" answer. */
 
   root_vpid.pageid = btid->root_pageid;
   root_vpid.volid = btid->vfid.volid;
   root_ptr = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (root_ptr == NULL)
     {
-      goto exit_on_error;
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
     }
 
 #if !defined (NDEBUG)
@@ -10379,25 +10401,27 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   root_header = btree_get_root_header (thread_p, root_ptr);
   if (root_header == NULL)
     {
-      goto exit_on_error;
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
     }
 
   /* deduplicate-key index: dis_key_cnt depends on the in-order traversal -> serial */
   if (GET_DECOMPRESS_IDX_HEADER (root_header) >= 0)
     {
-      goto fallback_serial;
+      goto exit;
     }
 
   node_header = btree_get_node_header (thread_p, root_ptr);
   if (node_header == NULL)
     {
-      goto exit_on_error;
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
     }
   key_cnt = btree_node_number_of_keys (thread_p, root_ptr);
   if (node_header->node_level <= 1 || key_cnt < 2)
     {
       /* leaf root, or too few root children to split -> serial */
-      goto fallback_serial;
+      goto exit;
     }
 
   error_code = file_get_num_user_pages (thread_p, &btid->vfid, &n_pages);
@@ -10408,9 +10432,9 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       if (error_code == ER_LK_PAGE_TIMEOUT || error_code == ER_PAGE_LATCH_TIMEDOUT)
 	{
 	  er_clear ();
-	  goto fallback_serial;
+	  error_code = NO_ERROR;
 	}
-      goto exit_on_error;
+      goto exit;
     }
   degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN, (UINT64) n_pages, -1);
   if (degree > (UINT32) key_cnt)
@@ -10420,7 +10444,8 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
     }
   if (degree < 2)
     {
-      goto fallback_serial;
+      /* index below the parallel scan page threshold, or parallelism off -> serial */
+      goto exit;
     }
 
   /* glean the read-only index config once; scanners share it. It always returns NO_ERROR, so check
@@ -10429,9 +10454,16 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
   btid_int.sys_btid = btid;
   er_clear ();
   (void) btree_glean_root_header_info (thread_p, root_header, &btid_int, true);
-  if (er_errid () != NO_ERROR || btid_int.key_type == NULL)
+  error_code = er_errid ();
+  if (error_code != NO_ERROR || btid_int.key_type == NULL)
     {
-      goto exit_on_error;
+      if (error_code == NO_ERROR)
+	{
+	  /* unpack_domain's error label returns NULL without reporting on a couple of paths */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	}
+      goto exit;
     }
 
   /* enumerate the root's child VPIDs */
@@ -10440,7 +10472,8 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
     {
       /* db_private_alloc reports this itself via hl_lea_alloc, except under PRM_ID_USE_SYSTEM_MALLOC */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VPID) * key_cnt);
-      goto exit_on_error;
+      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
     }
   for (i = 0; i < key_cnt; i++)
     {
@@ -10449,7 +10482,8 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
 
       if (spage_get_record (thread_p, root_ptr, i + 1, &rec, PEEK) != S_SUCCESS)
 	{
-	  goto exit_on_error;
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit;
 	}
       btree_read_fixed_portion_of_non_leaf_record (&rec, &nleaf);
       children[i] = nleaf.pnt;
@@ -10465,37 +10499,31 @@ btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc
       if (er_errid () != NO_ERROR)
 	{
 	  /* the reservation failed, it did not decline */
-	  goto exit_on_error;
+	  ASSERT_ERROR_AND_SET (error_code);
 	}
-      goto fallback_serial;
+      goto exit;
     }
   n_workers = wm->get_reserved_workers ();
   if (n_workers < 2)
     {
       /* defensive: unreachable, worker_manager_global floors a non-zero grant at 2 and degree >= 2.
        * Kept because that invariant lives in another module */
-      wm->release_workers ();
-      goto fallback_serial;
+      goto exit;
     }
 
   ctx.btid_int = &btid_int;
   ctx.children = children;
   ctx.n_children = key_cnt;
-  error_code = btree_index_capacity_internal_parallel (thread_p, &ctx, root_free, wm, n_workers, cpc);
-  wm->release_workers ();
-  db_private_free_and_init (thread_p, children);
-  pgbuf_unfix_and_init (thread_p, root_ptr);
-  return error_code;		/* success or a propagated scanner error */
-
-exit_on_error:
-  assert (wm == NULL);
-
-  /* a real failure, not an index this path cannot split: report it instead of hiding it behind the
-   * serial run. The callee already set the error; mirror the serial tail when it did not. */
-  error_code = er_errid ();
+  error_code = btree_capacity_reduce (thread_p, &ctx, root_free, wm, n_workers, cpc);
   if (error_code == NO_ERROR)
     {
-      error_code = ER_FAILED;
+      *applied = true;
+    }
+
+exit:
+  if (wm != NULL)
+    {
+      wm->release_workers ();
     }
   if (children != NULL)
     {
@@ -10506,19 +10534,39 @@ exit_on_error:
       pgbuf_unfix_and_init (thread_p, root_ptr);
     }
   return error_code;
+}
+#endif /* SERVER_MODE */
 
-fallback_serial:
-  if (children != NULL)
+/*
+ * btree_index_capacity () - Form and return index capacity/space related information
+ *   return: NO_ERROR, or a propagated error from the parallel attempt or the serial fallback
+ *   btid(in): B+tree index identifier
+ *   cpc(out): Set to contain index capacity information
+ *
+ * Note: tries parallel first; btree_index_capacity_parallel declines (applied == false) for the
+ *       cases serial can still answer, and returns an error for a genuine failure.
+ */
+int
+btree_index_capacity (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc)
+{
+  int error_code = NO_ERROR;
+#if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only */
+  bool applied = false;
+
+  error_code = btree_index_capacity_parallel (thread_p, btid, cpc, &applied);
+  if (error_code != NO_ERROR)
     {
-      db_private_free_and_init (thread_p, children);
+      ASSERT_ERROR ();
+      return error_code;
     }
-  if (root_ptr != NULL)
+  if (applied)
     {
-      pgbuf_unfix_and_init (thread_p, root_ptr);
+      return NO_ERROR;
     }
 #endif /* SERVER_MODE */
 
-  return btree_index_capacity_internal_serial (thread_p, btid, cpc);
+  error_code = btree_index_capacity_serial (thread_p, btid, cpc);
+  return error_code;
 }
 
 /*
@@ -10541,7 +10589,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
   assert (fp != NULL && btid != NULL);
 
   /* get index capacity information */
-  ret = btree_index_capacity_internal_serial (thread_p, btid, &cpc);
+  ret = btree_index_capacity_serial (thread_p, btid, &cpc);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
