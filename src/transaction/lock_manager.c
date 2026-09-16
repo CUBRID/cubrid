@@ -530,6 +530,8 @@ static int lock_initialize_with_config (const LK_CONFIG * config);
 static int lock_initialize_tran_lock_table (void);
 static int lock_initialize_object_lock_structures (void);
 static int lock_initialize_deadlock_detection (void);
+static int lock_expand_tran_lock_slots (int total_indices);
+static int lock_expand_twfg_node (int total_indices);
 static int lock_remove_resource (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
 static void lock_finalize_tran_lock_table (void);
 static void lock_finalize_object_lock_structures (void);
@@ -1160,6 +1162,87 @@ lock_initialize_tran_lock_table (void)
 #endif /* SERVER_MODE */
 
 #if defined(SERVER_MODE)
+/*
+ * lock_expand_tran_lock_slots - Grow the transaction lock hold table in place
+ *
+ * return: error code
+ *
+ *   total_indices(in): new number of transaction indices
+ *
+ * Note: Growing in place moves the existing slots. Two things make that safe, and
+ *     both are properties of recovery: the expanding thread is the lock manager's
+ *     only user, so no mutex in this table is held and none is waited on, and
+ *     LK_ENTRY names its owner by tran_index rather than by a pointer into the
+ *     table, so the hold lists lock_reacquire_crash_locks() has already rebuilt
+ *     for the in-doubt 2PC branches still reach their slot.
+ *
+ *     Moving an initialized mutex is not portable - the Windows pthread_mutex_t
+ *     carries a pointer to itself. qmgr_allocate_tran_entries() reallocs its own
+ *     mutex-bearing table on this same notification path, so that limit belongs to
+ *     the path rather than to this call.
+ *
+ *     The loop resumes from tran_lock_table_initialized_count and a slot is
+ *     counted only once complete, so a call after a partial failure does not lay
+ *     a second mutex and entry pool over a live slot.
+ */
+static int
+lock_expand_tran_lock_slots (int total_indices)
+{
+  LK_TRAN_LOCK *tran_lock;	/* pointer to transaction hold entry */
+  LK_TRAN_LOCK *new_table;	/* grown table */
+  LK_ENTRY *pool;		/* entry pool built aside for one slot */
+  LK_ENTRY *entry = NULL;
+  int i, j;			/* loop variable */
+
+  new_table = (LK_TRAN_LOCK *) realloc (lk_Gl.tran_lock_table, SIZEOF_LK_TRAN_LOCK * total_indices);
+  if (new_table == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (SIZEOF_LK_TRAN_LOCK * total_indices));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  lk_Gl.tran_lock_table = new_table;
+
+  for (i = lk_Gl.init_state.tran_lock_table_initialized_count; i < total_indices; i++)
+    {
+      /* build the entry pool aside, so that a failure leaves the slot untouched */
+      pool = NULL;
+      for (j = 0; j < lk_Gl.config.tran_local_pool_max_size; j++)
+	{
+	  entry = (LK_ENTRY *) malloc (sizeof (LK_ENTRY));
+	  if (entry == NULL)
+	    {
+	      while (pool != NULL)
+		{
+		  entry = pool;
+		  pool = pool->next;
+		  free_and_init (entry);
+		}
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (sizeof (LK_ENTRY)));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  lock_initialize_entry (entry);
+	  entry->next = pool;
+	  pool = entry;
+	}
+
+      tran_lock = &lk_Gl.tran_lock_table[i];
+      memset (tran_lock, 0, SIZEOF_LK_TRAN_LOCK);
+      pthread_mutex_init (&tran_lock->hold_mutex, NULL);
+      pthread_mutex_init (&tran_lock->non2pl_mutex, NULL);
+      tran_lock->lk_entry_pool = pool;
+      tran_lock->lk_entry_pool_count = lk_Gl.config.tran_local_pool_max_size;
+
+      /* lock_finalize_tran_lock_table() cleans up [0, count), so the slot is only
+       * counted once it actually owns a mutex pair and an entry pool */
+      lk_Gl.init_state.tran_lock_table_initialized_count++;
+    }
+
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
 static LK_CONFIG
 lock_make_default_config (void)
 {
@@ -1356,6 +1439,49 @@ lock_initialize_deadlock_detection (void)
   lk_Gl.max_TWFG_edge = 0;
   lk_Gl.TWFG_free_edge_idx = -1;
   lk_Gl.global_edge_seq_num = 0;
+
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
+#if defined(SERVER_MODE)
+/*
+ * lock_expand_twfg_node - Grow the transaction wait-for graph node table
+ *
+ * return: error code
+ *
+ *   total_indices(in): new number of transaction indices
+ *
+ * Note: TWFG_node is indexed by tran_index like tran_lock_table, so it grows with
+ *     it. realloc is the only failure point here, which is why the caller grows
+ *     this table first. The new range gets the same three fields
+ *     lock_initialize_deadlock_detection() sets; lock_detect_local_deadlock()
+ *     lays the rest over [1, num_trans) at the start of every run.
+ *
+ *     TWFG_edge_storage is not touched: it is not indexed by tran_index and grows
+ *     on demand in lock_add_WFG_edge(). Only its ceiling follows num_trans.
+ */
+static int
+lock_expand_twfg_node (int total_indices)
+{
+  LK_WFG_NODE *new_node;	/* grown node table */
+  int i;			/* loop variable */
+
+  new_node = (LK_WFG_NODE *) realloc (lk_Gl.TWFG_node, SIZEOF_LK_WFG_NODE * total_indices);
+  if (new_node == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (SIZEOF_LK_WFG_NODE * total_indices));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  lk_Gl.TWFG_node = new_node;
+
+  for (i = lk_Gl.config.num_trans; i < total_indices; i++)
+    {
+      lk_Gl.TWFG_node[i].DL_victim = false;
+      lk_Gl.TWFG_node[i].checked_by_deadlock_detector = false;
+      lk_Gl.TWFG_node[i].thrd_wait_stime = 0;
+    }
 
   return NO_ERROR;
 }
@@ -5959,6 +6085,101 @@ lock_initialize (void)
 #else /* !defined(SERVER_MODE) */
   LK_CONFIG runtime_config = lock_make_runtime_config ();
   return lock_initialize_with_config (&runtime_config);
+#endif /* !defined(SERVER_MODE) */
+}
+
+/*
+ * lock_expand_tran_lock_table - Grow the lock manager tables indexed by tran_index
+ *
+ * return: error code
+ *
+ *   total_indices(in): new number of transaction indices
+ *
+ * Note: The tables indexed by tran_index must cover every index the transaction
+ *     table can hand out. They are sized from MAX_NTRANS at startup, while
+ *     logtb_expand_trantable() grows the transaction table past it during
+ *     recovery; without this the lock manager reads past tran_lock_table.
+ *
+ *     Growing means realloc, and LK_TRAN_LOCK embeds pthread_mutex_t, so the
+ *     mutexes move. That is safe only because the expanding thread is the sole
+ *     user of the lock manager during recovery - client workers and most daemons
+ *     do not exist yet, and the two that do self-gate while the server boots.
+ *     The assert below pins the phase this rests on. lock_expand_tran_lock_slots()
+ *     states the same premise where it moves the slots.
+ */
+int
+lock_expand_tran_lock_table (int total_indices)
+{
+#if !defined(SERVER_MODE)
+  return NO_ERROR;
+#else /* !defined(SERVER_MODE) */
+  INT64 max_twfg_edge_count;
+  int error_code;
+
+  if (lk_Gl.tran_lock_table == NULL || lk_Gl.TWFG_node == NULL)
+    {
+      /* Nothing to grow yet: logtb_expand_trantable() also runs before
+       * lock_initialize(), which sizes both tables. Checked by pointer rather than
+       * init_state, whose deadlock flag is raised before TWFG_node is allocated. */
+      return NO_ERROR;
+    }
+
+  if (total_indices <= lk_Gl.config.num_trans)
+    {
+      return NO_ERROR;
+    }
+
+  assert (log_Gl.rcv_phase != LOG_RESTARTED);
+
+  /* Grow the wait-for graph nodes first. realloc is its only failure point, so a
+   * failure there leaves the lock manager exactly as it was. */
+  error_code = lock_expand_twfg_node (total_indices);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  error_code = lock_expand_tran_lock_slots (total_indices);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Publish the new size only after every table has reached it. A table larger than
+   * num_trans is harmless; num_trans larger than a table is the defect being fixed. */
+  lk_Gl.config.num_trans = total_indices;
+
+  /* Derive max_twfg_edge_count the way lock_make_runtime_config() does, keeping its
+   * invariant against mid_twfg_edge_count. 64-bit intermediate avoids overflow. */
+  max_twfg_edge_count = total_indices;
+  max_twfg_edge_count *= total_indices;
+  lk_Gl.config.max_twfg_edge_count = (int) MIN (max_twfg_edge_count, INT_MAX);
+  if (lk_Gl.config.max_twfg_edge_count < lk_Gl.config.mid_twfg_edge_count)
+    {
+      lk_Gl.config.max_twfg_edge_count = lk_Gl.config.mid_twfg_edge_count + 1;
+    }
+
+  return NO_ERROR;
+#endif /* !defined(SERVER_MODE) */
+}
+
+/*
+ * lock_get_tran_index_capacity - Highest number of transaction indices the lock
+ *                                manager tables can hold
+ *
+ * return: number of indices, or 0 while the tables do not exist
+ *
+ * Note: Used to check that the lock manager followed the transaction table after
+ *     logtb_expand_trantable() grew it. Zero means the tables are not allocated
+ *     yet, which is the state before lock_initialize().
+ */
+int
+lock_get_tran_index_capacity (void)
+{
+#if !defined(SERVER_MODE)
+  return 0;
+#else /* !defined(SERVER_MODE) */
+  return lk_Gl.tran_lock_table == NULL ? 0 : lk_Gl.config.num_trans;
 #endif /* !defined(SERVER_MODE) */
 }
 

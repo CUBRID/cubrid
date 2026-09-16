@@ -206,6 +206,8 @@ struct file_find_nth_cursor
 #define FILE_FIND_NTH_CURSOR_INITIALIZER { VFID_INITIALIZER, VPID_INITIALIZER, 0 }
 
 extern int file_manager_init (void);
+extern int file_manager_expand_tran_entries (int total_indices);
+extern int file_manager_get_tran_index_capacity (void);
 extern void file_manager_final (void);
 
 extern int file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type, FILE_TABLESPACE * tablespace,
