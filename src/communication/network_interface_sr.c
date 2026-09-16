@@ -11248,8 +11248,11 @@ scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
    * skip CDC_START_SESSION entirely and reach it directly (see scdc_find_lsa()).
    * This reply has no error-code framing (it sends the raw change-log buffer
    * directly), so there is no clean error to send back; simply withhold the
-   * buffer and return, which a legitimate client already handles like any other
-   * short/absent reply. */
+   * buffer and return. A rejected caller's own blocking receive then runs out
+   * the extraction timeout before reporting a connection failure -- not
+   * ideal, but this request is never reachable without first passing the
+   * DBA check in scdc_start_session(), so this path is a defense-in-depth
+   * backstop, not the primary rejection a client is expected to see. */
   if (!cdc_check_session_owner (thread_p))
     {
       return;

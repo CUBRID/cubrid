@@ -915,6 +915,21 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
       goto error;
     }
 
+  /* CBRD-27436: cdc_check_dba_authorization() on the server only accepts the
+   * literal "DBA" account for now (DBA-group resolution on that channel is a
+   * separate follow-up, see log_manager.c), so any other DBA-group member
+   * would pass this check, get remembered here, and only then be rejected by
+   * the server once it tries to actually open the CDC channel -- a confusing
+   * failure at an unrelated later step instead of an accurate one at login
+   * time. Enforce the same restriction here so the two agree. */
+  if (strcasecmp (username, "DBA") != 0)
+    {
+      cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN,
+			   "DBA authorization failed. %s is a DBA group member, but only the DBA account "
+			   "itself is accepted on the CDC channel for now\n", username);
+      goto error;
+    }
+
   /* CBRD-27436: remember the authenticated db user so it can be sent to the server
    * for server-side DBA enforcement on the CDC channel. */
   strncpy (g_db_user, username, DB_MAX_USER_LENGTH);
