@@ -22933,6 +22933,32 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  /* A delimiter that is also the quote, or either one being a line terminator,
+   * describes a format no encoder can write and no decoder can read back.
+   * QUOTE '<LF>' is the worst of them: it opens a quoted field that the row
+   * terminator can never close, so the decoder buffers the whole stream and
+   * then reports a zero-row success. */
+  if (statement->info.copy.format == 1)
+    {
+      int delim = (statement->info.copy.fmt.csv.delimiter != 0) ? statement->info.copy.fmt.csv.delimiter : ',';
+      int quote = (statement->info.copy.fmt.csv.quote != 0) ? statement->info.copy.fmt.csv.quote : '"';
+
+      if (delim == quote)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
+		  "DELIMITER and QUOTE that are the same character");
+	  error = ER_COPY_NOT_SUPPORTED;
+	  goto end;
+	}
+      if (delim == '\n' || delim == '\r' || quote == '\n' || quote == '\r')
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
+		  "a DELIMITER or QUOTE that is a line terminator");
+	  error = ER_COPY_NOT_SUPPORTED;
+	  goto end;
+	}
+    }
+
   error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
 			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
 			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk);
