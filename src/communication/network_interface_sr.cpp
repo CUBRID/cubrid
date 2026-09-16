@@ -12634,7 +12634,7 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	{
 	  session->abort (thread_p);
 	  delete session;
-	  session_set_stream_session (thread_p, NULL);
+	  (void) session_set_stream_session (thread_p, NULL);
 	}
     }
 
@@ -12654,7 +12654,7 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 /*
  * sstream_end () - End the stream and report the session's result
  *   request format: (empty)
- *   reply format: error_code (int), count (int) -- rows for COPY, bytes for a
+ *   reply format: error_code (int), count (int64) -- rows for COPY, bytes for a
  *                 value stream; the binding interprets it
  */
 void
@@ -12672,17 +12672,14 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     }
   else
     {
-      stream_result result;
-      result.count = 0;
-      error_code = session->finish (thread_p, &result);	/* may flush a trailing CSV record */
-      count = result.count;
+      error_code = session->finish (thread_p, &count);	/* the binding may still have buffered work */
 
       if (error_code != NO_ERROR)
 	{
 	  session->abort (thread_p);
 	}
       delete session;
-      session_set_stream_session (thread_p, NULL);
+      (void) session_set_stream_session (thread_p, NULL);
     }
 
   if (error_code != NO_ERROR)
@@ -12697,6 +12694,7 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     char *ptr;
 
     ptr = or_pack_int (reply, error_code);
+    ptr = or_pack_int (ptr, 0);	/* the padding or_pack_int64 () would skip over */
     ptr = or_pack_int64 (ptr, count);
     css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   }

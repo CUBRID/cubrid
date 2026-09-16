@@ -55,7 +55,7 @@ namespace
 void
 stream_session_register (STREAM_KIND kind, stream_session_factory factory)
 {
-  assert (kind >= 0 && kind < STREAM_KIND_MAX);
+  assert (kind >= STREAM_KIND_MIN && kind < STREAM_KIND_MAX);
   assert (factory != NULL);
 
   factory_table ()[kind] = factory;
@@ -74,7 +74,7 @@ stream_session_create (THREAD_ENTRY *thread_p, int kind, const char *config, int
 {
   stream_session_factory factory;
 
-  if (kind < 0 || kind >= STREAM_KIND_MAX || factory_table ()[kind] == NULL)
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || factory_table ()[kind] == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream kind");
       *error_code = ER_STREAM_SESSION_ERROR;

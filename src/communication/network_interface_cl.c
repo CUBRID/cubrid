@@ -89,7 +89,6 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
-#include "stream_session.hpp"	/* STREAM_KIND_* */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -11952,14 +11951,14 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 }
 
 #if defined(CS_MODE)
-/* Whether this connection holds an open stream session. The caller of a
- * statement that opened one needs to know that bytes are still to come,
- * without knowing which consumer opened it. */
+/* Whether this client holds an open stream session. The caller of a statement
+ * that opened one needs to know that bytes are still to come, without knowing
+ * which consumer opened it. */
 static bool stream_Is_open = false;
 #endif /* CS_MODE */
 
 /*
- * stream_from_is_open () - Is a stream session open on this connection?
+ * stream_from_is_open () - Is a stream session open for this client?
  *   return: true between a successful stream_from_init () and stream_from_end ()
  */
 bool
@@ -11975,7 +11974,7 @@ stream_from_is_open (void)
 /*
  * stream_from_init () - Open a client->server byte-stream session on the server
  *   return: error code
- *   stream_kind(in): STREAM_KIND_* consumer tag (e.g. STREAM_KIND_COPY)
+ *   stream_kind(in): the consumer's own STREAM_KIND_* tag
  *   config(in): consumer-specific config blob (already or_pack_*'d by the caller)
  *   config_len(in): length of config in bytes
  *

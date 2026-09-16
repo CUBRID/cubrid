@@ -3286,7 +3286,7 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
       return ER_FAILED;
     }
 
-  /* one stream session per connection (the invariant the transport seam depends on) */
+  /* one stream session per session (the invariant the transport seam depends on) */
   if (stream_session_p != NULL && state_p->stream_session_p != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
