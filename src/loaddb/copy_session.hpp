@@ -78,6 +78,7 @@ class copy_session : public stream_session
     bool m_bulk;			/* bulk-load mode requested (BU_LOCK acquired at open) */
     bool m_footer_seen;			/* BINARY: the end-of-data marker has arrived */
     std::int64_t m_rows_loaded;	/* what finish () reports; a stream is not bounded by int */
+    std::int64_t m_row_number;		/* rows seen, decoded or not: what an error reports */
 
     /* savepoint taken at open, so that a failure part-way through the stream
      * undoes every batch already flushed instead of leaving them committable */

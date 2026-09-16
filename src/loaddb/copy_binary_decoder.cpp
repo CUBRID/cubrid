@@ -149,9 +149,33 @@ copy_fit_char_precision (DB_TYPE type, const char *str, int str_len, const COPY_
   return NO_ERROR;
 }
 
+/*
+ * binary_error () - Raise a format error that says where it happened.
+ *
+ * The reason alone ("BIGINT expects 8 bytes") does not say which of ten
+ * million rows to look at. Rows are numbered from the start of the stream and
+ * columns as the statement lists them, both 1-based.
+ */
+static int
+binary_error (std::int64_t row, int col, const char *reason)
+{
+  char msg[256];
+
+  if (col >= 0)
+    {
+      snprintf (msg, sizeof (msg), "%s (row %lld, column %d)", reason, (long long) row, col + 1);
+    }
+  else
+    {
+      snprintf (msg, sizeof (msg), "%s (row %lld)", reason, (long long) row);
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, msg);
+  return ER_COPY_BINARY_FORMAT_ERROR;
+}
+
 static int
 decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_DOMAIN *dom, DB_VALUE *val,
-	      int *consumed)
+	      int *consumed, std::int64_t row, int col)
 {
   int32_t field_len;
 
@@ -172,8 +196,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 
   if (field_len < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "invalid field length");
-      return ER_COPY_BINARY_FORMAT_ERROR;
+      return binary_error (row, col, "invalid field length");
     }
 
   if (buf_remaining - (int) sizeof (int32_t) < field_len)
@@ -189,8 +212,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
     case DB_TYPE_INTEGER:
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "INT expects 4 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "INT expects 4 bytes");
 	}
       db_make_int (val, read_int32 (data));
       break;
@@ -198,8 +220,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
     case DB_TYPE_BIGINT:
       if (field_len != 8)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "BIGINT expects 8 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "BIGINT expects 8 bytes");
 	}
       db_make_bigint (val, read_int64 (data));
       break;
@@ -207,8 +228,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
     case DB_TYPE_FLOAT:
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "FLOAT expects 4 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "FLOAT expects 4 bytes");
 	}
       db_make_float (val, read_float (data));
       break;
@@ -216,8 +236,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
     case DB_TYPE_DOUBLE:
       if (field_len != 8)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DOUBLE expects 8 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "DOUBLE expects 8 bytes");
 	}
       db_make_double (val, read_double (data));
       break;
@@ -225,8 +244,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
     case DB_TYPE_SHORT:
       if (field_len != 2)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "SHORT expects 2 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "SHORT expects 2 bytes");
 	}
       db_make_short (val, read_int16 (data));
       break;
@@ -245,8 +263,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
       if (db_value_domain_init (val, type, dom->precision, 0) != NO_ERROR
 	  || db_make_db_char (val, (INTL_CODESET) dom->codeset, dom->collation_id, data, fitted) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "character value conversion failed");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "character value conversion failed");
 	}
       break;
     }
@@ -255,8 +272,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
       /* body: 4-byte encoded DB_DATE (julian day), network order */
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DATE expects 4 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "DATE expects 4 bytes");
 	}
       {
 	/* A raw julian day goes straight into the value, so nothing else stops a
@@ -264,8 +280,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	DB_DATE d = (DB_DATE) read_int32 (data);
 	if (!copy_date_is_valid (d))
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DATE out of range");
-	    return ER_COPY_BINARY_FORMAT_ERROR;
+	    return binary_error (row, col, "DATE out of range");
 	  }
 	db_value_put_encoded_date (val, &d);
       }
@@ -275,8 +290,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
       /* body: 4-byte encoded DB_TIME (seconds since midnight), network order */
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "TIME expects 4 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "TIME expects 4 bytes");
 	}
       {
 	/* db_time_encode () only produces 0..86399. DB_TIME_MAX is the width of
@@ -284,8 +298,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	DB_TIME t = (DB_TIME) read_int32 (data);
 	if (t >= COPY_SECONDS_OF_ONE_DAY)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "TIME out of range");
-	    return ER_COPY_BINARY_FORMAT_ERROR;
+	    return binary_error (row, col, "TIME out of range");
 	  }
 	db_value_put_encoded_time (val, &t);
       }
@@ -295,8 +308,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
       /* body: 4-byte DB_TIMESTAMP (unix epoch seconds), network order */
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "TIMESTAMP expects 4 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "TIMESTAMP expects 4 bytes");
 	}
       {
 	/* The timestamp encoder refuses a negative epoch, and a signed 32-bit
@@ -305,8 +317,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	int32_t raw = read_int32 (data);
 	if (raw < 0)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "TIMESTAMP out of range");
-	    return ER_COPY_BINARY_FORMAT_ERROR;
+	    return binary_error (row, col, "TIMESTAMP out of range");
 	  }
 	db_make_timestamp (val, (DB_TIMESTAMP) raw);
       }
@@ -316,8 +327,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
       /* body: 4-byte date (julian) + 4-byte time (milliseconds), network order */
       if (field_len != 8)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DATETIME expects 8 bytes");
-	  return ER_COPY_BINARY_FORMAT_ERROR;
+	  return binary_error (row, col, "DATETIME expects 8 bytes");
 	}
       {
 	DB_DATETIME dt;
@@ -327,16 +337,14 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 	 * does not bound the time -- so the time part is tested here directly. */
 	if (!copy_date_is_valid (dt.date) || dt.time >= COPY_MILLISECONDS_OF_ONE_DAY)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DATETIME out of range");
-	    return ER_COPY_BINARY_FORMAT_ERROR;
+	    return binary_error (row, col, "DATETIME out of range");
 	  }
 	db_make_datetime (val, &dt);
       }
       break;
 
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "unsupported column type");
-      return ER_COPY_BINARY_FORMAT_ERROR;
+      return binary_error (row, col, "unsupported column type");
     }
 
   *consumed += field_len;
@@ -345,7 +353,7 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, const COPY_COL_D
 
 int
 decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains, int ncols,
-		   DB_VALUE *out_vals, int *bytes_consumed)
+		   DB_VALUE *out_vals, int *bytes_consumed, std::int64_t row)
 {
   int error = NO_ERROR;
   int pos = 0;
@@ -367,15 +375,13 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, const COP
 
   if (num_fields != (int16_t) ncols)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1,
-	      "field count mismatch");
-      return ER_COPY_BINARY_FORMAT_ERROR;
+      return binary_error (row, -1, "field count mismatch");
     }
 
   for (int i = 0; i < ncols; i++)
     {
       int field_consumed = 0;
-      error = decode_field (buf + pos, buf_len - pos, types[i], &domains[i], &out_vals[i], &field_consumed);
+      error = decode_field (buf + pos, buf_len - pos, types[i], &domains[i], &out_vals[i], &field_consumed, row, i);
       if (error != NO_ERROR)
 	{
 	  /* clean up already-decoded values (NEED_MORE path too) */

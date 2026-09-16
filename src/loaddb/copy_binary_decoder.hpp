@@ -24,6 +24,7 @@
 #define _COPY_BINARY_DECODER_HPP_
 
 #include "dbtype_def.h"
+#include <cstdint>
 
 /* Return-code sentinels used by decode_binary_row (in addition to NO_ERROR
  * and negative error codes).
@@ -69,8 +70,9 @@ extern int copy_fit_char_precision (DB_TYPE type, const char *str, int str_len, 
  *   ncols(in): number of columns
  *   out_vals(out): decoded DB_VALUE array (caller-allocated, size >= ncols)
  *   bytes_consumed(out): number of bytes consumed from buf
+ *   row(in): this row's 1-based position in the stream, for the error message
  */
 extern int decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains,
-			      int ncols, DB_VALUE *out_vals, int *bytes_consumed);
+			      int ncols, DB_VALUE *out_vals, int *bytes_consumed, std::int64_t row);
 
 #endif /* _COPY_BINARY_DECODER_HPP_ */

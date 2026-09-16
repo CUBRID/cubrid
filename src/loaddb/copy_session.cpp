@@ -78,6 +78,7 @@ copy_session::copy_session ()
   , m_bulk (false)
   , m_footer_seen (false)
   , m_rows_loaded (0)
+  , m_row_number (0)
   , m_savepoint_lsa (NULL_LSA)
   , m_recdes_collected ()
 {
@@ -258,13 +259,14 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  /* skip a leading header line (HEADER option) before decoding data rows */
 	  bool skip_only = m_skip_header;
 	  error = decode_csv_row (row, row_len, m_col_types.data (), m_col_domains.data (), m_num_cols,
-				  vals, m_csv_fields, m_csv_quoted, m_delimiter, m_quote, skip_only, &bytes_consumed);
+				  vals, m_csv_fields, m_csv_quoted, m_delimiter, m_quote, skip_only, &bytes_consumed,
+				  m_row_number + 1);
 	  skipped_header = (skip_only && error == NO_ERROR);
 	}
       else
 	{
 	  error = decode_binary_row (row, row_len, m_col_types.data (), m_col_domains.data (),
-				     m_num_cols, vals, &bytes_consumed);
+				     m_num_cols, vals, &bytes_consumed, m_row_number + 1);
 	}
 
       if (error == COPY_DECODE_NEED_MORE)
@@ -355,6 +357,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	}
 
       pos += advance;
+      m_row_number++;
 
       /* pack the row into a record_descriptor and queue it for batch insert */
       for (int i = 0; i < m_num_cols; i++)

@@ -28,6 +28,7 @@
 
 #include "copy_binary_decoder.hpp"	/* COPY_COL_DOMAIN */
 #include "dbtype_def.h"
+#include <cstdint>
 
 #include <string>
 #include <vector>
@@ -45,10 +46,11 @@
  *     allocates nothing. VARCHAR out_vals point into field_storage, so it must
  *     outlive the row's insert. Only the first ncols entries are meaningful.
  *   bytes_consumed(out): bytes consumed (including the line terminator)
+ *   row(in): this row's 1-based position in the stream, for the error message
  */
 extern int decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains,
 			   int ncols, DB_VALUE *out_vals, std::vector<std::string> &field_storage,
 			   std::vector<char> &quoted, char delimiter, char quote, bool skip_only,
-			   int *bytes_consumed);
+			   int *bytes_consumed, std::int64_t row);
 
 #endif /* _COPY_CSV_DECODER_HPP_ */

@@ -42,8 +42,34 @@
  * Type coercion of one textual field. The text lives in field_storage[*] which
  * outlives the row insert, so VARCHAR may point into it.
  */
+/*
+ * csv_error () - Raise a format error that says where it happened.
+ *
+ * The reason alone ("value parse error") does not say which of ten million
+ * rows to look at. Rows are numbered from the start of the stream (a skipped
+ * HEADER line is not a row) and columns as the statement lists them, both
+ * 1-based.
+ */
 static int
-csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom, DB_VALUE *val)
+csv_error (std::int64_t row, int col, const char *reason)
+{
+  char msg[256];
+
+  if (col >= 0)
+    {
+      snprintf (msg, sizeof (msg), "%s (row %lld, column %d)", reason, (long long) row, col + 1);
+    }
+  else
+    {
+      snprintf (msg, sizeof (msg), "%s (row %lld)", reason, (long long) row);
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, msg);
+  return ER_COPY_CSV_FORMAT_ERROR;
+}
+
+static int
+csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom, DB_VALUE *val, std::int64_t row,
+		  int col)
 {
   char *endp = NULL;
 
@@ -191,8 +217,7 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
       break;
     }
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, "unsupported column type");
-      return ER_COPY_CSV_FORMAT_ERROR;
+      return csv_error (row, col, "unsupported column type");
     }
 
   return NO_ERROR;
@@ -201,18 +226,17 @@ csv_coerce_field (const std::string &s, DB_TYPE type, const COPY_COL_DOMAIN *dom
    * not its error: that one reads "Cannot coerce host var", and a COPY value is not
    * a host variable. */
 out_of_range:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, "value out of range for the column type");
-  return ER_COPY_CSV_FORMAT_ERROR;
+  return csv_error (row, col, "value out of range for the column type");
 
 bad_value:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, "value parse error");
-  return ER_COPY_CSV_FORMAT_ERROR;
+  return csv_error (row, col, "value parse error");
 }
 
 int
 decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_COL_DOMAIN *domains, int ncols,
 		DB_VALUE *out_vals, std::vector<std::string> &field_storage,
-		std::vector<char> &quoted, char delimiter, char quote, bool skip_only, int *bytes_consumed)
+		std::vector<char> &quoted, char delimiter, char quote, bool skip_only, int *bytes_consumed,
+		std::int64_t row)
 {
   /* 1. find the line terminator that is not inside a quoted field */
   bool in_quotes = false;
@@ -345,8 +369,7 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_C
 
   if (too_many_fields || nfields != ncols)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, "field count mismatch");
-      return ER_COPY_CSV_FORMAT_ERROR;
+      return csv_error (row, -1, "field count mismatch");
     }
 
   /* 3. coerce each field to its column type (empty unquoted field = NULL) */
@@ -358,7 +381,7 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, const COPY_C
 	  continue;
 	}
 
-      int error = csv_coerce_field (field_storage[j], types[j], &domains[j], &out_vals[j]);
+      int error = csv_coerce_field (field_storage[j], types[j], &domains[j], &out_vals[j], row, j);
       if (error != NO_ERROR)
 	{
 	  return error;
