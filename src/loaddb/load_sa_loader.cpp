@@ -207,13 +207,20 @@ typedef int (*LDR_ELEM) (LDR_CONTEXT *, const char *, size_t, DB_VALUE *);
  *    A converting slot either parses the token as the attribute's own type or
  *    casts it from another; name_attr says which, because only the first can
  *    report what failed to parse and where it was going.
+ *
+ *    conv_type is the parser type the shared converter is asked for. A literal
+ *    keeps its own kind here - an f suffix means single precision the way it
+ *    does in INSERT - so the conversion cannot depend on which slot reached it.
  */
 typedef struct LDR_STORE_SPEC
 {
   LDR_SETTER handler;		/* NULL means convert with conv_type, then store */
 
-  data_type conv_type;		/* what to ask get_conv_func () for. Not always the slot's own
-				 * type: a double column takes any numeric literal as LDR_FLOAT. */
+  data_type conv_type;		/* what to ask get_conv_func () for.
+				 * TODO: ctshim, this is now the slot's own type everywhere. It
+				 * existed because the numeric domains used to send every literal
+				 * to one cell, which is what made an f suffix mean nothing in SA.
+				 * The field can go once nothing needs to say otherwise. */
   bool name_attr;		/* a conversion that fails here names the token and the
 				 * attribute. False where a quoted string merely stands in
 				 * for another type: nothing was parsed as the attribute's
@@ -4901,7 +4908,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
   ldr_store_convert (attdesc, LDR_INT, LDR_INT, false, false);
   ldr_store_convert (attdesc, LDR_NUMERIC, LDR_NUMERIC, false, false);
   ldr_store_convert (attdesc, LDR_DOUBLE, LDR_DOUBLE, false, false);
-  ldr_store_convert (attdesc, LDR_FLOAT, LDR_DOUBLE, false, false);
+  ldr_store_convert (attdesc, LDR_FLOAT, LDR_FLOAT, false, false);
 
   /* To behave identically to CS mode, let an unspecified domain take a string as a cast, not a mismatch */
   ldr_store_cast (attdesc, LDR_STR, LDR_STR, false, false);
@@ -4929,16 +4936,16 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       break;
 
     case DB_TYPE_FLOAT:
-      ldr_store_convert (attdesc, LDR_INT, LDR_FLOAT, true, true);
-      ldr_store_convert (attdesc, LDR_NUMERIC, LDR_FLOAT, true, true);
-      ldr_store_convert (attdesc, LDR_DOUBLE, LDR_FLOAT, true, true);
+      ldr_store_convert (attdesc, LDR_INT, LDR_INT, true, true);
+      ldr_store_convert (attdesc, LDR_NUMERIC, LDR_NUMERIC, true, true);
+      ldr_store_convert (attdesc, LDR_DOUBLE, LDR_DOUBLE, true, true);
       ldr_store_convert (attdesc, LDR_FLOAT, LDR_FLOAT, true, true);
       break;
 
     case DB_TYPE_DOUBLE:
-      ldr_store_convert (attdesc, LDR_INT, LDR_FLOAT, true, true);
-      ldr_store_convert (attdesc, LDR_NUMERIC, LDR_FLOAT, true, true);
-      ldr_store_convert (attdesc, LDR_DOUBLE, LDR_FLOAT, true, true);
+      ldr_store_convert (attdesc, LDR_INT, LDR_INT, true, true);
+      ldr_store_convert (attdesc, LDR_NUMERIC, LDR_NUMERIC, true, true);
+      ldr_store_convert (attdesc, LDR_DOUBLE, LDR_DOUBLE, true, true);
       ldr_store_convert (attdesc, LDR_FLOAT, LDR_FLOAT, true, true);
       break;
 
@@ -4946,7 +4953,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       ldr_store_convert (attdesc, LDR_INT, LDR_INT, false, false);
       ldr_store_convert (attdesc, LDR_NUMERIC, LDR_NUMERIC, false, false);
       ldr_store_convert (attdesc, LDR_DOUBLE, LDR_DOUBLE, false, false);
-      ldr_store_convert (attdesc, LDR_FLOAT, LDR_DOUBLE, false, false);
+      ldr_store_convert (attdesc, LDR_FLOAT, LDR_FLOAT, false, false);
       break;
 
     case DB_TYPE_DATE:

@@ -180,13 +180,13 @@ namespace cubload
 	return NULL;
       }
 
-    if (strchr (str->val, 'F') != NULL || strchr (str->val, 'f') != NULL)
-      {
-	return make_constant (LDR_FLOAT, str);
-      }
-    else if (strchr (str->val, 'E') != NULL || strchr (str->val, 'e') != NULL)
+    if (strchr (str->val, 'e') != NULL || strchr (str->val, 'E') != NULL)
       {
 	return make_constant (LDR_DOUBLE, str);
+      }
+    else if (strchr (str->val, 'f') != NULL || strchr (str->val, 'F') != NULL)
+      {
+	return make_constant (LDR_FLOAT, str);
       }
     else
       {

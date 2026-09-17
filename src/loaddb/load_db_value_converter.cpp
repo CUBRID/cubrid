@@ -139,12 +139,10 @@ namespace cubload
     setters_[DB_TYPE_DOUBLE][LDR_INT] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_NUMERIC] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_DOUBLE] = &to_db_double;
-    setters_[DB_TYPE_DOUBLE][LDR_FLOAT] = &to_db_double;
 
     setters_[DB_TYPE_NUMERIC][LDR_INT] = &to_int_generic;
     setters_[DB_TYPE_NUMERIC][LDR_NUMERIC] = &to_db_numeric;
     setters_[DB_TYPE_NUMERIC][LDR_DOUBLE] = &to_db_double;
-    setters_[DB_TYPE_NUMERIC][LDR_FLOAT] = &to_db_double;
 
     setters_[DB_TYPE_BIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
     setters_[DB_TYPE_BIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
@@ -161,7 +159,6 @@ namespace cubload
     setters_[DB_TYPE_MONETARY][LDR_INT] = &to_db_monetary;
     setters_[DB_TYPE_MONETARY][LDR_NUMERIC] = &to_db_monetary;
     setters_[DB_TYPE_MONETARY][LDR_DOUBLE] = &to_db_monetary;
-    setters_[DB_TYPE_MONETARY][LDR_FLOAT] = &to_db_monetary;
     setters_[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
 
     setters_[DB_TYPE_DATE][LDR_STR] = &to_db_string;
