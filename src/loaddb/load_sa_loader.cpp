@@ -203,6 +203,10 @@ typedef int (*LDR_ELEM) (LDR_CONTEXT *, const char *, size_t, DB_VALUE *);
  *    reference, a system reference, NULL - keeps a handler instead, because
  *    "convert, then store" does not describe it. So does a slot the class does
  *    not accept, which holds ldr_mismatch ().
+ *
+ *    A converting slot either parses the token as the attribute's own type or
+ *    casts it from another; name_attr says which, because only the first can
+ *    report what failed to parse and where it was going.
  */
 typedef struct LDR_STORE_SPEC
 {
@@ -210,6 +214,10 @@ typedef struct LDR_STORE_SPEC
 
   data_type conv_type;		/* what to ask get_conv_func () for. Not always the slot's own
 				 * type: a double column takes any numeric literal as LDR_FLOAT. */
+  bool name_attr;		/* a conversion that fails here names the token and the
+				 * attribute. False where a quoted string merely stands in
+				 * for another type: nothing was parsed as the attribute's
+				 * type, so the domain conflict is the whole story. */
   bool direct;			/* the instance image can take the value as it is */
   bool bound_bit;		/* ... and the attribute carries a bound bit */
 } LDR_STORE_SPEC;
@@ -621,7 +629,7 @@ static int ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t
 static int ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
 			    data_type type);
 static int ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
-			      data_type type, DB_VALUE *val);
+			      data_type type, bool name_attr, DB_VALUE *val);
 static int ldr_null_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sink_class_object (LDR_CONTEXT *context, SM_ATTRIBUTE *att, DB_VALUE *val);
@@ -2230,7 +2238,9 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
       else
 	{
 	  /* An attribute of the instance, so the attribute domain applies. */
-	  CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, type, &attdesc->ctor_val));
+	  CHECK_ERR (err,
+		     ldr_convert_value (context, str, len, attdesc, type, attdesc->store[type].name_attr,
+					&attdesc->ctor_val));
 	}
     }
 
@@ -2419,17 +2429,21 @@ error_exit:
  *    len(in): token length
  *    attdesc(in): descriptor of the attribute being set
  *    type(in): parser type of the token
+ *    name_attr(in): a failure names the token and the attribute (see LDR_STORE_SPEC)
  *    val(out): converted value
  * Note:
  *    This replaces the ldr_*_elem () calls that used to sit in front of every
  *    setter. The conversion is the one the server side already uses, so the two
- *    modes cannot drift apart any more. The setters below are registered one to
- *    one with their attribute type, so the domain type is also the type to
- *    report if the token does not parse.
+ *    modes cannot drift apart any more.
+ *
+ *    The failure is reported here and the error is still returned, because the
+ *    caller's CHECK_ERR says only what went wrong, not what it was reading or
+ *    where it was putting it. The type named is the attribute's, which is what
+ *    the ldr_*_elem () functions this replaced passed in all but two places.
  */
 static int
 ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc, data_type type,
-		   DB_VALUE *val)
+		   bool name_attr, DB_VALUE *val)
 {
   DB_TYPE dom_type = TP_DOMAIN_TYPE (attdesc->att->domain);
 
@@ -2438,26 +2452,32 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
   db_make_null (val);
 
   err = cubload::get_conv_func (type, dom_type) (str, len, attdesc->conv_att, val);
-
-  /* TODO: ctshim,
-   * Report nothing for a failure here. The caller wraps this in CHECK_ERR,
-   * which displays the error once and filters warnings out, and all but one of
-   * the ldr_*_elem () functions this replaced were silent in the same way.
-   *
-   * ldr_elo_ext_elem () is the one that is not. It calls display_error (0) on
-   * itself before returning, so an unreadable LOB locator prints one line more
-   * than every other bad value. That extra line is loaddb's published output -
-   * tests/loaddb pins it and so does the QA case bug_bts_16011 - so it is kept
-   * here rather than dropped as a side effect of moving the conversion.
-   *
-   * Making it uniform means removing BOTH reports, not just this one.
-   * ldr_elo_ext_elem () is still live: elem_converter[LDR_ELO_EXT] reaches it
-   * from construct_instance () when a %constructor argument is a LOB. A
-   * collection cannot hold one - SET(CLOB) is rejected by the DDL - so that is
-   * the only way in.
-   */
-  if (err != NO_ERROR && type == LDR_ELO_EXT)
+  if (err == NO_ERROR)
     {
+      return NO_ERROR;
+    }
+
+  if (name_attr)
+    {
+      display_error (0);
+      parse_error (context, dom_type, str);
+    }
+  else if (type == LDR_ELO_EXT)
+    {
+      /* TODO: ctshim,
+       * A LOB locator that cannot be read prints one line more than every
+       * other cast that fails, because ldr_elo_ext_elem () called
+       * display_error (0) on itself before returning. That extra line is
+       * loaddb's published output - tests/loaddb pins it and so does the QA
+       * case bug_bts_16011 - so it is kept here rather than dropped as a side
+       * effect of moving the conversion.
+       *
+       * ldr_elo_ext_elem () is still live: elem_converter[LDR_ELO_EXT] reaches
+       * it from construct_instance () when a %constructor argument is a LOB. A
+       * collection cannot hold one - SET(CLOB) is rejected by the DDL - so
+       * that is the only way in. Making this uniform means removing BOTH
+       * reports, not just one.
+       */
       display_error (0);
     }
 
@@ -2537,7 +2557,7 @@ ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC 
       return (* (slot->handler)) (context, str, len, attdesc);
     }
 
-  CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, slot->conv_type, &val));
+  CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, slot->conv_type, slot->name_attr, &val));
   CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
 
 error_exit:
@@ -4684,21 +4704,46 @@ error_exit:
 }
 
 /*
- * ldr_store_convert - this slot converts, then stores
+ * ldr_store_convert - this slot parses the token as the attribute's type, then stores
  *    attdesc(out): descriptor being built
  *    slot(in): the parser type this applies to
  *    conv_type(in): what to ask get_conv_func () for. Usually the slot itself;
  *                   the numeric domains normalise several literals to one type.
  *    direct(in): the instance image can take the value as it is
  *    bound_bit(in): for a direct store, whether the attribute carries a bound bit
+ * Note:
+ *    A token that does not parse is reported with the value and the attribute
+ *    named, because the file said "this is a time" and the attribute is a time.
  */
 static void
 ldr_store_convert (LDR_ATTDESC *attdesc, data_type slot, data_type conv_type, bool direct, bool bound_bit)
 {
   attdesc->store[slot].handler = NULL;
   attdesc->store[slot].conv_type = conv_type;
+  attdesc->store[slot].name_attr = true;
   attdesc->store[slot].direct = direct;
   attdesc->store[slot].bound_bit = bound_bit;
+}
+
+/*
+ * ldr_store_cast - this slot casts the token from another type, then stores
+ *    attdesc(out): descriptor being built
+ *    slot(in): the parser type this applies to
+ *    conv_type(in): what to ask get_conv_func () for
+ *    direct(in): the instance image can take the value as it is
+ *    bound_bit(in): for a direct store, whether the attribute carries a bound bit
+ * Note:
+ *    Same conversion, different failure. The token is a literal of one type
+ *    standing in for another - a quoted string in a date column, say - which
+ *    loaddb accepts the way INSERT does. When it does not fit, nothing was
+ *    parsed as the attribute's type, so there is nothing to name beyond the
+ *    domain conflict the caller already reports.
+ */
+static void
+ldr_store_cast (LDR_ATTDESC *attdesc, data_type slot, data_type conv_type, bool direct, bool bound_bit)
+{
+  ldr_store_convert (attdesc, slot, conv_type, direct, bound_bit);
+  attdesc->store[slot].name_attr = false;
 }
 
 /*
@@ -4706,11 +4751,15 @@ ldr_store_convert (LDR_ATTDESC *attdesc, data_type slot, data_type conv_type, bo
  *    attdesc(out): descriptor being built
  *    slot(in): the parser type this applies to
  *    handler(in): what to call instead
+ * Note:
+ *    name_attr is still set, because a %constructor line converts by the slot's
+ *    own type without going through the handler.
  */
 static void
 ldr_store_handler (LDR_ATTDESC *attdesc, data_type slot, LDR_SETTER handler)
 {
   attdesc->store[slot].handler = handler;
+  attdesc->store[slot].name_attr = false;
 }
 
 /*
@@ -4854,8 +4903,8 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
   ldr_store_convert (attdesc, LDR_DOUBLE, LDR_DOUBLE, false, false);
   ldr_store_convert (attdesc, LDR_FLOAT, LDR_DOUBLE, false, false);
 
-  /* To behave identically to CS mode, let an unspecified domain convert LDR_STR instead of calling it a mismatch */
-  ldr_store_convert (attdesc, LDR_STR, LDR_STR, false, false);
+  /* To behave identically to CS mode, let an unspecified domain take a string as a cast, not a mismatch */
+  ldr_store_cast (attdesc, LDR_STR, LDR_STR, false, false);
 
   switch (TP_DOMAIN_TYPE (attdesc->att->domain))
     {
@@ -4953,7 +5002,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
 
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      ldr_store_convert (attdesc, LDR_ELO_EXT, LDR_ELO_EXT, true, false);
+      ldr_store_cast (attdesc, LDR_ELO_EXT, LDR_ELO_EXT, true, false);
       ldr_store_handler (attdesc, LDR_ELO_INT, &ldr_elo_int_db_elo);
       break;
 
@@ -4961,7 +5010,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
       ldr_store_convert (attdesc, LDR_MONETARY, LDR_MONETARY, true, true);
       break;
     case DB_TYPE_JSON:
-      ldr_store_convert (attdesc, LDR_STR, LDR_STR, false, false);
+      ldr_store_cast (attdesc, LDR_STR, LDR_STR, false, false);
       break;
 
     default:
