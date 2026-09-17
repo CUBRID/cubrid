@@ -12307,21 +12307,34 @@ pt_dblink_dml_stmt_name (const PT_NODE * node, bool lower)
   return lower ? "delete" : "DELETE";
 }
 
-/* Post-confirmation rejects (LIMIT, bad qualifier). Not at shape gate (same-server all-remote shares that path).
+/* Post-confirmation rejects (LIMIT, ORDER BY, bad qualifier). Not at shape gate (same-server all-remote
+ * shares that path).
  * return: true if an error was raised */
 static bool
 pt_dblink_dml_reject_confirmed (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * upd_spec)
 {
   PT_NODE *cond = pt_dblink_dml_search_cond (node);
-  PT_NODE *limit = (node->node_type == PT_UPDATE) ? node->info.update.limit : node->info.delete_.limit;
+  bool is_update = (node->node_type == PT_UPDATE);
+  PT_NODE *limit = is_update ? node->info.update.limit : node->info.delete_.limit;
+  /* DELETE has no ORDER BY to reject -- the grammar does not accept one. */
+  PT_NODE *order_by = is_update ? node->info.update.order_by : NULL;
   const char *bad_qualifier;
   const char *stmt = pt_dblink_dml_stmt_name (node, false);
   char errmsg[256];
 
+  /* One statement goes out per local value, so a clause that speaks for the whole statement has no
+   * single statement to act on. The plan carries only the SET text and one WHERE key, so a clause left
+   * in place would just vanish. Refuse it here instead. */
   if (limit != NULL)
     {
-      /* Per-value remote statements: no single statement to LIMIT; also invisible until semantic check. */
       snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery does not support LIMIT", stmt);
+      PT_ERRORc (parser, upd_spec, errmsg);
+      return true;
+    }
+
+  if (order_by != NULL)
+    {
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery does not support ORDER BY", stmt);
       PT_ERRORc (parser, upd_spec, errmsg);
       return true;
     }
