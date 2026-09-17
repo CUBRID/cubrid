@@ -23,6 +23,7 @@
 #include "px_scan_trace_handler.hpp"
 #include "perf_monitor.h"
 #include "query_dump.h"
+#include "system_parameter.h"
 #include "tsc_timer.h"
 #include "xasl_iteration.hpp"
 
@@ -109,6 +110,18 @@ namespace parallel_scan
     char *buf = nullptr;
     size_t len = 0;
     FILE *fp;
+
+    /* Only for whoever is debugging the compiler (sql_trace_expr_program), never in the default
+     * trace.  Two reasons.  The serial section already says whether this plan compiled, so a
+     * worker clone repeating it is noise.  And what a worker has to report depends on how far it
+     * got: the first worker to finalize claims this slot, and one that finished before its
+     * aggregate operands were compiled reports fewer sections than one that ran rows.  That makes
+     * the default trace differ between runs of the same statement, which a test answer cannot
+     * carry. */
+    if (!prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
+      {
+	return;
+      }
 
     {
       std::lock_guard<std::mutex> lock (m_stats_mutex);
