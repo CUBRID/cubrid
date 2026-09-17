@@ -2761,6 +2761,42 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	}
     }
 
+  /* Every node an ON-clause predicate reads must be joined before the node that owns the ON clause; otherwise the
+   * predicate cannot be evaluated where the outer join needs it. Covers every class the predicate may have been given
+   * above: QO_TC_SARG when it reads one node, QO_TC_OTHER when the QO_TC_JOIN handling above demoted it.
+   * Predicates folded to PT_VALUE never reach qo_analyze_term (), so they are not covered here.
+   */
+  if (QO_ON_COND_TERM (term))
+    {
+      int location = QO_TERM_LOCATION (term);
+      QO_NODE *on_node;
+
+      /* QO_ENV_NODE () indexes the node array without a bound check, so verify the location first. */
+      QO_ASSERT (env, location < env->nnodes);
+
+      on_node = QO_ENV_NODE (env, location);
+
+      /* qo_add_node () appends nodes in FROM order and pt_bind_names () numbers the spec locations the same way, so a
+       * term's location and its node's index must agree. A query rewrite that adds a spec without renumbering would
+       * break this and make the lookup above read the wrong node.
+       */
+      QO_ASSERT (env, QO_NODE_IDX (on_node) == location);
+      QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
+
+      if (QO_NODE_IS_OUTER_JOIN (on_node))
+	{
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
+	    {
+	      if (t != QO_NODE_IDX (on_node))
+		{
+		  /* an ON clause only reads nodes that precede the join it belongs to */
+		  QO_ASSERT (env, t < QO_NODE_IDX (on_node));
+		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
+		}
+	    }
+	}
+    }
+
 wrapup:
 
   /* A negative selectivity means that the cardinality of the result depends only on the cardinality of the head, not
