@@ -1573,10 +1573,17 @@ sql_build_error:
  *   marker resolved, agrees                                | bare "?"
  *   marker unresolved (numeric target), date/time or JSON  | CAST(? AS <source>) + re-prepare
  *   marker unresolved, any other source                    | bare "?"
+ *   marker unreadable                                      | refuse the statement
  *
- * The last two rows are the fallback: unresolved means CCI_U_TYPE_NULL, so there is no target type to
+ * Rows three and four are the fallback: unresolved means CCI_U_TYPE_NULL, so there is no target type to
  * compare. Only date/time and JSON sources were measured to differ there; casting the rest would
  * rewrite every numeric-key statement for no change in result.
+ *
+ * The last row refuses because the marker is this rule's only input: without it the bare "?" goes out, the
+ * remote resolves the comparison against the target's declared type as it did before this policy existed,
+ * and nothing downstream reports it. A CUBRID shard proxy is where that happens -- it answers
+ * CAS_FC_PARAMETER_INFO with fn_proxy_client_not_supported -- though only with SHARD_IGNORE_HINT=ON: the
+ * default rejects every statement carrying no shard hint, and DBLink emits none, so its prepare fails first.
  *
  * CUBRID remotes only -- the cast text is CUBRID syntax. Asking the marker costs one CAS round trip per
  * statement; a DML prepare does not name the target type.
@@ -1746,18 +1753,20 @@ dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
 /*
  * dblink_dml_delete_cast_type_needed () - Ask the remote what it expects in the marker, and answer with the
  *   cast text when that disagrees with what the sink is about to bind.
- *   return: cast text (in buf), or NULL to keep the bare placeholder
- *   stmt_handle(in): prepared DELETE whose single marker is asked about
- *   src_dom(in)    : domain of the local subquery's source column
- *   buf(out)       : caller-provided buffer for the type text
- *   buflen(in)     : size of buf
+ *   return: NO_ERROR, or ER_DBLINK when the remote did not report the marker's type
+ *   stmt_handle(in)   : prepared DELETE whose single marker is asked about
+ *   src_dom(in)       : domain of the local subquery's source column
+ *   buf(out)          : caller-provided buffer for the type text
+ *   buflen(in)        : size of buf
+ *   cast_type_out(out): buf when a cast is needed, NULL to keep the bare placeholder
  *
  * The marker is the sink's only way to see the target type: a DML prepare carries no column information
- * (CAS ships that only for SELECT). The rule and its fallback are in the policy comment above
- * dblink_dml_remote_is_cubrid().
+ * (CAS ships that only for SELECT). The rule, its fallback and why an unreadable marker refuses instead
+ * of falling back are in the policy comment above dblink_dml_remote_is_cubrid().
  */
-static const char *
-dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *buf, size_t buflen)
+static int
+dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *buf, size_t buflen,
+				    const char **cast_type_out)
 {
   T_CCI_PARAM_INFO *param_info = NULL;
   T_CCI_ERROR err_buf;
@@ -1765,12 +1774,17 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
   DB_TYPE src_type = TP_DOMAIN_TYPE (src_dom);
   int marker_type, num_param;
 
+  *cast_type_out = NULL;
+
   memset (&err_buf, 0, sizeof (err_buf));
   num_param = cci_get_param_info (stmt_handle, &param_info, &err_buf);
   if (num_param < 1 || param_info == NULL)
     {
-      /* nothing to compare against; leaving the bare placeholder keeps the historical shape */
-      return NULL;
+      /* num_param == 0 still hands back a malloc(0) block, so free before leaving */
+      cci_param_info_free (param_info);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DELETE: the remote did not report the marker's type");
+      return ER_DBLINK;
     }
 
   /* through dblink_get_basic_utype() so the comparison stays right if a marker ever arrives with the
@@ -1793,7 +1807,8 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
 
   cci_param_info_free (param_info);
 
-  return cast_type;
+  *cast_type_out = cast_type;
+  return NO_ERROR;
 }
 
 /*
@@ -2045,15 +2060,15 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
   /* One decision, one place: ask the marker and re-prepare only when it disagrees with what we bind. */
   if (restore_type)
     {
-      cast_type = dblink_dml_delete_cast_type_needed (state->stmt_handle, src_dom, cast_buf, sizeof (cast_buf));
-      if (cast_type != NULL)
+      ret = dblink_dml_delete_cast_type_needed (state->stmt_handle, src_dom, cast_buf, sizeof (cast_buf), &cast_type);
+      if (ret == NO_ERROR && cast_type != NULL)
 	{
 	  ret = dblink_dml_delete_reprepare_with_cast (thread_p, state, sink->table_name, key_col, op, cast_type);
-	  if (ret != NO_ERROR)
-	    {
-	      state->conn_handle = -1;	/* nothing ran remotely; see Note above */
-	      return ret;
-	    }
+	}
+      if (ret != NO_ERROR)
+	{
+	  state->conn_handle = -1;	/* nothing ran remotely; see Note above */
+	  return ret;
 	}
     }
 
