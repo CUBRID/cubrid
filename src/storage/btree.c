@@ -10193,7 +10193,7 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
 
 /*
  * btree_capacity_reduce () - parallel implementation behind btree_index_capacity.
- *   return: NO_ERROR, or ER_INTERRUPTED / ER_FAILED propagated from a worker
+ *   return: NO_ERROR, or ER_INTERRUPTED / ER_GENERIC_ERROR / ER_OUT_OF_VIRTUAL_MEMORY
  *   ctx(in): read-only scan inputs (index config + root children)
  *   root_free(in): root page free space; the root itself is folded in by the reduce
  *   wm(in): worker pool reserved by the dispatcher (caller owns its lifecycle)
@@ -10256,10 +10256,9 @@ btree_capacity_reduce (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * 
 // *INDENT-ON*
       if (task == NULL)
 	{
-	  /* OOM under the non-throwing operator new: the tasks already pushed claim every remaining
-	   * child via next_child, so a partial push still completes; zero pushed is caught below. */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  sizeof (parallel_query::callable_task));
+	  /* OOM under the non-throwing operator new. The tasks already pushed claim every remaining
+	   * child via next_child, so a partial push still answers correctly; report the OOM only on
+	   * the path below that finds the scan incomplete, never on a run that succeeded. */
 	  break;
 	}
       wm->push_task (task);
@@ -10274,7 +10273,9 @@ btree_capacity_reduce (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * 
   if (failed.load ())
     {
       /* propagate the scanner error; no serial retry (the one-shot interrupt flag is consumed).
-       * Only ER_INTERRUPTED can be re-raised (0 args); otherwise ER_FAILED, as serial does. */
+       * Only ER_INTERRUPTED is re-raised as itself; any other errid becomes generic, because its
+       * message arguments never crossed threads and ER_FAILED is not a catalog id (er_set asserts
+       * on it). The real errid survives only in the log line below. */
       errid = fail_errid.load ();
       er_log_debug (ARG_FILE_LINE, "btree_capacity_reduce: worker error errid=%d; aborting parallel\n", errid);
       if (errid == ER_INTERRUPTED)
@@ -10284,10 +10285,10 @@ btree_capacity_reduce (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * 
 	}
       else
 	{
-	  /* the worker cleared its own thread-local context, so report something rather than
-	   * returning ER_FAILED with an empty error stack */
+	  /* the worker's error stayed in its own thread-local stack and never reached thread_p, so
+	   * report something rather than returning a code with nothing on the caller's stack */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  error_code = ER_FAILED;
+	  error_code = ER_GENERIC_ERROR;
 	}
       goto cleanup;
     }
@@ -10299,14 +10300,22 @@ btree_capacity_reduce (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * 
       er_log_debug (ARG_FILE_LINE,
 		    "btree_capacity_reduce: only %d of %d children claimed, %d tasks pushed\n",
 		    next_child.load (), ctx->n_children, pushed);
-      if (pushed == n_workers)
+      /* decide on what happened here, not on er_errid (), which may still hold an unrelated error
+       * from an earlier row of SHOW ALL */
+      if (pushed == 0)
 	{
-	  /* every task was pushed, so the pool retired them unexecuted and nothing reported anything;
-	   * a short push already set ER_OUT_OF_VIRTUAL_MEMORY above. Decide on what happened here, not
-	   * on er_errid (), which may still hold an unrelated error from an earlier row of SHOW ALL. */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  /* not one task could be allocated, so the OOM that broke the push is the whole story */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (parallel_query::callable_task));
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      error_code = ER_FAILED;
+      else
+	{
+	  /* tasks were pushed but none ran, because one that ran would have drained next_child: the
+	   * pool retired them unexecuted (server shutting down) and nothing reported anything */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	}
       goto cleanup;
     }
 
