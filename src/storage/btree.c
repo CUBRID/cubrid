@@ -10423,9 +10423,14 @@ btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPAC
   error_code = file_get_num_user_pages (thread_p, &btid->vfid, &n_pages);
   if (error_code != NO_ERROR)
     {
-      /* a latch the session refused to wait for is not a failure: n_pages only sizes the degree,
-       * and serial never reads the file header */
-      if (error_code == ER_LK_PAGE_TIMEOUT || error_code == ER_PAGE_LATCH_TIMEDOUT)
+      /* n_pages only sizes the degree and serial never reads the file header, so decline rather
+       * than fail a query serial can still answer -- a storage fault resurfaces when serial fixes
+       * the tree pages. This forgives more than a latch timeout (an unreadable header too), which
+       * is deliberate and matches heap_get_capacity_parallel. A cancellation is the exception: the
+       * fix consumes the interrupt flag, so clearing it would let serial answer a cancelled query.
+       * file_get_num_user_pages reports via ASSERT_ERROR_AND_SET, so error_code is er_errid (),
+       * or ER_FAILED if the fix returned NULL without reporting. */
+      if (error_code != ER_INTERRUPTED)
 	{
 	  er_clear ();
 	  error_code = NO_ERROR;
