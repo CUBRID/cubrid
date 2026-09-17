@@ -561,7 +561,7 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* a SEMI JOIN, unnested above or written by the user, whose ON pins down one inner row per outer row is an
    * INNER JOIN: same rows, and the planner is free to reorder it (a SEMI inner is frozen behind its outer,
-   * see QO_ADD_OUTER_DEP_SET) */
+   * see QO_ADD_SEMI_ANTI_DEP_SET) */
   for (spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
     {
       if (spec->info.spec.join_type == PT_JOIN_SEMI && spec->info.spec.derived_table == NULL

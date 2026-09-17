@@ -6702,7 +6702,7 @@ exit:
  *   planner(in):
  *
  * Note: a SEMI JOIN returns an outer row once however many inner rows match it, which is why its inner is
- *       searched once per outer row and is kept behind the side it is joined to (QO_NODE_OUTER_DEP_SET).  With
+ *       searched once per outer row and is kept behind the side it is joined to (QO_NODE_SEMI_ANTI_DEP_SET).  With
  *       one row left per distinct join value that reason is gone -- an ordinary join over those rows returns
  *       the same result -- and the inner may come first.  The join order search lets such an inner ahead of
  *       the side it depends on in that form only (qo_distinct_info_ahead ()); this is where the form is made
@@ -6844,24 +6844,23 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
  *   visited_nodes(in): the nodes already placed before it
  *
  * Note: with a SEMI JOIN inner read once with the duplicates removed, the join around it is an ordinary join,
- *       so the order constraint that keeps the inner behind its outer (QO_NODE_OUTER_DEP_SET) does not apply to
- *       it.  The three places that enforce the constraint (planner_permutate (), planner_visit_node ()) let the
- *       node through when this returns non-NULL, and the two places that pick up the node's info use what is
- *       returned instead of node_info.  Once the side it depends on is already placed, the node is joined to it
- *       as a SEMI JOIN inner in the usual way and node_info is the right one -- this returns NULL then.
+ *       so its SEMI order constraint (QO_NODE_SEMI_ANTI_DEP_SET) does not apply to it.  Outer join and hint
+ *       dependencies remain mandatory.  The search lets the node through when this returns non-NULL and
+ *       uses the returned info instead of node_info.  Once the side it depends on is already placed, the node
+ *       is joined to it as a SEMI JOIN inner in the usual way and node_info is the right one -- this returns NULL then.
  */
 static QO_INFO *
 qo_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
 {
   QO_INFO *distinct_info;
 
-  if (planner->distinct_info == NULL)
+  if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI || planner->distinct_info == NULL)
     {
       return NULL;
     }
 
   distinct_info = planner->distinct_info[QO_NODE_IDX (node)];
-  if (distinct_info == NULL || bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node))))
+  if (distinct_info == NULL || bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
     {
       return NULL;
     }
@@ -8685,8 +8684,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* skip for a semi/anti inner: merge/hash inner gives wrong results, so never cost it (M3 prune).  Also skip
 	 * when the outer is a SEMI JOIN inner read once with the duplicates removed: feeding that file straight into
 	 * a merge or hash join is left for the merge/hash SEMI JOIN work, so for now it is joined by nl/idx only. */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node)
-	    && !head_reads_distinct)
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_reads_distinct)
 	  {
 	    kept +=
 	      qo_examine_merge_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
@@ -8696,8 +8694,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node)
-	    && !head_reads_distinct)
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_reads_distinct)
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
@@ -8772,13 +8769,15 @@ go_ahead_subvisit:
 	       */
 	      continue;
 	    }
-	  if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node)))
+	  if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node))))
+	    {
+	      /* DISTINCT does not relax outer join or hint dependencies. */
+	      continue;
+	    }
+	  if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node)))
 	      && qo_distinct_info_ahead (planner, node, visited_nodes) == NULL)
 	    {
-	      /* All previous nodes participating in outer join spec should be joined before. QO_NODE_OUTER_DEP_SET()
-	       * represents all previous nodes which are dependents on the node.  A SEMI JOIN inner may come ahead
-	       * of them read once with the duplicates removed (qo_distinct_info_ahead ()).
-	       */
+	      /* Only a SEMI node read with DISTINCT may precede its SEMI/ANTI dependencies. */
 	      continue;
 	    }
 
@@ -8970,13 +8969,15 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 	   */
 	  continue;
 	}
-      if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (head_node)))
+      if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (head_node))))
+	{
+	  /* DISTINCT does not relax outer join or hint dependencies. */
+	  continue;
+	}
+      if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (head_node)))
 	  && qo_distinct_info_ahead (planner, head_node, visited_nodes) == NULL)
 	{
-	  /* All previous nodes participating in outer join spec should be joined before. QO_NODE_OUTER_DEP_SET()
-	   * represents all previous nodes which are dependents on the node.  A SEMI JOIN inner may come ahead of
-	   * them read once with the duplicates removed (qo_distinct_info_ahead ()).
-	   */
+	  /* Only a SEMI node read with DISTINCT may precede its SEMI/ANTI dependencies. */
 	  continue;
 	}
 
@@ -9007,7 +9008,11 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 		{
 		  continue;
 		}
-	      if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (tail_node)))
+	      if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (tail_node))))
+		{
+		  continue;
+		}
+	      if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (tail_node)))
 		  && qo_distinct_info_ahead (planner, tail_node, visited_nodes) == NULL)
 		{
 		  continue;

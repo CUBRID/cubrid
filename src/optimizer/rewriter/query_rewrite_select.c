@@ -3791,7 +3791,7 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	case PT_JOIN_ANTI:
 	  /* semi/anti are reorder barriers. the explicit->implicit rewrite below also resets this segment's
 	   * ON-predicate locations via qo_reset_location(), which would strip the semi/anti ON location that
-	   * query_graph relies on to bind the join term and set outer_dep_set; so the whole segment is frozen. */
+	   * query_graph relies on to bind the join term and set semi_anti_dep_set; so the whole segment is frozen. */
 	  info.found_outerjoin = true;
 	  break;
 	default:
