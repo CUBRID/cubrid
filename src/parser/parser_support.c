@@ -11182,35 +11182,23 @@ pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream
 }
 
 /*
- * CDT registry -- the Compact DEFAULT Trees a parser has rehydrated, one per attribute.
+ * CDT registry: the Compact DEFAULT Trees a parser has rehydrated, one per attribute.
  *
- * "CDT" names the residual DEFAULT expression itself: a residual DEFAULT is exactly a
- * DEFAULT stored as a Compact DEFAULT Tree (an Expression-Derived Literal is frozen
- * to a value, a legacy pseudo-column DEFAULT has no stream), and the registry holds
- * its rehydrated PT_NODE form.
+ * Each attribute's stream is decoded once per parser (once per compile, once per
+ * prepare) and the same tree is handed to every reader in the statement: the Default
+ * References, the statement-clock probe and the Local Evaluation CDT_EVAL_SET.
+ * Entries, stream copies and tree nodes are parser memory and go with the parser.
+ * Only the DB_VALUEs inside the PT_VALUE nodes need a walk, pt_cdt_registry_free.
  *
- * Every client-side reader of a CDT (a Default Reference -- the DEFAULT keyword or
- * DEFAULT(col) --, the statement-clock probe of an INSERT and the Local Evaluation
- * CDT_EVAL_SET) used to rehydrate the stream on its own, so one multi-row INSERT
- * decoded the same stream once per DEFAULT keyword plus once per pass.  The registry
- * decodes each attribute's stream once per parser -- once per compile, and once per
- * prepare for a prepared statement -- and hands out the SAME tree.  Entries and
- * trees are both parser memory (parser_alloc / parser nodes): they live exactly as
- * long as the parser and go away with it, so there is nothing to free and no
- * capacity to manage; the list is as long as the number of CDT attributes this
- * parser has asked about.
+ * Callers treat a tree as shared and read-only: walk it, evaluate it, or take a
+ * parser_copy_tree of their own. Never mutate or free it.
  *
- * Callers treat the tree as shared and read-only: walk it, evaluate it
- * (pt_evaluate_tree never memoizes onto the nodes), or parser_copy_tree it when
- * they need a subtree of their own -- never mutate or parser_free_tree it.
- *
- * An entry is keyed on the attribute (class, id) and validated against a
- * parser-owned COPY of the stream bytes, so a class re-fetched after an ALTER (a
- * new stream) gets a fresh tree while the old one simply stays until the parser
- * is freed.  The copy matters: the attribute's own stream buffer belongs to the
- * workspace and can be released -- and its address reused -- while this parser
- * (a prepared statement, say) lives on, so neither the pointer nor its bytes may
- * be consulted after registration.
+ * An entry is keyed on (class, id) and validated against a parser-owned copy of the
+ * stream bytes: the attribute's own buffer belongs to the workspace and can be freed,
+ * and its address reused, while a prepared statement's parser lives on. A re-fetched
+ * attribute with a new stream gets a new entry prepended in front of the stale one,
+ * so the lookup finds the newest tree, a pass still holding the old one stays valid,
+ * and the free walk reaches both.
  */
 struct pt_cdt_registry_entry
 {
@@ -11227,8 +11215,8 @@ struct pt_cdt_registry_entry
  * pt_cdt_registry_tree () - the rehydrated Compact DEFAULT Tree of a residual
  *	DEFAULT attribute, decoded once per parser and shared afterwards (see the
  *	registry note above).  The caller must not mutate or free the returned tree.
- *   return: shared tree, or NULL -- an attribute with no residual DEFAULT leaves the
- *	error state untouched (the probe answer), any other NULL has set its error here
+ *   return: shared tree, or NULL. An attribute with no residual DEFAULT leaves the error
+ *	state untouched (the probe answer); any other NULL has set its error here.
  *   parser(in): parser context owning the registry and the tree
  *   att(in): attribute
  *   volatility(out): effective volatility of the tree; may be NULL
@@ -11253,6 +11241,7 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
     {
       if (entry->class_mop == att->class_mop && entry->att_id == att->id)
 	{
+	  /* the newest entry of this attribute: the list is prepended to, so the lookup stops at it */
 	  break;
 	}
     }
@@ -11288,32 +11277,55 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
     }
   memcpy (stream_copy, default_expr->default_expr_tree_stream, default_expr->default_expr_tree_stream_size);
 
+  /* a new entry even when one was found: the entry found carries a stream this attribute no longer has
+   * (an ALTER), and its tree may still be held by a pass of this statement, so it is shadowed by the entry
+   * prepended here rather than overwritten (see the registry note) */
+  entry = (struct pt_cdt_registry_entry *) parser_alloc (parser, sizeof (*entry));
   if (entry == NULL)
     {
-      entry = (struct pt_cdt_registry_entry *) parser_alloc (parser, sizeof (*entry));
-      if (entry == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
-	  parser_free_tree (parser, tree);
-	  return NULL;
-	}
-      entry->class_mop = att->class_mop;
-      entry->att_id = att->id;
-      entry->next = parser->cdt_registry;
-      parser->cdt_registry = entry;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*entry));
+      parser_free_tree (parser, tree);
+      return NULL;
     }
-  /* a re-fetched attribute (new stream after an ALTER) replaces its entry; the previous tree and stream copy
-   * may still be referenced by a pass of this statement, so they are left to the parser to release */
+  entry->class_mop = att->class_mop;
+  entry->att_id = att->id;
   entry->stream = stream_copy;
   entry->stream_size = default_expr->default_expr_tree_stream_size;
   entry->tree = tree;
   entry->volatility = pt_get_expr_tree_volatility (tree, &unclassified_node);
+  entry->next = parser->cdt_registry;
+  parser->cdt_registry = entry;
 
   if (volatility != NULL)
     {
       *volatility = entry->volatility;
     }
   return tree;
+}
+
+/*
+ * pt_cdt_registry_free () - parser_free_tree every registry tree, giving back the DB_VALUEs
+ *	inside its PT_VALUE nodes (see the registry note).  Called by parser_free_parser before
+ *	the node and string blocks are released.
+ *   return: void
+ *   parser(in/out): parser context owning the registry
+ */
+void
+pt_cdt_registry_free (PARSER_CONTEXT * parser)
+{
+  struct pt_cdt_registry_entry *entry;
+
+  assert (parser != NULL);
+
+  for (entry = parser->cdt_registry; entry != NULL; entry = entry->next)
+    {
+      if (entry->tree != NULL)
+	{
+	  parser_free_tree (parser, entry->tree);
+	  entry->tree = NULL;
+	}
+    }
+  parser->cdt_registry = NULL;
 }
 
 /*
