@@ -33,7 +33,8 @@ jobs:
 
           # Allowed commands: /run all, /run shell, /run sql, /run medium
           # Or any combination of them (up to 4)
-          if ! [[ "$COMMENT" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
+          # [[:space:]]*$ because a comment body arrives with its trailing CRLF.
+          if ! [[ "$COMMENT" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}[[:space:]]*$ ]]; then
             echo "[info] Ignored invalid command: $COMMENT"
             exit 0
           fi

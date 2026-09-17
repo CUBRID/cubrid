@@ -8518,6 +8518,7 @@ loop:
       error_code = tde_copy_keys_file (thread_p, separate_mk_path, mk_path, false, true);
       if (error_code != NO_ERROR)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TDE_BACKUP_KEYS_FILE_FAIL, 0);
 	  goto error;
 	}
     }
