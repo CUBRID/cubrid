@@ -10132,7 +10132,10 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
   BTREE_INIT_SCAN (&env.btree_scan);
   env.btree_scan.btid_int = *ctx->btid_int;	/* shallow copy: shares the read-only key_type domain */
   db_make_null (&env.prev_key_val);
-  env.same_prefix_len = -1;	/* deduplicate-key indexes are declined before dispatch */
+  /* same value serial reads via GET_DECOMPRESS_IDX_HEADER, in the form btree_get_stats uses. The
+   * dispatcher's gate leaves it negative, and dk_get_deduplicate_key_position only ever writes a
+   * position or -1, so it is exactly the -1 btree_is_same_key_for_stats asserts on */
+  env.same_prefix_len = ctx->btid_int->deduplicate_key_idx;
 
   for (i = arg->next_child->fetch_add (1, std::memory_order_relaxed); i < ctx->n_children;
        i = arg->next_child->fetch_add (1, std::memory_order_relaxed))
