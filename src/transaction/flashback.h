@@ -43,6 +43,12 @@
 
 #define FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY (prm_get_integer_value(PRM_ID_FLASHBACK_MAX_TRANSACTION))
 
+/* Upper bound for the log-info batch size a single request may ask for. The
+ * flashback utility asks for 5; this only has to be generous enough to never
+ * constrain a legitimate client while bounding how far a crafted request can
+ * drive log scanning past the range it asked for. */
+#define FLASHBACK_MAX_NUM_LOGINFO_PER_REQUEST 1024
+
 #define FLASHBACK_CHECK_AND_GET_SUMMARY(summary_list, trid, summary_entry) \
   do \
     { \

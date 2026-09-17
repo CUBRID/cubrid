@@ -11464,14 +11464,14 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   ptr = or_unpack_log_lsa (ptr, &context.start_lsa);
   ptr = or_unpack_log_lsa (ptr, &context.end_lsa);
   ptr = or_unpack_int (ptr, &context.num_loginfo);
-  if (context.num_loginfo < 0)
+  if (context.num_loginfo < 0 || context.num_loginfo > FLASHBACK_MAX_NUM_LOGINFO_PER_REQUEST)
     {
-      /* A requested-batch-size, not a buffer count -- sign check only, no
-       * reqlen bound. flashback_make_loginfo() overwrites it with the real
-       * generated count on success, so this is a trust-boundary sanity check,
-       * not a guard against a specific miscalculation. An upper cap remains
-       * a follow-up. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, context.num_loginfo);
+      /* A requested-batch-size, not a buffer count, so this is bounded by its
+       * own limit rather than by reqlen. The cap matters because the generation
+       * loop keeps scanning past the requested range while it is short of this
+       * count, so an inflated value turns into unbounded log reads. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+	      FLASHBACK_MAX_NUM_LOGINFO_PER_REQUEST, context.num_loginfo);
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
