@@ -60,7 +60,8 @@ typedef enum
   C_STYLE_COMMENT,
   CPP_STYLE_COMMENT,
   SINGLE_QUOTED_STRING,
-  DOUBLE_QUOTED_STRING
+  DOUBLE_QUOTED_STRING,
+  BRACKETED_IDENTIFIER
 } STATEMENT_STATUS;
 
 extern const char *get_schema_type_str (int schema_type);
