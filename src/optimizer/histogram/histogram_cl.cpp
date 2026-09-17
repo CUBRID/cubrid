@@ -48,7 +48,7 @@
 #include "language_support.h"
 #include "error_manager.h"
 
-static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
+static bool histogram_extract_key (const DB_VALUE *db_val, DB_TYPE column_type, hist::histogram_key &key);
 static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
 static bool string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset,
     int collation);
@@ -629,8 +629,14 @@ histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
   return true;
 }
 
+/*
+ * histogram_extract_key () - probe key for a constant, in the histogram's slot encoding
+ *   db_val(in)      : the constant (literal or host variable)
+ *   column_type(in) : DB_TYPE of the histogram's column; decides string normalization
+ *   key(out)        : extracted key
+ */
 static bool
-histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
+histogram_extract_key (const DB_VALUE *db_val, DB_TYPE column_type, hist::histogram_key &key)
 {
   const DB_TYPE type = static_cast<DB_TYPE> (db_val->domain.general_info.type);
 
@@ -699,16 +705,12 @@ histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
 	{
 	  return false;
 	}
-      if (type == DB_TYPE_CHAR)
-	{
-	  /* SQL CHAR comparison ignores trailing spaces and the sampler strips them from the
-	   * stored values (extract<std::string> ()); strip them from the probe key too so MCV
-	   * equality and range interpolation compare like with like */
-	  while (len > 0 && str[len - 1] == ' ')
-	    {
-	      len--;
-	    }
-	}
+      /* Normalize by the COLUMN's type, not the constant's. The type checker leaves a CHAR
+       * literal compared to a VARCHAR column as CHAR (comparable char types are not coerced),
+       * so the constant's type says nothing about how the sampler stored the column: it strips
+       * CHAR columns and keeps VARCHAR bytes. Keying on the constant's type stripped 'abcd '
+       * against a VARCHAR column and matched the 'abcd' MCV instead (CBRD-27251). */
+      len = hist::string_key_size_for_column (column_type, str, len);
       key.kind = hist::histogram_key_kind::str;
       /* length-based (not strlen): embedded NULs must not truncate the key */
       key.str.assign (str, static_cast<std::size_t> (len));
@@ -1047,7 +1049,7 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
     }
 
   hist::histogram_key key;
-  if (!histogram_extract_key (rhs_db_value, key))
+  if (!histogram_extract_key (rhs_db_value, histogram_reader.value_type (), key))
     {
       *success = false;
       return;
@@ -1120,8 +1122,8 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
        * the byte-sorted MCV list stores them as distinct entries. Sweep the list with the
        * runtime comparator and sum every matching MCV's mass; under a binary collation this
        * reproduces the plain byte lookup. The probe bytes are key.str, NOT the raw constant:
-       * the sampler strips trailing spaces from stored CHAR values and histogram_extract_key
-       * strips the probe to match -- the raw constant would compare padded against stripped.
+       * histogram_extract_key normalized them by the column's rule (CHAR stripped, VARCHAR kept
+       * -- hist::string_key_size_for_column), the same rule the sampler stored them under.
        * Both sides are built under the resolved common collation, which db_string_compare ()
        * requires as a precondition. */
       int column_codeset, column_collation;
@@ -1232,7 +1234,7 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
       return;
     }
   hist::histogram_key key;
-  if (!histogram_extract_key (rhs_db_value, key))
+  if (!histogram_extract_key (rhs_db_value, histogram_reader.value_type (), key))
     {
       *success = false;
       return;
@@ -1738,13 +1740,69 @@ pattern_heuristic_selectivity (const std::string &pattern, char escape_char)
   return sel;
 }
 
+/*
+ * histogram_repad_char_value () - undo the sampler's CHAR normalization for pattern matchers
+ *   value(in)            : stored MCV/bucket value (view into the histogram blob)
+ *   column_type(in)      : DB_TYPE of the histogram's column
+ *   column_precision(in) : declared CHAR length in characters; <= 0 disables re-padding
+ *   column_codeset(in)   : column charset (decides bytes per character)
+ *   buf(in/out)          : storage for the padded copy; reused across calls by the caller
+ *   return               : value itself when nothing is padded, else a view into buf
+ *
+ * Stored CHAR values are stripped of trailing spaces (hist::string_key_size_for_column) but the
+ * executor runs LIKE/REGEXP on the heap value, which is padded to the column precision:
+ * 'abcd    ' LIKE 'abcd %' is TRUE at runtime and FALSE against the stripped 'abcd'. Re-pad to
+ * the declared width so the estimate matches what execution sees. Width is in characters, so
+ * count them under the column codeset (the pad character ' ' is one byte in every supported
+ * codeset). A column node without data_type gives no precision -> no re-padding: the estimate
+ * then degrades to the stripped comparison instead of guessing a width.
+ */
+static std::string_view
+histogram_repad_char_value (std::string_view value, DB_TYPE column_type, int column_precision,
+			    INTL_CODESET column_codeset, std::string &buf)
+{
+  int char_count = 0;
+
+  if (column_type != DB_TYPE_CHAR || column_precision <= 0 || column_precision > DB_MAX_CHAR_PRECISION)
+    {
+      return value;
+    }
+
+  switch (column_codeset)
+    {
+    case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_KSC5601_EUC:
+    case INTL_CODESET_UTF8:
+      /* the codesets intl_char_count () handles; anything else would assert there */
+      break;
+    default:
+      return value;
+    }
+
+  intl_char_count (reinterpret_cast<const unsigned char *> (value.data ()), static_cast<int> (value.size ()),
+		   column_codeset, &char_count);
+  if (char_count >= column_precision)
+    {
+      return value;
+    }
+
+  buf.assign (value.data (), value.size ());
+  buf.append (static_cast<std::size_t> (column_precision - char_count), ' ');
+  return std::string_view (buf);
+}
+
 static bool
-like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::string_view value)
+like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::string_view value,
+		  DB_TYPE column_type, int column_precision, INTL_CODESET column_codeset, std::string &pad_buf)
 {
   DB_VALUE src, pattern;
   int res = V_FALSE;
   int err;
   int common_coll_id = -1;
+
+  /* the executor matches the padded heap value, not the stripped stored one */
+  value = histogram_repad_char_value (value, column_type, column_precision, column_codeset, pad_buf);
 
   /* Match through the runtime evaluator (db_string_like) so the estimate cannot diverge from
    * execution: it matches '_' per character (not per byte) and folds case under the common
@@ -1919,6 +1977,16 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   int src_coll_id = (lhs_name != NULL && lhs_name->data_type != NULL)
 		    ? lhs_name->data_type->info.data_type.collation_id : db_get_string_collation (rhs_db_value);
 
+  /* column width and charset for CHAR re-padding (histogram_repad_char_value); a column node
+   * without data_type yields precision 0, which disables it */
+  const DB_TYPE column_type = histogram_reader.value_type ();
+  const int column_precision = (lhs_name != NULL && lhs_name->data_type != NULL)
+			       ? lhs_name->data_type->info.data_type.precision : 0;
+  const INTL_CODESET column_codeset = (lhs_name != NULL && lhs_name->data_type != NULL)
+				      ? static_cast<INTL_CODESET> (lhs_name->data_type->info.data_type.units)
+				      : LANG_SYS_CODESET;
+  std::string pad_buf;
+
   /* MCVs: exact LIKE test against each MCV value, weighted by its population frequency. */
   double matched_mcv_freq = 0.0;
   const double mcvsum = histogram_reader.mcv_total_frequency ();
@@ -1927,7 +1995,8 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
       const std::string_view mcv_val = histogram_reader.mcv_hi<std::string_view> (i);
-      if (like_match_value (rhs_db_value, src_coll_id, mcv_val))
+      if (like_match_value (rhs_db_value, src_coll_id, mcv_val, column_type, column_precision, column_codeset,
+			    pad_buf))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
 	}
@@ -1942,7 +2011,8 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (like_match_value (rhs_db_value, src_coll_id, histogram_reader.bucket_hi<std::string_view> (i)))
+      if (like_match_value (rhs_db_value, src_coll_id, histogram_reader.bucket_hi<std::string_view> (i),
+			    column_type, column_precision, column_codeset, pad_buf))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}
@@ -2007,10 +2077,14 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
 }
 
 static bool
-rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value)
+rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value, DB_TYPE column_type,
+		    int column_precision, INTL_CODESET column_codeset, std::string &pad_buf)
 {
   int res = V_FALSE;
   int err;
+
+  /* the executor matches the padded heap value, not the stripped stored one (same as LIKE) */
+  value = histogram_repad_char_value (value, column_type, column_precision, column_codeset, pad_buf);
 
   /* cubregex::search () er_set()s on an execution failure (bad codeset, regex_error); like the
    * compile above, a planning probe must not leave that in the global error state -- shield it
@@ -2099,6 +2173,16 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
       return;
     }
 
+  /* column width and charset for CHAR re-padding (histogram_repad_char_value); a column node
+   * without data_type yields precision 0, which disables it */
+  const DB_TYPE column_type = histogram_reader.value_type ();
+  const int column_precision = (lhs_name != NULL && lhs_name->data_type != NULL)
+			       ? lhs_name->data_type->info.data_type.precision : 0;
+  const INTL_CODESET column_codeset = (lhs_name != NULL && lhs_name->data_type != NULL)
+				      ? static_cast<INTL_CODESET> (lhs_name->data_type->info.data_type.units)
+				      : LANG_SYS_CODESET;
+  std::string pad_buf;
+
   /* An invalid pattern must keep raising its error at execution time, not at planning time:
    * shield the global error state and fall back to the caller's guess on compile failure. */
   cubregex::compiled_regex *compiled = NULL;
@@ -2118,7 +2202,8 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
 
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
-      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i)))
+      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i), column_type,
+			      column_precision, column_codeset, pad_buf))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
 	}
@@ -2132,7 +2217,8 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i)))
+      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i), column_type,
+			      column_precision, column_codeset, pad_buf))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}

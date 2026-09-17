@@ -526,17 +526,9 @@ namespace
     else
       {
 	s = db_get_string (v);
-	len = db_get_string_size (v);
-	if (t == DB_TYPE_CHAR && s != NULL)
-	  {
-	    /* fixed CHAR heap values are padded to the column precision; the probe key on the
-	     * client side is the (unpadded) constant. SQL CHAR comparison ignores trailing
-	     * spaces, so strip them here to keep MCV equality and range order consistent. */
-	    while (len > 0 && s[len - 1] == ' ')
-	      {
-		len--;
-	      }
-	  }
+	/* a heap value's type is the column type; the client probe normalizes its constant by the
+	 * same column-type rule, so MCV equality and range order agree (see the helper) */
+	len = hist::string_key_size_for_column (t, s, db_get_string_size (v));
       }
     if (s == NULL || len < 0)
       {
@@ -2528,15 +2520,8 @@ namespace
 	else
 	  {
 	    s = db_get_string (v);
-	    len = db_get_string_size (v);
-	    if (t == DB_TYPE_CHAR && s != NULL)
-	      {
-		/* strip CHAR padding; must hash exactly like extract<std::string> () */
-		while (len > 0 && s[len - 1] == ' ')
-		  {
-		    len--;
-		  }
-	      }
+	    /* must hash exactly the bytes extract<std::string> () keys on: same helper */
+	    len = hist::string_key_size_for_column (t, s, db_get_string_size (v));
 	  }
 	if (s == NULL || len < 0)
 	  {
