@@ -11943,6 +11943,35 @@ pt_dblink_dml_is_pushable_pred (PT_NODE * cond)
   return true;
 }
 
+/* true iff the per-value remote predicates this shape produces can match overlapping row sets, so one
+ * remote row can be reached by more than one of them.
+ *
+ * The sink sends one statement per local value and the statements are independent, so overlap means the
+ * same row is written more than once. DELETE does not care -- a row cannot be deleted twice, and the
+ * second statement reports 0 -- but UPDATE writes again: the reported count grows past the number of rows
+ * that changed, a SET expression reading the row's own value is applied twice, and a remote trigger fires
+ * twice. Only the UPDATE side asks this.
+ *
+ * Equality never overlaps: distinct values match disjoint row sets, and de-duplicating the values removes
+ * the remaining repetition. Every other quantified comparison overlaps -- "col < 2" and "col < 3" share
+ * every row below 2, and "col <> 2" and "col <> 3" share every row that is neither. */
+static bool
+pt_dblink_dml_pred_targets_can_overlap (PT_NODE * cond)
+{
+  switch (cond->info.expr.op)
+    {
+    case PT_NE_SOME:
+    case PT_LT_SOME:
+    case PT_GT_SOME:
+    case PT_LE_SOME:
+    case PT_GE_SOME:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
 /*
  * pt_dblink_find_remote_spec () - walk pre: set *arg when a remote (tbl@srv) spec remains.
  *   Same-server rewrite turns those into dblink derived tables. Name resolution leaves flat_entity_list /
@@ -12128,7 +12157,8 @@ pt_dblink_dml_subq_servers (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME
  *   1. no WHERE at all, the SET track -- the only subquery sits in the assignments and every remote row is
  *      updated                                                      -> *has_driving_pred = false
  *   2. a single pushable predicate over a subquery (the DELETE sink's shapes, see
- *      pt_dblink_dml_is_pushable_pred)                              -> *has_driving_pred = true
+ *      pt_dblink_dml_is_pushable_pred), minus the ones whose per-value predicates overlap
+ *      (pt_dblink_dml_pred_targets_can_overlap)                     -> *has_driving_pred = true
  *
  * A WHERE that only reads remote columns (col op literal) is left to the existing rejection: the remote
  * statement would have to carry it verbatim, which needs a deparse this sink does not have. */
@@ -12145,6 +12175,14 @@ pt_dblink_update_where_is_inscope (PT_NODE * node, bool * has_driving_pred)
     }
 
   if (cond->next != NULL || !pt_dblink_dml_is_pushable_pred (cond))
+    {
+      return false;
+    }
+
+  /* Shapes whose per-value predicates overlap are left out of this sink: writing the same row twice is a
+   * different statement than the one the user wrote. DELETE keeps them -- see
+   * pt_dblink_dml_pred_targets_can_overlap. */
+  if (pt_dblink_dml_pred_targets_can_overlap (cond))
     {
       return false;
     }
