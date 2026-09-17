@@ -11216,7 +11216,7 @@ struct pt_cdt_registry_entry
  *	DEFAULT attribute, decoded once per parser and shared afterwards (see the
  *	registry note above).  The caller must not mutate or free the returned tree.
  *   return: shared tree, or NULL. An attribute with no residual DEFAULT leaves the error
- *	state untouched (the probe answer); any other NULL has set its error here.
+ *	state untouched (the probe answer); any other NULL leaves an error set.
  *   parser(in): parser context owning the registry and the tree
  *   att(in): attribute
  *   volatility(out): effective volatility of the tree; may be NULL
@@ -11260,9 +11260,13 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
 					      default_expr->default_expr_tree_stream_size);
   if (tree == NULL)
     {
-      /* a stored stream this build cannot restore. The failure is never registered: the next reader
-       * of the same attribute decodes again and diagnoses again. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, att->header.name);
+      /* a stored stream this build cannot restore, unless an allocation under the reader failed, whose own
+       * report stands. The failure is never registered: the next reader of the same attribute decodes again
+       * and diagnoses again. */
+      if (er_errid () != ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_INVALID_DEFAULT_EXPR_STREAM, 1, att->header.name);
+	}
       return NULL;
     }
 
