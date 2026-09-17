@@ -774,43 +774,6 @@ end:
   return error;
 }
 
-/*
- * au_check_user_loginable() -  Check whether the given user can log in.
- *   return: NO_ERROR if the user can log in, ER_AU_LOGIN_DISABLED if it is a NOLOGIN user,
- *           or the error that made the check impossible
- *   name(in): user name
- */
-int
-au_check_user_loginable (const char *name)
-{
-  MOP user;
-  int error = NO_ERROR;
-  int save;
-
-  AU_SAVE_AND_DISABLE (save);
-
-  user = au_find_user (name);
-  if (user == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error);
-    }
-  else
-    {
-      bool loginable = false;
-
-      error = au_ctx ()->get_loginable (user, &loginable);
-      if (error == NO_ERROR && !loginable)
-	{
-	  error = ER_AU_LOGIN_DISABLED;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name);
-	}
-    }
-
-  AU_RESTORE (save);
-
-  return error;
-}
-
 
 /*
  * GROUP HIERARCHY MAINTENANCE
