@@ -2067,8 +2067,13 @@ jobs:
                 # so that its absence is what tells collect this shard ran nothing.
                 find "$logs" -type f -name summary_info -exec cat {} + > /tmp/summary_info 2>/dev/null || :
                 [ -s /tmp/summary_info ] && cp -f /tmp/summary_info "$out/summary_info" || :
-                # The per-case queries, diffs and source links stay in the JUnit XML,
-                # which rides along in ctp_log.tgz when something failed.
+                # The per-case queries, diffs and source links are in the JUnit XML,
+                # which collect reads to fill the per-case logs in the summary.
+                # Same glob as the entrypoint's collect_xml: the writer names the file
+                # <os>_<testType>_<testBit>.xml, and summary.xml is the old format.
+                mkdir -p "$out/test-results"
+                find "$logs" -type f -name '*.xml' ! -name summary.xml \
+                  -exec cp -f {} "$out/test-results/" \; 2>/dev/null || :
                 ;;
             esac
           fi
@@ -2558,6 +2563,60 @@ jobs:
                     | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" \
                     | awk -v shard="$i" '{printf "%s\t%s\n", shard, $0}' >> /tmp/failed.list
                 done
+                # summary_info says which case failed, the XML says why. Key the body
+                # by the case name, not by encounter order: the two files are written
+                # by different passes and their order does not have to agree.
+                awk -F'\t' '{printf "%s\t%d\n", $2, NR}' /tmp/failed.list > /tmp/failed.idx
+                for x in "$d"/shard/*/test-results/*.xml; do
+                  [ -f "$x" ] || continue
+                  awk -v dir="/tmp/failed-logs/$suite" -v idx=/tmp/failed.idx '
+                    BEGIN {
+                      while ((getline line < idx) > 0) {
+                        split(line, f, "\t"); want[f[1]] = f[2]
+                      }
+                    }
+                    # First, so that a case log carrying the literal <testcase or
+                    # <failure does not restart the scan while the body is being read.
+                    body != "" {
+                      if (/\]\]><\/failure>/) {
+                        sub(/\]\]><\/failure>.*$/, "")
+                        print > body
+                        close(body)
+                        body = ""
+                        next
+                      }
+                      print > body
+                      next
+                    }
+                    # No next: the indenting writer puts <failure> on its own line, but
+                    # one without it would put both on the same line and the rule below
+                    # would never see it.
+                    /<testcase/ {
+                      cur = ""
+                      # The leading space is required: CTP writes classname before name,
+                      # so /name="..."/ would match classname and extract a URL.
+                      if (match($0, / name="[^"]*"/)) {
+                        cur = substr($0, RSTART + 7, RLENGTH - 8)
+                      }
+                    }
+                    /<failure/ && cur != "" && (cur in want) {
+                      body = dir "/" want[cur] ".log"
+                      rest = $0
+                      sub(/^.*<!\[CDATA\[/, "", rest)
+                      if (rest ~ /\]\]><\/failure>/) {
+                        sub(/\]\]><\/failure>.*$/, "", rest)
+                        print rest > body
+                        close(body)
+                        body = ""
+                      } else if (rest != "") {
+                        print rest > body
+                      }
+                      cur = ""
+                      next
+                    }
+                    /<\/testcase>/ { cur = "" }
+                  ' "$x"
+                done
                 ;;
             esac
             failed_n=$(wc -l < /tmp/failed.list)
@@ -2822,10 +2881,15 @@ jobs:
             esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
 
             base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/$suite"
+            # Each suite's runner names its JUnit XML differently -- test-shell.xml for
+            # shell, <os>_<testType>_<testBit>.xml for sql and medium. Take the name
+            # from the shards instead of spelling it out, so a rename cannot 404 here.
+            xml_name=$(basename "$(ls "$RUNDIR/$suite"/shard/*/test-results/*.xml 2>/dev/null | head -1)" 2>/dev/null || :)
+            xml_name=${xml_name:-test-shell.xml}
             {
               echo "### $suite: the log of each failed case"
               echo
-              echo "What CTP wrote in the case's \`<failure>\`, trimmed to fit. Untrimmed, it is in the shard's \`test-shell.xml\`."
+              echo "What CTP wrote in the case's \`<failure>\`, trimmed to fit. Untrimmed, it is in the shard's \`$xml_name\`."
               echo
             } >> "$GITHUB_STEP_SUMMARY"
 
@@ -2836,7 +2900,7 @@ jobs:
               log="/tmp/failed-logs/$suite/$i.log"
               {
                 echo "<details>"
-                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/test-results/test-shell.xml\">full log</a></summary>"
+                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/test-results/$xml_name\">full log</a></summary>"
                 echo
                 # <pre> opens its own line: a blank line inside the log would end the
                 # HTML block that <details> opened, and the rest would render as text.
