@@ -140,13 +140,6 @@ typedef enum
 
 typedef enum
 {
-  FILEIO_ERROR_INTERRUPT,	/* error/interrupt */
-  FILEIO_READ,			/* access device for read */
-  FILEIO_WRITE			/* access device for write */
-} FILEIO_TYPE;
-
-typedef enum
-{
   FILEIO_BACKUP_WRITE,		/* access backup device for write */
   FILEIO_BACKUP_READ		/* access backup device for read */
 } FILEIO_BACKUP_TYPE;
@@ -391,13 +384,12 @@ struct fileio_node
   struct fileio_node *prev;
   struct fileio_node *next;
   int pageid;
-  bool writeable;
   ssize_t nread;
   FILEIO_BACKUP_PAGE *area;	/* Area to read/write the page */
   FILEIO_ZIP_INFO *zip_info;	/* Zip info containing area to compress/decompress the page */
-  /* parallel-read (PR2: declared only; wired up in PR3+4) */
-  bool ready;			/* page fully read & compressed, eligible to emit */
-  bool tombstone;		/* skipped page (only_updated): emit nothing, just advance */
+
+  bool tombstone;		/* Read from disk but not written to this backup (only_updated: unchanged since a
+				 * previous level). Still occupies a slot so the writer can advance past this pageid. */
 };
 
 typedef struct fileio_queue FILEIO_QUEUE;
@@ -409,15 +401,15 @@ struct fileio_queue
   FILEIO_NODE *free_list;
 };
 
-/* parallel-read reorder queue (PR2: declared only; wired up in PR3+4).
+/* parallel-read reorder queue.
  * Single writer drains slots in monotonic pageid order; N readers fill them. */
 typedef struct fileio_reorder_queue FILEIO_REORDER_QUEUE;
 struct fileio_reorder_queue
 {
   FILEIO_NODE **slots;		/* ring buffer, indexed by (pageid % capacity) */
   int capacity;			/* number of slots (0 until allocated) */
+  int next_read_pageid;		/* next pageid a reader will claim (monotonic) */
   int next_emit_pageid;		/* next pageid the writer must emit (monotonic) */
-  int dispatch_high_water;	/* highest pageid a reader may claim */
   FILEIO_NODE *free_list;	/* recycled nodes for this queue */
   int pool_total;		/* total nodes allocated (for leak assert in teardown) */
 };
@@ -437,10 +429,8 @@ struct fileio_thread_info
   int act_r_threads;		/* number of activated read threads */
   int end_r_threads;		/* number of ended read threads */
 
-  int pageid;
   int from_npages;
 
-  FILEIO_TYPE io_type;
   int errid;
 
   bool only_updated_pages;
@@ -451,11 +441,9 @@ struct fileio_thread_info
 
   FILEIO_QUEUE io_queue;
 
-  /* parallel-read state (PR2: declared only; wired up in PR3+4) */
-  FILEIO_REORDER_QUEUE rq;
+  /* parallel-read state */
+  FILEIO_REORDER_QUEUE reorder_queue;	/* slots are allocated per volume in fileio_start_backup_thread () */
   bool abort;			/* set on any reader/writer error to unblock peers */
-  int next_read_pageid;		/* next pageid a reader will claim */
-  int eof_pageid;		/* MIN reported short/0-read boundary (claim guard) */
 };
 
 typedef struct io_backup_session FILEIO_BACKUP_SESSION;
