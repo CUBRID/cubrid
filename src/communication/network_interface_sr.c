@@ -10805,8 +10805,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   /* Bound the count against the remaining request length before the unpack
    * loop -- each user needs at least a length prefix. */
-  if (num_extraction_user < 0
-      || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
+  if (num_extraction_user < 0 || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
 	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), num_extraction_user);
@@ -11218,8 +11217,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   /* Bound the count against the remaining request length -- each class name
    * is packed as a string. */
-  if (context.num_class < 0
-      || (INT64) context.num_class > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
+  if (context.num_class < 0 || (INT64) context.num_class > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
 	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), context.num_class);
@@ -11437,8 +11435,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   /* Bound the count against the remaining request length -- each class oid
    * is packed as an OID. */
-  if (context.num_class < 0
-      || (INT64) context.num_class > (INT64) (reqlen - (int) (ptr - request)) / OR_OID_SIZE)
+  if (context.num_class < 0 || (INT64) context.num_class > (INT64) (reqlen - (int) (ptr - request)) / OR_OID_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
 	      (int) ((reqlen - (int) (ptr - request)) / OR_OID_SIZE), context.num_class);
