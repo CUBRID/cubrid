@@ -1324,7 +1324,7 @@ $ LOADDB
 1251 Error while TDE-encrypting.
 1252 Error while TDE-decrypting.
 1253 TDE Module is not loaded.
-1254 Cannot create a key.
+1254 Cannot create or verify a key.
 1255 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
 1256 Cannot copy key file (_keys). You can't use TDE feature on the copied database.
