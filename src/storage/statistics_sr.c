@@ -140,8 +140,9 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
  *   resource, only that same row acquired earlier; and because _db_class is a catalog class,
  *   reads of it take NULL_LOCK and the table's own DML / SELECT lock the class OID and its
  *   instance rows -- not this catalog row -- so the gate serializes only other statistics
- *   collectors and blocks neither reads nor DML on the table (mirrors PostgreSQL's
- *   ShareUpdateExclusiveLock on ANALYZE).  See catcls_lock_class_stats_gate ().
+ *   collectors and blocks neither reads nor DML on the table (the same intent as the
+ *   self-conflicting share-update lock a full statistics collection takes elsewhere; see
+ *   database-reference).  See catcls_lock_class_stats_gate ().
  *
  *   Freshness is judged from the _db_class row's cache coherency number (chn), which every
  *   statistics write bumps (catcls_update_class_stats () stores old_chn + 1): a changed chn,

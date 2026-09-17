@@ -4576,8 +4576,9 @@ end:
  *   (to commit).  Because _db_class is a catalog class, reads of it (query compile, ;info) take
  *   NULL_LOCK, and the class's own DML / SELECT lock the class OID and its instance rows -- not
  *   this catalog row -- so the gate serializes only other statistics collectors and blocks
- *   neither reads nor DML on the table (mirrors PostgreSQL's ShareUpdateExclusiveLock on
- *   ANALYZE).  This transaction's later catcls_update_class_stats () re-locks the same row X,
+ *   neither reads nor DML on the table (the same intent as the self-conflicting share-update
+ *   lock a full statistics collection takes elsewhere; see database-reference).  This
+ *   transaction's later catcls_update_class_stats () re-locks the same row X,
  *   which is already held, so there is no self-conflict.
  */
 int
