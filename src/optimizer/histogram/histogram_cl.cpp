@@ -1809,8 +1809,9 @@ like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::s
    * collation of the column and the pattern, neither of which a byte-wise matcher can do.
    * The string comparison layer requires pre-aligned collations, so both transient operands
    * are built under the resolved common collation of the column and the pattern -- the same
-   * alignment the executor guarantees. value is a string_view into the histogram blob (NOT
-   * NUL-terminated, not owned). */
+   * alignment the executor guarantees. value is a string_view into the histogram blob or, once
+   * re-padded, into pad_buf: NOT NUL-terminated, not owned, and only valid until the next call
+   * that reuses pad_buf -- db_make_varchar () below copies it out before that. */
   LANG_RT_COMMON_COLL (src_collation_id, db_get_string_collation (pattern_db_value), common_coll_id);
   if (common_coll_id == -1)
     {
@@ -2088,8 +2089,8 @@ rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value,
 
   /* cubregex::search () er_set()s on an execution failure (bad codeset, regex_error); like the
    * compile above, a planning probe must not leave that in the global error state -- shield it
-   * and treat the value as unmatched. value is a string_view into the histogram blob: NOT
-   * NUL-terminated, so copy by length. */
+   * and treat the value as unmatched. value is a string_view into the histogram blob or, once
+   * re-padded, into pad_buf: NOT NUL-terminated, so copy by length (std::string below). */
   er_stack_push ();
   err = cubregex::search (res, reg, std::string (value));
   er_stack_pop ();
