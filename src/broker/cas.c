@@ -214,17 +214,7 @@ main (int argc, char *argv[])
   int res = 0;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cas_sig_handler);
-  signal (SIGINT, cas_sig_handler);
-  signal (SIGSEGV, cas_sig_handler);
-  signal (SIGABRT, cas_sig_handler);
-  signal (SIGFPE, cas_sig_handler);
-  signal (SIGILL, cas_sig_handler);
-  signal (SIGBUS, cas_sig_handler);
-  signal (SIGSYS, cas_sig_handler);
-  signal (SIGUSR1, SIG_IGN);
-  signal (SIGPIPE, SIG_IGN);
-  signal (SIGXFSZ, SIG_IGN);
+  cas_register_signal_handlers ();
 #endif /* WINDOWS */
 
   if (cas_init () < 0)
@@ -465,6 +455,17 @@ cas_cleanup_session (void)
 	}
     }
 
+  if (cas_shutdown_signo)
+    {
+      /*
+       * Shutting down due to a signal.
+       * Leaves the server-side session intact so the client can restore it upon 
+       * reconnecting to another CAS; cas_final() disconnects without sending 
+       * a session termination request to the server.
+       */
+      return;
+    }
+
   if (cas_main_fn_ret != FN_KEEP_SESS)
     {
       ux_end_session ();
@@ -525,6 +526,16 @@ conn_retry:
       do
 	{
 	  SLEEP_SEC (1);
+	  /*
+	   * Waits for the RESTART/STOP status set on our slot by the broker to clear.
+	   * Because sleep() returns early upon receiving a signal, we must check for 
+	   * shutdown signals here; otherwise, the wait will simply resume and the 
+	   * shutdown request will be ignored without being acted on.
+	   */
+	  if (cas_shutdown_signo)
+	    {
+	      cas_final ();	/* does not return */
+	    }
 	}
       while (as_info->uts_status == UTS_STATUS_RESTART || as_info->uts_status == UTS_STATUS_STOP);
     }
@@ -586,6 +597,15 @@ conn_retry:
     as_info->uts_status = UTS_STATUS_IDLE;
 
   conn_proxy_retry:
+    /*
+     * Both retry branches below sleep and jump back here. Without this check,
+     * a shutdown signal arriving while the proxy is unreachable would be ignored.
+     */
+    if (cas_shutdown_signo)
+      {
+	cas_final ();		/* does not return */
+      }
+
     net_timeout_set (NET_DEFAULT_TIMEOUT);
 
 #if defined(WINDOWS)
@@ -659,7 +679,7 @@ conn_retry:
 	fn_ret = FN_KEEP_CONN;
 	as_info->con_status = CON_STATUS_OUT_TRAN;
 
-	while (fn_ret == FN_KEEP_CONN)
+	while (fn_ret == FN_KEEP_CONN && !cas_shutdown_signo)
 	  {
 #if !defined(WINDOWS)
 	    signal (SIGUSR1, query_cancel);
@@ -693,12 +713,13 @@ conn_retry:
 	    ux_end_tran (CCI_TRAN_ROLLBACK, false, true);
 	  }
 
-	if (fn_ret != FN_KEEP_SESS)
+	/* On a shutdown signal, keep the session on the server alone. See cas_cleanup_session (). */
+	if (fn_ret != FN_KEEP_SESS && !cas_shutdown_signo)
 	  {
 	    ux_end_session ();
 	  }
 
-	if (as_info->reset_flag == TRUE || is_xa_prepared ())
+	if ((as_info->reset_flag == TRUE || is_xa_prepared ()) && !cas_shutdown_signo)
 	  {
 	    ux_database_shutdown (true);
 	    as_info->reset_flag = FALSE;
@@ -723,7 +744,7 @@ conn_retry:
 #endif /* WINDOWS */
 	CLOSE_SOCKET (proxy_sock_fd);
 
-	if (restart_is_needed ())
+	if (restart_is_needed () || cas_shutdown_signo)
 	  {
 	    cas_final ();
 	    return 0;
@@ -769,6 +790,12 @@ cas_init ()
 
   /* Set database shutdown callback for cas.c specific implementation */
   cas_set_database_shutdown_callback (ux_database_shutdown);
+
+  /*
+   * Registered unconditionally: a shard CAS must notice a shutdown request while
+   * waiting on the server, just as a CAS does.
+   */
+  css_register_abort_server_wait_fn (cas_abort_server_wait);
 
   if (cas_shard_flag == OFF)
     {
@@ -982,7 +1009,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 	  if (cas_log_msg == NULL)
 	    {
-	      if (is_net_timed_out ())
+	      if (cas_shutdown_signo)
+		{
+		  cas_log_msg = "SHUTDOWN REQUESTED";
+		}
+	      else if (is_net_timed_out ())
 		{
 		  if (as_info->reset_flag == TRUE)
 		    {
