@@ -217,8 +217,8 @@ typedef struct LDR_STORE_SPEC
 /*
  * LDR_ATTDESC
  *    Loader attribute description structure.
- *    This contains the description, attribute, and fast setter function
- *    for the attribute.
+ *    This contains the description, the attribute, and what to do with each
+ *    kind of token the parser can hand to it.
  *    ctor_val holds the value of this slot on a %constructor line. The
  *    instance does not exist yet when such a token is parsed, so the value is
  *    converted then and written once the constructor has returned an object.
@@ -622,10 +622,6 @@ static int ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, L
 			    data_type type);
 static int ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
 			      data_type type, DB_VALUE *val);
-static int ldr_convert_and_setmem (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
-				   data_type type, bool bound_bit);
-static int ldr_convert_and_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
-				    data_type type);
 static int ldr_null_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_null_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sink_class_object (LDR_CONTEXT *context, SM_ATTRIBUTE *att, DB_VALUE *val);
@@ -633,48 +629,26 @@ static void ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t le
 static int ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_sys_class_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_int_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_int_db_bigint (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_int_db_int (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_int_db_short (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_str_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_str_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 
 static int ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_float_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_real_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_real_db_float (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_real_db_double (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_date_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_date_db_date (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_time_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_time_db_time (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_timestamp_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_timestamp_db_timestamp (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_timestamptz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_timestampltz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_timestamptz_db_timestamptz (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_timestampltz_db_timestampltz (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_datetime_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_datetime_db_datetime (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_datetimetz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_datetimeltz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_datetimetz_db_datetimetz (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
-static int ldr_datetimeltz_db_datetimeltz (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static void ldr_date_time_conversion_error (const char *token, DB_TYPE type);
 static int ldr_check_date_time_conversion (const char *str, data_type type);
 static int ldr_elo_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_elo_int_db_elo (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_elo_ext_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_elo_ext_db_elo (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_mop_tempoid_maps_init (void);
 static void ldr_mop_tempoid_maps_final (void);
 static int ldr_add_mop_tempoid_map (MOP mop, CLASS_TABLE *table, int id);
@@ -685,7 +659,6 @@ static int ldr_class_oid_db_object (LDR_CONTEXT *context, const char *str, size_
 static int ldr_oid_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_oid_db_object (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_monetary_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_monetary_db_monetary (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_collection_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_collection_db_collection (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 static int ldr_reset_context (LDR_CONTEXT *context);
@@ -707,7 +680,6 @@ static void ldr_abort (void);
 static void ldr_process_object_ref (object_ref_type *ref, int type, bool is_element);
 static int ldr_act_add_class_all_attrs (const char *class_name);
 static int ldr_json_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_json_db_json (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc);
 
 /*
  * LDR_IS_INSIDE_COLLECTION - is this value the leading brace of a collection
@@ -2541,58 +2513,6 @@ ldr_sink_instance (LDR_CONTEXT *context, LDR_ATTDESC *attdesc, DB_VALUE *val, bo
 }
 
 /*
- * ldr_convert_and_setmem - convert, then write straight into the instance image
- *    return: NO_ERROR or an error code
- *    context(in):
- *    str(in): token text
- *    len(in): token length
- *    attdesc(in): descriptor of the attribute being set
- *    type(in): parser type of the token
- *    bound_bit(in): false for variable length attributes, which carry no bound bit
- */
-static int
-ldr_convert_and_setmem (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc, data_type type,
-			bool bound_bit)
-{
-  DB_VALUE val;
-  int err;
-
-  CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, type, &val));
-  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, true, bound_bit));
-
-  /*
-   * No db_value_clear () here, unlike the template write below. A direct write hands the value's memory
-   * to the instance image, so clearing it afterwards would take it back out from under the instance.
-   */
-
-error_exit:
-  return err;
-}
-
-/*
- * ldr_convert_and_generic - convert, then hand the value to the object template
- *    return: NO_ERROR or an error code
- *    context(in):
- *    str(in): token text
- *    len(in): token length
- *    attdesc(in): descriptor of the attribute being set
- *    type(in): parser type of the token
- */
-static int
-ldr_convert_and_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc, data_type type)
-{
-  DB_VALUE val;
-  int err;
-
-  CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, type, &val));
-  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, false, false));
-
-error_exit:
-  db_value_clear (&val);
-  return err;
-}
-
-/*
  * ldr_store_value - convert the token and put it where the slot says
  *    return: NO_ERROR or an error code
  *    context(in):
@@ -2844,15 +2764,15 @@ ldr_sys_class_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR
 /*
  *  INT SETTERS
  *
- *  These functions (ldr_int_db_*) are called when int constants are
- *  processed by the lexer.  They probably only make sense for int, float,
- *  double, and numeric types.  An "int" string is known to consist only of
- *  digits with an optional preceding sign character.
+ *  These are reached when the lexer hands an int constant to LDR_INT.  They
+ *  probably only make sense for int, float, double, and numeric types.  An
+ *  "int" string is known to consist only of digits with an optional preceding
+ *  sign character.
  *
  *  Right now we don't have a special handler for DB_TYPE_SHORT attributes.
  *  We may want to build one if they turn out to be prevalent.  That handler
  *  would have to be on the lookout for overflow situations.  (For that
- *  matter, ldr_int_db_int maybe ought to look out for it too.)
+ *  matter, the int conversion maybe ought to look out for it too.)
  */
 
 /*
@@ -2926,62 +2846,6 @@ error_exit:
 }
 
 /*
- * ldr_int_db_generic -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_int_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_generic (context, str, len, attdesc, LDR_INT);
-}
-
-/*
- * ldr_int_db_bigint -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_int_db_bigint (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_INT, true);
-}
-
-/*
- * ldr_int_db_int -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_int_db_int (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_INT, true);
-}
-
-/*
- * ldr_int_db_short -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_int_db_short (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_INT, true);
-}
-
-/*
  *  STRING SETTERS
  *
  *  These functions (ldr_str_db_*) are called when quoted strings are
@@ -3010,48 +2874,6 @@ ldr_str_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   /* todo: switch this to db_make_string_copy and avoid any possible leaks */
   db_make_string (val, str);
   return NO_ERROR;
-}
-
-/*
- * ldr_str_db_char -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_STR, false);
-}
-
-/*
- * ldr_str_db_varchar -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_STR, false);
-}
-
-/*
- * ldr_str_db_generic -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_str_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_generic (context, str, len, attdesc, LDR_STR);
 }
 
 /*
@@ -3110,20 +2932,6 @@ error_exit:
   /* cleanup */
   db_value_clear (&temp);
   return err;
-}
-
-/*
- * ldr_bstr_db_varbit -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_generic (context, str, len, attdesc, LDR_BSTR);
 }
 
 /*
@@ -3193,20 +3001,6 @@ error_exit:
 }
 
 /*
- * ldr_xstr_db_varbit -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_generic (context, str, len, attdesc, LDR_XSTR);
-}
-
-/*
  *  NUMERIC SETTERS
  *
  *  A "numeric" string is known to have a decimal point in it but *not* to
@@ -3248,20 +3042,6 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
 
 error_exit:
   return err;
-}
-
-/*
- * ldr_numeric_db_generic -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_generic (context, str, len, attdesc, LDR_NUMERIC);
 }
 
 /*
@@ -3341,48 +3121,6 @@ error_exit:
 }
 
 /*
- * ldr_real_db_generic -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_real_db_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_generic (context, str, len, attdesc, LDR_DOUBLE);
-}
-
-/*
- * ldr_real_db_float -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_real_db_float (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_FLOAT, true);
-}
-
-/*
- * ldr_real_db_double -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_real_db_double (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_FLOAT, true);
-}
-
-/*
  *  DATE/TIME/TIMESTAMP/DATETIME SETTERS
  *
  *  Any of the "date", "time" , "timestamp" or "datetime" strings have already
@@ -3411,20 +3149,6 @@ error_exit:
 }
 
 /*
- * ldr_date_db_date -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_date_db_date (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_DATE, true);
-}
-
-/*
  * ldr_time_elem -
  *    return:
  *    context():
@@ -3445,20 +3169,6 @@ error_exit:
 }
 
 /*
- * ldr_time_db_time -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_time_db_time (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_TIME, true);
-}
-
-/*
  * ldr_timestamp_elem -
  *    return:
  *    context():
@@ -3476,20 +3186,6 @@ ldr_timestamp_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE 
 
 error_exit:
   return err;
-}
-
-/*
- * ldr_timestamp_db_timestamp -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_timestamp_db_timestamp (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_TIMESTAMP, true);
 }
 
 /*
@@ -3537,34 +3233,6 @@ error_exit:
 }
 
 /*
- * ldr_timestamptz_db_timestamptz -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_timestamptz_db_timestamptz (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_TIMESTAMPTZ, true);
-}
-
-/*
- * ldr_timestampltz_db_timestampltz -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_timestampltz_db_timestampltz (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_TIMESTAMPLTZ, true);
-}
-
-/*
  * ldr_datetime_elem -
  *    return:
  *    context():
@@ -3582,20 +3250,6 @@ ldr_datetime_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *
 
 error_exit:
   return err;
-}
-
-/*
- * ldr_datetime_db_datetime -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_datetime_db_datetime (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_DATETIME, true);
 }
 
 /*
@@ -3640,34 +3294,6 @@ ldr_datetimeltz_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALU
 
 error_exit:
   return err;
-}
-
-/*
- * ldr_datetimetz_db_datetimetz -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_datetimetz_db_datetimetz (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_DATETIMETZ, true);
-}
-
-/*
- * ldr_datetimeltz_db_datetimeltz -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_datetimeltz_db_datetimeltz (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_DATETIMELTZ, true);
 }
 
 /*
@@ -3938,22 +3564,6 @@ error_exit:
     }
 
   return err;
-}
-
-/*
- * ldr_elo_ext_db_elo -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_elo_ext_db_elo (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  /* The shared converter strips the quotes itself, so the local copy the old
-   * code made with PARSE_ELO_STR is no longer needed. */
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_ELO_EXT, false);
 }
 
 /*
@@ -4464,20 +4074,6 @@ ldr_monetary_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *
 
 error_exit:
   return (err);
-}
-
-/*
- * ldr_monetary_db_monetary -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_monetary_db_monetary (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_setmem (context, str, len, attdesc, LDR_MONETARY, true);
 }
 
 /*
@@ -5258,7 +4854,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
   ldr_store_convert (attdesc, LDR_DOUBLE, LDR_DOUBLE, false, false);
   ldr_store_convert (attdesc, LDR_FLOAT, LDR_DOUBLE, false, false);
 
-  /* To behave identically to CS mode, change LDR_STR for unspecified domains from ldr_mismatch() to ldr_str_db_generic() */
+  /* To behave identically to CS mode, let an unspecified domain convert LDR_STR instead of calling it a mismatch */
   ldr_store_convert (attdesc, LDR_STR, LDR_STR, false, false);
 
   switch (TP_DOMAIN_TYPE (attdesc->att->domain))
@@ -6821,12 +6417,6 @@ ldr_json_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 
   db_make_json (val, document, true);
   return NO_ERROR;
-}
-
-static int
-ldr_json_db_json (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc)
-{
-  return ldr_convert_and_generic (context, str, len, attdesc, LDR_STR);
 }
 
 /*
