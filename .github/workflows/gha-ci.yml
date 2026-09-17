@@ -1263,14 +1263,23 @@ jobs:
               done
               [ -n "$mirror" ] || { echo "::error::no full-history mirror for $repo"; exit 1; }
               until_ts=$(date -u -d "$TC_UNTIL" +%s)
-              # The mirror refreshes hourly (ticket 15). A cutoff newer than everything in
-              # it would silently pin an older commit, so refuse instead.
               newest_ts=$(git -C "$mirror" log -1 --format=%ct "$TC_BRANCH")
-              [ "$newest_ts" -ge "$until_ts" ] || {
-                echo "::error::$repo mirror ends before the cutoff $TC_UNTIL"
-                echo "  $mirror is at $(git -C "$mirror" log -1 --format=%cI "$TC_BRANCH")."
-                echo "  Its hourly refresh has not caught up; run this commit again later."
-                exit 1; }
+              if [ "$newest_ts" -lt "$until_ts" ]; then
+                # Ending before the cutoff is the normal shape of a quiet day: the repo
+                # simply took no commit after the engine landed. It is a stale mirror only
+                # when the remote has moved on without it, and then what it is missing may
+                # predate the cutoff -- which would pin an older tree without saying so.
+                # Commit dates cannot tell those two apart. The remote tip can.
+                remote_tip=$(git ls-remote "$TC_REPO_URL" "refs/heads/$TC_BRANCH" 2>/dev/null | cut -f1) || remote_tip=
+                mirror_tip=$(git -C "$mirror" rev-parse "$TC_BRANCH")
+                [ -n "$remote_tip" ] || { echo "::error::could not reach $TC_REPO_URL to check the mirror"; exit 1; }
+                [ "$remote_tip" = "$mirror_tip" ] || {
+                  echo "::error::$repo mirror is behind the remote and ends before the cutoff $TC_UNTIL"
+                  echo "  $mirror is at $mirror_tip ($(git -C "$mirror" log -1 --format=%cI "$TC_BRANCH")), the remote at $remote_tip."
+                  echo "  Its hourly refresh has not caught up; run this commit again later."
+                  exit 1; }
+                echo "[$suite] tc note : $TC_BRANCH took no commit after $TC_UNTIL; the mirror matches the remote"
+              fi
               TC_REF=$(git -C "$mirror" rev-list -1 --first-parent --before="$TC_UNTIL" "$TC_BRANCH")
               [ -n "$TC_REF" ] || {
                 echo "::error::$repo has no $TC_BRANCH commit at or before $TC_UNTIL"; exit 1; }
