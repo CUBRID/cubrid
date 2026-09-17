@@ -2261,8 +2261,9 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
  *   and fetches its dirty version -- so while an UPDATE STATISTICS holds the class's _db_histogram rows X-locked (until
  *   its transaction commits) every query compile on that class blocks behind it in stats_get_histogram (). The
  *   optimizer only needs the last committed histogram: this reads that version without taking a lock and without
- *   materializing the transaction's MVCC snapshot (obj_find_multi_attr_committed ()). Writers, which need the current
- *   row, keep using db_get_histogram ().
+ *   materializing the transaction's MVCC snapshot (obj_find_multi_attr_committed ()). Writers take the row X right at
+ *   the lookup instead (db_find_multi_unique_for_update ()), and the existence check reads committed, unlocked
+ *   (db_find_multi_unique_committed ()); db_get_histogram () is left to ;info histogram and the DDL paths.
  */
 int
 db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)

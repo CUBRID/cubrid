@@ -3661,8 +3661,9 @@ obj_make_key_value (DB_VALUE * key, const DB_VALUE * values[], int size)
 }
 
 /*
- * obj_find_multi_attr_internal - Work function of obj_find_multi_attr () and
- *                                obj_find_multi_attr_committed ()
+ * obj_find_multi_attr_internal - Work function of obj_find_multi_attr (),
+ *                                obj_find_multi_attr_committed () and
+ *                                obj_find_multi_attr_for_update ()
  *   return :  object with the key value
  *   op(in): class pointer
  *   size(in): size of value array
