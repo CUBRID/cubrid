@@ -165,14 +165,16 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
 
 
 /*
- * get_histogram_for_write () - locate a column's _db_histogram entry for updating, taking an X
- *   lock on the row directly (DB_FETCH_WRITE) instead of the S-then-X of db_get_histogram ().
+ * get_histogram_for_write () - locate a column's _db_histogram entry for updating, taking the X
+ *   lock on the row right at the index lookup instead of the S-then-X of db_get_histogram ().
  *
  * Note (CBRD-27369): store_one_histogram () read the row with db_get_histogram () (an S lock held
  *   to commit) and then wrote it (X) -- concurrent collectors on the same table deadlocked on
- *   that S -> X upgrade.  Fetching the row for write from the start makes two collectors contend
- *   X vs X on it, which just serializes (no upgrade cycle).  The lookup itself is lock-free for
- *   _db_histogram (xbtree_find_unique's catalog branch); only the fetched instance is X-locked.
+ *   that S -> X upgrade.  A plain DB_FETCH_WRITE would not do: btree_find_unique () is fixed to
+ *   S_SELECT_WITH_LOCK, so it still S-locks first and upgrades in the fetch (seen as S holders on
+ *   _db_histogram rows with concurrent UPDATE STATISTICS ON ALL CLASSES).  The for-update lookup
+ *   asks the index for X (S_UPDATE), so two collectors contend X vs X on the row, which just
+ *   serializes (no upgrade cycle).
  */
 static int
 get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
@@ -197,7 +199,7 @@ get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogr
 
   /* internal catalog write; bypass user authorization as db_get_histogram () does (CBRD-26667) */
   AU_SAVE_AND_DISABLE (au_save);
-  *histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_WRITE);
+  *histogram_obj = db_find_multi_unique_for_update (histogram_class, 2, (char **) search_attrs, value_ptrs);
   AU_RESTORE (au_save);
 
   db_value_clear (value_ptrs[0]);

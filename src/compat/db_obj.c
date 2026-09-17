@@ -1238,6 +1238,41 @@ db_find_multi_unique_committed (DB_OBJECT * classmop, int size, char *attr_names
 }
 
 /*
+ * db_find_multi_unique_for_update() - like db_find_multi_unique (DB_FETCH_WRITE), but X-locks
+ *    the found row already at the index lookup instead of S-locking it there and upgrading in
+ *    the fetch (see obj_find_multi_attr_for_update ()). For a caller that is about to update
+ *    the row and must not leave an S lock for a concurrent writer to deadlock on. (CBRD-27369)
+ * returns: the object fetched for update, or NULL when the key does not exist
+ * classmop(in): class pointer
+ * size(in): number of attributes
+ * attr_names(in): attribute names forming the unique key
+ * values(in): the key values
+ */
+DB_OBJECT *
+db_find_multi_unique_for_update (DB_OBJECT * classmop, int size, char *attr_names[], DB_VALUE * values[])
+{
+  DB_OBJECT *retval = NULL;
+
+  CHECK_CONNECT_NULL ();
+  CHECK_3ARGS_NULL (classmop, attr_names, values);
+
+  if (size < 1)
+    {
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return NULL;
+    }
+
+  retval = obj_find_multi_attr_for_update (classmop, size, (const char **) attr_names, (const DB_VALUE **) values);
+
+  /* clear the benign not-found warning, keep real errors -- as db_find_multi_unique () does */
+  if (retval != NULL || er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+    {
+      er_clear ();
+    }
+  return retval;
+}
+
+/*
  * db_dfind_unique() - This can be used to locate the instance whose attribute
  *    has a particular unique value. This will only work for attributes that
  *    have been defined with the UNIQUE integrity constraint.

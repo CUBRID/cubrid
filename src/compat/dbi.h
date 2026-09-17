@@ -183,6 +183,8 @@ extern "C"
 					  DB_FETCH_MODE purpose);
   extern DB_OBJECT *db_find_multi_unique_committed (DB_OBJECT * classobj, int size, char *attnames[],
 						    DB_VALUE * values[]);
+  extern DB_OBJECT *db_find_multi_unique_for_update (DB_OBJECT * classobj, int size, char *attnames[],
+						     DB_VALUE * values[]);
   extern DB_OBJECT *db_dfind_unique (DB_OBJECT * classobj, DB_ATTDESC * attdesc, DB_VALUE * value,
 				     DB_FETCH_MODE purpose);
   extern DB_OBJECT *db_dfind_multi_unique (DB_OBJECT * classobj, int size, DB_ATTDESC * attdesc[], DB_VALUE * values[],
