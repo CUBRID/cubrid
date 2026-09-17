@@ -243,7 +243,8 @@ extern "C"
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
-    CURRENT_PROTOCOL = PROTOCOL_V12
+    PROTOCOL_V13 = 13,		/* schema info: attribute IS_INVISIBLE, EXT_DOMAIN, CODESET columns */
+    CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
