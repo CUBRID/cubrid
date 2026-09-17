@@ -1326,6 +1326,15 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 				     g_extraction_timeout);
 	}
 
+      /* CBRD-27436: the server rejects a caller that does not own the CDC
+       * session with an empty buffer, and reports why in the packet header
+       * (this reply has no error-code framing of its own). */
+      if (g_conn_entry->db_error == ER_AU_DBA_ONLY)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN,
+				     "this connection does not own the CDC session (DBA authorization required)\n");
+	}
+
       if (recv_data == NULL || recv_data_size != *total_length)
 	{
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,

@@ -11208,11 +11208,15 @@ void
 scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
   /* CBRD-27436: unguarded, reachable by skipping START_SESSION (see
-   * scdc_find_lsa()). No error-code framing exists for this reply, so just
-   * withhold the buffer -- a rejected caller's receive times out instead of
-   * getting a clean error, but this is a defense-in-depth backstop only. */
+   * scdc_find_lsa()). This reply carries no error-code framing, so report the
+   * rejection in the packet header and answer with an empty buffer: the caller
+   * fails immediately instead of waiting out its extraction timeout. */
   if (!cdc_check_session_owner (thread_p))
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+      thread_p->conn_entry->db_error = ER_AU_DBA_ONLY;
+      (void) css_send_data_to_client (thread_p->conn_entry, rid, NULL, 0);
+      thread_p->conn_entry->db_error = 0;
       return;
     }
 
