@@ -70,6 +70,7 @@
 #define CLASS_SUFFIX          "_class"
 #define FK_SUFFIX             "_fk"
 #define GRANT_SUFFIX          "_grant"
+#define PASSWORD_SUFFIX       "_password"
 #define PK_SUFFIX             "_pk"
 #define PROCEDURE_SUFFIX      "_procedure"
 #define SERIAL_SUFFIX         "_serial"
@@ -250,7 +251,8 @@ static int create_filefullpath (const char *output_dirname, const char *output_f
 static int export_server (extract_context & ctxt, print_output & output_ctx);
 static int extract_all_schema_file (extract_context & ctxt, const char *output_filename);
 static int extract_split_schema_files (extract_context & ctxt);
-static int extract_schema (extract_context & ctxt, print_output & schema_output_ctx);
+static int extract_schema (extract_context & ctxt, print_output & schema_output_ctx,
+			   print_output & password_output_ctx);
 static int extract_user (extract_context & ctxt);
 static int extract_serial (extract_context & ctxt);
 static int extract_synonym (extract_context & ctxt);
@@ -1409,11 +1411,13 @@ extract_classes_to_file (extract_context & ctxt)
  *    return: 0 if successful, error count otherwise
  *    ctxt(in/out): extract context
  *    schema_output_ctx(in/out) : output countext
+ *    password_output_ctx(in/out) : output context for password-restore
+ *      statements, kept separate from schema_output_ctx (KVE-2026-1859)
  * Note:
  *    Always output the entire schema.
  */
 static int
-extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
+extract_schema (extract_context & ctxt, print_output & schema_output_ctx, print_output & password_output_ctx)
 {
   DB_OBJLIST *classes = NULL;
   DB_OBJLIST *vclass_list_has_using_index = NULL;
@@ -1435,7 +1439,7 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
    */
   if (required_class_only == false && ctxt.do_auth)
     {
-      if (au_export_users (ctxt, schema_output_ctx) < NO_ERROR)
+      if (au_export_users (ctxt, schema_output_ctx, password_output_ctx) < NO_ERROR)
 	{
 	  err_count++;
 	}
@@ -5182,12 +5186,88 @@ create_filefullpath (const char *output_dirname, const char *output_filename,
   return 0;
 }
 
+/*
+ * open_password_output_file - creates the file that receives the
+ *   set_password_encoded[_sha1] restore statements, kept separate from the
+ *   schema file(s) and locked down to owner-only access (KVE-2026-1859:
+ *   unloaddb output was recording password hashes as plaintext-readable
+ *   literals alongside the rest of the schema). Not registered into
+ *   ctxt.schema_file_list, so it is not picked up by the automatic
+ *   --schema-file-list restore path; restoring it is a separate, manual
+ *   step for the DBA.
+ *   return: FILE * on success, NULL on failure
+ *   ctxt(in): extract context
+ *   output_filename(out): buffer receiving the created file's path
+ *   output_filename_size(in): size of output_filename
+ */
+static FILE *
+open_password_output_file (extract_context & ctxt, char *output_filename, size_t output_filename_size)
+{
+  FILE *output_file;
+
+  if (create_filename (ctxt.output_dirname, ctxt.output_prefix, SCHEMA_NAME, PASSWORD_SUFFIX, output_filename,
+		       output_filename_size) != 0)
+    {
+      return NULL;
+    }
+
+#if !defined (WINDOWS)
+  mode_t old_mask = umask (0177);
+#endif /* !WINDOWS */
+
+  output_file = fopen_ex (output_filename, "w");
+
+#if !defined (WINDOWS)
+  umask (old_mask);
+
+  if (output_file != NULL)
+    {
+      /* belt-and-suspenders: make sure the file is not left group/world readable */
+      fchmod (fileno (output_file), 0600);
+    }
+#endif /* !WINDOWS */
+
+  return output_file;
+}
+
+/*
+ * close_password_output_file - flushes and closes the password output file,
+ *   removing it if nothing was written to it.
+ *   return: none
+ *   output_file(in/out): file to close; set to NULL for pending
+ *   output_filename(in): path of output_file, used to remove it if empty
+ */
+static void
+close_password_output_file (FILE *&output_file, const char *output_filename)
+{
+  if (output_file == NULL)
+    {
+      return;
+    }
+
+  fflush (output_file);
+
+  if (ftell (output_file) == 0)
+    {
+      fclose (output_file);
+      output_file = NULL;
+      remove (output_filename);
+    }
+  else
+    {
+      fclose (output_file);
+      output_file = NULL;
+    }
+}
+
 static int
 extract_user (extract_context & ctxt)
 {
   FILE *output_file = NULL;
+  FILE *password_file = NULL;
   int err = NO_ERROR;
   char output_filename[PATH_MAX * 2] = { '\0' };
+  char password_filename[PATH_MAX * 2] = { '\0' };
   char output_schema_info[PATH_MAX * 2] = { '\0' };
 
   if (create_filename
@@ -5211,13 +5291,30 @@ extract_user (extract_context & ctxt)
       return ER_FAILED;
     }
 
+  password_file = open_password_output_file (ctxt, password_filename, sizeof (password_filename));
+  if (password_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      fclose (output_file);
+      return ER_FAILED;
+    }
+
   file_print_output output_ctx (output_file);
+  file_print_output password_output_ctx (password_file);
 
   /* error is row count if not negative. */
   if (required_class_only == false && ctxt.do_auth)
     {
-      err = au_export_users (ctxt, output_ctx);
+      err = au_export_users (ctxt, output_ctx, password_output_ctx);
     }
+
+  if (err == NO_ERROR && ftell (password_file) != 0)
+    {
+      password_output_ctx ("\n");
+      password_output_ctx ("COMMIT WORK;\n");
+    }
+
+  close_password_output_file (password_file, password_filename);
 
   fflush (output_file);
 
@@ -6233,6 +6330,8 @@ static int
 extract_all_schema_file (extract_context & ctxt, const char *output_filename)
 {
   FILE *output_file;
+  FILE *password_file;
+  char password_filename[PATH_MAX * 2] = { '\0' };
   int err_count = 0;
 
   output_file = fopen_ex (output_filename, "w");
@@ -6242,9 +6341,25 @@ extract_all_schema_file (extract_context & ctxt, const char *output_filename)
       return 1;
     }
 
-  file_print_output output_ctx (output_file);
-  err_count = extract_schema (ctxt, output_ctx);
+  password_file = open_password_output_file (ctxt, password_filename, sizeof (password_filename));
+  if (password_file == NULL)
+    {
+      (void) fprintf (stderr, "%s: %s.\n\n", ctxt.exec_name, strerror (errno));
+      fclose (output_file);
+      return 1;
+    }
 
+  file_print_output output_ctx (output_file);
+  file_print_output password_output_ctx (password_file);
+  err_count = extract_schema (ctxt, output_ctx, password_output_ctx);
+
+  if (err_count == 0 && ftell (password_file) != 0)
+    {
+      password_output_ctx ("\n");
+      password_output_ctx ("COMMIT WORK;\n");
+    }
+
+  close_password_output_file (password_file, password_filename);
 
   if (ftell (output_file) == 0)
     {
