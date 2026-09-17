@@ -4245,13 +4245,13 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
    * line boundary costs two lines per write.  malloc only guarantees 16-byte alignment, which leaves
    * three of every four placements straddling; align the array so each slot occupies one
    * line.  This also keeps a small slot array from sharing a line with another worker's
-   * (each px worker compiles its own program).  free () accepts the result, so the
-   * teardown path is unchanged. */
+   * (each px worker compiles its own program).  cub_aligned_alloc () is the wrapper's aligned
+   * allocation: like the malloc () calls around it, it carries the memory monitor's file/line
+   * metadata in SERVER_MODE, so the slots show up in "cubrid memmon" with everything else the
+   * program owns.  free () accepts the result, so the teardown path is unchanged. */
   static_assert (sizeof (DB_VALUE) == EXPR_CACHE_LINE, "slot alignment assumes one DB_VALUE per cache line");
-  if (posix_memalign ((void **) &prog->slots, EXPR_CACHE_LINE, sizeof (DB_VALUE) * MAX (1, prog->n_slots)) != 0)
-    {
-      prog->slots = NULL;
-    }
+  prog->slots =
+    (DB_VALUE *) cub_aligned_alloc (EXPR_CACHE_LINE, sizeof (DB_VALUE) * MAX (1, prog->n_slots), __FILE__, __LINE__);
   if (prog->steps == NULL || prog->cells == NULL || prog->slots == NULL || prog->root_cells == NULL)
     {
       /* neither array is initialized yet: the steps hold no valid pred pointers and the
