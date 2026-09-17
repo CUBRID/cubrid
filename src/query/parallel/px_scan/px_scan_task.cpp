@@ -529,8 +529,16 @@ namespace parallel_scan
     db_private_free (&thread_ref, m_xasl_state);
     if (!m_uses_xasl_clone)
       {
-	/* a worker XASL that is not a cached clone is freed right below: its compiled expression
-	 * programs (kept with a clone across executions) must go with it */
+	/* A worker XASL that is not a cached clone is freed right below, so its compiled expression
+	 * programs (which a clone would keep across executions) have to go with it -- that is what
+	 * the XASL_DECACHE_CLONE pass does.  It takes two passes, not one.  This tree was unpacked
+	 * with use_xasl_clone off, so nothing in it carries CLEAR_AT_CLONE_DECACHE, and the clear
+	 * routines read that mark in opposite directions: the flagged pass releases only the values
+	 * that carry it, the unflagged pass only the values that do not.  A flagged pass alone would
+	 * therefore release no value at all and leak them into this worker's private heap, which
+	 * lives as long as the thread.  Clear unflagged first for the values, then flagged for the
+	 * programs -- the same two-pass shape qmgr_process_query () uses for a one-shot XASL. */
+	qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 	XASL_SET_FLAG (m_xasl, XASL_DECACHE_CLONE);
       }
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
