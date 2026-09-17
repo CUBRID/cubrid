@@ -8222,7 +8222,7 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
       /* --- under mtx: publish into the slot --- */
       pthread_mutex_lock (&thread_info_p->mtx);
       reorder_queue_p->slots[held_pageid % reorder_queue_p->capacity] = held_node;
-      held_node = NULL;			/* ownership transferred to the queue */
+      held_node = NULL;		/* ownership transferred to the queue */
       pthread_cond_broadcast (&thread_info_p->wcv);	/* INVARIANT: broadcast after publish */
       pthread_mutex_unlock (&thread_info_p->mtx);
       continue;
@@ -9435,7 +9435,8 @@ fileio_flush_backup_sync (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
  *       the whole volume/file is backed up.
  */
 static ssize_t
-fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int page_id, FILEIO_BACKUP_PAGE * area)
+fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int page_id,
+		       FILEIO_BACKUP_PAGE * area)
 {
   int io_page_size = session_p->bkup.bkuphdr->bkpagesize;
 #if defined(WINDOWS)
@@ -9451,8 +9452,7 @@ fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "fileio_read_backup: %d\t%d,\t%d\n", ((FILEIO_BACKUP_PAGE *) (area))->iopageid,
-	   *(PAGEID *) (((char *) (area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) + io_page_size),
-	   io_page_size);
+	   *(PAGEID *) (((char *) (area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) + io_page_size), io_page_size);
 #endif
 
   buffer_p = (char *) &area->iopage;

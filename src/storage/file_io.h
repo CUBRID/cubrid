@@ -343,7 +343,7 @@ struct fileio_backup_buffer
   bool slot_in_flight[2];	/* an aio_write was issued for this slot and not yet reaped */
 #if !defined(WINDOWS)
   struct aiocb aiocb[2];	/* one control block per slot; reaped in submission order */
-#endif /* !WINDOWS */
+#endif				/* !WINDOWS */
   bool async_enabled;		/* GATE result: operator opt-in AND output not on same device as DB */
 };
 
