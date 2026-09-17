@@ -368,37 +368,6 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
-
-    # unix-Makefile.tmpl does an unconditional "use Time::Piece", which minimal Perl
-    # installs do not ship. Check it up front so the user gets an actionable message
-    # instead of a cryptic failure deep inside the OpenSSL build. Whether OpenSSL will
-    # actually be rebuilt is only decided at build time, so the check always runs and
-    # only its severity depends on whether a build already produced the library.
-    # (Configure also uses IPC::Cmd, but falls back to File::Spec when it is absent.)
-    if(EXISTS ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
-      set(OPENSSL_PERL_SEVERITY WARNING)
-    else()
-      set(OPENSSL_PERL_SEVERITY FATAL_ERROR)
-    endif()
-    find_program(OPENSSL_PERL_EXECUTABLE perl)
-    if(NOT OPENSSL_PERL_EXECUTABLE)
-      message(${OPENSSL_PERL_SEVERITY}
-        "Perl is required to build OpenSSL. Please install it (e.g. 'sudo dnf install -y perl-core').")
-    else()
-      execute_process(
-        COMMAND ${OPENSSL_PERL_EXECUTABLE} -MTime::Piece -e "1"
-        RESULT_VARIABLE OPENSSL_PERL_MODULES_RC
-        OUTPUT_QUIET ERROR_QUIET)
-      if(NOT OPENSSL_PERL_MODULES_RC EQUAL 0)
-        message(${OPENSSL_PERL_SEVERITY}
-          "Building OpenSSL 3.x requires the Perl module Time::Piece, which is not "
-          "available in the current Perl installation.\n"
-          "  Rocky/RHEL/CentOS : sudo dnf install -y perl-core\n"
-          "                      (minimal: perl-Time-Piece)\n"
-          "  Debian/Ubuntu     : sudo apt-get install -y perl\n"
-          "Then re-run the build.")
-      endif()
-    endif()
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
       URL_HASH             ${WITH_LIBOPENSSL_URL_HASH}
@@ -421,6 +390,24 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       BUILD_COMMAND        make -j${3RDPARTY_NPROC} build_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
+      )
+    # unix-Makefile.tmpl does an unconditional "use Time::Piece", which minimal Perl
+    # installs do not ship. Hang the check off the download step so that it follows the
+    # rebuild decision: an installed libcrypto.a does not mean OpenSSL is reused, as it
+    # may be left over from an older version that a changed URL is about to replace.
+    # "\\n" keeps a literal \n here; a plain "\n" would break the generated makefile rule.
+    string(CONCAT OPENSSL_PERL_CHECK
+      "perl -MTime::Piece -e 1 2>/dev/null || (printf '%s\\n'"
+      " 'Building OpenSSL 3.x requires Perl with the Time::Piece module, which the'"
+      " 'current Perl installation does not provide.'"
+      " '  Rocky/RHEL/CentOS : sudo dnf install -y perl-core (minimal: perl-Time-Piece)'"
+      " '  Debian/Ubuntu     : sudo apt-get install -y perl'"
+      " >&2 && exit 1)")
+    externalproject_add_step(${LIBOPENSSL_TARGET} check_perl
+      COMMAND   sh -c "${OPENSSL_PERL_CHECK}"
+      COMMENT   "Checking Perl prerequisites for the OpenSSL build"
+      DEPENDEES download
+      DEPENDERS configure
       )
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
   else(UNIX)
