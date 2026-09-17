@@ -1614,7 +1614,7 @@ dblink_dml_remote_is_cubrid (int conn_handle)
  * Two kinds of source were measured to differ from the all-local form on a numeric target:
  *   date/time -- the remote deletes a row that the all-local form keeps
  *   JSON      -- the remote refuses a comparison that the all-local form answers false
- * Zone-qualified types are out -- cci_bind_param rejects them, and dblink_cast_types[] omits them too.
+ * Zone-qualified types are out -- cci_bind_param rejects them before a comparison happens.
  */
 static bool
 dblink_dml_unresolved_fallback_casts (DB_TYPE src_type)
@@ -1624,126 +1624,64 @@ dblink_dml_unresolved_fallback_casts (DB_TYPE src_type)
 }
 
 /*
- * How each source type spells itself in the cast, and what its bare form does to the value.
- *
- *   DBLINK_PREC_NONE     | the name carries everything     | SHORT, INTEGER, ... DATE, TIME, ...
- *   DBLINK_PREC_NEEDED   | the bare form narrows the value | CHAR ('2024-01-01' -> '2'), BIT (16 bits -> 1)
- *   DBLINK_PREC_OPTIONAL | the bare form keeps the value   | VARCHAR, BIT VARYING
- *   DBLINK_PREC_SCALE    | the bare form keeps it, too     | NUMERIC -- spelled only when the remote takes the
- *                        |                                 | precision (<= 38), and never without its scale
- *
- * All four rows are measured, so changing one asks for a measurement rather than a guess. Only
- * DBLINK_PREC_NEEDED declines, and that is the whole reason the formatter can return nothing: a cast that
- * truncates is worse than the bare placeholder it replaces.
- * Adding a type is one row here -- anything absent keeps the bare "?", which is what it pushed before this
- * policy existed.
- */
-// *INDENT-OFF*
-typedef enum
-{
-  DBLINK_PREC_NONE,
-  DBLINK_PREC_NEEDED,
-  DBLINK_PREC_OPTIONAL,
-  DBLINK_PREC_SCALE
-} DBLINK_CAST_PREC;
-
-static const struct
-{
-  DB_TYPE type;
-  const char *name;
-  DBLINK_CAST_PREC policy;
-} dblink_cast_types[] = {
-  {DB_TYPE_CHAR,      "CHAR",        DBLINK_PREC_NEEDED},
-  {DB_TYPE_BIT,       "BIT",         DBLINK_PREC_NEEDED},
-  {DB_TYPE_STRING,    "VARCHAR",     DBLINK_PREC_OPTIONAL},
-  /* BIT VARYING, not VARBIT -- "CAST(x AS VARBIT(16))" is a syntax error */
-  {DB_TYPE_VARBIT,    "BIT VARYING", DBLINK_PREC_OPTIONAL},
-  {DB_TYPE_NUMERIC,   "NUMERIC",     DBLINK_PREC_SCALE},
-  {DB_TYPE_SHORT,     "SHORT",       DBLINK_PREC_NONE},
-  {DB_TYPE_INTEGER,   "INTEGER",     DBLINK_PREC_NONE},
-  {DB_TYPE_BIGINT,    "BIGINT",      DBLINK_PREC_NONE},
-  {DB_TYPE_FLOAT,     "FLOAT",       DBLINK_PREC_NONE},
-  {DB_TYPE_DOUBLE,    "DOUBLE",      DBLINK_PREC_NONE},
-  {DB_TYPE_DATE,      "DATE",        DBLINK_PREC_NONE},
-  {DB_TYPE_TIME,      "TIME",        DBLINK_PREC_NONE},
-  {DB_TYPE_DATETIME,  "DATETIME",    DBLINK_PREC_NONE},
-  {DB_TYPE_TIMESTAMP, "TIMESTAMP",   DBLINK_PREC_NONE},
-  {DB_TYPE_JSON,      "JSON",        DBLINK_PREC_NONE}
-};
-// *INDENT-ON*
-
-/*
  * dblink_dml_cast_type () - CUBRID type text that restores the pushed value's declared type.
- *   return: buf, or NULL when the domain has no usable CAST text (the caller then pushes a bare "?")
+ *   return: buf, or NULL when the source type has no usable CAST text (the caller then pushes a bare "?")
  *   src_dom(in) : domain of the local subquery's source column
  *   buf(out)    : caller-provided buffer
  *   buflen(in)  : size of buf
  *
- * The types and their precision policy are in dblink_cast_types[] above; a type absent from it declines,
- * and dblink_bind_dbval_to_param() refuses most of those before a comparison happens anyway.
+ * The spelling is pr_type_name (), the same text db_get_type_name () publishes and unloaddb writes into
+ * schema files, rather than a second list of names to keep in step. Two kinds of source are refused:
+ *
+ *   the name alone is refused   | CHAR, BIT -- CAST(? AS character) is "Cannot coerce host var to type char"
+ *   the name is not CAST syntax | DB_TYPE_NULL is "*NULL*"; ENUM, RESULTSET and MIDXKEY read as plain words
+ *                               | but the parser takes none of the three
+ *
+ * Every other source the sink can bind keeps its value under the name alone, measured with a bound
+ * parameter: character varying, bit varying, and numeric -- CAST(? AS numeric) is still 7.406. The
+ * sources it cannot bind -- object, monetary, the LOBs, the collections, the zone types -- all spell
+ * names the remote does parse, so the cast rides along and they still fail where they failed before,
+ * at the bind.
+ *
+ * Adding a source type usually touches nothing here. What it does touch:
+ *   dblink_bind_dbval_to_param ()           can the value be sent at all -- without it no comparison happens
+ *   dblink_dml_src_utype ()                 the CCI type its marker carries, the comparison's other side
+ *   dblink_dml_unresolved_fallback_casts () whether it diverges where no marker domain comes back
+ * and this function only when the name needs a precision, or is not one the parser takes.
  */
 static const char *
 dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
 {
   DB_TYPE src_type = TP_DOMAIN_TYPE (src_dom);
   int prec = (src_dom != NULL) ? src_dom->precision : 0;
-  int scale = (src_dom != NULL) ? src_dom->scale : 0;
-  int ret = -1;
-  size_t i;
+  const char *name = pr_type_name (src_type);
+  int ret;
 
-  for (i = 0; i < sizeof (dblink_cast_types) / sizeof (dblink_cast_types[0]); i++)
+  if (name == NULL || name[0] == '*' || src_type == DB_TYPE_ENUMERATION || src_type == DB_TYPE_RESULTSET
+      || src_type == DB_TYPE_MIDXKEY)
     {
-      if (dblink_cast_types[i].type != src_type)
-	{
-	  continue;
-	}
+      /* pr_type_name () brackets the ids that are not SQL types -- "*NULL*", "*oid*", "*pointer*" -- and
+       * the three named here read as plain words that CAST still does not take. Casting one would fail
+       * the re-prepare at the remote, where the bare "?" instead lets the sink refuse the value by name. */
+      return NULL;
+    }
 
-      /* No default: -Wswitch then flags a policy added to the table but not handled here. The initial
-       * ret = -1 still declines if one slips through. */
-      switch (dblink_cast_types[i].policy)
+  if (src_type == DB_TYPE_CHAR || src_type == DB_TYPE_BIT)
+    {
+      if (prec <= 0)
 	{
-	case DBLINK_PREC_NONE:
-	  ret = snprintf (buf, buflen, "%s", dblink_cast_types[i].name);
-	  break;
-	case DBLINK_PREC_NEEDED:
-	  if (prec <= 0)
-	    {
-	      return NULL;
-	    }
-	  ret = snprintf (buf, buflen, "%s(%d)", dblink_cast_types[i].name, prec);
-	  break;
-	case DBLINK_PREC_OPTIONAL:
-	  if (prec > 0)
-	    {
-	      ret = snprintf (buf, buflen, "%s(%d)", dblink_cast_types[i].name, prec);
-	    }
-	  else
-	    {
-	      ret = snprintf (buf, buflen, "%s", dblink_cast_types[i].name);
-	    }
-	  break;
-	case DBLINK_PREC_SCALE:
-	  if (prec > 0 && prec <= DB_MAX_FIXED_NUMERIC_PRECISION)
-	    {
-	      ret = snprintf (buf, buflen, "%s(%d,%d)", dblink_cast_types[i].name, prec, scale);
-	    }
-	  else
-	    {
-	      /* No precision to spell, or one the remote will not take. Arithmetic on a NUMERIC(38,0) source
-	       * widens the domain past 38 -- +, -, *, / and a bare CAST AS NUMERIC all reach 40 (measured) --
-	       * and "NUMERIC(40,0)" fails the remote's parser with "Precision (40) too large". Spelling the
-	       * precision alone would read as scale 0 and round the value away, so drop both: a bare NUMERIC
-	       * keeps the value. */
-	      ret = snprintf (buf, buflen, "%s", dblink_cast_types[i].name);
-	    }
-	  break;
+	  return NULL;
 	}
-      break;
+      ret = snprintf (buf, buflen, "%s(%d)", name, prec);
+    }
+  else
+    {
+      ret = snprintf (buf, buflen, "%s", name);
     }
 
   if (ret < 0 || (size_t) ret >= buflen)
     {
-      /* not in the table, or a truncated type name -- which would prepare as something else on the remote */
+      /* a truncated type name would prepare as something else on the remote */
       return NULL;
     }
 
@@ -1980,7 +1918,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
   const char *errctx;
   const char *cast_type = NULL;
   bool restore_type = false;
-  char cast_buf[64];		/* DELETE only; longest text is "BIT VARYING(1073741823)" */
+  char cast_buf[64];		/* DELETE only; longest is "character varying", or "bit(1073741823)" with a precision */
 
   state->conn_handle = -1;
   state->stmt_handle = -1;
