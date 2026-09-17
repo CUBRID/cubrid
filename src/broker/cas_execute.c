@@ -299,6 +299,7 @@ static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
 static bool stmt_result_set_holds_cursor (char stmt_type);
 static bool call_returns_cursor (const T_PREPARE_CALL_INFO * call_info);
+static bool call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -1803,10 +1804,10 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
-  /* the return value and the out arguments already went into net_buf above, so the client needs no
-   * further request unless the call handed back a cursor.  only that case has to keep the
-   * transaction open for fetch_call (). */
-  srv_handle->has_result_set = call_returns_cursor (call_info);
+  /* only the tuple count went into net_buf above: the return value and the out arguments stay in
+   * prepare_call_info until the client fetches them.  so the transaction has to stay open until
+   * fetch_call () hands them over, and longer still when the call handed back a cursor. */
+  srv_handle->has_result_set = call_returns_cursor (call_info) || call_has_fetchable_output (call_info);
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
@@ -1819,10 +1820,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
       as_info->num_holdable_results++;
     }
 
-  /* the client may still call fetch_call () for the return value and the out arguments, and that needs
-   * this handle.  a commit keeps the handle only while statement pooling is on or the handle is
-   * holdable; otherwise ux_end_tran_cleanup () frees it, so leave the commit to fetch_call (). */
-  if ((as_info->cur_statement_pooling || srv_handle->is_holdable) && do_commit_after_execute (*srv_handle))
+  if (do_commit_after_execute (*srv_handle))
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -9272,10 +9270,10 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
       net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
     }
 
-  /* everything the client asked for is in net_buf and fetch_end_flag says nothing is left, so the
-   * auto-commit ux_execute_call () had to skip can be done now.  a call that handed back a cursor keeps
-   * has_result_set set: that cursor is a server side query a commit would close. */
-  if (srv_handle->auto_commit_mode == TRUE && srv_handle->has_result_set == false)
+  /* the return value and the out arguments are in net_buf now and fetch_end_flag says nothing is left,
+   * so the auto-commit ux_execute_call () had to skip can be done here.  a cursor is the exception: it
+   * is a server side query that a commit would close, and the client reads it through its own handle. */
+  if (srv_handle->auto_commit_mode == TRUE && !call_returns_cursor (call_info))
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -10535,6 +10533,43 @@ call_returns_cursor (const T_PREPARE_CALL_INFO * call_info)
     {
       val = ((DB_VALUE **) call_info->dbval_args)[i];
       if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+//
+// call_has_fetchable_output () - check whether the client asked for values it has yet to fetch.
+//
+// return         : true if the call has a return value or an out argument to hand over
+// call_info (in) : call info holding the return value and the out arguments
+//
+// Note: this reads what the driver declared in the execute request -- "?= CALL" sets is_first_out and
+//       every registered out parameter is marked in param_mode -- so it tells whether fetch_call () is
+//       still expected.  Until then the values live only in prepare_call_info, and an auto-commit that
+//       frees the handle would lose them.
+//
+static bool
+call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info)
+{
+  int i;
+
+  if (call_info->is_first_out)
+    {
+      return true;
+    }
+
+  if (call_info->param_mode == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      if (call_info->param_mode[i] & CCI_PARAM_MODE_OUT)
 	{
 	  return true;
 	}
