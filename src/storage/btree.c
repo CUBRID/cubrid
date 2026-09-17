@@ -9838,8 +9838,9 @@ exit_on_error:
 }
 
 /*
- * btree_index_capacity_serial () - serial implementation behind btree_index_capacity
- *   return: NO_ERROR
+ * btree_index_capacity_serial () - serial implementation, used as btree_index_capacity's fallback
+ *                                  and directly by btree_dump_capacity
+ *   return: NO_ERROR, or the error that stopped the traversal
  *   btid(in): B+tree index identifier
  *   cpc(out): Set to contain index capacity information
  *
@@ -9934,10 +9935,14 @@ exit_on_error:
 }
 
 #if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA / CS) */
-/* Parallel reducer for SHOW INDEX CAPACITY (entry point: btree_capacity_run_workers).
- * Workers claim root-child subtrees and fold per-worker partials, reduced in INT64 (deterministic,
- * worker-count independent). Serial's float sums lose precision above 2^24, so avg_rec_len /
- * avg_key_len may differ by 1 on large indexes (the INT64 result is the accurate one). */
+/* Parallel SHOW INDEX CAPACITY (entry point: btree_index_capacity_parallel).
+ * Workers claim root-child subtrees and fold per-worker partials; the cross-subtree sums are done
+ * in INT64, so the result does not depend on how the children were split across workers. Inside a
+ * subtree btree_get_subtree_capacity still accumulates in float -- per record for sum_rec_len /
+ * sum_key_len, per page for the space fields -- so only the last level of summation is exact.
+ * That is still enough to matter: avg_rec_len / avg_key_len divide the INT64 totals, while serial
+ * divides a float sum that picked up rounding at every level above, so serial can land one below
+ * the exact value once the truncating cast is applied. */
 
 /* btree_capacity_accum - per-worker INT64 partial sums, merged after join. Zero-initialize.
  *   tot_used_space is not accumulated; the reduce derives it. The fields are named after their
@@ -9975,7 +9980,7 @@ struct btree_capacity_accum
  *   these fields alike, so the two directions are this one body: the sums add, and
  *   max_pg_cnt_per_key and height take the larger of the two.
  *   height is a max, not a copy: root children are co-level so every fold reports the same height,
- *   and 0 is the identity - a worker that folded nothing, or a keyless page, drops out here.
+ *   and 0 is the identity - a worker that folded nothing, or a keyless non-leaf child, drops out.
  */
 template < typename Src > static inline void
 btree_capacity_accum_merge (BTREE_CAPACITY_ACCUM * dst, const Src * src)
@@ -10045,14 +10050,15 @@ btree_capacity_accum_to_cpc (const BTREE_CAPACITY_ACCUM * total, int root_free, 
   cpc->ovfl_oid_pg.tot_space = (float) total->ovfl_oid_pg.tot_space;
   cpc->ovfl_oid_pg.tot_used_space = (float) (total->ovfl_oid_pg.tot_space - total->ovfl_oid_pg.tot_free_space);
 
-  /* averages: same formulas as serial */
+  /* averages: serial's formulas, except the two noted below */
   if (cpc->dis_key_cnt > 0)
     {
       assert (cpc->deduplicate_dis_key_cnt > 0);
       cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
       cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
-      /* divide the exact INT64 totals, not the float fields above: the float round-trip is what
-       * costs serial its accuracy past 2^24, and cpc->dis_key_cnt is already an int truncation */
+      /* divide the INT64 totals, not the float fields above: the top-level float sum is what costs
+       * serial its accuracy past 2^24, and cpc->dis_key_cnt is already an int truncation. The
+       * per-subtree floats still round, so these are more accurate than serial, not exact */
       cpc->avg_key_len = (int) (total->sum_key_len / total->dis_key_cnt);
       cpc->avg_rec_len = (int) (total->sum_rec_len / total->deduplicate_dis_key_cnt);
     }
@@ -10093,9 +10099,10 @@ struct btree_capacity_worker_arg
 /*
  * btree_capacity_parallel_worker () - claim root children from the shared counter and fold each
  *   subtree into this worker's accum. Children are claimed dynamically (atomic fetch_add) so a
- *   worker on a heavy subtree never leaves idle peers. btree_get_subtree_capacity decodes keys onto
- *   the worker's private heap, so bracket with resource tracks. The dispatcher's root pin rules out
- *   child deallocation, so any error here is genuine.
+ *   worker on a heavy subtree never leaves idle peers. Bracket the scan with resource tracks so the
+ *   debug leak trackers (private-heap allocations, page fixes, critical sections) start from a clean
+ *   baseline on a recycled pool entry. The dispatcher's root pin rules out child deallocation, so
+ *   any error here is genuine.
  */
 static void
 btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WORKER_ARG * arg)
@@ -10131,7 +10138,7 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
 
   memset (&env, 0, sizeof (env));
   BTREE_INIT_SCAN (&env.btree_scan);
-  env.btree_scan.btid_int = *ctx->btid_int;	/* shallow copy: shares the read-only key_type domain */
+  env.btree_scan.btid_int = *ctx->btid_int;	/* shallow copy: shares the key domains and sys_btid */
   db_make_null (&env.prev_key_val);
   /* same value serial reads via GET_DECOMPRESS_IDX_HEADER, in the form btree_get_stats uses. The
    * dispatcher's gate leaves it negative, and dk_get_deduplicate_key_position only ever writes a
@@ -10270,8 +10277,9 @@ btree_capacity_run_workers (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_C
     }
 
   /* the join, and the only synchronization here: wait_workers loads m_active_tasks with acquire and
-   * each task releases it in retire (), so every worker's writes to its accums[] slot happen-before
-   * the reduce below. That edge is also why the atomics above can be relaxed. */
+   * each task releases it in retire () -> pop_task (), so every worker's writes to its accums[]
+   * slot happen-before the reduce below. That edge is also why the worker's own accesses to the
+   * three atomics can be relaxed. */
   wm->wait_workers ();
 
   if (failed.load ())
@@ -10355,7 +10363,8 @@ cleanup:
  *       reservation and release -- so the caller only picks between *cpc and serial.
  *
  *       The root stays READ-latched until the workers join. The class lock (SCH_S_LOCK; S_LOCK for
- *       the ALL variants) blocks only DDL, so concurrent DML and vacuum SMOs are live -- the root
+ *       the ALL variants) blocks only DDL in the single-index case, so assume concurrent DML and
+ *       vacuum SMOs are live -- the root
  *       latch is what keeps children[] valid for a worker's plain fix. Every SMO that would change
  *       the root's records (child merge, root split) must promote the root to WRITE first, which
  *       cannot succeed while we hold READ. Below the root, btree_get_subtree_capacity couples node
@@ -10444,7 +10453,7 @@ btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPAC
     }
   if (degree < 2)
     {
-      /* index below the parallel scan page threshold, or parallelism off -> serial */
+      /* too few cores, index below the parallel scan page threshold, or parallelism off -> serial */
       goto exit;
     }
 
@@ -10506,7 +10515,8 @@ btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPAC
   n_workers = wm->get_reserved_workers ();
   if (n_workers < 2)
     {
-      /* defensive: unreachable, worker_manager_global floors a non-zero grant at 2 and degree >= 2.
+      /* defensive: unreachable, worker_manager_global floors a grant at 2 when 2+ are requested,
+       * and degree >= 2 here.
        * Kept because that invariant lives in another module */
       goto exit;
     }
@@ -10588,7 +10598,7 @@ btree_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, BTID * btid)
 
   assert (fp != NULL && btid != NULL);
 
-  /* get index capacity information */
+  /* get index capacity information; serial on purpose -- a dump path claims no parallel budget */
   ret = btree_index_capacity_serial (thread_p, btid, &cpc);
   if (ret != NO_ERROR)
     {
