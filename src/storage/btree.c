@@ -10363,7 +10363,6 @@ btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPAC
   VPID root_vpid;
   PAGE_PTR root_ptr = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
-  BTREE_NODE_HEADER *node_header = NULL;
   BTID_INT btid_int;
   BTREE_CAPACITY_SCAN_CTX ctx;
   VPID *children = NULL;
@@ -10407,14 +10406,10 @@ btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPAC
       goto exit;
     }
 
-  node_header = btree_get_node_header (thread_p, root_ptr);
-  if (node_header == NULL)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      goto exit;
-    }
+  /* BTREE_ROOT_HEADER opens with the node header, and btree_get_node_header would only PEEK the
+   * same record again, so read it through the root header already in hand */
   key_cnt = btree_node_number_of_keys (thread_p, root_ptr);
-  if (node_header->node_level <= 1 || key_cnt < 2)
+  if (root_header->node.node_level <= 1 || key_cnt < 2)
     {
       /* leaf root, or too few root children to split -> serial */
       goto exit;
