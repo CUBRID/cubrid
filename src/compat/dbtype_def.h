@@ -1311,6 +1311,12 @@ extern "C"
     int default_expr_tree_stream_size;	/* size in bytes of default_expr_tree_stream */
   };
 
+/* A residual (STABLE or VOLATILE) DEFAULT: the expression is stored as a Compact DEFAULT Tree and evaluated
+ * at execution time.  It is the only DEFAULT form with a tree stream.  (e) is a DB_DEFAULT_EXPR pointer. */
+#define DB_IS_RESIDUAL_DEFAULT_EXPR(e) \
+  ( (e)->default_expr_type == DB_DEFAULT_NONE && (e)->default_expr_tree_stream != NULL \
+    && (e)->default_expr_tree_stream_size > 0 )
+
   typedef DB_DATETIME DB_C_DATETIME;
   typedef DB_DATETIMETZ DB_C_DATETIMETZ;
   typedef DB_TIMESTAMP DB_C_TIMESTAMP;

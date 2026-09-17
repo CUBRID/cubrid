@@ -4199,12 +4199,12 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  PT_NODE *unclassified_node = NULL;
 	  PT_VOLATILITY vol = pt_get_expr_tree_volatility (default_value, &unclassified_node);
 
-	  if (vol == PT_VOLATILITY_IMMUTABLE || vol == PT_VOLATILITY_STABLE)
+	  if (vol == PT_VOLATILITY_IMMUTABLE || PT_VOLATILITY_IS_RESIDUAL (vol))
 	    {
-	      /* An IMMUTABLE expression folds to a single literal; a STABLE
-	       * residual survives folding (only its IMMUTABLE subtrees fold) and
-	       * is stored (text + Compact DEFAULT Tree + REGU stream) for
-	       * once-per-statement evaluation. */
+	      /* An IMMUTABLE expression folds to a single literal; a residual
+	       * (STABLE or VOLATILE) survives folding (only its IMMUTABLE subtrees
+	       * fold) and is stored (text + Compact DEFAULT Tree + REGU stream) for
+	       * once-per-statement (STABLE) or once-per-row (VOLATILE) evaluation. */
 	      expr_vol = vol;
 	      edl_text = pt_default_expr_normalized_text (parser, default_value);
 
@@ -4257,8 +4257,8 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  /* Record the original text and volatility so storage and DDL execution
 	   * derive the stored forms from them.  An IMMUTABLE expression counts
 	   * only if it actually folded to a single literal (Expression-Derived
-	   * Literal); a STABLE residual keeps its expression. */
-	  if (expr_vol == PT_VOLATILITY_STABLE
+	   * Literal); a residual (STABLE or VOLATILE) keeps its expression. */
+	  if (PT_VOLATILITY_IS_RESIDUAL (expr_vol)
 	      || (expr_vol == PT_VOLATILITY_IMMUTABLE
 		  && data_default->info.data_default.default_value != NULL
 		  && data_default->info.data_default.default_value->node_type == PT_VALUE))
@@ -4275,7 +4275,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 
       node_ptr = NULL;
       (void) parser_walk_tree (parser, default_value, pt_find_default_expression, &node_ptr, NULL, NULL);
-      if (node_ptr != NULL && node_ptr != default_value && expr_vol != PT_VOLATILITY_STABLE)
+      if (node_ptr != NULL && node_ptr != default_value && !PT_VOLATILITY_IS_RESIDUAL (expr_vol))
 	{
 	  /* nested default expressions are not supported */
 	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,

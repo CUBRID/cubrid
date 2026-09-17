@@ -188,7 +188,7 @@ static PT_NODE *pt_make_flat_list_from_data_types (PARSER_CONTEXT * parser, PT_N
 static PT_NODE *pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * const node);
-static PT_NODE *pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att);
+static PT_NODE *pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * name);
 static PT_NODE *pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						    int *continue_walk);
 static bool pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr);
@@ -1878,6 +1878,34 @@ pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, voi
 	      *continue_walk = PT_STOP_WALK;
 	    }
 	  break;
+	case PT_UUID:
+	  /* UUID(7) is time-ordered: its client (Local Evaluation) evaluation reads the synchronized
+	   * statement clock (parser->sys_datetime/sys_epochtime), so si_datetime must be in sync.  UUID() and
+	   * UUID(4) are random and need no clock (SYS_GUID() is v4 as well).  The systematic per-signature
+	   * si_datetime decision belongs to the function classification work; this is a targeted guard. */
+	  {
+	    PT_NODE *ver = node->info.expr.arg1;
+
+	    if (ver == NULL)
+	      {
+		/* UUID() defaults to v4 (random): no clock needed */
+	      }
+	    else if (ver->node_type == PT_VALUE && ver->type_enum == PT_TYPE_INTEGER)
+	      {
+		if (ver->info.value.data_value.i == 7)
+		  {
+		    *needs_si_datetime = true;
+		    *continue_walk = PT_STOP_WALK;
+		  }
+	      }
+	    else
+	      {
+		/* version not a known integer constant: synchronize conservatively */
+		*needs_si_datetime = true;
+		*continue_walk = PT_STOP_WALK;
+	      }
+	  }
+	  break;
 	default:
 	  break;
 	}
@@ -1893,24 +1921,32 @@ pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, voi
  *   return: true if server time synchronization is needed
  *   parser(in):
  *   attr(in): attribute carrying a Compact DEFAULT Tree stream
+ *   stmt(in): the INSERT/MERGE being resolved, for error reporting
  */
 static bool
-pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr)
+pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr, PT_NODE * stmt)
 {
   PT_NODE *residual;
   bool needs_si_datetime = false;
 
-  residual =
-    pt_compact_default_tree_from_stream (parser, attr->default_value.default_expr.default_expr_tree_stream,
-					 attr->default_value.default_expr.default_expr_tree_stream_size);
+  /* the parser-wide CDT registry tree (pt_cdt_registry_tree): shared and read-only, so it is only walked
+   * here -- the Default References and the Local Evaluation CDT_EVAL_SET of this statement reuse the same
+   * decoding */
+  residual = pt_cdt_registry_tree (parser, attr, NULL);
   if (residual == NULL)
     {
-      /* let the evaluation path report the broken stream; synchronize conservatively */
+      /* the registry diagnosed the failure where it happened.  This probe is the statement's first reader of
+       * the stream, so it reports it rather than leaving the error set for a later reader to mistake for its
+       * own; synchronize conservatively for the statement that is about to fail anyway. */
+      assert (er_errid () != NO_ERROR);
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORc (parser, stmt, er_msg ());
+	}
       return true;
     }
 
   (void) parser_walk_tree (parser, residual, pt_residual_needs_si_datetime_walk, &needs_si_datetime, NULL, NULL);
-  parser_free_tree (parser, residual);
 
   return needs_si_datetime;
 }
@@ -1964,9 +2000,8 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type)
 	      /* a residual DEFAULT expression referencing the statement clock needs the server time
 	       * synchronized before the Local Evaluation path evaluates it */
-	      || (attr->default_value.default_expr.default_expr_tree_stream != NULL
-		  && attr->default_value.default_expr.default_expr_tree_stream_size > 0
-		  && pt_residual_default_needs_si_datetime (parser, attr)))
+	      || (DB_IS_RESIDUAL_DEFAULT_EXPR (&attr->default_value.default_expr)
+		  && pt_residual_default_needs_si_datetime (parser, attr, node)))
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
@@ -3922,26 +3957,34 @@ pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node)
  * return      : default value node or NULL on error
  * parser (in) : parser context
  * att (in)    : resolved attribute
+ * name (in)   : the PT_NAME being resolved, for error reporting
  */
 static PT_NODE *
-pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att)
+pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * name)
 {
   const DB_DEFAULT_EXPR *default_expr = &att->default_value.default_expr;
   PT_NODE *node;
 
-  if (default_expr->default_expr_type == DB_DEFAULT_NONE && default_expr->default_expr_tree_stream != NULL
-      && default_expr->default_expr_tree_stream_size > 0)
+  if (DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr))
     {
-      /* residual DEFAULT expression: rehydrate it so the reference evaluates at execution time; the
-       * rehydrated nodes carry do_not_fold, keeping generic constant folding from freezing it */
-      node = pt_compact_default_tree_from_stream (parser, default_expr->default_expr_tree_stream,
-						  default_expr->default_expr_tree_stream_size);
-      if (node == NULL && !pt_has_error (parser))
+      /* residual DEFAULT expression: the reference evaluates at execution time, so it gets the rehydrated
+       * tree (its nodes carry do_not_fold, keeping generic constant folding from freezing it).  The CDT
+       * registry decodes the stream once per attribute and shares the tree; every reference takes its own
+       * copy, because the DEFAULTF fold and the release of the reference node both assume ownership. */
+      PT_NODE *shared = pt_cdt_registry_tree (parser, att, NULL);
+
+      if (shared == NULL)
 	{
-	  /* a stored stream this build cannot interpret (version mismatch or corruption), not an
-	   * allocation failure -- diagnose it so the caller does not misreport out-of-memory */
-	  PT_INTERNAL_ERROR (parser, "invalid Compact DEFAULT Tree stream");
+	  /* the registry diagnosed the failure where it happened; this level only carries it into the
+	   * parser's own error channel */
+	  assert (er_errid () != NO_ERROR);
+	  if (!pt_has_error (parser) && er_errid () != NO_ERROR)
+	    {
+	      PT_ERRORc (parser, name, er_msg ());
+	    }
+	  return NULL;
 	}
+      node = parser_copy_tree (parser, shared);
       return node;
     }
 
@@ -4004,7 +4047,7 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
       return ER_FAILED;
     }
 
-  name->info.name.default_value = pt_make_attribute_default_value_node (parser, att);
+  name->info.name.default_value = pt_make_attribute_default_value_node (parser, att, name);
   if (name->info.name.default_value == NULL)
     {
       /* a rehydration failure reports its own cause; allocation failure is the
@@ -4093,7 +4136,7 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	      /* default value was already set */
 	      return 1;
 	    }
-	  attr->info.name.default_value = pt_make_attribute_default_value_node (parser, att);
+	  attr->info.name.default_value = pt_make_attribute_default_value_node (parser, att, attr);
 	  if (attr->info.name.default_value == NULL)
 	    {
 	      if (!pt_has_error (parser))

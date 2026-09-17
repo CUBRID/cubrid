@@ -1262,6 +1262,9 @@ parser_free_parser (PARSER_CONTEXT * parser)
   /* free remote dblink cols */
   pt_free_dblink_remote_cols (parser);
 
+  /* give back the DB_VALUEs held by the rehydrated CDTs; the registry itself is parser memory */
+  pt_cdt_registry_free (parser);
+
   /* free string blocks */
   pt_free_string_blocks (parser);
   /* free node blocks */
