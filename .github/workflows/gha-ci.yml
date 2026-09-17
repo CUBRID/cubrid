@@ -1595,15 +1595,23 @@ jobs:
             # Ticket 56's machine, built here first: 17k cases on a GlusterFS seed
             # cannot be pruned per shard, so plan publishes the tree once and each
             # shard copies out the part it owns. shell keeps pruning until 56.
+            #
+            # One archive, not a tree: creating sql's 42,415 entries over FUSE was
+            # 128s of this step, and the shard reads its share by name either way
+            # -- CUBRIDQA-1501 ticket 73. Everything that is not a unit comes along
+            # whole, so tc.rest names those for the shard: reading them back out of
+            # the archive would mean decompressing it twice.
             if [ "$mode" = publish ]; then
-              dst="$rundir/tc/$suite"
+              dst="$rundir/tc/$suite.tar.gz"
               tmp="${dst}.tmp.${GITHUB_RUN_ID}"
-              rm -rf "$tmp" "$dst"
+              rm -f "$tmp"
               mkdir -p "$(dirname "$dst")"
-              cp -a "$root" "$tmp"
-              # One rename publishes it, so no shard sees a half-copied tree.
+              find "$root" -mindepth 1 -maxdepth 1 ! -name '_*' -printf './%f\n' \
+                | sort > "$out/plan/tc.rest"
+              tar -C "$root" -cf - . | gzip -1 > "$tmp"
+              # One rename publishes it, so no shard sees a half-written archive.
               mv -T "$tmp" "$dst"
-              echo "published testcases: $dst ($(du -sh "$dst" | cut -f1))"
+              echo "published testcases: $dst ($(du -sh "$dst" | cut -f1)), rest $(wc -l < "$out/plan/tc.rest")"
             fi
 
             # sabotage: check that the guards actually fire.
@@ -1997,17 +2005,30 @@ jobs:
 
             left=$(count_cases)
           else
+            arc="$RUNDIR/tc/$SUITE.tar.gz"
             src="$RUNDIR/tc/$SUITE"
-            [ -d "$src" ] || { echo "::error::plan published no testcases: $src"; exit 1; }
             mkdir -p "$TC_DIR/$SUITE"
             # Everything that is not a unit comes along whole: medium's
             # files/mdb.tar.gz, and both suites' config/. CircleCI keeps them too --
             # its prune deletes *.sql files and nothing else (config.yml 259-261).
-            find "$src" -mindepth 1 -maxdepth 1 ! -name '_*' -exec cp -a {} "$TC_DIR/$SUITE/" \;
-            while read -r u; do
-              [ -n "$u" ] || continue
-              cp -a "$src/$(basename "$u")" "$TC_DIR/$SUITE/"
-            done < "$f"
+            # plan named those in tc.rest; a unit is the last component of a line of
+            # my share, and both sit one level under the archive's `.`.
+            if [ -f "$arc" ]; then
+              { awk -F/ 'NF {print "./" $NF}' "$f"; cat "$PLAN_DIR/tc.rest"; } > /tmp/members.list
+              # A name that is not in the archive is tar exit 2, and so a failed
+              # step: a shard that quietly ran fewer cases would be reported green.
+              tar -xzf "$arc" -C "$TC_DIR/$SUITE" --no-wildcards --files-from=/tmp/members.list
+            elif [ -d "$src" ]; then
+              # A tree: planned before ticket 73 and re-run from GitHub's button,
+              # which runs this shard again without running plan.
+              find "$src" -mindepth 1 -maxdepth 1 ! -name '_*' -exec cp -a {} "$TC_DIR/$SUITE/" \;
+              while read -r u; do
+                [ -n "$u" ] || continue
+                cp -a "$src/$(basename "$u")" "$TC_DIR/$SUITE/"
+              done < "$f"
+            else
+              echo "::error::plan published no testcases: $arc"; exit 1
+            fi
             echo "units copied: $MINE_UNITS"
 
             left=$(count_cases)
