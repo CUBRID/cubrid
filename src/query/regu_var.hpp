@@ -173,18 +173,21 @@ const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
-
-/* Persisted effective volatility of a residual column DEFAULT expression, stamped
- * on the root regu at DDL time (pt_to_default_expr_stream) and read by Server
- * Evaluation to decide once-per-statement (STABLE) vs once-per-row (VOLATILE)
- * evaluation.  Two bits hold the PT_VOLATILITY value; the stamped regu is
- * serialized into the catalog, so those bits carry persisted meaning and must
- * not be reallocated to a runtime flag.  This rides the already-serialized regu
- * flags (no stream-format change) and is distinct from the runtime
- * FETCH_ALL_CONST / FETCH_NOT_CONST flags, which are asserted clear at
- * serialization time. */
+/* bits 13-14 are not flags but one 2-bit PT_VOLATILITY value: the volatility of a residual column DEFAULT,
+ * stamped on its root regu at DDL time and persisted in the catalog with it, read by Server Evaluation to
+ * evaluate once per statement (STABLE) or once per row (VOLATILE).  Persisted: never reuse them for a flag. */
+const int REGU_VARIABLE_DEFAULT_IMMUTABLE_BITS = 0x2000;	/* PT_VOLATILITY_IMMUTABLE (1) << 13 */
+const int REGU_VARIABLE_DEFAULT_STABLE_BITS = 0x4000;	/* PT_VOLATILITY_STABLE    (2) << 13 */
+const int REGU_VARIABLE_DEFAULT_VOLATILE_BITS = 0x6000;	/* PT_VOLATILITY_VOLATILE  (3) << 13 */
+const int REGU_VARIABLE_DEFAULT_VOLATILITY_MASK = 0x6000;
 const int REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT = 13;
-const int REGU_VARIABLE_DEFAULT_VOLATILITY_MASK = 0x3 << REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT;	/* 0x6000 */
+
+static_assert (REGU_VARIABLE_DEFAULT_VOLATILITY_SHIFT == 13 &&
+	       REGU_VARIABLE_DEFAULT_VOLATILITY_MASK == (0x3 << 13) &&
+	       REGU_VARIABLE_DEFAULT_IMMUTABLE_BITS == (PT_VOLATILITY_IMMUTABLE << 13) &&
+	       REGU_VARIABLE_DEFAULT_STABLE_BITS == (PT_VOLATILITY_STABLE << 13) &&
+	       REGU_VARIABLE_DEFAULT_VOLATILE_BITS == (PT_VOLATILITY_VOLATILE << 13),
+	       "REGU_VARIABLE_DEFAULT_* bits out of sync with PT_VOLATILITY");
 
 class regu_variable_node
 {
