@@ -461,6 +461,7 @@ static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE
 static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
+static bool pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE ** rewritten_order_by);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -10167,13 +10168,48 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_RESOLVED;
-      r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
-      q = pt_append_nulstring (parser, q, " (");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      parser->custom_print = save_custom;
+      PT_NODE *attr_list = p->info.spec.as_attr_list;
+
+      /* as_attr_list mirrors the derived table's own select list one-for-one, hidden columns
+       * included -- but for static SQL (is_parsing_static_sql), pt_print_select () may leave
+       * those very hidden columns out of the select list it prints for this same derived table
+       * (see pt_static_sql_can_omit_hidden_columns () and its use in pt_print_select ()). Left
+       * unmatched here, this alias list would declare more column names than the printed select
+       * list actually has, and a fresh parse of the embedded text would reject the pair as
+       * mismatched -- the same hazard pt_print_cte () guards against for a CTE's own header. */
+      if (parser->flag.is_parsing_static_sql
+	  && pt_static_sql_can_omit_hidden_columns (parser, p->info.spec.derived_table, NULL))
+	{
+	  PT_NODE *select_list = pt_get_select_list (parser, p->info.spec.derived_table);
+	  PT_NODE *decl, *col, *filtered = NULL;
+
+	  for (decl = attr_list, col = select_list; decl != NULL && col != NULL; decl = decl->next, col = col->next)
+	    {
+	      if (col->flag.is_hidden_column)
+		{
+		  continue;
+		}
+	      filtered = parser_append_node (parser_copy_tree (parser, decl), filtered);
+	    }
+
+	  attr_list = filtered;
+	}
+
+      if (attr_list != NULL)
+	{
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+	  r1 = pt_print_bytes_l (parser, attr_list);
+	  q = pt_append_nulstring (parser, q, " (");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	  parser->custom_print = save_custom;
+	}
+
+      if (attr_list != p->info.spec.as_attr_list)
+	{
+	  parser_free_tree (parser, attr_list);
+	}
     }
 
   if (p->info.spec.on_cond)
@@ -18449,28 +18485,32 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
    * from scratch at runtime; that re-parse derives the CTE's exposed column count directly from how many
-   * items the header below prints. A rewrite/optimization applied to non_recursive_part after as_attr_list
-   * was computed (e.g. adding a hidden order-by carry column while merging a ROWNUM-filtered outer query
-   * with an ORDER BY inner subquery) can grow the actual select list past as_attr_list's cached length, so
-   * pad a local copy of the header here instead of printing a header/body pair that a fresh parse would
-   * reject as mismatched. The count has to match what pt_print_select () will really emit for the body:
-   * where it can leave the hidden columns out, they are not part of the header either. */
+   * items the header below prints. select_list and as_attr_list are otherwise always kept in lockstep
+   * wherever either is built (view_transform.c, name_resolution.c): every select-list item -- hidden or
+   * not -- has a matching as_attr_list entry at the same position. A rewrite/optimization applied to
+   * non_recursive_part after as_attr_list was cached (e.g. adding a hidden order-by carry column while
+   * merging a ROWNUM-filtered outer query with an ORDER BY inner subquery) can append items past that
+   * cached length, so first extend a local copy of the header to match, one synthesized name per new
+   * item -- restoring the lockstep pt_print_select () assumes below. Only then decide, per item and in
+   * the same left-to-right order, whether pt_print_select () will actually print it: omit_hidden_columns
+   * can leave hidden ones out of the body, and the header must leave out the very same entries or a fresh
+   * parse would reject the header/body pair as mismatched (declared column names vs. printed columns). */
   if (parser->flag.is_parsing_static_sql)
     {
       PT_NODE *non_recursive_part = p->info.cte.non_recursive_part;
       PT_NODE *select_list = pt_get_select_list (parser, non_recursive_part);
-      int hidden_col = (pt_static_sql_can_omit_hidden_columns (parser, non_recursive_part, NULL)
-			? EXCLUDE_HIDDEN_COLUMNS : INCLUDE_HIDDEN_COLUMNS);
-      int actual_cnt = pt_length_of_select_list (select_list, hidden_col);
+      bool omit_hidden_columns = pt_static_sql_can_omit_hidden_columns (parser, non_recursive_part, NULL);
+      int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
       int declared_cnt = pt_length_of_list (as_attr_list);
+      PT_NODE *decl, *col;
 
+      as_attr_list = parser_copy_tree_list (parser, as_attr_list);
       if (actual_cnt > declared_cnt)
 	{
 	  PT_NODE *extra = NULL;
 	  int version = declared_cnt;
 	  int i;
 
-	  as_attr_list = parser_copy_tree_list (parser, as_attr_list);
 	  for (i = declared_cnt; i < actual_cnt; i++)
 	    {
 	      const char *generated_name;
@@ -18487,6 +18527,23 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 	    }
 
 	  as_attr_list = parser_append_node (extra, as_attr_list);
+	}
+
+      if (omit_hidden_columns)
+	{
+	  PT_NODE *filtered = NULL;
+
+	  for (decl = as_attr_list, col = select_list; decl != NULL && col != NULL; decl = decl->next, col = col->next)
+	    {
+	      if (col->flag.is_hidden_column)
+		{
+		  continue;
+		}
+	      filtered = parser_append_node (parser_copy_tree (parser, decl), filtered);
+	    }
+
+	  parser_free_tree (parser, as_attr_list);
+	  as_attr_list = filtered;
 	}
     }
 
