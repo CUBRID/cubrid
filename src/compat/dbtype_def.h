@@ -1299,6 +1299,9 @@ extern "C"
   typedef struct db_default_expr DB_DEFAULT_EXPR;
   struct db_default_expr
   {
+    /* The legacy pseudo-column enum below (type/op/format) is no longer used for a column DEFAULT, which is
+     * described by default_expr_text and the residual streams; it survives only as the in-memory carrier of
+     * a stored-procedure parameter DEFAULT and is not written to the catalog. */
     DB_DEFAULT_EXPR_TYPE default_expr_type;	/* default expression identifier */
     int default_expr_op;	/* default expression operator */
     const char *default_expr_format;	/* default expression format */

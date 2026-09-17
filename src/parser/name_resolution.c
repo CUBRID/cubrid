@@ -3950,9 +3950,8 @@ pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node)
  * pt_make_attribute_default_value_node () - Builds the PT_NODE a Default
  *	Reference (the DEFAULT keyword used as a value) resolves to for one
  *	attribute: the rehydrated Compact DEFAULT Tree for a residual DEFAULT
- *	expression, the reconstructed expression for a legacy
- *	DB_DEFAULT_EXPR_TYPE default, or a PT_VALUE of the stored value for a
- *	plain literal or Expression-Derived Literal.
+ *	expression, or a PT_VALUE of the stored value for a plain literal or
+ *	Expression-Derived Literal.
  *
  * return      : default value node or NULL on error
  * parser (in) : parser context
@@ -3988,12 +3987,7 @@ pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * at
       return node;
     }
 
-  if (default_expr->default_expr_type != DB_DEFAULT_NONE)
-    {
-      /* legacy expression default (also still used by ON UPDATE / SHARED) */
-      return pt_make_default_value_tree_from_default_expr (parser, default_expr);
-    }
-
+  /* a plain literal or Expression-Derived Literal rebuilds from its stored value */
   node = pt_dbval_to_value (parser, &att->default_value.value);
   if (node != NULL && TP_DOMAIN_TYPE (att->domain) == DB_TYPE_ENUMERATION)
     {

@@ -2421,9 +2421,8 @@ or_get_current_representation (RECDES * record, int do_indexes)
   int i, start_offset, offset, original_val_len, n_fixed, n_variable, properties_val_len, current_val_len;
   int n_shared_attrs, n_class_attrs;
   OR_BUF buf;
-  DB_VALUE properties_val, def_expr_op, def_expr, def_expr_type, def_expr_format;
-  const char *def_expr_format_str = NULL;
-  DB_SEQ *att_props = NULL, *def_expr_set = NULL;
+  DB_VALUE properties_val, def_expr;
+  DB_SEQ *att_props = NULL;
 
   rep = (OR_CLASSREP *) malloc (sizeof (OR_CLASSREP));
   if (rep == NULL)
@@ -2594,91 +2593,11 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	{
 	  db_make_null (&properties_val);
 	  db_make_null (&def_expr);
-	  db_make_null (&def_expr_op);
-	  db_make_null (&def_expr_format);
 
 	  or_get_value (&buf, &properties_val, tp_domain_resolve_default (DB_TYPE_SEQUENCE), properties_val_len, true);
 	  att_props = db_get_set (&properties_val);
 
-	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr", &def_expr) > 0)
-	    {
-	      /* We have two cases: simple and complex expression. */
-	      if (DB_VALUE_TYPE (&def_expr) == DB_TYPE_SEQUENCE)
-		{
-		  /*
-		   * We can't have an attribute with default expression and default value simultaneously. However,
-		   * in some situations attr->default_value.value contains the value of default expression. This happens
-		   * when the client executes the query on broker side and use attr->default_value.value to cache
-		   * the default expression value. Then the broker can modify the schema and send to server the default
-		   * expression and its cached value. Another option may be to clear default value on broker side,
-		   * but may lead to inconsistency.
-		   */
-
-		  /* Currently, we allow only (T_TO_CHAR(int), default_expr(int), default_expr_format(string)) */
-		  assert (set_size (db_get_set (&def_expr)) == 3);
-
-		  def_expr_set = db_get_set (&def_expr);
-
-		  /* get and cache default expression operator - op of expr */
-		  if (set_get_element_nocopy (def_expr_set, 0, &def_expr_op) != NO_ERROR)
-		    {
-		      assert (false);
-		      pr_clear_value (&def_expr);
-		      pr_clear_value (&properties_val);
-		      goto error_cleanup;
-		    }
-		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
-			  && db_get_int (&def_expr_op) == (int) T_TO_CHAR);
-		  att->default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
-		  att->current_default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
-
-		  /* get and cache default expression type - arg1 of expr */
-		  if (set_get_element_nocopy (def_expr_set, 1, &def_expr_type) != NO_ERROR)
-		    {
-		      assert (false);
-		      pr_clear_value (&def_expr);
-		      pr_clear_value (&properties_val);
-		      goto error_cleanup;
-		    }
-		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
-		  att->default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
-		  att->current_default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
-
-		  /* get and cache default expression format - arg2 of expr */
-		  if (set_get_element_nocopy (def_expr_set, 2, &def_expr_format) != NO_ERROR)
-		    {
-		      assert (false);
-		      pr_clear_value (&def_expr);
-		      pr_clear_value (&properties_val);
-		      goto error_cleanup;
-		    }
-
-		  if (!db_value_is_null (&def_expr_format))
-		    {
-#if !defined (NDEBUG)
-		      DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
-		      assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
-#endif
-		      def_expr_format_str = db_get_string (&def_expr_format);
-		      att->default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
-		      att->current_default_value.default_expr.default_expr_format = strdup (def_expr_format_str);
-		    }
-		}
-	      else
-		{
-		  /* simple expressions like SYS_DATE */
-		  assert (DB_VALUE_TYPE (&def_expr) == DB_TYPE_INTEGER);
-
-		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
-		  att->current_default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr);
-		}
-	    }
-	  pr_clear_value (&def_expr);
-
-	  /* Expression-Derived Literal: restore the original expression text. */
+	  /* the original text of an expression DEFAULT */
 	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr_literal", &def_expr) > 0)
 	    {
 	      const char *edl_text = db_get_string (&def_expr);

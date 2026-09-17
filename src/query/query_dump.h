@@ -37,7 +37,6 @@ extern bool qdump_print_xasl (xasl_node * xasl);
 extern void qdump_print_stats_json (xasl_node * xasl_p, json_t * parent);
 extern void qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent);
 #endif /* SERVER_MODE */
-extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
 extern const char *qdump_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
 #endif /* _QUERY_DUMP_H_ */

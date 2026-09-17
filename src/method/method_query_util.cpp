@@ -650,41 +650,10 @@ namespace cubmethod
 	return "";
       }
 
-    const char *default_value_expr_type_string = NULL, *default_expr_format = NULL;
-    const char *default_value_expr_op_string = NULL;
-
-    default_value_expr_type_string = db_default_expression_string (attr->default_value.default_expr.default_expr_type);
-    if (default_value_expr_type_string != NULL)
+    if (attr->default_value.default_expr.default_expr_text != NULL)
       {
-	/* default expression case */
-	int len;
-
-	if (attr->default_value.default_expr.default_expr_op != NULL_DEFAULT_EXPRESSION_OPERATOR)
-	  {
-	    /* We now accept only T_TO_CHAR for attr->default_value.default_expr.default_expr_op */
-	    default_value_expr_op_string = "TO_CHAR";	/* FIXME - remove this hard code */
-	  }
-
-	default_expr_format = attr->default_value.default_expr.default_expr_format;
-	if (default_value_expr_op_string != NULL)
-	  {
-	    result_default_value_string.assign (default_value_expr_op_string);
-	    result_default_value_string.append ("(");
-	    result_default_value_string.append (default_value_expr_type_string);
-	    if (default_expr_format)
-	      {
-		result_default_value_string.append (", \'");
-		result_default_value_string.append (default_expr_format);
-		result_default_value_string.append ("\'");
-	      }
-	    result_default_value_string.append (")");
-	  }
-	else
-	  {
-	    result_default_value_string.assign (default_value_expr_type_string);
-	  }
-
-	return result_default_value_string;
+	/* an expression DEFAULT is reported as its original text, like ;schema */
+	return std::string (attr->default_value.default_expr.default_expr_text);
       }
 
     if (db_value_is_null (def))

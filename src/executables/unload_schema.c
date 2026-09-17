@@ -3093,30 +3093,16 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 
   default_value = db_attribute_default (attribute);
   if ((default_value != NULL && !DB_IS_NULL (default_value))
-      || attribute->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE
       || attribute->default_value.default_expr.default_expr_text != NULL)
     {
-      const char *default_expr_type_str;
-
       if (qualifier != SHARED_ATTRIBUTE)
 	{
 	  output_ctx (" DEFAULT ");
 	}
 
-      if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
+      if (attribute->default_value.default_expr.default_expr_text != NULL)
 	{
-	  output_ctx ("TO_CHAR(");
-	}
-
-      default_expr_type_str = db_default_expression_string (attribute->default_value.default_expr.default_expr_type);
-      if (default_expr_type_str != NULL)
-	{
-	  output_ctx ("%s", default_expr_type_str);
-	}
-      else if (attribute->default_value.default_expr.default_expr_text != NULL)
-	{
-	  /* Expression-Derived Literal: emit the original expression.  The stored text
-	   * is already the parser's parenthesized normal form, e.g. "(1+1)". */
+	  /* an expression DEFAULT is emitted as its original text, in the parenthesized normal form, e.g. "(1+1)" */
 	  output_ctx ("%s", attribute->default_value.default_expr.default_expr_text);
 	}
       else
@@ -3131,18 +3117,6 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 	      /* use the desc_ printer, need to have this in a better place */
 	      desc_value_print (output_ctx, default_value);
 	    }
-	}
-
-      if (attribute->default_value.default_expr.default_expr_op == T_TO_CHAR)
-	{
-	  if (attribute->default_value.default_expr.default_expr_format != NULL)
-	    {
-	      output_ctx (", \'");
-	      output_ctx ("%s", attribute->default_value.default_expr.default_expr_format);
-	      output_ctx ("\'");
-	    }
-
-	  output_ctx (")");
 	}
     }
 

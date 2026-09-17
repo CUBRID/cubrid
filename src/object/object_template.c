@@ -2187,9 +2187,11 @@ obt_check_missing_assignments (OBJ_TEMPLATE * template_ptr)
       for (att = class_->ordered_attributes; att != NULL && error == NO_ERROR; att = att->order_link)
 	{
 
+	  /* a residual DEFAULT counts as present even if its DDL-time snapshot is NULL: it is evaluated when
+	   * the row is populated, and a NULL result is rejected there as a NOT NULL violation */
 	  if (((att->flags & SM_ATTFLAG_NON_NULL) && DB_IS_NULL (&att->default_value.value)
-	       && att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
-	      || (att->flags & SM_ATTFLAG_VID))
+	       && att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+	       && !DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr)) || (att->flags & SM_ATTFLAG_VID))
 	    {
 	      ass = template_ptr->assignments[att->order];
 	      if (ass == NULL)
