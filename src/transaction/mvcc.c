@@ -649,7 +649,10 @@ mvcc_satisfies_committed (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 
   if (!MVCC_IS_HEADER_DELID_VALID (rec_header))
     {
-      /* committed (or own) insert, not deleted */
+      /* committed (or own) insert, not deleted.  'committed' is relative to OTHER transactions: like
+       * mvcc_satisfies_dirty, this transaction's own uncommitted insert is visible and its own
+       * uncommitted delete (below) hides the row.  Callers that want "what a new transaction would
+       * see" must exclude their own dirty objects themselves (see stats_get_histogram_generation ()). */
       return SNAPSHOT_SATISFIED;
     }
 

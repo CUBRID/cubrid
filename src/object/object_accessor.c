@@ -3804,7 +3804,10 @@ obj_find_multi_attr_internal (MOP op, int size, const char *attr_names[], const 
       /* btree_find_unique () is fixed to S_SELECT_WITH_LOCK; go through btree_find_multi_uniques () to choose the
        * lookup's own lock: S_SELECT answers without a lock for the classes that allow it (see xbtree_find_unique ()),
        * and the found object is then fetched as its latest committed version, unlocked; S_UPDATE X-locks the found
-       * object right at the lookup, so the write fetch below finds the X already held and no S is ever taken */
+       * object right at the lookup, so the write fetch below finds the X already held and no S is ever taken.
+       * NOTE: no partition pruning here (DB_NOT_PARTITIONED_CLASS), unlike btree_find_unique () -- these two
+       * lookups are meant for catalog-like, non-partitioned classes such as _db_histogram; on a partitioned
+       * class they would search only the root index and silently report the key as not found. */
       OID *found_oids = NULL;
       int found_count = 0;
 

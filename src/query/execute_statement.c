@@ -4959,7 +4959,10 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* piggyback only on a collection equivalent to (or stronger than) this request: never for
 	       * explicit BUCKETS / RANDOM SEED (their result cannot be checked against what was stored),
 	       * a WITH FULLSCAN request only when the stored collection was itself a full scan, and a
-	       * plain (sampling) request on any collection */
+	       * plain (sampling) request on any collection.  The bookkeeping records no bucket count, so a
+	       * default-bucket request does piggyback on a collection made WITH n BUCKETS by another
+	       * session and keeps that bucket count (a valid histogram, only coarser or finer than the
+	       * default); a request that cares states its BUCKETS and collects itself. */
 	      if (stats_fresh && !statement->info.update_stats.drop_histogram
 		  && !statement->info.update_stats.no_histogram && statement->info.update_stats.bucket_count <= 0
 		  && !statement->info.update_stats.random_seed
@@ -4979,6 +4982,20 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  stats_updated = histograms_rebuilt;
 		}
 	      free_and_init (histogram_generation);
+
+	      if (stats_updated)
+		{
+		  /* the collection we piggyback on ran in another session, so nothing here refreshed THIS
+		   * session's cached statistics / histogram of the class -- sm_update_statistics (), which
+		   * normally does, is skipped below.  Drop them: the next compile's refetch is keyed by a
+		   * second-granular time_stamp (xstats_get_statistics_from_server ()), so a copy cached in the
+		   * same second as the other session's commit would otherwise be taken as current. */
+		  error = sm_decache_statistics (class_mop);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
 
 	      if (!stats_updated && statement->info.update_stats.drop_histogram)
 		{
