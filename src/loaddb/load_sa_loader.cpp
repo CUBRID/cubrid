@@ -196,6 +196,25 @@ typedef int (*LDR_SETTER) (LDR_CONTEXT *, const char *, size_t, struct LDR_ATTDE
 typedef int (*LDR_ELEM) (LDR_CONTEXT *, const char *, size_t, DB_VALUE *);
 
 /*
+ * LDR_STORE_SPEC
+ *    What to do with a token of one parser type, for one attribute.
+ *
+ *    A token that is not a value to convert - a collection, an object
+ *    reference, a system reference, NULL - keeps a handler instead, because
+ *    "convert, then store" does not describe it. So does a slot the class does
+ *    not accept, which holds ldr_mismatch ().
+ */
+typedef struct LDR_STORE_SPEC
+{
+  LDR_SETTER handler;		/* NULL means convert with conv_type, then store */
+
+  data_type conv_type;		/* what to ask get_conv_func () for. Not always the slot's own
+				 * type: a double column takes any numeric literal as LDR_FLOAT. */
+  bool direct;			/* the instance image can take the value as it is */
+  bool bound_bit;		/* ... and the attribute carries a bound bit */
+} LDR_STORE_SPEC;
+
+/*
  * LDR_ATTDESC
  *    Loader attribute description structure.
  *    This contains the description, attribute, and fast setter function
@@ -213,7 +232,7 @@ typedef struct LDR_ATTDESC
   cubload::attribute *conv_att;	/* att as the shared converters see it. SM_ATTRIBUTE does not exist
 				 * on the server side, so the converters take this instead. Rebuilt
 				 * whenever att changes, by ldr_refresh_conv_att (). */
-  LDR_SETTER setter[NUM_LDR_TYPES];	/* Setter functions indexed by type */
+  LDR_STORE_SPEC store[NUM_LDR_TYPES];	/* What to do with a token, indexed by its parser type */
 
   DB_VALUE ctor_val;		/* Converted value of this slot on a %constructor line. Arguments take
 				 * their natural type and db_send_argarray () coerces them to the
@@ -599,6 +618,8 @@ static int ldr_ignore (LDR_CONTEXT *context, const char *str, size_t len, LDR_AT
 static int ldr_generic (LDR_CONTEXT *context, DB_VALUE *value);
 static int ldr_convert_elem_value (LDR_CONTEXT *context, const char *str, size_t len, data_type type,
 				   LDR_ATTDESC *attdesc, DB_VALUE *val);
+static int ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
+			    data_type type);
 static int ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
 			      data_type type, DB_VALUE *val);
 static int ldr_convert_and_setmem (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc,
@@ -2072,7 +2093,7 @@ ldr_act_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	}
       else
 	{
-	  CHECK_ERR (err, (* (attdesc->setter[type])) (context, str, len, attdesc));
+	  CHECK_ERR (err, ldr_store_value (context, str, len, attdesc, type));
 	}
     }
 
@@ -2568,6 +2589,45 @@ ldr_convert_and_generic (LDR_CONTEXT *context, const char *str, size_t len, LDR_
 
 error_exit:
   db_value_clear (&val);
+  return err;
+}
+
+/*
+ * ldr_store_value - convert the token and put it where the slot says
+ *    return: NO_ERROR or an error code
+ *    context(in):
+ *    str(in): token text
+ *    len(in): token length
+ *    attdesc(in): descriptor of the attribute being set
+ *    type(in): parser type of the token
+ * Note:
+ *    The one place a token turns into a stored value. What used to be spread
+ *    over the ldr_*_db_* wrappers is now read out of the slot: which
+ *    conversion, and which of the instance sink's two writes.
+ */
+static int
+ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC *attdesc, data_type type)
+{
+  const LDR_STORE_SPEC *slot = &attdesc->store[type];
+  DB_VALUE val;
+  int err;
+
+  if (slot->handler != NULL)
+    {
+      return (* (slot->handler)) (context, str, len, attdesc);
+    }
+
+  CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, slot->conv_type, &val));
+  CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
+
+error_exit:
+  if (!slot->direct)
+    {
+      /* A direct store hands the value's memory to the instance image; only the
+       * template store copies, so only it leaves something to clear. */
+      db_value_clear (&val);
+    }
+
   return err;
 }
 
@@ -5028,6 +5088,36 @@ error_exit:
 }
 
 /*
+ * ldr_store_convert - this slot converts, then stores
+ *    attdesc(out): descriptor being built
+ *    slot(in): the parser type this applies to
+ *    conv_type(in): what to ask get_conv_func () for. Usually the slot itself;
+ *                   the numeric domains normalise several literals to one type.
+ *    direct(in): the instance image can take the value as it is
+ *    bound_bit(in): for a direct store, whether the attribute carries a bound bit
+ */
+static void
+ldr_store_convert (LDR_ATTDESC *attdesc, data_type slot, data_type conv_type, bool direct, bool bound_bit)
+{
+  attdesc->store[slot].handler = NULL;
+  attdesc->store[slot].conv_type = conv_type;
+  attdesc->store[slot].direct = direct;
+  attdesc->store[slot].bound_bit = bound_bit;
+}
+
+/*
+ * ldr_store_handler - this slot is not "convert, then store"
+ *    attdesc(out): descriptor being built
+ *    slot(in): the parser type this applies to
+ *    handler(in): what to call instead
+ */
+static void
+ldr_store_handler (LDR_ATTDESC *attdesc, data_type slot, LDR_SETTER handler)
+{
+  attdesc->store[slot].handler = handler;
+}
+
+/*
  * ldr_act_add_attr - Sets up the appropriate setters for the dealing with the
  * attributes.
  *    return: void
@@ -5079,7 +5169,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
    */
   for (i = 0; i < NUM_LDR_TYPES; i++)
     {
-      attdesc->setter[i] = &ldr_ignore;
+      ldr_store_handler (attdesc, (data_type) i, &ldr_ignore);
     }
 
   if (context->constructor)
@@ -5121,7 +5211,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
        */
       if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (attdesc->att->domain)))
 	{
-	  attdesc->setter[LDR_COLLECTION] = &ldr_collection_db_collection;
+	  ldr_store_handler (attdesc, LDR_COLLECTION, &ldr_collection_db_collection);
 	  CHECK_ERR (err, select_set_domain (context, attdesc->att->domain, & (attdesc->collection_domain)));
 	}
       if (context->attr_type == LDR_ATTRIBUTE_SHARED)
@@ -5154,7 +5244,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
    */
   for (i = 0; i < NUM_LDR_TYPES; i++)
     {
-      attdesc->setter[i] = &ldr_mismatch;
+      ldr_store_handler (attdesc, (data_type) i, &ldr_mismatch);
     }
 
   /*
@@ -5162,120 +5252,120 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
    * These 5 literal kinds are converted to their natural type and handed to the object template, whose
    * check_att_domain () performs the same cast INSERT would.
    */
-  attdesc->setter[LDR_NULL] = &ldr_null_db_generic;
-  attdesc->setter[LDR_INT] = &ldr_int_db_generic;
-  attdesc->setter[LDR_NUMERIC] = &ldr_numeric_db_generic;
-  attdesc->setter[LDR_DOUBLE] = &ldr_real_db_generic;
-  attdesc->setter[LDR_FLOAT] = &ldr_real_db_generic;
+  ldr_store_handler (attdesc, LDR_NULL, &ldr_null_db_generic);
+  ldr_store_convert (attdesc, LDR_INT, LDR_INT, false, false);
+  ldr_store_convert (attdesc, LDR_NUMERIC, LDR_NUMERIC, false, false);
+  ldr_store_convert (attdesc, LDR_DOUBLE, LDR_DOUBLE, false, false);
+  ldr_store_convert (attdesc, LDR_FLOAT, LDR_DOUBLE, false, false);
 
   /* To behave identically to CS mode, change LDR_STR for unspecified domains from ldr_mismatch() to ldr_str_db_generic() */
-  attdesc->setter[LDR_STR] = &ldr_str_db_generic;
+  ldr_store_convert (attdesc, LDR_STR, LDR_STR, false, false);
 
   switch (TP_DOMAIN_TYPE (attdesc->att->domain))
     {
     case DB_TYPE_CHAR:
-      attdesc->setter[LDR_STR] = &ldr_str_db_char;
+      ldr_store_convert (attdesc, LDR_STR, LDR_STR, true, false);
       break;
 
     case DB_TYPE_VARCHAR:
-      attdesc->setter[LDR_STR] = &ldr_str_db_varchar;
+      ldr_store_convert (attdesc, LDR_STR, LDR_STR, true, false);
       break;
 
     case DB_TYPE_BIGINT:
-      attdesc->setter[LDR_INT] = &ldr_int_db_bigint;
+      ldr_store_convert (attdesc, LDR_INT, LDR_INT, true, true);
       break;
 
     case DB_TYPE_INTEGER:
-      attdesc->setter[LDR_INT] = &ldr_int_db_int;
+      ldr_store_convert (attdesc, LDR_INT, LDR_INT, true, true);
       break;
 
     case DB_TYPE_SHORT:
-      attdesc->setter[LDR_INT] = &ldr_int_db_short;
+      ldr_store_convert (attdesc, LDR_INT, LDR_INT, true, true);
       break;
 
     case DB_TYPE_FLOAT:
-      attdesc->setter[LDR_INT] = &ldr_real_db_float;
-      attdesc->setter[LDR_NUMERIC] = &ldr_real_db_float;
-      attdesc->setter[LDR_DOUBLE] = &ldr_real_db_float;
-      attdesc->setter[LDR_FLOAT] = &ldr_real_db_float;
+      ldr_store_convert (attdesc, LDR_INT, LDR_FLOAT, true, true);
+      ldr_store_convert (attdesc, LDR_NUMERIC, LDR_FLOAT, true, true);
+      ldr_store_convert (attdesc, LDR_DOUBLE, LDR_FLOAT, true, true);
+      ldr_store_convert (attdesc, LDR_FLOAT, LDR_FLOAT, true, true);
       break;
 
     case DB_TYPE_DOUBLE:
-      attdesc->setter[LDR_INT] = &ldr_real_db_double;
-      attdesc->setter[LDR_NUMERIC] = &ldr_real_db_double;
-      attdesc->setter[LDR_DOUBLE] = &ldr_real_db_double;
-      attdesc->setter[LDR_FLOAT] = &ldr_real_db_double;
+      ldr_store_convert (attdesc, LDR_INT, LDR_FLOAT, true, true);
+      ldr_store_convert (attdesc, LDR_NUMERIC, LDR_FLOAT, true, true);
+      ldr_store_convert (attdesc, LDR_DOUBLE, LDR_FLOAT, true, true);
+      ldr_store_convert (attdesc, LDR_FLOAT, LDR_FLOAT, true, true);
       break;
 
     case DB_TYPE_NUMERIC:
-      attdesc->setter[LDR_INT] = &ldr_int_db_generic;
-      attdesc->setter[LDR_NUMERIC] = &ldr_numeric_db_generic;
-      attdesc->setter[LDR_DOUBLE] = &ldr_real_db_generic;
-      attdesc->setter[LDR_FLOAT] = &ldr_real_db_generic;
+      ldr_store_convert (attdesc, LDR_INT, LDR_INT, false, false);
+      ldr_store_convert (attdesc, LDR_NUMERIC, LDR_NUMERIC, false, false);
+      ldr_store_convert (attdesc, LDR_DOUBLE, LDR_DOUBLE, false, false);
+      ldr_store_convert (attdesc, LDR_FLOAT, LDR_DOUBLE, false, false);
       break;
 
     case DB_TYPE_DATE:
-      attdesc->setter[LDR_DATE] = &ldr_date_db_date;
+      ldr_store_convert (attdesc, LDR_DATE, LDR_DATE, true, true);
       break;
 
     case DB_TYPE_TIME:
-      attdesc->setter[LDR_TIME] = &ldr_time_db_time;
+      ldr_store_convert (attdesc, LDR_TIME, LDR_TIME, true, true);
       break;
 
     case DB_TYPE_TIMESTAMP:
-      attdesc->setter[LDR_TIMESTAMP] = &ldr_timestamp_db_timestamp;
+      ldr_store_convert (attdesc, LDR_TIMESTAMP, LDR_TIMESTAMP, true, true);
       break;
 
     case DB_TYPE_TIMESTAMPLTZ:
-      attdesc->setter[LDR_TIMESTAMPLTZ] = &ldr_timestampltz_db_timestampltz;
+      ldr_store_convert (attdesc, LDR_TIMESTAMPLTZ, LDR_TIMESTAMPLTZ, true, true);
       break;
 
     case DB_TYPE_TIMESTAMPTZ:
-      attdesc->setter[LDR_TIMESTAMPTZ] = &ldr_timestamptz_db_timestamptz;
+      ldr_store_convert (attdesc, LDR_TIMESTAMPTZ, LDR_TIMESTAMPTZ, true, true);
       break;
 
     case DB_TYPE_DATETIME:
-      attdesc->setter[LDR_DATETIME] = &ldr_datetime_db_datetime;
+      ldr_store_convert (attdesc, LDR_DATETIME, LDR_DATETIME, true, true);
       break;
 
     case DB_TYPE_DATETIMELTZ:
-      attdesc->setter[LDR_DATETIMELTZ] = &ldr_datetimeltz_db_datetimeltz;
+      ldr_store_convert (attdesc, LDR_DATETIMELTZ, LDR_DATETIMELTZ, true, true);
       break;
 
     case DB_TYPE_DATETIMETZ:
-      attdesc->setter[LDR_DATETIMETZ] = &ldr_datetimetz_db_datetimetz;
+      ldr_store_convert (attdesc, LDR_DATETIMETZ, LDR_DATETIMETZ, true, true);
       break;
 
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
     case DB_TYPE_SEQUENCE:
-      attdesc->setter[LDR_COLLECTION] = &ldr_collection_db_collection;
+      ldr_store_handler (attdesc, LDR_COLLECTION, &ldr_collection_db_collection);
       CHECK_ERR (err, select_set_domain (context, attdesc->att->domain, & (attdesc->collection_domain)));
       break;
 
     case DB_TYPE_OBJECT:
     case DB_TYPE_VOBJ:
-      attdesc->setter[LDR_CLASS_OID] = &ldr_class_oid_db_object;
-      attdesc->setter[LDR_OID] = &ldr_oid_db_object;
+      ldr_store_handler (attdesc, LDR_CLASS_OID, &ldr_class_oid_db_object);
+      ldr_store_handler (attdesc, LDR_OID, &ldr_oid_db_object);
       break;
 
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-      attdesc->setter[LDR_BSTR] = &ldr_bstr_db_varbit;
-      attdesc->setter[LDR_XSTR] = &ldr_xstr_db_varbit;
+      ldr_store_convert (attdesc, LDR_BSTR, LDR_BSTR, false, false);
+      ldr_store_convert (attdesc, LDR_XSTR, LDR_XSTR, false, false);
       break;
 
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
-      attdesc->setter[LDR_ELO_EXT] = &ldr_elo_ext_db_elo;
-      attdesc->setter[LDR_ELO_INT] = &ldr_elo_int_db_elo;
+      ldr_store_convert (attdesc, LDR_ELO_EXT, LDR_ELO_EXT, true, false);
+      ldr_store_handler (attdesc, LDR_ELO_INT, &ldr_elo_int_db_elo);
       break;
 
     case DB_TYPE_MONETARY:
-      attdesc->setter[LDR_MONETARY] = &ldr_monetary_db_monetary;
+      ldr_store_convert (attdesc, LDR_MONETARY, LDR_MONETARY, true, true);
       break;
     case DB_TYPE_JSON:
-      attdesc->setter[LDR_STR] = &ldr_json_db_json;
+      ldr_store_convert (attdesc, LDR_STR, LDR_STR, false, false);
       break;
 
     default:
