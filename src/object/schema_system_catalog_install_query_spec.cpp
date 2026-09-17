@@ -1758,25 +1758,77 @@ sm_define_view_server_spec (void)
   return stmt;
 }
 
+/*
+ * db_histogram: one row per (class, attribute) that has a histogram entry in _db_histogram.
+ *   _db_histogram.class_of stores the class MOP itself (smt_add_histogram / db_get_histogram key on it),
+ *   so the view joins _db_class to expose the name and owner as strings instead of an object column,
+ *   and applies the same DBA / owner / SELECT-grantee filter as db_index and db_partition so that a user
+ *   cannot learn which columns of a class he has no SELECT privilege on carry a histogram. (CBRD-27043)
+ */
 std::string
 sm_define_view_histogram_spec (void)
 {
-  char stmt [2048];
+  char stmt [4096];
 
   // *INDENT-OFF*
   int n = snprintf (stmt, sizeof(stmt),
 	"SELECT "
-	  "[h].[class_of] AS [class_name], "
-	  "[h].[key_attr] AS [key_attr], "
-	  "CASE WHEN [h].[with_fullscan] = 0 THEN 'sampling scan' ELSE 'full scan' END AS [with_fullscan], "
-	  "CAST([h].[null_frequency] AS NUMERIC(18, 12)) AS [null_frequency] "
+	  "[c].[owner].[name] AS [owner_name], "
+	  "[c].[class_name] AS [class_name], "
+	  "[h].[key_attr] AS [attr_name], "
+	  "CASE [h].[with_fullscan] WHEN 0 THEN 'SAMPLING SCAN' ELSE 'FULL SCAN' END AS [scan_type], "
+	  "CAST ([h].[null_frequency] AS NUMERIC (18, 12)) AS [null_frequency] " /* double -> numeric(18,12) */
 	"FROM "
 	  /* CT_HISTOGRAM_NAME */
-	  "[%s] AS [h] "
-	"ORDER BY " /* Is it possible to remove ORDER BY? */
-	  "[h].[class_of], "
-	  "[h].[key_attr]",
-	CT_HISTOGRAM_NAME);
+	  "[%s] AS [h], "
+	  /* CT_CLASS_NAME */
+	  "[%s] AS [c] "
+	"WHERE "
+	  "[h].[class_of] = [c].[class_of] "
+	  "AND ("
+	      "{'DBA'} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[c].[owner].[name]} SUBSETEQ ("
+		  "SELECT "
+		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		  "FROM "
+		    /* AU_USER_CLASS_NAME */
+		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		  "WHERE "
+		    "[u].[name] = CURRENT_USER"
+		") "
+	      "OR {[h].[class_of]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[object_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'SELECT'"
+		")"
+	    ")",
+	CT_HISTOGRAM_NAME,
+	CT_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
 
