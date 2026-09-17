@@ -8179,56 +8179,52 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 
       if (attr->info.attr_def.data_default == NULL)
 	{
-	  if (DB_IS_NULL (&col_attr->default_value.value)
-	      && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
-	    {
-	      /* don't create any default node if default value is null unless default expression type is not
-	       * DB_DEFAULT_NONE */
-	      continue;
-	    }
+	  const char *expr_text = NULL;
+	  PT_VOLATILITY expr_vol = PT_VOLATILITY_UNSET;
 
-	  if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+	  /* a residual DEFAULT is inherited as a copy of its rehydrated expression, so the view keeps
+	   * evaluating it at INSERT time instead of freezing a DDL-time constant; a literal or
+	   * Expression-Derived Literal is rebuilt from its stored value and a NULL value is not inherited */
+	  if (DB_IS_RESIDUAL_DEFAULT_EXPR (&col_attr->default_value.default_expr))
 	    {
+	      default_value = pt_cdt_registry_tree_copy (parser, col_attr, qry, &expr_vol);
+	      if (default_value == NULL)
+		{
+		  goto error;
+		}
+	      expr_text = col_attr->default_value.default_expr.default_expr_text;
+	    }
+	  else
+	    {
+	      if (DB_IS_NULL (&col_attr->default_value.value))
+		{
+		  continue;
+		}
+
 	      default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
 	      if (default_value == NULL)
 		{
 		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		  goto error;
 		}
-
-	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
-	      if (default_data == NULL)
-		{
-		  parser_free_tree (parser, default_value);
-		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  goto error;
-		}
-	      default_data->info.data_default.default_value = default_value;
-	      default_data->info.data_default.shared = PT_DEFAULT;
-	      default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 	    }
-	  else
+
+	  default_data = parser_new_node (parser, PT_DATA_DEFAULT);
+	  if (default_data == NULL)
 	    {
-	      default_value =
-		pt_make_default_value_tree_from_default_expr (parser, &col_attr->default_value.default_expr);
-	      if (default_value == NULL)
-		{
-		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  goto error;
-		}
-
-	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
-	      if (default_data == NULL)
-		{
-		  parser_free_tree (parser, default_value);
-		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  goto error;
-		}
-
-	      default_data->info.data_default.default_value = default_value;
-	      default_data->info.data_default.shared = PT_DEFAULT;
-	      default_data->info.data_default.default_expr_type =
-		col_attr->default_value.default_expr.default_expr_type;
+	      parser_free_tree (parser, default_value);
+	      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto error;
+	    }
+	  default_data->info.data_default.default_value = default_value;
+	  default_data->info.data_default.shared = PT_DEFAULT;
+	  default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+	  if (expr_text != NULL)
+	    {
+	      /* the stored text and volatility travel with the copy: pt_check_data_default keeps them instead of
+	       * re-deriving them from a tree the statement did not write */
+	      default_data->info.data_default.expr_text = pt_append_string (parser, NULL, expr_text);
+	      default_data->info.data_default.expr_volatility = expr_vol;
 	    }
 
 	  attr->info.attr_def.data_default = default_data;

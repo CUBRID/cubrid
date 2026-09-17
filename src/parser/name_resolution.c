@@ -3970,21 +3970,7 @@ pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * at
        * tree (its nodes carry do_not_fold, keeping generic constant folding from freezing it).  The CDT
        * registry decodes the stream once per attribute and shares the tree; every reference takes its own
        * copy, because the DEFAULTF fold and the release of the reference node both assume ownership. */
-      PT_NODE *shared = pt_cdt_registry_tree (parser, att, NULL);
-
-      if (shared == NULL)
-	{
-	  /* the registry diagnosed the failure where it happened; this level only carries it into the
-	   * parser's own error channel */
-	  assert (er_errid () != NO_ERROR);
-	  if (!pt_has_error (parser) && er_errid () != NO_ERROR)
-	    {
-	      PT_ERRORc (parser, name, er_msg ());
-	    }
-	  return NULL;
-	}
-      node = parser_copy_tree (parser, shared);
-      return node;
+      return pt_cdt_registry_tree_copy (parser, att, name, NULL);
     }
 
   /* a plain literal or Expression-Derived Literal rebuilds from its stored value */
@@ -7772,8 +7758,10 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
       const char *name = db_attr->header.name;
 
       if (db_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
-	  && DB_IS_NULL (&db_attr->default_value.value))
+	  && DB_IS_NULL (&db_attr->default_value.value)
+	  && !DB_IS_RESIDUAL_DEFAULT_EXPR (&db_attr->default_value.default_expr))
 	{
+	  /* nothing to supply; a residual with a NULL snapshot still has a DEFAULT */
 	  continue;
 	}
 

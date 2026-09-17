@@ -715,6 +715,8 @@ extern "C"
 						int *stream_size);
   extern PT_NODE *pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream, int stream_size);
   extern PT_NODE *pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLATILITY * volatility);
+  extern PT_NODE *pt_cdt_registry_tree_copy (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * err_node,
+					     PT_VOLATILITY * volatility);
   extern void pt_cdt_registry_free (PARSER_CONTEXT * parser);
   extern void pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
 						     DB_DEFAULT_EXPR * default_expr);

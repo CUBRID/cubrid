@@ -11308,6 +11308,42 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
 }
 
 /*
+ * pt_cdt_registry_tree_copy () - a private copy of the registry tree of a residual DEFAULT (pt_cdt_registry_tree)
+ *	for a caller that folds or releases it; a failure the registry reported is carried into the parser's
+ *	error channel
+ *   return: the copy, or NULL on error
+ *   parser(in): parser context
+ *   att(in): attribute with a residual DEFAULT
+ *   err_node(in): node the error is reported on; may be NULL
+ *   volatility(out): effective volatility of the tree; may be NULL
+ */
+PT_NODE *
+pt_cdt_registry_tree_copy (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * err_node,
+			   PT_VOLATILITY * volatility)
+{
+  PT_NODE *shared, *copy;
+
+  shared = pt_cdt_registry_tree (parser, att, volatility);
+  if (shared == NULL)
+    {
+      /* the registry diagnosed the failure where it happened */
+      assert (er_errid () != NO_ERROR);
+      if (!pt_has_error (parser) && er_errid () != NO_ERROR)
+	{
+	  PT_ERRORc (parser, err_node, er_msg ());
+	}
+      return NULL;
+    }
+
+  copy = parser_copy_tree (parser, shared);
+  if (copy == NULL)
+    {
+      PT_ERRORm (parser, err_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+    }
+  return copy;
+}
+
+/*
  * pt_cdt_registry_free () - parser_free_tree every registry tree, giving back the DB_VALUEs
  *	inside its PT_VALUE nodes (see the registry note).  Called by parser_free_parser before
  *	the node and string blocks are released.
