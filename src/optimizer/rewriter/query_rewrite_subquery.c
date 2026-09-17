@@ -28,9 +28,8 @@
 
 static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where);
 static bool qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list);
-static bool qo_semi_inner_column_is_equated (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec,
-					     const char *col_name);
-static bool qo_semi_inner_is_unique (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec);
+static bool qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name);
+static bool qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec);
 static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
 				       QO_UNNEST_INFO * info);
 
@@ -566,7 +565,7 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
     {
       if (spec->info.spec.join_type == PT_JOIN_SEMI && spec->info.spec.derived_table == NULL
 	  && spec->info.spec.cte_name == NULL
-	  && qo_semi_inner_is_unique (parser, node->info.query.q.select.where, spec))
+	  && qo_is_unique_semi_inner (parser, node->info.query.q.select.where, spec))
 	{
 	  spec->info.spec.join_type = PT_JOIN_INNER;
 	}
@@ -575,16 +574,17 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 
 
 /*
- * qo_semi_inner_column_is_equated () - is this column of a SEMI JOIN's inner equated, in that join's ON, to
- *      something that does not read the inner?
+ * qo_check_eq_term_on_column () - does the ON of this spec hold a plain '=' term between this column of the spec
+ *      and something that does not read the spec? Such a term fixes the column to one value per row of the side
+ *      the spec is joined to
  *   return: bool
  *   parser(in):
  *   where(in): the WHERE list holding the parked ON conjuncts; only those at the spec's location are read
- *   spec(in): the SEMI JOIN inner spec
- *   col_name(in): attribute name of the inner class
+ *   spec(in): the spec whose ON is read
+ *   col_name(in): attribute name of the spec's class
  */
 static bool
-qo_semi_inner_column_is_equated (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name)
+qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name)
 {
   PT_NODE *cnf, *mine, *other;
   UINTPTR ref;
@@ -610,7 +610,7 @@ qo_semi_inner_column_is_equated (PARSER_CONTEXT * parser, PT_NODE * where, PT_NO
 	  continue;
 	}
 
-      /* the other side must not read the inner, or the equality fixes nothing */
+      /* the other side must not read the spec, or the equality fixes nothing */
       ref = spec->info.spec.id;
       (void) parser_walk_tree (parser, other, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
       if (ref != 0)
@@ -623,7 +623,7 @@ qo_semi_inner_column_is_equated (PARSER_CONTEXT * parser, PT_NODE * where, PT_NO
 }
 
 /*
- * qo_semi_inner_is_unique () - does the ON of a SEMI JOIN equate every column of a row-identifying key of
+ * qo_is_unique_semi_inner () - does the ON of a SEMI JOIN equate every column of a row-identifying key of
  *      the inner? Then at most one inner row matches an outer row, and the SEMI JOIN returns the same rows as
  *      an INNER JOIN
  *   return: bool
@@ -632,7 +632,7 @@ qo_semi_inner_column_is_equated (PARSER_CONTEXT * parser, PT_NODE * where, PT_NO
  *   spec(in): the SEMI JOIN inner spec
  */
 static bool
-qo_semi_inner_is_unique (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec)
+qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec)
 {
   PT_NODE *flat;
   DB_OBJECT *classop;
@@ -662,7 +662,7 @@ qo_semi_inner_is_unique (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spe
 
       for (i = 0; cons->attributes[i] != NULL; i++)
 	{
-	  if (!qo_semi_inner_column_is_equated (parser, where, spec, cons->attributes[i]->header.name))
+	  if (!qo_check_eq_term_on_column (parser, where, spec, cons->attributes[i]->header.name))
 	    {
 	      break;
 	    }
