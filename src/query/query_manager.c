@@ -1268,7 +1268,13 @@ end:
   if (xasl_buf_info)
     {
       /* a one-shot XASL (not a cached clone): release what qexec_execute_query () keeps for a
-       * clone's next execution -- the compiled expression programs -- before the tree goes */
+       * clone's next execution -- the compiled expression programs -- before the tree goes.
+       * This is the same two-pass contract xcache_clone_decache () applies to a clone (the
+       * final clear at the end of the execution, then a full clear with XASL_DECACHE_CLONE
+       * set when the clone is retired), so qexec_clear_xasl () already has to be safe to
+       * re-enter on a cleared tree.  A one-shot tree was unpacked with use_xasl_clone off, so
+       * it carries no CLEAR_AT_CLONE_DECACHE marks: the flagged pass touches only the programs,
+       * the status of the sub-XASLs and the disposable signatures, nothing the first pass freed. */
       if (xasl_p != NULL)
 	{
 	  XASL_SET_FLAG (xasl_p, XASL_DECACHE_CLONE);

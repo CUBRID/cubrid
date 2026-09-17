@@ -57,7 +57,6 @@
 #include "chartype.h"
 #include "query_executor.h"
 #include "fetch.h"
-#include "numeric_opfunc.h"	/* NUMERIC_VALUE_SIGN_BIT_MASK: disk NUMERIC header parsing */
 #include "server_interface.h"
 #include "elo.h"
 #include "db_elo.h"
@@ -10540,96 +10539,6 @@ heap_attr_readval_date (DB_VALUE * out, const char *disk, int size, const OR_ATT
   return NO_ERROR;
 }
 
-static int
-heap_attr_readval_numeric (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
-{
-  const unsigned char *header = (const unsigned char *) disk;
-  int val_size = 0, precision = 0, scale = 0;
-  bool is_negative = false;
-  unsigned char *num = out->data.num.d.buf;
-
-  /* the value's header (size|sign, precision|scale sign, scale), parsed exactly as
-   * mr_data_readval_numeric () does -- and, like it, only once the buffer is known to hold
-   * the header.  The fixed area is always at least that wide (rd_disk_size >= 4), but the
-   * default value heap_attrvalue_read () hands in is exactly as long as the catalog recorded
-   * it, so the length must be checked before a header byte is read. */
-  if (likely (size >= NUMERIC_HEADER_SIZE))
-    {
-      val_size = header[0] & 0x7F;
-      is_negative = (header[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
-      precision = header[1] & 0x7F;
-      scale = ((header[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) != 0) ? -((int) header[2]) : (int) header[2];
-    }
-
-  if (unlikely (size < NUMERIC_HEADER_SIZE || precision == 0 || precision > DB_MAX_NUMERIC_PRECISION
-		|| scale < DB_MIN_NUMERIC_SCALE || scale > DB_MAX_NUMERIC_SCALE || val_size > size))
-    {
-      /* a header the fast path was not built for (or one that overstates its size, which
-       * the generic path's buffer guard rejects): let the generic handler decide */
-      OR_BUF buf;
-
-      or_init (&buf, CONST_CAST (char *, disk), size);
-      return pr_type_from_id (DB_TYPE_NUMERIC)->data_readval (&buf, out, attrepr->domain, size, false, NULL, 0);
-    }
-
-  /* the stores db_value_domain_init () + db_make_numeric () perform for a valid header,
-   * minus their re-validation */
-  out->data.ch.info.codeset = 0;
-  out->domain.general_info.type = DB_TYPE_NUMERIC;
-  out->domain.general_info.is_null = 0;
-  out->domain.numeric_info.is_value_negative = is_negative;
-  if (attrepr->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      /* float numeric: the value carries its own precision/scale */
-      out->data.num.header.precision = precision;
-      out->data.num.header.scale = scale;
-      out->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
-      out->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
-    }
-  else
-    {
-      out->data.num.header.precision = 0;
-      out->data.num.header.scale = 0;
-      out->domain.numeric_info.precision = precision;
-      out->domain.numeric_info.scale = scale;
-    }
-
-  switch (val_size)
-    {
-    case 4:
-      memset (num, 0, 16);
-      memcpy (num + 16, disk + NUMERIC_HEADER_SIZE, 1);
-      break;
-    case 8:
-      memset (num, 0, 12);
-      memcpy (num + 12, disk + NUMERIC_HEADER_SIZE, 5);
-      break;
-    case 12:
-      memset (num, 0, 8);
-      memcpy (num + 8, disk + NUMERIC_HEADER_SIZE, 9);
-      break;
-    case 16:
-      memset (num, 0, 4);
-      memcpy (num + 4, disk + NUMERIC_HEADER_SIZE, 13);
-      break;
-    case DB_NUMERIC_BUF_SIZE:	/* 17 */
-    case 20:
-      memcpy (num, disk + NUMERIC_HEADER_SIZE, DB_NUMERIC_BUF_SIZE);
-      break;
-    default:
-      {
-	/* size db_make_numeric () does not enumerate: generic handler, same as above */
-	OR_BUF buf;
-
-	or_init (&buf, CONST_CAST (char *, disk), size);
-	return pr_type_from_id (DB_TYPE_NUMERIC)->data_readval (&buf, out, attrepr->domain, size, false, NULL, 0);
-      }
-    }
-
-  out->need_clear = false;
-  return NO_ERROR;
-}
-
 /*
  * heap_attrvalue_resolve_plan () - resolve the per-record constants of an attribute
  *   value(in/out): the attribute value slot
@@ -10672,11 +10581,10 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
 	  value->rd_readval = heap_attr_readval_date;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  if (attrepr->domain->precision != 0)
-	    {
-	      /* precision-0 domains take the generic handler's leave-the-value branch */
-	      value->rd_readval = heap_attr_readval_numeric;
-	    }
+	  /* NUMERIC is a variable attribute today (tp_Numeric.variable_p == 1), so it sits in the
+	   * variable area with is_fixed == 0 and never reaches this switch: a decode kernel for it
+	   * would be dead, untested code.  Add one, mirroring mr_data_readval_numeric (), only when
+	   * NUMERIC gets a fixed-width representation. */
 	  break;
 	default:
 	  break;

@@ -1824,8 +1824,13 @@ qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, b
 	  pr->scan_prog = NULL;
 	  pr->scan_prog_state = 0;
 	}
-      else
+      else if (is_final)
 	{
+	  /* end of the execution: release the slot values (they may own this request's private
+	   * heap) and re-arm the prologues and the signature check for the next execution.  A
+	   * non-final clear -- a correlated subquery rewound for the next outer row -- keeps them:
+	   * the bound values and the literals are the same within one execution, so re-running
+	   * the prologue and the signature check per outer row would only repeat work. */
 	  expr_scan_pred_reset (pr->scan_prog);
 	}
     }
@@ -2353,8 +2358,10 @@ qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYP
 	  free_and_init (list->operand_prog_idx);
 	  list->operand_prog_state = 0;
 	}
-      else
+      else if (is_final)
 	{
+	  /* only at the end of the execution; a per-outer-row rewind keeps the slots and the
+	   * prologues (see qexec_clear_pred ()) */
 	  expr_prog_reset ((EXPR_PROG *) list->operand_prog);
 	}
     }
@@ -2559,7 +2566,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	  {
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_outptr_list->valptrp, is_final, false);
 	    /* slot values go with the request, the program stays with the clone (see outptr_list) */
-	    qdata_release_valptr_list_prog (thread_p, connect_by->prior_outptr_list,
+	    qdata_release_valptr_list_prog (thread_p, connect_by->prior_outptr_list, is_final,
 					    XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	  }
 
@@ -2609,7 +2616,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_outptr_list->valptrp, is_final, false);
 		/* see the outptr_list note below: slot values go with the request, the program stays */
-		qdata_release_valptr_list_prog (thread_p, buildlist->g_outptr_list,
+		qdata_release_valptr_list_prog (thread_p, buildlist->g_outptr_list, is_final,
 						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_regu_list, is_final, false);
@@ -2649,20 +2656,20 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    if (buildlist->a_outptr_list)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list->valptrp, is_final, false);
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list,
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list, is_final,
 						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_outptr_list_ex)
 	      {
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_ex->valptrp, is_final, false);
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex,
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex, is_final,
 						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_outptr_list_interm)
 	      {
 		pg_cnt +=
 		  qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_interm->valptrp, is_final, false);
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm,
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm, is_final,
 						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	      }
 	    if (buildlist->a_val_list)
@@ -2859,7 +2866,8 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	   * the request that made them.  The program itself stays with the clone (its steps are
 	   * reused by the next execution after a bind-type signature check) and is freed when
 	   * the clone is released. */
-	  qdata_release_valptr_list_prog (thread_p, xasl->outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+	  qdata_release_valptr_list_prog (thread_p, xasl->outptr_list, is_final,
+					  XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	}
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->spec_list, is_final, false, false);
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->merge_spec, is_final, false, false);
@@ -3084,7 +3092,8 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       /* clear the db_values in the tree */
       if (xasl->outptr_list)
 	{
-	  qdata_release_valptr_list_prog (thread_p, xasl->outptr_list, XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
+	  qdata_release_valptr_list_prog (thread_p, xasl->outptr_list, is_final,
+					  XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	  pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->outptr_list->valptrp, is_final, true);
 	}
       pg_cnt += qexec_clear_access_spec_list (thread_p, xasl, xasl->spec_list, is_final, true, true);
@@ -3197,7 +3206,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  }
 	if (connect_by->prior_outptr_list)
 	  {
-	    qdata_release_valptr_list_prog (thread_p, connect_by->prior_outptr_list,
+	    qdata_release_valptr_list_prog (thread_p, connect_by->prior_outptr_list, is_final,
 					    XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 	    pg_cnt += qexec_clear_regu_list (thread_p, xasl, connect_by->prior_outptr_list->valptrp, is_final, true);
 	  }
@@ -3246,7 +3255,7 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  {
 	    if (buildlist->g_outptr_list)
 	      {
-		qdata_release_valptr_list_prog (thread_p, buildlist->g_outptr_list,
+		qdata_release_valptr_list_prog (thread_p, buildlist->g_outptr_list, is_final,
 						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->g_outptr_list->valptrp, is_final, true);
 	      }
@@ -3284,19 +3293,19 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 
 	    if (buildlist->a_outptr_list)
 	      {
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list,
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list, is_final,
 						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list->valptrp, is_final, true);
 	      }
 	    if (buildlist->a_outptr_list_ex)
 	      {
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex,
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_ex, is_final,
 						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt += qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_ex->valptrp, is_final, true);
 	      }
 	    if (buildlist->a_outptr_list_interm)
 	      {
-		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm,
+		qdata_release_valptr_list_prog (thread_p, buildlist->a_outptr_list_interm, is_final,
 						XASL_IS_FLAGED (xasl, XASL_DECACHE_CLONE));
 		pg_cnt +=
 		  qexec_clear_regu_list (thread_p, xasl, buildlist->a_outptr_list_interm->valptrp, is_final, true);

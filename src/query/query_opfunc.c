@@ -660,14 +660,22 @@ qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_
 }
 
 /*
- * qdata_release_valptr_list_prog () - end of an execution for the list's compiled program
+ * qdata_release_valptr_list_prog () - a clear of the XASL node that owns the list's compiled
+ *				       program
  *
  * free_it: the XASL clone is being released (XASL_DECACHE_CLONE): free the program.
- * Otherwise the program stays with the clone for its next execution and only its slot
- * values are released (expr_prog_reset ()); the row-ready mark cannot survive the execution.
+ * is_final: the execution is over.  The program stays with the clone for its next execution
+ * and only its slot values are released (expr_prog_reset ()), which also re-arms the
+ * prologues and the bind-type signature check for that next execution.
+ * A clear that is neither -- a correlated subquery rewound for the next outer row -- keeps
+ * the slots and the prologues: the bound values and the literals do not change within one
+ * execution, so re-running the prologue and the signature check per outer row would only
+ * repeat work (that is exactly the per-execution cost this program was compiled to save).
+ * The row-ready mark is dropped on every clear; it costs nothing and cannot outlive its row
+ * anyway (qdata_valptr_prog_ensure () consumes it).
  */
 void
-qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool free_it)
+qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool is_final, bool free_it)
 {
   if (valptr_list_p == NULL || valptr_list_p->eval_prog == NULL)
     {
@@ -678,7 +686,10 @@ qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valp
       qdata_free_valptr_list_prog (thread_p, valptr_list_p);
       return;
     }
-  expr_prog_reset ((EXPR_PROG *) valptr_list_p->eval_prog);
+  if (is_final)
+    {
+      expr_prog_reset ((EXPR_PROG *) valptr_list_p->eval_prog);
+    }
   valptr_list_p->eval_prog_row_ready = false;
 }
 

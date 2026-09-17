@@ -563,6 +563,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW "sql_trace_slow"
 
+#define PRM_NAME_SQL_TRACE_EXPR_PROGRAM "sql_trace_expr_program"
+
 #define PRM_NAME_LOG_TRACE_FLUSH_TIME "log_trace_flush_time"
 
 #define PRM_NAME_INTL_COLLATION "intl_collation"
@@ -5533,6 +5535,21 @@ SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_PLAN_CACHE_BIND_SENSITIVITY,
    PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* the step listing of the compiled expression programs in the SQL trace (see
+   * qdump_print_expr_compile_text ()): the one-line summaries always print, the per-step
+   * listing (kernels, cells, domains) only when a session turns this on */
+  {PRM_ID_SQL_TRACE_EXPR_PROGRAM,
+   PRM_NAME_SQL_TRACE_EXPR_PROGRAM,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},

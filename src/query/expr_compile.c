@@ -180,6 +180,20 @@ struct expr_build_ctx
   int in_branch;		/* > 0 while compiling a CASE branch: emitted steps run only when the branch is taken,
 				 * prologue hoisting is off, and nested CASE nodes are rejected */
 
+  /* Nesting depth of the construct being compiled, counted the way the interpreted path
+   * counts its thread recursion depth: one per arithmetic node (fetch_peek_arith ()) and one
+   * per predicate node (eval_pred ()), leaves excluded.  A node deeper than depth_limit
+   * (max_recursion_sql_depth) is declined, so its root falls back to the interpreter and
+   * raises ER_MAX_RECURSION_SQL_DEPTH exactly as a build without this feature does; a
+   * compiled tree cannot bypass a documented safety limit.  Only the tree's own depth is
+   * known here -- the interpreter also counts the frames it is called from -- so this is
+   * the lower bound of what the interpreter would reject, never more. */
+  int depth;
+  int depth_limit;
+  bool depth_exceeded;		/* a node was declined for depth: the ROOT being compiled must go to the
+				 * interpreter whole (a fallback step for the subtree alone would evaluate it
+				 * with the counter at the frames above the program, not above the node) */
+
   int n_slots;			/* slots are materialized after counting */
 
   /* common sub-expression table: structural key -> cell index */
@@ -2354,8 +2368,11 @@ expr_scan_side_compile (EXPR_BUILD_CTX * bctx, EXPR_PRED * pred, REGU_VARIABLE *
       return;
     }
   cell = expr_compile_node (bctx, regu, &compiled_something);
-  if (cell < 0)
+  if (cell < 0 || bctx->depth_exceeded)
     {
+      /* nothing compiled, or a node too deep for the limit: the leaf fetches this operand
+       * through the interpreter, which raises ER_MAX_RECURSION_SQL_DEPTH as before */
+      bctx->depth_exceeded = false;
       expr_build_rewind (bctx, &mark);
       bctx->cur_guard = saved_guard;
       bctx->n_node_cells = node_mark;
@@ -2622,8 +2639,12 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	/* an arithmetic side is compiled into a region of the tree's program (see
 	 * expr_scan_side_compile ()); a compiled kernel always produces the type it was
 	 * compiled for, so such a side needs no drift guard */
+	/* the operands compile under this leaf's own eval_pred () frame: the predicate depth so
+	 * far plus one, the way the interpreter's counter stands when it fetches them */
+	bctx->depth = depth + 1;
 	expr_scan_side_compile (bctx, pred, et->lhs, false, shareable);
 	expr_scan_side_compile (bctx, pred, et->rhs, true, shareable);
+	bctx->depth = 0;
 	if (pred->lhs_compiled || pred->rhs_compiled)
 	  {
 	    bool lhs_drift = !pred->lhs_compiled && et->lhs->type != TYPE_ATTR_ID && et->lhs->type != TYPE_DBVAL;
@@ -2709,8 +2730,9 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
   memset (bctx, 0, sizeof (*bctx));
   bctx->vd = vd;
   bctx->thread_p = thread_p;
+  bctx->depth_limit = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
 
-  pred = expr_scan_pred_build (bctx, pr, 0, prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH), true);
+  pred = expr_scan_pred_build (bctx, pr, 0, bctx->depth_limit, true);
   if (pred == NULL)
     {
       expr_build_free_preds (bctx);
@@ -3048,16 +3070,35 @@ expr_scan_pred_dump (FILE * fp, const void *compiled, int indent)
  * only when none of their steps can fail (expr_steps_fallible ()): a failing step there
  * would raise an error the interpreted path never reaches, so the whole predicate stays
  * interpreted instead.  A left operand is always fetched, so its steps may fail. */
+static EXPR_PRED *expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_something);
+
 static EXPR_PRED *
 expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_something)
 {
-  EXPR_PRED *pred = NULL, *lhs = NULL, *rhs = NULL;
-  int c1, c2, rhs_start;
+  EXPR_PRED *pred;
 
   if (pr == NULL)
     {
       return NULL;
     }
+  /* the depth guard (see expr_build_ctx.depth): eval_pred () counts one frame per predicate
+   * node, leaves included, and rejects the node when the frames above it exceed the limit */
+  if (bctx->depth > bctx->depth_limit)
+    {
+      bctx->depth_exceeded = true;
+      return NULL;
+    }
+  bctx->depth++;
+  pred = expr_compile_pred_impl (bctx, pr, compiled_something);
+  bctx->depth--;
+  return pred;
+}
+
+static EXPR_PRED *
+expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_something)
+{
+  EXPR_PRED *pred = NULL, *lhs = NULL, *rhs = NULL;
+  int c1, c2, rhs_start;
 
   switch (pr->type)
     {
@@ -3287,6 +3328,7 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
 }
 
 static int expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
+static int expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
 
 /* compile one node; returns the cell index its value is readable from, or -1 to make
  * the CALLER wrap this subtree in a fallback step (never an error) */
@@ -3301,8 +3343,28 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
     }
   if (regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
     {
+      /* a leaf: fetch_peek_dbval () does not count it either */
       return expr_compile_node_impl (bctx, regu, compiled_something);
     }
+
+  /* the depth guard (see expr_build_ctx.depth): fetch_peek_arith () rejects this node when
+   * the frames above it already exceed the limit, so does this */
+  if (bctx->depth > bctx->depth_limit)
+    {
+      bctx->depth_exceeded = true;
+      return -1;
+    }
+  bctx->depth++;
+  cell = expr_compile_node_arith (bctx, regu, compiled_something);
+  bctx->depth--;
+  return cell;
+}
+
+/* an arithmetic node, under the depth guard of expr_compile_node () */
+static int
+expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
+{
+  int cell;
 
   /* the scan's data filter may already compute this very expression for the row */
   if (bctx->share_pred != NULL)
@@ -4375,6 +4437,7 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
   memset (bctx, 0, sizeof (*bctx));
   bctx->vd = vd;
   bctx->thread_p = thread_p;
+  bctx->depth_limit = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
   expr_share_attach (bctx, share_spec);
 
   for (i = 0; i < in_roots; i++)
@@ -4384,6 +4447,13 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 
       expr_build_mark (bctx, &mark);
       cell = expr_compile_node (bctx, roots[i], &compiled_something);
+      if (bctx->depth_exceeded)
+	{
+	  /* a subtree was too deep: the whole root goes to the interpreter (the rejection
+	   * below), which raises ER_MAX_RECURSION_SQL_DEPTH for it as before */
+	  bctx->depth_exceeded = false;
+	  cell = -1;
+	}
 
       if (cell >= 0 && only_compute_roots)
 	{

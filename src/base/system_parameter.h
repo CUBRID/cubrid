@@ -551,8 +551,10 @@ enum param_id
 
   PRM_ID_PLAN_CACHE_BIND_SENSITIVITY,
 
+  PRM_ID_SQL_TRACE_EXPR_PROGRAM,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PLAN_CACHE_BIND_SENSITIVITY
+  PRM_LAST_ID = PRM_ID_SQL_TRACE_EXPR_PROGRAM
 };
 typedef enum param_id PARAM_ID;
 

@@ -3742,9 +3742,13 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 
 /*
  * qdump_print_expr_compile_text () - compiled expression-program section of the SQL
- *				      trace (see expr_compile.h): per-aggregate
- *				      accumulate kernels and the full step listing of
- *				      every active program
+ *				      trace (see expr_compile.h): one summary line per
+ *				      program (is it active, what does it cover) always;
+ *				      the per-step listing (kernels, cells, domains,
+ *				      prologue marks, jump targets) only when the session
+ *				      has sql_trace_expr_program on -- it is compiler
+ *				      diagnostics, not something a user reading a trace
+ *				      needs, and it would lengthen every trace otherwise
  */
 #if defined (SERVER_MODE) || defined (SA_MODE)
 void
@@ -3820,7 +3824,10 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 		  fprintf (fp, "\n");
 		}
 	    }
-	  expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
+	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
+	    {
+	      expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
+	    }
 	}
     }
 
@@ -3836,7 +3843,7 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 	  }
 	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s%s\n", indent, ' ',
 		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)", sfx);
-	if (spec->where_pred->scan_prog_state == 1)
+	if (spec->where_pred->scan_prog_state == 1 && prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
 	  {
 	    /* the operand program, when the filter's comparisons carry compiled arithmetic */
 	    expr_scan_pred_dump (fp, spec->where_pred->scan_prog, indent + 2);
@@ -3866,7 +3873,10 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 	    }
 	  fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d%s\n", indent, ' ', out_names[k], covered,
 		   out->valptr_cnt, sfx);
-	  expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
+	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
+	    {
+	      expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
+	    }
 	}
     }
 }
