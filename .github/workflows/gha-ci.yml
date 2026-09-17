@@ -233,7 +233,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: read # a batch child reads its engine commit's date to pin the testcases
+      contents: read # a batch child reads its engine commit's date
       pull-requests: read # the head SHA of the commented PR
       actions: read # a re-run reads the source run's jobs to learn which suites failed
     # Only the comment path needs an author check -- it is the one event anyone with
@@ -259,7 +259,7 @@ jobs:
       rerun_from: ${{ steps.g.outputs.rerun_from }}
       sabotage: ${{ steps.g.outputs.sabotage }}
       testtools: ${{ steps.g.outputs.testtools }} # CTP branch; empty means develop
-      tc_until: ${{ steps.g.outputs.tc_until }} # batch child: pin the testcases to this instant
+      tc_until: ${{ steps.g.outputs.tc_until }} # batch child: testcases as of this instant
     steps:
       - name: Resolve the trigger
         id: g
@@ -442,19 +442,14 @@ jobs:
             exit 1
           fi
 
-          # A batch child tests a commit that merged hours ago, so the testcases tip is
-          # already ahead of it. Left alone, an answer fix merged after that commit would
-          # grade it -- and the history this batch exists to make would not be readable.
-          # Pin them to the instant the engine commit landed. Squash merges make the
-          # commit date the merge time, the same property the 48-hour window rests on.
+          # A batch child tests a commit that merged hours ago, so an answer fix merged
+          # since would grade it. Squash merges make the commit date the merge time, the
+          # same property the 48-hour window rests on.
           tc_until=''
           if [ "$EV" = workflow_dispatch ] && [ "$IN_NIGHTLY" = true ]; then
-            for i in 1 2 3; do
-              tc_until=$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.committer.date') && break
-              echo "::warning::commit date of $sha failed (attempt $i); retrying"; sleep $((i * 5))
-            done
-            # No fallback to the tip: that is the defect, and a silent one.
-            [ -n "$tc_until" ] || { echo "::error::could not read the commit date of $sha"; exit 1; }
+            tc_until=$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.committer.date')
+            # Empty would leave plan on the tip, which is the defect itself.
+            [ -n "$tc_until" ] || { echo "::error::no commit date for $sha"; exit 1; }
             echo "tc pin: testcases as of $tc_until"
           fi
 
@@ -1251,37 +1246,23 @@ jobs:
             echo "[$suite] tc branch: $TC_BRANCH"
 
             # Same command the CircleCI baseline runs on every node.
-            # A batch child pins the branch to one commit. The node mirror is the only
-            # full history reachable here: the entrypoint fetches --depth 1 into the
-            # overlay, which leaves the worktree at a single commit. It takes a SHA
-            # wherever it takes a branch -- the shards already align to one that way.
-            TC_REF="$TC_BRANCH"
+            export BRANCH_TESTCASES="$TC_BRANCH"
+            # Only the node mirror can answer as of a past instant: the entrypoint fetches
+            # --depth 1, which leaves this copy at one commit. It takes a SHA wherever it
+            # takes a branch -- the shards already align to one that way.
             if [ -n "$TC_UNTIL" ]; then
-              mirror=
-              for cand in "${seed}.git" "/home/gha-ci/repos/${repo}.git"; do
-                [ -d "$cand" ] && { mirror="$cand"; break; }
-              done
-              [ -n "$mirror" ] || { echo "::error::no full-history mirror for $repo"; exit 1; }
-              until_ts=$(date -u -d "$TC_UNTIL" +%s)
-              # What matters is when the mirror last asked GitHub, not when the testcases
-              # last changed: a quiet repo and a dead refresh look identical in commit
-              # dates. gha-repo-seed runs `git remote update` hourly, which rewrites
-              # FETCH_HEAD whether or not anything arrived. A mirror refreshed at or after
-              # the cutoff holds everything the cutoff can reach, however far the remote
-              # has since moved on.
-              [ -f "$mirror/FETCH_HEAD" ] || { echo "::error::$mirror has no FETCH_HEAD: it has never been refreshed"; exit 1; }
-              refreshed_ts=$(stat -c %Y "$mirror/FETCH_HEAD")
-              [ "$refreshed_ts" -ge "$until_ts" ] || {
-                echo "::error::$repo mirror was last refreshed $(date -u -d "@$refreshed_ts" +%FT%TZ), before the cutoff $TC_UNTIL"
-                echo "  Pinning from it could take a commit older than the one the engine saw."
-                echo "  The gha-repo-seed CronJob is behind; run this commit again once it catches up."
-                exit 1; }
-              TC_REF=$(git -C "$mirror" rev-list -1 --first-parent --before="$TC_UNTIL" "$TC_BRANCH")
-              [ -n "$TC_REF" ] || {
+              mirror="$CI_ROOT/repos/${repo}.git"
+              [ -d "$mirror" ] || { echo "::error::no mirror for $repo: $mirror"; exit 1; }
+              # Commit dates cannot tell a quiet repo from a dead refresh. gha-repo-seed
+              # runs `git remote update` hourly, which rewrites FETCH_HEAD either way.
+              refreshed=$(stat -c %Y "$mirror/FETCH_HEAD")
+              [ "$refreshed" -ge "$(date -u -d "$TC_UNTIL" +%s)" ] || {
+                echo "::error::$repo mirror predates the cutoff $TC_UNTIL; gha-repo-seed is behind"; exit 1; }
+              BRANCH_TESTCASES=$(git -C "$mirror" rev-list -1 --first-parent --before="$TC_UNTIL" "$TC_BRANCH")
+              [ -n "$BRANCH_TESTCASES" ] || {
                 echo "::error::$repo has no $TC_BRANCH commit at or before $TC_UNTIL"; exit 1; }
-              echo "[$suite] tc pin  : $TC_REF ($TC_BRANCH as of $TC_UNTIL, from $mirror)"
+              echo "[$suite] tc pin  : $BRANCH_TESTCASES ($TC_BRANCH as of $TC_UNTIL)"
             fi
-            export BRANCH_TESTCASES="$TC_REF"
             # CTP_BRANCH_NAME follows this in the entrypoint, so the CTP logs name it too.
             export BRANCH_TESTTOOLS="$CTP_BRANCH"
             /entrypoint.sh checkout "$suite"
@@ -1992,11 +1973,10 @@ jobs:
           if [ "$SHARE_MODE" = prune ]; then
             # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
             cd "$TC_DIR"
-            # The entrypoint drops its git credential on exit, so carry the token
-            # here. Through the environment, not `-c`: the seed is a partial clone, so
-            # `reset` to a commit the tip does not carry sends git back to the promisor
-            # for the blobs, and that fetch is a child process `-c` never reaches. It
-            # stays out of the on-disk config either way.
+            # The entrypoint drops its git credential on exit, so carry the token here.
+            # Through the environment, not `-c`: the seed is a partial clone, so `reset`
+            # to a commit the tip does not carry fetches the blobs from the promisor in a
+            # child process, which `-c` never reaches. Still not on disk.
             export GIT_CONFIG_COUNT=1
             export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
             export GIT_CONFIG_VALUE_0="https://github.com/"
