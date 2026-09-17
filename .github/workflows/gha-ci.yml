@@ -447,7 +447,12 @@ jobs:
           # same property the 48-hour window rests on.
           tc_until=''
           if [ "$EV" = workflow_dispatch ] && [ "$IN_NIGHTLY" = true ]; then
-            tc_until=$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.committer.date')
+            # Retried like probe_branch below: one blip here costs the commit a night,
+            # because a gate that dies posts no status and the next batch takes it again.
+            for i in 1 2 3; do
+              tc_until=$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.committer.date') && break
+              sleep $((i * 5))
+            done
             # Empty would leave plan on the tip, which is the defect itself.
             [ -n "$tc_until" ] || { echo "::error::no commit date for $sha"; exit 1; }
             echo "tc pin: testcases as of $tc_until"
