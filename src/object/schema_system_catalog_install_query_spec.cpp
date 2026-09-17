@@ -1776,7 +1776,7 @@ sm_define_view_histogram_spec (void)
 	  "[c].[owner].[name] AS [owner_name], "
 	  "[c].[class_name] AS [class_name], "
 	  "[h].[key_attr] AS [attr_name], "
-	  "CASE [h].[with_fullscan] WHEN 0 THEN 'SAMPLING SCAN' ELSE 'FULL SCAN' END AS [scan_type], "
+	  "CASE [h].[with_fullscan] WHEN 0 THEN 'SAMPLING SCAN' ELSE 'FULL SCAN' END AS [scan_type], " /* non-null int (0/1) written by smt_add_histogram */
 	  "CAST ([h].[null_frequency] AS NUMERIC (18, 12)) AS [null_frequency] " /* double -> numeric(18,12) */
 	"FROM "
 	  /* CT_HISTOGRAM_NAME */
