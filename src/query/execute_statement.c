@@ -607,19 +607,6 @@ do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
 }
 
 /*
- * is_residual_default_attr () - true iff att carries a residual (STABLE or VOLATILE)
- *	column DEFAULT stored as a Compact DEFAULT Tree (DB_DEFAULT_NONE with a tree
- *	stream), as opposed to a legacy pseudo-column DEFAULT or no DEFAULT at all.
- */
-static inline bool
-is_residual_default_attr (const SM_ATTRIBUTE * att)
-{
-  return (att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
-	  && att->default_value.default_expr.default_expr_tree_stream != NULL
-	  && att->default_value.default_expr.default_expr_tree_stream_size > 0);
-}
-
-/*
  * is_template_assigned_attr () - true iff the object template already assigns att a
  *	real value (an is_default entry is a default fill, not a user value), so the
  *	row will never consume att's DEFAULT.  A virtual-class template indexes its
@@ -653,7 +640,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (is_residual_default_attr (att) && !is_template_assigned_attr (otemplate, att))
+      if (DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr) && !is_template_assigned_attr (otemplate, att))
 	{
 	  n++;
 	}
@@ -680,7 +667,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
       PT_NODE *residual;
       PT_VOLATILITY vol;
 
-      if (!is_residual_default_attr (att) || is_template_assigned_attr (otemplate, att))
+      if (!DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr) || is_template_assigned_attr (otemplate, att))
 	{
 	  continue;
 	}
@@ -859,7 +846,7 @@ do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass
     {
       DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
 
-      if (is_residual_default_attr (att))
+      if (DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
 	{
 	  continue;
 	}

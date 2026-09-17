@@ -11232,7 +11232,7 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
   assert (parser != NULL && att != NULL);
 
   default_expr = &att->default_value.default_expr;
-  if (default_expr->default_expr_tree_stream == NULL || default_expr->default_expr_tree_stream_size <= 0)
+  if (!DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr))
     {
       return NULL;
     }

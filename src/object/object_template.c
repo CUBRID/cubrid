@@ -1385,9 +1385,7 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		  goto memory_error;
 		}
 	    }
-	  else if ((att->flags & SM_ATTFLAG_NON_NULL)
-		   && att->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
-		   && att->default_value.default_expr.default_expr_tree_stream != NULL)
+	  else if ((att->flags & SM_ATTFLAG_NON_NULL) && DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
 	    {
 	      int error = NO_ERROR;
 

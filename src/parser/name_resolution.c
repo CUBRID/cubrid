@@ -2000,8 +2000,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type)
 	      /* a residual DEFAULT expression referencing the statement clock needs the server time
 	       * synchronized before the Local Evaluation path evaluates it */
-	      || (attr->default_value.default_expr.default_expr_tree_stream != NULL
-		  && attr->default_value.default_expr.default_expr_tree_stream_size > 0
+	      || (DB_IS_RESIDUAL_DEFAULT_EXPR (&attr->default_value.default_expr)
 		  && pt_residual_default_needs_si_datetime (parser, attr, node)))
 	    {
 	      node->flag.si_datetime = true;
@@ -3966,8 +3965,7 @@ pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * at
   const DB_DEFAULT_EXPR *default_expr = &att->default_value.default_expr;
   PT_NODE *node;
 
-  if (default_expr->default_expr_type == DB_DEFAULT_NONE && default_expr->default_expr_tree_stream != NULL
-      && default_expr->default_expr_tree_stream_size > 0)
+  if (DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr))
     {
       /* residual DEFAULT expression: the reference evaluates at execution time, so it gets the rehydrated
        * tree (its nodes carry do_not_fold, keeping generic constant folding from freezing it).  The CDT
@@ -3980,7 +3978,7 @@ pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * at
 	  /* the registry diagnosed the failure where it happened; this level only carries it into the
 	   * parser's own error channel */
 	  assert (er_errid () != NO_ERROR);
-	  if (!pt_has_error (parser) && er_errid() != NO_ERROR)
+	  if (!pt_has_error (parser) && er_errid () != NO_ERROR)
 	    {
 	      PT_ERRORc (parser, name, er_msg ());
 	    }
