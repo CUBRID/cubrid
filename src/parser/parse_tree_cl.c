@@ -9472,37 +9472,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " where ");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.delete_.using_index)
-    {
-      if (p->info.delete_.using_index->info.name.original == NULL)
-	{
-	  if (p->info.delete_.using_index->info.name.resolved == NULL)
-	    {
-	      q = pt_append_nulstring (parser, q, " using index none");
-	    }
-	  else
-	    {
-	      if (p->info.delete_.using_index->etc == (void *) PT_IDX_HINT_CLASS_NONE)
-		{
-		  r1 = pt_print_bytes_l (parser, p->info.delete_.using_index);
-		  q = pt_append_nulstring (parser, q, " using index ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
-	      else
-		{
-		  r1 = pt_print_bytes_l (parser, p->info.delete_.using_index->next);
-		  q = pt_append_nulstring (parser, q, " using index all except ");
-		  q = pt_append_varchar (parser, q, r1);
-		}
-	    }
-	}
-      else
-	{
-	  r1 = pt_print_bytes_l (parser, p->info.delete_.using_index);
-	  q = pt_append_nulstring (parser, q, " using index ");
-	  q = pt_append_varchar (parser, q, r1);
-	}
-    }
+  q = pt_print_using_index_clause (parser, q, p->info.delete_.using_index);
 
   if (p->info.delete_.limit && p->info.delete_.rewrite_limit)
     {
@@ -15543,37 +15513,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
-      if (p->info.query.q.select.using_index)
-	{
-	  if (p->info.query.q.select.using_index->info.name.original == NULL)
-	    {
-	      if (p->info.query.q.select.using_index->info.name.resolved == NULL)
-		{
-		  q = pt_append_nulstring (parser, q, " using index none");
-		}
-	      else
-		{
-		  if (p->info.query.q.select.using_index->etc == (void *) PT_IDX_HINT_CLASS_NONE)
-		    {
-		      r1 = pt_print_bytes_l (parser, p->info.query.q.select.using_index);
-		      q = pt_append_nulstring (parser, q, " using index ");
-		      q = pt_append_varchar (parser, q, r1);
-		    }
-		  else
-		    {
-		      r1 = pt_print_bytes_l (parser, p->info.query.q.select.using_index->next);
-		      q = pt_append_nulstring (parser, q, " using index all except ");
-		      q = pt_append_varchar (parser, q, r1);
-		    }
-		}
-	    }
-	  else
-	    {
-	      r1 = pt_print_bytes_l (parser, p->info.query.q.select.using_index);
-	      q = pt_append_nulstring (parser, q, " using index ");
-	      q = pt_append_varchar (parser, q, r1);
-	    }
-	}
+      q = pt_print_using_index_clause (parser, q, p->info.query.q.select.using_index);
 
       if (p->info.query.q.select.with_increment)
 	{
@@ -16317,6 +16257,49 @@ pt_init_update (PT_NODE * p)
 }
 
 /*
+ * pt_print_using_index_clause () - Append a statement's USING INDEX clause to buf.
+ *   Four shapes the parser can leave behind: "none", a name list, "all except" a list, and a plain list.
+ *   SELECT, UPDATE and DELETE print the same clause, so the four-way check lives here once.
+ *   return: buf with the clause appended, or buf unchanged when there is no clause
+ *   parser(in)      : parser context
+ *   buf(in)         : buffer to append to, may be NULL
+ *   using_index(in) : the statement's using_index list, may be NULL
+ */
+PARSER_VARCHAR *
+pt_print_using_index_clause (PARSER_CONTEXT * parser, PARSER_VARCHAR * buf, const PT_NODE * using_index)
+{
+  PARSER_VARCHAR *r1;
+
+  if (using_index == NULL)
+    {
+      return buf;
+    }
+
+  if (using_index->info.name.original != NULL)
+    {
+      r1 = pt_print_bytes_l (parser, using_index);
+      buf = pt_append_nulstring (parser, buf, " using index ");
+      return pt_append_varchar (parser, buf, r1);
+    }
+
+  if (using_index->info.name.resolved == NULL)
+    {
+      return pt_append_nulstring (parser, buf, " using index none");
+    }
+
+  if (using_index->etc == (void *) PT_IDX_HINT_CLASS_NONE)
+    {
+      r1 = pt_print_bytes_l (parser, using_index);
+      buf = pt_append_nulstring (parser, buf, " using index ");
+      return pt_append_varchar (parser, buf, r1);
+    }
+
+  r1 = pt_print_bytes_l (parser, using_index->next);
+  buf = pt_append_nulstring (parser, buf, " using index all except ");
+  return pt_append_varchar (parser, buf, r1);
+}
+
+/*
  * pt_print_update () -
  *   return:
  *   parser(in):
@@ -16529,37 +16512,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " where ");
       b = pt_append_varchar (parser, b, r1);
     }
-  if (p->info.update.using_index)
-    {
-      if (p->info.update.using_index->info.name.original == NULL)
-	{
-	  if (p->info.update.using_index->info.name.resolved == NULL)
-	    {
-	      b = pt_append_nulstring (parser, b, " using index none");
-	    }
-	  else
-	    {
-	      if (p->info.update.using_index->etc == (void *) PT_IDX_HINT_CLASS_NONE)
-		{
-		  r1 = pt_print_bytes_l (parser, p->info.update.using_index);
-		  b = pt_append_nulstring (parser, b, " using index ");
-		  b = pt_append_varchar (parser, b, r1);
-		}
-	      else
-		{
-		  r1 = pt_print_bytes_l (parser, p->info.update.using_index->next);
-		  b = pt_append_nulstring (parser, b, " using index all except ");
-		  b = pt_append_varchar (parser, b, r1);
-		}
-	    }
-	}
-      else
-	{
-	  r1 = pt_print_bytes_l (parser, p->info.update.using_index);
-	  b = pt_append_nulstring (parser, b, " using index ");
-	  b = pt_append_varchar (parser, b, r1);
-	}
-    }
+  b = pt_print_using_index_clause (parser, b, p->info.update.using_index);
 
   if (p->info.update.order_by)
     {

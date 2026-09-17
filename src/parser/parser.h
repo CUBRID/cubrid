@@ -146,6 +146,8 @@ extern "C"
   extern PARSER_VARCHAR *pt_print_class_name (PARSER_CONTEXT * parser, PT_NODE * p);
 #endif
   extern PARSER_VARCHAR *pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * node);
+  extern PARSER_VARCHAR *pt_print_using_index_clause (PARSER_CONTEXT * parser, PARSER_VARCHAR * buf,
+						      const PT_NODE * using_index);
   extern PARSER_VARCHAR *pt_print_bytes_alias (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_node_value (PARSER_CONTEXT * parser, const PT_NODE * val);
   extern PARSER_VARCHAR *pt_print_db_value (PARSER_CONTEXT * parser, const struct db_value *val);
