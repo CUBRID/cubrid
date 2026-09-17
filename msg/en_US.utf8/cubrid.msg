@@ -1999,6 +1999,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 337 The partition name is too long.
 
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+339 Invalid DEFAULT clause: a bare expression is only allowed for legacy default functions; wrap the expression in parentheses, e.g. DEFAULT (...).
 
 
 

@@ -189,6 +189,7 @@ extern "C"
 						   DB_DEFAULT_EXPR_TYPE expr_type);
   extern PT_NODE *pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr);
   extern PT_OP_TYPE pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type);
+  extern DB_DEFAULT_EXPR_TYPE pt_default_expr_type_from_op (PT_OP_TYPE op);
 
   extern int pt_associate_label_with_value_check_reference (const char *label, DB_VALUE * val);
   extern DB_VALUE *pt_find_value_of_label (const char *label);

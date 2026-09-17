@@ -10765,6 +10765,62 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
     }
 }
 
+/*
+ * pt_default_expr_type_from_op () - the inverse of pt_op_type_from_default_expr_type: the legacy DEFAULT
+ *	pseudo-column an operator denotes.  UUID maps to DB_DEFAULT_UUIDV4; its version argument decides
+ *	DB_DEFAULT_UUIDV7 at the caller.
+ *   return: a DB_DEFAULT_EXPR_TYPE, or DB_DEFAULT_NONE
+ *   op(in): the operator
+ */
+DB_DEFAULT_EXPR_TYPE
+pt_default_expr_type_from_op (PT_OP_TYPE op)
+{
+  switch (op)
+    {
+    case PT_SYS_TIME:
+      return DB_DEFAULT_SYSTIME;
+
+    case PT_SYS_DATE:
+      return DB_DEFAULT_SYSDATE;
+
+    case PT_SYS_DATETIME:
+      return DB_DEFAULT_SYSDATETIME;
+
+    case PT_SYS_TIMESTAMP:
+      return DB_DEFAULT_SYSTIMESTAMP;
+
+    case PT_UNIX_TIMESTAMP:
+      return DB_DEFAULT_UNIX_TIMESTAMP;
+
+    case PT_USER:
+      return DB_DEFAULT_USER;
+
+    case PT_CURRENT_USER:
+      return DB_DEFAULT_CURR_USER;
+
+    case PT_CURRENT_DATETIME:
+      return DB_DEFAULT_CURRENTDATETIME;
+
+    case PT_CURRENT_TIMESTAMP:
+      return DB_DEFAULT_CURRENTTIMESTAMP;
+
+    case PT_CURRENT_TIME:
+      return DB_DEFAULT_CURRENTTIME;
+
+    case PT_CURRENT_DATE:
+      return DB_DEFAULT_CURRENTDATE;
+
+    case PT_SYS_GUID:
+      return DB_DEFAULT_SYSGUID;
+
+    case PT_UUID:
+      return DB_DEFAULT_UUIDV4;
+
+    default:
+      return DB_DEFAULT_NONE;
+    }
+}
+
 PT_NODE *
 pt_make_expression_default_expr (PARSER_CONTEXT * parser, PT_NODE * node, DB_DEFAULT_EXPR_TYPE expr_type)
 {

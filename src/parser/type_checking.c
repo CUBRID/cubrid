@@ -1559,6 +1559,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_USER:
       num = 0;
 
+      /* session dependent: constant within a statement, not foldable at DDL time */
+      sig.volatility = PT_VOLATILITY_STABLE;
+
       /* one overload */
 
       /* no arguments, just a return type */
@@ -3702,6 +3705,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_UNARY_MINUS:
       num = 0;
 
+      /* pure function of its argument */
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+
       /* one overload */
 
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -3716,6 +3722,9 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_TO_CHAR:
       num = 0;
+
+      /* NLS/format-environment dependent: re-evaluated rather than folded at DDL time */
+      sig.volatility = PT_VOLATILITY_STABLE;
 
       /* four overloads */
 

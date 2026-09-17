@@ -13495,6 +13495,15 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
   return;
 }
 
+/*
+ * pt_make_data_default_expr_node () - the PT_DATA_DEFAULT node of a column DEFAULT
+ *   return: new node, or NULL on allocation failure
+ *   parser(in): parser context
+ *   expr(in): the DEFAULT value expression
+ *
+ * The legacy pseudo-column enum is not used: every expression, the legacy whitelist
+ * included, is classified by volatility and stored through the Stored DEFAULT Forms.
+ */
 extern PT_NODE *
 pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 {
@@ -13502,122 +13511,9 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 
   if (node)
     {
-      PT_NODE *def;
-
       node->info.data_default.default_value = expr;
       node->info.data_default.shared = PT_DEFAULT;
-
-      def = node->info.data_default.default_value;
-      if (def && def->node_type == PT_EXPR)
-	{
-	  if (def->info.expr.op == PT_TO_CHAR)
-	    {
-	      if (def->info.expr.arg3)
-		{
-		  bool has_user_lang = false;
-		  bool dummy;
-
-		  assert (def->info.expr.arg3->node_type == PT_VALUE);
-		  (void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy,
-						     &has_user_lang);
-		  if (has_user_lang)
-		    {
-		      PT_ERROR (parser, def->info.expr.arg3, "do not allow lang format in default to_char");
-		    }
-		}
-
-	      if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
-		{
-		  def = def->info.expr.arg1;
-		}
-	    }
-
-	  switch (def->info.expr.op)
-	    {
-	    case PT_SYS_TIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
-	      break;
-	    case PT_SYS_DATE:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
-	      break;
-	    case PT_SYS_DATETIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
-	      break;
-	    case PT_SYS_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-	      break;
-	    case PT_CURRENT_TIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
-	      break;
-	    case PT_CURRENT_DATE:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
-	      break;
-	    case PT_CURRENT_DATETIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-	      break;
-	    case PT_CURRENT_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-	      break;
-	    case PT_USER:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_USER;
-	      break;
-	    case PT_CURRENT_USER:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
-	      break;
-	    case PT_UNIX_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-	      break;
-	    case PT_SYS_GUID:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSGUID;
-	      break;
-	    case PT_UUID:
-	      {
-		PT_NODE *uuid_arg = def->info.expr.arg1;
-
-		if (uuid_arg == NULL)
-		  {
-		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
-		  }
-		else if (uuid_arg->node_type == PT_VALUE && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum))
-		  {
-		    if (pt_coerce_value (parser, uuid_arg, uuid_arg, PT_TYPE_INTEGER, NULL) == NO_ERROR)
-		      {
-			if (uuid_arg->info.value.data_value.i == 0 || uuid_arg->info.value.data_value.i == 4)
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
-			  }
-			else if (uuid_arg->info.value.data_value.i == 7)
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
-			  }
-			else
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
-			  }
-		      }
-		    else
-		      {
-			node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			PT_ERROR (parser, node, "UUID argument coercion error");
-		      }
-		  }
-		else
-		  {
-		    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-		    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
-		  }
-	      }
-	      break;
-	    default:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-	      break;
-	    }
-	}
-      else
-	{
-	  node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-	}
+      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
     }
 
   return node;

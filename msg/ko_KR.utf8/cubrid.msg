@@ -1997,6 +1997,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 337 파티션 이름이 너무 깁니다.
 
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
+339 유효하지 않은 DEFAULT 절: 괄호 없는 식은 레거시 기본값 함수에만 허용됩니다. 식을 괄호로 감싸십시오. 예: DEFAULT (...).
 
 
 
