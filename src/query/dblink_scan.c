@@ -1782,8 +1782,11 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
     {
       /* num_param == 0 still hands back a malloc(0) block, so free before leaving */
       cci_param_info_free (param_info);
+      /* "WHERE column", not "marker": the marker is the placeholder this file generates, so it is not in
+       * the statement the user wrote, while the column it stands for is. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE: the remote did not report the marker's type");
+	      "remote DELETE: the remote did not report the type of the WHERE column, "
+	      "so the comparison cannot be made safely");
       return ER_DBLINK;
     }
 
