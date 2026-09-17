@@ -2051,6 +2051,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
 	  ret = dblink_dml_delete_reprepare_with_cast (thread_p, state, sink->table_name, key_col, op, cast_type);
 	  if (ret != NO_ERROR)
 	    {
+	      state->conn_handle = -1;	/* nothing ran remotely; see Note above */
 	      return ret;
 	    }
 	}
