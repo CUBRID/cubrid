@@ -4058,40 +4058,15 @@ error_exit:
 static int
 ldr_monetary_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
-  const unsigned char *p = (const unsigned char *) str;
-  const unsigned char *token = (const unsigned char *) str;
-  char *str_ptr;
-  double amt;
   int err = NO_ERROR;
-  int symbol_size = 0;
-  DB_CURRENCY currency_type = DB_CURRENCY_NULL;
 
-  if (len >= 2
-      && intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
-				  (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
-    {
-      token += symbol_size;
-    }
-
-  if (currency_type == DB_CURRENCY_NULL)
-    {
-      currency_type = DB_CURRENCY_DOLLAR;
-    }
-
-  amt = strtod ((const char *) token, &str_ptr);
-
-  if (str == str_ptr || OR_CHECK_DOUBLE_OVERFLOW (amt))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_MONETARY));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_MONETARY, str);
-    }
-  else
-    {
-      db_make_monetary (val, currency_type, amt);
-    }
+  // same with to_db_monetary(), which reads no attribute - a %constructor
+  // argument slot has none (att and conv_att are both NULL on it)
+  CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (LDR_MONETARY) (str, len, NULL, val), context,
+		   DB_TYPE_MONETARY, str);
 
 error_exit:
-  return (err);
+  return err;
 }
 
 /*
