@@ -10834,8 +10834,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   /* Bound the count against the remaining request length before the unpack
    * loop -- each user needs at least a length prefix. */
-  if (num_extraction_user < 0
-      || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
+  if (num_extraction_user < 0 || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
 	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), num_extraction_user);
