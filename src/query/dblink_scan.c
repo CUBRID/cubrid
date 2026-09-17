@@ -1495,6 +1495,7 @@ sql_build_error:
  *   table_name(in) : remote table name
  *   key_col(in)    : remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)         : comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
+ *   using_index(in): the statement's USING INDEX clause as written, NULL when there is none
  *   sql_out(out)   : set to the built SQL text on success
  *
  * TODO: key_col is appended unquoted, matching the parser-side
@@ -1507,7 +1508,7 @@ sql_build_error:
  */
 static int
 dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *key_col, const char *op,
-			     char **sql_out)
+			     const char *using_index, char **sql_out)
 {
   int ret, remaining;
   char *sql;
@@ -1515,13 +1516,19 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 
   *sql_out = NULL;
 
+  /* the clause already carries its leading space, or is empty when the statement has no hint */
+  if (using_index == NULL)
+    {
+      using_index = "";
+    }
+
   if (key_col == NULL || key_col[0] == '\0' || op == NULL || op[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: key_col/op is NULL or empty");
       return ER_DBLINK;
     }
 
-  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + 64;
+  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + strlen (using_index) + 64;
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
     {
@@ -1530,7 +1537,8 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
     }
 
   remaining = (int) sql_len;
-  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ?", table_name, key_col, op);
+  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ?%s", table_name, key_col, op,
+		  using_index);
   if (ret < 0 || ret >= remaining)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: SQL assembly truncated");
@@ -1552,13 +1560,14 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
  *   set_text(in)   : SET clause built at XASL generation ("c1 = ?, c2 = c2 + 1")
  *   key_col(in)    : remote WHERE column, NULL when the statement updates every remote row
  *   op(in)         : comparison operator SQL text, NULL together with key_col
+ *   using_index(in): the statement's USING INDEX clause as written, NULL when there is none
  *   sql_out(out)   : set to the built SQL text on success
  *
  * The identifiers are appended unquoted, as the DELETE builder appends its key column; see the TODO there.
  */
 static int
 dblink_dml_build_update_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *set_text,
-			     const char *key_col, const char *op, char **sql_out)
+			     const char *key_col, const char *op, const char *using_index, char **sql_out)
 {
   int ret, remaining;
   char *sql;
@@ -1566,6 +1575,12 @@ dblink_dml_build_update_sql (THREAD_ENTRY * thread_p, const char *table_name, co
   bool has_where;
 
   *sql_out = NULL;
+
+  /* the clause already carries its leading space, or is empty when the statement has no hint */
+  if (using_index == NULL)
+    {
+      using_index = "";
+    }
 
   if (set_text == NULL || set_text[0] == '\0')
     {
@@ -1581,7 +1596,8 @@ dblink_dml_build_update_sql (THREAD_ENTRY * thread_p, const char *table_name, co
       return ER_DBLINK;
     }
 
-  sql_len = strlen (table_name) + strlen (set_text) + (has_where ? strlen (key_col) + strlen (op) : 0) + 64;
+  sql_len = (strlen (table_name) + strlen (set_text) + (has_where ? strlen (key_col) + strlen (op) : 0)
+	     + strlen (using_index) + 64);
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
     {
@@ -1592,12 +1608,12 @@ dblink_dml_build_update_sql (THREAD_ENTRY * thread_p, const char *table_name, co
   remaining = (int) sql_len;
   if (has_where)
     {
-      ret = snprintf (sql, remaining, "/* DBLINK UPDATE */ UPDATE %s SET %s WHERE %s %s ?", table_name, set_text,
-		      key_col, op);
+      ret = snprintf (sql, remaining, "/* DBLINK UPDATE */ UPDATE %s SET %s WHERE %s %s ?%s", table_name, set_text,
+		      key_col, op, using_index);
     }
   else
     {
-      ret = snprintf (sql, remaining, "/* DBLINK UPDATE */ UPDATE %s SET %s", table_name, set_text);
+      ret = snprintf (sql, remaining, "/* DBLINK UPDATE */ UPDATE %s SET %s%s", table_name, set_text, using_index);
     }
   if (ret < 0 || ret >= remaining)
     {
@@ -1706,11 +1722,12 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
       ret = dblink_dml_build_insert_sql (thread_p, sink->table_name, attr_names, num_attrs, num_bind, &sql);
       break;
     case DBLINK_DML_DELETE:
-      ret = dblink_dml_build_delete_sql (thread_p, sink->table_name, sink->remote_key_col, sink->remote_op, &sql);
+      ret = dblink_dml_build_delete_sql (thread_p, sink->table_name, sink->remote_key_col, sink->remote_op,
+					 sink->remote_using_index, &sql);
       break;
     case DBLINK_DML_UPDATE:
       ret = dblink_dml_build_update_sql (thread_p, sink->table_name, set_text, sink->remote_key_col, sink->remote_op,
-					 &sql);
+					 sink->remote_using_index, &sql);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");

@@ -4185,7 +4185,8 @@ xts_process_update_proc (char *ptr, const UPDATE_PROC_NODE * update_info)
 
 /*
  * xts_process_remote_dml_sink () - pack the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name + the remote WHERE key column and operator), shared by the INSERT SELECT,
+ *   url/user/pwd/table_name + the remote WHERE key column and operator + the USING INDEX clause), shared
+ *   by the INSERT SELECT,
  *   DELETE and UPDATE local-subquery procs.
  *   return: advanced ptr, or NULL on failure
  */
@@ -4232,6 +4233,13 @@ xts_process_remote_dml_sink (char *ptr, const REMOTE_DML_SINK * sink)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_string (sink->remote_op);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (sink->remote_using_index);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -6600,7 +6608,8 @@ xts_sizeof_update_proc (const UPDATE_PROC_NODE * update_info)
 
 /*
  * xts_sizeof_remote_dml_sink () - size of the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name + the remote WHERE key column and operator), shared by the INSERT SELECT,
+ *   url/user/pwd/table_name + the remote WHERE key column and operator + the USING INDEX clause), shared
+ *   by the INSERT SELECT,
  *   DELETE and UPDATE local-subquery procs.
  *   return:
  */
@@ -6613,7 +6622,8 @@ xts_sizeof_remote_dml_sink (void)
 	  + PTR_SIZE		/* pwd */
 	  + PTR_SIZE		/* table_name */
 	  + PTR_SIZE		/* remote_key_col */
-	  + PTR_SIZE);		/* remote_op */
+	  + PTR_SIZE		/* remote_op */
+	  + PTR_SIZE);		/* remote_using_index */
 }
 
 /*

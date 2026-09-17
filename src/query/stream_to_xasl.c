@@ -3858,7 +3858,8 @@ error:
 
 /*
  * stx_restore_remote_dml_sink () - restore the common DBLink remote push-sink fields (is_remote flag +
- *   url/user/pwd/table_name + the remote WHERE key column and operator), shared by the INSERT SELECT,
+ *   url/user/pwd/table_name + the remote WHERE key column and operator + the USING INDEX clause), shared
+ *   by the INSERT SELECT,
  *   DELETE and UPDATE local-subquery procs.
  *   return: advanced ptr
  */
@@ -3876,6 +3877,7 @@ stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK
   sink->table_name = stx_restore_string (thread_p, ptr);
   sink->remote_key_col = stx_restore_string (thread_p, ptr);
   sink->remote_op = stx_restore_string (thread_p, ptr);
+  sink->remote_using_index = stx_restore_string (thread_p, ptr);
 
   return ptr;
 }

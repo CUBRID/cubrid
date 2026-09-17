@@ -19500,6 +19500,7 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
  *   parser(in)      : parser context
  *   entity_name(in) : remote target's entity_name PT_NODE (PT_NAME with optional owner resolved)
  *   pdblink(in)     : remote connection info; url/user/pwd already validated non-NULL by the caller
+ *   using_index(in) : the statement's USING INDEX clause, NULL for INSERT SELECT and when absent
  *   sink(out)       : is_remote/url/user/pwd/table_name filled in
  *
  * Note: table_name is left NULL on allocation failure -- the caller detects this the same way it
@@ -19514,8 +19515,10 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
  */
 static void
 pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLINK_INFO * pdblink,
-			 REMOTE_DML_SINK * sink)
+			 PT_NODE * using_index, REMOTE_DML_SINK * sink)
 {
+  PARSER_VARCHAR *hint;
+
   sink->is_remote = true;
   sink->url = (char *) pdblink->url->info.value.data_value.str->bytes;
   sink->user = (char *) pdblink->user->info.value.data_value.str->bytes;
@@ -19528,6 +19531,12 @@ pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLI
       sink->table_name = pt_append_string (parser, sink->table_name, ".");
     }
   sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.original);
+
+  /* The hint names an index on the remote target -- the statement's target is remote, and this side has no
+   * schema to resolve it against -- so it is sent as written rather than translated. A vendor that does not
+   * accept the syntax fails the remote prepare, the same way the text-pushdown path already behaves. */
+  hint = pt_print_using_index_clause (parser, NULL, using_index);
+  sink->remote_using_index = (hint != NULL ? (char *) pt_get_varchar_bytes (hint) : NULL);
 
   /* remote_key_col / remote_op stay as the freshly allocated node left them, NULL: a statement that sends
    * no WHERE keeps them so, and the DELETE and UPDATE builders set them when theirs does. */
@@ -19676,7 +19685,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
   entity_name = into_spec->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &insert->sink);
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, NULL, &insert->sink);
   if (insert->sink.table_name == NULL || pt_has_error (parser))
     {
       return NULL;
@@ -19940,7 +19949,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
   entity_name = from->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &del->sink);
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, statement->info.delete_.using_index, &del->sink);
 
   del->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
   del->sink.remote_op = pt_append_string (parser, NULL, op_sql);
@@ -20143,7 +20152,7 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   upd->num_classes = 0;
 
   entity_name = from->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &upd->sink);
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, statement->info.update.using_index, &upd->sink);
   if (key_col != NULL)
     {
       upd->sink.remote_key_col = pt_append_string (parser, NULL, key_col);
