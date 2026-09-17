@@ -1297,8 +1297,9 @@ struct btree_capacity_scan_ctx;
 struct btree_capacity_worker_arg;
 static void btree_capacity_accum_to_cpc (const struct btree_capacity_accum *total, int root_free, BTREE_CAPACITY * cpc);
 static void btree_capacity_parallel_worker (cubthread::entry & thread_ref, struct btree_capacity_worker_arg *arg);
-static int btree_capacity_reduce (THREAD_ENTRY * thread_p, const struct btree_capacity_scan_ctx *ctx, int root_free,
-				  parallel_query::worker_manager * wm, int n_workers, BTREE_CAPACITY * cpc);
+static int btree_capacity_run_workers (THREAD_ENTRY * thread_p, const struct btree_capacity_scan_ctx *ctx,
+				       int root_free, parallel_query::worker_manager * wm, int n_workers,
+				       BTREE_CAPACITY * cpc);
 static int btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPACITY * cpc, bool * applied);
 #endif /* SERVER_MODE */
 static void btree_print_space (FILE * fp, int n);
@@ -9933,7 +9934,7 @@ exit_on_error:
 }
 
 #if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA / CS) */
-/* Parallel reducer for SHOW INDEX CAPACITY (entry point: btree_capacity_reduce).
+/* Parallel reducer for SHOW INDEX CAPACITY (entry point: btree_capacity_run_workers).
  * Workers claim root-child subtrees and fold per-worker partials, reduced in INT64 (deterministic,
  * worker-count independent). Serial's float sums lose precision above 2^24, so avg_rec_len /
  * avg_key_len may differ by 1 on large indexes (the INT64 result is the accurate one). */
@@ -10195,7 +10196,7 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
 }
 
 /*
- * btree_capacity_reduce () - parallel implementation behind btree_index_capacity.
+ * btree_capacity_run_workers () - parallel implementation behind btree_index_capacity.
  *   return: NO_ERROR, or ER_INTERRUPTED / ER_GENERIC_ERROR / ER_OUT_OF_VIRTUAL_MEMORY
  *   ctx(in): read-only scan inputs (index config + root children)
  *   root_free(in): root page free space; the root itself is folded in by the reduce
@@ -10207,8 +10208,8 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
  *       valid under concurrent SMO.
  */
 static int
-btree_capacity_reduce (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * ctx, int root_free,
-		       parallel_query::worker_manager * wm, int n_workers, BTREE_CAPACITY * cpc)
+btree_capacity_run_workers (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * ctx, int root_free,
+			    parallel_query::worker_manager * wm, int n_workers, BTREE_CAPACITY * cpc)
 {
 // *INDENT-OFF*
   std::atomic<bool> failed (false);
@@ -10280,7 +10281,7 @@ btree_capacity_reduce (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * 
        * message arguments never crossed threads and ER_FAILED is not a catalog id (er_set asserts
        * on it). The real errid survives only in the log line below. */
       errid = fail_errid.load ();
-      er_log_debug (ARG_FILE_LINE, "btree_capacity_reduce: worker error errid=%d; aborting parallel\n", errid);
+      er_log_debug (ARG_FILE_LINE, "btree_capacity_run_workers: worker error errid=%d; aborting parallel\n", errid);
       if (errid == ER_INTERRUPTED)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -10301,7 +10302,7 @@ btree_capacity_reduce (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * 
       /* a child was never claimed: no task could be allocated, or the pool retired tasks without
        * running them (server shutting down). The partials are incomplete, so do not report them. */
       er_log_debug (ARG_FILE_LINE,
-		    "btree_capacity_reduce: only %d of %d children claimed, %d tasks pushed\n",
+		    "btree_capacity_run_workers: only %d of %d children claimed, %d tasks pushed\n",
 		    next_child.load (), ctx->n_children, pushed);
       /* decide on what happened here, not on er_errid (), which may still hold an unrelated error
        * from an earlier row of SHOW ALL */
@@ -10513,7 +10514,7 @@ btree_index_capacity_parallel (THREAD_ENTRY * thread_p, BTID * btid, BTREE_CAPAC
   ctx.btid_int = &btid_int;
   ctx.children = children;
   ctx.n_children = key_cnt;
-  error_code = btree_capacity_reduce (thread_p, &ctx, root_free, wm, n_workers, cpc);
+  error_code = btree_capacity_run_workers (thread_p, &ctx, root_free, wm, n_workers, cpc);
   if (error_code == NO_ERROR)
     {
       *applied = true;
