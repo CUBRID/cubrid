@@ -1988,9 +1988,14 @@ jobs:
             # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
             cd "$TC_DIR"
             # The entrypoint drops its git credential on exit, so carry the token
-            # inline here. `-c` keeps it out of the on-disk config.
-            git -c "url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof=https://github.com/" \
-              fetch -q --depth 1 --no-tags origin "$tc_sha"
+            # here. Through the environment, not `-c`: the seed is a partial clone, so
+            # `reset` to a commit the tip does not carry sends git back to the promisor
+            # for the blobs, and that fetch is a child process `-c` never reaches. It
+            # stays out of the on-disk config either way.
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
+            export GIT_CONFIG_VALUE_0="https://github.com/"
+            git fetch -q --depth 1 --no-tags origin "$tc_sha"
             git reset -q --hard "$tc_sha"
             got=$(git rev-parse HEAD)
             [ "$got" = "$tc_sha" ] || {
