@@ -2383,6 +2383,14 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
       return;
     }
 
+  /* Clones are off (max_plan_cache_clones = 0), so this tree was unpacked for this execution
+   * alone and goes away now.  Its compiled expression programs (see expr_compile.h) are
+   * allocations of their own -- they do not sit in the unpack buffer -- and the execution's
+   * final clear only released their slot values, keeping the programs for a next execution
+   * that will never come on this tree.  Release them the way xcache_clone_decache () does for
+   * a clone, or every execution leaks one set. */
+  XASL_SET_FLAG (xclone->xasl, XASL_DECACHE_CLONE);
+  qexec_clear_xasl (thread_p, xclone->xasl, true, false);
   free_xasl_unpack_info (thread_p, xclone->xasl_buf);
   xclone->xasl = NULL;
 }
