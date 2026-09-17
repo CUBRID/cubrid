@@ -111,12 +111,14 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
  *   default, writing one _db_histogram catalog row per column and holding those X locks
  *   to commit.  Many sessions doing this on the same table cross-request S/X on that
  *   small set of rows and deadlock-storm.  This gate makes the collection one-at-a-time
- *   per class: it takes an X lock, held to end of transaction, on a resource private to
- *   statistics collection -- the class OID with a reserved slot bit set
- *   (OID_GET_UPDATE_STATS_GATE_OID).  Nothing else ever locks that OID, in particular not as
- *   the class_oid of a lock (which would receive intention locks), so it self-conflicts
- *   (X vs X) yet touches no resource the class's DML, reads, or catalog access lock: they
- *   are unaffected (mirrors PostgreSQL's ShareUpdateExclusiveLock on ANALYZE).
+ *   per class: it X-locks, held to end of transaction, the class's own _db_class catalog
+ *   row -- the very row the statement rewrites at the end (catcls_update_class_stats ()) --
+ *   so at most one session at a time collects statistics for the class.  It is not a new
+ *   resource, only that same row acquired earlier; and because _db_class is a catalog class,
+ *   reads of it take NULL_LOCK and the table's own DML / SELECT lock the class OID and its
+ *   instance rows -- not this catalog row -- so the gate serializes only other statistics
+ *   collectors and blocks neither reads nor DML on the table (mirrors PostgreSQL's
+ *   ShareUpdateExclusiveLock on ANALYZE).  See catcls_lock_class_stats_gate ().
  *
  *   Freshness is judged from the _db_class row's cache coherency number (chn), which every
  *   statistics write bumps (catcls_update_class_stats () stores old_chn + 1): a changed chn,
@@ -138,7 +140,6 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
 int
 xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_stats_fresh, int *out_stored_fullscan)
 {
-  OID gate_oid;
   char *class_name = NULL;
   int chn_before = 0, chn_after = 0, fullscan_before = 0, fullscan_after = 0;
   bool found_before = false, found_after = false, can_probe = true;
@@ -149,25 +150,23 @@ xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_
   *out_stats_fresh = false;
   *out_stored_fullscan = 0;
 
-  /* bookkeeping before we wait; a read failure only disables the piggyback shortcut */
+  /* the gate resource is keyed by class name (its _db_class row); failing to resolve it is fatal */
   if (heap_get_class_name (thread_p, class_id_p, &class_name) != NO_ERROR || class_name == NULL)
     {
-      er_clear ();
-      can_probe = false;
+      ASSERT_ERROR_AND_SET (error_code);
+      goto end;
     }
-  else if (catcls_get_class_stats (thread_p, class_name, &chn_before, &fullscan_before, &found_before) != NO_ERROR)
+
+  /* bookkeeping before we wait; a read failure only disables the piggyback shortcut */
+  if (catcls_get_class_stats (thread_p, class_name, &chn_before, &fullscan_before, &found_before) != NO_ERROR)
     {
       er_clear ();
       can_probe = false;
     }
 
-  /* a class's slot number is small, so the reserved gate-OID marker bit is free; the gate
-   * would over-serialize (never misbehave) if it were not, but assert the invariant */
-  assert ((class_id_p->slotid & UPDATE_STATS_GATE_OID_MASK) == 0);
-  OID_GET_UPDATE_STATS_GATE_OID (class_id_p, &gate_oid);
-  if (lock_object (thread_p, &gate_oid, oid_Root_class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+  error_code = catcls_lock_class_stats_gate (thread_p, class_name);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error_code);
       goto end;
     }
 

@@ -4561,6 +4561,48 @@ end:
   return error;
 }
 
+/*
+ * catcls_lock_class_stats_gate () - X-lock the class's own _db_class catalog row, held to commit
+ *   return: NO_ERROR, or an error code
+ *   class_name(in): class whose statistics are about to be (re)collected
+ *
+ * Note (CBRD-27369): the gate that serializes concurrent UPDATE STATISTICS on one class is an
+ *   X lock, held to end of transaction, on the very row this statement rewrites at the end
+ *   (catcls_update_class_stats () above bumps that row's chn).  Taking it up front makes the
+ *   collection one-at-a-time per class -- so the column histogram writes to _db_histogram no
+ *   longer cross-request S/X between sessions and deadlock-storm (the pre-CBRD-26202 behavior
+ *   plain UPDATE STATISTICS effectively had).  It is not a new resource: it is the same
+ *   _db_class row the statement locks anyway, only acquired earlier and held for the same span
+ *   (to commit).  Because _db_class is a catalog class, reads of it (query compile, ;info) take
+ *   NULL_LOCK, and the class's own DML / SELECT lock the class OID and its instance rows -- not
+ *   this catalog row -- so the gate serializes only other statistics collectors and blocks
+ *   neither reads nor DML on the table (mirrors PostgreSQL's ShareUpdateExclusiveLock on
+ *   ANALYZE).  This transaction's later catcls_update_class_stats () re-locks the same row X,
+ *   which is already held, so there is no self-conflict.
+ */
+int
+catcls_lock_class_stats_gate (THREAD_ENTRY * thread_p, const char *class_name)
+{
+  OID oid;
+  int error = NO_ERROR;
+
+  assert (class_name != NULL);
+
+  error = catcls_find_oid_by_class_name (thread_p, class_name, &oid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (lock_object (thread_p, &oid, &ct_Class.cc_classoid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
 int
 catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsigned int ci_time_stamp,
 			   bool with_fullscan)

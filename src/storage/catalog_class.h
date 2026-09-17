@@ -46,6 +46,7 @@ int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log
 int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 int catcls_get_class_stats (THREAD_ENTRY * thread_p, const char *class_name, int *out_chn, int *out_with_fullscan,
 			    bool * out_found);
+int catcls_lock_class_stats_gate (THREAD_ENTRY * thread_p, const char *class_name);
 int catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsigned int ci_time_stamp,
 			       bool with_fullscan);
 

@@ -165,6 +165,53 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
 
 
 /*
+ * get_histogram_for_write () - locate a column's _db_histogram entry for updating, taking an X
+ *   lock on the row directly (DB_FETCH_WRITE) instead of the S-then-X of db_get_histogram ().
+ *
+ * Note (CBRD-27369): store_one_histogram () read the row with db_get_histogram () (an S lock held
+ *   to commit) and then wrote it (X) -- concurrent collectors on the same table deadlocked on
+ *   that S -> X upgrade.  Fetching the row for write from the start makes two collectors contend
+ *   X vs X on it, which just serializes (no upgrade cycle).  The lookup itself is lock-free for
+ *   _db_histogram (xbtree_find_unique's catalog branch); only the fetched instance is X-locked.
+ */
+static int
+get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+{
+  int au_save;
+  DB_OBJECT *histogram_class;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  *histogram_obj = NULL;
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MISSING_OR_INVALID_CATALOG, 0);
+      return ER_BO_MISSING_OR_INVALID_CATALOG;
+    }
+
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* internal catalog write; bypass user authorization as db_get_histogram () does (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
+  *histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_WRITE);
+  AU_RESTORE (au_save);
+
+  db_value_clear (value_ptrs[0]);
+  db_value_clear (value_ptrs[1]);
+
+  if (*histogram_obj == NULL && er_errid () != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * store_one_histogram () - write one column's blob + exact null frequency into its
  *   _db_histogram catalog entry (the entry must already exist).
  */
@@ -178,7 +225,7 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
 
   db_make_null (&hv);
 
-  error = db_get_histogram (classop, attr_name, &histogram_obj);
+  error = get_histogram_for_write (classop, attr_name, &histogram_obj);
   if (error != NO_ERROR || histogram_obj == NULL)
     {
       return error;
