@@ -214,6 +214,10 @@ struct qo_plan
     struct
     {
       JOIN_TYPE join_type;	/* JOIN_INNER, _LEFT, _RIGHT, _OUTER */
+      PT_JOIN_TYPE semi_anti;	/* PT_JOIN_SEMI / PT_JOIN_ANTI when this JOIN_INNER keeps or drops an outer row
+				   by whether the inner has a match, else PT_JOIN_NONE.  Settled once in
+				   qo_join_new () from what the inner reads: the SEMI/ANTI node itself, or the
+				   copy that reads it with the duplicates removed, over which the join is ordinary */
       QO_JOINMETHOD join_method;	/* NL_JOIN, MERGE_JOIN */
       QO_PLAN *outer;
       QO_PLAN *inner;
@@ -434,9 +438,11 @@ struct qo_planner
 
 
   QO_INFO **node_info;
-  QO_INFO **distinct_info;	/* per node: the plans that read it once with the duplicates removed.  Kept
-				   apart from node_info because the two hold different numbers of rows, and
-				   only the SEMI JOIN examination is allowed to reach for the shorter one */
+  QO_INFO **distinct_info;	/* per node: the plans that read it once with the duplicates removed, set for a
+				   SEMI JOIN inner that may be joined the other way round.  Kept apart from
+				   node_info because the two hold different numbers of rows; the join order
+				   search takes it in place of node_info only where it puts the node ahead of
+				   the side it depends on (qo_distinct_info_ahead ()) */
   QO_INFO **join_info;
   QO_INFO **cp_info;
   QO_INFO *best_info;
@@ -478,6 +484,5 @@ extern PRED_CLASS qo_classify (PT_NODE * node);
 
 extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
 
-extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
 
 #endif /* _QUERY_PLANNER_H_ */

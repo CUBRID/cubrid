@@ -2422,7 +2422,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      else
 		{
 		  /* tag single-fetch NL inner so executor applies first-match (semi) / zero-match (anti) */
-		  PT_JOIN_TYPE sa_type = qo_plan_semi_anti_join_type (inner);
+		  PT_JOIN_TYPE sa_type = plan->plan_un.join.semi_anti;
 		  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
 		    {
 		      mark_access_as_semi_anti_join (scan, sa_type);

@@ -1063,6 +1063,7 @@ extern void qo_print_stats (FILE *);
 extern void qo_eqclass_fprint_wrt (QO_EQCLASS *, BITSET *, FILE *);
 extern void qo_termset_fprint (QO_ENV *, BITSET *, FILE *);
 extern int qo_seg_width (QO_SEGMENT * seg);
+extern bool qo_is_equi_join_term (QO_TERM * term);
 extern bool qo_is_prefix_index (QO_INDEX_ENTRY *);
 extern bool qo_is_filter_index (QO_INDEX_ENTRY *);
 extern void qo_check_coll_optimization (QO_INDEX_ENTRY * ent, COLL_OPT * collation_opt);

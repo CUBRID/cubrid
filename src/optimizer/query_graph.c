@@ -191,7 +191,6 @@ static PT_NODE *get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * nod
 static void get_rank (QO_ENV * env);
 static PT_NODE *get_referenced_attrs (PT_NODE * entity);
 static bool expr_is_mergable (PT_NODE * pt_expr);
-static bool qo_is_equi_join_term (QO_TERM * term);
 static void add_hint (QO_ENV * env, PT_NODE * tree);
 static void add_using_index (QO_ENV * env, PT_NODE * using_index);
 static int get_opcode_rank (PT_OP_TYPE opcode);
@@ -3047,7 +3046,7 @@ expr_is_mergable (PT_NODE * pt_expr)
  *   return: bool
  *   term(in):
  */
-static bool
+bool
 qo_is_equi_join_term (QO_TERM * term)
 {
   PT_NODE *pt_expr;
