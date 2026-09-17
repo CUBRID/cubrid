@@ -99,6 +99,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         // and to find the class for that reference
 
         String mainClassName = getMainClassName(className);
+
         assert (mainClassName.startsWith("Proc_")
                 || mainClassName.startsWith("Func_")
                 || mainClassName.startsWith("Pckg_"));
@@ -137,6 +138,10 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         // CatalogClassLoader::loadClass()
         //  and calling classLoader.loadClass() is waste of CPU clocks.
         return classLoader.findClass(className);
+    }
+
+    public Class<?> findClassInner(String mainClassName) throws ClassNotFoundException {
+        return findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
     }
 
     public void clear() {

@@ -156,6 +156,14 @@ public class Misc {
         }
     }
 
+    // Key of a direct call target: its generated Java class and the method in it. There is no
+    // overloading of routines (unique_name is the catalog's primary key), so the pair identifies
+    // the method. uniqueName is <owner>.<routine> or <owner>.<package>.<routine>.
+    public static String methodKey(String targetClass, String uniqueName) {
+        int dot = uniqueName.lastIndexOf('.');
+        return targetClass + "." + (dot < 0 ? uniqueName : uniqueName.substring(dot + 1));
+    }
+
     public static String getNormalizedText(String s) {
         return peelId(s.toUpperCase());
     }

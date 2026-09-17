@@ -1490,6 +1490,7 @@ exit:
     unpacker.unpack_all (unique_name);
 
     int auth_error = NO_ERROR;
+    std::string owner_name;
     int save;
 
     AU_SAVE_AND_DISABLE (save);
@@ -1512,10 +1513,31 @@ exit:
 	    auth_error = ER_FAILED;
 	  }
       }
+    else
+      {
+	// The caller switches the execution rights to this owner before the direct call. Reading it
+	// here spares a separate method call.
+	MOP owner = jsp_get_owner (routine_mop);
+	char *name = (owner == NULL) ? NULL : au_get_user_name (owner);
+	if (name == NULL)
+	  {
+	    auth_error = er_errid ();
+	    if (auth_error == NO_ERROR)
+	      {
+		auth_error = ER_FAILED;
+	      }
+	  }
+	else
+	  {
+	    owner_name.assign (name);
+	    ws_free_string (name);
+	  }
+      }
 
     AU_RESTORE (save);
 
-    return xs_pack_and_queue (auth_error);
+    // the owner name is empty unless the check passed
+    return xs_pack_and_queue (auth_error, owner_name);
   }
 
 //////////////////////////////////////////////////////////////////////////

@@ -32,8 +32,10 @@ package com.cubrid.plcsql.predefined.sp;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.classloader.CatalogClassLoaderRelay;
 import com.cubrid.jsp.code.ClassAccess;
 import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideStatement;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.jsp.value.NumericValue;
@@ -43,6 +45,8 @@ import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.MathContext;
 import java.math.RoundingMode;
@@ -65,14 +69,80 @@ import java.util.regex.PatternSyntaxException;
 
 public class SpLib {
 
+    public static Method reflectMethod(
+            Class<?> klass, String methodName, Class<?>... paramClasses) {
+
+        assert klass != null;
+
+        try {
+            return klass.getMethod(methodName, paramClasses);
+        } catch (NoSuchMethodException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR(
+                    "cannot find method " + methodName + " in the executable binary");
+        } catch (SecurityException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR("cannot use method " + methodName + " for a serurity reason");
+        }
+    }
+
+    public static Object invokeMethod(Method method, Object... arg) {
+
+        assert method != null;
+
+        try {
+            return method.invoke(null, arg);
+        } catch (IllegalAccessException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR(method.getName() + ": illegal access");
+        } catch (IllegalArgumentException e) {
+            Server.log(e);
+            throw new PROGRAM_ERROR(method.getName() + ": illegal argument");
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause == null) {
+                assert false; // unlikely
+                throw new PROGRAM_ERROR("error in invocation target " + method.getName());
+            } else {
+                if (cause instanceof Error) {
+                    throw (Error) cause;
+                } else if (cause instanceof RuntimeException) {
+                    throw (RuntimeException) cause;
+                } else {
+                    Server.log(cause);
+                    throw new PROGRAM_ERROR(
+                            "error in invocation target "
+                                    + method.getName()
+                                    + ": "
+                                    + cause.getMessage());
+                }
+            }
+        }
+    }
+
+    public static Class<?> findTargetClass(String mainClassName, String uniqName) {
+        Context context = ContextManager.getContextofCurrentThread();
+        CatalogClassLoaderRelay cclr = context.getCatalogClassLoaderRelay();
+        try {
+            return cclr.findClassInner(mainClassName);
+        } catch (ClassNotFoundException e) {
+            Server.log(e);
+            throw new SQL_ERROR(
+                    "cannot find executable binary of " + uniqName + " (was it dropped?)");
+        }
+    }
+
     // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
     // Called from generated code the first time each call site is reached (see authChecked). Throws
     // when the definer is no longer authorized to execute the target (e.g. the grant was revoked
     // after the caller was compiled).
-    public static void checkExecuteAuthorization(String uniqueName) {
-        if (ClassAccess.checkExecuteAuth(uniqueName) != 0) {
+    public static String checkExecuteAuthorization(String uniqueName) {
+        String[] ownerRef = new String[1];
+        if (ClassAccess.checkExecuteAuth(uniqueName, ownerRef) != 0) {
             throw new SQL_ERROR("no authorization to execute " + uniqueName);
         }
+        // the owner the caller has to switch the execution rights to before the direct call
+        return ownerRef[0];
     }
 
     // Execution rights around a direct call of an external PL/CSQL routine.
@@ -91,7 +161,7 @@ public class SpLib {
     //
     // The CAS keeps a stack of users, so these nest correctly with the switch the server already
     // performs for the routine being invoked.
-    public static void pushExecRights(String ownerName) {
+    public static void pushExecRight(String ownerName) {
         try {
             ClassAccess.pushExecRights(ownerName);
         } catch (Exception e) {
@@ -99,7 +169,7 @@ public class SpLib {
         }
     }
 
-    public static void popExecRights() {
+    public static void popExecRight() {
         try {
             ClassAccess.popExecRights();
         } catch (Exception e) {
@@ -297,7 +367,8 @@ public class SpLib {
         for (int i = stackTrace.length - 1; i >= 0; i--) {
             // scan bottom to top
             StackTraceElement e = stackTrace[i];
-            if (e.getFileName().equals(fileName)) {
+            String steFileName = e.getFileName();
+            if (steFileName != null && steFileName.equals(fileName)) {
                 exceptionJavaLine = e.getLineNumber(); // update it
             } else {
                 if (exceptionJavaLine > 0) {

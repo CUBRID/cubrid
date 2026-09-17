@@ -118,7 +118,9 @@ public class ClassAccess {
     }
 
     // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
-    public static int checkExecuteAuth(String uniqueName) {
+    // On success ownerRef[0] is set to the target's owner, which the caller switches the execution
+    // rights to before the call.
+    public static int checkExecuteAuth(String uniqueName, String[] ownerRef) {
         try {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
             // the executor's callback loop reads the request code from the payload
@@ -133,7 +135,12 @@ public class ClassAccess {
             ByteBuffer payload = unpacker.unpackBuffer();
             unpacker.setBuffer(payload);
 
-            return unpacker.unpackInt();
+            int authError = unpacker.unpackInt();
+            String ownerName = unpacker.unpackCString(); // empty unless the check passed
+            if (authError == 0 && ownerRef != null) {
+                ownerRef[0] = ownerName;
+            }
+            return authError;
         } catch (Exception e) {
             Server.log(e);
             return -1; // treat a transport failure as "not authorized"

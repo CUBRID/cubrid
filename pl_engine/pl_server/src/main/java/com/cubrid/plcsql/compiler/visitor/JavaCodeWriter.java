@@ -54,6 +54,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     public static final String JAVA_PKG_OF_GENERATED = "com.cubrid.plcsql.generated";
 
+    public final String unitOwner;
+
     private final InstanceStore iStore;
     private final Set<SqlUse> sqlUsesReachableFromLoop;
 
@@ -88,27 +90,46 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // slot in this unit's static boolean[] authChecked. A call site sets its slot once its runtime
     // EXECUTE check has passed, so the check is performed only once per activation.
     private final Map<String, Integer> authCheckedIndex;
+    private final Map<String, Integer> methodIndex;
 
     public JavaCodeWriter(
             InstanceStore iStore,
             Set<SqlUse> sqlUsesInRecursiveCalls,
-            Map<String, Integer> authCheckedIndex) {
+            Map<String, Integer> authCheckedIndex,
+            Map<String, Integer> methodIndex,
+            String unitOwner) {
         this.iStore = iStore;
         this.sqlUsesReachableFromLoop = sqlUsesInRecursiveCalls;
         this.authCheckedIndex = authCheckedIndex;
+        this.methodIndex = methodIndex;
+        this.unitOwner = unitOwner;
     }
 
-    // static boolean[] telling, per directly-referenced routine/package, whether its runtime
-    // EXECUTE
-    // check has already passed. A false element means 'not checked yet', not 'not authorized': a
-    // failed check throws. Empty when the unit has no direct calls (then no field is emitted).
+    // Per-invocation caches of what a direct call needs, in two slot spaces.
+    //
+    //   class slot (authCheckedIndex, one per directly-referenced class)
+    //     authChecked - has the runtime EXECUTE check already passed? A false element means 'not
+    //                   checked yet', not 'not authorized': a failed check throws.
+    //     ownerName   - the target's owner, to switch the execution rights to unless it is ours
+    //     targetClass - the class currently holding the target, as the relay resolves it
+    //
+    //   method slot (methodIndex, one per directly-referenced method)
+    //     method      - the reflected method in targetClass. A package class holds several
+    //                   routines, hence a slot space finer than the class one.
+    //
+    // Both are emitted only when the unit has direct calls, and both live for a single activation
+    // (see getAuthCheckedClear).
     private Object getAuthCheckedDecl() {
         int n = authCheckedIndex.size();
         if (n == 0) {
+            assert methodIndex.isEmpty();
             return "";
         }
         return new String[] {
-            "private static final boolean[] authChecked = new boolean[" + n + "];"
+            "private static final boolean[] authChecked = new boolean[" + n + "];",
+            "private static final String[] ownerName = new String[" + n + "];",
+            "private static final Class<?>[] targetClass = new Class[" + n + "];",
+            "private static final Method[] method = new Method[" + methodIndex.size() + "];",
         };
     }
 
@@ -120,7 +141,12 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         if (authCheckedIndex.isEmpty()) {
             return "";
         }
-        return new String[] {"java.util.Arrays.fill(authChecked, false);"};
+        return new String[] {
+            "java.util.Arrays.fill(authChecked, false);",
+            "java.util.Arrays.fill(ownerName, null);",
+            "java.util.Arrays.fill(targetClass, null);",
+            "java.util.Arrays.fill(method, null);",
+        };
     }
 
     // Statements guarding a direct call site: on first reach, perform the runtime EXECUTE check and
@@ -133,10 +159,30 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         assert slot != null;
         return new String[] {
             "if (!authChecked[" + slot + "]) {",
-            "  checkExecuteAuthorization(\"" + uniqueName + "\");",
+            "  String owner = checkExecuteAuthorization(\"" + uniqueName + "\");",
+            "  ownerName[" + slot + "] = owner.toUpperCase();",
+            "  targetClass["
+                    + slot
+                    + "] = findTargetClass(\""
+                    + targetClass
+                    + "\", \""
+                    + uniqueName
+                    + "\");",
             "  authChecked[" + slot + "] = true;",
             "}"
         };
+    }
+
+    private int getTargetClassSlot(String targetClass) {
+        Integer slot = authCheckedIndex.get(targetClass);
+        assert slot != null;
+        return slot;
+    }
+
+    private int getMethodSlot(String targetClass, String uniqueName) {
+        Integer slot = methodIndex.get(Misc.methodKey(targetClass, uniqueName));
+        assert slot != null;
+        return slot;
     }
 
     public List<String> codeLines = new ArrayList<>(); // no LinkedList : frequent access by indexes
@@ -148,9 +194,14 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         javaTypesUsed.add("com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode");
         javaTypesUsed.add("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
         javaTypesUsed.add("java.util.List");
-        if (unit.connectionRequired) {
-            javaTypesUsed.add("java.sql.*");
-        }
+
+        // Java code of ExprGlobalFuncCall and StmtGlobalProcCall may or may not use SQL execution
+        // on DB server.
+        // Currently, however, they are conservatively considered as SqlUses in ParseTreeConverter.
+        // TODO: refine the logic of judging ExprGlobalFuncCall and StmtGlobalProcCall to be SqlUses
+        // in ParseTreeConverter
+        // and add "java.sql.*" only when unit.connectionRequired is true.
+        javaTypesUsed.add("java.sql.*");
 
         CodeToResolve ctr = visit(unit);
         ctr.resolve(0, codeLines, codeRangeMarkers);
@@ -1024,7 +1075,22 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'RETURN-TYPE'% invoke(%'PARAMETERS'%) {",
                 "    %'+AUTH-CHECK'%",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
-                "    %'RETURN-TYPE'% ret = %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
+                // "    %'RETURN-TYPE'% ret = %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);", // this
+                // does not cope with recompilation of callee
+                "    %'RETURN-TYPE'% ret;",
+                "    if (method[%'METHOD-SLOT'%] == null) {",
+                "      method[%'METHOD-SLOT'%] = reflectMethod(targetClass[%'TARGET-CLASS-SLOT'%], \"%'METHOD-NAME'%\", %'PARAM-CLASSES'%);",
+                "    }",
+                "    if (\"%'CURRENT-OWNER'%\".equals(ownerName[%'TARGET-CLASS-SLOT'%])) {",
+                "      ret = (%'RETURN-TYPE'%) invokeMethod(method[%'METHOD-SLOT'%], %'ARGS'%);",
+                "    } else {",
+                "      pushExecRight(ownerName[%'TARGET-CLASS-SLOT'%]);",
+                "      try {",
+                "        ret = (%'RETURN-TYPE'%) invokeMethod(method[%'METHOD-SLOT'%], %'ARGS'%);",
+                "      } finally {",
+                "        popExecRight();",
+                "      }",
+                "    }",
                 "    %'+UPDATE-OUT-ARGS'%",
                 "    return ret;",
                 "  }",
@@ -1039,6 +1105,30 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return dot < 0 ? qualifiedName : qualifiedName.substring(dot + 1);
     }
 
+    private String getParamClasses(int paramSize, NodeList<DeclParam> paramList) {
+
+        assert paramSize > 0;
+
+        StringBuilder sb = new StringBuilder();
+
+        for (int i = 0; i < paramSize; i++) {
+
+            if (i > 0) {
+                sb.append(", ");
+            }
+
+            DeclParam p = paramList.nodes.get(i);
+
+            if (p instanceof DeclParamOut) {
+                sb.append(getJavaCodeOfType(p.typeSpec) + "[].class");
+            } else {
+                sb.append(getJavaCodeOfType(p.typeSpec) + ".class");
+            }
+        }
+
+        return sb.toString();
+    }
+
     @Override
     public CodeToResolve visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
 
@@ -1051,10 +1141,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             assert !node.targetClass.isEmpty();
 
+            javaTypesUsed.add("java.lang.reflect.Method");
+
             int paramSize = node.decl.paramList.nodes.size();
             String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
             LocalCallCodeSnippets code =
                     getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
+
+            int targetClassSlot = getTargetClassSlot(node.targetClass);
+            int methodSlot = getMethodSlot(node.targetClass, node.uniqueName);
 
             CodeTemplate tmpl =
                     new CodeTemplate(
@@ -1071,12 +1166,24 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                             simpleName(node.name),
                             "%'RETURN-TYPE'%",
                             getJavaCodeOfType(node.decl.retTypeSpec),
+                            "%'CURRENT-OWNER'%",
+                            unitOwner,
+                            "%'TARGET-CLASS-SLOT'%",
+                            Integer.toString(targetClassSlot),
+                            "%'METHOD-SLOT'%",
+                            Integer.toString(methodSlot),
                             "%'PARAMETERS'%",
                             wrapperParam,
+                            "%'PARAM-CLASSES'%",
+                            paramSize == 0
+                                    ? "(Class<?>[]) null"
+                                    : getParamClasses(paramSize, node.decl.paramList),
                             "%'+ALLOC-COERCED-OUT-ARGS'%",
                             code.allocCoercedOutArgs,
                             "%'ARGS'%",
-                            code.argsToLocal,
+                            paramSize == 0
+                                    ? "(Object[]) null"
+                                    : ("new Object[] {" + code.argsToLocal + "}"),
                             "%'+UPDATE-OUT-ARGS'%",
                             code.updateOutArgs,
                             "%'+ARGUMENTS'%",
@@ -2671,7 +2778,21 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  void invoke(%'PARAMETERS'%) {",
                 "    %'+AUTH-CHECK'%",
                 "    %'+ALLOC-COERCED-OUT-ARGS'%",
-                "    %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);",
+                // "    %'TARGET-CLASS'%.%'METHOD-NAME'%(%'ARGS'%);", // this does not cope with
+                // recompilation of callee
+                "    if (method[%'METHOD-SLOT'%] == null) {",
+                "      method[%'METHOD-SLOT'%] = reflectMethod(targetClass[%'TARGET-CLASS-SLOT'%], \"%'METHOD-NAME'%\", %'PARAM-CLASSES'%);",
+                "    }",
+                "    if (\"%'CURRENT-OWNER'%\".equals(ownerName[%'TARGET-CLASS-SLOT'%])) {",
+                "      invokeMethod(method[%'METHOD-SLOT'%], %'ARGS'%);",
+                "    } else {",
+                "      pushExecRight(ownerName[%'TARGET-CLASS-SLOT'%]);",
+                "      try {",
+                "        invokeMethod(method[%'METHOD-SLOT'%], %'ARGS'%);",
+                "      } finally {",
+                "        popExecRight();",
+                "      }",
+                "    }",
                 "    %'+UPDATE-OUT-ARGS'%",
                 "  }",
                 "}.invoke(",
@@ -2691,10 +2812,15 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
             assert !node.targetClass.isEmpty();
 
+            javaTypesUsed.add("java.lang.reflect.Method");
+
             int paramSize = node.decl.paramList.nodes.size();
             String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
             LocalCallCodeSnippets code =
                     getLocalCallCodeSnippets(paramSize, node.args, node.decl.paramList);
+
+            int targetClassSlot = getTargetClassSlot(node.targetClass);
+            int methodSlot = getMethodSlot(node.targetClass, node.uniqueName);
 
             return new CodeTemplate(
                     "StmtGlobalProcCall (direct)",
@@ -2708,12 +2834,24 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     node.targetClass,
                     "%'METHOD-NAME'%",
                     simpleName(node.name),
+                    "%'CURRENT-OWNER'%",
+                    unitOwner,
+                    "%'TARGET-CLASS-SLOT'%",
+                    Integer.toString(targetClassSlot),
+                    "%'METHOD-SLOT'%",
+                    Integer.toString(methodSlot),
                     "%'PARAMETERS'%",
                     wrapperParam,
+                    "%'PARAM-CLASSES'%",
+                    paramSize == 0
+                            ? "(Class<?>[]) null"
+                            : getParamClasses(paramSize, node.decl.paramList),
                     "%'+ALLOC-COERCED-OUT-ARGS'%",
                     code.allocCoercedOutArgs,
                     "%'ARGS'%",
-                    code.argsToLocal,
+                    paramSize == 0
+                            ? "(Object[]) null"
+                            : ("new Object[] {" + code.argsToLocal + "}"),
                     "%'+UPDATE-OUT-ARGS'%",
                     code.updateOutArgs,
                     "%'+ARGUMENTS'%",
@@ -3838,7 +3976,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     // hole
                     this.substitutions.put(hole, thing);
                 } else {
-                    throw new RuntimeException("unreachable");
+                    throw new RuntimeException(
+                            hole + ": replacement is neither String, String[], nor CodeToResolve");
                 }
             }
         }

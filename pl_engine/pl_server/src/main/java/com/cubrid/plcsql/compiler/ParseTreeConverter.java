@@ -75,12 +75,17 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public final SymbolStack symbolStack = new SymbolStack();
     public final Set<Dependency> dependencies = new HashSet<>();
     public NodeList<Decl> pkgSpecItems;
+    public final String unitOwner;
 
     public ParseTreeConverter(
-            InstanceStore iStore, String unitOwner, Set<String> referencedClasses) {
+            InstanceStore iStore,
+            String unitOwner,
+            Set<String> referencedClasses,
+            Set<String> referencedMethods) {
         this.iStore = iStore;
         this.unitOwner = Misc.getNormalizedText(unitOwner);
         this.referencedClasses = referencedClasses;
+        this.referencedMethods = referencedMethods;
         this.sqlSerialNo = 1;
     }
 
@@ -248,6 +253,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     // PL/CSQL SP call without using default arguments
                     assert !ps.targetClass.isEmpty();
                     referencedClasses.add(ps.targetClass);
+                    referencedMethods.add(Misc.methodKey(ps.targetClass, ps.uniqueName));
                 } else {
                     connectionRequired = true;
                 }
@@ -318,6 +324,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     // PL/CSQL SP call without using default arguments
                     assert !fs.targetClass.isEmpty();
                     referencedClasses.add(fs.targetClass);
+                    referencedMethods.add(Misc.methodKey(fs.targetClass, fs.uniqueName));
                 } else {
                     connectionRequired = true;
                 }
@@ -3150,6 +3157,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     //
 
     private final Set<String> referencedClasses;
+    // target class and method of each direct call, as "<class>.<method>". There is no
+    // overloading (unique_name is the catalog's primary key), so the pair identifies the method.
+    private final Set<String> referencedMethods;
 
     private int topLevelStmt;
 
@@ -3174,8 +3184,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
             new LinkedHashMap<>();
-
-    private final String unitOwner;
 
     private StmtLoop.LoopOptimizables loopOptimizables = null;
 
