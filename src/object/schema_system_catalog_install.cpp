@@ -806,7 +806,9 @@ namespace cubschema
       {TR_ATT_UPDATED_TIME, "datetime"}
     },
 // constraints
-    {},
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {TR_ATT_UNIQUE_NAME, nullptr}, false},
+    },
 // authorization
     {
       // owner, grants
