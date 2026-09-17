@@ -10113,8 +10113,17 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
   if (thread_ref.on_trace)
     {
       /* without a private stats buffer perfmon_add_at_offset falls back to a non-atomic += on the
-       * caller's shared pstat_Global.tran_stats[], which every worker would race on */
+       * caller's shared pstat_Global.tran_stats[], which every worker would race on. Note this only
+       * covers the traced case: perfmon gates that += on pstat_Global.is_watching[], which the
+       * statistics RPC can set without on_trace, and the workers still race there (as they do in
+       * heap_capacity_parallel_worker and px_scan_task). */
       perfmon_initialize_parallel_stats (&thread_ref);
+      if (thread_ref.m_uses_px_stats == false)
+	{
+	  /* clear the OOM it left behind so the page loop does not mistake it for its own error.
+	   * Isolation is lost: the workers then race on the shared counter, as they would with none. */
+	  er_clear ();
+	}
     }
 
   thread_ref.push_resource_tracks ();
@@ -10175,6 +10184,11 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
   pr_clear_value (&env.prev_key_val);
   thread_ref.pop_resource_tracks ();
   perfmon_destroy_parallel_stats (&thread_ref);
+  /* the pool recycles this entry without resetting on_trace or conn_entry, so a later unrelated
+   * task would otherwise see thread_is_on_trace () as true and a conn_entry that may already be
+   * freed (both are cleared the same way in px_hash_join_task_manager.hpp). */
+  thread_ref.on_trace = false;
+  thread_ref.conn_entry = NULL;
 }
 
 /*
