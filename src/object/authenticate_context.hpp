@@ -80,7 +80,7 @@ class EXPORT_IMPORT authenticate_context
     /*
      * Flag to disable authorization checking.  Only for well behaved
      * internal system functions.  Should not set this directly,
-     * use the AU_DISABLE, AU_ENABLE macros instead.
+     * use the AU_SAVE_AND_DISABLE, AU_RESTORE macros instead.
      * legacy name: Au_disable
      */
     bool disable_auth_check;
@@ -177,6 +177,9 @@ class EXPORT_IMPORT authenticate_context
     int set_password (MOP user, const char *password); // au_set_password_encrypt ()
     int set_password (MOP user, const char *password, int encode, char encrypt_prefix); // au_set_password_encrypt ()
 
+    int set_loginable (MOP user, bool loginable);
+    int is_loginable_user (MOP user);
+
     void disable_passwords (void); // au_disable_passwords ()
 
     // checks
@@ -206,8 +209,6 @@ class EXPORT_IMPORT authenticate_context
     int create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls);
 
     int set_system_users_as_created (void);
-    int disable_login (MOP user);
-    int is_loginable_user (MOP user);
 
     auto get_system_users (void) const
     {

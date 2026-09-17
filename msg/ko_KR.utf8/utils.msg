@@ -225,10 +225,12 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     restart\n\
     info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      -r [-b] [-t] [-s <sec>] [<expr>]\n\
     on          <브로커 이름>\n\
     off         <브로커 이름>\n\
     reset       <브로커 이름>\n\
     acl         <status|reload> [브로커 이름]\n\
+    qr          <status [브로커 이름]> | <add|reload|disable|enable> <브로커 이름> <user@dbname/file>\n\
     getid       -b <브로커 이름> [-f] shard-key\n\
     test        <브로커 이름> [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 cubrid 유틸리티, 버전 %1$s\n\
@@ -490,7 +492,13 @@ $set 12 MSGCAT_UTIL_SET_LOADDB
 121 무시된 테이블 %1$s.\n
 122 사용자 이름의 최대 길이는 %1$d 바이트 입니다.\n
 123 %1$s 은 빈 파일 입니다.\n
-124 \
+124 모든 객체 타입에 대해 사용자 지정 이름을 무시하고 객체를 적재합니다\n\
+(--no-user-specified-name: 적용, unload 버전 < 11.2).\n
+125 특정 객체 타입에 대해 사용자 지정 이름을 무시하고 객체를 적재합니다\n\
+(--no-user-specified-name: 적용, unload 버전 >= 11.2 이고 < 11.4).\n
+126 모든 객체 타입에 대해 사용자 지정 이름을 사용하여 객체를 적재합니다\n\
+(--no-user-specified-name: 미적용, unload 버전 >= 11.4).\n
+127 \
 loaddb: 데이터베이스에 객체 및 스키마 적재\n\
 사용법: %1$s loaddb [옵션] 데이터베이스 이름[@호스트]\n\
 \n\

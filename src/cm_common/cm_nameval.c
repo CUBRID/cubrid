@@ -339,9 +339,9 @@ nv_writeto (nvplist * ref, char *filename)
 	  fprintf (nvfile, "%s", dst_buffer (ref->nvpairs[i]->value));
 	}
 
-      fprintf (nvfile, ref->listcloser->dbuf);
+      fprintf (nvfile, "%s", ref->listcloser->dbuf);
     }
-  fprintf (nvfile, ref->endmarker->dbuf);
+  fprintf (nvfile, "%s", ref->endmarker->dbuf);
   fflush (nvfile);
   fclose (nvfile);
   return 1;

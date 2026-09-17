@@ -85,6 +85,7 @@ class mvcctable
     bool is_active (MVCCID mvccid) const;
 
     void reset_start_mvccid ();     // not thread safe
+    void rv_reactivate_mvccid (MVCCID mvccid);      // not thread safe; restart only
 
     MVCCID get_global_oldest_visible () const;
     MVCCID update_global_oldest_visible ();

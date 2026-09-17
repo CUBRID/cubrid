@@ -549,7 +549,7 @@ main (int argc, char *argv[])
     }
   db_commit_transaction ();
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (file_update_used_pages_of_vol_header (NULL) == DISK_ERROR)
     {

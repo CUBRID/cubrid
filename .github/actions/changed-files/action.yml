@@ -1,0 +1,22 @@
+# Replaces the unmaintained github.com/jitterbit/get-changed-files action.
+name: 'Get changed files'
+description: 'List added/modified files in the pull request via the GitHub compare API'
+outputs:
+  added_modified:
+    description: 'Space-separated list of added/modified file paths'
+    value: ${{ steps.diff.outputs.added_modified }}
+runs:
+  using: 'composite'
+  steps:
+    - id: diff
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        base='${{ github.event.pull_request.base.sha }}'
+        head='${{ github.event.pull_request.head.sha }}'
+        # gh prints the error body to stdout on failure; guard so it can't become the file list.
+        files=$(gh api "repos/${{ github.repository }}/compare/${base}...${head}" \
+          --jq '[.files[] | select(.status == "added" or .status == "modified") | .filename] | join(" ")') || files=""
+        echo "changed files: $files"
+        echo "added_modified=$files" >> "$GITHUB_OUTPUT"

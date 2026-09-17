@@ -363,6 +363,7 @@ exit_on_error:
  * ovf_vpid (in)  : VPID of first page in multi-page data
  * recdes (in)    : New multi-page data
  * file_type (in) : Overflow file type
+ * change_link_lsa (out) : LSA of the overflow link-change log record
  *
  * Note: The function may allocate or deallocate several overflow pages if the multipage data increase/decrease in
  *       length.
@@ -372,7 +373,7 @@ exit_on_error:
  */
 int
 overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid, RECDES * recdes,
-		 FILE_TYPE file_type)
+		 FILE_TYPE file_type, LOG_LSA * change_link_lsa)
 {
   OVERFLOW_FIRST_PART *first_part = NULL;
   OVERFLOW_REST_PART *rest_parts = NULL;
@@ -391,6 +392,11 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
   int error_code = NO_ERROR;
 
   assert (ovf_vfid != NULL && !VFID_ISNULL (ovf_vfid));
+
+  if (change_link_lsa != NULL)
+    {
+      LSA_SET_NULL (change_link_lsa);
+    }
 
   /* used only for heap for now... I left this here just in case other file types start using this.
    * If you hit this assert, check the code is alright for your usage (e.g. this doesn't consider temporary files).
@@ -547,6 +553,12 @@ overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ov
 
 	  log_append_undoredo_data (thread_p, RVOVF_CHANGE_LINK, &addr, sizeof (next_vpid), sizeof (next_vpid),
 				    &next_vpid, &tmp_vpid);
+
+	  if (change_link_lsa != NULL)
+	    {
+	      /* Save the CDC reconstruction anchor before file_dealloc() appends unrelated postpone log records. */
+	      LSA_COPY (change_link_lsa, logtb_find_current_tran_lsa (thread_p));
+	    }
 
 	  if (rest_parts == NULL)
 	    {

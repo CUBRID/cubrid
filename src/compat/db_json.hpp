@@ -112,6 +112,7 @@ int db_json_search_func (const JSON_DOC &doc, const DB_VALUE *pattern, const DB_
 			 std::vector<JSON_PATH> &paths, const std::vector<std::string> &patterns, bool find_all);
 int db_json_merge_patch_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_merge_preserve_func (const JSON_DOC *source, JSON_DOC *&dest);
+int db_json_object_merge_ignore_duplicates_func (const JSON_DOC *source, JSON_DOC *&dest);
 int db_json_get_all_paths_func (const JSON_DOC &doc, JSON_DOC *&result_json);
 void db_json_pretty_func (const JSON_DOC &doc, char *&result_str);
 std::string db_json_json_string_as_utf8 (std::string raw_json_string);

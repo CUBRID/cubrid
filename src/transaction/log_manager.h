@@ -63,7 +63,7 @@ extern bool log_is_in_crash_recovery (void);
 extern bool log_is_in_crash_recovery_and_not_yet_completes_redo (void);
 extern LOG_LSA *log_get_restart_lsa (void);
 extern LOG_LSA *log_get_crash_point_lsa (void);
-extern LOG_LSA *log_get_append_lsa (void);
+extern LOG_LSA log_get_append_lsa (void);
 extern LOG_LSA *log_get_eof_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
@@ -131,6 +131,7 @@ extern void log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * a
 extern void log_skip_logging (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr);
 extern LOG_LSA *log_append_savepoint (THREAD_ENTRY * thread_p, const char *savept_name);
 extern bool log_check_system_op_is_started (THREAD_ENTRY * thread_p);
+extern int log_get_system_op_level (THREAD_ENTRY * thread_p);
 extern LOG_LSA *log_get_parent_lsa_system_op (THREAD_ENTRY * thread_p, LOG_LSA * parent_lsa);
 extern bool log_is_tran_in_system_op (THREAD_ENTRY * thread_p);
 extern int log_add_to_modified_class_list (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
@@ -159,6 +160,8 @@ extern int log_rv_copy_char (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void log_rv_dump_char (FILE * fp, int length, void *data);
 extern void log_rv_dump_hexa (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_no_logging_index_durable_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_no_logging_index_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages);
 #endif
@@ -196,6 +199,9 @@ extern SCAN_CODE log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int 
 extern int log_archive_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr);
 extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa,
 				      RECDES * recdes);
+/* read an undo image out of the in-flight window instead of draining to a log page first */
+extern bool log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, RECDES * recdes,
+					       SCAN_CODE * scan_out);
 
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
 extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);
@@ -233,6 +239,7 @@ extern void cdc_daemons_destroy ();
 #endif
 
 extern LOG_PAGEID cdc_min_log_pageid_to_keep ();
+extern int cdc_find_lsa_in_progress ();
 
 /* cdc functions */
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
@@ -242,7 +249,8 @@ extern int cdc_get_logitem_info (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, i
 extern int cdc_initialize ();
 extern int cdc_finalize ();
 extern int cdc_free_extraction_filter ();
-extern int cdc_cleanup ();
+extern int cdc_cleanup (THREAD_ENTRY * thread_p);
+extern void cdc_update_arv_num_to_keep (THREAD_ENTRY * thread_p, const LOG_LSA * bundle_start_lsa);
 extern void cdc_cleanup_consumer ();
 extern int cdc_make_loginfo (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa);
 extern int cdc_get_loginfo_metadata (LOG_LSA * lsa, int *length, int *num_log_info);

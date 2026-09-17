@@ -202,6 +202,12 @@ typedef enum
   PGBUF_CONDITIONAL_LATCH
 } PGBUF_LATCH_CONDITION;
 
+/* A page fix can be refused without anything being wrong - another worker holds the latch, or the latch
+ * watchdog cut the wait short. A caller that cannot retry has to return such an error rather than treat it
+ * as a broken invariant. The set is the one pgbuf_fix_with_retry () already retries on. */
+#define PGBUF_IS_LATCH_REFUSED_ERROR(err) \
+  ((err) == ER_LK_PAGE_TIMEOUT || (err) == ER_PAGE_LATCH_TIMEDOUT || (err) == ER_LK_UNILATERALLY_ABORTED)
+
 typedef enum
 {
   PGBUF_PROMOTE_ONLY_READER,
@@ -248,6 +254,8 @@ struct pgbuf_watcher
 #endif
 };
 
+typedef int (*PGBUF_ORDERED_CALLBACK_FUNC) (THREAD_ENTRY * thread_p, void *args);
+
 // *INDENT-OFF*
 using pgbuf_aligned_buffer = cubmem::stack_block<(size_t) IO_MAX_PAGE_SIZE>;
 using pgbuf_resizable_buffer = cubmem::extensible_stack_block<(size_t) IO_MAX_PAGE_SIZE>;
@@ -284,6 +292,12 @@ extern PAGE_PTR pgbuf_fix_debug (THREAD_ENTRY * thread_p, const VPID * vpid, PAG
 extern int pgbuf_ordered_fix_debug (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
 				    const PGBUF_LATCH_MODE requestmode, PGBUF_WATCHER * req_watcher,
 				    const char *caller_file, int caller_line, const char *caller_func);
+
+#define pgbuf_ordered_callback(thread_p, callback_func, callback_args) \
+        pgbuf_ordered_callback_debug(thread_p, callback_func, callback_args, ARG_FILE_LINE_FUNC)
+extern int pgbuf_ordered_callback_debug (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_FUNC callback_func,
+					 void *callback_args, const char *caller_file, int caller_line,
+					 const char *caller_func);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
 	pgbuf_promote_read_latch_debug(thread_p, pgptr_p, condition, ARG_FILE_LINE_FUNC)
@@ -328,6 +342,11 @@ extern PAGE_PTR pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, P
 
 extern int pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_FETCH_MODE fetch_mode,
 				      const PGBUF_LATCH_MODE requestmode, PGBUF_WATCHER * watcher_object);
+
+#define pgbuf_ordered_callback(thread_p, callback_func, callback_args) \
+        pgbuf_ordered_callback_release(thread_p, callback_func, callback_args)
+extern int pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_FUNC callback_func,
+					   void *callback_args);
 
 #define pgbuf_promote_read_latch(thread_p, pgptr_p, condition) \
   pgbuf_promote_read_latch_release(thread_p, pgptr_p, condition)
@@ -397,6 +416,7 @@ extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
 extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);
 extern void pgbuf_force_to_check_for_interrupts (void);
 extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);
+extern bool pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force);
 extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
 extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);
@@ -487,6 +507,7 @@ extern bool pgbuf_assign_flushed_pages (THREAD_ENTRY * thread_p);
 #endif /* !SERVER_MODE */
 
 extern void pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page);
+extern void pgbuf_mark_page_for_lru_bottom (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern bool pgbuf_is_io_stressful (void);
 
 #if defined (SERVER_MODE)
@@ -495,5 +516,14 @@ extern void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */
 
 extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
+
+/* Pgbuf opaque copy-buffer API for cached heap scans (CBRD-27041). The struct is private
+ * to page_buffer.c; callers only ever see the opaque handle below. */
+typedef struct pgbuf_copy_buffer *PGBUF_COPY_BUFFER_HANDLE;
+
+extern PGBUF_COPY_BUFFER_HANDLE pgbuf_copy_buffer_alloc (void);
+extern void pgbuf_copy_buffer_free (PGBUF_COPY_BUFFER_HANDLE handle);
+extern void pgbuf_copy_page_for_scan (PAGE_PTR src_pgptr, PGBUF_COPY_BUFFER_HANDLE handle);
+extern PAGE_PTR pgbuf_copy_buffer_get_page_ptr (PGBUF_COPY_BUFFER_HANDLE handle);
 
 #endif /* _PAGE_BUFFER_H_ */

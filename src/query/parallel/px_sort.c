@@ -70,6 +70,7 @@ sort_copy_sort_info (THREAD_ENTRY * thread_p, SORT_INFO ** dest_sort_info, SORT_
 
   sort_info->output_file = NULL;
   sort_info->input_file = NULL;
+  sort_info->px_state = NULL;
 
 end:
   if (error != NO_ERROR)
@@ -86,6 +87,7 @@ end:
 	      db_private_free_and_init (thread_p, sort_info->s_id);
 	    }
 	  db_private_free_and_init (thread_p, sort_info);
+	  *dest_sort_info = NULL;
 	}
     }
 

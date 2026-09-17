@@ -53,7 +53,7 @@ struct overflow_rest_part
 extern int overflow_insert (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, VPID * ovf_vpid, RECDES * recdes,
 			    FILE_TYPE file_type);
 extern int overflow_update (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid, RECDES * recdes,
-			    FILE_TYPE file_type);
+			    FILE_TYPE file_type, LOG_LSA * change_link_lsa);
 extern const VPID *overflow_delete (THREAD_ENTRY * thread_p, const VFID * ovf_vfid, const VPID * ovf_vpid);
 extern void overflow_flush (THREAD_ENTRY * thread_p, const VPID * ovf_vpid);
 extern int overflow_get_length (THREAD_ENTRY * thread_p, const VPID * ovf_vpid);

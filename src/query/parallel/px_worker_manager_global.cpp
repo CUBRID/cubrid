@@ -67,8 +67,6 @@ namespace parallel_query
       assert (m_worker_pool == nullptr);
 
       m_worker_pool = thread_create_worker_pool (pool_size, 1, "parallel-query", thread_get_entry_manager ());
-      // m_log = false
-
       if (m_worker_pool == nullptr)
 	{
 	  return;

@@ -690,6 +690,7 @@ mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
 mvcc_info::mvcc_info ()
   : snapshot ()
   , id (MVCCID_NULL)
+  , self_locked_mvccid (MVCCID_NULL)
   , recent_snapshot_lowest_active_mvccid (MVCCID_NULL)
   , sub_ids ()
 {
@@ -706,6 +707,7 @@ mvcc_info::reset ()
 {
   snapshot.reset ();
   id = MVCCID_NULL;
+  self_locked_mvccid = MVCCID_NULL;
   recent_snapshot_lowest_active_mvccid = MVCCID_NULL;
   sub_ids.clear ();
 }
@@ -715,6 +717,7 @@ mvcc_info::copy_to (mvcc_info & dest) const
 {
   this->snapshot.copy_to (dest.snapshot);
   dest.id = this->id;
+  dest.self_locked_mvccid = MVCCID_NULL;	/* dest re-verifies by acquiring; never inherit the self-lock hint */
   dest.recent_snapshot_lowest_active_mvccid = this->recent_snapshot_lowest_active_mvccid;
   dest.sub_ids = this->sub_ids;
   dest.is_sub_active = this->is_sub_active;

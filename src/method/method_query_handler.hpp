@@ -110,6 +110,12 @@ namespace cubmethod
 
       const query_result &get_result ();
 
+      /* Relinquish ownership of the current query result's DB_QUERY_RESULT.
+       * Called when the result has been handed off to an out-resultset server handle
+       * (ux_make_out_rs), which becomes the sole owner responsible for freeing it.
+       * Prevents a double free / dangling free by this handler's deferred end_qresult (). */
+      void detach_result_for_out_rs ();
+
       prepare_info &get_prepare_info ();
       execute_info &get_execute_info ();
 
@@ -142,7 +148,7 @@ namespace cubmethod
 
       /* column info */
       column_info set_column_info (int dbType, int setType, short scale, int prec, char charset, const char *col_name,
-				   const char *attr_name,
+				   const char *written_col_name, const char *attr_name,
 				   const char *class_name, char is_non_null);
 
       /* session */

@@ -496,7 +496,6 @@ typedef enum
   HEAP_PAGE_INFO_CONT_FREE,
   HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA,
   HEAP_PAGE_INFO_IS_SAVING,
-  HEAP_PAGE_INFO_UPDATE_BEST,
 
   /* leave this last */
   HEAP_PAGE_INFO_COUNT,
@@ -839,6 +838,8 @@ typedef enum
   T_TO_BASE64,
   T_FROM_BASE64,
   T_SYS_GUID,
+  T_UUID,
+  T_UUID_FORMAT,
   T_SLEEP,
   T_DBTIMEZONE,
   T_SESSIONTIMEZONE,
@@ -965,6 +966,15 @@ typedef enum
 
   SHOWSTMT_END
 } SHOWSTMT_TYPE;
+
+/* Scan mode of the show statements which acquire a class lock (SHOW HEAP HEADER/CAPACITY for now).
+ * It is passed as the last show argument; a request which does not carry it at all gets the
+ * default, EXACT. */
+typedef enum
+{
+  SHOWSTMT_SCAN_EXACT = 0,	/* S_LOCK: statistics consistent with the committed DML */
+  SHOWSTMT_SCAN_APPROX		/* IS_LOCK: concurrent with DML, but approximate */
+} SHOWSTMT_SCAN_MODE;
 
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4

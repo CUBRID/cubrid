@@ -58,6 +58,7 @@ namespace parallel_query
 
     UINT32 page_threshold;
     UINT32 auto_degree;
+    UINT32 degree;
     const UINT32 start_degree = 2;
 
     if (system_core_count <= start_degree)
@@ -167,6 +168,9 @@ namespace parallel_query
 #endif
     // *INDENT-ON*
 
-    return MIN (auto_degree, (UINT32) parallelism);
+    degree = MIN (auto_degree, (UINT32) parallelism);
+
+    /* SCAN/HASH_JOIN/SORT use 0 for serial execution and require at least 2 for real parallelism. */
+    return (degree < start_degree) ? 0 : degree;
   }
 }				/* namespace parallel_query */

@@ -316,6 +316,14 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_MAXED, "Num_prior_lsa_list_maxed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_REMOVED, "Num_prior_lsa_list_removed"),
 
+  /* prior list, charged to whoever paid for it */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PRIOR_DRAIN_FLUSH, "prior_drain_flush"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_PRIOR_DRAIN_READER_GUARD, "prior_drain_reader_guard"),
+
+  /* in-flight window: whether a reader found the version it wanted still staged */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_INFLIGHT_WINDOW_HIT, "Num_prior_inflight_window_hit"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_INFLIGHT_WINDOW_MISS, "Num_prior_inflight_window_miss"),
+
   /* HA replication delay */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
 
@@ -378,17 +386,6 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_PREPARE, "heap_vacuum_prepare"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_EXECUTE, "heap_vacuum_execute"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_VACUUM_LOG, "heap_vacuum_log"),
-
-  /* Execution statistics for the heap manager */
-  /* best space info */
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HEAP_STATS_SYNC_BESTSPACE, "heap_stats_sync_bestspace"),
-  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HF_NUM_STATS_ENTRIES, "Num_heap_stats_bestspace_entries"),
-  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_HF_NUM_STATS_MAXED, "Num_heap_stats_bestspace_maxed"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_BEST_SPACE_ADD, "bestspace_add"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_BEST_SPACE_DEL, "bestspace_del"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_BEST_SPACE_FIND, "bestspace_find"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_HEAP_FIND_PAGE_BEST_SPACE, "heap_find_page_bestspace"),
-  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_HEAP_FIND_BEST_PAGE, "heap_find_best_page"),
 
   /* B-tree detailed statistics. */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_FIX_OVF_OIDS, "bt_fix_ovf_oids"),
@@ -567,6 +564,14 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_LFCQ_SHR_NUM, "Num_lfcq_shared_lists"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
+
+  /* transaction slots and workers */
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_CONCURRENCY_TOTAL, "Num_request_concurrency_total"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_CONCURRENCY_TARGET, "Num_request_concurrency_target"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_CONCURRENCY_BUSY, "Num_request_concurrency_busy"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_WORKER_TOTAL, "Num_request_worker_total"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_WORKER_TARGET, "Num_request_worker_target"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_WORKER_BUSY, "Num_request_worker_busy"),
 
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_ASYNC, "Log_redo_async"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
@@ -2262,8 +2267,6 @@ perfmon_stat_lock_mode_name (const int lock_mode)
       return "IX_LOCK";
     case SIX_LOCK:
       return "SIX_LOCK";
-    case U_LOCK:
-      return "U_LOCK";
     case X_LOCK:
       return "X_LOCK";
     case SCH_M_LOCK:
@@ -4053,9 +4056,16 @@ perfmon_get_peek_stats (UINT64 * stats)
   /* fixme(rem) - will be fixed in stattool patch */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   stats[pstat_Metadata[PSTAT_PC_NUM_CACHE_ENTRIES].start_offset] = xcache_get_entry_count ();
-  stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#if defined (SERVER_MODE)
+  css_get_thread_runtime_stats (&(stats[pstat_Metadata[PSTAT_REQUEST_CONCURRENCY_TOTAL].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_CONCURRENCY_TARGET].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_CONCURRENCY_BUSY].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_WORKER_TOTAL].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_WORKER_TARGET].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_WORKER_BUSY].start_offset]));
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -4170,19 +4180,19 @@ static size_t
 thread_stats_count (void)
 {
 #if defined (SERVER_MODE)
-  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::stats_worker_pool_type::stats::get_count ());
+  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == worker_pool_type<cubthread::stats_t::on>::stats::get_count ());
   static bool check_names = true;
   if (check_names)
     {
       for (size_t index = 0; index < PERFMON_PORTABLE_WORKER_STAT_COUNT; index++)
         {
-          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::stats_worker_pool_type::stats::get_name (index)) != 0)
+          if (std::strcmp (perfmon_Portable_worker_stat_names[index], worker_pool_type<cubthread::stats_t::on>::stats::get_name (index)) != 0)
             {
               assert (false);
               _er_log_debug (ARG_FILE_LINE,
                              "Warning - Monitoring thread worker statistics; statistics name not matching for %zu\n"
                              "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
-                             perfmon_Portable_worker_stat_names[index], cubthread::stats_worker_pool_type::stats::get_name (index));
+                             perfmon_Portable_worker_stat_names[index], worker_pool_type<cubthread::stats_t::on>::stats::get_name (index));
             }
         }
       check_names = false;

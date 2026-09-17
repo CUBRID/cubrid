@@ -54,7 +54,9 @@ static KEYWORD_RECORD keywords[] = {
   {ALTER, "ALTER", 0},
   {ANALYZE, "ANALYZE", 1},
   {AND, "AND", 0},
+  {ANTI, "ANTI", 0},
   {ANY, "ANY", 0},
+  {APPROX, "APPROX", 1},
   {ARCHIVE, "ARCHIVE", 1},
   {ARE, "ARE", 0},
   {ARIA, "ARIA", 1},
@@ -195,6 +197,7 @@ static KEYWORD_RECORD keywords[] = {
   {ERROR_, "ERROR", 1},
   {ESCAPE, "ESCAPE", 0},
   {EVALUATE, "EVALUATE", 0},
+  {EXACT, "EXACT", 1},
   {EXCEPT, "EXCEPT", 0},
   {EXCEPTION, "EXCEPTION", 0},
   {EXEC, "EXEC", 0},
@@ -332,6 +335,7 @@ static KEYWORD_RECORD keywords[] = {
   {LOCALTIMESTAMP, "LOCALTIMESTAMP", 0},
   {LOCK_, "LOCK", 1},
   {LOG, "LOG", 1},
+  {LOGIN, "LOGIN", 1},
   {LOOP, "LOOP", 0},
   {LOWER, "LOWER", 0},
   {MATCH, "MATCH", 0},
@@ -366,6 +370,7 @@ static KEYWORD_RECORD keywords[] = {
   {NO, "NO", 0},
   {NOCACHE, "NOCACHE", 1},
   {NOCYCLE, "NOCYCLE", 1},
+  {NOLOGIN, "NOLOGIN", 1},
   {NOMAXVALUE, "NOMAXVALUE", 1},
   {NOMINVALUE, "NOMINVALUE", 1},
   {NONE, "NONE", 0},
@@ -398,6 +403,7 @@ static KEYWORD_RECORD keywords[] = {
   {OWNER, "OWNER", 1},
   {PAGE, "PAGE", 1},
   {PARALLEL, "PARALLEL", 1},
+  {PARALLEL_ENABLE, "PARALLEL_ENABLE", 1},
   {PARAMETERS, "PARAMETERS", 0},
   {PARTIAL, "PARTIAL", 0},
   {PARTITION, "PARTITION", 0},
@@ -478,6 +484,7 @@ static KEYWORD_RECORD keywords[] = {
   {SECTION, "SECTION", 0},
   {SECTIONS, "SECTIONS", 1},
   {SELECT, "SELECT", 0},
+  {SEMI, "SEMI", 0},
   {SENSITIVE, "SENSITIVE", 0},
   {SEPARATOR, "SEPARATOR", 1},
   {SEQUENCE, "SEQUENCE", 0},
@@ -530,6 +537,7 @@ static KEYWORD_RECORD keywords[] = {
   {SUPERSETEQ, "SUPERSETEQ", 0},
   {SYNONYM, "SYNONYM", 1},
   {SYS_CONNECT_BY_PATH, "SYS_CONNECT_BY_PATH", 0},
+  {SYS_REFCURSOR, "SYS_REFCURSOR", 0},
   {SYSTEM, "SYSTEM", 1},
   {SYSTEM_USER, "SYSTEM_USER", 0},
   {SYS_DATE, "SYS_DATE", 0},
@@ -645,6 +653,7 @@ static FUNCTION_MAP functions[] = {
   {0, "cos", PT_COS},
   {0, "cot", PT_COT},
   {0, "cume_dist", PT_CUME_DIST},
+  {0, "current_schema", PT_SCHEMA},
   {0, "curtime", PT_CURRENT_TIME},
   {0, "curdate", PT_CURRENT_DATE},
   {0, "utc_time", PT_UTC_TIME},
@@ -768,6 +777,8 @@ static FUNCTION_MAP functions[] = {
   {0, "to_base64", PT_TO_BASE64},
   {0, "from_base64", PT_FROM_BASE64},
   {0, "sys_guid", PT_SYS_GUID},
+  {0, "uuid", PT_UUID},
+  {0, "uuid_format", PT_UUID_FORMAT},
   {0, "sleep", PT_SLEEP},
   {0, "to_datetime_tz", PT_TO_DATETIME_TZ},
   {0, "to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
@@ -1102,7 +1113,7 @@ pt_find_function_name (const char *text)
 #endif
     }
 
-  char temp[MAX_KEYWORD_SIZE];
+  char temp[DB_MAX_IDENTIFIER_LENGTH];
 
   dummy.keyword = temp;
   return (FUNCTION_MAP *) find_keyword_tables (functions, dummy, finfo, keyword_hash_comparator < FUNCTION_MAP >, text);

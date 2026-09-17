@@ -60,6 +60,7 @@ extern int jsp_is_exist_stored_procedure (const char *name);
 extern char *jsp_get_owner_name (const char *name, char *buf, int buf_size);
 extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);
+extern bool jsp_is_sp_parallel_eligible (const char *name);
 extern MOP jsp_find_stored_procedure (const char *name, DB_AUTH purpose);
 extern MOP jsp_find_stored_procedure_code (const char *name);
 extern int jsp_find_sp_of_another_owner (const char *name, MOP * return_mop);
@@ -72,5 +73,6 @@ extern void jsp_set_prepare_call (void);
 extern void jsp_unset_prepare_call (void);
 extern bool jsp_is_prepare_call (void);
 
-extern PT_NODE *jsp_get_default_expr_node_list (PARSER_CONTEXT * parser, cubpl::pl_signature & sig);
+extern PT_NODE *jsp_get_default_expr_node_list (PARSER_CONTEXT * parser, cubpl::pl_signature & sig,
+						bool * flag_si_datetime);
 #endif /* _JSP_CL_H_ */

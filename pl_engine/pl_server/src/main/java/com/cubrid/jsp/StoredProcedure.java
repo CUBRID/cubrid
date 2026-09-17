@@ -31,9 +31,6 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.classloader.ServerClassLoader;
-import com.cubrid.jsp.code.ClassAccess;
-import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.Signature;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
@@ -47,7 +44,6 @@ import com.cubrid.jsp.value.ValueUtilities;
 import cubrid.sql.CUBRIDOID;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
-import java.sql.Connection;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.Time;
@@ -86,50 +82,29 @@ public class StoredProcedure {
     }
 
     private TargetMethod findTargetMethod(String sigString) throws Exception {
+
         Context ctx = ContextManager.getContextofCurrentThread();
 
-        Connection conn = ctx.getConnection();
         Signature sig = Signature.parse(sigString);
+        String mainClassName = sig.getClassName();
 
         Class<?> c = null;
-        ClassNotFoundException ex = null;
 
-        try {
-            // find a class in static directory first
-            c = ServerClassLoader.getInstance().loadClass(sig.getClassName());
-        } catch (ClassNotFoundException e) {
-            // do nothing
-        }
+        switch (lang) {
+            case LANG_PLCSQL:
+                c = ctx.getCatalogClassLoaderRelay().loadClass(mainClassName);
+                break;
 
-        if (c == null) {
-            if (lang == LANG_PLCSQL) {
-                try {
-                    c = ctx.getSessionCLManager().findClass(sig.getClassName());
-                    if (c == null) {
-                        CompiledCodeSet codeset = ClassAccess.getObjectCode(conn, sig);
-                        if (codeset != null) {
-                            c = ctx.getSessionCLManager().loadClass(codeset);
-                        }
-                    }
-                } catch (ClassNotFoundException e) {
-                    ex = e;
-                }
-            } else if (lang == LANG_JAVASP) {
-                try {
-                    c = ctx.getOldClassLoader().loadClass(sig.getClassName());
-                } catch (ClassNotFoundException e) {
-                    ex = e;
-                }
-            } else {
+            case LANG_JAVASP:
+                c = ctx.getFileClassLoader().loadClass(mainClassName);
+                break;
+
+            default:
                 assert false;
                 throw new ClassNotFoundException(sig.getClassName());
-            }
         }
 
-        if (c == null) {
-            throw ex;
-        }
-
+        assert c != null;
         targetClass = c;
         TargetMethod target = new TargetMethod(sig);
         return target;

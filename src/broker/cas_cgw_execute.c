@@ -383,6 +383,11 @@ ux_cgw_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->num_q_result = 1;
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
+  /* A fresh execute opens a new result cursor at the beginning.  Reset the fetched-position
+   * tracker so the prefetch that immediately follows does not mis-detect a mid-scan rewind
+   * (cgw_fetch_result: cursor_pos == 1 && srv_handle->cursor_pos > 1) and close+re-execute the
+   * statement with the bind buffers this function frees just below. */
+  srv_handle->cursor_pos = 0;
   if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
     {
       srv_handle->total_tuple_count = INT_MAX;	// ODBC does not provide the number of query results, so set to int_max.

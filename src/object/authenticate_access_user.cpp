@@ -119,7 +119,7 @@ au_find_user (const char *user_name)
     }
 
   /* disable checking of internal authorization object access */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /*
    * first try to find the user id by index. This is faster than
@@ -191,7 +191,7 @@ au_find_user (const char *user_name)
     }
 
 exit:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (upper_case_name)
     {
@@ -326,7 +326,7 @@ au_get_user_name (MOP obj)
   }
 
   int save;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   int error = obj_get (obj, "name", &value);
   if (error == NO_ERROR)
     {
@@ -337,7 +337,7 @@ au_get_user_name (MOP obj)
     }
 
   db_value_clear (&value);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return name;
 }
@@ -489,7 +489,7 @@ au_is_dba_group_member (MOP user)
       return true;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   /* Set fetch version type to read dirty version. */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
   db_set_read_fetch_instance_version (LC_FETCH_DIRTY_VERSION);
@@ -503,7 +503,7 @@ au_is_dba_group_member (MOP user)
 
   /* Restore fetch version type. */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return is_member;
 }
@@ -529,14 +529,14 @@ au_is_user_group_member (MOP group_user, MOP user)
     }
 
   db_make_object (&group_user_val, group_user);
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (au_get_set (user, "groups", &groups) == NO_ERROR)
     {
       if (set_ismember (groups, &group_user_val))
 	{
 	  set_free (groups);
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return true;
 	}
     }
@@ -550,7 +550,7 @@ au_is_user_group_member (MOP group_user, MOP user)
       set_free (groups);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return false;
 }
 
@@ -598,7 +598,7 @@ au_add_user (const char *name, int *exists)
     }
   else if (!check_user_name (name))
     {
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       user = NULL;
       if (exists != NULL)
 	{
@@ -622,7 +622,7 @@ au_add_user (const char *name, int *exists)
 	    {
 	      if (er_errid () != ER_AU_INVALID_USER)
 		{
-		  AU_ENABLE (save);
+		  AU_RESTORE (save);
 		  return NULL;
 		}
 
@@ -668,7 +668,7 @@ au_add_user (const char *name, int *exists)
 		}
 	    }
 	}
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   if (user != NULL)
@@ -723,6 +723,52 @@ au_set_user_comment (MOP user, const char *comment)
 	  pr_clear_value (&value);
 	}
     }
+  AU_RESTORE (save);
+
+  return error;
+}
+
+/*
+ * au_set_user_loginable() -  Set whether a user can log in.
+ *   return: error code
+ *   user(in): user object
+ *   loginable(in): whether the user can log in
+ */
+int
+au_set_user_loginable (MOP user, bool loginable)
+{
+  int error = NO_ERROR;
+  int save;
+  DB_VALUE name;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  if (!au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "alter_user");
+      goto end;
+    }
+
+  if (ws_is_same_object (user, Au_information_schema_user) || ws_is_same_object (user, Au_dba_user)
+      || ws_is_same_object (user, Au_user))
+    {
+      db_make_null (&name);
+      error = obj_get (user, "name", &name);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      error = ER_AU_CANT_ALTER_LOGIN;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, db_get_string (&name));
+      pr_clear_value (&name);
+      goto end;
+    }
+
+  error = au_ctx ()->set_loginable (user, loginable);
+
+end:
   AU_RESTORE (save);
 
   return error;
@@ -923,7 +969,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
   int save;
   const char *member_name = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   db_make_object (&membervalue, member);
   db_make_object (&groupvalue, group);
 
@@ -1010,7 +1056,7 @@ au_add_member_internal (MOP group, MOP member, int new_user)
       error = au_update_timestamps (member);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -1058,7 +1104,7 @@ au_drop_member (MOP group, MOP member)
   int save;
   const char *member_name = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   db_make_object (&groupvalue, group);
 
   if ((syserr = au_get_set (member, "groups", &member_groups)) == NO_ERROR)
@@ -1114,7 +1160,7 @@ au_drop_member (MOP group, MOP member)
       error = au_update_timestamps (member);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -1171,7 +1217,7 @@ au_drop_user (MOP user)
   DB_VALUE name;
   char query_buf[1024];
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (Au_dba_user != NULL && !au_is_dba_group_member (Au_user))
     {
@@ -1434,6 +1480,6 @@ au_drop_user (MOP user)
     }
 
 error:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }

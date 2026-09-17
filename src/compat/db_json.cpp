@@ -2533,6 +2533,63 @@ db_json_merge_preserve_func (const JSON_DOC *source, JSON_DOC *&dest)
   return NO_ERROR;
 }
 
+/*
+ * db_json_object_merge_ignore_duplicates_func () - Merge the source object into the destination
+ *                          object, keeping the FIRST value seen for each duplicate key.
+ *
+ * return                   : error code
+ * source (in)              : json to merge (a JSON_OBJECTAGG partial result, always an object)
+ * dest (in,out)            : json where to merge (always an object)
+ *
+ * This mirrors the serial JSON_OBJECTAGG behavior: db_accumulate_json_objectagg ignores
+ * ER_JSON_DUPLICATE_KEY, so the first value encountered for a key wins. It is used only to merge
+ * partial JSON_OBJECTAGG accumulators produced by parallel heap scan workers. JSON_MERGE_PRESERVE
+ * must not be used there because it wraps duplicate-key values into an array, which diverges from
+ * the serial result.
+ *
+ * example                  : let x = { "a": 1, "b": 2 }
+ *                                y = { "a": 3, "c": 4 }
+ *
+ * result (x merged with y) = {"a": 1, "b": 2, "c": 4}
+ */
+int
+db_json_object_merge_ignore_duplicates_func (const JSON_DOC *source, JSON_DOC *&dest)
+{
+  if (dest == NULL)
+    {
+      dest = db_json_allocate_doc ();
+      if (dest == NULL)
+	{
+	  /* db_json_allocate_doc goes through the noexcept allocator and returns NULL on OOM
+	   * without setting an error; dereferencing it in db_json_copy_doc would crash. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+	  return ER_FAILED;
+	}
+      db_json_copy_doc (*dest, source);
+      return NO_ERROR;
+    }
+
+  const JSON_VALUE &source_value = db_json_doc_to_value (*source);
+  JSON_VALUE &dest_value = db_json_doc_to_value (*dest);
+
+  if (!source_value.IsObject () || !dest_value.IsObject ())
+    {
+      /* both inputs are JSON_OBJECTAGG partial results, so both must be objects */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  for (JSON_VALUE::ConstMemberIterator itr = source_value.MemberBegin (); itr != source_value.MemberEnd (); ++itr)
+    {
+      if (!dest_value.HasMember (itr->name.GetString ()))
+	{
+	  db_json_object_add_member (itr->name, itr->value, dest_value, dest->GetAllocator ());
+	}
+    }
+
+  return NO_ERROR;
+}
+
 DB_JSON_TYPE
 db_json_get_type (const JSON_DOC *doc)
 {

@@ -62,11 +62,14 @@ struct dblink_scan_info
   int col_cnt;			/* column count of dblink query result */
   char cursor;			/* cursor position T_CCI_CURSOR_POS */
   void *col_info;		/* column information T_CCI_COL_INFO */
-  int cursor_rewind;		/* set from XASL_DBLINK_CURSOR_REWIND flag:
+  bool cursor_rewind;		/* set from XASL_DBLINK_CURSOR_REWIND flag:
 				 * on each outer-row open, rewind CCI cursor to FIRST
 				 * instead of re-issuing cci_execute;
 				 * dblink_close_scan is skipped per iteration and
 				 * deferred to query teardown (qexec_clear_xasl) */
+  int corr_key_count;		/* copy of spec->s.dblink_node.corr_key_count */
+  struct regu_variable_list_node *corr_key_regu_list;	/* non-owning; same chain as in access spec */
+  bool corr_skip_result_fetch;	/* corr key NULL — no cci_execute; scan_next returns S_END */
 };
 
 #define MAX_LEN_CONNECTION_URL 512
@@ -81,6 +84,13 @@ struct dblink_conn_info
   char conn_url[MAX_LEN_CONNECTION_URL + 1];
   char user_name[DB_MAX_USER_LENGTH + 1];
   char password[DB_MAX_PASSWORD_LENGTH + 1];
+  /* true if the participant cannot execute XA prepare (e.g. a gateway to a
+   * third-party DBMS); such a participant is committed with a plain end-tran
+   * at prepare time and must be excluded from the XA decision-delivery and
+   * daemon-enqueue paths that assume an XA-prepared branch.  In-memory only:
+   * entries rebuilt from _db_global_tran during recovery lose this flag and
+   * are guarded by the permanent-failure error-code check instead */
+  bool xa_unsupported;
 };
 
 /*
@@ -91,6 +101,10 @@ struct dblink_conn_entry
 {
   DBLINK_CONN_INFO conn_info;
   bool is_2pc_participant;
+  bool has_uncommitted_dml;	/* a remote DML statement of this transaction has executed on this
+				 * connection and is not committed yet. Rolling the connection's remote
+				 * transaction back would therefore lose work the transaction still
+				 * expects to commit. */
 
   DBLINK_CONN_ENTRY *next;
 };
@@ -100,8 +114,42 @@ extern int dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_nod
 				 DBLINK_HOST_VARS * host_vars);
 extern int dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct access_spec_node *spec,
 			     VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars);
+extern int dblink_corr_prepare (THREAD_ENTRY * thread_p, struct access_spec_node *spec, DBLINK_SCAN_INFO * scan_info);
+extern int dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_DESCR * vd);
 extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
+
+/* remote DML push-sink state, shared by INSERT SELECT and DELETE + local subquery (and UPDATE to follow) */
+typedef struct dblink_dml_state DBLINK_DML_STATE;
+struct dblink_dml_state
+{
+  int conn_handle;
+  int stmt_handle;
+  bool savepoint_set;		/* true: a remote savepoint was taken for this statement, so a failure rolls
+				 * back only this statement's work. false: the savepoint could not be taken
+				 * (unsupported by the remote, or the request failed), so a failure must roll
+				 * back and tear down the whole remote transaction; the local transaction's
+				 * commit is then refused only when that rollback discards work of earlier
+				 * statements (the connection's has_uncommitted_dml mark). */
+  bool rows_sent;		/* this statement has executed at least one row on the remote */
+};
+
+/* which statement dblink_dml_open() prepares; each kind reads only its own params below */
+typedef enum dblink_dml_kind
+{
+  DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind; ignores key_col/op */
+  DBLINK_DML_DELETE		/* uses key_col/op; ignores attr_names/num_attrs/num_bind */
+    /* DBLINK_DML_UPDATE to follow */
+} DBLINK_DML_KIND;
+
+extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user,
+			    const char *pwd, const char *table_name, char **attr_names, int num_attrs, int num_bind,
+			    const char *key_col, const char *op, DBLINK_DML_STATE * state);
+extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
+				   int num_vals, int *affected_rows);
+extern void dblink_dml_stmt_done (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
+extern void dblink_dml_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
+extern void dblink_dml_close (DBLINK_DML_STATE * state);
 
 #endif

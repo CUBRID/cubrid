@@ -4148,10 +4148,10 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      int save;
 	      MOP mop = ws_mop (&obj->oid, sm_Root_class_mop);
 
-	      AU_DISABLE (save);
+	      AU_SAVE_AND_DISABLE (save);
 	      /* fetch to update catalog representation directory */
 	      error_code = au_fetch_class (mop, &smclass, AU_FETCH_READ, AU_SELECT);
-	      AU_ENABLE (save);
+	      AU_RESTORE (save);
 	    }
 	}
 
@@ -5657,6 +5657,7 @@ locator_remove_class (MOP class_mop)
   SM_ATTRIBUTE *attr;		/* attribute info for checking LOB attributes */
   bool lob_attr_exist = false;
   const char *classname;	/* The classname */
+  LC_FIND_CLASSNAME deleted;	/* Result of deleting the classname */
   int attrid_arr[1];
   int error_code = NO_ERROR;
 
@@ -5707,7 +5708,22 @@ locator_remove_class (MOP class_mop)
     }
 
   /* Delete the class name */
-  if (locator_delete_class_name (classname) == LC_CLASSNAME_DELETED || BOOT_IS_CLIENT_RESTARTED ())
+  deleted = locator_delete_class_name (classname);
+  if (deleted == LC_CLASSNAME_ERROR)
+    {
+      /*
+       * The request failed. BOOT_IS_CLIENT_RESTARTED () below cannot be relied on
+       * to catch this: when the server goes down, the failing request runs
+       * boot_server_die_or_changed (), which calls boot_client (NULL_TRAN_INDEX)
+       * and thus clears tm_Tran_index. Without this check the function returns
+       * NO_ERROR even though the transaction has already been aborted, and the
+       * caller keeps walking workspace structures that the abort has freed.
+       */
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error;
+    }
+
+  if (deleted == LC_CLASSNAME_DELETED || BOOT_IS_CLIENT_RESTARTED ())
     {
       ws_dirty (class_mop);
       ws_mark_deleted (class_mop);

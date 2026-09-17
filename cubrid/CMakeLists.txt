@@ -42,6 +42,7 @@ set (COMPAT_HEADERS
   )
 
 set(THREAD_SOURCES
+  ${THREAD_DIR}/concurrency_slot.cpp
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_daemon.cpp
@@ -55,6 +56,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/concurrency_slot.hpp
   ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
@@ -67,6 +69,7 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
   ${THREAD_DIR}/thread_worker_pool_impl.hpp
+  ${THREAD_DIR}/thread_worker_pool_elastic.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
   )
 
@@ -90,6 +93,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
@@ -299,6 +303,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/like_match_lockstep.i
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_hash_join.h
@@ -361,6 +366,7 @@ set(PARALLEL_HASH_JOIN_HEADERS
 )
 
 set(PARALLEL_SCAN_SOURCES
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.cpp
@@ -373,13 +379,14 @@ set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_result_handler.cpp
-  ${PARALLEL_SCAN_DIR}/px_scan_join_info.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_pre_execution_info.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_task.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.cpp
   ${PARALLEL_SCAN_DIR}/px_scan.cpp
   )
 
 set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.hpp
@@ -393,7 +400,7 @@ set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.hpp
-  ${PARALLEL_SCAN_DIR}/px_scan_join_info.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_pre_execution_info.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_task.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_type.hpp
@@ -459,6 +466,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
+  ${TRANSACTION_DIR}/log_prior_inflight.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
@@ -483,6 +491,8 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight_ring.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_recovery.h
   ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
@@ -501,8 +511,10 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_sort.c
   ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
@@ -524,11 +536,13 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/record_descriptor.cpp
   ${STORAGE_DIR}/slotted_page.c
   ${STORAGE_DIR}/statistics_sr.c
+  ${STORAGE_DIR}/statistics_ndv.c
   ${STORAGE_DIR}/storage_common.c
   ${STORAGE_DIR}/system_catalog.c
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/bestspace.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/ftab_set.hpp
@@ -607,6 +621,7 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
 if(UNIX)
+  set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -666,6 +681,12 @@ set (CUBRID_LIB_SOURCES
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   )
 
+list(APPEND CUBRID_LIB_SOURCES
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_sampler_sr.cpp
+  )
+
 set (CUBRID_LIB_HEADERS
   ${BASE_HEADERS}
   ${COMPAT_HEADERS}
@@ -714,6 +735,7 @@ if(UNIX)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
   target_link_libraries(cubrid PUBLIC rt)
+  target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
 
   # Add TBB
   target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})

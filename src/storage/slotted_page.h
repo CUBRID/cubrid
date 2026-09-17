@@ -74,13 +74,11 @@ struct spage_header
   int reserved1;
   int flags;			/* Page flags: Always SPAGE_HEADER_FLAG_NONE, not currently used */
   unsigned int is_saving:1;	/* True if saving is need for recovery (undo) */
-  unsigned int need_update_best_hint:1;	/* True if we should update best pages hint for this page. See
-					 * heap_stats_update. */
 
   /* The followings are reserved for future use. */
   /* SPAGE_HEADER should be 8 bytes aligned. Packing of bit fields depends on compiler's behavior. It's better to use
    * 4-bytes type in order not to be affected by the compiler. */
-  unsigned int reserved_bits:30;
+  unsigned int reserved_bits:31;
 };
 
 /* 4-byte disk storage slot design */
@@ -97,8 +95,7 @@ extern void spage_finalize (THREAD_ENTRY * thread_p);
 extern void spage_free_saved_spaces (THREAD_ENTRY * thread_p, void *first_save_entry);
 
 extern int spage_get_free_space (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
-extern int spage_get_free_space_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool * need_update);
-extern void spage_set_need_update_best_hint (THREAD_ENTRY * thread_p, PAGE_PTR page_p, bool need_update);
+extern int spage_get_free_space_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 extern PGNSLOTS spage_number_of_records (PAGE_PTR pgptr);
 extern PGNSLOTS spage_number_of_slots (PAGE_PTR pgptr);
 extern void spage_initialize (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, INT16 slots_type, unsigned short alignment,

@@ -33,7 +33,9 @@
 #include "thread_manager.hpp"
 #include "master_connector.hpp"
 #include "connection_pool.hpp"
+#include "connection_worker.hpp"
 
+#include <array>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -139,7 +141,8 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static cubthread::stats_worker_pool_type *css_Server_request_worker_pool = NULL;
+using css_request_worker_pool_t = worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic>;
+static css_request_worker_pool_t *css_Server_request_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -189,7 +192,7 @@ private:
   cubthread::entry_task *m_task;
 };
 
-static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
+static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 7;
 
 static void css_set_shutdown_timeout (int timeout);
 static int css_get_master_request (SOCKET master_fd);
@@ -197,9 +200,6 @@ static void css_process_shutdown_request (SOCKET master_fd);
 
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
-
-static unsigned int css_enqueue_and_notify (cubconn::connection::worker::queue_type type,
-					    cubconn::connection::worker::message &&item, int wait_time = 0);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
@@ -209,12 +209,13 @@ static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
-static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
 
-// cubthread::stats_worker_pool_type::core_impl confuses indent
-static void css_wp_core_job_scan_mapper (const cubthread::stats_worker_pool_type::core_impl & wp_core, bool & stop_mapper,
+// WorkerPoolCore template parameter confuses indent
+template <typename WorkerPoolCore>
+static void css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                                          int & error_code);
+
 static void
 css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found);
 static void
@@ -241,11 +242,6 @@ static void css_start_all_threads (void);
  *
  * NOTE: job queues don't really exist anymore, at least not the way SHOW JOB QUEUES statement was created for.
  *       we now have worker pool "cores" that act as partitions of workers and queued tasks.
- *       for backward compatibility, the statement is not changed; only its columns are reinterpreted
- *       1. job queue index => core index
- *       2. job queue max workers => core max workers
- *       3. job queue busy workers => core busy workers
- *       4. job queue connection workers => 0    // connection workers are separated in a different worker pool
  */
 int
 css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
@@ -263,8 +259,13 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
       return error;
     }
 
-  size_t core_index = 0;	// core index starts with 0
-  css_Server_request_worker_pool->map_cores (css_wp_core_job_scan_mapper, thread_p, ctx, core_index, error);
+  // core index starts with 0
+  size_t core_index = 0;
+
+  //*INDENT-OFF*
+  using request_pool_core_t = css_request_worker_pool_t::core_impl;
+  css_Server_request_worker_pool->map_cores (&css_wp_core_job_scan_mapper<request_pool_core_t>, thread_p, ctx, core_index, error);
+  //*INDENT-ON*
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -547,7 +548,7 @@ css_start_shutdown_server ()
  *       css_initialize_server_interfaces before calling this function.
  */
 // *INDENT-OFF*
-REGISTER_WORKERPOOL (transaction, []() { return (int) prm_get_integer_value (PRM_ID_TASK_WORKER); });
+REGISTER_WORKERPOOL (transaction, CSS_MAX_CLIENT_COUNT);
 // *INDENT-ON*
 
 int
@@ -555,8 +556,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
-  std::size_t task_group, task_worker;
+  std::size_t max_request_concurrency, max_request_worker;
   std::size_t max_connection_workers, min_connection_workers;
+  std::size_t max_connections;
   std::string name;
   int status = NO_ERROR;
 
@@ -566,21 +568,30 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
   name = std::string (server_name, name_length);
 
-  // initialize worker pool for server requests
-#define MAX_WORKERS css_get_max_workers ()
-#define MAX_TASK_COUNT css_get_max_task_count ()
-#define MAX_CONNECTIONS css_get_max_connections ()
+  max_request_concurrency = prm_get_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY);
+  max_request_worker = prm_get_integer_value (PRM_ID_MAX_REQUEST_WORKER);
 
-  task_group = (int) prm_get_integer_value (PRM_ID_TASK_GROUP);
-  task_worker = (int) prm_get_integer_value (PRM_ID_TASK_WORKER);
-  max_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-  min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+  max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+  min_connection_workers = prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+
+  max_connections = css_get_max_connections ();
+
+  // initialize the concurrency slot daemon
+  cubthread::concurrency_slot_daemon::initialize ();
 
   // create request worker pool
-  css_Server_request_worker_pool =
-    thread_create_stats_worker_pool (task_worker, task_group, "transaction", thread_get_entry_manager (),
-				     css_get_server_request_thread_pooling_configuration (),
-				     css_get_server_request_thread_timeout_configuration ());
+  //*INDENT-OFF*
+  css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
+      CSS_MAX_CLIENT_COUNT,
+      cubthread::system_core_count (),
+      max_request_concurrency,
+      max_request_worker,
+      "transaction",
+      thread_get_entry_manager (),
+      css_get_server_request_thread_pooling_configuration (),
+      css_get_server_request_thread_timeout_configuration ()
+      );
+  //*INDENT-ON*
   // m_log = cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS)
 
   if (css_Server_request_worker_pool == NULL)
@@ -591,7 +602,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
-  if (!connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers))
+  if (!connections.initialize (max_connections, max_connection_workers, min_connection_workers))
     {
       _er_log_debug (ARG_FILE_LINE, "connection::pool failed to prepare DMRB for connection contexts.\n");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 32 * 1024);
@@ -618,6 +629,9 @@ shutdown:
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+
+  // finalize the concurrency slot daemon
+  cubthread::concurrency_slot_daemon::finalize ();
 
   /* stop vacuum threads. */
   vacuum_stop_workers (thread_p);
@@ -656,60 +670,6 @@ shutdown:
   return status;
 }
 
-// *INDENT-OFF*
-/*
- * css_enqueue_and_notify () - enqueue the request and notify to worker
- *   return:
- *   type (in): queue to be inserted 
- *   item (in): request
- */
-static unsigned int
-css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::connection::worker::message &&item,
-			int wait_time)
-{
-  CSS_CONN_ENTRY * conn;
-  cubconn::connection::context *ctx;
-  int r;
-
-  assert (item.conn);
-  conn = item.conn;
-
-  /* lock to access worker and context */
-  r = rmutex_lock (NULL, &conn->cmutex);
-  assert (r == NO_ERROR);
-
-  if (conn->worker == nullptr || conn->context == nullptr)
-    {
-      /* unlock */
-      r = rmutex_unlock (NULL, &conn->cmutex);
-      assert (r == NO_ERROR);
-
-      if (item.deleter)
-	{
-	  item.deleter ();
-	}
-
-      return 0;
-    }
-
-  ctx = static_cast<cubconn::connection::context *> (conn->context);
-  item.ctx = ctx;
-  item.id = ctx->m_id;
-
-  auto func =[conn] ()noexcept {
-    /* unlock */
-    rmutex_unlock (NULL, &conn->cmutex);
-  };
-
-  if (!conn->worker->enqueue_and_notify (type, std::move (item), func, wait_time))
-    {
-      return INTERNAL_CSS_ERROR;
-    }
-
-  return 0;
-}
-// *INDENT-ON*
-
 /*
  * css_send_data_to_client() - send a data buffer to the server
  *   return:
@@ -719,74 +679,88 @@ css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::c
  *
  * Note: This is to be used ONLY by the server to return data to the client
  */
+// *INDENT-OFF*
+static unsigned int
+css_send_response_buffers_to_client (CSS_CONN_ENTRY *conn, unsigned int eid, int packet_type, char *const *buffers,
+					     const int *buffer_sizes, std::size_t buffer_count, bool require_open,
+					     std::size_t first_retained_buffer,
+					     std::function<void ()> &&deleter, int wait_time)
+{
+  std::array<NET_HEADER, 4> header {};
+  std::array<cubbase::span<std::byte>, cubconn::connection::worker::MAX_DIRECT_PACKET_COUNT> packet;
+  std::array<bool, cubconn::connection::worker::MAX_DIRECT_PACKET_COUNT> retain_packet {};
+  std::size_t packet_count = 0;
+  int transaction_id;
+  int invalidate_snapshot;
+  int header_db_error;
+  int r;
+
+  assert (conn != NULL);
+  assert (buffers != NULL && buffer_sizes != NULL);
+  assert (buffer_count > 0 && buffer_count <= header.size ());
+  assert (first_retained_buffer <= buffer_count);
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+  if ((require_open && conn->status != CONN_OPEN) || (!require_open && conn->status == CONN_CLOSED))
+    {
+      r = rmutex_unlock (NULL, &conn->rmutex);
+      assert (r == NO_ERROR);
+      if (deleter)
+	{
+	  deleter ();
+	}
+      return CONNECTION_CLOSED;
+    }
+
+  transaction_id = conn->get_tran_index ();
+  invalidate_snapshot = conn->invalidate_snapshot;
+  header_db_error = conn->db_error;
+  for (std::size_t index = 0; index < buffer_count; index++)
+    {
+      assert (buffer_sizes[index] >= 0);
+      assert (buffer_sizes[index] == 0 || buffers[index] != NULL);
+      css_set_net_header (&header[index], packet_type, 0, CSS_RID_FROM_EID (eid), buffer_sizes[index],
+			  transaction_id, invalidate_snapshot, header_db_error);
+      packet[packet_count] = { reinterpret_cast<std::byte *> (&header[index]), sizeof (NET_HEADER) };
+      retain_packet[packet_count++] = false;
+      packet[packet_count] = { reinterpret_cast<std::byte *> (buffers[index]),
+			       static_cast<std::size_t> (buffer_sizes[index]) };
+      retain_packet[packet_count++] = deleter && index >= first_retained_buffer;
+    }
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  return cubconn::connection::worker::send_packet (conn, packet.data (), packet_count, retain_packet.data (),
+						   std::move (deleter), wait_time);
+}
+
 unsigned int
 css_send_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size, int wait_time)
 {
-  // *INDENT-OFF*
-  cubconn::connection::worker::message request;
-  NET_HEADER *mem_header;
-  std::byte * mem_reply = nullptr;
+  char *buffers[] = { buffer };
+  int buffer_sizes[] = { buffer_size };
 
   assert (conn != NULL);
 
-  rmutex_lock (NULL, &conn->rmutex);
-  if (conn->status == CONN_CLOSED)
-    {
-      rmutex_unlock (NULL, &conn->rmutex);
-      return CONNECTION_CLOSED;
-    }
-  rmutex_unlock (NULL, &conn->rmutex);
-
-  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
-  request.conn = conn;
-  request.packet.clear ();
-
-  /* header */
-  mem_header = new NET_HEADER {};
-  css_set_net_header (mem_header, DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back ((std::byte *) mem_header, sizeof (NET_HEADER));
-
-  if (buffer && buffer_size > 0)
-    {
-      /* reply */
-      mem_reply = new std::byte[buffer_size];
-      std::memcpy (mem_reply, buffer, buffer_size);
-    }
-  request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
-
-  /* deleter */
-  request.deleter =[mem_header, mem_reply] () noexcept
-  {
-    delete mem_header;
-    if (mem_reply)
-      {
-	delete[] mem_reply;
-      }
-  };
-  // *INDENT-ON*
-
-  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request), wait_time);
+  return css_send_response_buffers_to_client (conn, eid, DATA_TYPE, buffers, buffer_sizes, 1, false, 1,
+					      std::function<void ()> (), wait_time);
 }
 
 unsigned int
 css_send_reply_and_data_to_client_direct (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size,
 					  char *buffer, int buffer_size)
 {
-  int rc = 0;
+  char *buffers[] = { reply, buffer };
+  int buffer_sizes[] = { reply_size, buffer_size };
+  std::size_t buffer_count;
 
   assert (conn != NULL);
 
-  if (buffer_size > 0 && buffer != NULL)
-    {
-      rc = css_send_two_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size, buffer, buffer_size);
-    }
-  else
-    {
-      rc = css_send_data (conn, CSS_RID_FROM_EID (eid), reply, reply_size);
-    }
-
-  return (rc == NO_ERRORS) ? NO_ERROR : rc;
+  buffer_count = (buffer_size > 0 && buffer != NULL) ? 2 : 1;
+  return css_send_response_buffers_to_client (conn, eid, DATA_TYPE, buffers, buffer_sizes, buffer_count, false,
+					      buffer_count, std::function<void ()> (), 0);
 }
 
 /*
@@ -806,75 +780,16 @@ unsigned int
 css_send_reply_and_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *reply, int reply_size, char *buffer,
 				   int buffer_size, std::function < void () > &&deleter)
 {
-  // *INDENT-OFF*
-  cubconn::connection::worker::message request;
-  NET_HEADER *mem_header[2] = { nullptr, nullptr };
-  std::byte * mem_reply = nullptr;
+  char *buffers[] = { reply, buffer };
+  int buffer_sizes[] = { reply_size, buffer_size };
+  std::size_t buffer_count;
 
   assert (conn != NULL);
   assert (!!buffer == !!buffer_size);
 
-  rmutex_lock (NULL, &conn->rmutex);
-  if (conn->status != CONN_OPEN)
-    {
-      rmutex_unlock (NULL, &conn->rmutex);
-
-      if (deleter)
-	{
-	  deleter ();
-	}
-      return CONNECTION_CLOSED;
-    }
-  rmutex_unlock (NULL, &conn->rmutex);
-
-  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
-  request.conn = conn;
-  request.packet.clear ();
-
-  /* reply */
-  mem_header[0] = new NET_HEADER {};
-  css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
-  if (reply && reply_size > 0)
-    {
-      mem_reply = new std::byte[reply_size];
-      std::memcpy (mem_reply, reply, reply_size);
-    }
-  request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
-
-  /* data */
-  if (buffer && buffer_size > 0)
-    {
-      mem_header[1] = new NET_HEADER {};
-      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (),
-			  conn->invalidate_snapshot, conn->db_error);
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer), static_cast < std::size_t > (buffer_size));
-    }
-
-  /* deleter */
-  request.deleter =[header1 = mem_header[0],
-		    header2 = mem_header[1], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
-  {
-    delete header1;
-
-    if (header2)
-      {
-	delete header2;
-      }
-    if (body1)
-      {
-	delete[] body1;
-      }
-    if (deleter)
-      {
-	deleter ();
-      }
-  };
-  // *INDENT-ON*
-
-  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+  buffer_count = (buffer_size > 0 && buffer != NULL) ? 2 : 1;
+  return css_send_response_buffers_to_client (conn, eid, DATA_TYPE, buffers, buffer_sizes, buffer_count, true, 1,
+					      std::move (deleter), 0);
 }
 
 #if 0
@@ -974,96 +889,18 @@ css_send_reply_and_2_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size,
 				     std::function < void () > &&deleter)
 {
-  // *INDENT-OFF*
-  cubconn::connection::worker::message request;
-  NET_HEADER *mem_header[3] = { nullptr, nullptr, nullptr };
-  std::byte * mem_reply = nullptr;
+  char *buffers[] = { reply, buffer1, buffer2 };
+  int buffer_sizes[] = { reply_size, buffer1_size, buffer2_size };
+  std::size_t buffer_count;
 
   assert (conn != NULL);
   assert (reply && reply_size > 0);
   assert (!!buffer1 == !!buffer1_size);
   assert (!!buffer2 == !!buffer2_size);
 
-  rmutex_lock (NULL, &conn->rmutex);
-  if (conn->status != CONN_OPEN)
-    {
-      rmutex_unlock (NULL, &conn->rmutex);
-
-      if (deleter)
-	{
-	  deleter ();
-	}
-      return CONNECTION_CLOSED;
-    }
-  rmutex_unlock (NULL, &conn->rmutex);
-
-  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
-  request.conn = conn;
-  request.packet.clear ();
-
-  /* reply */
-  mem_header[0] = new NET_HEADER {};
-  css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
-  if (reply && reply_size > 0)
-    {
-      mem_reply = new std::byte[reply_size];
-      std::memcpy (mem_reply, reply, reply_size);
-    }
-  request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
-
-  /* don't refactor! I've split the conditions to make the code easier to read. */
-  /* these conditions will be optimized at the compiler level. */
-  /* data1 */
-  if ((buffer1 && buffer1_size > 0) || (buffer2 && buffer2_size > 0))
-    {
-      mem_header[1] = new NET_HEADER {};
-      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (),
-			  conn->invalidate_snapshot, conn->db_error);
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer1),
-				   static_cast < std::size_t > (buffer1_size));
-    }
-
-  /* data2 */
-  if (buffer2 && buffer2_size > 0)
-    {
-      mem_header[2] = new NET_HEADER {};
-      css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (),
-			  conn->invalidate_snapshot, conn->db_error);
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[2]), sizeof (NET_HEADER));
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer2),
-				   static_cast < std::size_t > (buffer2_size));
-    }
-
-  /* deleter */
-  request.deleter =[header1 = mem_header[0],
-		    header2 = mem_header[1],
-		    header3 = mem_header[2], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
-  {
-    delete header1;
-
-    if (header2)
-      {
-	delete header2;
-      }
-    if (header3)
-      {
-	delete header3;
-      }
-    if (body1)
-      {
-	delete[]body1;
-      }
-    if (deleter)
-      {
-	deleter ();
-      }
-  };
-  // *INDENT-ON*
-
-  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+  buffer_count = buffer2_size > 0 ? 3 : (buffer1_size > 0 ? 2 : 1);
+  return css_send_response_buffers_to_client (conn, eid, DATA_TYPE, buffers, buffer_sizes, buffer_count, true, 1,
+					      std::move (deleter), 0);
 }
 
 /*
@@ -1088,10 +925,9 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 				     char *buffer1, int buffer1_size, char *buffer2, int buffer2_size, char *buffer3,
 				     int buffer3_size, std::function < void () > &&deleter)
 {
-  // *INDENT-OFF*
-  cubconn::connection::worker::message request;
-  NET_HEADER *mem_header[4] = { nullptr, nullptr, nullptr, nullptr };
-  std::byte * mem_reply = nullptr;
+  char *buffers[] = { reply, buffer1, buffer2, buffer3 };
+  int buffer_sizes[] = { reply_size, buffer1_size, buffer2_size, buffer3_size };
+  std::size_t buffer_count;
 
   assert (conn != NULL);
   assert (reply && reply_size > 0);
@@ -1099,100 +935,9 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
   assert (!!buffer2 == !!buffer2_size);
   assert (!!buffer3 == !!buffer3_size);
 
-  rmutex_lock (NULL, &conn->rmutex);
-  if (conn->status == CONN_CLOSED)
-    {
-      rmutex_unlock (NULL, &conn->rmutex);
-
-      if (deleter)
-	{
-	  deleter ();
-	}
-      return CONNECTION_CLOSED;
-    }
-  rmutex_unlock (NULL, &conn->rmutex);
-
-  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
-  request.conn = conn;
-  request.packet.clear ();
-
-  /* reply */
-  mem_header[0] = new NET_HEADER {};
-  css_set_net_header (mem_header[0], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), reply_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[0]), sizeof (NET_HEADER));
-  if (reply && reply_size > 0)
-    {
-      mem_reply = new std::byte[reply_size];
-      std::memcpy (mem_reply, reply, reply_size);
-    }
-  request.packet.emplace_back (mem_reply, (std::size_t) reply_size);
-
-  /* data1 */
-  if ((buffer1 && buffer1_size > 0) || (buffer2 && buffer2_size > 0) || (buffer3 && buffer3_size > 0))
-    {
-      mem_header[1] = new NET_HEADER {};
-      css_set_net_header (mem_header[1], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer1_size, conn->get_tran_index (),
-			  conn->invalidate_snapshot, conn->db_error);
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[1]), sizeof (NET_HEADER));
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer1),
-				   static_cast < std::size_t > (buffer1_size));
-    }
-
-  /* data2 */
-  if ((buffer2 && buffer2_size > 0) || (buffer3 && buffer3_size > 0))
-    {
-      mem_header[2] = new NET_HEADER {};
-      css_set_net_header (mem_header[2], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer2_size, conn->get_tran_index (),
-			  conn->invalidate_snapshot, conn->db_error);
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[2]), sizeof (NET_HEADER));
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer2),
-				   static_cast < std::size_t > (buffer2_size));
-    }
-
-  /* data3 */
-  if (buffer3 && buffer3_size > 0)
-    {
-      mem_header[3] = new NET_HEADER {};
-      css_set_net_header (mem_header[3], DATA_TYPE, 0, CSS_RID_FROM_EID (eid), buffer3_size, conn->get_tran_index (),
-			  conn->invalidate_snapshot, conn->db_error);
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(mem_header[3]), sizeof (NET_HEADER));
-      request.packet.emplace_back (reinterpret_cast < std::byte * >(buffer3),
-				   static_cast < std::size_t > (buffer3_size));
-    }
-
-  /* deleter */
-  request.deleter =[header1 = mem_header[0],
-		    header2 = mem_header[1],
-		    header3 = mem_header[2],
-		    header4 = mem_header[3], body1 = mem_reply, deleter = std::move (deleter)] () noexcept
-  {
-    delete header1;
-
-    if (header2)
-      {
-	delete header2;
-      }
-    if (header3)
-      {
-	delete header3;
-      }
-    if (header4)
-      {
-	delete header4;
-      }
-    if (body1)
-      {
-	delete[]body1;
-      }
-    if (deleter)
-      {
-	deleter ();
-      }
-  };
-  // *INDENT-ON*
-
-  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+  buffer_count = buffer3_size > 0 ? 4 : (buffer2_size > 0 ? 3 : (buffer1_size > 0 ? 2 : 1));
+  return css_send_response_buffers_to_client (conn, eid, DATA_TYPE, buffers, buffer_sizes, buffer_count, false, 1,
+					      std::move (deleter), 0);
 }
 
 /*
@@ -1209,52 +954,13 @@ css_send_reply_and_3_data_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, ch
 unsigned int
 css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer, int buffer_size)
 {
-  // *INDENT-OFF*
-  cubconn::connection::worker::message request;
-  NET_HEADER *mem_header;
-  std::byte * mem_reply = nullptr;
+  char *buffers[] = { buffer };
+  int buffer_sizes[] = { buffer_size };
 
   assert (conn != NULL);
 
-  rmutex_lock (NULL, &conn->rmutex);
-  if (conn->status == CONN_CLOSED)
-    {
-      rmutex_unlock (NULL, &conn->rmutex);
-
-      return CONNECTION_CLOSED;
-    }
-  rmutex_unlock (NULL, &conn->rmutex);
-
-  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
-  request.conn = conn;
-  request.packet.clear ();
-
-  /* header */
-  mem_header = new NET_HEADER {};
-  css_set_net_header (mem_header, ERROR_TYPE, 0, CSS_RID_FROM_EID (eid), buffer_size, conn->get_tran_index (),
-		      conn->invalidate_snapshot, conn->db_error);
-  request.packet.emplace_back ((std::byte *) mem_header, sizeof (NET_HEADER));
-
-  if (buffer && buffer_size > 0)
-    {
-      /* reply */
-      mem_reply = new std::byte[buffer_size];
-      std::memcpy (mem_reply, buffer, buffer_size);
-    }
-  request.packet.emplace_back (mem_reply, (std::size_t) buffer_size);
-
-  /* deleter */
-  request.deleter =[mem_header, mem_reply] () noexcept
-  {
-    delete mem_header;
-    if (mem_reply)
-      {
-	delete[] mem_reply;
-      }
-  };
-  // *INDENT-ON*
-
-  return css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+  return css_send_response_buffers_to_client (conn, eid, ERROR_TYPE, buffers, buffer_sizes, 1, false, 1,
+					      std::function<void ()> (), 0);
 }
 
 /*
@@ -1265,66 +971,55 @@ css_send_error_to_client (CSS_CONN_ENTRY * conn, unsigned int eid, char *buffer,
 unsigned int
 css_send_abort_to_client (CSS_CONN_ENTRY * conn, unsigned int eid)
 {
-  // *INDENT-OFF*
-  cubconn::connection::worker::message request;
-  NET_HEADER *header;
+  NET_HEADER header = DEFAULT_HEADER_DATA;
+  cubbase::span<std::byte> packet;
   unsigned short flags = 0;
+  int transaction_id;
+  int invalidate_snapshot;
+  int db_error;
+  bool in_method;
   int r;
 
   assert (conn != NULL);
 
-  rmutex_lock (NULL, &conn->rmutex);
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
   if (conn->status != CONN_OPEN)
     {
-      rmutex_unlock (NULL, &conn->rmutex);
+      r = rmutex_unlock (NULL, &conn->rmutex);
+      assert (r == NO_ERROR);
       return CONNECTION_CLOSED;
     }
-  rmutex_unlock (NULL, &conn->rmutex);
 
-  request.type = cubconn::connection::worker::message_type::SEND_PACKET;
-  request.conn = conn;
-  request.packet.clear ();
+  transaction_id = conn->get_tran_index ();
+  invalidate_snapshot = conn->invalidate_snapshot;
+  db_error = conn->db_error;
+  in_method = conn->in_method;
 
-  /* header */
-  header = new NET_HEADER {};
-  header->type = htonl (ABORT_TYPE);
-  header->request_id = htonl (CSS_RID_FROM_EID (eid));
-  header->transaction_id = htonl (conn->get_tran_index ());
-
-  if (conn->invalidate_snapshot)
+  header.type = htonl (ABORT_TYPE);
+  header.request_id = htonl (CSS_RID_FROM_EID (eid));
+  header.transaction_id = htonl (transaction_id);
+  if (invalidate_snapshot)
     {
       flags |= NET_HEADER_FLAG_INVALIDATE_SNAPSHOT;
     }
-  if (conn->in_method)
+  if (in_method)
     {
       flags |= NET_HEADER_FLAG_METHOD_MODE;
     }
-  header->flags = htons (flags);
-  header->db_error = htonl (conn->db_error);
-
-  request.packet.emplace_back ((std::byte *) header, sizeof (NET_HEADER));
-  request.deleter =[header] () noexcept
-  {
-    delete header;
-  };
-  // *INDENT-ON*
-
-  if (css_enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request)) != NO_ERROR)
-    {
-      return INTERNAL_CSS_ERROR;
-    }
-
-  /* remove queued packet */
-  r = rmutex_lock (NULL, &conn->rmutex);
-  assert (r == NO_ERROR);
+  header.flags = htons (flags);
+  header.db_error = htonl (db_error);
 
   css_remove_unexpected_packets (conn, CSS_RID_FROM_EID (eid));
 
   r = rmutex_unlock (NULL, &conn->rmutex);
   assert (r == NO_ERROR);
 
-  return 0;
+  packet = { reinterpret_cast<std::byte *> (&header), sizeof (header) };
+
+  return cubconn::connection::worker::send_packet (conn, &packet, 1, nullptr, std::function<void ()> (), 0);
 }
+// *INDENT-ON*
 
 /*
  * css_test_for_client_errors () -
@@ -2365,7 +2060,7 @@ css_get_current_conn_entry (void)
  * TODO: this is also used externally due to legacy design; should be internalized completely
  */
 void
-css_push_server_task (CSS_CONN_ENTRY &conn_ref)
+css_push_server_task (CSS_CONN_ENTRY &conn_ref, cubthread::task_submission_options options)
 {
   // push the task
   //
@@ -2377,7 +2072,7 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref)
   conn_ref.add_working_task ();
 
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
-                                            static_cast<size_t> (conn_ref.idx), conn_ref.in_method);
+					    static_cast<size_t> (conn_ref.idx), options);
 }
 
 void
@@ -2652,6 +2347,35 @@ css_get_thread_stats (UINT64 *stats_out)
   css_Server_request_worker_pool->get_stats (stats_out);
 }
 
+/*
+ * css_get_thread_runtime_stats () - get runtime statistics for server request handlers
+ *
+ * total_slots (out)     : total slots count
+ * target_slots (out)    : target slots count
+ * busy_slots (out)      : busy slots count
+ * total_workers (out)   : total worker count
+ * target_workers (out)  : target worker count
+ * busy_workers (out)    : busy worker count
+ */
+void
+css_get_thread_runtime_stats (UINT64 *total_slots, UINT64 *target_slots, UINT64 *busy_slots,
+			      UINT64 *total_workers, UINT64 *target_workers, UINT64 *busy_workers)
+{
+  if (css_Server_request_worker_pool == NULL)
+    {
+      *total_slots = 0;
+      *target_slots = 0;
+      *busy_slots = 0;
+      *total_workers = 0;
+      *target_workers = 0;
+      *busy_workers = 0;
+      return;
+    }
+
+  css_Server_request_worker_pool->get_runtime_stats (*total_slots, *target_slots, *busy_slots,
+						     *total_workers, *target_workers, *busy_workers);
+}
+
 //
 // css_get_task_stats () - get task statistics for server request handlers
 //
@@ -2664,35 +2388,12 @@ css_get_task_stats (UINT64 *stats_out)
 }
 
 //
-// css_get_num_request_workers () - get number of workers executing server requests
+// css_get_num_request_workers () - get max number of workers executing server requests
 //
 size_t
 css_get_num_request_workers (void)
 {
-  return css_Server_request_worker_pool->get_worker_count ();
-}
-
-//
-// css_wp_worker_get_busy_count_mapper () - function to map through worker pool entries and count busy workers
-//
-// thread_ref (in)      : thread entry (context)
-// stop_mapper (in/out) : normally used to stop mapping early, ignored here
-// busy_count (out)     : increment when busy worker is found
-//
-static void
-css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int & busy_count)
-{
-  (void) stop_mapper;   // suppress unused parameter warning
-
-  if (thread_ref.tran_index != NULL_TRAN_INDEX)
-    {
-      // busy thread
-      busy_count++;
-    }
-  else
-    {
-      // must be waiting for task; not busy
-    }
+  return css_Server_request_worker_pool->get_max_worker ();
 }
 
 //
@@ -2705,12 +2406,18 @@ css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapp
 // core_index (in/out)  : current core index; is incremented on each call
 // error_code (out)     : output error_code if any errors occur
 //
+template <typename WorkerPoolCore>
 static void
-css_wp_core_job_scan_mapper (const cubthread::stats_worker_pool_type::core_impl & wp_core, bool & stop_mapper,
+css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
                              THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                              int & error_code)
 {
-  DB_VALUE *vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+  size_t val_index;
+  UINT64 total_slots, target_slots, total_workers, target_workers, busy_workers;
+  INT64 busy_slots;
+  DB_VALUE *vals;
+
+  vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
   if (vals == NULL)
     {
       assert (false);
@@ -2719,20 +2426,30 @@ css_wp_core_job_scan_mapper (const cubthread::stats_worker_pool_type::core_impl 
       return;
     }
 
-  // add core index; it used to be job queue index
-  size_t val_index = 0;
+  val_index = 0;
+  total_slots = 0;
+  target_slots = 0;
+  busy_slots = 0;
+  total_workers = 0;
+  target_workers = 0;
+  busy_workers = 0;
+
+  assert (dynamic_cast<css_request_worker_pool_t::core_elastic *> (const_cast<css_request_worker_pool_t::core_impl *> (&wp_core)));
+  static_cast<css_request_worker_pool_t::core_elastic *> (const_cast<css_request_worker_pool_t::core_impl *> (&wp_core))->get_runtime_stats (total_slots,
+					      target_slots, busy_slots, total_workers, target_workers, busy_workers);
+
+  // core index; it used to be job queue index
   (void) db_make_int (&vals[val_index++], (int) core_index);
 
-  // add max worker count; it used to be max thread workers per job queue
-  (void) db_make_int (&vals[val_index++], (int) wp_core.get_worker_count ());
+  // Num_request_concurrency_total, Num_request_concurrency_target, Num_request_concurrency_busy
+  (void) db_make_int (&vals[val_index++], (int) total_slots);
+  (void) db_make_int (&vals[val_index++], (int) target_slots);
+  (void) db_make_int (&vals[val_index++], (int) busy_slots);
 
-  // number of busy workers; core does not keep it, we need to count them manually
-  int busy_count = 0;
-  wp_core.map_running_contexts (stop_mapper, css_wp_worker_get_busy_count_mapper, busy_count);
-  (void) db_make_int (&vals[val_index++], (int) busy_count);
-
-  // number of connection workers; just for backward compatibility, there are no connections workers here
-  (void) db_make_int (&vals[val_index++], 0);
+  // Num_request_worker_total, Num_request_worker_target, Num_request_worker_busy
+  (void) db_make_int (&vals[val_index++], (int) total_workers);
+  (void) db_make_int (&vals[val_index++], (int) target_workers);
+  (void) db_make_int (&vals[val_index++], (int) busy_workers);
 
   // increment core_index
   ++core_index;
@@ -2779,16 +2496,11 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  if (checked_threads_count == css_Server_request_worker_pool->get_worker_count ())
-    {
-      // all threads are suspended
-      return true;
-    }
-  else
-    {
-      // at least one thread is free
-      return false;
-    }
+  // the hard worker cap is a resource ceiling, not a deadlock detection threshold. waiting for the elastic pool to
+  // consume all remaining headroom could create thousands of blocked threads before the fallback victimizer runs.
+  // if every running handler is suspended and undispatched work remains, another worker alone has not proven that it
+  // can make progress. let the lock manager's delayed fallback break the stall independently of elastic headroom.
+  return checked_threads_count > 0 && css_Server_request_worker_pool->has_queued_tasks ();
 }
 
 //
@@ -2872,14 +2584,18 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
   return count;
 }
 
-size_t css_get_max_workers ()
+void
+css_set_max_concurrency_and_workers (std::size_t max_concurrency, std::size_t max_worker)
 {
-  return css_get_max_conn () + 1; // = css_Num_max_conn in connection_sr.c
+  if (css_Server_request_worker_pool)
+    {
+      assert (max_concurrency > 0);
+      assert (max_worker >= max_concurrency);
+
+      css_Server_request_worker_pool->adjust_runtime_parameter (max_concurrency, max_worker);
+    }
 }
-size_t css_get_max_task_count ()
-{
-  return 2 * css_get_max_workers ();	// not that it matters...
-}
+
 size_t css_get_max_connections ()
 {
   return css_get_max_conn () + 1;

@@ -390,8 +390,8 @@ struct log_rec_2pc_prepcommit
   char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global transaction */
   int gtrinfo_length;		/* length of the global transaction info */
-  unsigned int num_object_locks;	/* Total number of update-type locks acquired by this transaction on the
-                                         * objects. */
+  unsigned int num_locks;	/* Total number of update-type locks acquired by this transaction. Covers every lock
+                                 * resource type, including the inserter-MVCCID self-lock. */
   unsigned int num_page_locks;	/* Total number of update-type locks acquired by this transaction on the pages. */
 };
 
@@ -463,6 +463,12 @@ struct log_rec_supplement
 #define LOG_IS_MVCC_OP_RECORD_TYPE(type) \
   (((type) == LOG_MVCC_UNDO_DATA) \
    || ((type) == LOG_MVCC_REDO_DATA) \
+   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
+/* Is record type a MVCC operation that carries an undo image */
+#define LOG_IS_MVCC_OP_UNDO_RECORD_TYPE(type) \
+  (((type) == LOG_MVCC_UNDO_DATA) \
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 

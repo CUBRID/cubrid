@@ -819,6 +819,11 @@ pt_transform_cnf_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	    {			/* build OR-tree */
 	      list = pt_and (parser, arg1, arg2);
 	      list->info.expr.op = PT_OR;
+	      /* pt_and () builds a fresh node, so carry over what the factor being replaced held.
+	       * Losing 'location' turns a term that came from an outer join's ON condition into a
+	       * WHERE level (after join) term, which then rejects the null padded rows. */
+	      list->info.expr.location = node->info.expr.location;
+	      list->type_enum = PT_TYPE_LOGICAL;
 	    }
 	  else
 	    {
@@ -1205,6 +1210,14 @@ pt_do_cnf (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_wal
       /* to make pt_cnf() work */
       for (; list; list = list->next)
 	{
+	  /* a restriction derived by qo_extract_or_restrictions () must stay one whole factor:
+	   * re-running the distribution on it explodes it into per-branch OR products -- new
+	   * nodes that shed the OR-derived marks the plan-time judgment needs and that re-pay,
+	   * per product, the duplicated evaluation those marks exist to prevent */
+	  if (PT_EXPR_INFO_IS_FLAGED (list, PT_EXPR_INFO_OR_DERIVED))
+	    {
+	      continue;
+	    }
 	  PT_EXPR_INFO_CLEAR_FLAG (list, PT_EXPR_INFO_CNF_DONE);
 	}
 
