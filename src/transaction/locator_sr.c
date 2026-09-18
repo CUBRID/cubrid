@@ -8358,9 +8358,39 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
+      if (pruning_type != DB_NOT_PARTITIONED_CLASS)
+	{
+	  /* The transform below stores OOS and Internal LOB values in the files of attr_info's class, so the partition
+	   * has to be known before the record exists. Otherwise every partition's out-of-row data lands in the root
+	   * class' files, where DROP PARTITION cannot reclaim it and PROMOTE PARTITION loses it. The key may still be
+	   * a default or an auto-increment, so fill those in first. locator_insert_force () prunes the finished record
+	   * again and lands on the same partition. */
+	  OID part_class_oid;
+	  HFID part_hfid;
+
+	  COPY_OID (&part_class_oid, &class_oid);
+	  HFID_COPY (&part_hfid, &class_hfid);
+
+	  /* The partition key is already materialized here (explicit value, default, or auto-increment assigned by the
+	   * executor before this call), so the key can be read without disturbing the record's attribute values. */
+	  error_code =
+	    partition_prune_insert_attr_info (thread_p, &class_oid, attr_info, pcontext, pruning_type,
+					      &part_class_oid, &part_hfid);
+	  if (error_code != NO_ERROR)
+	    {
+	      break;
+	    }
+
+	  COPY_OID (&attr_info->class_oid, &part_class_oid);
+	}
+
       copyarea =
 	locator_allocate_copy_area_by_attr_info (thread_p, attr_info, old_recdes, &new_recdes, -1,
 						 LOB_FLAG_INCLUDE_LOBFILE);
+
+      /* the insert below starts from the class the statement named and prunes the record itself */
+      COPY_OID (&attr_info->class_oid, &class_oid);
+
       if (copyarea == NULL)
 	{
 	  error_code = ER_FAILED;
