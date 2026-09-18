@@ -436,6 +436,7 @@ set(PARALLEL_SCAN_SOURCES
   )
 
 set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_QUERY_DIR}/px_sp_eligibility.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   )

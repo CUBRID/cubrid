@@ -110,4 +110,6 @@ extern DB_VALUE *fetch_peek_leftmost_numeric_regu (THREAD_ENTRY * thread_p, regu
 extern int fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, regu_variable_node * key_limit_l, val_descr * vd,
 					     DB_VALUE * out_val);
 
+extern bool fetch_is_agg_expr_shape (const regu_variable_node * regu_var, int budget);
+
 #endif /* _FETCH_H_ */

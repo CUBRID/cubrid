@@ -27,6 +27,7 @@
 #include "authenticate.h"
 #include "deduplicate_key.h"
 #include "schema_system_catalog_constants.h"
+#include "sp_catalog.hpp"
 #include "trigger_manager.h"
 
 // TODO: Add checking the following rules in compile time (@hgryoo)
@@ -821,18 +822,9 @@ sm_define_view_index_spec (void)
 	    "WHEN 3 THEN 'INDEX IS IN ONLINE BUILDING' "
 	    "ELSE 'NULL' "
 	    "END AS [status], "
-          "CASE "
-            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[owner].[name] "
-            "ELSE NULL "
-            "END AS [referential_index_class_owner_name], "
-          "CASE "
-            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[class_of].[class_name] "
-            "ELSE NULL "
-            "END AS [referential_index_class_name], "
-          "CASE "
-            "WHEN [i].[referential_index] IS NOT NULL THEN [i].[referential_index].[index_name] "
-            "ELSE NULL "
-            "END AS [referential_index_name], "
+          "[ref_class].[owner].[name] AS [referential_index_class_owner_name], "
+          "[ref_class].[class_name] AS [referential_index_class_name], "
+          "[ref_pk].[index_name] AS [referential_index_name], "
           "CASE [i].[delete_rule] "
             "WHEN 0 THEN 'CASCADE' "
             "WHEN 1 THEN 'RESTRICT' "
@@ -864,6 +856,11 @@ sm_define_view_index_spec (void)
 	"FROM "
 	  /* CT_INDEX_NAME */
 	  "[%s] AS [i] "
+	  /* CT_CLASS_NAME */
+	  "LEFT OUTER JOIN [%s] AS [ref_class] ON [ref_class].[class_of] = [i].[referential_class] "
+	  /* CT_INDEX_NAME */
+	  "LEFT OUTER JOIN [%s] AS [ref_pk] "
+	    "ON [ref_pk].[class_of] = [ref_class] AND [ref_pk].[is_primary_key] = 1 "
 	"WHERE "
 	  "{'DBA'} SUBSETEQ ("
 	      "SELECT "
@@ -903,6 +900,8 @@ sm_define_view_index_spec (void)
 	    ")",            
 	CT_INDEXKEY_NAME,
         OPTION_DEDUPLICATE_MASK,
+	CT_INDEX_NAME,
+	CT_CLASS_NAME,
 	CT_INDEX_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
@@ -1237,6 +1236,8 @@ sm_define_view_stored_procedure_spec (void)
 	  "CASE [sp].[lang] WHEN 0 THEN 'PLCSQL' WHEN 1 THEN 'JAVA' ELSE 'UNKNOWN' END AS [lang], "
           "CASE [sp].[directive] & 1 WHEN 0 THEN 'DEFINER' ELSE 'CURRENT_USER' END AS [authid], "
 	  "CASE [sp].[directive] & 2 WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_deterministic], "
+	  /* SP_DIRECTIVE_PARALLEL_ENABLE */
+	  "CASE [sp].[directive] & %d WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_parallel_enabled], "
 	  "CASE [sp].[lang] "
 	    "WHEN 0 THEN NULL "
 	    "ELSE CONCAT ([sp].[target_class], '.', [sp].[target_method]) "
@@ -1319,6 +1320,7 @@ sm_define_view_stored_procedure_spec (void)
 		")"
 	    ")",
 	CT_DATATYPE_NAME,
+	SP_DIRECTIVE_PARALLEL_ENABLE,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_STORED_PROC_NAME,
