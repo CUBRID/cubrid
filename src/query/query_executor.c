@@ -7728,6 +7728,18 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		ASSERT_ERROR ();
 		goto exit_on_error;
 	      }
+
+	    if (s_id->type != S_PARALLEL_INDEX_SCAN)
+	      {
+		/* fallback to single-thread index scan */
+		assert (s_id->type == S_INDX_SCAN);
+
+		/* for partitioned class */
+		if (xasl->list_id->tfile_vfid != NULL && !VPID_ISNULL (&xasl->list_id->first_vpid))
+		  {
+		    qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+		  }
+	      }
 #endif /* SERVER_MODE && !WINDOWS */
 
 	    /* monitor */
@@ -9528,6 +9540,18 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	      if (error != NO_ERROR)
 		{
 		  return S_ERROR;
+		}
+
+	      if (spec->s_id.type != S_PARALLEL_INDEX_SCAN)
+		{
+		  /* fallback to single-thread index scan */
+		  assert (spec->s_id.type == S_INDX_SCAN);
+
+		  /* for partitioned class */
+		  if (xasl->list_id->tfile_vfid != NULL && !VPID_ISNULL (&xasl->list_id->first_vpid))
+		    {
+		      qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+		    }
 		}
 #endif /* SERVER_MODE && !WINDOWS */
 
@@ -28610,19 +28634,19 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /* create tuple descriptor for partial list files */
   proc->agg_hash_context->part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
   proc->agg_hash_context->part_list_id->tpl_descr.f_valp =
-    (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
+    (DB_VALUE **) malloc (sizeof (DB_VALUE *) * type_list.type_cnt);
   if (proc->agg_hash_context->part_list_id->tpl_descr.f_valp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * type_list.type_cnt);
       goto exit_on_error;
     }
 
   proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_cnt = type_list.type_cnt;
   proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_valp =
-    (DB_VALUE **) malloc (sizeof (DB_VALUE) * type_list.type_cnt);
+    (DB_VALUE **) malloc (sizeof (DB_VALUE *) * type_list.type_cnt);
   if (proc->agg_hash_context->sorted_part_list_id->tpl_descr.f_valp == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE) * type_list.type_cnt);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * type_list.type_cnt);
       goto exit_on_error;
     }
   /* initialize scan; this way we can call qfile_close_scan on an unopened scan without repercussions */
