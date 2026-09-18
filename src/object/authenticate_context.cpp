@@ -566,6 +566,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
   DB_VALUE value;
   const char *pass;
   char *dbuser = NULL, *dbpassword = NULL;
+  bool loginable = false;
 
   dbuser = (char *) name;
   dbpassword = (char *) password;
@@ -601,7 +602,13 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	}
       else
 	{
-	  if (is_loginable_user (user) == false)
+	  error = get_loginable (user, &loginable);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  if (!loginable)
 	    {
 	      error = ER_AU_LOGIN_DISABLED;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
@@ -1052,17 +1059,28 @@ authenticate_context::set_loginable (MOP user, bool loginable)
   return obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value);
 }
 
-int authenticate_context::is_loginable_user (MOP user)
+/*
+ * get_loginable() - Read the login capability of the given user.
+ *   return: error code
+ *   user(in): user object
+ *   loginable(out): whether the user is allowed to log in
+ */
+int
+authenticate_context::get_loginable (MOP user, bool *loginable)
 {
   DB_VALUE value;
+  int error;
 
-  if (obj_get (user, AU_USER_ATTR_IS_LOGINABLE, &value) == NO_ERROR &&
-      db_get_int (&value) == true)
+  error = obj_get (user, AU_USER_ATTR_IS_LOGINABLE, &value);
+  if (error != NO_ERROR)
     {
-      return true;
+      ASSERT_ERROR ();
+      return error;
     }
 
-  return false;
+  *loginable = (db_get_int (&value) != 0);
+
+  return NO_ERROR;
 }
 
 //
