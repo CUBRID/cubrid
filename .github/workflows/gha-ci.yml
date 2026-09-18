@@ -2145,7 +2145,7 @@ jobs:
                 find "$logs" -type f -name summary_info -exec cat {} + > /tmp/summary_info 2>/dev/null || :
                 [ -s /tmp/summary_info ] && cp -f /tmp/summary_info "$out/summary_info" || :
                 # The per-case queries and diffs are in the JUnit XML, which collect
-                # reads for the summary. Same glob as the entrypoint's collect_xml.
+                # reads for the summary. summary.xml is the old format, 725 KB of waste.
                 mkdir -p "$out/test-results"
                 find "$logs" -type f -name '*.xml' ! -name summary.xml \
                   -exec cp -f {} "$out/test-results/" \; 2>/dev/null || :
