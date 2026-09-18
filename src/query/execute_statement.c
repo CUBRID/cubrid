@@ -22956,6 +22956,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_ATTRIBUTE *attr;
   PT_NODE *col;
   DB_TYPE *col_types = NULL;
+  int *col_attr_ids = NULL;
   int ncols = 0;
   PT_NODE *entity_spec;
   PT_NODE *entity;
@@ -22998,9 +22999,12 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
-      if (col_types == NULL)
+      col_attr_ids = (int *) malloc (ncols * sizeof (int));
+      if (col_types == NULL || col_attr_ids == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
+	  free_and_init (col_types);
+	  free_and_init (col_attr_ids);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -23012,8 +23016,10 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      error = er_errid ();
 	      free_and_init (col_types);
+	      free_and_init (col_attr_ids);
 	      return (error != NO_ERROR) ? error : ER_FAILED;
 	    }
+	  col_attr_ids[i] = db_attribute_id (attr);
 	  col_types[i++] = db_attribute_type (attr);
 	}
     }
@@ -23026,15 +23032,19 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
-      if (col_types == NULL)
+      col_attr_ids = (int *) malloc (ncols * sizeof (int));
+      if (col_types == NULL || col_attr_ids == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
+	  free_and_init (col_types);
+	  free_and_init (col_attr_ids);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
       int i = 0;
       for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
 	{
+	  col_attr_ids[i] = db_attribute_id (attr);
 	  col_types[i++] = db_attribute_type (attr);
 	}
     }
@@ -23047,14 +23057,18 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
 	      "DELIMITER/QUOTE/HEADER are only valid with FORMAT CSV");
       free_and_init (col_types);
+      free_and_init (col_attr_ids);
       return ER_COPY_NOT_SUPPORTED;
     }
 
-  error = copy_from_init (table_name, col_types, ncols, statement->info.copy.format,
+  /* The attribute ids pin each incoming column to the attribute the user named; without them the server
+   * mapped columns by definition order and ignored the list. */
+  error = copy_from_init (table_name, col_types, col_attr_ids, ncols, statement->info.copy.format,
 			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
 			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk);
 
   free_and_init (col_types);
+  free_and_init (col_attr_ids);
 
   return error;
 }

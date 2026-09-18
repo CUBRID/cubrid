@@ -13333,6 +13333,7 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
   int header = 0;
   int bulk = 0;
   DB_TYPE *col_types = NULL;
+  int *col_attr_ids = NULL;
   copy_session *session = NULL;
 
   *error_code = NO_ERROR;
@@ -13359,8 +13360,12 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
       return NULL;
     }
   num_cols = OR_GET_INT (ptr);
+  /* Two shapes: [..6 ints..][num_cols types] from an older or hand-built client, or the same followed by
+   * [num_cols attribute ids] naming the column each value goes to.  Without the ids columns map by definition
+   * order, which silently misplaces an explicit column list. */
   if (num_cols <= 0 || num_cols > (config_len - (int) (ptr - config_ptr) - OR_INT_SIZE * 6) / OR_INT_SIZE
-      || config_len != (int) (ptr - config_ptr) + OR_INT_SIZE * (6 + num_cols))
+      || (config_len != (int) (ptr - config_ptr) + OR_INT_SIZE * (6 + num_cols)
+	  && config_len != (int) (ptr - config_ptr) + OR_INT_SIZE * (6 + 2 * num_cols)))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "invalid COPY column metadata");
       *error_code = ER_STREAM_SESSION_ERROR;
@@ -13390,6 +13395,19 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
       ptr = or_unpack_int (ptr, &type_val);
       col_types[i] = (DB_TYPE) type_val;
     }
+  if (config_ptr + config_len - ptr >= OR_INT_SIZE * num_cols)
+    {
+      col_attr_ids = (int *) db_private_alloc (thread_p, num_cols * sizeof (int));
+      if (col_attr_ids == NULL)
+	{
+	  *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+      for (int i = 0; i < num_cols; i++)
+	{
+	  ptr = or_unpack_int (ptr, &col_attr_ids[i]);
+	}
+    }
 
   {
     OID class_oid;
@@ -13412,7 +13430,8 @@ create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int c
 	goto exit;
       }
 
-    *error_code = session->init (thread_p, &class_oid, col_types, num_cols, format, delimiter, quote, header, bulk);
+    *error_code = session->init (thread_p, &class_oid, col_types, col_attr_ids, num_cols, format, delimiter, quote,
+				 header, bulk);
     if (*error_code != NO_ERROR)
       {
 	delete session;
@@ -13425,6 +13444,10 @@ exit:
   if (col_types != NULL)
     {
       db_private_free (thread_p, col_types);
+    }
+  if (col_attr_ids != NULL)
+    {
+      db_private_free (thread_p, col_attr_ids);
     }
 
   return session;

@@ -69,8 +69,8 @@ copy_session::~copy_session ()
 }
 
 int
-copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format,
-		    int delimiter, int quote, int header, int bulk)
+copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, const int *col_attr_ids,
+		    int num_cols, int format, int delimiter, int quote, int header, int bulk)
 {
   int error = NO_ERROR;
   HEAP_CACHE_ATTRINFO attrinfo;
@@ -121,9 +121,38 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
     });
 
     m_attr_ids.resize (num_cols);
-    for (int i = 0; i < num_cols && i < n_attrs; i++)
+    if (col_attr_ids != NULL)
       {
-	m_attr_ids[i] = attrs[order[i]].id;
+	/* The client named the columns: each incoming value goes to exactly the attribute it named, in the
+	 * order given.  Mapping by definition order here silently misplaced an explicit column list. */
+	for (int i = 0; i < num_cols; i++)
+	  {
+	    bool found = false;
+
+	    for (int a = 0; a < n_attrs; a++)
+	      {
+		if (attrs[a].id == col_attr_ids[i])
+		  {
+		    found = true;
+		    break;
+		  }
+	      }
+	    if (!found)
+	      {
+		heap_attrinfo_end (thread_p, &attrinfo);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+			"COPY column list names an attribute the class does not have");
+		return ER_STREAM_SESSION_ERROR;
+	      }
+	    m_attr_ids[i] = col_attr_ids[i];
+	  }
+      }
+    else
+      {
+	for (int i = 0; i < num_cols && i < n_attrs; i++)
+	  {
+	    m_attr_ids[i] = attrs[order[i]].id;
+	  }
       }
   }
 

@@ -12826,8 +12826,8 @@ internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, i
  * name + options + col_types, unchanged encoding) and opens with STREAM_KIND_COPY.
  */
 int
-copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format, int delimiter, int quote,
-		int header, int bulk)
+copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_attr_ids, int ncols, int format,
+		int delimiter, int quote, int header, int bulk)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -12836,7 +12836,10 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
   char *ptr;
 
   /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk + ncols * int */
-  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE);
+  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk + ncols * type + ncols * attr id.
+   * The trailing attr ids are what the server maps columns with; a config without them (an older or hand-built
+   * client) still loads by definition order. */
+  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE) * 2;
 
   config = (char *) malloc (config_size);
   if (config == NULL)
@@ -12855,6 +12858,10 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
   for (int i = 0; i < ncols; i++)
     {
       ptr = or_pack_int (ptr, (int) col_types[i]);
+    }
+  for (int i = 0; i < ncols; i++)
+    {
+      ptr = or_pack_int (ptr, col_attr_ids != NULL ? col_attr_ids[i] : -1);
     }
 
   rc = stream_from_init (STREAM_KIND_COPY, config, config_size);
