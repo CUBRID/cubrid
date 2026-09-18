@@ -78,6 +78,7 @@ extern "C"
   extern PT_NODE **parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer,
 						     const bool no_escapes_strings);
   extern PT_NODE **parser_parse_string_use_sys_charset (PARSER_CONTEXT * parser, const char *buffer);
+  extern int parser_copy_memory_input (PARSER_CONTEXT * parser, char *buffer, int max_size);
 #if defined(ENABLE_UNUSED_FUNCTION)
   extern PT_NODE **parser_parse_binary (PARSER_CONTEXT * parser, const char *buffer, size_t size);
 #endif
@@ -137,6 +138,7 @@ extern "C"
   extern const unsigned char *pt_get_varchar_bytes (const PARSER_VARCHAR * string);
   extern int pt_get_varchar_length (const PARSER_VARCHAR * string);
 
+  extern const char *pt_print_quoted_value_text (PARSER_CONTEXT * parser, const char *str, int length);
   extern PARSER_VARCHAR *pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * node);
   extern PARSER_VARCHAR *pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * node);
@@ -384,6 +386,9 @@ extern "C"
   extern DB_OBJECT *pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref);
   extern PT_NODE *pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain);
   extern PT_NODE *pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * p, void *scope, int *continue_walk);
+  extern PT_NODE *pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern PT_NODE *pt_mark_anti_join_on (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
   extern DB_QUERY_RESULT *pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query);
   extern DB_QUERY_RESULT *pt_make_cache_hit_result_descriptor (void);
   extern PT_NODE *pt_remove_from_list (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list);

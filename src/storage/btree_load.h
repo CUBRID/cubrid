@@ -39,6 +39,7 @@
 #include "system_parameter.h"
 #include "object_domain.h"
 #include "slotted_page.h"
+#include "btree_sort.h"
 
 /* Forward declarations for filter predicate and XASL unpack types */
 typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
@@ -48,7 +49,7 @@ typedef struct xasl_unpack_info XASL_UNPACK_INFO;
 class ftab_set;
 /* *INDENT-ON* */
 
-/* Types and constants shared by the b+tree bulk load path (btree_load.c and external_sort.c) */
+/* Types and constants shared by the b+tree bulk load path (btree_load.c and btree_sort.c) */
 
 #define BT_LOAD_VACUUM_SLOT_LIMIT ((size_t) 64 * 1024 * 1024)
 
@@ -175,11 +176,14 @@ typedef enum bt_load_px_outcome
 #define BTREE_MAX_OIDCOUNT_IN_LEAF_RECORD(btid) \
   (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OIDLEN_INPAGE))
 
-#define BTREE_MAX_OVERFLOW_RECORD_SIZE \
+/* CBRD-24094: the overflow OID page header is 8 bytes on legacy (unique) chains and 16 bytes on directory
+ * (non-unique) chains, so the capacity depends on the index type. */
+#define BTREE_MAX_OVERFLOW_RECORD_SIZE(btid) \
   (DB_PAGESIZE - DB_ALIGN (SPAGE_HEADER_SIZE, BTREE_MAX_ALIGN) \
-   - DB_ALIGN (sizeof (BTREE_OVERFLOW_HEADER), BTREE_MAX_ALIGN))
+   - DB_ALIGN (BTREE_IS_UNIQUE ((btid)->unique_pk) \
+	       ? sizeof (BTREE_OVERFLOW_HEADER) : sizeof (BTREE_OVF_DIR_HEADER), BTREE_MAX_ALIGN))
 #define BTREE_MAX_OIDCOUNT_IN_OVERFLOW_RECORD(btid) \
-  (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OVERFLOW_RECORD_SIZE))
+  (BTREE_MAX_OIDCOUNT_IN_SIZE (btid, BTREE_MAX_OVERFLOW_RECORD_SIZE (btid)))
 
 extern int btree_node_number_of_keys (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 extern int btree_get_next_overflow_vpid (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, VPID * vpid);
@@ -267,6 +271,38 @@ struct btree_overflow_header
   VPID next_vpid;
 };
 
+/* CBRD-24094: extended overflow header for OID-ordered overflow chains of non-unique
+ * indexes. The on-disk format is detected by the length of the header record: legacy
+ * pages store BTREE_OVERFLOW_HEADER only (8 bytes), directory-format pages store
+ * BTREE_OVF_DIR_HEADER (16 bytes). next_vpid must stay first so that all
+ * sequential chain traversal code works on both formats unchanged. */
+typedef struct btree_ovf_dir_header BTREE_OVF_DIR_HEADER;
+struct btree_ovf_dir_header
+{
+  VPID next_vpid;		/* Next page in chain. Must be first (same offset as legacy). */
+  VPID dir_vpid;		/* Head of the OID-directory page list of the chain. NULL until the
+				 * chain grows to a second data page; stays set if the chain later
+				 * shrinks back to one (the directory is torn down only when the
+				 * chain's last data page is removed). Immutable once created. */
+};
+
+/* One OID-directory entry: separator OID and the data page it routes to. Entries are
+ * kept sorted by sep_oid in a single record (slot 1) of directory pages; entry order
+ * matches the chain (next_vpid) order of the data pages. A data page owns the OID
+ * range [sep, next_sep); the first page also catches anything below its separator.
+ * Separators are fixed at page creation; deletions never invalidate them. */
+typedef struct btree_ovf_dir_entry BTREE_OVF_DIR_ENTRY;
+struct btree_ovf_dir_entry
+{
+  OID sep_oid;			/* Lower bound (separator) for OIDs stored in vpid. */
+  VPID vpid;			/* Data page. */
+};
+
+/* Maximum directory entries stored in one directory page record (conservative slack
+ * for the spage header, slot directory and the header record). */
+#define BTREE_OVF_DIR_MAX_ENTRIES \
+  ((int) ((DB_PAGESIZE - 256) / (int) sizeof (BTREE_OVF_DIR_ENTRY)))
+
 typedef struct btree_node_info BTREE_NODE_INFO;
 struct btree_node_info
 {
@@ -297,6 +333,16 @@ struct filter_index_info
   char *pred_stream;
   int pred_stream_size;
 };
+
+/* Layout of the sort record that bt_load_put_buf_to_record () hands to the index build sort
+ * (btree_sort.c):
+ *
+ *   [BTSORT_REC_HEADER 4B][OID 8B][class OID 8B, unique index only][insert MVCCID 8B, if HAS_INSID]
+ *   [delete MVCCID 8B, if HAS_DELID][key]
+ *
+ * The header (btree_sort.h) tells which MVCCIDs follow, where the key starts and whether it has a
+ * NULL column. The record starts INT_ALIGNMENT-aligned and every field above is a multiple of it,
+ * so the key is aligned too. Readers: bt_load_get_buf_from_record () and compare_driver (). */
 
 typedef struct sort_args SORT_ARGS;
 struct sort_args
@@ -360,6 +406,7 @@ extern int bt_load_decode_sort_record_key (THREAD_ENTRY * thread_p, const RECDES
 					   LOAD_ARGS * load_args, DB_VALUE * key_out);
 extern bool bt_load_parallel_enabled (const LOAD_ARGS * load_args);
 extern void bt_load_demote_to_logged (LOAD_ARGS * load_args);
+extern BTSORT_STATUS btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta,
@@ -369,6 +416,8 @@ STATIC_INLINE bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_valu
 STATIC_INLINE void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid);
 extern int btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVERFLOW_HEADER * ovf_header);
+extern int btree_ovf_dir_init_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVF_DIR_HEADER * ovf_header);
+extern BTREE_OVF_DIR_HEADER *btree_ovf_dir_get_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 extern int btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR page_ptr,
 				   BTREE_NODE_HEADER * header, bool redo);
 extern int btree_init_root_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,

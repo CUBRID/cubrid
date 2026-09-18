@@ -107,6 +107,10 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
   srv_handle->is_holdable = false;
   srv_handle->is_from_current_transaction = true;
   srv_handle->is_pooled = as_info->cur_statement_pooling;
+  srv_handle->replace_rule_idx = -1;
+  srv_handle->num_orig_markers = 0;
+  srv_handle->replace_fallback = 0;
+  srv_handle->qr_demote_pending = 0;
 
   if (is_cgw_mode)
     {

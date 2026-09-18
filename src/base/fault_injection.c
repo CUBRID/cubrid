@@ -44,6 +44,10 @@ static int fi_handler_exit (THREAD_ENTRY * thread_p, void *arg, const char *call
 static int fi_handler_random_exit (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_random_fail (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
 static int fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
+static int fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line);
+
+/* how long fi_handler_hold stays in place when the caller passes no argument */
+#define FI_HOLD_DEFAULT_SECONDS 3
 
 static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
 
@@ -56,9 +60,10 @@ static FI_TEST_ITEM *fi_code_item (THREAD_ENTRY * thread_p, FI_TEST_CODE code);
  *******************************************************************************/
 FI_TEST_ITEM fi_Test_array[] = {
   {FI_TEST_HANG, fi_handler_hang, FI_INIT_STATE},
-  {FI_TEST_FILE_IO_FORMAT, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_DISK_MANAGER_VOLUME_ADD, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_DISK_MANAGER_VOLUME_EXPAND, fi_handler_random_exit, FI_INIT_STATE},
+  {FI_TEST_DISK_MANAGER_VOLHEADER_HOLD, fi_handler_hold, FI_INIT_STATE},
+  {FI_TEST_FILE_IO_FORMAT, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_FILE_IO_WRITE_PARTS1, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_FILE_IO_WRITE_PARTS2, fi_handler_random_exit, FI_INIT_STATE},
   {FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER, fi_handler_exit, FI_INIT_STATE},
@@ -405,6 +410,29 @@ fi_handler_hang (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, co
   while (true)
     {
       sleep (1);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * fi_handler_hold - stay in place for a while, holding whatever the caller holds
+ *
+ * return: NO_ERROR
+ *
+ *   arg(in): seconds to hold, or NULL for the default
+ *
+ * Note: Unlike fi_handler_hang this one returns, so the caller keeps running afterwards. It is meant to widen a
+ *       contention window that is otherwise microseconds long, which makes a race deterministic enough to test.
+ */
+static int
+fi_handler_hold (THREAD_ENTRY * thread_p, void *arg, const char *caller_file, const int caller_line)
+{
+  int seconds = (arg == NULL) ? FI_HOLD_DEFAULT_SECONDS : *((int *) arg);
+
+  if (seconds > 0)
+    {
+      sleep ((unsigned int) seconds);
     }
 
   return NO_ERROR;

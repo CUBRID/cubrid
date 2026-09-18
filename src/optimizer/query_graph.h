@@ -423,11 +423,17 @@ struct qo_node
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER)
 
+#define QO_NODE_IS_SEMI_ANTI_JOIN(node) \
+  (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI       || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI)
+
 #define QO_NODE_IS_ANSI_JOIN(node) \
   (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_NATURAL     || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI         || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI         || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_INNER)
 
 #define QO_ADD_OUTER_DEP_SET(tail,head) \
@@ -756,6 +762,8 @@ struct qo_term
 #define QO_TERM_SEL_FROM_HISTOGRAM  1024	/* selectivity computed from histograms only */
 #define QO_TERM_LIKE_DERIVED_RANGE  2048	/* range term derived from a prefix LIKE */
 #define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
+#define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
+#define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
