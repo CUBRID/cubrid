@@ -61,6 +61,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -83,7 +84,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             Set<String> referencedClasses,
             Set<String> referencedMethods) {
         this.iStore = iStore;
-        this.unitOwner = Misc.getNormalizedText(unitOwner);
+        // the server sends the owner already unquoted and case-converted, so only the case has to
+        // match
+        this.unitOwner = Misc.uppercaseLikeServer(unitOwner);
         this.referencedClasses = referencedClasses;
         this.referencedMethods = referencedMethods;
         this.sqlSerialNo = 1;
@@ -1112,7 +1115,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public ExprFloat visitFp_num_exp(Fp_num_expContext ctx) {
         try {
 
-            String text = ctx.FLOATING_POINT_NUM().getText().toLowerCase();
+            String text = ctx.FLOATING_POINT_NUM().getText().toLowerCase(Locale.ROOT);
 
             if (text.indexOf("e") >= 0) {
                 // double type
@@ -3040,7 +3043,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         List<ExName> exceptions = new ArrayList<>();
         for (Exception_nameContext c : ctx.exception_name()) {
-            if ("OTHERS".equals(c.getText().toUpperCase())) {
+            if ("OTHERS".equals(c.getText().toUpperCase(Locale.ROOT))) {
                 others = c;
                 exceptions.add(new ExName(c, "OTHERS"));
             } else {
@@ -3887,7 +3890,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private String expandRecordIfAny(Static_sqlContext ctx) {
 
         String sqlText = ctx.getText();
-        String lowercased = sqlText.toLowerCase();
+        String lowercased = sqlText.toLowerCase(Locale.ROOT);
 
         if (lowercased.indexOf("insert") == 0
                 || lowercased.indexOf("replace") == 0

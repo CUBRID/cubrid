@@ -65,6 +65,7 @@
 #include "authenticate_access_auth.hpp"
 #include "pl_signature.hpp"
 #include "oid.h"
+#include "intl_support.h"
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
@@ -1865,9 +1866,58 @@ error:
   return err;
 }
 
+/*
+ * pl_downcase_identifier - case-convert an identifier the way the server does
+ *   return: the case-converted name
+ *   name(in): identifier as the PL server sent it
+ *
+ * Note: Names of package items arrive verbatim, as they were written in the PL/CSQL source. The
+ *       server is what decides how an identifier is case-converted -- intl_identifier_lower ()
+ *       follows the identifier alphabet of the database locale, which is not plain ASCII for every
+ *       locale -- so the case conversion has to happen here rather than in the PL server, whose
+ *       JVM would otherwise have to reproduce those rules.
+ *
+ *       Unlike sm_downcase_name (), this sizes its own buffer, so an identifier of any length is
+ *       handled.
+ */
+static std::string
+pl_downcase_identifier (const std::string &name)
+{
+  if (name.empty ())
+    {
+      return name;
+    }
+
+  std::string lowered;
+  lowered.resize (intl_identifier_lower_string_size (name.c_str ()) + 1);
+  intl_identifier_lower (name.c_str (), &lowered[0]);
+  lowered.resize (strlen (lowered.c_str ()));
+
+  return lowered;
+}
+
+/*
+ * pl_downcase_leading_identifier - case-convert the identifier that leads a colon-separated entry
+ *   return: the entry with its leading name case-converted
+ *   entry(in): an entry of a cursor's parameters or a record type's fields, which is
+ *              'name:type...' (see the column comments in schema_system_catalog_install.cpp)
+ */
+static std::string
+pl_downcase_leading_identifier (const std::string &entry)
+{
+  size_t colon = entry.find (':');
+  if (colon == std::string::npos)
+    {
+      return pl_downcase_identifier (entry);
+    }
+
+  return pl_downcase_identifier (entry.substr (0, colon)) + entry.substr (colon);
+}
+
 static int
 sp_add_pkg_sp_arg (MOP *mop_out, const int idx, const cubpl::pkg_sp_arg arg)
 {
+  std::string arg_name;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -1907,7 +1957,8 @@ sp_add_pkg_sp_arg (MOP *mop_out, const int idx, const cubpl::pkg_sp_arg arg)
     }
 
   // attribute arg_name
-  db_make_string (&value, arg.name.data());
+  arg_name = pl_downcase_identifier (arg.name);
+  db_make_string (&value, arg_name.data());
   err = dbt_put_internal (obt, SP_ARG_ATTR_ARG_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -1995,6 +2046,7 @@ static int
 sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
 	       const char *pkg_unique_name, const char *pkg_name, const char *class_name, const cubpl::pkg_sp &sp)
 {
+  std::string sp_name;
   DB_OTMPL *obt;
   DB_OBJECT *object, *sp_arg_obj, *classobj, *arg_classobj;
   DB_VALUE value;
@@ -2019,7 +2071,8 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
     } // side effect 0
 
   // attribute unique_name
-  n = snprintf (buffer, sizeof (buffer), "%s.%s", pkg_unique_name, sp.name.data());
+  sp_name = pl_downcase_identifier (sp.name);
+  n = snprintf (buffer, sizeof (buffer), "%s.%s", pkg_unique_name, sp_name.data());
   if (n >= (int) sizeof (buffer))
     {
       err = ER_PKG_PROC_UNIQ_NAME_TOO_LONG;
@@ -2035,7 +2088,7 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
     }
 
   // attribute sp_name
-  db_make_string (&value, sp.name.data());
+  db_make_string (&value, sp_name.data());
   err = dbt_put_internal (obt, SP_ATTR_SP_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2306,6 +2359,7 @@ error:
 static int
 sp_add_pkg_var (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_var &var)
 {
+  std::string var_name;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2336,7 +2390,8 @@ sp_add_pkg_var (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_var 
     }
 
   // attribute name
-  db_make_string (&value, var.name.data());
+  var_name = pl_downcase_identifier (var.name);
+  db_make_string (&value, var_name.data());
   err = dbt_put_internal (obt, PKG_VAR_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2420,6 +2475,7 @@ static int
 sp_add_pkg_exception (MOP *mop_out, const char *pkg_unique_name,
 		      const cubpl::pkg_exception &exception)
 {
+  std::string exception_name;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2450,7 +2506,8 @@ sp_add_pkg_exception (MOP *mop_out, const char *pkg_unique_name,
     }
 
   // attribute name
-  db_make_string (&value, exception.name.data());
+  exception_name = pl_downcase_identifier (exception.name);
+  db_make_string (&value, exception_name.data());
   err = dbt_put_internal (obt, PKG_EXCEPTION_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2501,6 +2558,8 @@ error:
 static int
 sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_cursor &cursor)
 {
+  std::string cursor_name;
+  std::string cursor_rec_type;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2531,7 +2590,8 @@ sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_c
     }
 
   // attribute name
-  db_make_string (&value, cursor.name.data());
+  cursor_name = pl_downcase_identifier (cursor.name);
+  db_make_string (&value, cursor_name.data());
   err = dbt_put_internal (obt, PKG_CURSOR_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2540,7 +2600,8 @@ sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_c
     }
 
   // attribute record_type
-  db_make_string (&value, cursor.record_type.data());
+  cursor_rec_type = pl_downcase_identifier (cursor.record_type);
+  db_make_string (&value, cursor_rec_type.data());
   err = dbt_put_internal (obt, PKG_CURSOR_ATTR_RECORD_TYPE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2564,8 +2625,8 @@ sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_c
     i = 0;
     for (const std::string &p: cursor.parameters)
       {
-
-	db_make_string (&v, p.data());
+	std::string param = pl_downcase_leading_identifier (p);
+	db_make_string (&v, param.data());
 	err = set_put_element (seq, i, &v);
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
@@ -2629,6 +2690,7 @@ static int
 sp_add_pkg_rec_type (MOP *mop_out, const char *pkg_unique_name,
 		     const cubpl::pkg_rec_type &rec_type)
 {
+  std::string rec_type_name;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2659,7 +2721,8 @@ sp_add_pkg_rec_type (MOP *mop_out, const char *pkg_unique_name,
     }
 
   // attribute name
-  db_make_string (&value, rec_type.name.data());
+  rec_type_name = pl_downcase_identifier (rec_type.name);
+  db_make_string (&value, rec_type_name.data());
   err = dbt_put_internal (obt, PKG_RECORD_TYPE_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2683,8 +2746,8 @@ sp_add_pkg_rec_type (MOP *mop_out, const char *pkg_unique_name,
     i = 0;
     for (const std::string &f: rec_type.fields)
       {
-
-	db_make_string (&v, f.data());
+	std::string field = pl_downcase_leading_identifier (f);
+	db_make_string (&v, field.data());
 	err = set_put_element (seq, i, &v);
 	pr_clear_value (&v);
 	if (err != NO_ERROR)

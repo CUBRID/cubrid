@@ -159,8 +159,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         assert slot != null;
         return new String[] {
             "if (!authChecked[" + slot + "]) {",
-            "  String owner = checkExecuteAuthorization(\"" + uniqueName + "\");",
-            "  ownerName[" + slot + "] = owner.toUpperCase();",
+            // checkExecuteAuthorization() gives the name in the form the server stores it
+            // especially, in uppercase.
+            "  ownerName[" + slot + "] = checkExecuteAuthorization(\"" + uniqueName + "\");",
             "  targetClass["
                     + slot
                     + "] = findTargetClass(\""
