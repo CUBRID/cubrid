@@ -2455,6 +2455,11 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
       return NO_ERROR;
     }
 
+  if (er_filter_errid (false) == NO_ERROR)
+    {
+      return err;
+    }
+
   if (name_attr)
     {
       display_error (0);
@@ -2462,20 +2467,6 @@ ldr_convert_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDES
     }
   else if (type == LDR_ELO_EXT)
     {
-      /* TODO: ctshim,
-       * A LOB locator that cannot be read prints one line more than every
-       * other cast that fails, because ldr_elo_ext_elem () called
-       * display_error (0) on itself before returning. That extra line is
-       * loaddb's published output - tests/loaddb pins it and so does the QA
-       * case bug_bts_16011 - so it is kept here rather than dropped as a side
-       * effect of moving the conversion.
-       *
-       * ldr_elo_ext_elem () is still live: elem_converter[LDR_ELO_EXT] reaches
-       * it from construct_instance () when a %constructor argument is a LOB. A
-       * collection cannot hold one - SET(CLOB) is rejected by the DDL - so
-       * that is the only way in. Making this uniform means removing BOTH
-       * reports, not just one.
-       */
       display_error (0);
     }
 
