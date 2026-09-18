@@ -129,12 +129,24 @@ extern SCAN_CODE locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, O
 extern SCAN_OPERATION_TYPE locator_decide_operation_type (LOCK lock_mode, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern LOCK locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type);
 
+/* Bit flags adjusting the behavior of locator_insert_force (). Combine with bitwise OR into its force_flags
+ * argument. */
+typedef enum
+{
+  LC_FORCE_FLAG_NONE = 0x00,	/* default force behavior */
+  LC_FORCE_FLAG_HAS_BU_LOCK = 0x01,	/* the transaction inserts under BU_LOCK (bulk insert) */
+  LC_FORCE_FLAG_DONT_CHECK_FK = 0x02,	/* skip foreign key constraint checking */
+  LC_FORCE_FLAG_BULK_LOGGING = 0x04,	/* use bulk (page granularity) logging */
+  LC_FORCE_FLAG_FROM_WORKSPACE = 0x08	/* recdes was serialized from a workspace object; OOS demotion has not
+					 * been applied yet and must happen at force time */
+} LOCATOR_FORCE_FLAG;
+
 /* *INDENT-OFF* */
 extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * recdes,
 				 int has_index, int op_type, HEAP_SCANCACHE * scan_cache, int *force_count,
 				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
-				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
-				 bool dont_check_fk, bool use_bulk_logging = false, bool from_workspace = false);
+				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p,
+				 int force_flags = LC_FORCE_FLAG_NONE);
 /* *INDENT-ON* */
 
 extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes);
