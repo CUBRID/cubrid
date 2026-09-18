@@ -1560,10 +1560,14 @@ unload_fetcher (LC_FETCH_VERSION_TYPE fetch_type)
   while ((nobjects != nfetched) && (error_occurred == false))
     {
       TIMER_BEGIN ((g_sampling_records >= 0), &(g_uci->wi_fetch));
+      /* Let the server expand OOS stubs (keep_oos_locators = false).  Ordinary OOS values (large VARCHAR)
+       * come back inline, which is the only form this loader can print; an Internal LOB stub comes back as its
+       * locator text (heap_oos_make_lob_image ()), which fprint_internal_lob_ref_if_locator () turns into a
+       * sidecar reference.  Keeping raw stubs here made every OOS VARCHAR unload as an empty string. */
       error = locator_fetch_all (hfid, &lock, fetch_type, class_oid, &nobjects, &nfetched, &last_oid, &fetch_area,
 				 g_request_pages, g_parallel_process_cnt,
 				 (g_parallel_process_idx - 1) /* to zero base */ ,
-				 true);
+				 false);
       TIMER_END ((g_sampling_records >= 0), &(g_uci->wi_fetch));
       if (error == NO_ERROR)
 	{
