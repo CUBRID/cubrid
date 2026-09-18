@@ -806,7 +806,9 @@ namespace cubschema
       {TR_ATT_UPDATED_TIME, "datetime"}
     },
 // constraints
-    {},
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {TR_ATT_UNIQUE_NAME, nullptr}, false},
+    },
 // authorization
     {
       // owner, grants
@@ -2055,7 +2057,6 @@ namespace cubschema
       {"groups", format_set (format_varchar (DB_MAX_USER_LENGTH))},
       /* kept for compatibility; always NULL in view */
       {"authorization", AU_AUTH_CLASS_NAME},
-      {"triggers", format_sequence ("object")},
       {"is_loginable", format_varchar (3)},
       {"is_system_created", format_varchar (3)},
       {"comment", format_varchar (1024)},
