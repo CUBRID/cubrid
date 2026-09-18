@@ -8858,7 +8858,10 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
-	  if (heap_recdes_contains_oos (recdes))
+	  /* Only an insert publishes OOS records, and the tracking state describes the chunks it just wrote.  A delete
+	   * writes none, and moving a row across partitions inserts before it deletes, so a delete that looked at this
+	   * state would consume the LSAs the insert had already taken and leave the queue empty. */
+	  if (is_insert && heap_recdes_contains_oos (recdes))
 	    {
 	      if (thread_p->oos_oids.size () != thread_p->oos_attrids.size ()
 		  || thread_p->oos_oids.size () != thread_p->oos_is_internal_lob.size ())
