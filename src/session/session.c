@@ -616,7 +616,13 @@ session_states_init (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "creating session states table\n");
 #endif /* SESSION_DEBUG */
 
-  sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50, session_state_Descriptor);
+  /* session_states_init () cannot report, and neither could the path this replaces, so the error is left set
+   * and the rest of this function runs exactly as it did before */
+  if (sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50,
+				    session_state_Descriptor) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
 
 #if defined (SERVER_MODE)
   session_control_daemon_init ();
