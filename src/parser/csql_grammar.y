@@ -1182,12 +1182,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token CONSTRAINTS
 %token CONTINUE
 %token CONVERT
-%token COPY_
-%token CSV_
-%token DELIMITER_
-%token QUOTE_
-%token HEADER_
-%token BULK_
+%token <cptr> COPY_
+%token <cptr> CSV_
+%token <cptr> DELIMITER_
+%token <cptr> QUOTE_
+%token <cptr> BULK_
 %token CORRESPONDING
 %token COUNT
 %token CREATE
@@ -1255,7 +1254,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token FLOAT_
 %token For
 %token FOREIGN
-%token FORMAT_
+%token <cptr> FORMAT_
 %token FOUND
 %token FROM
 %token FULL
@@ -1420,7 +1419,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SQLSTATE
 %token SQLWARNING
 %token STATISTICS
-%token STDIN_
+%token <cptr> STDIN_
 %token String
 %token SUBCLASS
 %token SUBSET
@@ -4527,7 +4526,7 @@ copy_csv_option
 			SET_CONTAINER_4 (ctn, NULL, $2, NULL, NULL);
 			$$ = ctn;
 		}}
-	| HEADER_
+	| HEADER
 		{{
 			container_4 ctn;
 			SET_CONTAINER_4 (ctn, NULL, NULL, NULL, FROM_NUMBER (1));	/* flag */
@@ -20865,6 +20864,13 @@ identifier
 	| GT_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| HASH                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| HEADER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COPY_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CSV_                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DELIMITER_             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| QUOTE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BULK_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FORMAT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDIN_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| HEAP                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}        
 	| HOST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| IFNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
