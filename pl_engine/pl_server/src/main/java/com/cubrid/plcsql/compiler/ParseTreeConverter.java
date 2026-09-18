@@ -2711,7 +2711,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         ExprId cursor =
                 visitCursor_exp(
                         ctx.cursor_exp(),
-                        false, // s034, s035
+                        true, // s034, s035
                         "%s may not be opened because it is not a cursor");
         DeclCursor decl = (DeclCursor) cursor.decl;
 
