@@ -4161,8 +4161,49 @@ jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directi
 }
 
 /*
+ * jsp_user_specified_name - sm_user_specified_name () with its bounds checked, into a new string
+ *   return: the qualified name in lowercase, or an empty string if str cannot be one.
+ *           Never NULL unless the allocation fails; the caller frees it.
+ *   str(in) :
+ *
+ * Note: The parser bounds each identifier of str, but not their join, so a qualified name can be
+ *       longer than an identifier buffer holds. sm_downcase_name () and sm_user_specified_name ()
+ *       assert their bounds instead of checking them, which means a release build writes past the
+ *       buffer, so such a name has to be refused before it reaches them. Callers already treat an
+ *       empty name as invalid.
+ */
+
+static char *
+jsp_user_specified_name (const char *str)
+{
+  char buffer[SM_MAX_IDENTIFIER_LENGTH];
+  const char *dot = strchr (str, '.');
+
+  // sm_user_specified_name () asserts these rather than checking them: a debug build aborts and
+  // a release build has no check at all, so they have to be verified here. The total bounds the
+  // write into buffer; the parts bound what that function passes to sm_downcase_name (). A name
+  // without a qualifier needs no check of its own: that function refuses one too long to prepend
+  // the current user name to.
+  bool fits = (intl_identifier_lower_string_size (str) < (int) sizeof (buffer));
+  if (fits && dot != NULL)
+    {
+      fits = ((size_t) (dot - str) < SM_MAX_USER_LENGTH
+	      && strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+    }
+
+  if (!fits)
+    {
+      return strdup ("");
+    }
+
+  sm_user_specified_name (str, buffer, sizeof (buffer));
+
+  return strdup (buffer);
+}
+
+/*
  * jsp_check_stored_procedure_name -
- *   return: java stored procedure name
+ *   return: java stored procedure name, or an empty string if str cannot be one
  *   str(in) :
  *
  * Note: convert lowercase
@@ -4171,23 +4212,32 @@ jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directi
 static char *
 jsp_check_stored_procedure_name (const char *str)
 {
-  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
-  char tmp[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
   static const int dbms_output_len = strlen ("dbms_output.");
 
-
   if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
     {
-      sprintf (buffer, "public.dbms_output.%s",
-	       sm_downcase_name (str + dbms_output_len, tmp, SM_MAX_IDENTIFIER_LENGTH));
+      // the result is a three-part name, which is longer than a single identifier
+      static const char qualifier[] = "public.dbms_output.";
+      char buffer[sizeof (qualifier) - 1 + SM_MAX_IDENTIFIER_LENGTH];
+      char tmp[SM_MAX_IDENTIFIER_LENGTH];
+      const char *member = str + dbms_output_len;
+
+      if (intl_identifier_lower_string_size (member) < (int) sizeof (tmp)
+	  && sm_downcase_name (member, tmp, sizeof (tmp)) != NULL)
+	{
+	  snprintf (buffer, sizeof (buffer), "%s%s", qualifier, tmp);
+	  name = strdup (buffer);
+	}
+      else
+	{
+	  name = strdup ("");
+	}
     }
   else
     {
-      sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+      name = jsp_user_specified_name (str);
     }
-
-  name = strdup (buffer);
 
   return name;
 }
@@ -4195,10 +4245,7 @@ jsp_check_stored_procedure_name (const char *str)
 static char *
 jsp_check_package_name (const char *str)
 {
-  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
-
-  sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
-  return strdup (buffer);
+  return jsp_user_specified_name (str);
 }
 
 /*

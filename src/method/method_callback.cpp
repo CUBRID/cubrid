@@ -42,6 +42,7 @@
 #include "execute_statement.h"
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
+#include "intl_support.h"
 #include "schema_system_catalog_constants.h"
 #include "sp_catalog.hpp"
 #include "sp_constants.hpp"
@@ -801,7 +802,35 @@ namespace cubmethod
       }
   }
 
-  static void
+  /*
+   * identifier_fits () - can this name be held by an identifier buffer?
+   *   return: true if it fits
+   *   name(in): a name the PL server sent, or one built from it here
+   *
+   * Note: The PL server sends a qualified name that it joined from parts. Each part passed the
+   *       parser's length check (see pt_check_identifier ()), but their join did not, so
+   *       <user>.<package>.<routine> can be longer than any identifier buffer here holds.
+   *       sm_downcase_name () and sm_user_specified_name () only assert on that, which means a
+   *       release build writes past the buffer, so such a name has to be refused before it
+   *       reaches them. Nothing is lost by refusing: a unique name that long cannot be created
+   *       in the first place (see ER_PKG_PROC_UNIQ_NAME_TOO_LONG in jsp_cl.cpp).
+   *
+   *       The bound is the one the parser applies to a single identifier, and it is one less than
+   *       the smallest buffer below, so no call can overflow. The size is measured after case
+   *       conversion because that is what gets written, and in UTF-8 it may grow.
+   */
+  static bool
+  identifier_fits (const std::string &name)
+  {
+    return intl_identifier_lower_string_size (name.c_str ()) < DB_MAX_IDENTIFIER_LENGTH;
+  }
+
+  // reported for a name identifier_fits () refused. The PL server turns it into a compile error
+  // carrying the line and column of the name (see ParseTreeConverter.askServerSemanticQuestions).
+  static const char *TOO_LONG_NAME_MSG =
+	  "Qualified name is too long. The name with its qualifiers must be shorter than 255 bytes.";
+
+  static bool
   prepend_user_name (std::string &name, char *buf, int buf_size)
   {
     char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
@@ -809,11 +838,21 @@ namespace cubmethod
     size_t start_pos = 0;
     split_str (name, start_pos, pkg);
     assert (start_pos); // name has a dot
-    sm_user_specified_name (pkg.c_str(), uniq_name, sizeof (uniq_name)); // prepend the current user name
+    if (sm_user_specified_name (pkg.c_str(), uniq_name, sizeof (uniq_name)) == NULL) // prepend the current user name
+      {
+	return false;
+      }
     temp = uniq_name;
     temp += ".";
     temp += name.substr (start_pos);
+    if (!identifier_fits (temp))
+      {
+	// this candidate cannot name an existing routine, so leave it unmatched rather than
+	// failing the question: the other candidate may still match
+	return false;
+      }
     sm_downcase_name (temp.c_str(), buf, buf_size);
+    return true;
   }
 
   static int
@@ -825,6 +864,13 @@ namespace cubmethod
     std::string &name = question.name;
     bool wants_function = (question.type == GSQT_FUNCTION);
     MOP routine_mop = NULL;
+
+    if (!identifier_fits (name))
+      {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = TOO_LONG_NAME_MSG;
+	return err;
+      }
 
     int dot_cnt = std::count (name.begin (), name.end(), '.');
     switch (dot_cnt)
@@ -864,22 +910,23 @@ namespace cubmethod
 	// second, try <pkg>.<name> case: search a routine with the name prefixed with the current owner
       {
 	MOP routine_mop2 = NULL;
-	prepend_user_name (name, uniq_name, sizeof (uniq_name));
-
-	err = find_routine_of_type (uniq_name, wants_function, routine_mop2, false);
-	if (err == NO_ERROR)
+	if (prepend_user_name (name, uniq_name, sizeof (uniq_name)))
 	  {
-	    if (routine_mop2)
+	    err = find_routine_of_type (uniq_name, wants_function, routine_mop2, false);
+	    if (err == NO_ERROR)
 	      {
-		routine_mop = routine_mop2;
-		match_cnt++;
+		if (routine_mop2)
+		  {
+		    routine_mop = routine_mop2;
+		    match_cnt++;
+		  }
 	      }
-	  }
-	else
-	  {
-	    res.err_id = err;
-	    res.err_msg = er_msg();
-	    return err;
+	    else
+	      {
+		res.err_id = err;
+		res.err_msg = er_msg();
+		return err;
+	      }
 	  }
       }
 
@@ -1063,6 +1110,13 @@ exit:
     MOP serial_class_mop, serial_mop;
     DB_IDENTIFIER serial_obj_id;
 
+    if (!identifier_fits (question.name))
+      {
+	res.err_id = ER_FAILED;
+	res.err_msg = TOO_LONG_NAME_MSG;
+	return res.err_id;
+      }
+
     const char *serial_name = question.name.c_str ();
     serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
@@ -1117,8 +1171,16 @@ exit:
     split_str (name, start_pos, id);
 
     std::string class_name_with_owner = owner_name + class_name;
+    if (!identifier_fits (class_name_with_owner))
+      {
+	return ER_FAILED;
+      }
+
     char realname[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
-    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH + 1);
+    if (sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH + 1) == NULL)
+      {
+	return ER_FAILED;
+      }
 
     qualifier = realname;
     transform (id.begin(), id.end(), id.begin(), ::tolower);
@@ -1132,6 +1194,13 @@ exit:
     int err, match_cnt;
     std::string qualifier;
     std::string id;
+
+    if (!identifier_fits (question.name))
+      {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = TOO_LONG_NAME_MSG;
+	return err;
+      }
 
     err = normalize_id (question.name, qualifier, id);
     if (err != NO_ERROR)
