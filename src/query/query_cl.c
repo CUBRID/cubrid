@@ -604,11 +604,8 @@ begin_client_internal_lob_dml_stream (int var_cnt, const DB_VALUE * varptr, DB_V
   DB_VALUE *stream_values = NULL;
   INTERNAL_LOB_DML_INPUT *inputs = NULL;
   internal_lob_dml_slot_config *slot_configs = NULL;
-  XASL_ID null_xasl_id;
-  CACHE_TIME cache_time;
   int slot_count = 0;
   int error;
-  bool stream_open = false;
 
   if (stream_values_out == NULL)
     {
@@ -623,36 +620,18 @@ begin_client_internal_lob_dml_stream (int var_cnt, const DB_VALUE * varptr, DB_V
 
   error = query_prepare_internal_lob_dml_inputs (var_cnt, varptr, &stream_values, &inputs, &slot_configs,
 						 &slot_count, direct_class_oid);
-  if (error != NO_ERROR || slot_count == 0)
+  if (error == NO_ERROR && slot_count > 0)
     {
-      return error;
+      /* This entry point serves the client object path (xasl_id == NULL: a trigger, a view or object-level DML).
+       * That path assigns values through obj_assign_value (), which refuses an unresolved Internal LOB envelope
+       * for a LOB attribute -- so every stream opened from here was rejected after the whole payload had crossed
+       * the network.  Say so now, before sending anything. */
+      error = ER_STREAM_SESSION_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1,
+	      "Internal LOB payload cannot be written through the client object path; a trigger, a view, or "
+	      "object-level DML forces that path");
     }
 
-  XASL_ID_SET_NULL (&null_xasl_id);
-  CACHE_TIME_RESET (&cache_time);
-  error = internal_lob_dml_from_init (&null_xasl_id, 0, NULL, (QUERY_FLAG) 0, &cache_time, 0, slot_configs, slot_count);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-  stream_open = true;
-
-  error = query_send_internal_lob_dml_inputs (inputs, slot_configs, slot_count);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  *stream_values_out = stream_values;
-  stream_values = NULL;
-
-exit:
-  if (error != NO_ERROR && stream_open)
-    {
-      er_stack_push ();
-      (void) stream_from_abort ();
-      er_stack_pop ();
-    }
   query_clear_internal_lob_dml_stream_values (var_cnt, stream_values);
   free_and_init (inputs);
   free_and_init (slot_configs);
