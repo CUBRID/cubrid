@@ -1016,18 +1016,46 @@ namespace cubload
     return NO_ERROR;
   }
 
+  /* One sidecar stream per thread, kept open across calls.  Every LOB value in a batch is read in 64 KB
+   * pieces, and opening the file again for each piece dominated the cost; only a path change reopens. */
+  struct internal_lob_sidecar_open_file
+  {
+    std::string path;
+    std::ifstream file;
+  };
+
+  static std::ifstream &
+  internal_lob_sidecar_open (const std::string &path, bool &opened)
+  {
+    static thread_local internal_lob_sidecar_open_file cache;
+
+    if (cache.path != path || !cache.file.is_open ())
+      {
+	cache.file.close ();
+	cache.file.clear ();
+	cache.file.open (path, std::ios::in | std::ios::binary);
+	cache.path = path;
+      }
+    else
+      {
+	cache.file.clear ();	/* a previous read may have left eof/fail set */
+      }
+    opened = cache.file.is_open ();
+    return cache.file;
+  }
+
   static int
   internal_lob_sidecar_read_blocks (const internal_lob_sidecar_entry &entry, DB_BIGINT byte_offset, char *buf,
 				    int read_size)
   {
     static thread_local internal_lob_sidecar_block_index index;
 
-    std::ifstream sidecar_file;
+    bool opened = false;
+    std::ifstream &sidecar_file = internal_lob_sidecar_open (entry.path, opened);
     std::vector<char> compressed;
     int copied = 0;
 
-    sidecar_file.open (entry.path, std::ios::in | std::ios::binary);
-    if (!sidecar_file.is_open ())
+    if (!opened)
       {
 	return internal_lob_sidecar_set_error ();
       }
@@ -1116,7 +1144,6 @@ namespace cubload
   internal_lob_sidecar_read_raw_chunk (const internal_lob_sidecar_entry &entry, DB_BIGINT byte_offset, char *buf,
 				       int buf_size, int *nread)
   {
-    std::ifstream sidecar_file;
     std::vector<char> hex_data;
     DB_BIGINT remaining;
     int read_size;
@@ -1150,8 +1177,9 @@ namespace cubload
 	return NO_ERROR;
       }
 
-    sidecar_file.open (entry.path, std::ios::in | std::ios::binary);
-    if (!sidecar_file.is_open ())
+    bool opened = false;
+    std::ifstream &sidecar_file = internal_lob_sidecar_open (entry.path, opened);
+    if (!opened)
       {
 	return internal_lob_sidecar_set_error ();
       }
