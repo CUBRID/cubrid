@@ -4499,7 +4499,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    }
 	  if (error == NO_ERROR)
 	    {
-	      error = store_collected_histograms (obj, &hist_collect);
+	      error = store_collected_histograms (obj, &hist_collect, with_fullscan);
 	    }
 	  histogram_collect_clear (&hist_collect);
 	  if (ndv_info.attr_ndv != NULL)

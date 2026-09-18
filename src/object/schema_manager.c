@@ -15686,8 +15686,8 @@ sm_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool wit
       /* Another session inserted this column's row while we were inserting ours.  The existence
        * check above reads the latest committed version and takes no lock (CBRD-27369), so it
        * cannot see a concurrent uncommitted insert -- this unique violation is the only place
-       * that race shows, and it is reachable wherever collections are not serialized per class
-       * (UPDATE STATISTICS ON ALL CLASSES).  The unique insert waits for the other transaction,
+       * that race shows, and any two sessions first-collecting the same column reach it.  The
+       * unique insert waits for the other transaction,
        * so by the time this error comes back that row is committed: the entry does exist, which
        * is what the caller asked.  Undo our own attempt and report it as existing, so the caller
        * stores its histogram into the row that is there instead of failing (before this, the

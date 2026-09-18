@@ -49,7 +49,8 @@
 #include "error_manager.h"
 
 static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
-static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
+static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
+				bool with_fullscan);
 static bool string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset,
     int collation);
 static void histogram_lhs_string_domain (PT_NODE *lhs, int fallback_codeset, int fallback_collation,
@@ -154,7 +155,8 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
   /* Store the exact null frequency AND the histogram blob together in a single object template
    * (one dbt_edit + one flush) so a failure never leaves a mixed catalog row -- a new
    * null_frequency alongside the previous histogram blob. Mirrors the multi-column path. */
-  error = store_one_histogram (classop, attr_name, histogram_blob, histogram_total_length, null_frequency);
+  error = store_one_histogram (classop, attr_name, histogram_blob, histogram_total_length, null_frequency,
+			       with_fullscan != 0);
 
   if (histogram_blob != NULL)
     {
@@ -215,10 +217,12 @@ get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogr
 
 /*
  * store_one_histogram () - write one column's blob + exact null frequency into its
- *   _db_histogram catalog entry (the entry must already exist).
+ *   _db_histogram catalog entry, creating the entry again if it went missing
+ *   with_fullscan(in): the collection mode to record if the entry has to be recreated
  */
 static int
-store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq)
+store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
+		     bool with_fullscan)
 {
   int error = NO_ERROR;
   DB_OBJECT *histogram_obj = NULL, *fin = NULL;
@@ -228,9 +232,36 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
   db_make_null (&hv);
 
   error = get_histogram_for_write (classop, attr_name, &histogram_obj);
-  if (error != NO_ERROR || histogram_obj == NULL)
+  if (error != NO_ERROR)
     {
       return error;
+    }
+
+  if (histogram_obj == NULL)
+    {
+      /* The entry existed when the statement checked it (sm_add_histogram ()), and the scan has
+       * already produced this column's histogram -- a concurrent DROP HISTOGRAM committed in
+       * between and removed the row.  The existence check reads committed and takes no lock
+       * (CBRD-27369), so it could not see that DROP while it was uncommitted.  Returning success
+       * here would leave the statement reporting a collection it never stored, so put the entry
+       * back and write into it.  The bucket count is not part of the row (smt_add_histogram ()
+       * stores class_of, key_attr, with_fullscan, null_frequency and the blob), hence -1. */
+      error = sm_add_histogram (classop, attr_name, -1, with_fullscan);
+      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
+	{
+	  return error;
+	}
+
+      error = get_histogram_for_write (classop, attr_name, &histogram_obj);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (histogram_obj == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+	  return ER_OBJ_OBJECT_NOT_FOUND;
+	}
     }
 
   obj_tmpl = dbt_edit_object (histogram_obj);
@@ -406,7 +437,9 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
     {
       for (int i = 0; i < n; i++)
 	{
-	  int e = store_one_histogram (classop, attr_names[i].c_str (), blobs[i], blob_lens[i], null_freqs[i]);
+	  int e =
+		  store_one_histogram (classop, attr_names[i].c_str (), blobs[i], blob_lens[i], null_freqs[i],
+				       with_fullscan != 0);
 	  if (e != NO_ERROR && error == NO_ERROR)
 	    {
 	      error = e;
@@ -454,7 +487,7 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
  *   not left inconsistent on a stats failure. Returns the first error, if any.
  */
 int
-store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc)
+store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc, bool with_fullscan)
 {
   int error = NO_ERROR;
 
@@ -468,7 +501,8 @@ store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc)
 	{
 	  continue;
 	}
-      int e = store_one_histogram (classop, hc->names[i], hc->blobs[i], hc->lens[i], hc->null_freqs[i]);
+      int e = store_one_histogram (classop, hc->names[i], hc->blobs[i], hc->lens[i], hc->null_freqs[i],
+				   with_fullscan);
       if (e != NO_ERROR && error == NO_ERROR)
 	{
 	  error = e;
