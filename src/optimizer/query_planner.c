@@ -268,7 +268,6 @@ static QO_PLAN *qo_find_best_nljoin_inner_plan_on_info (QO_PLAN *, QO_INFO *, JO
 static QO_PLAN *qo_distinct_new (QO_PLAN *, QO_INFO *);
 static void qo_prepare_distinct_info (QO_PLANNER *);
 static QO_INFO *qo_distinct_info_ahead (QO_PLANNER *, QO_NODE *, BITSET *);
-static PT_JOIN_TYPE qo_join_semi_anti_type (QO_PLANNER *, QO_PLAN *);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
@@ -3158,7 +3157,9 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   plan->plan_type = QO_PLANTYPE_JOIN;
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (outer->has_sort_limit || inner->has_sort_limit);
-  plan->plan_un.join.semi_anti = qo_join_semi_anti_type (info->planner, inner);
+  /* SEMI/ANTI run by nested loops only */
+  assert (!IS_SEMI_ANTI_JOIN_TYPE (join_type) || join_method == QO_JOINMETHOD_NL_JOIN
+	  || join_method == QO_JOINMETHOD_IDX_JOIN);
 
   /* An nl/idx join (or cartesian product) emits rows in its outer's order,
    * so it inherits only the outer's final-sort requirement:
@@ -3414,41 +3415,6 @@ qo_join_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *child_
 }
 
 /*
- * qo_join_semi_anti_type () - what a join built over 'inner' is, judging by what the inner reads:
- *      PT_JOIN_SEMI / PT_JOIN_ANTI when it reads a SEMI/ANTI node the usual way, else PT_JOIN_NONE
- *   return: PT_JOIN_TYPE
- *   planner(in):
- *   inner(in): the inner plan of the join
- *
- * Note: SEMI and ANTI are JOIN_INNER joins that keep or drop an outer row by whether the inner has a match, so
- *       the executor is told to stop the inner scan at the first match and the cost model counts the inner that
- *       way.  Whether a join is one is settled here, once, as the join is built, and kept in
- *       plan_un.join.semi_anti for whoever needs it later -- XASL generation, the cost model and the plan dump
- *       read the same value.  The inner tells: its info is either the node's own (node_info), read the usual
- *       way, or the copy that reads the node once with the duplicates removed (distinct_info), over which the
- *       join is ordinary whatever the node is marked.  Any other inner -- another join, a path, a node that is
- *       not SEMI/ANTI -- makes an ordinary join.
- */
-static PT_JOIN_TYPE
-qo_join_semi_anti_type (QO_PLANNER * planner, QO_PLAN * inner)
-{
-  QO_NODE *node;
-
-  if (inner == NULL || inner->info == NULL || bitset_cardinality (&(inner->info->nodes)) != 1)
-    {
-      return PT_JOIN_NONE;
-    }
-
-  node = QO_ENV_NODE (planner->env, bitset_first_member (&(inner->info->nodes)));
-  if (!QO_NODE_IS_SEMI_ANTI_JOIN (node) || inner->info != planner->node_info[QO_NODE_IDX (node)])
-    {
-      return PT_JOIN_NONE;
-    }
-
-  return QO_NODE_PT_JOIN_TYPE (node);
-}
-
-/*
  * qo_join_fprint () -
  *   return:
  *   plan(in):
@@ -3460,20 +3426,13 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
 {
   switch (plan->plan_un.join.join_type)
     {
+    case JOIN_SEMI:
+      fputs (" (semi join)", f);
+      break;
+    case JOIN_ANTI:
+      fputs (" (anti join)", f);
+      break;
     case JOIN_INNER:
-      {
-	PT_JOIN_TYPE sa = plan->plan_un.join.semi_anti;
-	if (sa == PT_JOIN_SEMI)
-	  {
-	    fputs (" (semi join)", f);
-	    break;
-	  }
-	if (sa == PT_JOIN_ANTI)
-	  {
-	    fputs (" (anti join)", f);
-	    break;
-	  }
-      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  fputs (" (inner join)", f);
@@ -3699,8 +3658,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val, outer_card, inner_work;
-  PT_JOIN_TYPE sa_type;
+  double guessed_result_cardinality, limit_val, outer_card, inner_scan_card;
 
   inner = planp->plan_un.join.inner;
 
@@ -3763,27 +3721,20 @@ qo_nljoin_cost (QO_PLAN * planp)
       guessed_result_cardinality = (outer->info)->cardinality;
     }
 
-  inner_work = guessed_result_cardinality;
+  inner_scan_card = guessed_result_cardinality;
 
-  sa_type = planp->plan_un.join.semi_anti;
-  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
+  if (IS_SEMI_ANTI_JOIN_TYPE (planp->plan_un.join.join_type) && inner->iscan_index_rows > 0.0)
     {
-      double match_frac;
-      match_frac = MIN (1.0, (outer->info)->hit_prob);
-
-      if (inner->iscan_index_rows > 0.0)
-	{
-	  /* the key range holds matching rows only, so the row the scan stops on is the first one it
-	   * reads whichever of the iscan_index_rows it is, and an outer row whose key is absent from the
-	   * index reads none at all */
-	  inner_work = guessed_result_cardinality * match_frac / MAX (1.0, inner->iscan_index_rows);
-	}
+      /* the key range holds matching rows only, so the row the scan stops on is the first one it reads
+       * whichever of the iscan_index_rows it is, and an outer row whose key is absent from the index reads
+       * none at all.  hit_prob is the share of outer rows the inner matches (qo_get_term_hit_prob ()) */
+      inner_scan_card = guessed_result_cardinality * (outer->info)->hit_prob / MAX (1.0, inner->iscan_index_rows);
     }
 
   /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
    * the inner side really descends once per outer row, so it is charged here and only here --
    * see the publishing comment in qo_iscan_cost (). */
-  inner_cpu_cost = inner_work * inner->variable_cpu_cost + guessed_result_cardinality * inner->iscan_descent_cpu;
+  inner_cpu_cost = inner_scan_card * inner->variable_cpu_cost + guessed_result_cardinality * inner->iscan_descent_cpu;
 
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
@@ -3802,7 +3753,7 @@ qo_nljoin_cost (QO_PLAN * planp)
        * those rows' pages are fetched regardless of whether the filter later rejects them).
        * Using the filtered join cardinality here under-counted the fetches of strongly-filtered
        * joins and made orders containing them look too cheap. */
-      N = inner_work * MAX (1.0, inner->iscan_index_rows);
+      N = inner_scan_card * MAX (1.0, inner->iscan_index_rows);
 
       /* Saturate the heap side and the leaf side separately, each against its own object size:
        * the heap share (iscan_heap_io, recorded by qo_iscan_cost) against the inner table's
@@ -3820,13 +3771,13 @@ qo_nljoin_cost (QO_PLAN * planp)
       heap_fetched = qo_mackert_lohman_pages ((double) QO_NODE_TCARD (inner->plan_un.scan.node), N);
       leaf_fetched = qo_mackert_lohman_pages ((double) inner->plan_un.scan.index->cum_stats.pages, N);
 
-      inner_io_cost = MIN (inner_work * heap_io, heap_fetched) + MIN (inner_work * leaf_io, leaf_fetched);
+      inner_io_cost = MIN (inner_scan_card * heap_io, heap_fetched) + MIN (inner_scan_card * leaf_io, leaf_fetched);
     }
   else
     {
       /* if inner is seq scan, it is calculated by default card. */
       /* This prevents the worst plan if the cardinality is calculated to be less than the actual value. */
-      inner_io_cost = (inner_work + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
+      inner_io_cost = (inner_scan_card + SSCAN_DEFAULT_CARD) * inner->variable_io_cost;
     }
 
   /* outer side CPU cost of nested-loop block join */
@@ -4133,20 +4084,13 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
 {
   switch (plan->plan_un.join.join_type)
     {
+    case JOIN_SEMI:
+      fputs (" (semi join)", f);
+      break;
+    case JOIN_ANTI:
+      fputs (" (anti join)", f);
+      break;
     case JOIN_INNER:
-      {
-	PT_JOIN_TYPE sa = plan->plan_un.join.semi_anti;
-	if (sa == PT_JOIN_SEMI)
-	  {
-	    fputs (" (semi join)", f);
-	    break;
-	  }
-	if (sa == PT_JOIN_ANTI)
-	  {
-	    fputs (" (anti join)", f);
-	    break;
-	  }
-      }
       fputs (" (inner join)", f);
       break;
 
@@ -6560,7 +6504,6 @@ qo_find_best_nljoin_inner_plan_on_info (QO_PLAN * outer, QO_INFO * info, JOIN_TY
 	}
 
       temp->plan_un.join.inner = inner;
-      temp->plan_un.join.semi_anti = qo_join_semi_anti_type (info->planner, inner);	/* the cost reads it */
       qo_nljoin_cost (temp);
       temp_cost = temp->fixed_cpu_cost + temp->fixed_io_cost + temp->variable_cpu_cost + temp->variable_io_cost;
       if (best_plan == NULL || temp_cost < best_cost)
@@ -8511,6 +8454,19 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     bitset_difference (remaining_subqueries, &pinned_subqueries);
   }
 
+  /* Resolve the candidate's SEMI/ANTI semantics from the node being added, independently of edge order.
+   * A raw SEMI/ANTI tail still requires first-match execution even when the prefix contains DISTINCT.
+   * Otherwise a SEMI/ANTI edge connects a DISTINCT input, possibly inside a multi-node prefix, and the
+   * candidate is an ordinary join. Only this local type changes; graph terms and shared plans keep theirs. */
+  if (!IS_OUTER_JOIN_TYPE (join_type) && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_reads_distinct)
+    {
+      join_type = QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI ? JOIN_SEMI : JOIN_ANTI;
+    }
+  else if (IS_SEMI_ANTI_JOIN_TYPE (join_type))
+    {
+      join_type = JOIN_INNER;
+    }
+
   /* STEP 4: set joined info */
 
   if (new_info == NULL)
@@ -8580,15 +8536,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  total_rows *= selectivity;
 	  total_rows = MAX (1.0, total_rows);
 
-	  if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_reads_distinct)
+	  if (IS_SEMI_ANTI_JOIN_TYPE (join_type))
 	    {
 	      /* a SEMI JOIN emits an outer row at most once and an ANTI JOIN only the outer rows the inner
 	       * does not match, so neither can emit more rows than the outer side holds.  The product above
 	       * counts one row per matching inner row instead, which the next join step would then carry.
-	       * head_hit_prob is the share of outer rows the inner matches (qo_get_term_hit_prob ()).
-	       * Not when the node is added ahead of the side it depends on, read with the duplicates removed:
-	       * that join is an ordinary one and the product above is its estimate. */
-	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI)
+	       * head_hit_prob is the share of outer rows the inner matches (qo_get_term_hit_prob ()). */
+	      if (join_type == JOIN_SEMI)
 		{
 		  cardinality = head_info->cardinality * head_hit_prob;
 		}
@@ -8650,7 +8604,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	kept += qo_examine_follow (new_info, follow_term, head_info, &sarged_terms, &pinned_subqueries);
       }
 
-    if (follow_term && join_type != JOIN_INNER && QO_NODE_IDX (QO_TERM_TAIL (follow_term)) != QO_NODE_IDX (tail_node))
+    if (follow_term && join_type != JOIN_INNER && !IS_SEMI_ANTI_JOIN_TYPE (join_type)
+	&& QO_NODE_IDX (QO_TERM_TAIL (follow_term)) != QO_NODE_IDX (tail_node))
       {
 	/* if there is a path-term whose outer join order is not correct, we can not use idx-join, nl-join, m-join */
 	;
@@ -9169,7 +9124,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	{
 	  return 0;
 	}
-      else if (join_type != JOIN_INNER)
+      else if (join_type != JOIN_INNER && !IS_SEMI_ANTI_JOIN_TYPE (join_type))
 	{
 	  return 0;
 	}
@@ -14207,20 +14162,13 @@ qo_plan_join_print_json (QO_PLAN * plan)
 
   switch (plan->plan_un.join.join_type)
     {
+    case JOIN_SEMI:
+      type = "semi join";
+      break;
+    case JOIN_ANTI:
+      type = "anti join";
+      break;
     case JOIN_INNER:
-      {
-	PT_JOIN_TYPE sa = plan->plan_un.join.semi_anti;
-	if (sa == PT_JOIN_SEMI)
-	  {
-	    type = "semi join";
-	    break;
-	  }
-	if (sa == PT_JOIN_ANTI)
-	  {
-	    type = "anti join";
-	    break;
-	  }
-      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  type = "inner join";
@@ -14566,20 +14514,13 @@ qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
 
   switch (plan->plan_un.join.join_type)
     {
+    case JOIN_SEMI:
+      type = "semi join";
+      break;
+    case JOIN_ANTI:
+      type = "anti join";
+      break;
     case JOIN_INNER:
-      {
-	PT_JOIN_TYPE sa = plan->plan_un.join.semi_anti;
-	if (sa == PT_JOIN_SEMI)
-	  {
-	    type = "semi join";
-	    break;
-	  }
-	if (sa == PT_JOIN_ANTI)
-	  {
-	    type = "anti join";
-	    break;
-	  }
-      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  type = "inner join";

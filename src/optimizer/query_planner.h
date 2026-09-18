@@ -213,11 +213,7 @@ struct qo_plan
 
     struct
     {
-      JOIN_TYPE join_type;	/* JOIN_INNER, _LEFT, _RIGHT, _OUTER */
-      PT_JOIN_TYPE semi_anti;	/* PT_JOIN_SEMI / PT_JOIN_ANTI when this JOIN_INNER keeps or drops an outer row
-				   by whether the inner has a match, else PT_JOIN_NONE.  Settled once in
-				   qo_join_new () from what the inner reads: the SEMI/ANTI node itself, or the
-				   copy that reads it with the duplicates removed, over which the join is ordinary */
+      JOIN_TYPE join_type;	/* JOIN_INNER, _LEFT, _RIGHT, _OUTER, _SEMI, _ANTI */
       QO_JOINMETHOD join_method;	/* NL_JOIN, MERGE_JOIN */
       QO_PLAN *outer;
       QO_PLAN *inner;
