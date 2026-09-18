@@ -246,6 +246,35 @@ namespace hist
 
   };
 
+  /*
+   * string_key_size_for_column () - trailing-space normalization contract for string histogram keys
+   *   column_type(in) : DB_TYPE of the COLUMN the histogram describes (not the value's own type)
+   *   s(in)           : value bytes (may be NULL)
+   *   size(in)        : byte size of s
+   *   return          : byte size to key on
+   *
+   * Shared by the sampler (server side: stored MCV/bucket values and HLL hashes) and the planner
+   * probe (client side: constant keys), so both sides can only ever agree. Keyed on the column
+   * type because heap CHAR values are padded to the column precision and SQL CHAR comparison
+   * ignores trailing spaces -- the padding carries no information and is dropped. VARCHAR bytes
+   * are kept verbatim: under the default ignore_trailing_space=no the executor compares them
+   * exactly, so 'a' and 'a ' are distinct values and must stay distinct MCVs. The value's own
+   * type must NOT decide this: the type checker leaves a CHAR literal compared to a VARCHAR
+   * column as CHAR, so a probe keyed on the literal's type would strip what the sampler kept
+   * (CBRD-27251).
+   */
+  inline int
+  string_key_size_for_column (DB_TYPE column_type, const char *s, int size)
+  {
+    if (column_type == DB_TYPE_CHAR && s != NULL)
+      {
+	while (size > 0 && s[size - 1] == ' ')
+	  {
+	    size--;
+	  }
+      }
+    return size;
+  }
 
 } // namespace hist
 
