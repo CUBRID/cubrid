@@ -33,6 +33,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <unistd.h>
+#include <openssl/evp.h>
 #include <openssl/sha.h>
 #if defined(WINDOWS)
 #include <io.h>
@@ -5463,7 +5464,7 @@ upgradedb_load_decoded_script (int version, char **out_buf, size_t * out_len)
   const char *expected_sha256 = UPGRADE_SCRIPT_SHA256S[version - 1];
   char *buf = NULL;
   size_t file_size = 0;
-  SHA256_CTX sha_ctx;
+  EVP_MD_CTX *sha_ctx = NULL;
   unsigned char digest[SHA256_DIGEST_LENGTH];
   char actual_sha256[SHA256_DIGEST_LENGTH * 2 + 1];
   int error = NO_ERROR;
@@ -5488,9 +5489,18 @@ upgradedb_load_decoded_script (int version, char **out_buf, size_t * out_len)
     }
   buf[decoded_len] = '\0';
 
-  SHA256_Init (&sha_ctx);
-  SHA256_Update (&sha_ctx, buf, decoded_len);
-  SHA256_Final (digest, &sha_ctx);
+  /* Use the EVP digest API; the low-level SHA256_* functions are deprecated since OpenSSL 3.0. */
+  sha_ctx = EVP_MD_CTX_new ();
+  if (sha_ctx == NULL || EVP_DigestInit_ex (sha_ctx, EVP_sha256 (), NULL) != 1
+      || EVP_DigestUpdate (sha_ctx, buf, decoded_len) != 1 || EVP_DigestFinal_ex (sha_ctx, digest, NULL) != 1)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_VALIDATION_FAILED),
+			     script_path);
+      error = ER_FAILED;
+      goto exit;
+    }
+
   str_to_hex_prealloced ((const char *) digest, SHA256_DIGEST_LENGTH,
 			 actual_sha256, sizeof (actual_sha256), HEX_LOWERCASE);
 
@@ -5508,6 +5518,7 @@ upgradedb_load_decoded_script (int version, char **out_buf, size_t * out_len)
   buf = NULL;			/* ownership transferred — exit must not free */
 
 exit:
+  EVP_MD_CTX_free (sha_ctx);
   free_and_init (buf);
   return error;
 }
