@@ -281,12 +281,34 @@ qo_check_nullable_op (PT_NODE * node)
     case PT_LT_ALL:
     case PT_LE_ALL:
     case PT_IS_NOT_IN:
-      /* Safe (a valid not-null proof) only when arg2 is a nonempty literal value set: a
-       * subquery, a host variable, an empty set literal, or a collection-typed column may
-       * all be empty at execution time, and an empty right side makes every one of these
-       * operators TRUE regardless of the left operand -- including when it is NULL. */
-      return !(node->info.expr.arg2 != NULL && node->info.expr.arg2->node_type == PT_VALUE
-	       && PT_IS_SET_TYPE (node->info.expr.arg2) && node->info.expr.arg2->info.value.data_value.set != NULL);
+      {
+	PT_NODE *arg2 = node->info.expr.arg2;
+
+	if (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
+	  {
+	    /* Strip a CAST wrapper so the underlying literal collection can be
+	     * checked below. */
+	    arg2 = arg2->info.expr.arg1;
+	  }
+
+	if (arg2 != NULL && arg2->node_type == PT_VALUE && PT_IS_SET_TYPE (arg2))
+	  {
+	    return arg2->info.value.data_value.set == NULL;
+	  }
+
+	if (arg2 != NULL && arg2->node_type == PT_FUNCTION
+	    && (arg2->info.function.function_type == F_SET || arg2->info.function.function_type == F_MULTISET
+		|| arg2->info.function.function_type == F_SEQUENCE))
+	  {
+	    /*
+	     * ENUM comparison type checking may represent a literal collection as a
+	     * PT_FUNCTION.
+	     */
+	    return arg2->info.function.arg_list == NULL;
+	  }
+
+	return true;
+      }
 
     default:
       return false;
