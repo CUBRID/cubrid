@@ -2144,10 +2144,8 @@ jobs:
                 # so that its absence is what tells collect this shard ran nothing.
                 find "$logs" -type f -name summary_info -exec cat {} + > /tmp/summary_info 2>/dev/null || :
                 [ -s /tmp/summary_info ] && cp -f /tmp/summary_info "$out/summary_info" || :
-                # The per-case queries, diffs and source links are in the JUnit XML,
-                # which collect reads to fill the per-case logs in the summary.
-                # Same glob as the entrypoint's collect_xml: the writer names the file
-                # <os>_<testType>_<testBit>.xml, and summary.xml is the old format.
+                # The per-case queries and diffs are in the JUnit XML, which collect
+                # reads for the summary. Same glob as the entrypoint's collect_xml.
                 mkdir -p "$out/test-results"
                 find "$logs" -type f -name '*.xml' ! -name summary.xml \
                   -exec cp -f {} "$out/test-results/" \; 2>/dev/null || :
@@ -2577,6 +2575,56 @@ jobs:
             # --- failed cases -------------------------------------------------
             : > /tmp/failed.list
             mkdir -p "/tmp/failed-logs/$suite"
+            logs_awk='
+              BEGIN {
+                while (idx != "" && (getline line < idx) > 0) {
+                  split(line, f, "\t"); want[f[1]] = f[2]
+                }
+              }
+              # First, so that a case log carrying the literal <testcase or
+              # <failure does not restart the scan while the body is being read.
+              body != "" {
+                if (/\]\]><\/failure>/) {
+                  sub(/\]\]><\/failure>.*$/, "")
+                  print > body
+                  close(body)
+                  body = ""
+                  next
+                }
+                print > body
+                next
+              }
+              /<testcase/ {
+                cur = ""
+                # The leading space is required: CTP writes classname before name,
+                # so /name="..."/ would match classname and extract a URL.
+                if (match($0, / name="[^"]*"/)) {
+                  cur = substr($0, RSTART + 7, RLENGTH - 8)
+                }
+              }
+              /<failure/ && cur != "" {
+                # No index: the XML is the list itself, numbered as met. With one:
+                # only its cases, keyed by name -- the two files are written by
+                # different passes and need not share an order.
+                if (idx == "") { printf "%s\t%s\n", shard, cur; n = off + ++k }
+                else if (cur in want) { n = want[cur] }
+                else { cur = ""; next }
+                body = dir "/" n ".log"
+                rest = $0
+                sub(/^.*<!\[CDATA\[/, "", rest)
+                if (rest ~ /\]\]><\/failure>/) {
+                  sub(/\]\]><\/failure>.*$/, "", rest)
+                  print rest > body
+                  close(body)
+                  body = ""
+                } else if (rest != "") {
+                  print rest > body
+                }
+                cur = ""
+                next
+              }
+              /<\/testcase>/ { cur = "" }
+            '
             case "$vsrc" in
               test_status.data)
                 for sdir in "$d"/shard/*/; do
@@ -2586,47 +2634,8 @@ jobs:
                   # Line k of failed.list is /tmp/failed-logs/<suite>/k.log. The offset
                   # carries that numbering across the shards.
                   off=$(wc -l < /tmp/failed.list)
-                  awk -v shard="$i" -v off="$off" -v dir="/tmp/failed-logs/$suite" '
-                    # First, so that a case log carrying the literal <testcase or
-                    # <failure does not restart the scan while the body is being read.
-                    body != "" {
-                      if (/\]\]><\/failure>/) {
-                        sub(/\]\]><\/failure>.*$/, "")
-                        print > body
-                        close(body)
-                        body = ""
-                        next
-                      }
-                      print > body
-                      next
-                    }
-                    /<testcase/ {
-                      cur = ""
-                      # The leading space is required: CTP writes classname before name,
-                      # so /name="..."/ would match classname and extract a URL.
-                      if (match($0, / name="[^"]*"/)) {
-                        cur = substr($0, RSTART + 7, RLENGTH - 8)
-                      }
-                      next
-                    }
-                    /<failure/ && cur != "" {
-                      printf "%s\t%s\n", shard, cur
-                      body = dir "/" (off + ++k) ".log"
-                      rest = $0
-                      sub(/^.*<!\[CDATA\[/, "", rest)
-                      if (rest ~ /\]\]><\/failure>/) {
-                        sub(/\]\]><\/failure>.*$/, "", rest)
-                        print rest > body
-                        close(body)
-                        body = ""
-                      } else if (rest != "") {
-                        print rest > body
-                      }
-                      cur = ""
-                      next
-                    }
-                    /<\/testcase>/ { cur = "" }
-                  ' "$x" >> /tmp/failed.list
+                  awk -v shard="$i" -v off="$off" -v idx= \
+                    -v dir="/tmp/failed-logs/$suite" "$logs_awk" "$x" >> /tmp/failed.list
                 done
                 ;;
               summary_info)
@@ -2640,59 +2649,11 @@ jobs:
                     | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" \
                     | awk -v shard="$i" '{printf "%s\t%s\n", shard, $0}' >> /tmp/failed.list
                 done
-                # summary_info says which case failed, the XML says why. Key the body
-                # by the case name, not by encounter order: the two files are written
-                # by different passes and their order does not have to agree.
+                # The names in failed.list are the keys; its line numbers are the logs.
                 awk -F'\t' '{printf "%s\t%d\n", $2, NR}' /tmp/failed.list > /tmp/failed.idx
                 for x in "$d"/shard/*/test-results/*.xml; do
                   [ -f "$x" ] || continue
-                  awk -v dir="/tmp/failed-logs/$suite" -v idx=/tmp/failed.idx '
-                    BEGIN {
-                      while ((getline line < idx) > 0) {
-                        split(line, f, "\t"); want[f[1]] = f[2]
-                      }
-                    }
-                    # First, so that a case log carrying the literal <testcase or
-                    # <failure does not restart the scan while the body is being read.
-                    body != "" {
-                      if (/\]\]><\/failure>/) {
-                        sub(/\]\]><\/failure>.*$/, "")
-                        print > body
-                        close(body)
-                        body = ""
-                        next
-                      }
-                      print > body
-                      next
-                    }
-                    # No next: the indenting writer puts <failure> on its own line, but
-                    # one without it would put both on the same line and the rule below
-                    # would never see it.
-                    /<testcase/ {
-                      cur = ""
-                      # The leading space is required: CTP writes classname before name,
-                      # so /name="..."/ would match classname and extract a URL.
-                      if (match($0, / name="[^"]*"/)) {
-                        cur = substr($0, RSTART + 7, RLENGTH - 8)
-                      }
-                    }
-                    /<failure/ && cur != "" && (cur in want) {
-                      body = dir "/" want[cur] ".log"
-                      rest = $0
-                      sub(/^.*<!\[CDATA\[/, "", rest)
-                      if (rest ~ /\]\]><\/failure>/) {
-                        sub(/\]\]><\/failure>.*$/, "", rest)
-                        print rest > body
-                        close(body)
-                        body = ""
-                      } else if (rest != "") {
-                        print rest > body
-                      }
-                      cur = ""
-                      next
-                    }
-                    /<\/testcase>/ { cur = "" }
-                  ' "$x"
+                  awk -v dir="/tmp/failed-logs/$suite" -v idx=/tmp/failed.idx "$logs_awk" "$x"
                 done
                 ;;
             esac
@@ -2958,9 +2919,7 @@ jobs:
             esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
 
             base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/$suite"
-            # Each suite's runner names its JUnit XML differently -- test-shell.xml for
-            # shell, <os>_<testType>_<testBit>.xml for sql and medium. Take the name
-            # from the shards instead of spelling it out, so a rename cannot 404 here.
+            # The suites name their JUnit XML differently, so take it from the shards.
             xml_name=$(basename "$(ls "$RUNDIR/$suite"/shard/*/test-results/*.xml 2>/dev/null | head -1)" 2>/dev/null || :)
             xml_name=${xml_name:-test-shell.xml}
             {
