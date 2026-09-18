@@ -60,7 +60,6 @@
 
 #define OID_LENGTH      15
 
-#define CSQL_INTERNAL_LOB_LOCATOR_PREFIX "@internal_lob:"
 #define CSQL_INTERNAL_LOB_SCALAR_STREAM_PREFIX "@internal_lob_stream:"
 
 #define COMMA_CHAR      ','

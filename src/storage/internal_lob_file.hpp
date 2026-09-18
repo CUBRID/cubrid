@@ -79,8 +79,6 @@ struct internal_lob_reader
 };
 using INTERNAL_LOB_READER = struct internal_lob_reader;
 
-#define INTERNAL_LOB_LOCATOR_PREFIX "@internal_lob:"
-
 struct internal_lob_pending
 {
   DB_TYPE lob_type;

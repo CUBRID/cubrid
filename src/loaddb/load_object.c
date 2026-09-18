@@ -61,7 +61,6 @@
 #endif
 
 #define MIGRATION_CHUNK 4096
-#define LOAD_INTERNAL_LOB_LOCATOR_PREFIX "@internal_lob:"
 static char migration_buffer[MIGRATION_CHUNK];
 
 static int object_disk_size (DESC_OBJ * obj, int *offset_size_ptr);
@@ -106,34 +105,12 @@ desc_get_var_table_raw_offset (char *var_table, int index, int offset_size)
     }
 }
 
-static unsigned long long
-desc_internal_lob_mix_u64 (unsigned long long value)
-{
-  value ^= value >> 33;
-  value *= 0xff51afd7ed558ccdULL;
-  value ^= value >> 33;
-  value *= 0xc4ceb9fe1a85ec53ULL;
-  value ^= value >> 33;
-  return value;
-}
 
 static unsigned long long
 desc_internal_lob_locator_token (const OID * oid, DB_BIGINT logical_length)
 {
-  unsigned long long token = 0x26914cbfd15cafe1ULL;
-
-  token ^= (unsigned long long) (unsigned short) oid->volid;
-  token = desc_internal_lob_mix_u64 (token);
-  token ^= (unsigned long long) (unsigned int) oid->pageid;
-  token = desc_internal_lob_mix_u64 (token);
-  token ^= (unsigned long long) (unsigned short) oid->slotid;
-  token = desc_internal_lob_mix_u64 (token);
-  token ^= (unsigned long long) logical_length;
-  token = desc_internal_lob_mix_u64 (token);
-  token ^= 0x10c07edULL;
-  token = desc_internal_lob_mix_u64 (token);
-
-  return token == 0 ? 1 : token;
+  /* Same token every other reader recomputes; the loader's locators are never adopted. */
+  return internal_lob_marker_locator_token (oid->volid, oid->pageid, oid->slotid, logical_length, false);
 }
 
 static int
@@ -141,7 +118,7 @@ desc_format_internal_lob_locator (const OID * oid, DB_BIGINT logical_length, cha
 {
   unsigned long long token = desc_internal_lob_locator_token (oid, logical_length);
 
-  return snprintf (buf, buf_size, LOAD_INTERNAL_LOB_LOCATOR_PREFIX "%d|%d|%d:%lld:%016llx",
+  return snprintf (buf, buf_size, INTERNAL_LOB_LOCATOR_PREFIX "%d|%d|%d:%lld:%016llx",
 		   (int) oid->volid, (int) oid->pageid, (int) oid->slotid, (long long) logical_length, token);
 }
 
