@@ -1496,7 +1496,9 @@ $ LOADDB
 
 1385 내부 에러: out-of-row storage 인자가 유효하지 않습니다.
 
-1386 마지막 에러
+1386 오브젝트 %2$d|%3$d|%4$d 의 %1$s 처리 중 out-of-row storage(OOS) 정리를 건너뛰었습니다. 이전 레코드가 참조한 OOS value chain %9$d 개가 더 이상 존재하지 않으며, 그 중 첫 번째의 head OOS OID 는 %5$d|%6$d|%7$d 입니다(%8$s). 해당 chain 들에 대해 삭제된 데이터는 없으며 연산은 정상 완료되었습니다.
+
+1387 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):

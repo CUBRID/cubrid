@@ -105,7 +105,7 @@ TEST (OosBestspaceTest, BestspaceReuseAfterDelete)
   PAGEID first_page = oid1.pageid;
 
   // Delete the record — page now has free space
-  err = oos_delete (thread_p, oos_vfid, oid1);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid1);
   ASSERT_EQ (err, NO_ERROR);
 
   // Second insert — bestspace should find the freed page
@@ -228,7 +228,7 @@ TEST (OosBestspaceTest, BestspaceMultipleFilesIsolation)
   ASSERT_EQ (err, NO_ERROR);
 
   // Delete from file 1 — frees space in file 1 only
-  err = oos_delete (thread_p, vfid1, oid1);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, vfid1, oid1);
   ASSERT_EQ (err, NO_ERROR);
 
   // Insert into file 2 again — must NOT land on file 1's page
@@ -365,7 +365,7 @@ TEST (OosBestspaceTest, BestspaceInsertDeleteCycle)
       recdes_free_data_area (&rec_out);
 
       // Delete
-      err = oos_delete (thread_p, oos_vfid, oid);
+      err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
       ASSERT_EQ (err, NO_ERROR);
     }
 
@@ -581,7 +581,7 @@ TEST (OosBestspaceTest, BestspaceDeleteThenFindReclaimsPage)
   // Delete all records
   for (auto &oid : oids)
     {
-      err = oos_delete (thread_p, oos_vfid, oid);
+      err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
       ASSERT_EQ (err, NO_ERROR);
     }
 
@@ -631,7 +631,7 @@ TEST (OosBestspaceTest, BestspaceMultiChunkDeleteReuse)
   PAGEID large_page = oid_large.pageid;
 
   // Delete the large record — frees space across multiple pages
-  err = oos_delete (thread_p, oos_vfid, oid_large);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_large);
   ASSERT_EQ (err, NO_ERROR);
 
   // Insert a small record — should reuse one of the freed pages
@@ -771,7 +771,7 @@ TEST (OosBestspaceTest, BestspaceBulkInsertDeleteReinsert)
   // Delete all records
   for (auto &oid : oids)
     {
-      err = oos_delete (thread_p, oos_vfid, oid);
+      err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
       ASSERT_EQ (err, NO_ERROR);
     }
   oids.clear ();
@@ -870,7 +870,7 @@ TEST (OosBestspaceTest, BestspaceArrayOverflowEviction)
   // Delete all records — every page now has large free space
   for (auto &oid : oids)
     {
-      err = oos_delete (thread_p, oos_vfid, oid);
+      err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
       ASSERT_EQ (err, NO_ERROR);
     }
 
@@ -1359,7 +1359,7 @@ TEST (OosBestspaceTest, DeleteUpdatesBestspaceCacheDirectly)
   ASSERT_LT (free_after_insert, 500);  // should be very small
 
   // Delete the record — frees ~16KB.  With the fix, bestspace cache is updated.
-  err = oos_delete (thread_p, oos_vfid, oid_large);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_large);
   ASSERT_EQ (err, NO_ERROR);
 
   // Now insert a record that needs MORE than the old stale freespace (~100 bytes)
@@ -1436,7 +1436,7 @@ TEST (OosBestspaceTest, DeleteMultipleRecordsUpdatesAllPages)
   // Delete all records — each page now has ~16KB free
   for (auto &oid : oids)
     {
-      err = oos_delete (thread_p, oos_vfid, oid);
+      err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid);
       ASSERT_EQ (err, NO_ERROR);
     }
 
@@ -1500,7 +1500,7 @@ TEST (OosBestspaceTest, DeletePartialChainUpdatesBestspace)
   ASSERT_EQ (err, NO_ERROR);
 
   // Delete the multi-chunk record — all 3 pages should have freed space in cache
-  err = oos_delete (thread_p, oos_vfid, oid_large);
+  err = test_oos_utils::oos_delete_with_current_identity_stamp (thread_p, oos_vfid, oid_large);
   ASSERT_EQ (err, NO_ERROR);
 
   // Insert 3 separate large records (each nearly fills a page).

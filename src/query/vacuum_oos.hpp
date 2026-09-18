@@ -32,9 +32,9 @@
 
 #include <vector>
 
-/* Pages that lost OOS chunks during one delete batch (duplicates allowed). A plain typedef so
+/* Pages that one delete batch left with zero OOS records, each once. A plain typedef so
  * vacuum.c (GNU-indent formatted) can declare one without exposing template syntax. */
-typedef std::vector<VPID> VACUUM_OOS_TOUCHED_PAGES;
+typedef std::vector<VPID> VACUUM_OOS_EMPTIED_PAGES;
 
 /* Forward-walk OOS reclamation helpers. */
 
@@ -59,8 +59,8 @@ extern int vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_d
 extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
     PGSLOTID slotid, INT16 record_type, VFID *oos_vfid);
 extern int vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
-    VACUUM_OOS_TOUCHED_PAGES *touched_pages_out);
+    VACUUM_OOS_EMPTIED_PAGES *emptied_pages_out);
 extern int vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
-    VACUUM_OOS_TOUCHED_PAGES *touched_pages);
+    VACUUM_OOS_EMPTIED_PAGES *emptied_pages);
 
 #endif /* _VACUUM_OOS_HPP_ */

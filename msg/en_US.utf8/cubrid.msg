@@ -1497,7 +1497,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1385 Internal error: invalid out-of-row storage argument.
 
-1386 Last Error
+1386 Out-of-row storage (OOS) cleanup skipped during %1$s of object %2$d|%3$d|%4$d: %9$d OOS value chain(s) that the old record referenced are no longer there; the first has head OOS OID %5$d|%6$d|%7$d (%8$s). Nothing was deleted for those chains and the operation completed.
+
+1387 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
