@@ -827,8 +827,7 @@ namespace cubmethod
 
   // reported for a name identifier_fits () refused. The PL server turns it into a compile error
   // carrying the line and column of the name (see ParseTreeConverter.askServerSemanticQuestions).
-  static const char *TOO_LONG_NAME_MSG =
-	  "Qualified name is too long. The name with its qualifiers must be shorter than 255 bytes.";
+  static const char *TOO_LONG_NAME_MSG = "Qualified name is too long. it must be shorter than 255 bytes.";
 
   static bool
   prepend_user_name (std::string &name, char *buf, int buf_size)
