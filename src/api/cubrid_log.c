@@ -117,6 +117,9 @@ int g_extraction_user_count = 0;
 
 char g_dbname[CUBRID_LOG_MAX_DBNAME_LEN + 1] = "";
 
+/* Authenticated db user, sent so the server can enforce DBA on the identity-less CDC channel. */
+char g_db_user[DB_MAX_USER_LENGTH + 1] = "";
+
 FILE *g_trace_log = NULL;
 char g_trace_log_base[PATH_MAX + 1] = ".";
 char g_trace_log_path[PATH_MAX + 1] = "";
@@ -742,6 +745,7 @@ cubrid_log_send_configurations (void)
   int err_code;
 
   request_size = OR_INT_SIZE * 5;
+  request_size += or_packed_string_length (g_db_user, NULL);
 
   for (i = 0; i < g_extraction_user_count; i++)
     {
@@ -759,7 +763,8 @@ cubrid_log_send_configurations (void)
 
   request = PTR_ALIGN (a_request, MAX_ALIGNMENT);
 
-  ptr = or_pack_int (request, g_max_log_item);
+  ptr = or_pack_string (request, g_db_user);
+  ptr = or_pack_int (ptr, g_max_log_item);
   ptr = or_pack_int (ptr, g_extraction_timeout);
   ptr = or_pack_int (ptr, g_all_in_cond);
   ptr = or_pack_int (ptr, g_extraction_user_count);
@@ -908,6 +913,22 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
 			   "DBA authorization failed. %s is not a member of DBA group\n", username);
       goto error;
     }
+
+  /* The server only accepts the literal "DBA" account on the CDC channel (group
+   * resolution is a follow-up, see log_manager.c) -- match that here so a group
+   * member fails at login, not later when the CDC channel itself rejects it. */
+  if (strcasecmp (username, "DBA") != 0)
+    {
+      cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN,
+			   "DBA authorization failed. %s is a DBA group member, but only the DBA account "
+			   "itself is accepted on the CDC channel for now\n", username);
+      goto error;
+    }
+
+  /* CBRD-27436: remember the authenticated db user so it can be sent to the server
+   * for server-side DBA enforcement on the CDC channel. */
+  strncpy (g_db_user, username, DB_MAX_USER_LENGTH);
+  g_db_user[DB_MAX_USER_LENGTH] = '\0';
 
   db_shutdown ();
 
@@ -1303,6 +1324,15 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
 				     "receive data from the request(NET_SERVER_CDC_GET_LOGINFO) failed. (timeout : %d sec)\n",
 				     g_extraction_timeout);
+	}
+
+      /* CBRD-27436: the server rejects a caller that does not own the CDC
+       * session with an empty buffer, and reports why in the packet header
+       * (this reply has no error-code framing of its own). */
+      if (g_conn_entry->db_error == ER_AU_DBA_ONLY)
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN,
+				     "this connection does not own the CDC session (DBA authorization required)\n");
 	}
 
       if (recv_data == NULL || recv_data_size != *total_length)
