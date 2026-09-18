@@ -5657,6 +5657,123 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 }
 
 /*
+ * locator_delete_moved_internal_lob_intermediates () - Drop the Internal LOB chains a partition-moving UPDATE
+ *                                                      created in the source class before re-creating them in
+ *                                                      the destination.
+ *   return: error code
+ *   class_oid(in): class the new record image was built for (its LOB file holds the intermediates)
+ *   hfid(in): that class's heap
+ *   oid(in): the row being moved; its current image tells which chains pre-date this statement
+ *   new_recdes(in): the image this statement produced, already cloned into the destination
+ *   scan_cache(in): scan cache for reading the row's current image
+ *
+ * A chain referenced by new_recdes but not by the row's current image was made by this statement (the
+ * transform step clones every LOB value it writes).  After the destination has its own copies, those
+ * source-side chains are unreachable from any row.
+ */
+static int
+locator_delete_moved_internal_lob_intermediates (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid,
+						 const OID * oid, const RECDES * new_recdes,
+						 HEAP_SCANCACHE * scan_cache)
+{
+  HEAP_OOS_REFERENCE_VECTOR new_refs, old_refs;
+  RECDES old_recdes = RECDES_INITIALIZER;
+  HEAP_SCANCACHE local_cache;
+  bool local_cache_started = false;
+  VFID lob_vfid = VFID_INITIALIZER;
+  OID class_oid_copy;
+  int error_code;
+
+  error_code = heap_recdes_get_oos_references (thread_p, class_oid, new_recdes, new_refs);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* COPY with a NULL buffer lands the image in the scan cache's area, which the cache owns; so a cache is
+   * required, and nothing here frees old_recdes.data. */
+  if (scan_cache == NULL)
+    {
+      if (heap_scancache_quick_start (&local_cache) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      scan_cache = &local_cache;
+      local_cache_started = true;
+    }
+
+  COPY_OID (&class_oid_copy, class_oid);
+  old_recdes.data = NULL;
+  if (heap_get_visible_version (thread_p, oid, &class_oid_copy, &old_recdes, scan_cache, COPY, NULL_CHN,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
+    {
+      error_code = heap_recdes_get_oos_references (thread_p, class_oid, &old_recdes, old_refs);
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  for (size_t i = 0; i < new_refs.size (); i++)
+    {
+      const HEAP_OOS_REFERENCE *ref = &new_refs[i];
+      bool inherited = false;
+
+      if (!TP_IS_LOB_TYPE (ref->type) || OID_ISNULL (&ref->oid))
+	{
+	  continue;
+	}
+      for (size_t j = 0; j < old_refs.size (); j++)
+	{
+	  if (OID_EQ (&ref->oid, &old_refs[j].oid))
+	    {
+	      inherited = true;
+	      break;
+	    }
+	}
+      if (inherited)
+	{
+	  continue;
+	}
+
+      if (VFID_ISNULL (&lob_vfid))
+	{
+	  if (!heap_oos_find_vfid_by_type (thread_p, hfid, FILE_INTERNAL_LOB, &lob_vfid, false, false)
+	      || VFID_ISNULL (&lob_vfid))
+	    {
+	      /* The class has no LOB file, so it cannot hold a chain this statement made. */
+	      error_code = NO_ERROR;
+	      goto end;
+	    }
+	}
+
+      {
+	INTERNAL_LOB_LOCATOR locator;
+
+	locator.oid = ref->oid;
+	locator.length = 0;
+	error_code = internal_lob_decode_disk_length (locator, ref->disk_length);
+	if (error_code != NO_ERROR)
+	  {
+	    goto end;
+	  }
+	error_code = internal_lob_delete (thread_p, lob_vfid, locator);
+	if (error_code != NO_ERROR)
+	  {
+	    goto end;
+	  }
+      }
+    }
+
+end:
+  if (local_cache_started)
+    {
+      (void) heap_scancache_end (thread_p, &local_cache);
+    }
+  return error_code;
+}
+
+/*
  * locator_update_force () - Update the given object
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -6261,6 +6378,24 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
+		}
+
+	      if (moved_area != NULL)
+		{
+		  /* The chains recdes points at were built for this statement in class_oid's LOB file (the
+		   * partitioned root for a server-side UPDATE) and have just been re-created in the destination.
+		   * Nothing will ever reference them again: drop them now, or they are orphaned for good -- the
+		   * root heap never holds a row, so vacuum has no slot from which to reach them.  Only the chains
+		   * this statement created are dropped; anything the old row already referenced is left to the
+		   * old row's own vacuum. */
+		  error_code = locator_delete_moved_internal_lob_intermediates (thread_p, class_oid, hfid, oid, recdes,
+										local_scan_cache);
+		  if (error_code != NO_ERROR)
+		    {
+		      locator_free_copy_area (moved_area);
+		      moved_area = NULL;
+		      goto error;
+		    }
 		}
 
 	      error_code =
