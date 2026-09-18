@@ -11895,8 +11895,9 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 }
 
 /* ==========================================================================================================
- * remote DELETE + local subquery carve-out -- shape gate, same-server conversion, diagnostics.
- * Entry: pt_dblink_dml_where_is_inscope (from pt_convert_dblink_delete_query / _update_query),
+ * remote DELETE / UPDATE + local subquery carve-out -- shape gates, same-server conversion, diagnostics.
+ * Entry: pt_dblink_dml_where_is_inscope (from pt_convert_dblink_delete_query),
+ *        pt_dblink_update_where_is_inscope and _set_is_inscope (from pt_convert_dblink_update_query),
  *        pt_dblink_dml_settle_sink (from pt_convert_dblink_dml_query).
  * ========================================================================================================== */
 
@@ -12067,10 +12068,12 @@ pt_dblink_dml_check_qualifier (PT_NODE * cond, PT_NODE * spec, const char **bad_
   return false;
 }
 
-/* true iff the DML WHERE is a single pushable predicate (see pt_dblink_dml_is_pushable_pred).
+/* true iff the DML WHERE is a single pushable predicate (see pt_dblink_dml_is_pushable_pred). This is
+ * DELETE's shape gate; an UPDATE reaches it from the decline step and the mixed-reference rejection, while
+ * its own gate is pt_dblink_update_where_is_inscope.
  * Correlation / row subquery are not decided here (correlation_level is 0 on a DELETE WHERE subquery), but
- * downstream: pt_dblink_delete_corr_ref() (semantic_check.c) rejects correlated ones,
- * pt_to_delete_xasl_remote_subquery() (xasl_generation.c) rejects row/multi-column ones. */
+ * downstream on both paths: the pt_dblink_delete_corr_ref_pre/_post walk (semantic_check.c) rejects
+ * correlated ones, pt_dblink_dml_xasl_where () (xasl_generation.c) rejects row/multi-column ones. */
 static bool
 pt_dblink_dml_where_is_inscope (PT_NODE * cond)
 {
