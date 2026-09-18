@@ -1,0 +1,42 @@
+{
+  "schema": "volmap.runtime.page-buffer",
+  "schema_version": 1,
+  "capability": {
+    "schema": "volmap.runtime",
+    "schema_version": 1,
+    "source": "cubrid-page-buffer-observation",
+    "state": "unavailable",
+    "verification": "unverified",
+    "reason": "rate-limited",
+    "incarnation_binding": "b951abd0197b0b09d410e0d3f9ba78ad63fbe67f212d9c26b81a569431920513",
+    "capture_identity": null,
+    "revision": "1"
+  },
+  "pages": [
+    {
+      "volid": 1,
+      "pageid": 577
+    }
+  ],
+  "epoch": "1",
+  "generation": "0",
+  "requested_count": 1,
+  "evaluated_count": 0,
+  "producer_complete": null,
+  "capture": null,
+  "observations": [
+    {
+      "volid": 1,
+      "pageid": 577,
+      "state": "unavailable",
+      "reason": "no-usable-observation",
+      "evidence": null
+    }
+  ],
+  "limitations": [
+    "Capture interval, not a page timestamp.",
+    "Latch and LRU tuples are individually coherent; records and scans are not atomic.",
+    "Observed residency is not current residency.",
+    "No page-image correspondence, commit visibility, durability or event causality is established."
+  ]
+}

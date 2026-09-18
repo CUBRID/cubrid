@@ -1,0 +1,6 @@
+{
+  "case": "refusal-incarnation-changed",
+  "frames": [
+    { "frame": "error", "code": "incarnation-changed" }
+  ]
+}

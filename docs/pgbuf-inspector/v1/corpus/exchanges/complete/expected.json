@@ -1,0 +1,25 @@
+{
+  "valid": true,
+  "canonical": true,
+  "published": true,
+  "lookups": [
+    {
+      "volid": 0,
+      "pageid": 7,
+      "evaluated": true,
+      "result": "resident"
+    },
+    {
+      "volid": 0,
+      "pageid": 8,
+      "evaluated": true,
+      "result": "not-resident"
+    },
+    {
+      "volid": 0,
+      "pageid": 8,
+      "evaluated": false,
+      "result": "unknown"
+    }
+  ]
+}

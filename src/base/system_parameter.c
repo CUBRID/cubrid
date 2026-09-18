@@ -675,6 +675,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PB_NUM_PRIVATE_CHAINS "num_private_chains"
 #define PRM_NAME_PB_MONITOR_LOCKS "pgbuf_monitor_locks"
+#define PRM_NAME_ENABLE_PGBUF_INSPECTOR "enable_pgbuf_inspector"
 #define PRM_NAME_PB_MAX_DEPTH_OF_SEARCHING_FOR_VICTIMS_IN_LRU_LIST "max_depth_of_searching_for_victims_in_lru_list"
 
 #define PRM_NAME_CTE_MAX_RECURSIONS "cte_max_recursions"
@@ -5573,6 +5574,18 @@ SYSPRM_PARAM prm_Def[] = {
   {PRM_ID_PLAN_CACHE_BIND_SENSITIVITY,
    PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_ENABLE_PGBUF_INSPECTOR,
+   PRM_NAME_ENABLE_PGBUF_INSPECTOR,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},

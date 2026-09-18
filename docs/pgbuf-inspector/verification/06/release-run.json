@@ -1,0 +1,10 @@
+{
+  "producer_source": "/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract",
+  "producer_build": "/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/build_preset_release_gcc",
+  "producer_install": "/home/vimkim/.cub/install/CBRD-27398-pgbuf-inspector-contract/release_gcc",
+  "consumer_source": "/home/vimkim/temp/volmap-producer06-5dacafb",
+  "consumer_binary": "/home/vimkim/temp/volmap-producer06-5dacafb/target/x86_64-unknown-linux-musl/release/volmap",
+  "format_profile": "feat-oos",
+  "listen_port": 60125,
+  "output_directory": "/tmp/producer06-evidence/release-verified"
+}

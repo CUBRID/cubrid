@@ -1,0 +1,3 @@
+Filters: [scan],[socket]~[.credential]
+===============================================================================
+All tests passed (332678 assertions in 37 test cases)

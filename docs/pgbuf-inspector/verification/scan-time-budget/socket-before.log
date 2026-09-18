@@ -1,0 +1,31 @@
+Filters: [coverage]
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+test_pgbuf_inspector is a Catch v2.11.3 host application.
+Run with -? for options
+
+-------------------------------------------------------------------------------
+A dense volume capture completes across five millisecond polling turns
+-------------------------------------------------------------------------------
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1185
+...............................................................................
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1227: FAILED:
+  CHECK( validator.record_count () == 4096 )
+with expansion:
+  584 (0x248) == 4096 (0x1000)
+with message:
+  elapsed milliseconds 115
+
+/home/vimkim/gh/cb/CBRD-27398-pgbuf-inspector-contract/unit_tests/pgbuf_inspector/test_pgbuf_inspector_socket.cpp:1228: FAILED:
+  CHECK( capture.find ("\"visited_slots\":32768,\"truncated\":false") != std::string::npos )
+with expansion:
+  18446744073709551615 (0xffffffffffffffff)
+  !=
+  18446744073709551615 (0xffffffffffffffff)
+with message:
+  elapsed milliseconds 115
+
+===============================================================================
+test cases:  1 |  0 passed | 1 failed
+assertions: 13 | 11 passed | 2 failed

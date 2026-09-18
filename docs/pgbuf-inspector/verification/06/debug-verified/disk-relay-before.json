@@ -1,0 +1,75 @@
+{
+  "schema": "volmap.inspection",
+  "schema_version": 1,
+  "document_type": "resource",
+  "snapshot": {
+    "id": "7d5e22084b1d7606f924ff083d91463c",
+    "revision": "0",
+    "validity": "valid",
+    "format_profile": "cubrid-feat-oos-linux-x86_64-gcc-e1e651de",
+    "generation": "0",
+    "observed_at_unix_seconds": "1789106393",
+    "input_modified_unix_seconds": "1789106388"
+  },
+  "outcome": "success-limited",
+  "coverage": [
+    {
+      "facet": "volume-topology",
+      "coverage": "complete",
+      "evaluated": "2",
+      "conclusive": "2",
+      "total": {
+        "state": "known",
+        "value": "2"
+      }
+    },
+    {
+      "facet": "sector-reservation",
+      "coverage": "complete",
+      "evaluated": "192",
+      "conclusive": "192",
+      "total": {
+        "state": "known",
+        "value": "192"
+      }
+    },
+    {
+      "facet": "page-envelopes",
+      "coverage": "complete",
+      "evaluated": "4672",
+      "conclusive": "4672",
+      "total": {
+        "state": "known",
+        "value": "4672"
+      }
+    },
+    {
+      "facet": "deep-pages",
+      "coverage": "partial",
+      "evaluated": "71",
+      "conclusive": "71",
+      "total": {
+        "state": "known",
+        "value": "12288"
+      },
+      "stop_reason": "selective-enrichment"
+    },
+    {
+      "facet": "file-inventory",
+      "coverage": "complete",
+      "evaluated": "71",
+      "conclusive": "71",
+      "total": {
+        "state": "known",
+        "value": "71"
+      }
+    }
+  ],
+  "diagnostics": [],
+  "data": {
+    "access": "unauthenticated-http",
+    "follow": {
+      "state": "disabled"
+    }
+  }
+}

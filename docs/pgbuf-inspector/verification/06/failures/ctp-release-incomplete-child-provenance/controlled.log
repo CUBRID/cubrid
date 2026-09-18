@@ -1,0 +1,7 @@
+Evidence directory: /home/vimkim/temp/pgbuf-native-ckwxzq9i
+PASS clean held native VPID (32766, 65) complete records 53
+PASS dirty held native VPID (32766, 65) complete records 53
+PASS partial scan with independently held native page (32766, 65) records 216
+PASS evicted-complete (32766, 65) observed-nonresident records 8
+PASS evicted-partial (32766, 65) unknown records 220
+PASS native fixture shutdown

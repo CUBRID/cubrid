@@ -1,0 +1,88 @@
+[
+  {
+    "sectors": [
+      0,
+      63
+    ],
+    "producer_complete": true,
+    "requested": 4096,
+    "evaluated": 4096,
+    "reasons": {
+      "observed-resident": 610,
+      "observed-not-resident": 3486
+    },
+    "duration_ms": 577.284,
+    "http_elapsed_ms": 1090.316,
+    "capture": {
+      "identity": "237478232e12f38da8a13c7d91f8ade84702e23fd0c6f3c168bb39c2067bebc5",
+      "incarnation_binding": "9f18508350af560bd00f3faf4bd325da79099f7e1aee11e6bb6e429467897a24",
+      "incarnation": "89aad93d7adb",
+      "protocol_major": 1,
+      "protocol_minor": 0,
+      "database_fingerprint": "c3836adb88d72599c742cb8de3b59f7a470d2d52384514398f3a7b1c3d9e6f53",
+      "sequence": "41",
+      "start_time_us": "1789128575480876",
+      "end_time_us": "1789128576058160",
+      "upper_age_ms": 683,
+      "shared_lru_count": 32,
+      "private_lru_count": 152
+    }
+  },
+  {
+    "sectors": [
+      64,
+      127
+    ],
+    "producer_complete": true,
+    "requested": 4096,
+    "evaluated": 4096,
+    "reasons": {
+      "observed-not-resident": 4096
+    },
+    "duration_ms": 577.352,
+    "http_elapsed_ms": 641.215,
+    "capture": {
+      "identity": "41e416dd7de4554c66a2d802e602215aa2f8881f36545c08aa478f6b71473642",
+      "incarnation_binding": "9f18508350af560bd00f3faf4bd325da79099f7e1aee11e6bb6e429467897a24",
+      "incarnation": "89aad93d7adb",
+      "protocol_major": 1,
+      "protocol_minor": 0,
+      "database_fingerprint": "c3836adb88d72599c742cb8de3b59f7a470d2d52384514398f3a7b1c3d9e6f53",
+      "sequence": "42",
+      "start_time_us": "1789128576123460",
+      "end_time_us": "1789128576700812",
+      "upper_age_ms": 685,
+      "shared_lru_count": 32,
+      "private_lru_count": 152
+    }
+  },
+  {
+    "sectors": [
+      0,
+      63
+    ],
+    "producer_complete": true,
+    "requested": 4096,
+    "evaluated": 4096,
+    "reasons": {
+      "observed-resident": 610,
+      "observed-not-resident": 3486
+    },
+    "duration_ms": 577.06,
+    "http_elapsed_ms": 641.03,
+    "capture": {
+      "identity": "b3b32716bd0b49c04e016652a2558674c0b933b8abfabf1dc04a74466f2769f3",
+      "incarnation_binding": "9f18508350af560bd00f3faf4bd325da79099f7e1aee11e6bb6e429467897a24",
+      "incarnation": "89aad93d7adb",
+      "protocol_major": 1,
+      "protocol_minor": 0,
+      "database_fingerprint": "c3836adb88d72599c742cb8de3b59f7a470d2d52384514398f3a7b1c3d9e6f53",
+      "sequence": "43",
+      "start_time_us": "1789128576765969",
+      "end_time_us": "1789128577343029",
+      "upper_age_ms": 686,
+      "shared_lru_count": 32,
+      "private_lru_count": 152
+    }
+  }
+]

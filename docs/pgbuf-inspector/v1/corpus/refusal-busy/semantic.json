@@ -1,0 +1,6 @@
+{
+  "case": "refusal-busy",
+  "frames": [
+    { "frame": "error", "code": "busy" }
+  ]
+}

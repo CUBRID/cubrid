@@ -1,0 +1,6 @@
+{
+  "case": "refusal-identity-oversized",
+  "frames": [
+    { "frame": "error", "code": "identity-oversized" }
+  ]
+}

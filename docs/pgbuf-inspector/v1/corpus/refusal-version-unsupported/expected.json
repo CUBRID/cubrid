@@ -1,0 +1,10 @@
+{
+  "case": "refusal-version-unsupported",
+  "category": "refusal",
+  "outcome": "refused",
+  "refusal_code": "version-unsupported",
+  "supported_majors": [1],
+  "reply_to": "client_hello",
+  "connection": "closed",
+  "frame_count": 1
+}
