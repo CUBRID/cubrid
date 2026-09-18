@@ -20,7 +20,7 @@
 // Object locking through a b-tree key - taking the lock, and waiting out a writer that holds it
 //
 
-#include "btree_object_lock.hpp"
+#include "btree_lock.hpp"
 
 #include "error_manager.h"
 #include "lock_manager.h"

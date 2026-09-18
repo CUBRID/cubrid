@@ -20,8 +20,8 @@
 // Object locking through a b-tree key - taking the lock, and waiting out a writer that holds it
 //
 
-#ifndef _BTREE_OBJECT_LOCK_HPP_
-#define _BTREE_OBJECT_LOCK_HPP_
+#ifndef _BTREE_LOCK_HPP_
+#define _BTREE_LOCK_HPP_
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs to server module
@@ -91,4 +91,4 @@ extern int btree_key_wait_for_tran_end (THREAD_ENTRY *thread_p, MVCCID writer_mv
 					PAGE_PTR *overflow_page, bool *restart);
 #endif /* SERVER_MODE */
 
-#endif /* _BTREE_OBJECT_LOCK_HPP_ */
+#endif /* _BTREE_LOCK_HPP_ */

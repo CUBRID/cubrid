@@ -30,7 +30,7 @@
 #include "btree.h"
 
 #include "btree_load.h"
-#include "btree_object_lock.hpp"
+#include "btree_lock.hpp"
 #include "config.h"
 #include "db_value_printer.hpp"
 #include "deduplicate_key.h"
