@@ -1810,8 +1810,10 @@ like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::s
    * The string comparison layer requires pre-aligned collations, so both transient operands
    * are built under the resolved common collation of the column and the pattern -- the same
    * alignment the executor guarantees. value is a string_view into the histogram blob or, once
-   * re-padded, into pad_buf: NOT NUL-terminated, not owned, and only valid until the next call
-   * that reuses pad_buf -- db_make_varchar () below copies it out before that. */
+   * re-padded, into pad_buf: NOT NUL-terminated and not owned. db_make_varchar () borrows the
+   * pointer instead of copying, so src stays valid only as long as pad_buf holds those bytes --
+   * db_string_like () consumes it synchronously below, before the caller's next iteration can
+   * re-pad into the same buffer. */
   LANG_RT_COMMON_COLL (src_collation_id, db_get_string_collation (pattern_db_value), common_coll_id);
   if (common_coll_id == -1)
     {
