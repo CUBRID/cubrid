@@ -49,6 +49,7 @@ extern char get_stmt_type (char *stmt);
 extern int ux_get_db_version (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 
 extern char *consume_tokens (char *stmt, STATEMENT_STATUS stmt_status);
+extern char *skip_leading_whitespace_and_comment (char *stmt);
 extern int get_num_markers (char *stmt);
 
 extern void ux_end_tran_cleanup (int tran_type);
