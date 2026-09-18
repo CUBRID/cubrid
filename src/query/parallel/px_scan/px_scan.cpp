@@ -866,8 +866,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* mergeable results self-own their merged pages at merge time (see result_handler::read); other
-     * cacheable result types would still leak worker intermediate state, so they stay blocked. */
+    /* mergeable results are flattened at the result-cache point in xqmgr_execute_query when the query is
+     * cacheable; other cacheable result types would still leak worker intermediate state, so they stay blocked. */
     if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
 	&& !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
@@ -1321,8 +1321,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* mergeable results self-own their merged pages at merge time (see result_handler::read); other
-     * cacheable result types would still leak worker intermediate state, so they stay blocked. */
+    /* mergeable results are flattened at the result-cache point in xqmgr_execute_query when the query is
+     * cacheable; other cacheable result types would still leak worker intermediate state, so they stay blocked. */
     if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
 	&& !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
