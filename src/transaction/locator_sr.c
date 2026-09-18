@@ -13297,6 +13297,38 @@ locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
 }
 
 /*
+ * locator_object_is_ours () - Whether the object's last version carries this transaction's own, still active insert
+ *			       id; see locator_last_version_is_ours ()
+ *   return: true when the last version was inserted by this transaction and is not yet visible to all
+ *   thread_p(in): thread entry
+ *   oid(in): object identifier
+ *   class_oid(in): class of the object
+ *
+ * Note: a click counter asks it, so that the increment of a row the transaction has already changed goes with that
+ *	 change instead of committing on its own on top of it.
+ */
+bool
+locator_object_is_ours (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
+{
+  HEAP_SCANCACHE scan_cache;
+  HEAP_GET_CONTEXT context;
+  OID class_oid_local = *class_oid;
+  bool ours;
+
+  if (mvcc_is_mvcc_disabled_class (class_oid)
+      || heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &class_oid_local) != NO_ERROR)
+    {
+      return false;
+    }
+
+  heap_init_get_context (thread_p, &context, oid, &class_oid_local, NULL, &scan_cache, PEEK, NULL_CHN);
+  ours = locator_last_version_is_ours (thread_p, &context);
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return ours;
+}
+
+/*
  * locator_lock_and_get_object_internal () - Internal function: aquire lock and return object
  *
  * return : Scan code; S_SUCCESS_CHN_UPTODATE from heap_get_last_version () is preserved to the caller.
@@ -13387,15 +13419,6 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   if (is_mvcc_class && locator_has_isolation_conflict (thread_p, context, &recdes_header, &scan))
     {
       goto error;
-    }
-
-  if (is_mvcc_class && lock_is_instant_lock_mode (LOG_FIND_THREAD_TRAN_INDEX (thread_p))
-      && MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&recdes_header)
-      && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&recdes_header)))
-    {
-      /* A click counter commits its change on its own unless the row is already ours.  The lock manager tells that
-       * from an X lock we still hold, which an earlier statement may have given back; tell it from the stamp. */
-      lock_stop_instant_lock_mode (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), false);
     }
 
   if (lock_acquired_p != NULL)
