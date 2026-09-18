@@ -8315,6 +8315,14 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			{
 			  term = &planner->term[i];
 
+			  /*
+			   * Do not reuse terms already claimed by another FK entry in this join step.
+			   */
+			  if (BITSET_MEMBER (fk_excluded_terms, i))
+			    {
+			      continue;
+			    }
+
 			  if (QO_TERM_CLASS (term) != QO_TC_JOIN
 			      || QO_TERM_EQCLASS (term) != fkinfo->col_eqclasses[col])
 			    {
@@ -8363,6 +8371,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 		  if (all_cols_found)
 		    {
+		      /* A later FK entry's terms may already be claimed by an earlier entry at
+		       * this same step (see the fk_excluded_terms check above); which entry claims
+		       * first depends on FK registration order (node index order). Entries
+		       * referencing the same parent all use the same floor_selectivity
+		       * (1 / parent cardinality), so it does not matter which one applies it.
+		       * Relationships among child nodes already joined in the head are represented
+		       * by their implied join terms. */
 		      bitset_union (&fk_excluded_terms, &fk_col_terms);
 		      fk_floor_product *= fkinfo->floor_selectivity;
 		    }
