@@ -362,11 +362,6 @@ extern int internal_lob_stream_open_from_server (const char *locator_data, int l
 						 INT64 * token);
 extern int internal_lob_stream_read_from_server (INT64 token, char *buf, int count, int *nread);
 extern int internal_lob_stream_close_from_server (INT64 token);
-extern int loaddb_internal_lob_upload_begin (cubload::class_id clsid, char type, DB_BIGINT data_length,
-					     DB_BIGINT bit_length, INT64 * token);
-extern int loaddb_internal_lob_upload_append (INT64 token, const char *data, int data_size);
-extern int loaddb_internal_lob_upload_end (INT64 token);
-extern int loaddb_internal_lob_upload_abort (INT64 token);
 extern int csession_create_prepared_statement (const char *name, const char *alias_print, char *stmt_info,
 					       int info_length);
 extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stmt_info,

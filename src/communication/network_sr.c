@@ -692,18 +692,6 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sinternal_lob_stream_close;
 
-  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_BEGIN];
-  req_p->processing_function = sloaddb_internal_lob_upload_begin;
-
-  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_APPEND];
-  req_p->processing_function = sloaddb_internal_lob_upload_append;
-
-  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_END];
-  req_p->processing_function = sloaddb_internal_lob_upload_end;
-
-  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_ABORT];
-  req_p->processing_function = sloaddb_internal_lob_upload_abort;
-
   req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_get_mvcc_snapshot;
 
