@@ -4562,6 +4562,12 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  output_ctx ("DETERMINISTIC ");
 	}
 
+      // parallel_enable
+      if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE)
+	{
+	  output_ctx ("PARALLEL_ENABLE ");
+	}
+
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");

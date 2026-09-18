@@ -57,6 +57,7 @@
 #include "parser_allocator.hpp"
 #include "tde.h"
 #include "jsp_cl.h"
+#include "xasl.h"
 
 #include <malloc.h>
 
@@ -961,6 +962,21 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
     }
 
   *new_node = *old_node;
+
+  /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
+  new_node->xasl_id = NULL;
+  if (old_node->xasl_id != NULL)
+    {
+      new_node->xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID));
+      if (new_node->xasl_id == NULL)
+	{
+	  PT_ERRORmf (parser, old_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (XASL_ID));
+	  return NULL;
+	}
+
+      XASL_ID_SET_NULL (new_node->xasl_id);
+      XASL_ID_COPY (new_node->xasl_id, old_node->xasl_id);
+    }
 
   /* if node is copied from another parser context, deepcopy string contents */
   if (old_node->parser_id != parser->id)
@@ -2688,6 +2704,8 @@ pt_print_bytes_spec_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 	    case PT_JOIN_LEFT_OUTER:
 	    case PT_JOIN_RIGHT_OUTER:
 	    case PT_JOIN_FULL_OUTER:
+	    case PT_JOIN_SEMI:	/* join keyword printed by the spec; no comma separator */
+	    case PT_JOIN_ANTI:
 	      break;
 	      /* case PT_JOIN_UNION: -- does not support */
 	    default:
@@ -8144,6 +8162,11 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  q = pt_append_nulstring (parser, q, " DETERMINISTIC");
 	}
+
+      if (p->info.sp.parallel_enable)
+	{
+	  q = pt_append_nulstring (parser, q, " PARALLEL_ENABLE");
+	}
     }
   else
     {
@@ -8159,6 +8182,11 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->info.sp.dtrm_type == PT_DETERMINISTIC)
 	{
 	  q = pt_append_nulstring (parser, q, " deterministic");
+	}
+
+      if (p->info.sp.parallel_enable)
+	{
+	  q = pt_append_nulstring (parser, q, " parallel_enable");
 	}
     }
 
@@ -9948,6 +9976,12 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
     case PT_JOIN_FULL_OUTER:	/* not used */
       q = pt_append_nulstring (parser, q, " full outer join ");
+      break;
+    case PT_JOIN_SEMI:
+      q = pt_append_nulstring (parser, q, " semi join ");
+      break;
+    case PT_JOIN_ANTI:
+      q = pt_append_nulstring (parser, q, " anti join ");
       break;
       /* case PT_JOIN_UNION: -- does not support */
     default:
@@ -15215,6 +15249,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_NO_MERGE)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_MERGE ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NO_UNNEST)
+	    {
+	      q = pt_append_nulstring (parser, q, "NO_UNNEST ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_SUBQUERY_CACHE)

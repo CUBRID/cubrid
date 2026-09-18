@@ -65,6 +65,7 @@
 
 #define NUMERIC_AS_WORDS                (3)	/* (DB_NUMERIC_BUF_SIZE(17) + 7) / 8 */
 #define NUMERIC_AS_WORD_BYTES           (24)	/* NUMERIC_AS_WORDS * 8 */
+#define NUMERIC_DIGITS_PER_WORD         (19)	/* digits always fitting a word: 10^19 < 2^64 < 10^20 */
 #define NUMERIC_GET_FULL_WORDS(bytes)   ((bytes) >> 3)	/* Convert bytes to full words (floor) */
 #define NUMERIC_GET_REM_BYTES(bytes)    ((bytes) & 7)	/* Remaining bytes after word alignment */
 #define NUMERIC_GET_WORD_COUNT(bytes)   (((bytes) + 7) >> 3)	/* Total word count to cover bytes (ceiling) */
@@ -112,12 +113,22 @@
 /* [10^n][multi-precision buffer (uint64_t words, MSB-first, each word in host endianness)] */
 static uint64_t powers_of_10[POW10_MAX_INDEX + 1][POW10_BUF_WORDS];
 
-static const double numeric_Pow_of_10[10] = {
-  1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9
+static const double numeric_Pow_of_10_dbl[DB_MAX_NUMERIC_PRECISION + 1] = {
+  1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9,
+  1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18, 1e19,
+  1e20, 1e21, 1e22, 1e23, 1e24, 1e25, 1e26, 1e27, 1e28, 1e29,
+  1e30, 1e31, 1e32, 1e33, 1e34, 1e35, 1e36, 1e37, 1e38, 1e39,
+  1e40
 };
 
 /* look-up table : containing pre-calculated 4-byte ASCII representations for numbers 0000-9999. */
 static uint32_t _gv_digits4_ascii_lut[10000];
+
+/* look-up table : powers of ten used to align agg-expr scales. A u128 is two
+ * words, so (10^19)^2 = 10^38 < 2^128 (~3.4e38) is the largest power of ten
+ * the table can hold. */
+#define NUMERIC_AGG_EXPR_POW10_MAX_EXP (2 * NUMERIC_DIGITS_PER_WORD)
+static uint128_t _gv_numeric_agg_expr_pow10_u128[NUMERIC_AGG_EXPR_POW10_MAX_EXP + 1];
 
 /*
  * _gv_numeric_precision_to_bytes_lookup
@@ -214,14 +225,14 @@ static bool numeric_is_zero (DB_C_NUMERIC arg);
 static numeric_magnitude_t numeric_classify_magnitude (DB_C_NUMERIC arg, bool is_value_negative);
 static bool numeric_overflow (DB_C_NUMERIC arg, int exp);
 static void numeric_add (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
-static void float_numeric_add (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
-			       int calc_words);
+static unsigned char float_numeric_add (const uint64_t * dbv1_word, const uint64_t * dbv2_word,
+					uint64_t * result_word, int calc_words);
 static int float_numeric_add_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
 				   int calc_words, bool dbv1_sign, bool dbv2_sign, bool * result_sign,
 				   uint8_t * result_buf);
 static void numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size);
-static void float_numeric_sub (const uint64_t * arg1_word, const uint64_t * arg2_word, uint64_t * result_word,
-			       int calc_words);
+static unsigned char float_numeric_sub (const uint64_t * arg1_word, const uint64_t * arg2_word,
+					uint64_t * result_word, int calc_words);
 static int float_numeric_sub_fast (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word,
 				   int calc_words, bool dbv1_sign, bool dbv2_sign, bool * result_sign,
 				   uint8_t * result_buf);
@@ -282,8 +293,8 @@ static bool numeric_is_longnum_value (DB_C_NUMERIC arg);
 static int numeric_longnum_to_shortnum (DB_C_NUMERIC answer, DB_C_NUMERIC long_arg);
 static void numeric_shortnum_to_longnum (DB_C_NUMERIC long_answer, DB_C_NUMERIC arg);
 static int get_significant_digit (DB_BIGINT i);
-static void float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uint64_t multiplier);
-static void float_numeric_mul_normalize (uint64_t * dbv_buf, int calc_words, int calc_bytes, int exponent);
+static uint64_t float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uint64_t multiplier);
+static uint64_t float_numeric_mul_normalize (uint64_t * dbv_buf, int calc_words, int calc_bytes, int exponent);
 static uint64_t float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uint64_t divisor);
 static int float_numeric_div_normalize (uint64_t * dbv_buf, int calc_words, int calc_bytes, int exponent);
 static void float_numeric_increment (uint64_t * calc_buf, int calc_words, uint64_t val);
@@ -301,6 +312,12 @@ static inline void numeric_put_uint64_to_be (void *ptr, uint64_t val);
 static void numeric_bytes_to_words (const uint8_t * src, int src_bytes, uint64_t * dest, int dest_words,
 				    int dest_bytes);
 static void numeric_words_to_bytes (const uint64_t * src, int src_words, uint8_t * dest);
+static void numeric_agg_expr_make (NUMERIC_AGG_EXPR_VAL * out, uint128_t coefficient, int scale, bool is_negative);
+static int numeric_sum_acc_add_core (SUM_ACC * acc, const uint64_t * val_words, int val_scale, bool val_neg);
+static int numeric_sum_acc_add_rounded (SUM_ACC * acc, const DB_VALUE * val_dbv);
+
+/* the addition exceeds the accumulator's capacity, so the caller retries with numeric_sum_acc_add_rounded () */
+#define SUM_ACC_NUMERIC_CAPACITY (1)
 
 /*
  * numeric_is_negative () -
@@ -505,6 +522,27 @@ __attribute__ ((constructor))
 
       _gv_digits4_ascii_lut[i] =
 	(uint32_t) digit[0] | ((uint32_t) digit[1] << 8) | ((uint32_t) digit[2] << 16) | ((uint32_t) digit[3] << 24);
+    }
+}
+
+/*
+ * numeric_agg_expr_init_pow10_u128 () - initialize powers of ten up to 10^38 for agg-expr arithmetic
+ *   return:
+ *
+ * The engine's u64 lookup only goes up to 10^19, so agg-expr arithmetic needs
+ * its own table. It is initialized at load time like the other numeric lookup
+ * tables, avoiding races from lazy initialization.
+ */
+__attribute__ ((constructor))
+     static void numeric_agg_expr_init_pow10_u128 (void)
+{
+  uint128_t v = 1;
+  int i;
+
+  for (i = 0; i <= NUMERIC_AGG_EXPR_POW10_MAX_EXP; i++)
+    {
+      _gv_numeric_agg_expr_pow10_u128[i] = v;
+      v *= 10;
     }
 }
 
@@ -876,7 +914,7 @@ numeric_add (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size
 
 /*
  * float_numeric_add () -
- *   return: none
+ *   return: carry out of the most significant word (0 or 1)
  *   dbv1_word(in)   : multi-precision operand 1 (word array)
  *   dbv2_word(in)   : multi-precision operand 2 (word array)
  *   result_word(out): result buffer (word array)
@@ -885,20 +923,24 @@ numeric_add (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size
  * Note: Performs multi-precision addition on MSB-first word arrays.
  *       The computation proceeds from least significant word to most
  *       significant word, propagating carry across words.
+ *
+ *       Callers that size the buffer from the operand precisions cannot
+ *       overflow it and simply ignore the return value.
+ *       The SUM accumulator works in a fixed 3-word buffer and uses the
+ *       carry to detect overflow.
  */
-static void
+static unsigned char
 float_numeric_add (const uint64_t * dbv1_word, const uint64_t * dbv2_word, uint64_t * result_word, int calc_words)
 {
-  uint64_t carry = 0;
+  unsigned char carry = 0;
   int digit;
-  uint128_t sum;
 
   for (digit = calc_words - 1; digit >= 0; digit--)
     {
-      sum = (uint128_t) dbv1_word[digit] + dbv2_word[digit] + carry;
-      result_word[digit] = (uint64_t) sum;
-      carry = (uint64_t) (sum >> 64);
+      carry = _addcarry_u64 (carry, dbv1_word[digit], dbv2_word[digit], (unsigned long long *) &result_word[digit]);
     }
+
+  return carry;
 }
 
 /*
@@ -977,7 +1019,7 @@ numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size
 
 /*
  * float_numeric_sub () -
- *   return: none
+ *   return: borrow out of the most significant word (0 or 1)
  *   arg1_word(in)   : multi-precision operand 1 (word array)
  *   arg2_word(in)   : multi-precision operand 2 (word array)
  *   result_word(out): result buffer (word array)
@@ -987,20 +1029,22 @@ numeric_sub (DB_C_NUMERIC arg1, DB_C_NUMERIC arg2, DB_C_NUMERIC answer, int size
  *       MSB-first word arrays. The computation proceeds from least
  *       significant word to most significant word, propagating
  *       borrow across words.
+ *
+ *       Every caller subtracts the smaller magnitude from the larger, so the
+ *       borrow is always 0; it is returned only to mirror float_numeric_add ().
  */
-static void
+static unsigned char
 float_numeric_sub (const uint64_t * arg1_word, const uint64_t * arg2_word, uint64_t * result_word, int calc_words)
 {
-  uint64_t borrow = 0;
+  unsigned char borrow = 0;
   int digit;
-  uint128_t diff;
 
   for (digit = calc_words - 1; digit >= 0; digit--)
     {
-      diff = (uint128_t) arg1_word[digit] - arg2_word[digit] - borrow;
-      result_word[digit] = (uint64_t) diff;
-      borrow = (diff >> 64) ? 1 : 0;
+      borrow = _subborrow_u64 (borrow, arg1_word[digit], arg2_word[digit], (unsigned long long *) &result_word[digit]);
     }
+
+  return borrow;
 }
 
 /*
@@ -1413,7 +1457,7 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
   /* 3) scale the dividend (normalization). exponent10 > 0 shifts up, < 0 truncates */
   if (exponent10 > 0)
     {
-      float_numeric_mul_normalize (dividend_word, WORD_COUNT, word_bytes, exponent10);
+      (void) float_numeric_mul_normalize (dividend_word, WORD_COUNT, word_bytes, exponent10);
     }
   else if (exponent10 < 0)
     {
@@ -1970,11 +2014,11 @@ float_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, in
 
   if (scale_adjust1)
     {
-      float_numeric_mul_normalize (arg1_buf, calc_words, calc_nbytes, scale_adjust1);
+      (void) float_numeric_mul_normalize (arg1_buf, calc_words, calc_nbytes, scale_adjust1);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_normalize (arg2_buf, calc_words, calc_nbytes, scale_adjust2);
+      (void) float_numeric_mul_normalize (arg2_buf, calc_words, calc_nbytes, scale_adjust2);
     }
 
   /* since we don't convert to absolute values when comparing negative numbers, there's no need to invert the result again */
@@ -2552,11 +2596,11 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 4) scale adjustments */
   if (scale_adjust1)
     {
-      float_numeric_mul_normalize (dbv1_word, calc_words, calc_nbytes, scale_adjust1);
+      (void) float_numeric_mul_normalize (dbv1_word, calc_words, calc_nbytes, scale_adjust1);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_normalize (dbv2_word, calc_words, calc_nbytes, scale_adjust2);
+      (void) float_numeric_mul_normalize (dbv2_word, calc_words, calc_nbytes, scale_adjust2);
     }
 
   /* fast path */
@@ -2828,11 +2872,11 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 4) scale adjustments */
   if (scale_adjust1)
     {
-      float_numeric_mul_normalize (dbv1_word, calc_words, calc_nbytes, scale_adjust1);
+      (void) float_numeric_mul_normalize (dbv1_word, calc_words, calc_nbytes, scale_adjust1);
     }
   if (scale_adjust2)
     {
-      float_numeric_mul_normalize (dbv2_word, calc_words, calc_nbytes, scale_adjust2);
+      (void) float_numeric_mul_normalize (dbv2_word, calc_words, calc_nbytes, scale_adjust2);
     }
 
   /* fast path */
@@ -3373,7 +3417,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   int exponent_diff = dividend_exponent - divisor_exponent;
 
   /* fast path */
-  if (prec1 <= 19 && prec2 <= 19)
+  if (prec1 <= NUMERIC_DIGITS_PER_WORD && prec2 <= NUMERIC_DIGITS_PER_WORD)
     {
       float_numeric_div_fast (dbv1_word[2], dbv2_word[2],
 			      prec1, scale1, prec2, scale2,
@@ -3430,7 +3474,7 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   /* 7) only dividend_work is scaled (div_pow10 if negative) */
   if (exponent10 > 0)
     {
-      float_numeric_mul_normalize (dividend_work, calc_words, calc_nbytes, exponent10);
+      (void) float_numeric_mul_normalize (dividend_work, calc_words, calc_nbytes, exponent10);
     }
   else if (exponent10 < 0)
     {
@@ -3846,8 +3890,8 @@ numeric_coerce_dec_str_to_num (const char *dec_str, DB_C_NUMERIC result, bool * 
       ntot_digits -= ndigits;
       if (ntot_digits > 0)
 	{
-	  float_numeric_mul_pow10 (result_word, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES,
-				   _gv_mul_normalize_pow10_lookup[15]);
+	  (void) float_numeric_mul_pow10 (result_word, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES,
+					  _gv_mul_normalize_pow10_lookup[15]);
 	  ndigits = 16;
 	}
     }
@@ -4058,7 +4102,7 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
 
       if (tmp_scale > 0)
 	{
-	  float_numeric_mul_normalize (word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, tmp_scale);
+	  (void) float_numeric_mul_normalize (word_buf, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, tmp_scale);
 	}
     }
 
@@ -4066,31 +4110,562 @@ float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int prec
 }
 
 /*
+ * numeric_sum_acc_load_dbv () - load a NUMERIC value and activate the accumulator
+ *   acc(in/out) : accumulator; activated
+ *   dbv(in)     : NUMERIC value to load
+ *
+ * Used for the first value of a group (through qdata_sum_acc_start ()) and to
+ * reload the result of a per-row rounded add (numeric_sum_acc_add_rounded ()).
+ */
+void
+numeric_sum_acc_load_dbv (SUM_ACC * acc, const DB_VALUE * dbv)
+{
+  numeric_bytes_to_words (db_locate_numeric (dbv), DB_NUMERIC_BUF_SIZE, acc->v.words, SUM_ACC_NUMERIC_WORDS,
+			  (int) sizeof (acc->v.words));
+  acc->scale = db_get_numeric_scale (dbv, NULL);
+  acc->is_negative = numeric_is_negative (dbv);
+  acc->sum_type = DB_TYPE_NUMERIC;
+  acc->is_active = true;
+}
+
+/*
+ * numeric_sum_acc_add_rounded () - absorb a value that exceeds the accumulator's
+ *                                  capacity using one per-row rounded add
+ *   return: NO_ERROR, or the error raised by float_numeric_db_value_add ()
+ *   acc(in/out) : active accumulator; holds the rounded running sum after
+ *   val_dbv(in) : pending NUMERIC value
+ *
+ * The sum would exceed the 3-word buffer, so the addition goes through
+ * float_numeric_db_value_add (), using the same arithmetic and rounding as the
+ * per-row path. The rounded sum is then reloaded to resume accumulation.
+ */
+static int
+numeric_sum_acc_add_rounded (SUM_ACC * acc, const DB_VALUE * val_dbv)
+{
+  DB_VALUE partial, rounded;
+  int ret;
+
+  db_make_null (&partial);
+  db_make_null (&rounded);
+
+  ret = numeric_sum_acc_snapshot (acc, &partial);
+  if (ret == NO_ERROR)
+    {
+      ret = float_numeric_db_value_add (&partial, val_dbv, &rounded);
+    }
+
+  if (ret != NO_ERROR)
+    {
+      acc->is_active = false;
+      return ret;
+    }
+
+  numeric_sum_acc_load_dbv (acc, &rounded);
+  return NO_ERROR;
+}
+
+/*
+ * numeric_sum_acc_add_dbv () - accumulate a NUMERIC value into the running sum
+ *   return: NO_ERROR, or an error code. Values that exceed the exact capacity
+ *           are handled internally with one per-row rounded add.
+ *   acc(in/out) : accumulator; activated by the first accumulated value
+ *   dbv(in)     : NUMERIC value to accumulate
+ */
+int
+numeric_sum_acc_add_dbv (SUM_ACC * acc, const DB_VALUE * dbv)
+{
+  uint64_t val_words[SUM_ACC_NUMERIC_WORDS];
+  int ret;
+
+  assert (acc != NULL && dbv != NULL);
+  assert (DB_VALUE_DOMAIN_TYPE (dbv) == DB_TYPE_NUMERIC);
+
+  if (!acc->is_active)
+    {
+      /* first value: load it as the initial accumulator state */
+      numeric_sum_acc_load_dbv (acc, dbv);
+      return NO_ERROR;
+    }
+
+  numeric_bytes_to_words (db_locate_numeric (dbv), DB_NUMERIC_BUF_SIZE, val_words, SUM_ACC_NUMERIC_WORDS,
+			  (int) sizeof (val_words));
+  ret = numeric_sum_acc_add_core (acc, val_words, db_get_numeric_scale (dbv, NULL), numeric_is_negative (dbv));
+  if (ret == SUM_ACC_NUMERIC_CAPACITY)
+    {
+      return numeric_sum_acc_add_rounded (acc, dbv);
+    }
+  return ret;
+}
+
+/*
+ * numeric_sum_acc_merge () - merge one NUMERIC accumulator into another
+ *   return: NO_ERROR, or an error code
+ *   acc(in/out) : active destination accumulator
+ *   other(in)   : active source accumulator; left untouched
+ */
+int
+numeric_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other)
+{
+  int ret;
+
+  assert (acc != NULL && acc->is_active);
+  assert (other != NULL && other->is_active);
+  assert (acc->sum_type == DB_TYPE_NUMERIC && other->sum_type == DB_TYPE_NUMERIC);
+
+  ret = numeric_sum_acc_add_core (acc, other->v.words, other->scale, other->is_negative);
+  if (ret == SUM_ACC_NUMERIC_CAPACITY)
+    {
+      DB_VALUE other_dbv;
+
+      db_make_null (&other_dbv);
+      ret = numeric_sum_acc_snapshot (other, &other_dbv);
+      if (ret != NO_ERROR)
+	{
+	  acc->is_active = false;
+	  return ret;
+	}
+      return numeric_sum_acc_add_rounded (acc, &other_dbv);
+    }
+  return ret;
+}
+
+/*
+ * numeric_sum_acc_add_core () - accumulate a NUMERIC coefficient into the
+ *                               running sum
+ *   return: NO_ERROR, or SUM_ACC_NUMERIC_CAPACITY when the aligned value or
+ *           the sum does not fit the accumulator's 3-word coefficient (the
+ *           accumulator is untouched)
+ *   acc(in/out)   : active accumulator
+ *   val_words(in) : coefficient of the value (3 words); not modified
+ *   val_scale(in) : scale of the value
+ *   val_neg(in)   : sign of the value
+ *
+ * A scale difference is aligned by multiplying a copy of the lower-scale
+ * coefficient by 10^diff; the multiply carry reports when the widened
+ * coefficient does not fit. The signed addition also works on a copy, so a
+ * capacity fallback leaves the accumulator intact. Digit counting, overflow
+ * checking, and rounding are deferred to numeric_sum_acc_snapshot ().
+ */
+static int
+numeric_sum_acc_add_core (SUM_ACC * acc, const uint64_t * val_words, int val_scale, bool val_neg)
+{
+  uint64_t aligned_words[SUM_ACC_NUMERIC_WORDS];
+  uint64_t sum_words[SUM_ACC_NUMERIC_WORDS];
+  const uint64_t *acc_words = acc->v.words;
+  int diff = val_scale - acc->scale;
+
+  if (diff != 0)
+    {
+      /* align the scales: widen a copy of the lower-scale coefficient */
+      memcpy (aligned_words, (diff > 0) ? acc->v.words : val_words, sizeof (aligned_words));
+      if (float_numeric_mul_normalize (aligned_words, SUM_ACC_NUMERIC_WORDS, (int) sizeof (aligned_words),
+				       (diff > 0) ? diff : -diff) != 0)
+	{
+	  return SUM_ACC_NUMERIC_CAPACITY;
+	}
+      (diff > 0) ? (acc_words = aligned_words) : (val_words = aligned_words);
+    }
+
+  if (acc->is_negative == val_neg)
+    {
+      if (float_numeric_add (acc_words, val_words, sum_words, SUM_ACC_NUMERIC_WORDS) != 0)
+	{
+	  return SUM_ACC_NUMERIC_CAPACITY;
+	}
+    }
+  else if (float_numeric_operation_compare (acc_words, val_words, SUM_ACC_NUMERIC_WORDS) >= 0)
+    {
+      (void) float_numeric_sub (acc_words, val_words, sum_words, SUM_ACC_NUMERIC_WORDS);
+    }
+  else
+    {
+      (void) float_numeric_sub (val_words, acc_words, sum_words, SUM_ACC_NUMERIC_WORDS);
+      acc->is_negative = val_neg;
+    }
+
+  memcpy (acc->v.words, sum_words, sizeof (sum_words));
+  if (diff > 0)
+    {
+      acc->scale = val_scale;
+    }
+  if ((sum_words[0] | sum_words[1] | sum_words[2]) == 0)
+    {
+      /* prevent -0; zero is always treated as positive */
+      acc->is_negative = false;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * numeric_sum_acc_add_expr_val () - accumulate an agg-expr result directly,
+ *                                   without packing it into a DB_VALUE
+ *   return: NO_ERROR, or an error code
+ *   acc(in/out) : active accumulator
+ *   val(in)     : value to accumulate; representable by the agg-expr guards
+ */
+int
+numeric_sum_acc_add_expr_val (SUM_ACC * acc, const NUMERIC_AGG_EXPR_VAL * val)
+{
+  uint64_t val_words[SUM_ACC_NUMERIC_WORDS];
+  int ret;
+
+  assert (acc != NULL && acc->is_active);
+
+  val_words[0] = 0;
+  val_words[1] = (uint64_t) (val->coefficient >> 64);
+  val_words[2] = (uint64_t) val->coefficient;
+  ret = numeric_sum_acc_add_core (acc, val_words, val->scale, val->is_negative);
+  if (ret == SUM_ACC_NUMERIC_CAPACITY)
+    {
+      DB_VALUE val_dbv;
+
+      db_make_null (&val_dbv);
+      numeric_agg_expr_to_dbv (val, &val_dbv);
+      return numeric_sum_acc_add_rounded (acc, &val_dbv);
+    }
+  return ret;
+}
+
+/*
+ * numeric_digits_u128 () - count the exact decimal digits of a uint128 coefficient
+ *   return: digit count (1 for zero)
+ *
+ * Refines a bit-length estimate against the pow10 table, using the same method
+ * as float_numeric_get_decimal_digit () for word buffers. Used only when packing
+ * a value to determine its result precision.
+ */
+static int
+numeric_digits_u128 (uint128_t coefficient)
+{
+  uint64_t hi = (uint64_t) (coefficient >> 64);
+  int bits = (hi != 0) ? (128 - NUMERIC_CLZ64 (hi)) : (64 - NUMERIC_CLZ64 ((uint64_t) coefficient | 1));
+  int digits = ((bits - 1) * 1233 >> 12) + 1;
+
+  while (digits <= NUMERIC_AGG_EXPR_POW10_MAX_EXP && coefficient >= _gv_numeric_agg_expr_pow10_u128[digits])
+    {
+      digits++;
+    }
+
+  return digits;
+}
+
+/*
+ * numeric_agg_expr_make () - build an agg-expr value from a 128-bit coefficient
+ */
+static void
+numeric_agg_expr_make (NUMERIC_AGG_EXPR_VAL * out, uint128_t coefficient, int scale, bool is_negative)
+{
+  out->coefficient = coefficient;
+  out->scale = scale;
+  out->is_negative = (coefficient != 0) ? is_negative : false;
+}
+
+/*
+ * numeric_agg_expr_from_dbv () - unpack a NUMERIC DB_VALUE into an agg-expr value
+ *   return: true on success, false if the coefficient does not fit uint128
+ *           or the value is NULL or not NUMERIC
+ *
+ * The 17-byte coefficient unpacks into three words. A zero high word means the
+ * coefficient fits in uint128, so no digit count is needed.
+ */
+bool
+numeric_agg_expr_from_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out)
+{
+  uint64_t words[NUMERIC_AS_WORDS];
+  int dbv_scale;
+
+  if (dbv == NULL || DB_VALUE_DOMAIN_TYPE (dbv) != DB_TYPE_NUMERIC || DB_IS_NULL (dbv))
+    {
+      return false;
+    }
+
+  numeric_bytes_to_words (db_locate_numeric (dbv), DB_NUMERIC_BUF_SIZE, words, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES);
+  if (words[0] != 0)
+    {
+      return false;
+    }
+
+  dbv_scale = db_get_numeric_scale (dbv, NULL);
+  numeric_agg_expr_make (out, ((uint128_t) words[1] << 64) | words[2], dbv_scale, numeric_is_negative (dbv));
+  return true;
+}
+
+/*
+ * numeric_agg_expr_from_int_dbv () - build an agg-expr value from an integer operand
+ *   return: true when the value was taken, false to leave the tree to the legacy path
+ *   dbv(in): a SHORT, INTEGER or BIGINT value
+ *   out(out): the agg-expr value
+ *
+ * Type checking wraps integer operands in T_CAST_WRAP for NUMERIC operations.
+ * The resulting NUMERIC has scale zero because the source is an integer, so the
+ * integer can be loaded directly into the agg-expr value without materializing
+ * the intermediate DB_VALUE. This reproduces the cast result exactly.
+ *
+ * Every supported integer type fits int64, which fits the 128-bit coefficient,
+ * so no width check is needed.
+ */
+bool
+numeric_agg_expr_from_int_dbv (const DB_VALUE * dbv, NUMERIC_AGG_EXPR_VAL * out)
+{
+  int64_t v;
+  uint64_t magnitude;
+
+  if (dbv == NULL || DB_IS_NULL (dbv))
+    {
+      return false;
+    }
+
+  switch (DB_VALUE_DOMAIN_TYPE (dbv))
+    {
+    case DB_TYPE_SHORT:
+      v = (int64_t) db_get_short (dbv);
+      break;
+    case DB_TYPE_INTEGER:
+      v = (int64_t) db_get_int (dbv);
+      break;
+    case DB_TYPE_BIGINT:
+      v = (int64_t) db_get_bigint (dbv);
+      break;
+    default:
+      return false;
+    }
+
+  /* Unsigned subtraction wraps by definition, so INT64_MIN needs no special case.
+   * MSVC warns on a unary minus applied to an unsigned operand, hence 0 - u. */
+  magnitude = (v < 0) ? (0 - (uint64_t) v) : (uint64_t) v;
+  numeric_agg_expr_make (out, (uint128_t) magnitude, 0, v < 0);
+  return true;
+}
+
+/*
+ * numeric_agg_expr_mul () - fuse a multiplication in the word domain
+ *   return: true when the result is representable, false to fall back
+ *
+ * Matches float_numeric_db_value_mul (): coefficients are multiplied and scales
+ * are added. A zero operand returns the same (1 digit, scale 0) zero as the
+ * legacy operator's early exit.
+ */
+bool
+numeric_agg_expr_mul (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right, NUMERIC_AGG_EXPR_VAL * out)
+{
+  if (left->coefficient == 0 || right->coefficient == 0)
+    {
+      out->coefficient = 0;
+      out->scale = 0;
+      out->is_negative = false;
+      return true;
+    }
+
+  out->scale = left->scale + right->scale;
+  if (out->scale > DB_MAX_NUMERIC_SCALE || out->scale < DB_MIN_NUMERIC_SCALE)
+    {
+      /* pre-check the result scale. Out of the NUMERIC scale range, fall back. */
+      return false;
+    }
+
+  if (__builtin_mul_overflow (left->coefficient, right->coefficient, &out->coefficient))
+    {
+      return false;
+    }
+
+  out->is_negative = (left->is_negative != right->is_negative);
+  return true;
+}
+
+/*
+ * numeric_agg_expr_add () - fuse an addition in the word domain
+ *   return: true when the result is representable, false to fall back
+ *   flip_right_sign(in): true for subtraction, which negates the right operand
+ *
+ * Matches float_numeric_db_value_add (): the narrower scale is aligned to the
+ * wider one, then magnitudes are added or subtracted based on their signs.
+ * Only same-sign addition can overflow; magnitude subtraction cannot.
+ */
+bool
+numeric_agg_expr_add (const NUMERIC_AGG_EXPR_VAL * left, const NUMERIC_AGG_EXPR_VAL * right, bool flip_right_sign,
+		      NUMERIC_AGG_EXPR_VAL * out)
+{
+  NUMERIC_AGG_EXPR_VAL l = *left;
+  NUMERIC_AGG_EXPR_VAL r = *right;
+
+  if (flip_right_sign)
+    {
+      r.is_negative = !r.is_negative;
+    }
+
+  if (l.scale != r.scale)
+    {
+      NUMERIC_AGG_EXPR_VAL *lo = (l.scale < r.scale) ? &l : &r;
+      int diff = (l.scale < r.scale) ? (r.scale - l.scale) : (l.scale - r.scale);
+
+      if (diff > NUMERIC_AGG_EXPR_POW10_MAX_EXP
+	  || __builtin_mul_overflow (lo->coefficient, _gv_numeric_agg_expr_pow10_u128[diff], &lo->coefficient))
+	{
+	  return false;
+	}
+      lo->scale += diff;
+    }
+
+  out->scale = l.scale;
+
+  if (l.is_negative == r.is_negative)
+    {
+      if (__builtin_add_overflow (l.coefficient, r.coefficient, &out->coefficient))
+	{
+	  return false;
+	}
+      out->is_negative = l.is_negative;
+    }
+  else if (l.coefficient >= r.coefficient)
+    {
+      out->coefficient = l.coefficient - r.coefficient;
+      out->is_negative = l.is_negative;
+    }
+  else
+    {
+      out->coefficient = r.coefficient - l.coefficient;
+      out->is_negative = r.is_negative;
+    }
+
+  if (out->coefficient == 0)
+    {
+      /* prevent -0; zero is always treated as positive */
+      out->is_negative = false;
+    }
+
+  return true;
+}
+
+/*
+ * numeric_agg_expr_to_dbv () - pack an agg-expr value into a floating NUMERIC DB_VALUE
+ *
+ * A floating NUMERIC uses the actual digit count as its precision, matching the
+ * legacy path. The agg-expr coefficient has at most 39 digits, so no overflow
+ * adjustment or rounding is needed.
+ */
+void
+numeric_agg_expr_to_dbv (const NUMERIC_AGG_EXPR_VAL * cv, DB_VALUE * answer)
+{
+  uint64_t w[NUMERIC_AS_WORDS];
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE];
+
+  w[0] = 0;
+  w[1] = (uint64_t) (cv->coefficient >> 64);
+  w[2] = (uint64_t) cv->coefficient;
+  numeric_words_to_bytes (w, NUMERIC_AS_WORDS, result_buf);
+
+  db_make_numeric (answer, result_buf, numeric_digits_u128 (cv->coefficient), cv->scale, DB_NUMERIC_BUF_SIZE,
+		   cv->is_negative, true);
+}
+
+/*
+ * numeric_sum_acc_snapshot () - round and pack the value of an active NUMERIC
+ *                               accumulator into a DB_VALUE
+ *   return: NO_ERROR or ER_IT_DATA_OVERFLOW
+ *   acc(in)     : active accumulator; not modified
+ *   result(out) : resulting NUMERIC value
+ *
+ * Digit counting, overflow checking, and rounding are performed here on a copy.
+ * Rounding occurs exactly once per group, and the accumulator remains unchanged.
+ * Used by cumulative analytic functions, which emit a running value per sort
+ * key group and continue accumulating afterwards.
+ */
+int
+numeric_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result)
+{
+  uint64_t work_words[SUM_ACC_NUMERIC_WORDS];
+  uint8_t result_buf[DB_NUMERIC_BUF_SIZE];
+  bool is_negative = acc->is_negative;
+  int result_prec, result_scale = acc->scale;
+  int ret;
+
+  assert (acc != NULL && acc->is_active && result != NULL);
+  assert (acc->sum_type == DB_TYPE_NUMERIC);
+
+  /* rounding divides the word buffer in place, so work on a copy */
+  memcpy (work_words, acc->v.words, sizeof (work_words));
+
+  result_prec = float_numeric_get_decimal_digit (work_words, SUM_ACC_NUMERIC_WORDS);
+  if (is_negative && result_prec == 1 && work_words[SUM_ACC_NUMERIC_WORDS - 1] == 0)
+    {
+      /* prevent -0; zero is always treated as positive */
+      is_negative = false;
+    }
+
+  ret = float_numeric_check_overflow_and_adjust_scale (&result_prec, &result_scale, result);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  ret = float_numeric_round_and_pack (work_words, SUM_ACC_NUMERIC_WORDS,
+				      NUMERIC_GET_BYTE_COUNT (SUM_ACC_NUMERIC_WORDS), result_buf, &result_prec,
+				      &result_scale);
+  if (ret != NO_ERROR)
+    {
+      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ret;
+    }
+
+  db_make_numeric (result, result_buf, result_prec, result_scale, DB_NUMERIC_BUF_SIZE, is_negative, true);
+  return NO_ERROR;
+}
+
+
+
+/*
  * numeric_coerce_num_to_double () -
  *   return:
- *   num(in)    : DB_VALUE
- *   scale(in)  : integer value of the scale
+ *   num(in)     : DB_VALUE
+ *   scale(in)   : integer value of the scale
  *   adouble(out): ptr to the returned double value
  *
- * Note: This routine converts a DB_C_NUMERIC into a double precision value.
+ * Note: Converts a DB_C_NUMERIC to double arithmetically: coefficient words are
+ *       converted to double and then divided by a power of ten.
+ *
+ *       - A coefficient fitting uint128 converts directly with hardware rounding.
+ *       - A wider coefficient (39..40 digits, upper word nonzero) is folded to
+ *         64 bits with round-to-odd first. For an intermediate of 55 or more
+ *         bits, this preserves the final round-to-nearest (Boldo-Melquiond);
+ *         the 2^k rescale is exact.
+ *
+ *       Only the coefficient is converted to double; scale adjusts the exponent
+ *       through the power-of-ten division.
  */
 void
 numeric_coerce_num_to_double (const DB_VALUE * num_value, int scale, double *adouble)
 {
-  char num_string[TWICE_NUM_MAX_PREC + 2];	/* 2: Sign, Null terminate */
+  uint64_t words[NUMERIC_AS_WORDS];
+  double magnitude;
 
   assert (num_value);
 
-  /* Convert the numeric to a decimal string */
-  numeric_coerce_num_to_dec_str (num_value, num_string);
+  numeric_bytes_to_words (db_locate_numeric (num_value), DB_NUMERIC_BUF_SIZE, words, NUMERIC_AS_WORDS,
+			  NUMERIC_AS_WORD_BYTES);
 
-  /* Convert the decimal string into a double */
-  /* Problem at precision with line below */
-  /* 123.445 was converted to 123.444999999999999999 */
-  *adouble = atof (num_string) / pow (10.0, scale);
+  if (words[0] == 0)
+    {
+      magnitude = (double) (((uint128_t) words[1] << 64) | words[2]);
+    }
+  else
+    {
+      /* a 39..40 digit coefficient takes the same cast, shifted right just
+       * enough (its bits above uint128) to fit; ldexp puts the 2^shift back */
+      int shift = 64 - NUMERIC_CLZ64 (words[0]);
+      uint128_t folded =
+	((uint128_t) words[0] << (128 - shift)) | ((uint128_t) words[1] << (64 - shift)) | (words[2] >> shift);
 
-  /* TODO: [CUBRIDSUS-2637] revert to early code for now. adouble = atof (num_string); for (i = 0; i < scale; i++)
-   * adouble /= 10; */
+      /* if anything was shifted out, record it in the lowest bit for the
+       * cast's rounding (round-to-odd) */
+      folded |= (uint128_t) ((words[2] & ((1ULL << shift) - 1)) != 0);
+      magnitude = ldexp ((double) folded, shift);
+    }
+
+  magnitude /= (scale >= 0 && scale <= DB_MAX_NUMERIC_PRECISION) ? numeric_Pow_of_10_dbl[scale] : pow (10.0, scale);
+  *adouble = numeric_is_negative (num_value) ? -magnitude : magnitude;
 }
 
 /*
@@ -4209,11 +4784,11 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
   /* 6) scale adjustments */
   if (dividend_exponent > 0)
     {
-      float_numeric_mul_normalize (dividend_work, calc_words, calc_nbytes, dividend_exponent);
+      (void) float_numeric_mul_normalize (dividend_work, calc_words, calc_nbytes, dividend_exponent);
     }
   if (divisor_exponent > 0)
     {
-      float_numeric_mul_normalize (divisor_work, calc_words, calc_nbytes, divisor_exponent);
+      (void) float_numeric_mul_normalize (divisor_work, calc_words, calc_nbytes, divisor_exponent);
     }
 
   /* fast path */
@@ -5176,7 +5751,7 @@ numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_sca
   if (scale_diff > 0)
     {
       /* increase scale: multiply by 10^delta. */
-      float_numeric_mul_normalize (result_word, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, scale_diff);
+      (void) float_numeric_mul_normalize (result_word, NUMERIC_AS_WORDS, NUMERIC_AS_WORD_BYTES, scale_diff);
     }
   else if (scale_diff < 0)
     {
@@ -5249,9 +5824,9 @@ get_significant_digit (DB_BIGINT i)
  *   - Used for scale adjustment by shifting the decimal position right.
  *   - The multiplier must be a power of 10 that fits in a uint64_t.
  *   - Processes in 64-bit word chunks using __int128 for high performance.
- *   - Expects no overflow after multiplication (assert(carry == 0)).
+ *   - Returns the carry out of the buffer: nonzero means the product was truncated.
  */
-static void
+static uint64_t
 float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uint64_t multiplier)
 {
   int i = 0;
@@ -5266,7 +5841,9 @@ float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
       carry = res >> 64;
     }
 
-  assert (carry == 0);
+  /* The fixed-width SUM accumulator must check this carry.
+   * Callers that size the buffer from the operand precisions cannot overflow and ignore it. */
+  return (uint64_t) carry;
 }
 
 /*
@@ -5287,23 +5864,30 @@ float_numeric_mul_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
  *     - If k=19: Max temp ~ 2^64 * 10^19 ~ 1.84 * 10^38 -> SAFE.
  *     - If k=20: Max temp ~ 2^64 * 10^20 ~ 1.84 * 10^39 -> Potential overflow.
  *     ==> Safe chunk size is 19.
+ *
+ *  - The binary operators call this with (void): their buffers are sized with
+ *    enough headroom, so the carry can be ignored.
+ *  - The fixed-width SUM accumulator must check the returned carry.
  */
-static void
+static uint64_t
 float_numeric_mul_normalize (uint64_t * dbv_buf, int calc_words, int calc_bytes, int exponent)
 {
   int step = 0;
   uint64_t multiplier = 0;
+  uint64_t carry = 0;
 
   assert (exponent > 0);
 
-  while (exponent > 0)
+  while (exponent > 0 && carry == 0)
     {
-      step = (exponent > 19) ? 19 : exponent;
+      step = (exponent > NUMERIC_DIGITS_PER_WORD) ? NUMERIC_DIGITS_PER_WORD : exponent;
       multiplier = _gv_mul_normalize_pow10_lookup[step - 1];	// 10^step
 
-      float_numeric_mul_pow10 (dbv_buf, calc_words, calc_bytes, multiplier);
+      carry = float_numeric_mul_pow10 (dbv_buf, calc_words, calc_bytes, multiplier);
       exponent -= step;
     }
+
+  return carry;
 }
 
 /*
@@ -5367,7 +5951,7 @@ float_numeric_div_normalize (uint64_t * dbv_buf, int calc_words, int calc_bytes,
 
   while (exponent > 0)
     {
-      step = exponent > 19 ? 19 : exponent;
+      step = exponent > NUMERIC_DIGITS_PER_WORD ? NUMERIC_DIGITS_PER_WORD : exponent;
       divisor = _gv_mul_normalize_pow10_lookup[step - 1];
 
       last_rem = float_numeric_div_pow10 (dbv_buf, calc_words, calc_bytes, divisor);
