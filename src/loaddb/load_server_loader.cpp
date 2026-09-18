@@ -744,6 +744,8 @@ namespace cubload
     bool insert_errors_filtered = false;
     OID dummy_oid;
     bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid, BU_LOCK);
+    // loaddb has already verified the foreign keys; skip re-checking them at force time.
+    int force_flags = LC_FORCE_FLAG_DONT_CHECK_FK | (has_BU_lock ? LC_FORCE_FLAG_HAS_BU_LOCK : LC_FORCE_FLAG_NONE);
 
     // First check if we have any errors set.
     if (m_session.is_failed ())
@@ -782,8 +784,7 @@ namespace cubload
 	    RECDES local_record = m_recdes_collected[i].get_recdes ();
 	    int error_code = locator_insert_force (m_thread_ref, &m_scancache.node.hfid, &m_scancache.node.class_oid,
 						   &dummy_oid, &local_record, true, op_type, &m_scancache, &force_count,
-						   pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock,
-						   true, false);
+						   pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, NULL, force_flags);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
