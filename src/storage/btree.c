@@ -27372,6 +27372,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
   BTREE_ADVANCE_WITH_KEY_FUNCTION *advance_function = btree_advance_and_find_key;
   BTREE_PROCESS_KEY_FUNCTION *key_function = NULL;
   MVCC_SNAPSHOT dirty_snapshot;
+  MVCC_SNAPSHOT committed_snapshot;
 #if defined (SERVER_MODE)
   int lock_result;
   LOCK class_lock;
@@ -27433,6 +27434,19 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 	  if (tf_is_catalog_class (class_oid))
 	    {
 	      /* find the key without lock */
+	      key_function = btree_key_find_unique_version_oid;
+	      find_unique_helper.lock_mode = NULL_LOCK;
+	    }
+	  else if (oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid))
+	    {
+	      /* CBRD-27369: _db_histogram is looked up at query compile time to feed the optimizer
+	       * (stats_get_histogram ()). A locked lookup would wait behind a concurrent UPDATE STATISTICS, which
+	       * X-locks the class's rows until it commits, for the rest of that transaction. The optimizer only wants
+	       * the last committed histogram: find that version without a lock and without materializing the
+	       * transaction snapshot (kept out of this lookup below, see need_skip_mvcc_snapshot). Writers still come
+	       * through S_SELECT_WITH_LOCK / S_UPDATE and keep their locking semantics. */
+	      committed_snapshot.snapshot_fnc = mvcc_satisfies_committed;
+	      find_unique_helper.snapshot = &committed_snapshot;
 	      key_function = btree_key_find_unique_version_oid;
 	      find_unique_helper.lock_mode = NULL_LOCK;
 	    }

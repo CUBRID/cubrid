@@ -49,7 +49,8 @@
 #include "error_manager.h"
 
 static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
-static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
+static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
+				bool with_fullscan);
 static bool string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset,
     int collation);
 static void histogram_lhs_string_domain (PT_NODE *lhs, int fallback_codeset, int fallback_collation,
@@ -154,7 +155,8 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
   /* Store the exact null frequency AND the histogram blob together in a single object template
    * (one dbt_edit + one flush) so a failure never leaves a mixed catalog row -- a new
    * null_frequency alongside the previous histogram blob. Mirrors the multi-column path. */
-  error = store_one_histogram (classop, attr_name, histogram_blob, histogram_total_length, null_frequency);
+  error = store_one_histogram (classop, attr_name, histogram_blob, histogram_total_length, null_frequency,
+			       with_fullscan != 0);
 
   if (histogram_blob != NULL)
     {
@@ -165,11 +167,62 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
 
 
 /*
- * store_one_histogram () - write one column's blob + exact null frequency into its
- *   _db_histogram catalog entry (the entry must already exist).
+ * get_histogram_for_write () - locate a column's _db_histogram entry for updating, taking the X
+ *   lock on the row right at the index lookup instead of the S-then-X of db_get_histogram ().
+ *
+ * Note (CBRD-27369): store_one_histogram () read the row with db_get_histogram () (an S lock held
+ *   to commit) and then wrote it (X) -- concurrent collectors on the same table deadlocked on
+ *   that S -> X upgrade.  A plain DB_FETCH_WRITE would not do: btree_find_unique () is fixed to
+ *   S_SELECT_WITH_LOCK, so it still S-locks first and upgrades in the fetch (seen as S holders on
+ *   _db_histogram rows with concurrent UPDATE STATISTICS ON ALL CLASSES).  The for-update lookup
+ *   asks the index for X (S_UPDATE), so two collectors contend X vs X on the row, which just
+ *   serializes (no upgrade cycle).
  */
 static int
-store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq)
+get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+{
+  int au_save;
+  DB_OBJECT *histogram_class;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  *histogram_obj = NULL;
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MISSING_OR_INVALID_CATALOG, 0);
+      return ER_BO_MISSING_OR_INVALID_CATALOG;
+    }
+
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* internal catalog write; bypass user authorization as db_get_histogram () does (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
+  *histogram_obj = db_find_multi_unique_for_update (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+
+  db_value_clear (value_ptrs[0]);
+  db_value_clear (value_ptrs[1]);
+
+  if (*histogram_obj == NULL && er_errid () != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * store_one_histogram () - write one column's blob + exact null frequency into its
+ *   _db_histogram catalog entry, creating the entry again if it went missing
+ *   with_fullscan(in): the collection mode to record if the entry has to be recreated
+ */
+static int
+store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
+		     bool with_fullscan)
 {
   int error = NO_ERROR;
   DB_OBJECT *histogram_obj = NULL, *fin = NULL;
@@ -178,10 +231,37 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
 
   db_make_null (&hv);
 
-  error = db_get_histogram (classop, attr_name, &histogram_obj);
-  if (error != NO_ERROR || histogram_obj == NULL)
+  error = get_histogram_for_write (classop, attr_name, &histogram_obj);
+  if (error != NO_ERROR)
     {
       return error;
+    }
+
+  if (histogram_obj == NULL)
+    {
+      /* The entry existed when the statement checked it (sm_add_histogram ()), and the scan has
+       * already produced this column's histogram -- a concurrent DROP HISTOGRAM committed in
+       * between and removed the row.  The existence check reads committed and takes no lock
+       * (CBRD-27369), so it could not see that DROP while it was uncommitted.  Returning success
+       * here would leave the statement reporting a collection it never stored, so put the entry
+       * back and write into it.  The bucket count is not part of the row (smt_add_histogram ()
+       * stores class_of, key_attr, with_fullscan, null_frequency and the blob), hence -1. */
+      error = sm_add_histogram (classop, attr_name, -1, with_fullscan);
+      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
+	{
+	  return error;
+	}
+
+      error = get_histogram_for_write (classop, attr_name, &histogram_obj);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (histogram_obj == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+	  return ER_OBJ_OBJECT_NOT_FOUND;
+	}
     }
 
   obj_tmpl = dbt_edit_object (histogram_obj);
@@ -357,7 +437,9 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
     {
       for (int i = 0; i < n; i++)
 	{
-	  int e = store_one_histogram (classop, attr_names[i].c_str (), blobs[i], blob_lens[i], null_freqs[i]);
+	  int e =
+		  store_one_histogram (classop, attr_names[i].c_str (), blobs[i], blob_lens[i], null_freqs[i],
+				       with_fullscan != 0);
 	  if (e != NO_ERROR && error == NO_ERROR)
 	    {
 	      error = e;
@@ -405,7 +487,7 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
  *   not left inconsistent on a stats failure. Returns the first error, if any.
  */
 int
-store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc)
+store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc, bool with_fullscan)
 {
   int error = NO_ERROR;
 
@@ -419,7 +501,8 @@ store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc)
 	{
 	  continue;
 	}
-      int e = store_one_histogram (classop, hc->names[i], hc->blobs[i], hc->lens[i], hc->null_freqs[i]);
+      int e = store_one_histogram (classop, hc->names[i], hc->blobs[i], hc->lens[i], hc->null_freqs[i],
+				   with_fullscan);
       if (e != NO_ERROR && error == NO_ERROR)
 	{
 	  error = e;
@@ -2231,6 +2314,66 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
   return NO_ERROR;
 }
 
+/*
+ * db_get_histogram_committed () - locate a column's _db_histogram entry and read its latest committed version
+ *   return: NO_ERROR, or an error code
+ *   classop(in): class
+ *   attr_name(in): column name
+ *   histogram_obj(out): the entry, NULL when the column has none
+ *
+ * Note (CBRD-27369): db_get_histogram () goes through the object layer's locking lookup -- it S-locks the row it finds
+ *   and fetches its dirty version -- so while an UPDATE STATISTICS holds the class's _db_histogram rows X-locked (until
+ *   its transaction commits) every query compile on that class blocks behind it in stats_get_histogram (). The
+ *   optimizer only needs the last committed histogram: this reads that version without taking a lock and without
+ *   materializing the transaction's MVCC snapshot (obj_find_multi_attr_committed ()). Writers take the row X right at
+ *   the lookup instead (db_find_multi_unique_for_update ()), and the existence check reads committed, unlocked
+ *   (db_find_multi_unique_committed ()); db_get_histogram () is left to ;info histogram and the DDL paths.
+ */
+int
+db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+{
+  int error = NO_ERROR;
+  int au_save;
+  DB_OBJECT *histogram_class;
+  DB_VALUE value[2];
+  const DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* internal catalog read; bypass user authorization as db_get_histogram () does (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
+  *histogram_obj = obj_find_multi_attr_committed (histogram_class, 2, search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+
+  db_value_clear (&value[0]);
+  db_value_clear (&value[1]);
+
+  if (*histogram_obj == NULL)
+    {
+      /* a missing entry is reported as a benign ER_OBJ_OBJECT_NOT_FOUND warning; only real errors propagate */
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  return er_errid ();
+	}
+    }
+
+  return NO_ERROR;
+}
+
 int
 stats_get_histogram (MOP classop, HIST_STATS **histogram)
 {
@@ -2310,7 +2453,8 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
       const char *attname = (char *) att->header.name;
       DB_VALUE *histogram_value = NULL;
       DB_VALUE null_frequency_value;
-      error = db_get_histogram (classop, attname, &histogram_obj);
+      /* last committed entry, unlocked: must not wait on a concurrent UPDATE STATISTICS (CBRD-27369) */
+      error = db_get_histogram_committed (classop, attname, &histogram_obj);
 
       if (*histogram == NULL || (*histogram)->histogram == NULL || (*histogram)->null_frequency == NULL)
 	{
