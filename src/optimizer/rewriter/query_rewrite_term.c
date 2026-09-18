@@ -31,6 +31,7 @@ static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep);
+static bool qo_check_nullable_op (PT_NODE * node);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -230,6 +231,91 @@ qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
+ * qo_check_nullable_op () - classifies whether an expression's operator can
+ *   be TRUE even when one of its operands is NULL, so it must never be
+ *   treated as proof that a key column is not NULL.
+ *   return: true if the operator is nullable-unsafe for 'node' as given
+ *   node(in): the expression node to classify
+ *
+ * Note: shared by qo_check_nullable_expr () and qo_check_nullable_expr_with_spec (),
+ *	 so the two callers can never end up checking a different operator list.
+ */
+static bool
+qo_check_nullable_op (PT_NODE * node)
+{
+  if (node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  switch (node->info.expr.op)
+    {
+    case PT_IS_NULL:
+    case PT_CASE:
+    case PT_COALESCE:
+    case PT_NVL:
+    case PT_NVL2:
+    case PT_DECODE:
+    case PT_IF:
+    case PT_IFNULL:
+    case PT_ISNULL:
+    case PT_CONCAT_WS:
+    case PT_NULLSAFE_EQ:
+      /* NEED FUTURE OPTIMIZATION */
+      return true;
+
+    case PT_NOT:
+      /* NOT EXISTS may be true for NULL operands. */
+      return (node->info.expr.arg1 != NULL && node->info.expr.arg1->node_type == PT_EXPR
+	      && node->info.expr.arg1->info.expr.op == PT_EXISTS);
+
+    case PT_IS_NOT:
+      /* IS NOT TRUE/FALSE/UNKNOWN is true whenever the operand is UNKNOWN, which a NULL
+       * operand always is. */
+      return true;
+
+    case PT_EQ_ALL:
+    case PT_NE_ALL:
+    case PT_GE_ALL:
+    case PT_GT_ALL:
+    case PT_LT_ALL:
+    case PT_LE_ALL:
+    case PT_IS_NOT_IN:
+      {
+	PT_NODE *arg2 = node->info.expr.arg2;
+
+	if (arg2 != NULL && arg2->node_type == PT_EXPR && arg2->info.expr.op == PT_CAST)
+	  {
+	    /* Strip a CAST wrapper so the underlying literal collection can be
+	     * checked below. */
+	    arg2 = arg2->info.expr.arg1;
+	  }
+
+	if (arg2 != NULL && arg2->node_type == PT_VALUE && PT_IS_SET_TYPE (arg2))
+	  {
+	    return arg2->info.value.data_value.set == NULL;
+	  }
+
+	if (arg2 != NULL && arg2->node_type == PT_FUNCTION
+	    && (arg2->info.function.function_type == F_SET || arg2->info.function.function_type == F_MULTISET
+		|| arg2->info.function.function_type == F_SEQUENCE))
+	  {
+	    /*
+	     * ENUM comparison type checking may represent a literal collection as a
+	     * PT_FUNCTION.
+	     */
+	    return arg2->info.function.arg_list == NULL;
+	  }
+
+	return true;
+      }
+
+    default:
+      return false;
+    }
+}
+
+/*
  * qo_check_nullable_expr () -
  *   return:
  *   parser(in):
@@ -242,28 +328,10 @@ qo_check_nullable_expr (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   int *nullable_cntp = (int *) arg;
 
-  if (node->node_type == PT_EXPR)
+  /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
+  if (qo_check_nullable_op (node))
     {
-      /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
-      switch (node->info.expr.op)
-	{
-	case PT_IS_NULL:
-	case PT_CASE:
-	case PT_COALESCE:
-	case PT_NVL:
-	case PT_NVL2:
-	case PT_DECODE:
-	case PT_IF:
-	case PT_IFNULL:
-	case PT_ISNULL:
-	case PT_CONCAT_WS:
-	case PT_NULLSAFE_EQ:
-	  /* NEED FUTURE OPTIMIZATION */
-	  (*nullable_cntp)++;
-	  break;
-	default:
-	  break;
-	}
+      (*nullable_cntp)++;
     }
 
   return node;
@@ -358,31 +426,15 @@ qo_check_nullable_expr_with_spec (PARSER_CONTEXT * parser, PT_NODE * node, void 
 {
   SPEC_ID_INFO *info = (SPEC_ID_INFO *) arg;
 
-  if (node->node_type == PT_EXPR)
+  /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
+  if (qo_check_nullable_op (node))
     {
-      /* check for nullable term: expr(..., NULL, ...) can be non-NULL */
-      switch (node->info.expr.op)
+      info->appears = false;
+      parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
+      if (info->appears)
 	{
-	case PT_IS_NULL:
-	case PT_CASE:
-	case PT_COALESCE:
-	case PT_NVL:
-	case PT_NVL2:
-	case PT_DECODE:
-	case PT_IF:
-	case PT_IFNULL:
-	case PT_ISNULL:
-	case PT_CONCAT_WS:
-	  info->appears = false;
-	  parser_walk_tree (parser, node, qo_get_name_by_spec_id, info, NULL, NULL);
-	  if (info->appears)
-	    {
-	      info->nullable = true;
-	      *continue_walk = PT_STOP_WALK;
-	    }
-	  break;
-	default:
-	  break;
+	  info->nullable = true;
+	  *continue_walk = PT_STOP_WALK;
 	}
     }
 
