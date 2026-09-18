@@ -1527,6 +1527,8 @@ typedef struct _ha_config
 #define CSQL_SYSADM_REBUILD_CATALOG_L           "sysadm-rebuild-catalog"
 #define CSQL_NOPRINT_TITLE_S			12021
 #define CSQL_NOPRINT_TITLE_L			"skip-title"
+#define CSQL_ECHO_S				12022
+#define CSQL_ECHO_L				"echo"
 
 #define COMMDB_SERVER_LIST_S                    'P'
 #define COMMDB_SERVER_LIST_L                    "server-list"

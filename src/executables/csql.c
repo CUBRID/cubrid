@@ -3463,6 +3463,11 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
       csql_Pager_cmd[0] = '\0';
     }
 
+  if (csql_arg->echo_on)
+    {
+      csql_Is_echo_on = true;
+    }
+
   lang_init_console_txt_conv ();
 
   if (csql_Is_interactive)

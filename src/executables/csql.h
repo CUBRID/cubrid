@@ -302,6 +302,7 @@ extern "C"
 #endif				/* CSQL_NO_LONGGING */
     bool midxkey_print;
     bool noprint_entrymsg;
+    bool echo_on;
   } CSQL_ARGUMENT;
 
   typedef struct
