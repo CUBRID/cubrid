@@ -85,6 +85,7 @@ db_value_has_internal_lob_marker (const DB_VALUE * value, int marker)
   return db_value_get_internal_lob_marker (value) == marker;
 }
 
+
 /*
  * internal_lob_marker_locator_token () - The token a locator text carries over its own fields.
  *
@@ -199,6 +200,34 @@ internal_lob_marker_parse_locator (const char *data, int size, DB_BIGINT * lengt
       *length = (DB_BIGINT) parsed_length;
     }
   return true;
+}
+
+/*
+ * internal_lob_marker_parse_scalar_stream () - Pull the LOB type and payload length out of a scalar stream marker.
+ *
+ * A scalar stream marker reads "@internal_lob_stream:<C|B>:<locator>".  It is what CLOB_TO_CHAR ()/BLOB_TO_BIT ()
+ * hand a csql client instead of a value too large for VARCHAR/VARBIT, and csql pulls the payload through a read
+ * cursor.  It is a transport envelope, not a value: anything that would consume it as one has to refuse it.
+ */
+static inline bool
+internal_lob_marker_parse_scalar_stream (const char *data, int size, char *lob_type, DB_BIGINT * length)
+{
+  const int prefix_len = (int) strlen (INTERNAL_LOB_SCALAR_STREAM_PREFIX);
+
+  if (data == NULL || size <= prefix_len + 2
+      || memcmp (data, INTERNAL_LOB_SCALAR_STREAM_PREFIX, (size_t) prefix_len) != 0)
+    {
+      return false;
+    }
+  if ((data[prefix_len] != 'C' && data[prefix_len] != 'B') || data[prefix_len + 1] != ':')
+    {
+      return false;
+    }
+  if (lob_type != NULL)
+    {
+      *lob_type = data[prefix_len];
+    }
+  return internal_lob_marker_parse_locator (data + prefix_len + 2, size - prefix_len - 2, length);
 }
 
 #endif /* _INTERNAL_LOB_MARKER_H_ */

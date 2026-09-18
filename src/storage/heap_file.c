@@ -12170,6 +12170,20 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
       goto exit_on_error;
     }
 
+  /* A scalar stream marker is csql's read-cursor envelope for a LOB too large for VARCHAR/VARBIT, never a
+   * storable value; INSERT ... SELECT CLOB_TO_CHAR (c) would otherwise persist the 70-byte envelope text. */
+  if (attr_val != NULL && db_value_has_internal_lob_marker (attr_val, DB_VALUE_INTERNAL_LOB_MARKER_STREAM))
+    {
+      DB_BIGINT stream_length = 0;
+
+      (void) internal_lob_marker_parse_scalar_stream (db_get_string (attr_val), db_get_string_size (attr_val), NULL,
+						      &stream_length);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2,
+	      (int) ((stream_length > INT_MAX) ? INT_MAX : stream_length), (int) DB_MAX_LOB_PRECISION);
+      ret = ER_QPROC_STRING_SIZE_TOO_BIG;
+      goto exit_on_error;
+    }
+
   value = heap_attrvalue_locate (attrid, attr_info);
   if (value == NULL)
     {
