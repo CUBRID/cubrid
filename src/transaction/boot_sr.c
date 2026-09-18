@@ -66,7 +66,6 @@
 #include "intl_support.h"
 #include "serial.h"
 #include "server_interface.h"
-#include "jansson.h"
 #include "pl_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
@@ -2731,9 +2730,6 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       /* server is up! */
       boot_server_status (BOOT_SERVER_UP);
     }
-#if !defined(SA_MODE)
-  json_set_alloc_funcs (malloc, free);
-#endif
 
   return NO_ERROR;
 
@@ -2946,6 +2942,13 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
 	{
 	  /* case (1): There is the master key in the server key file:
 	   * Nothing to do */
+	  goto exit;
+	}
+
+      if (err != ER_TDE_MASTER_KEY_NOT_FOUND && err != ER_TDE_INVALID_MASTER_KEY)
+	{
+	  /* the key file itself is fine and something else failed, so case (2)
+	   * below would discard a usable key file. */
 	  goto exit;
 	}
     }

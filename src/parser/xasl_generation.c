@@ -419,6 +419,7 @@ static void pt_make_json_table_spec_node_internal (PARSER_CONTEXT * parser, PT_J
 						   json_table_node & result);
 static XASL_NODE *pt_find_xasl (XASL_NODE * list, XASL_NODE * match);
 static void pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
+static int pt_set_sub_xasl_id (XASL_NODE * xasl, const PT_NODE * node);
 static XASL_NODE *pt_append_scan (const XASL_NODE * to, const XASL_NODE * from);
 static PT_NODE *pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -9244,6 +9245,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 			regu = pt_make_regu_arith (r1, r2, r3, op, domain);
 
+			/* Both serial operators re-enter storage mid-scan: nextval WRITE-latches
+			 * the _db_serial page, currval waits on the cache entry mutex a nextval
+			 * holds across that latch. A fixed (PEEK) scan deadlocks with either. */
+			if (parser->parent_proc_xasl != NULL)
+			  {
+			    XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+			  }
+
 			parser_free_tree (parser, cached_num_node_p);
 		      }
 		    else
@@ -13681,6 +13690,43 @@ pt_set_aptr (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl)
 }
 
 /*
+ * pt_set_sub_xasl_id () - clone node's XASL_ID into packing-buffer memory
+ *     instead of borrowing it. node is often temporary (e.g. an UPDATE/DELETE's aptr_statement)
+ *     and gets freed before xasl is serialized, but the packing buffer stays alive until pt_exit_packing_buf ().
+ *   return: NO_ERROR on success, ER_OUT_OF_VIRTUAL_MEMORY on allocation failure
+ *   xasl(out): XASL_NODE to attach the cloned XASL_ID to
+ *   node(in): PT_NODE to clone the XASL_ID from
+ */
+static int
+pt_set_sub_xasl_id (XASL_NODE * xasl, const PT_NODE * node)
+{
+  XASL_ID *sub_xasl_id;
+
+  xasl->sub_xasl_id = NULL;
+
+  if (node->xasl_id == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  sub_xasl_id = (XASL_ID *) pt_alloc_packing_buf (sizeof (XASL_ID));
+  if (sub_xasl_id == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_ID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  XASL_ID_SET_NULL (sub_xasl_id);
+  XASL_ID_COPY (sub_xasl_id, node->xasl_id);
+
+  xasl->sub_xasl_id = sub_xasl_id;
+  xasl->sub_host_var_count = node->sub_host_var_count;
+  xasl->sub_host_var_index = node->sub_host_var_index;
+
+  return NO_ERROR;
+}
+
+/*
  * pt_set_connect_by_xasl() - set the CONNECT BY xasl node,
  *	and make the pseudo-columns regu vars
  *   parser(in):
@@ -13893,9 +13939,12 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	      if (node->info.query.flag.subquery_cached)
 		{
 		  /* save the subquery cache info */
-		  xasl->sub_xasl_id = node->xasl_id;
-		  xasl->sub_host_var_count = node->sub_host_var_count;
-		  xasl->sub_host_var_index = node->sub_host_var_index;
+		  if (pt_set_sub_xasl_id (xasl, node) != NO_ERROR)
+		    {
+		      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+				  sizeof (XASL_ID));
+		      *continue_walk = PT_STOP_WALK;
+		    }
 		}
 
 	      /* order is important. we are on the way up, so putting things at the tail of the list will end up deeper
@@ -17879,9 +17928,12 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   /* checking false query */
   if (non_recursive_part_xasl)
     {
-      non_recursive_part_xasl->sub_xasl_id = non_recursive_part->xasl_id;
-      non_recursive_part_xasl->sub_host_var_count = non_recursive_part->sub_host_var_count;
-      non_recursive_part_xasl->sub_host_var_index = non_recursive_part->sub_host_var_index;
+      if (pt_set_sub_xasl_id (non_recursive_part_xasl, non_recursive_part) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, non_recursive_part, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		      sizeof (XASL_ID));
+	  return NULL;
+	}
     }
 
   if (recursive_part)
@@ -19504,16 +19556,12 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
  * Note: table_name is left NULL on allocation failure -- the caller detects this the same way it
  *   already checks pt_has_error(parser), by testing sink->table_name == NULL.
  *
- * TODO: The remote table name (here) and remote column names (INSERT's remote_attr_names) are
- *   emitted to the remote server unquoted (dblink_dml_open builds "INSERT INTO <table> [(<cols>)]
- *   VALUES (?, ...)" / "DELETE FROM <table> WHERE ..."). Quoting makes identifiers case-sensitive,
- *   but unquoted identifiers are normalized differently by DB (Oracle: uppercase, CUBRID: lowercase)
- *   and the quote character differs (CUBRID/Oracle: "id", MySQL default: `id`). The remote DBMS type
- *   is unknown at XASL generation (these sinks also target Oracle/MySQL via the gateway), and
- *   info.name.original has already dropped the user's quoting, so faithful requoting is not possible
- *   here. Proper per-DB quoting is deferred, consistent with the correlated push-down path
- *   (CBRD-26601, mq_dblink_append_corr_pred_sql). Consequence: remote table/column names that
- *   require quoting (reserved words, mixed-case, special chars) are not supported.
+ * TODO: remote table/column names are emitted unquoted. Quoting is per-DB and cannot be decided here: the
+ *   remote DBMS type is unknown at XASL generation (these sinks also target Oracle/MySQL via the gateway),
+ *   unquoted names normalize differently (Oracle uppercases, CUBRID lowercases), the quote character differs
+ *   ("id" vs MySQL `id`), and info.name.original has already dropped the user's quoting. Deferred, same as
+ *   the correlated push-down path (CBRD-26601, mq_dblink_append_corr_pred_sql) -- fix both together.
+ *   Consequence: reserved / mixed-case / special-char identifiers are not supported.
  */
 static void
 pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLINK_INFO * pdblink,
@@ -19618,9 +19666,12 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (aptr_statement->info.query.flag.subquery_cached)
     {
-      xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
-      xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
-      xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+      if (pt_set_sub_xasl_id (xasl->aptr_list, aptr_statement) != NO_ERROR)
+	{
+	  PT_ERRORmf (parser, aptr_statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+		      sizeof (XASL_ID));
+	  return NULL;
+	}
     }
 
   into_spec = statement->info.insert.spec;
@@ -19731,11 +19782,8 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
- * pt_to_delete_xasl_remote_subquery () - Builds DELETE_PROC XASL for a remote DELETE whose WHERE references a
- *   pure-local subquery. Mirrors pt_to_insert_xasl_remote_select: the local subquery is compiled as the aptr
- *   (produces a single-column list-file), and the DELETE_PROC carries the remote connection, target table,
- *   WHERE key column, and comparison operator. The runtime reads each list-file value and pushes
- *   "DELETE FROM <table> WHERE <key> <op> ?" via CCI bind.
+ * pt_to_delete_xasl_remote_subquery () - Remote DELETE + local subquery: aptr = local list-file,
+ *   DELETE_PROC holds remote conn/table/key/op; runtime binds per-row "DELETE ... WHERE key op ?".
  *
  * return        : XASL node, or NULL on error.
  * parser (in)   : Parser context.
@@ -19760,10 +19808,9 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   assert (cond != NULL && cond->node_type == PT_EXPR);
 
-  /* Only the first predicate is translated below, so a second one would be dropped without a diagnostic. The
-   * parser gate admits a single predicate, but rewrites between there and here can append to the list -- LIMIT
-   * becomes inst_num() <= n during semantic check, for one. Those forms are excluded at the gate; reject here
-   * too so any future appender surfaces as an error instead of a silently unenforced condition. */
+  /* Only the first predicate is translated below, so a second would be dropped without a diagnostic. The
+   * gate admits one, but rewrites between there and here can append (LIMIT becomes inst_num() <= n). Reject
+   * so a future appender surfaces as an error instead of a silently unenforced condition. */
   if (cond->next != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
@@ -19771,7 +19818,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* operator -> remote WHERE SQL text (fixed safe set; IN / = ANY push per-row equality) */
+  /* op -> remote WHERE text (fixed set; one remote pred per list-file value; ANY = per-row OR). */
   switch (cond->info.expr.op)
     {
     case PT_IS_IN:
@@ -19780,16 +19827,24 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       op_sql = "=";
       break;
     case PT_LT:
+    case PT_LT_SOME:
       op_sql = "<";
       break;
     case PT_GT:
+    case PT_GT_SOME:
       op_sql = ">";
       break;
     case PT_LE:
+    case PT_LE_SOME:
       op_sql = "<=";
       break;
     case PT_GE:
+    case PT_GE_SOME:
       op_sql = ">=";
+      break;
+    case PT_NE:
+    case PT_NE_SOME:
+      op_sql = "<>";
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE subquery: unexpected operator");
@@ -19805,10 +19860,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
 	   && arg1->info.dot.arg2->node_type == PT_NAME)
     {
-      /* Only the trailing attribute survives here. That the qualifier names the delete target is established by
-       * the parser gate (pt_convert_dblink_dml_query); it is not re-checked at this point because by now name
-       * resolution has rewritten the dotted name and the spec's range variable no longer lines up with the
-       * qualifier as written, so the comparison cannot be repeated naively. */
+      /* Trailing attr only; qualifier already checked at the parser gate (not re-checkable after name rewrite). */
       key_col = arg1->info.dot.arg2->info.name.original;
     }
   if (key_col == NULL)
@@ -19848,9 +19900,10 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (aptr_statement->info.query.flag.subquery_cached)
     {
-      xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
-      xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
-      xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+      if (pt_set_sub_xasl_id (xasl->aptr_list, aptr_statement) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   server_node = from->info.spec.remote_server_name;
@@ -20026,9 +20079,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (xasl != NULL && aptr_statement->info.query.flag.subquery_cached)
 	{
-	  xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
-	  xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
-	  xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+	  if (pt_set_sub_xasl_id (xasl->aptr_list, aptr_statement) != NO_ERROR)
+	    {
+	      PT_ERRORmf (parser, aptr_statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY,
+			  sizeof (XASL_ID));
+	      return NULL;
+	    }
 	}
     }
   else
@@ -21788,10 +21844,8 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NULL;
 	}
 
-      /* remote DELETE + local subquery sink: pt_convert_dblink_dml_query set up a
-       * PT_DBLINK_TABLE_DML with qstr == NULL (no serialized pushdown text) and preserved the WHERE subquery.
-       * Route to the value-push sink instead of the qstr pushdown. qstr != NULL keeps the normal remote DELETE
-       * (no local subquery) on the existing pushdown path. */
+      /* remote DELETE + local subquery sink (qstr == NULL, WHERE kept) -> value-push path;
+       * qstr != NULL stays on the normal remote DELETE pushdown. */
       {
 	PT_NODE *remote_spec = from->info.spec.remote_server_name;
 
@@ -27572,9 +27626,11 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* for subquery cache */
   if (aptr_statement->xasl_id && !statement->flag.do_not_use_subquery_cache)
     {
-      xasl->sub_xasl_id = aptr_statement->xasl_id;
-      xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
-      xasl->sub_host_var_index = aptr_statement->sub_host_var_index;
+      error = pt_set_sub_xasl_id (xasl, aptr_statement);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
     }
 
   /* flush all classes */
@@ -28075,9 +28131,11 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   /* for subquery cache */
   if (aptr_statement->xasl_id && !statement->flag.do_not_use_subquery_cache)
     {
-      xasl->sub_xasl_id = aptr_statement->xasl_id;
-      xasl->sub_host_var_count = aptr_statement->sub_host_var_count;
-      xasl->sub_host_var_index = aptr_statement->sub_host_var_index;
+      error = pt_set_sub_xasl_id (xasl, aptr_statement);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
     }
 
   insert = &xasl->proc.insert;

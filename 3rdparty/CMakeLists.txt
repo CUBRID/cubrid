@@ -15,17 +15,19 @@
 #   limitations under the License.
 # 
 
-set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
-set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
-set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.6.4.tar.gz")             # expat library sources URL
-set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.10.tar.gz")         # jansson library sources URL
+# Unused: on Linux flex and bison come from the system, and only WIN_FLEX_BISON_URL
+# below is downloaded. Kept commented out in case bundling is ever revived - the
+# versions named here are NOT built or shipped, so they are not a CVE surface.
+#set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
+#set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
+set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.8.2.tar.gz")             # expat library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.2.tar.gz")                  # editline library sources URL
-set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0.tar.gz")              # rapidjson library sources URL
-set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1w.tar.gz")       # openssl library sources URL
-set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
+set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0-250205.tar.gz")              # rapidjson library sources URL
+set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-3.5.7.tar.gz")       # openssl library sources URL
+set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.14.tar.gz")     # unixODBC library sources URL
 set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
-set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
-set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.4.tar.gz")                          # LZ4
+set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2023-03-01.tar.gz")                      # RE2
+set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/lz4-1.10.0.tar.gz")                          # LZ4
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
@@ -39,19 +41,18 @@ set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_
 # How to generate the URL_HASH:
 # - Use the `sha256sum` command to compute the hash of the downloaded tarball.
 #   Example:
-#   $ sha256sum openssl-1.1.1f.tar.gz
+#   $ sha256sum openssl-3.5.7.tar.gz
 #   Then set the resulting SHA256 hash in the format: "SHA256=<hash_value>"
 #
 # Below are the URL_HASH values for different libraries used in this project:
-set(WITH_LIBEXPAT_URL_HASH "SHA256=fd03b7172b3bd7427a3e7a812063f74754f24542429b634e0db6511b53fb2278")		# expat library 
-set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")         # jansson library 
+set(WITH_LIBEXPAT_URL_HASH "SHA256=ef7d1994f533c9e7343d6c19f31064fc8ebbcbcaa144be3812b4f43052a05f4c")		# expat library 
 set(WITH_LIBEDIT_URL_HASH "SHA256=140312cd2dd22b4981d22448f02ef215fd7685ca57bb90b1427e496234d2d7da")            # editline libray
-set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e")          # rapidjson library 
-set(WITH_LIBOPENSSL_URL_HASH "SHA256=cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8")         # openssl library 
-set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")        # unixODBC library 
+set(WITH_RAPIDJSON_URL_HASH "SHA256=2d2601a82d2d3b7e143a3c8d43ef616671391034bc46891a9816b79cf2d3e7a8")          # rapidjson library 
+set(WITH_LIBOPENSSL_URL_HASH "SHA256=a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8")         # openssl library 
+set(WITH_LIBUNIXODBC_URL_HASH "SHA256=4e2814de3e01fc30b0b9f75e83bb5aba91ab0384ee951286504bb70205524771")        # unixODBC library 
 set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")             # intel oneTBB library 
-set(WITH_RE2_URL_HASH "SHA256=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f")		# RE2
-set(WITH_LZ4_URL_HASH "SHA256=0b0e3aa07c8c063ddf40b082bdf7e37a1562bda40a0ff5272957f3e987e0e54b")		# LZ4
+set(WITH_RE2_URL_HASH "SHA256=7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48")		# RE2
+set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b")		# LZ4
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
@@ -65,7 +66,6 @@ else(WIN32)
 endif()
 
 set(WITH_LIBEXPAT     "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with expat library (default: EXTERNAL)")
-set(WITH_LIBJANSSON   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with jansson library (default: EXTERNAL)")
 set(WITH_LIBEDIT      "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with editline library (default: EXTERNAL)")
 set(WITH_LIBOPENSSL   "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with openssl library (default: EXTERNAL)")
 set(WITH_LIBUNIXODBC  "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with unixODBC library (default: EXTERNAL)")
@@ -75,7 +75,6 @@ set(WITH_LIBTBB       "${WITH_EXTERNAL_PREFIX}" CACHE STRING "Build with TBB lib
 
 message(STATUS "Build with flex and bison library: ${WITH_LIBFLEXBISON}")
 message(STATUS "Build with expat library: ${WITH_LIBEXPAT}")
-message(STATUS "Build with jansson library: ${WITH_LIBJANSSON}")
 message(STATUS "Build with editline library: ${WITH_LIBEDIT}")
 message(STATUS "Build with openssl library: ${WITH_LIBOPENSSL}")
 message(STATUS "Build with unixODBC library: ${WITH_LIBUNIXODBC}")
@@ -91,6 +90,14 @@ endmacro()
 
 # For external library options
 include(ExternalProject)
+
+# Timestamp extracted sources at extraction time, not with the timestamps stored in
+# the archive. Otherwise a changed URL can extract sources that look older than
+# objects built from the previous archive, and nothing rebuilds. Guarded because the
+# policy is CMake 3.24 and this project requires 3.21.
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
 
 set (3RDPARTY_LIBS_DIR ${CMAKE_BINARY_DIR}/3rdparty)
 set_property(DIRECTORY PROPERTY EP_BASE "${3RDPARTY_LIBS_DIR}")
@@ -110,6 +117,26 @@ set(3RDPARTY_COMMON_FLAGS "-fPIC -w")
 # No CXXFLAGS: none of these compile C++ in the target this build runs.
 set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3rdparty --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
 
+# Job count for the libraries whose BUILD_COMMAND drives make directly. CMake does
+# not forward its own -j to an ExternalProject's custom BUILD_COMMAND, and the
+# default generator here is Ninja, so there is no jobserver to inherit either.
+#
+# ProcessorCount() reports host cores and ignores a cgroup CPU quota, so on a
+# constrained CI runner it can be many times the share this build actually gets.
+# An explicit CMAKE_BUILD_PARALLEL_LEVEL wins; otherwise the count is capped.
+include(ProcessorCount)
+if(DEFINED ENV{CMAKE_BUILD_PARALLEL_LEVEL} AND "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}" MATCHES "^[1-9][0-9]*$")
+  set(3RDPARTY_NPROC "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+else()
+  ProcessorCount(3RDPARTY_NPROC)
+  if(3RDPARTY_NPROC EQUAL 0)
+    set(3RDPARTY_NPROC 1)
+  elseif(3RDPARTY_NPROC GREATER 16)
+    set(3RDPARTY_NPROC 16)
+  endif()
+endif()
+message(STATUS "Build 3rdparty libraries with make -j${3RDPARTY_NPROC}")
+
 # For Windows
 if(WIN32)
   # directory path for Windows
@@ -117,7 +144,6 @@ if(WIN32)
   set(WINDOWS_EXTERNAL_DIR ${WINDOWS_BASE_DIR}/3rdparty)
   set(WINDOWS_EXTERNAL_LIB_DIR ${WINDOWS_EXTERNAL_DIR}/lib64)
   set(WINDOWS_EXTERNAL_INCLUDE_DIR ${WINDOWS_EXTERNAL_DIR}/include)
-  # I could not load debug dll for jansson. disabled for now.
   # if(CMAKE_BUILD_TYPE MATCHES "Debug")
   #   set(WINDOWS_EXTERNAL_DLL_DIR ${WINDOWS_EXTERNAL_DIR}/dll_debug)
   # else()
@@ -206,7 +232,13 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
+      # CentOS 6 (glibc 2.12, kernel headers 2.6.32) exposes no getrandom/getentropy/
+      # arc4random nor the SYS_getrandom syscall, so expat's build-time entropy source
+      # detection fails with an #error. --with-dev-urandom adds /dev/urandom as a further
+      # fallback; newer hosts still pick getentropy or getrandom ahead of it. Prefer the
+      # configure option over defining XML_DEV_URANDOM through CPPFLAGS, so that the
+      # configure summary and expat_config.h record what was actually built.
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook --with-dev-urandom
       BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEXPAT_BYPRODUCTS}"
@@ -231,59 +263,6 @@ endif()
 list(APPEND EP_TARGETS ${LIBEXPAT_TARGET})
 list(APPEND EP_INCLUDES ${LIBEXPAT_INCLUDES})
 list(APPEND EP_LIBS ${LIBEXPAT_LIBS})
-
-# WITH_LIBJANSSON can have multiple values with different meanings
-# on Linux:
-# * "EXTERNAL" - (default) builds jansson library from URL stored in ${WITH_LIBJANSSON_URL} uses the library created by the build
-# * "SYSTEM"   - use jansson library located in:
-#                  ${WITH_EXTERNAL_LIBS_PATH}
-#                  ${WITH_LIBJANSSON_ROOT_PATH}/lib
-#                use jansson headers located in:
-#                  ${WITH_EXTERNAL_HEADERS_PATH}
-#                  ${WITH_LIBJANSSON_ROOT_PATH}/include
-# on Windows:
-# * "EXTERNAL" - (default) uses the prebuilt library from cubrid/win/3rdparty
-set(LIBJANSSON_TARGET libjansson)
-if(WITH_LIBJANSSON STREQUAL "EXTERNAL")
-  list(APPEND EP_TARGETS ${LIBJANSSON_TARGET})
-  if(UNIX)
-    set(LIBJANSSON_LIBS ${3RDPARTY_LIBS_DIR}/lib/libjansson.a)
-    set(LIBJANSSON_INCLUDES ${3RDPARTY_LIBS_DIR}/include/jansson)
-    ADD_BY_PRODUCTS_VARIABLE ("LIBJANSSON" ${LIBJANSSON_LIBS})
-    externalproject_add(${LIBJANSSON_TARGET}
-      URL                  ${WITH_LIBJANSSON_URL}
-      URL_HASH             ${WITH_LIBJANSSON_URL_HASH}
-      LOG_CONFIGURE        TRUE
-      LOG_BUILD            TRUE
-      LOG_INSTALL          TRUE
-      TIMEOUT              600
-      DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      "${LIBJANSSON_BYPRODUCTS}"
-      )
-  else(UNIX)
-    # WIN32
-    set(LIBJANSSON_LIBS ${WINDOWS_EXTERNAL_LIB_DIR}/jansson64.lib)
-    set(LIBJANSSON_INCLUDES ${WINDOWS_EXTERNAL_INCLUDE_DIR})
-    add_custom_target(${LIBJANSSON_TARGET}
-      COMMAND ${CMAKE_COMMAND} -E echo "  copying ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll to ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll"
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson.dll
-      COMMAND ${CMAKE_COMMAND} -E copy ${WINDOWS_EXTERNAL_DLL_DIR}/jansson64.dll ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${CMAKE_BUILD_TYPE}/jansson64.dll
-    )
-  endif(UNIX)
-elseif(WITH_LIBJANSSON STREQUAL "SYSTEM")
-  if(UNIX)
-    find_library(LIBJANSSON_LIBS NAMES libjansson.a PATHS ${WITH_EXTERNAL_LIBS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/lib REQUIRED)
-    find_path(LIBJANSSON_INCLUDES NAMES jansson.h jansson_config.h PATHS ${WITH_EXTERNAL_HEADERS_PATH} ${WITH_LIBJANSSON_ROOT_PATH}/include REQUIRED)
-
-    message(STATUS "Found jansson library: ${LIBJANSSON_LIBS}")
-    message(STATUS "Found jansson headers: ${LIBJANSSON_INCLUDES}")
-  endif(UNIX)
-endif()
-list(APPEND EP_INCLUDES ${LIBJANSSON_INCLUDES})
-list(APPEND EP_LIBS ${LIBJANSSON_LIBS})
 
 # WITH_LIBEDIT can have multiple values with different meanings
 # on Linux:
@@ -351,8 +330,17 @@ else()
     DOWNLOAD_NO_PROGRESS 1
     CONFIGURE_COMMAND     ""                  # no configure
     BUILD_IN_SOURCE       true                # lz4 Makefile is designed to run locally
-    # MOREFLAGS is lz4's append hook, so its "CFLAGS ?= -O3" survives
-    BUILD_COMMAND         make "MOREFLAGS=${3RDPARTY_COMMON_FLAGS}"
+    # Build only the library (lib/); CUBRID does not use the lz4 CLI. Since LZ4 1.10.0
+    # the CLI (programs/timefn.c) calls clock_gettime(), which needs -lrt on old glibc
+    # (< 2.17, e.g. CentOS 6) and would otherwise fail to link.
+    #
+    # LZ4 1.10.0 removed MOREFLAGS; lib/Makefile now takes user flags through
+    # USERCFLAGS ("USERCFLAGS := -O3 $(CFLAGS)", "CFLAGS = $(DEBUGFLAGS) $(USERCFLAGS)").
+    # Passing CFLAGS= on the command line would override that Makefile assignment and
+    # drop -O3, so the level is restated here. Without this the archive is built
+    # without -fPIC and cannot be linked into libcubridcs.so.
+    # The liblz4.a target skips the shared library, which CUBRID does not use.
+    BUILD_COMMAND         make -C lib "USERCFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}" liblz4.a
     INSTALL_COMMAND       ""                  # suppress install
     "${LZ4_BYPRODUCTS}"
   )
@@ -376,7 +364,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
   if(UNIX)
     set(LIBOPENSSL_TARGET libopenssl)
     #compile OpenSSL library given an internet url to a OpenSSL archive
-    #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
+    #e.g. https://www.openssl.org/source/openssl-3.5.7.tar.gz
     set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
@@ -386,12 +374,40 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
-      TIMEOUT              600
+      # 50 MB, an order of magnitude larger than the other tarballs: 600s would demand
+      # a sustained 87 KB/s. INACTIVITY_TIMEOUT still fails a dead connection fast.
+      TIMEOUT              1800
+      INACTIVITY_TIMEOUT   60
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      # no-shared + no-module: build static libs only and compile the legacy
+      # provider into libcrypto so DES-ECB is usable via OSSL_PROVIDER_add_builtin()
+      # without shipping an external ossl-modules/legacy module.
+      #
+      # no-tests/no-docs + the build_sw target: OpenSSL 3.x puts every fuzz and test
+      # binary in PROGRAMS, and "all" is "build_sw build_docs". install_sw needs
+      # neither, and building them costs ~20 minutes and ~1.5 GB of objects.
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} --libdir=lib no-shared no-module no-tests no-docs # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        make -j${3RDPARTY_NPROC} build_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
+      )
+    # unix-Makefile.tmpl does an unconditional "use Time::Piece", which minimal Perl
+    # installs do not ship. Hang the check off the download step so that it follows the
+    # rebuild decision: an installed libcrypto.a does not mean OpenSSL is reused, as it
+    # may be left over from an older version that a changed URL is about to replace.
+    # "\\n" keeps a literal \n here; a plain "\n" would break the generated makefile rule.
+    string(CONCAT OPENSSL_PERL_CHECK
+      "perl -MTime::Piece -e 1 2>/dev/null || (printf '%s\\n'"
+      " 'Building OpenSSL 3.x requires Perl with the Time::Piece module, which the'"
+      " 'current Perl installation does not provide.'"
+      " '  Rocky/RHEL/CentOS : sudo dnf install -y perl-core (minimal: perl-Time-Piece)'"
+      " '  Debian/Ubuntu     : sudo apt-get install -y perl'"
+      " >&2 && exit 1)")
+    externalproject_add_step(${LIBOPENSSL_TARGET} check_perl
+      COMMAND   sh -c "${OPENSSL_PERL_CHECK}"
+      COMMENT   "Checking Perl prerequisites for the OpenSSL build"
+      DEPENDEES download
+      DEPENDERS configure
       )
     list(APPEND EP_TARGETS ${LIBOPENSSL_TARGET})
   else(UNIX)
@@ -419,7 +435,7 @@ set(LIBUNIXODBC_TARGET libodbc)
 if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
   if(UNIX)
     #compile unixODBC library given an internet url to a unixODBC archive
-    #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
+    #e.g. https://github.com/lurcher/unixODBC/releases/download/2.3.14/unixODBC-2.3.14.tar.gz
     set(LIBUNIXODBC_LIBS ${3RDPARTY_LIBS_DIR}/lib/libodbc.so)
     set(LIBUNIXODBC_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBUNIXODBC" ${LIBUNIXODBC_LIBS})
@@ -529,8 +545,8 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBTBB_CONFIGURE}
       BUILD_IN_SOURCE      TRUE
-      BUILD_COMMAND        make -j
-      INSTALL_COMMAND      make -j install
+      BUILD_COMMAND        make -j${3RDPARTY_NPROC}
+      INSTALL_COMMAND      make -j${3RDPARTY_NPROC} install
       "${LIBTBB_BYPRODUCTS}"
     )
 
@@ -563,7 +579,6 @@ expose_3rdparty_variable(LIBNCURSES)
 endif(UNIX)
 
 expose_3rdparty_variable(LIBEXPAT)
-expose_3rdparty_variable(LIBJANSSON)
 expose_3rdparty_variable(LZ4)
 expose_3rdparty_variable(LIBOPENSSL)
 expose_3rdparty_variable(LIBUNIXODBC)
