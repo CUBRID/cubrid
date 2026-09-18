@@ -20615,10 +20615,14 @@ do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 /*
  * do_set_query_trace() - Set query trace
- *   return: NO_ERROR
+ *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a set statement
  *
+ * Note: The values go through db_set_system_parameters() rather than prm_set_*_value(),
+ *   because only the former also stores them in the server session state. A value set by
+ *   prm_set_*_value() lives in this client process alone, so it is lost once CAS restarts and
+ *   the driver reconnects with the same session id. SET NAMES and SET TIMEZONE do the same.
  */
 int
 do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -20626,25 +20630,25 @@ do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
 #if defined(SA_MODE)
   return NO_ERROR;
 #else
+#define MAX_LEN  50
+  int error = NO_ERROR;
+  char sys_prm_chg[MAX_LEN];
+
   if (statement->info.trace.on_off == PT_TRACE_ON)
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, true);
+      const char *trace_format = (statement->info.trace.format == PT_TRACE_FORMAT_JSON) ? "json" : "text";
 
-      if (statement->info.trace.format == PT_TRACE_FORMAT_TEXT)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_TEXT);
-	}
-      else if (statement->info.trace.format == PT_TRACE_FORMAT_JSON)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_JSON);
-	}
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=y; query_trace_format=%s", trace_format);
     }
   else
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, false);
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=n");
     }
 
-  return NO_ERROR;
+  error = db_set_system_parameters (sys_prm_chg);
+
+#undef MAX_LEN
+  return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
 #endif /* SA_MODE */
 }
 
