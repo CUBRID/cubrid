@@ -546,6 +546,32 @@ exit:
 }
 
 /*
+ * flashback_format_time () - format a time value for an error message
+ *
+ * buf (out)  : output buffer
+ * size (in)  : size of buf
+ * time_p (in): the time to format
+ *
+ * CBRD-27437: localtime() returns NULL for a value it cannot represent, and the
+ * times formatted here arrive from the client, so print the raw value in that
+ * case rather than handing NULL to strftime().
+ */
+static void
+flashback_format_time (char *buf, size_t size, time_t * time_p)
+{
+  struct tm *tm_p = localtime (time_p);
+
+  if (tm_p != NULL)
+    {
+      strftime (buf, size, "%d-%m-%Y:%H:%M:%S", tm_p);
+    }
+  else
+    {
+      snprintf (buf, size, "%lld", (long long) *time_p);
+    }
+}
+
+/*
  * flashback_verify_time () - verify the availablity of log records around the 'start_time' and 'end_time'
  *
  * return           : error_code
@@ -573,9 +599,9 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
       char db_creation_date[20];
       char cur_date[20];
 
-      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
-      strftime (cur_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+      flashback_format_time (start_date, 20, start_time);
+      flashback_format_time (db_creation_date, 20, &log_Gl.hdr.db_creation);
+      flashback_format_time (cur_date, 20, &current_time);
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date, db_creation_date,
 	      cur_date);
@@ -609,8 +635,8 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 	  char start_date[20];
 	  char db_creation_date[20];
 
-	  strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-	  strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
+	  flashback_format_time (start_date, 20, start_time);
+	  flashback_format_time (db_creation_date, 20, &log_Gl.hdr.db_creation);
 
 	  /* out of range : start_time (ret_time) can not be greater than end_time */
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
