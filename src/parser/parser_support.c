@@ -11880,9 +11880,9 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * Only plain INSERT ... SELECT is carved out to the remote sink path. REPLACE INTO ... SELECT and
    * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE are intentionally excluded: the remote path emits a
    * plain INSERT (dblink_dml_open) and cannot honor REPLACE/ODKU semantics. By not setting the flag
-   * here they fall through to pt_convert_dblink_dml_query's "local mixed remote DML is not allowed"
-   * rejection -- the same behavior develop gives for these statements. Supporting REPLACE/ODKU over a
-   * remote target is deferred. */
+   * here they fall through to the mixed local/remote rejection in pt_convert_dblink_dml_query -- the same
+   * behavior develop gives for these statements. Supporting REPLACE/ODKU over a remote target is
+   * deferred. */
   if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
       && !node->info.insert.do_replace && node->info.insert.odku_assignments == NULL)
     {
@@ -12433,6 +12433,68 @@ pt_dblink_dml_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE 
   return false;
 }
 
+/* The mixed local/remote rejection, in the voice of the declines above. Each kind asks its own gate again
+ * so that it names what actually turned the statement away; when no gate did, the sink was cleared earlier
+ * -- ahead of the caller -- and the bare sentence is all we can say. */
+static void
+pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * loc)
+{
+  const char *accepted = NULL;
+  char errmsg[256];
+  bool driving_pred;
+  int num_set_subq;
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      /* Spelled out rather than composed below: INSERT's local side is a SELECT source, not a subquery,
+       * and the name that sentence composes covers UPDATE and DELETE only. */
+      if (pt_get_subquery_of_insert_select (node) == NULL)
+	{
+	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only INSERT ... SELECT");
+	  return;
+	}
+      if (node->info.insert.do_replace || node->info.insert.odku_assignments != NULL)
+	{
+	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only INSERT ... SELECT "
+		    "without REPLACE or ON DUPLICATE KEY UPDATE");
+	  return;
+	}
+      break;
+
+    case PT_DELETE:
+      if (!pt_dblink_dml_where_is_inscope (pt_dblink_dml_search_cond (node)))
+	{
+	  accepted = "a single uncorrelated WHERE subquery";
+	}
+      break;
+
+    case PT_UPDATE:
+      if (!pt_dblink_update_where_is_inscope (node, &driving_pred))
+	{
+	  accepted = "a single uncorrelated WHERE subquery, or no WHERE";
+	}
+      else if (!pt_dblink_update_set_is_inscope (parser, node, &num_set_subq))
+	{
+	  accepted = "SET values that are a bare subquery or an expression the remote computes";
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  if (accepted == NULL)
+    {
+      PT_ERROR (parser, loc, "dblink: this combination of local and remote references is not supported");
+      return;
+    }
+
+  snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery supports only %s",
+	    pt_dblink_dml_stmt_name (node, false), accepted);
+  PT_ERRORc (parser, loc, errmsg);
+}
+
 /* Settle carve-out: convert same-server mix, keep sink only if no remote left, then diagnose.
  * After counter walks, before generic local-mixed-remote rejection.
  * return: true if an error was raised */
@@ -12863,10 +12925,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (snl->local_cnt > 0 && remote_upd > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)
     {
-      PT_ERROR (parser, upd_spec ? upd_spec : into_spec,
-		"dblink: this combination of local and remote references is not supported (some forms are, such "
-		"as INSERT ... SELECT into a remote table from local data, or a remote DELETE with a local "
-		"WHERE subquery)");
+      pt_dblink_dml_reject_mixed_ref (parser, node, upd_spec ? upd_spec : into_spec);
       return;
     }
 
