@@ -25,12 +25,10 @@
 #include "authenticate.h"
 #include "dbi.h"
 #include "dbtype_function.h"
-#include "object_accessor.h"
 #include "object_print.h"
 #include "object_printer.hpp"
 #include "object_print_util.hpp"
 #include "printer.hpp"
-#include "set_object.h"
 #include "schema_manager.h"
 #include "trigger_manager.h"
 #include "work_space.h"
@@ -451,81 +449,53 @@ tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
-  DB_SET *table;
-  DB_VALUE value;
-  DB_OBJECT *trigger_object;
-  int max, i;
+  DB_OBJLIST *objects = NULL, *o;
 
-  if (Au_root == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  error = obj_get (Au_root, "triggers", &value);
+  error = tr_find_trigger_objects (TR_QUERY_ALL_TRIGGERS, &objects);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  if (DB_IS_NULL (&value))
+  for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      table = NULL;
-    }
-  else
-    {
-      table = db_get_set (&value);
-    }
-
-  if (table == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  error = set_filter (table);
-  max = set_size (table);
-  for (i = 1; i < max && error == NO_ERROR; i += 2)
-    {
-      error = set_get_element (table, i, &value);
-      if (error == NO_ERROR)
+      trigger = tr_map_trigger (o->op, 1);
+      if (trigger == NULL)
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
+	  ASSERT_ERROR_AND_SET (error);
+	}
+      else
+	{
+	  int is_system_class = 0;
+
+	  if (trigger->class_mop != NULL && !is_required_trigger (trigger, classes))
 	    {
-	      trigger_object = db_get_object (&value);
-	      trigger = tr_map_trigger (trigger_object, 1);
-	      if (trigger == NULL)
-		{
-		  ASSERT_ERROR_AND_SET (error);
-		}
-	      else
-		{
-		  int is_system_class = 0;
+	      continue;
+	    }
 
-		  if (trigger->class_mop != NULL && !is_required_trigger (trigger, classes))
-		    {
-		      continue;
-		    }
-
-		  /* don't dump system class triggers */
-		  if (trigger->class_mop != NULL)
-		    {
-		      is_system_class = sm_is_system_class (trigger->class_mop);
-		    }
-		  if (is_system_class == 0)
-		    {
-		      if (trigger->status != TR_STATUS_INVALID)
-			{
-			  tr_dump_trigger (ctxt, output_ctx, trigger_object);
-			}
-		    }
-		  else if (is_system_class < 0)
-		    {
-		      error = is_system_class;
-		    }
+	  /* don't dump system class triggers */
+	  if (trigger->class_mop != NULL)
+	    {
+	      is_system_class = sm_is_system_class (trigger->class_mop);
+	    }
+	  if (is_system_class == 0)
+	    {
+	      if (trigger->status != TR_STATUS_INVALID)
+		{
+		  tr_dump_trigger (ctxt, output_ctx, o->op);
 		}
+	    }
+	  else if (is_system_class < 0)
+	    {
+	      error = is_system_class;
 	    }
 	}
     }
-  set_free (table);
+
+  if (objects != NULL)
+    {
+      ml_ext_free (objects);
+    }
 
   return error;
 }
