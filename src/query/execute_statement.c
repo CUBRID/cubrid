@@ -4926,16 +4926,6 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      bool stats_updated = false;
 
-	      /* CBRD-27369: serialize concurrent UPDATE STATISTICS on this class through a
-	       * per-class gate held to commit, so at most one session at a time writes its
-	       * statistics and _db_histogram rows (concurrent collectors otherwise deadlock-
-	       * storm on those catalog rows). */
-	      error = stats_enter_update_gate (class_mop);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-
 	      if (statement->info.update_stats.drop_histogram)
 		{
 		  DB_OBJECT *obj;

@@ -6142,45 +6142,6 @@ end:
 #endif /* !CS_MODE */
 }
 
-/*
- * stats_enter_update_gate () - client stub for xstats_enter_update_gate ()
- *   return: NO_ERROR, or an error code
- *   classop(in): class about to have its statistics (re)collected
- */
-int
-stats_enter_update_gate (MOP classop)
-{
-#if defined(CS_MODE)
-  int error = ER_NET_CLIENT_DATA_RECEIVE;
-  int req_error;
-  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
-  char *request = OR_ALIGNED_BUF_START (a_request);
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  (void) or_pack_oid (request, WS_OID (classop));
-
-  req_error =
-    net_client_request (NET_SERVER_QST_ENTER_UPDATE_GATE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      (void) or_unpack_int (reply, &error);
-    }
-
-  return error;
-#else /* CS_MODE */
-  int error;
-  THREAD_ENTRY *thread_p;
-
-  thread_p = enter_server ();
-  error = xstats_enter_update_gate (thread_p, WS_OID (classop));
-  exit_server (*thread_p);
-
-  return error;
-#endif /* !CS_MODE */
-}
-
 static int
 is_top_level_class (MOBJ mobj)
 {

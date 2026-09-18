@@ -4478,46 +4478,6 @@ sboot_notify_ha_log_applier_state (THREAD_ENTRY *thread_p, unsigned int rid, cha
 }
 
 /*
- * sqst_enter_update_gate -
- *
- * return:
- *
- *   rid(in):
- *   request(in):
- *   reqlen(in):
- *
- * NOTE: acquire the per-class UPDATE STATISTICS gate (CBRD-27369).
- */
-void
-sqst_enter_update_gate (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
-{
-  int error;
-  OID classoid;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  if (reqlen < OR_OID_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      error = ER_OBJ_INVALID_ARGUMENTS;
-      (void) return_error_to_client (thread_p, rid);
-      goto send;
-    }
-
-  (void) or_unpack_oid (request, &classoid);
-
-  error = xstats_enter_update_gate (thread_p, &classoid);
-  if (error != NO_ERROR)
-    {
-      (void) return_error_to_client (thread_p, rid);
-    }
-
-send:
-  (void) or_pack_int (reply, error);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-}
-
-/*
  * sqst_update_statistics -
  *
  * return:
