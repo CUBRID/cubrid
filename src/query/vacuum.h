@@ -246,8 +246,24 @@ extern int vacuum_rv_redo_append_data (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void vacuum_rv_redo_append_data_dump (FILE * fp, int length, void *data);
 extern int vacuum_rv_redo_start_job (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 
+/* The OOS-family file ids of one heap.  Both live in the same heap header record, so vacuum reads them
+ * under a single latch and then reuses them for every page of that heap; the caller resets the whole
+ * struct when it moves on to the next heap file.  `resolved` distinguishes "not looked up yet" from
+ * "looked up, and this heap has no such file" - a NULL vfid is a legitimate answer. */
+typedef struct vacuum_heap_oos_files VACUUM_HEAP_OOS_FILES;
+struct vacuum_heap_oos_files
+{
+  VFID oos_vfid;
+  VFID internal_lob_vfid;
+  bool resolved;
+};
+#define VACUUM_HEAP_OOS_FILES_INITIALIZER { VFID_INITIALIZER, VFID_INITIALIZER, false }
+#define VACUUM_HEAP_OOS_FILES_RESET(f) \
+  do { VFID_SET_NULL (&(f)->oos_vfid); VFID_SET_NULL (&(f)->internal_lob_vfid); (f)->resolved = false; } while (0)
+
 extern int vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, int n_heap_objects,
-			     MVCCID threshold_mvccid, HFID * hfid, bool * reusable, bool was_interrupted);
+			     MVCCID threshold_mvccid, HFID * hfid, VACUUM_HEAP_OOS_FILES * oos_files,
+			     bool * reusable, bool was_interrupted);
 extern int vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_redo_remove_ovf_insid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int vacuum_rv_undo_vacuum_heap_record (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

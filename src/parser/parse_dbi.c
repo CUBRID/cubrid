@@ -43,6 +43,7 @@
 #include "string_opfunc.h"
 #include "set_object.h"
 #include "intl_support.h"
+#include "internal_lob_marker.h"
 #include "virtual_object.h"
 #include "object_primitive.h"
 #include "object_template.h"
@@ -1169,11 +1170,13 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
   if (value->node_type == PT_HOST_VAR && value->info.host_var.var_type == PT_HOST_IN)
     {
       DB_DOMAIN *hv_dom;
+      int internal_lob_marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
 
       db_value = pt_host_var_db_value (parser, value);
 
       if (db_value)
 	{
+	  internal_lob_marker = db_value_get_internal_lob_marker (db_value);
 	  if (value->type_enum != PT_TYPE_NONE && value->type_enum != PT_TYPE_NULL && value->type_enum != PT_TYPE_MAYBE
 	      && value->type_enum != PT_TYPE_NUMERIC
 	      && value->type_enum != PT_TYPE_CHAR && value->type_enum != PT_TYPE_VARCHAR
@@ -1275,6 +1278,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	  return NULL;
 	}
 
+      if (internal_lob_marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  db_value_mark_internal_lob (db_value, internal_lob_marker);
+	}
       return db_value;
     }
   else if (value->node_type == PT_NAME && value->info.name.meta_class == PT_PARAMETER)
@@ -3209,6 +3216,41 @@ pt_bind_type_from_dbval (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val
  * 	Its purpose is to hide the internal structure for portability and
  * 	maintainability of applications.
  */
+/*
+ * pt_host_var_is_internal_lob_transport () - Is this BLOB/CLOB host value still a transport envelope?
+ *   return: true for an upload token, a pending client stream, a file source, a DML slot or a scalar stream
+ *   value(in): bound host variable value
+ *
+ * Such a value has no content yet; only a LOB-typed target knows how to consume the envelope.  Keep this list
+ * in step with obj_is_unresolved_internal_lob_transport () in object_accessor.c.
+ */
+static bool
+pt_host_var_is_internal_lob_transport (const DB_VALUE * value)
+{
+  DB_TYPE type;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return false;
+    }
+  type = DB_VALUE_TYPE (value);
+  if (type != DB_TYPE_BLOB && type != DB_TYPE_CLOB)
+    {
+      return false;
+    }
+  switch (db_value_get_internal_lob_marker (value))
+    {
+    case DB_VALUE_INTERNAL_LOB_MARKER_FILE_SOURCE:
+    case DB_VALUE_INTERNAL_LOB_MARKER_PENDING:
+    case DB_VALUE_INTERNAL_LOB_MARKER_STREAM:
+    case DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD:
+    case DB_VALUE_INTERNAL_LOB_MARKER_DML_SLOT:
+      return true;
+    default:
+      return false;
+    }
+}
+
 void
 pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 {
@@ -3249,6 +3291,19 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 
       pr_clear_value (hv);
       hv_dom = parser->host_var_expected_domains[i];
+
+      /* A BLOB/CLOB host value that is still a transport envelope (upload token, pending stream, file source,
+       * DML slot, scalar stream) carries no content.  Anywhere but a LOB-typed target, the cast below would take
+       * the envelope text for the value -- a 34-byte "@internal_lob_upload:..." landed in a VARCHAR column -- and
+       * an untyped target (a function argument, a comparison) has no way to stream it at all. */
+      if (pt_host_var_is_internal_lob_transport (val) && !TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (hv_dom)))
+	{
+	  typ = TP_DOMAIN_TYPE (hv_dom);
+	  PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+		       pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ)));
+	  return;
+	}
+
       if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
 	{
 	  pr_clone_value (val, hv);

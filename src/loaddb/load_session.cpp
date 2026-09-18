@@ -23,11 +23,17 @@
 #include "load_session.hpp"
 
 #include "load_driver.hpp"
+#include "heap_file.h"
 #include "load_server_loader.hpp"
 #include "load_worker_manager.hpp"
+#include "object_primitive.h"
 #include "resource_shared_pool.hpp"
+#include "session.h"
 #include "xserver_interface.h"
 
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <sstream>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -38,6 +44,7 @@ namespace cubload
   void init_driver (driver *driver, session &session);
 
   bool invoke_parser (driver *driver, const batch &batch_);
+
 
 }
 
@@ -529,6 +536,53 @@ namespace cubload
   session::set_client_type (int client_type)
   {
     m_load_client_type.store (client_type);
+  }
+
+  int
+  session::internal_lob_payload_make_value (cubthread::entry &thread_ref, class_id clsid, const char *token_data,
+      size_t token_len, DB_TYPE expected_type, DB_BIGINT max_length,
+      DB_VALUE *value)
+  {
+    std::string token_string;
+    char *endptr = NULL;
+    long long parsed_token;
+    const class_entry *cls_entry = NULL;
+    INTERNAL_LOB_LOCATOR locator;
+    int error;
+
+    (void) max_length;
+
+    if (token_data == NULL || token_len == 0 || value == NULL || (expected_type != DB_TYPE_BLOB
+	&& expected_type != DB_TYPE_CLOB))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    token_string.assign (token_data, token_len);
+    parsed_token = strtoll (token_string.c_str (), &endptr, 10);
+    if (endptr == token_string.c_str () || *endptr != '\0' || parsed_token <= 0)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	return ER_GENERIC_ERROR;
+      }
+
+    cls_entry = m_class_registry.get_class_entry (clsid);
+    if (cls_entry == NULL)
+      {
+	error = ER_GENERIC_ERROR;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	return error;
+      }
+
+    error = session_internal_lob_upload_consume (&thread_ref, (INT64) parsed_token, &cls_entry->get_class_oid (),
+	    expected_type, &locator);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+
+    return internal_lob_make_adopt_locator_db_value (value, expected_type, locator);
   }
 
   void

@@ -917,7 +917,13 @@ struct rvfun RV_fun[] = {
    heap_rv_undo_delete,
    heap_rv_redo_delete,
    log_rv_dump_hexa,
-   log_rv_dump_hexa}
+   log_rv_dump_hexa},
+  {RVREPL_INTERNAL_LOB_INSERT,
+   "RVREPL_INTERNAL_LOB_INSERT",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump}
 };
 
 /*

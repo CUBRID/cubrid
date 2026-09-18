@@ -135,8 +135,10 @@ extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
 				 bool dont_check_fk, bool use_bulk_logging = false);
 
-extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes);
- // *INDENT-OFF*
+extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes,
+				     int operation, int attrid, int oos_flags);
+
+// *INDENT-OFF*
 extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 				       const std::vector<record_descriptor> &recdes, int has_index, int op_type,
 				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,

@@ -458,7 +458,7 @@ TEST (OosTest, OosGetLengthWithinPage)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int length = oos_get_length (thread_p, oid);
+  INT64 length = oos_get_length (thread_p, oid);
   ASSERT_EQ (length, rec_in.length);
 
   recdes_free_data_area (&rec_in);
@@ -484,7 +484,7 @@ TEST (OosTest, OosGetLengthAcrossPages)
   ASSERT_EQ (err, NO_ERROR);
 
   /* oos_get_length reads only the first chunk header, which stores the total size */
-  int length = oos_get_length (thread_p, oid);
+  INT64 length = oos_get_length (thread_p, oid);
   ASSERT_EQ (length, rec_in.length);
 
   recdes_free_data_area (&rec_in);
@@ -513,7 +513,7 @@ TEST (OosTest, OosGetLengthAroundMaxChunkSize)
       err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
       ASSERT_EQ (err, NO_ERROR);
 
-      int length = oos_get_length (thread_p, oid);
+      INT64 length = oos_get_length (thread_p, oid);
       ASSERT_EQ (length, rec_in.length);
 
       recdes_free_data_area (&rec_in);
@@ -653,7 +653,7 @@ TEST (OosTest, OosInlineFormatWithRealOosInsert)
   ASSERT_EQ (read_length, (DB_BIGINT) rec_in.length);
 
   /* Verify that the inline length matches what oos_get_length returns (via I/O) */
-  int oos_length = oos_get_length (thread_p, oos_oid);
+  INT64 oos_length = oos_get_length (thread_p, oos_oid);
   ASSERT_EQ (read_length, (DB_BIGINT) oos_length);
 
   /* Verify that oos_read returns a recdes whose length matches the inline length */
@@ -713,7 +713,7 @@ TEST (OosTest, OosInlineLengthMatchesAcrossPages)
       ASSERT_EQ (inline_length, (DB_BIGINT) rec_in.length) << "Failed for data_size=" << data_size;
 
       /* Inline length must match oos_get_length (I/O-based) */
-      int io_length = oos_get_length (thread_p, oos_oid);
+      INT64 io_length = oos_get_length (thread_p, oos_oid);
       ASSERT_EQ (inline_length, (DB_BIGINT) io_length) << "Failed for data_size=" << data_size;
 
       /* Inline length must match oos_read recdes length */
