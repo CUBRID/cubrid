@@ -297,6 +297,9 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static bool stmt_result_set_holds_cursor (char stmt_type);
+static bool call_returns_cursor (const T_PREPARE_CALL_INFO * call_info);
+static bool call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -1245,7 +1248,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
     {
-      srv_handle->has_result_set = true;
+      srv_handle->has_result_set = stmt_result_set_holds_cursor (srv_handle->q_result->stmt_type);
 
       if (srv_handle->is_holdable == true)
 	{
@@ -1572,7 +1575,10 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
       if (has_stmt_result_set (q_result->stmt_type) == true)
 	{
-	  srv_handle->has_result_set = true;
+	  if (stmt_result_set_holds_cursor (q_result->stmt_type))
+	    {
+	      srv_handle->has_result_set = true;
+	    }
 
 	  if (srv_handle->is_holdable == true)
 	    {
@@ -1798,7 +1804,10 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
-  srv_handle->has_result_set = true;
+  /* only the tuple count went into net_buf above: the return value and the out arguments stay in
+   * prepare_call_info until the client fetches them.  so the transaction has to stay open until
+   * fetch_call () hands them over, and longer still when the call handed back a cursor. */
+  srv_handle->has_result_set = call_returns_cursor (call_info) || call_has_fetchable_output (call_info);
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
@@ -1809,6 +1818,11 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
     {
       srv_handle->q_result->is_holdable = true;
       as_info->num_holdable_results++;
+    }
+
+  if (do_commit_after_execute (*srv_handle))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   if (value_list)
@@ -9260,6 +9274,14 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
       net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
     }
 
+  /* the return value and the out arguments are in net_buf now and fetch_end_flag says nothing is left,
+   * so the auto-commit ux_execute_call () had to skip can be done here.  a cursor is the exception: it
+   * is a server side query that a commit would close, and the client reads it through its own handle. */
+  if (srv_handle->auto_commit_mode == TRUE && !call_returns_cursor (call_info))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
   return 0;
 }
 
@@ -10459,6 +10481,105 @@ do_commit_after_execute (const t_srv_handle & server_handle)
     {
       return true;
     }
+}
+
+//
+// stmt_result_set_holds_cursor () - check whether a statement's result set keeps a cursor that an
+//                                   auto-commit right after execute would invalidate.
+//
+// return         : true to leave the commit to the client, false otherwise
+// stmt_type (in) : statement type
+//
+// Note: has_stmt_result_set () answers a different question -- whether the handle can be fetched from --
+//       and is also the gate of ux_fetch (), so it must keep reporting true for CUBRID_STMT_CALL.
+//       A CALL cannot return a cursor here: jsp_cl rejects a RESULTSET return with
+//       ER_SP_CANNOT_RETURN_RESULTSET outside the CCI_PREPARE_CALL path, so the result is a single
+//       materialized DB_VALUE and committing right after execute cannot invalidate it.
+//
+static bool
+stmt_result_set_holds_cursor (char stmt_type)
+{
+  if (stmt_type == CUBRID_STMT_CALL)
+    {
+      return false;
+    }
+
+  return has_stmt_result_set (stmt_type);
+}
+
+//
+// call_returns_cursor () - check whether a CALL executed through ux_execute_call () returned a cursor.
+//
+// return         : true if the return value or an out argument holds a RESULTSET, false otherwise
+// call_info (in) : call info holding the return value and the out arguments
+//
+// Note: only the CCI_PREPARE_CALL path may return a cursor (see jsp_is_prepare_call ()). Such a cursor is
+//       a server side query that a commit would close, so the transaction must stay open for it.
+//
+static bool
+call_returns_cursor (const T_PREPARE_CALL_INFO * call_info)
+{
+  DB_VALUE *val;
+  int i;
+
+  val = (DB_VALUE *) call_info->dbval_ret;
+  if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+    {
+      return true;
+    }
+
+  if (call_info->dbval_args == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      val = ((DB_VALUE **) call_info->dbval_args)[i];
+      if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+//
+// call_has_fetchable_output () - check whether the client asked for values it has yet to fetch.
+//
+// return         : true if the call has a return value or an out argument to hand over
+// call_info (in) : call info holding the return value and the out arguments
+//
+// Note: this reads what the driver declared in the execute request -- "?= CALL" sets is_first_out and
+//       every registered out parameter is marked in param_mode -- so it tells whether fetch_call () is
+//       still expected.  Until then the values live only in prepare_call_info, and an auto-commit that
+//       frees the handle would lose them.
+//
+static bool
+call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info)
+{
+  int i;
+
+  if (call_info->is_first_out)
+    {
+      return true;
+    }
+
+  if (call_info->param_mode == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      if (call_info->param_mode[i] & CCI_PARAM_MODE_OUT)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 static int
