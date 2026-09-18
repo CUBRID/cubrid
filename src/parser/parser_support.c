@@ -12741,7 +12741,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   int i;
   int tmp_server_cnt = snl->server_cnt;
-  int sub_sel_server_cnt = 0;	/* remote server count found in the INSERT SELECT or DELETE WHERE subquery */
+  int sub_sel_server_cnt = 0;	/* remote server count in the sink subquery, set per statement kind below */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -12789,11 +12789,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
     case PT_UPDATE:
       upd_spec = node->info.update.spec;
-      /* No pt_dblink_dml_subq_servers () here, unlike DELETE: leaving sub_sel_server_cnt at 0 keeps
-       * pt_dblink_dml_settle_sink from running the same-server conversion, so an UPDATE whose subquery also
-       * reads a remote table on the target's own server loses the sink and is refused. That mixed shape is
-       * deliberately out of this change -- opening it means checking the sink runtime against several aptrs
-       * whose specs were rewritten, which the DELETE track did separately. */
+      if (snl->sink_kind == DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ)
+	{
+	  sub_sel_server_cnt = pt_dblink_dml_subq_servers (parser, node, snl, tmp_server_cnt);
+	}
       break;
     case PT_MERGE:
       into_spec = node->info.merge.into;
