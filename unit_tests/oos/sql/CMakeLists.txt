@@ -58,6 +58,9 @@ set_tests_properties(
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
 
+# Expected-error tests also collect debug stack traces at allocation and storage failure boundaries.
+set_tests_properties(test_oos_sql_show PROPERTIES TIMEOUT 90)
+
 # OOS values survive a crash through their persisted inline-stub identity (CBRD-26950). Owns
 # oosrecoverydb (fixture in the parent directory) because it kills a process that has the database
 # open, and boots per test rather than once per binary. Multi-chunk loads plus two or three boots,
