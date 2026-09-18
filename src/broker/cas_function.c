@@ -2519,12 +2519,13 @@ fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   int err_code;
 
   err_code = ux_stream_end (net_buf);
-  if (err_code >= 0 && ux_stream_ends_unit_of_work ())
+  if (err_code >= 0 && ux_stream_ends_unit_of_work () && as_info->auto_commit_mode == TRUE)
     {
-      /* Only a COPY stream is a unit of work of its own. Committing at the end of an Internal LOB upload
-       * would commit the rest of the caller's open transaction too, whatever the driver's autocommit mode
-       * says -- and the upload itself has nothing to commit, it is staged in a temporary file until the
-       * statement that binds its token runs. */
+      /* A COPY stream and an Internal LOB DML stream each complete a statement, so they end the unit of work
+       * exactly like any other fn_* -- only when the driver runs in autocommit mode.  Committing regardless
+       * of that mode swallowed the caller's later rollback (and its earlier DML with it).  An upload stream
+       * (STREAM_KIND_INTERNAL_LOB) never commits here: it is staged in a temporary file until the statement
+       * that binds its token runs. */
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
