@@ -8328,7 +8328,12 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			       * (possibly merged) equivalence class - two different FK constraints on
 			       * fk_node referencing the same parent PK can have their columns merged into
 			       * one eqclass by qo_assign_eq_classes(), and each constraint's terms must
-			       * stay attributed to its own QO_FK_JOIN_INFO entry. */
+			       * stay attributed to its own QO_FK_JOIN_INFO entry.
+			       *
+			       * This relies on qo_discover_indexes() retaining FK-column segments in
+			       * index_seg[], since FK columns have indexes and are not filtered out.
+			       * If that behavior changes, this lookup may silently fail and the FK join
+			       * selectivity floor will not be applied. */
 			      if (QO_TERM_INDEX_SEG (term, 0) != fkinfo->fk_col_segs[col]
 				  && QO_TERM_INDEX_SEG (term, 1) != fkinfo->fk_col_segs[col])
 				{
