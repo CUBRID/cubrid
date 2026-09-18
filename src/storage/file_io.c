@@ -546,7 +546,18 @@ static FILEIO_LOCKF_TYPE fileio_get_lockf_type (int vdes);
 static int fileio_get_primitive_way_max (const char *path, long int *filename_max, long int *pathname_max);
 #if defined (SERVER_MODE) || defined (SA_MODE)
 static int fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
-static ssize_t fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int pageid);
+static int fileio_flush_backup_sync (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+static int fileio_flush_backup_issue (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+static int fileio_flush_backup_reap_slot (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int which);
+static int fileio_flush_backup_quiesce (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+#if !defined(WINDOWS)
+static int fileio_emit_slot_positional (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int which,
+					INT64 count, off_t offset);
+#endif /* !WINDOWS */
+static ssize_t fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int pageid,
+				      FILEIO_BACKUP_PAGE * area);
+static int fileio_write_backup_from (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, const char *src,
+				     ssize_t towrite_nbytes);
 static int fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, ssize_t towrite_nbytes);
 static int fileio_write_backup_header (FILEIO_BACKUP_SESSION * session);
 
@@ -600,8 +611,7 @@ static int fileio_lock_region (int fd, int cmd, int type, off_t offset, int when
 
 #if defined(SERVER_MODE)
 static void fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
-static FILEIO_TYPE fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
-static FILEIO_NODE *fileio_append_queue (FILEIO_QUEUE * qp, FILEIO_NODE * node);
+static int fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
 #endif /* SERVER_MODE */
 
 static void fileio_compensate_flush (THREAD_ENTRY * thread_p, int fd, int npage);
@@ -6723,6 +6733,15 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
   queue_p->tail = NULL;
   queue_p->free_list = NULL;
 
+  /* parallel-read state: zero-init only; slots are allocated per volume in fileio_start_backup_thread () */
+  thread_info_p->reorder_queue.slots = NULL;
+  thread_info_p->reorder_queue.capacity = 0;
+  thread_info_p->reorder_queue.next_read_pageid = 0;
+  thread_info_p->reorder_queue.next_emit_pageid = 0;
+  thread_info_p->reorder_queue.free_list = NULL;
+  thread_info_p->reorder_queue.pool_total = 0;
+  thread_info_p->abort = false;
+
   thread_info_p->initialized = true;
 
   return NO_ERROR;
@@ -6857,13 +6876,36 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
 
   size = MAX (io_page_size + FILEIO_BACKUP_PAGE_OVERHEAD, FILEIO_BACKUP_FILE_HEADER_PAGE_SIZE);
 
-  session_p->bkup.buffer = (char *) malloc (session_p->bkup.iosize);
-  if (session_p->bkup.buffer == NULL)
+  /* Allocate the writer-private 2-slot staging ring (PW Step 3). Each slot is iosize
+   * bytes, identical to the single buffer used before. bkup.buffer aliases the active
+   * slot; while async_enabled is false (always, this round) only buffer_ring[0] is used
+   * and behavior is byte-identical to the prior single-buffer code. */
+  session_p->bkup.buffer_ring[0] = NULL;
+  session_p->bkup.buffer_ring[1] = NULL;
+  session_p->bkup.active_slot = 0;
+  session_p->bkup.slot_in_flight[0] = false;
+  session_p->bkup.slot_in_flight[1] = false;
+#if !defined(WINDOWS)
+  memset (session_p->bkup.aiocb, 0, sizeof (session_p->bkup.aiocb));
+#endif /* !WINDOWS */
+
+  session_p->bkup.buffer_ring[0] = (char *) malloc (session_p->bkup.iosize);
+  if (session_p->bkup.buffer_ring[0] == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, session_p->bkup.iosize);
 
       goto error;
     }
+
+  session_p->bkup.buffer_ring[1] = (char *) malloc (session_p->bkup.iosize);
+  if (session_p->bkup.buffer_ring[1] == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, session_p->bkup.iosize);
+
+      goto error;
+    }
+
+  session_p->bkup.buffer = session_p->bkup.buffer_ring[session_p->bkup.active_slot];
 
   session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) malloc (size);
   if (session_p->dbfile.area == NULL)
@@ -6885,6 +6927,83 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   session_p->bkup.count = 0;
   session_p->bkup.voltotalio = 0;
   session_p->bkup.alltotalio = 0;
+
+  /*
+   * parallel-write (PW Step 4): compute the async gate, then act on it via the
+   * issue/reap path in fileio_flush_backup. With CUBRID_BACKUP_ASYNC_WRITE unset
+   * (the default) async_enabled is false and behavior is byte-identical to the
+   * prior synchronous code. SERVER_MODE only; in SA mode it is always false.
+   *
+   * Gate (do-no-harm, MEDIUM-1 fix): the async double-buffer is enabled ONLY on
+   * POSITIVE proof that the -D output target is on a different physical device
+   * than the DB. Concretely:
+   *
+   *   async_enabled = opt_in
+   *                   AND stat(out) == 0 AND stat(db_dir) == 0
+   *                   AND out.st_dev != db.st_dev
+   *
+   * If either stat() fails OR the two devices are equal, async stays OFF and we
+   * use the unchanged synchronous path (do no harm). The same-device server-log
+   * line is emitted ONLY when the devices are actually proven equal.
+   *
+   * Opt-in values:
+   *   "1" / "yes" / "true" -> normal opt-in; the different-device requirement
+   *                           above must hold for async to engage.
+   *   "force"              -> TEST-ONLY. Enables async_enabled = true REGARDLESS
+   *                           of st_dev (bypasses the different-device check). This
+   *                           exists solely so write byte-correctness can be tested
+   *                           on a single-disk box; it must NOT be used to ship a
+   *                           perf claim, since same-device async is write-bandwidth
+   *                           bound and gives no benefit.
+   */
+  session_p->bkup.async_enabled = false;
+#if defined(SERVER_MODE)
+  {
+    const char *async_env_p = envvar_get ("BACKUP_ASYNC_WRITE");
+    bool async_force = (async_env_p != NULL && strcmp (async_env_p, "force") == 0);
+    bool async_opt_in = (async_env_p != NULL
+			 && (async_force || strcmp (async_env_p, "1") == 0 || strcmp (async_env_p, "yes") == 0
+			     || strcmp (async_env_p, "true") == 0));
+
+    if (async_force)
+      {
+	/* TEST-ONLY: bypass the different-device requirement so correctness can be
+	 * validated on a single-disk box. */
+	session_p->bkup.async_enabled = true;
+      }
+    else if (async_opt_in)
+      {
+	struct stat out_stat, db_stat;
+	char db_dir[PATH_MAX];
+
+	/* The -D output directory (where backup volumes land) and the DB volume directory. */
+	fileio_get_directory_path (db_dir, db_full_name_p);
+
+	if (stat (session_p->bkup.current_path, &out_stat) == 0 && stat (db_dir, &db_stat) == 0)
+	  {
+	    if (out_stat.st_dev != db_stat.st_dev)
+	      {
+		/* positive proof of different devices: enable async double-buffer. */
+		session_p->bkup.async_enabled = true;
+	      }
+	    else
+	      {
+		/* devices proven equal -> write-bandwidth bound; do no harm, stay synchronous. */
+		er_log_debug (ARG_FILE_LINE,
+			      "backup output on same physical device as DB; parallel-write disabled "
+			      "(write-bandwidth bound)\n");
+		session_p->bkup.async_enabled = false;
+	      }
+	  }
+	else
+	  {
+	    /* could not prove different devices (stat failed) -> do no harm, stay synchronous. */
+	    session_p->bkup.async_enabled = false;
+	  }
+      }
+  }
+#endif /* SERVER_MODE */
+
   session_p->bkup.bkuphdr->unit_num = FILEIO_INITIAL_BACKUP_UNITS;
   session_p->bkup.bkuphdr->level = level;
   session_p->bkup.bkuphdr->bkup_iosize = session_p->bkup.iosize;
@@ -6946,10 +7065,16 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   return session_p;
 
 error:
-  if (session_p->bkup.buffer != NULL)
+  /* free both staging-ring slots (PW Step 3); bkup.buffer is only an alias of one of them. */
+  if (session_p->bkup.buffer_ring[0] != NULL)
     {
-      free_and_init (session_p->bkup.buffer);
+      free_and_init (session_p->bkup.buffer_ring[0]);
     }
+  if (session_p->bkup.buffer_ring[1] != NULL)
+    {
+      free_and_init (session_p->bkup.buffer_ring[1]);
+    }
+  session_p->bkup.buffer = NULL;
   if (session_p->dbfile.area != NULL)
     {
       free_and_init (session_p->dbfile.area);
@@ -7050,6 +7175,68 @@ fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p, FILEIO_ZIP_MET
 
   qp->free_list = NULL;
 
+  /* parallel-read reorder queue teardown: free any leftover slot nodes and the
+   * recycled pool, then the slots array. Defensive against abnormal exit. */
+  {
+    FILEIO_REORDER_QUEUE *reorder_queue_p = &tp->reorder_queue;
+    int freed = 0;
+    int i;
+
+    if (reorder_queue_p->slots != NULL)
+      {
+	for (i = 0; i < reorder_queue_p->capacity; i++)
+	  {
+	    node = reorder_queue_p->slots[i];
+	    if (node != NULL)
+	      {
+		/* move into the recycled pool so it is freed below (no double-free) */
+		reorder_queue_p->slots[i] = NULL;
+		node->next = reorder_queue_p->free_list;
+		reorder_queue_p->free_list = node;
+	      }
+	  }
+      }
+
+    for (node = reorder_queue_p->free_list; node != NULL; node = node_next)
+      {
+	node_next = node->next;
+	switch (zip_method)
+	  {
+	  case FILEIO_ZIP_LZ4_METHOD:
+	    if (node->zip_info != NULL)
+	      {
+		free_and_init (node->zip_info);
+	      }
+	    break;
+	  case FILEIO_ZIP_LZO1X_METHOD:
+	    break;
+	  case FILEIO_ZIP_ZLIB_METHOD:
+	    break;
+	  default:
+	    break;
+	  }
+
+	if (node->area != NULL)
+	  {
+	    free_and_init (node->area);
+	  }
+
+	free_and_init (node);
+	freed++;
+      }
+    reorder_queue_p->free_list = NULL;
+
+    assert (freed == reorder_queue_p->pool_total);
+
+    if (reorder_queue_p->slots != NULL)
+      {
+	free_and_init (reorder_queue_p->slots);
+      }
+    reorder_queue_p->slots = NULL;
+    reorder_queue_p->capacity = 0;
+    reorder_queue_p->pool_total = 0;
+  }
+
   tp->initialized = false;
 }
 
@@ -7070,6 +7257,15 @@ fileio_abort_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
   FILEIO_ZIP_METHOD zip_method;
 
   zip_method = backup_header_p ? backup_header_p->zip_method : FILEIO_ZIP_NONE_METHOD;
+
+  /* parallel-write teardown (abort): reap any outstanding async write(s) before vdes is
+   * dismounted, so no in-flight positional write targets a closing fd. No-op when
+   * async_enabled is false or no slot is in flight. Errors are ignored on the abort path. */
+  if (session_p->bkup.async_enabled && session_p->bkup.vdes != NULL_VOLDES)
+    {
+      (void) fileio_flush_backup_quiesce (thread_p, session_p);
+    }
+
   /* Remove the currently created backup */
   if (session_p->bkup.vdes != NULL_VOLDES)
     {
@@ -7115,11 +7311,18 @@ fileio_abort_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
       session_p->verbose_fp = NULL;
     }
 
-  /* Deallocate memory space */
-  if (session_p->bkup.buffer != NULL)
+  /* Deallocate memory space. bkup.buffer only aliases buffer_ring[active_slot], so we free
+   * the two ring slots and clear the alias (PW Step 3). Freeing bkup.buffer separately would
+   * double-free the active slot. */
+  if (session_p->bkup.buffer_ring[0] != NULL)
     {
-      free_and_init (session_p->bkup.buffer);
+      free_and_init (session_p->bkup.buffer_ring[0]);
     }
+  if (session_p->bkup.buffer_ring[1] != NULL)
+    {
+      free_and_init (session_p->bkup.buffer_ring[1]);
+    }
+  session_p->bkup.buffer = NULL;
 
   if (session_p->dbfile.area != NULL)
     {
@@ -7408,6 +7611,18 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	}
     }
 
+  /* parallel-write teardown: reap the last outstanding async write(s) so the tail of the
+   * backup lands before vdes is synchronized and before the end-time header is rewritten
+   * via lseek (which would otherwise race an in-flight positional write). No-op when
+   * async_enabled is false. */
+  if (session_p->bkup.async_enabled)
+    {
+      if (fileio_flush_backup_quiesce (thread_p, session_p) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
   /*
    * Now, make sure that all the information is physically written to
    * the backup device. That is, make sure that nobody (e.g., backup
@@ -7568,6 +7783,9 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
     {
       node_p = queue_p->free_list;
       queue_p->free_list = node_p->next;	/* cut-off */
+      node_p->prev = NULL;
+      node_p->next = NULL;
+      node_p->tombstone = false;
       return node_p;
     }
 
@@ -7579,11 +7797,14 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
       goto exit_on_error;
     }
 
+  node_p->prev = NULL;
+  node_p->next = NULL;
+  node_p->tombstone = false;
   node_p->area = NULL;
   node_p->zip_info = NULL;
   size = FILEIO_DBVOLS_IO_PAGE_SIZE (backup_header_p);
   node_p->area = (FILEIO_BACKUP_PAGE *) malloc (size);
-  if (node_p == NULL)
+  if (node_p->area == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) size);
       goto exit_on_error;
@@ -7656,38 +7877,6 @@ fileio_free_node (FILEIO_QUEUE * queue_p, FILEIO_NODE * node_p)
 
   return node_p;
 }
-
-/*
- * fileio_append_queue () -
- *   return:
- *   qp(in):
- *   node(in):
- */
-#if defined(SERVER_MODE)
-static FILEIO_NODE *
-fileio_append_queue (FILEIO_QUEUE * queue_p, FILEIO_NODE * node_p)
-{
-  if (node_p)
-    {
-      node_p->prev = node_p->next = NULL;
-      node_p->next = queue_p->tail;	/* add to tail */
-      if (queue_p->tail)
-	{
-	  queue_p->tail->prev = node_p;
-	}
-      queue_p->tail = node_p;
-      if (queue_p->head == NULL)
-	{
-	  /* the first */
-	  queue_p->head = node_p;
-	}
-
-      queue_p->size++;
-    }
-
-  return node_p;
-}
-#endif /* SERVER_MODE */
 
 /*
  * fileio_delete_queue_head () -
@@ -7815,6 +8004,7 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
 			  FILEIO_BACKUP_HEADER * backup_header_p)
 {
   int error = NO_ERROR;
+  const char *src;
 
   if (!session_p || !node_p || !backup_header_p)
     {
@@ -7826,8 +8016,8 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
     case FILEIO_ZIP_LZ4_METHOD:
       /* Skip allocated block size inside of FILEIO_ZIP_PAGE */
 
-      session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) & node_p->zip_info->zip_page;
       node_p->nread = sizeof (int) + node_p->zip_info->zip_page.buf_len;
+      src = (const char *) &node_p->zip_info->zip_page;
       break;
     case FILEIO_ZIP_LZO1X_METHOD:
       error = ER_LOG_DBBACKUP_FAIL;
@@ -7836,13 +8026,15 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
 	      fileio_get_zip_level_string (backup_header_p->zip_level));
       goto exit_on_error;
     case FILEIO_ZIP_ZLIB_METHOD:
+      /* reads dbfile.area, never assigns it: callers do not need to save/restore the link */
+      src = (const char *) session_p->dbfile.area;
       break;
     default:
-      session_p->dbfile.area = node_p->area;
+      src = (const char *) node_p->area;
       break;
     }
 
-  if (fileio_write_backup (thread_p, session_p, node_p->nread) != NO_ERROR)
+  if (fileio_write_backup_from (thread_p, session_p, src, node_p->nread) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -7866,16 +8058,69 @@ exit_on_error:
  *   session(in/out):
  */
 #if defined(SERVER_MODE)
+/*
+ * fileio_reorder_queue_pool_get () - claim a node from the reorder-queue pool (free_list reuse,
+ *                  else allocate). Caller must hold thread_info_p->mtx.
+ *   return: node or NULL on alloc failure
+ */
+static FILEIO_NODE *
+fileio_reorder_queue_pool_get (FILEIO_THREAD_INFO * thread_info_p, FILEIO_BACKUP_HEADER * backup_header_p)
+{
+  FILEIO_REORDER_QUEUE *reorder_queue_p = &thread_info_p->reorder_queue;
+  FILEIO_NODE *node_p;
+
+  if (reorder_queue_p->free_list != NULL)
+    {
+      /* re-use already alloced node */
+      node_p = reorder_queue_p->free_list;
+      reorder_queue_p->free_list = node_p->next;	/* cut-off */
+      node_p->prev = NULL;
+      node_p->next = NULL;
+      node_p->tombstone = false;
+      return node_p;
+    }
+
+  /* fileio_allocate_node () does the malloc/zip_info setup but operates on a FILEIO_QUEUE;
+   * feed it an empty one so it always allocates, then account against reorder_queue.pool_total. */
+  {
+    FILEIO_QUEUE tmp_q;
+    tmp_q.free_list = NULL;
+    node_p = fileio_allocate_node (&tmp_q, backup_header_p);
+    if (node_p == NULL)
+      {
+	return NULL;
+      }
+    reorder_queue_p->pool_total++;
+    return node_p;
+  }
+}
+
+/*
+ * fileio_reorder_queue_pool_free () - return a node to the reorder-queue pool free_list for reuse.
+ *                   Caller must hold thread_info_p->mtx.
+ */
+static void
+fileio_reorder_queue_pool_free (FILEIO_THREAD_INFO * thread_info_p, FILEIO_NODE * node_p)
+{
+  FILEIO_REORDER_QUEUE *reorder_queue_p = &thread_info_p->reorder_queue;
+
+  if (node_p != NULL)
+    {
+      node_p->prev = NULL;
+      node_p->next = reorder_queue_p->free_list;
+      reorder_queue_p->free_list = node_p;
+    }
+}
+
 static void
 fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 {
   FILEIO_THREAD_INFO *thread_info_p;
-  FILEIO_QUEUE *queue_p;
-  FILEIO_NODE *node_p = NULL;
-  int rv;
-  bool need_unlock = false;
+  FILEIO_REORDER_QUEUE *reorder_queue_p;
   FILEIO_BACKUP_HEADER *backup_header_p;
-  FILEIO_BACKUP_PAGE *save_area_p;
+  FILEIO_NODE *held_node = NULL;	/* worker-stack single-owner: publish or self-free, never abandoned */
+  int held_pageid = -1;
+  int rv;
 
   if (thread_p == NULL)
     {
@@ -7893,101 +8138,77 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
     }
 
   thread_info_p = &session_p->read_thread_info;
-  queue_p = &thread_info_p->io_queue;
+  reorder_queue_p = &thread_info_p->reorder_queue;
   thread_p->tran_index = thread_info_p->tran_index;
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "start io_backup_volume_read, session = %p\n", session_p);
 #endif /* CUBRID_DEBUG */
   backup_header_p = session_p->bkup.bkuphdr;
-  node_p = NULL;		/* init */
+
   while (1)
     {
+      /* --- under mtx: claim the next pageid and a node --- */
       rv = pthread_mutex_lock (&thread_info_p->mtx);
-      while (thread_info_p->io_type == FILEIO_WRITE)
+      while (!thread_info_p->abort && reorder_queue_p->next_read_pageid < thread_info_p->from_npages
+	     && (reorder_queue_p->next_read_pageid - reorder_queue_p->next_emit_pageid) >= reorder_queue_p->capacity)
 	{
+	  /* dispatch window full: wait for the writer to open it (slot_avail == rcv) */
 	  pthread_cond_wait (&thread_info_p->rcv, &thread_info_p->mtx);
 	}
 
-      if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
+      if (thread_info_p->abort)
 	{
-	  need_unlock = true;
-	  node_p = NULL;
-	  goto exit_on_error;
-	}
-
-      /* get one page from queue head and do write */
-      if (node_p)
-	{
-	  node_p->writeable = true;
-	  thread_info_p->io_type = FILEIO_WRITE;
-	  pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
-	  while (thread_info_p->io_type == FILEIO_WRITE)
-	    {
-	      pthread_cond_wait (&thread_info_p->rcv, &thread_info_p->mtx);
-	    }
-
-	  if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
-	    {
-	      need_unlock = true;
-	      node_p = NULL;
-	      goto exit_on_error;
-	    }
-	}
-
-      /* check EOF */
-      if (thread_info_p->pageid >= thread_info_p->from_npages)
-	{
-	  thread_info_p->end_r_threads++;
-	  if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
-	    {
-	      thread_info_p->io_type = FILEIO_WRITE;
-	      pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
-	    }
+	  /* held_node == NULL here; nothing to reclaim */
 	  pthread_mutex_unlock (&thread_info_p->mtx);
-	  break;
+	  goto drain_self;
 	}
 
-      /* alloc queue node */
-      node_p = fileio_allocate_node (queue_p, backup_header_p);
-      if (node_p == NULL)
+      if (reorder_queue_p->next_read_pageid >= thread_info_p->from_npages)
 	{
-	  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	  need_unlock = true;
-	  goto exit_on_error;
+	  pthread_mutex_unlock (&thread_info_p->mtx);
+	  goto eof;
 	}
 
-      /* read one page from Disk sequentially */
+      held_pageid = reorder_queue_p->next_read_pageid++;
 
-      save_area_p = session_p->dbfile.area;	/* save link */
-      session_p->dbfile.area = node_p->area;
-      node_p->pageid = thread_info_p->pageid;
-      node_p->writeable = false;	/* init */
-      node_p->nread = fileio_read_backup (thread_p, session_p, node_p->pageid);
-      session_p->dbfile.area = save_area_p;	/* restore link */
-      if (node_p->nread == -1)
+      held_node = fileio_reorder_queue_pool_get (thread_info_p, backup_header_p);
+      if (held_node == NULL)
 	{
-	  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	  need_unlock = true;
-	  goto exit_on_error;
+	  /* alloc failure: no node held, no drain needed */
+	  thread_info_p->abort = true;
+	  if (thread_info_p->errid == NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      thread_info_p->errid = er_errid ();
+	    }
+	  pthread_cond_broadcast (&thread_info_p->wcv);
+	  pthread_cond_broadcast (&thread_info_p->rcv);
+	  pthread_mutex_unlock (&thread_info_p->mtx);
+	  goto eof;
 	}
-      else if (node_p->nread == 0)
+      pthread_mutex_unlock (&thread_info_p->mtx);
+
+      /* --- outside mtx: read, filter and compress; all readers run here concurrently.
+       * No abort early-exit: held_node stays single-owned until publish or self-free. --- */
+      held_node->pageid = held_pageid;
+      held_node->tombstone = false;
+      held_node->nread = fileio_read_backup_to (thread_p, session_p, held_pageid, held_node->area);
+      if (held_node->nread <= 0)
 	{
-	  /* This could be an error since we estimated more pages. End of file/volume. */
-	  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	  need_unlock = true;
-	  goto exit_on_error;
+	  /* -1 read error, 0 early-EOF (sparse mid-volume): both fatal. Preexisting divergence from the
+	   * serial path in fileio_backup_volume (), which treats nread == 0 as a benign end-of-volume:
+	   * a volume that shrinks after the fstat () giving from_npages fails with -t >= 2, not -t 1. */
+	  goto fail_publish_abort;
 	}
 
       /* Have to allow other threads to run and check for interrupts from the user (i.e. Ctrl-C ) */
-      if ((thread_info_p->pageid % FILEIO_CHECK_FOR_INTERRUPT_INTERVAL) == 0
+      if ((held_pageid % FILEIO_CHECK_FOR_INTERRUPT_INTERVAL) == 0
 	  && pgbuf_is_log_check_for_interrupts (thread_p) == true)
 	{
 #if defined(CUBRID_DEBUG)
 	  fprintf (stdout, "io_backup_volume_read interrupt\n");
 #endif /* CUBRID_DEBUG */
-	  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	  need_unlock = true;
-	  goto exit_on_error;
+	  goto fail_publish_abort;
 	}
 
       /*
@@ -7995,81 +8216,79 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
        * In other words, has it been changed since either the previous backup
        * of this level or a lower level.
        */
-
-      if (thread_info_p->only_updated_pages == false || LSA_ISNULL (&session_p->dbfile.lsa)
-	  || LSA_LT (&session_p->dbfile.lsa, &node_p->area->iopage.prv.lsa))
+      if (thread_info_p->only_updated_pages == true && !LSA_ISNULL (&session_p->dbfile.lsa)
+	  && !LSA_LT (&session_p->dbfile.lsa, &held_node->area->iopage.prv.lsa))
 	{
-	  /* Backup the content of this page along with its page identifier add alloced node to the queue */
-	  (void) fileio_append_queue (queue_p, node_p);
+	  /* unchanged page: emit nothing, writer just advances the cursor */
+	  held_node->tombstone = true;
 	}
       else
 	{
-	  /* free node */
-	  (void) fileio_free_node (queue_p, node_p);
-	  node_p = NULL;
-	}
-
-#if defined(CUBRID_DEBUG)
-      fprintf (stdout, "read_thread from_npages = %d, pageid = %d\n", thread_info_p->from_npages,
-	       thread_info_p->pageid);
-#endif /* CUBRID_DEBUG */
-      thread_info_p->pageid++;
-      pthread_mutex_unlock (&thread_info_p->mtx);
-      if (node_p)
-	{
-	  node_p->nread += FILEIO_BACKUP_PAGE_OVERHEAD;
-	  FILEIO_SET_BACKUP_PAGE_ID_COPY (node_p->area, node_p->pageid, backup_header_p->bkpagesize);
+	  held_node->nread += FILEIO_BACKUP_PAGE_OVERHEAD;
+	  FILEIO_SET_BACKUP_PAGE_ID_COPY (held_node->area, held_pageid, backup_header_p->bkpagesize);
 
 #if defined(CUBRID_DEBUG)
 	  fprintf (stdout, "fileio_read_backup_volume: %d\t%d,\t%d\n",
-		   ((FILEIO_BACKUP_PAGE *) (node_p->area))->iopageid,
-		   *(PAGEID *) (((char *) (node_p->area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) +
+		   ((FILEIO_BACKUP_PAGE *) (held_node->area))->iopageid,
+		   *(PAGEID *) (((char *) (held_node->area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) +
 				backup_header_p->bkpagesize), backup_header_p->bkpagesize);
 #endif
 
 	  if (backup_header_p->zip_method != FILEIO_ZIP_NONE_METHOD
-	      && fileio_compress_backup_node (node_p, backup_header_p) != NO_ERROR)
+	      && fileio_compress_backup_node (held_node, backup_header_p) != NO_ERROR)
 	    {
-	      thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	      need_unlock = false;
-	      node_p = NULL;
-	      goto exit_on_error;
+	      goto fail_publish_abort;
 	    }
 	}
+
+#if defined(CUBRID_DEBUG)
+      fprintf (stdout, "read_thread from_npages = %d, pageid = %d\n", thread_info_p->from_npages, held_pageid);
+#endif /* CUBRID_DEBUG */
+
+      /* --- under mtx: publish into the slot --- */
+      pthread_mutex_lock (&thread_info_p->mtx);
+      reorder_queue_p->slots[held_pageid % reorder_queue_p->capacity] = held_node;
+      held_node = NULL;		/* ownership transferred to the queue */
+      pthread_cond_broadcast (&thread_info_p->wcv);	/* INVARIANT: broadcast after publish */
+      pthread_mutex_unlock (&thread_info_p->mtx);
+      continue;
     }
 
-exit_on_end:
-
+eof:
+  /* normal: no more pages to dispatch */
+  pthread_mutex_lock (&thread_info_p->mtx);
+  thread_info_p->end_r_threads++;
+  pthread_cond_broadcast (&thread_info_p->wcv);	/* INVARIANT: broadcast after end_r_threads++ */
+  pthread_mutex_unlock (&thread_info_p->mtx);
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "end io_backup_volume_read\n");
 #endif /* CUBRID_DEBUG */
   return;
-exit_on_error:
 
-  /* set error info */
+fail_publish_abort:
+  /* this worker hit an error in the unlocked section while holding held_node */
+  pthread_mutex_lock (&thread_info_p->mtx);
+  thread_info_p->abort = true;
   if (thread_info_p->errid == NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       thread_info_p->errid = er_errid ();
     }
-
+  fileio_reorder_queue_pool_free (thread_info_p, held_node);	/* free own node directly (never slotted) */
+  held_node = NULL;
   thread_info_p->end_r_threads++;
-  if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
-    {
-      pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
-    }
+  pthread_cond_broadcast (&thread_info_p->wcv);	/* INVARIANT: broadcast after abort/end */
+  pthread_cond_broadcast (&thread_info_p->rcv);	/* wake peers to propagate abort */
+  pthread_mutex_unlock (&thread_info_p->mtx);
+  return;
 
-  if (need_unlock)
-    {
-      pthread_mutex_unlock (&thread_info_p->mtx);
-    }
-
-  if (node_p != NULL)
-    {
-      (void) fileio_free_node (queue_p, node_p);
-    }
-
-  goto exit_on_end;
+drain_self:
+  /* saw a peer's abort before claiming anything; held_node == NULL, nothing to reclaim */
+  pthread_mutex_lock (&thread_info_p->mtx);
+  thread_info_p->end_r_threads++;
+  pthread_cond_broadcast (&thread_info_p->wcv);
+  pthread_mutex_unlock (&thread_info_p->mtx);
+  return;
 }
 
 /*
@@ -8077,60 +8296,99 @@ exit_on_error:
  *   return:
  *   session(in/out):
  */
-static FILEIO_TYPE
+static int
 fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 {
   FILEIO_THREAD_INFO *thread_info_p;
-  FILEIO_QUEUE *queue_p;
+  FILEIO_REORDER_QUEUE *reorder_queue_p;
   FILEIO_NODE *node_p;
+  FILEIO_NODE *local_head;	/* detached run of consecutive filled slots (via node->next) */
+  FILEIO_NODE *local_tail;	/* tail of local_head, so the run is appended in ascending pageid order */
+  FILEIO_NODE *next_p;
   int rv;
-  bool need_unlock = false;
+  int i;
   FILEIO_BACKUP_HEADER *backup_header_p;
-  FILEIO_BACKUP_PAGE *save_area_p;
 
   if (!session_p)
     {
-      return FILEIO_WRITE;
+      return NO_ERROR;
     }
 
   thread_info_p = &session_p->read_thread_info;
-  queue_p = &thread_info_p->io_queue;
+  reorder_queue_p = &thread_info_p->reorder_queue;
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "start io_backup_volume_write\n");
 #endif /* CUBRID_DEBUG */
   backup_header_p = session_p->bkup.bkuphdr;
+
   rv = pthread_mutex_lock (&thread_info_p->mtx);
   while (1)
     {
-      while (thread_info_p->io_type == FILEIO_READ)
+      /* single composite wait predicate on work_avail (wcv) */
+      while (!(reorder_queue_p->slots[reorder_queue_p->next_emit_pageid % reorder_queue_p->capacity] != NULL
+	       || thread_info_p->abort
+	       || (thread_info_p->end_r_threads >= thread_info_p->act_r_threads
+		   && reorder_queue_p->next_emit_pageid >= reorder_queue_p->next_read_pageid)))
 	{
 	  pthread_cond_wait (&thread_info_p->wcv, &thread_info_p->mtx);
 	}
 
-      if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
+      if (thread_info_p->abort)
 	{
-	  need_unlock = true;
-	  goto exit_on_error;
+	  goto abort_drain;
 	}
 
-      /* do write */
-      while (queue_p->head && queue_p->head->writeable == true)
+      if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads
+	  && reorder_queue_p->next_emit_pageid >= reorder_queue_p->next_read_pageid)
 	{
-	  /* delete the head node of the queue */
-	  node_p = fileio_delete_queue_head (queue_p);
-	  if (node_p == NULL)
+	  /* normal completion: all readers done and everything emitted */
+	  pthread_mutex_unlock (&thread_info_p->mtx);
+	  break;
+	}
+
+      /* detach the run of consecutive filled slots into a local list, NULL the
+       * slot and advance next_emit_pageid */
+      local_head = NULL;
+      local_tail = NULL;
+      while ((node_p = reorder_queue_p->slots[reorder_queue_p->next_emit_pageid % reorder_queue_p->capacity]) != NULL)
+	{
+	  reorder_queue_p->slots[reorder_queue_p->next_emit_pageid % reorder_queue_p->capacity] = NULL;
+	  reorder_queue_p->next_emit_pageid++;
+	  /* append at the tail: the backup stream is a seek-free sequential append and the restore side
+	   * replays it in stream order, so a run must go out in ascending pageid order. */
+	  node_p->next = NULL;
+	  if (local_tail != NULL)
 	    {
-	      thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
+	      local_tail->next = node_p;
 	    }
 	  else
 	    {
-	      save_area_p = session_p->dbfile.area;	/* save link */
+	      local_head = node_p;
+	    }
+	  local_tail = node_p;
+	}
+
+      pthread_cond_broadcast (&thread_info_p->rcv);	/* INVARIANT: window opened, wake readers */
+      pthread_mutex_unlock (&thread_info_p->mtx);
+
+      /* actual output OUTSIDE the lock (seek-free append, monotonic by pageid) */
+      for (node_p = local_head; node_p != NULL; node_p = node_p->next)
+	{
+	  if (!node_p->tombstone)
+	    {
 	      rv = fileio_write_backup_node (thread_p, session_p, node_p, backup_header_p);
 	      if (rv != NO_ERROR)
 		{
-		  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
+		  /* publish error and abort */
+		  pthread_mutex_lock (&thread_info_p->mtx);
+		  thread_info_p->abort = true;
+		  if (thread_info_p->errid == NO_ERROR)
+		    {
+		      thread_info_p->errid = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+		    }
+		  pthread_cond_broadcast (&thread_info_p->rcv);	/* propagate abort to readers */
+		  pthread_mutex_unlock (&thread_info_p->mtx);
 		}
-	      session_p->dbfile.area = save_area_p;	/* restore link */
 #if defined(CUBRID_DEBUG)
 	      fprintf (stdout, "write_thread node->pageid = %d, node->nread = %d\n", node_p->pageid, node_p->nread);
 #endif /* CUBRID_DEBUG */
@@ -8142,39 +8400,41 @@ fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
 		  thread_info_p->check_npages =
 		    (int) (((float) thread_info_p->from_npages / 25.0) * thread_info_p->check_ratio);
 		}
-
-	      /* free node */
-	      (void) fileio_free_node (queue_p, node_p);
-	    }
-
-	  if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
-	    {
-	      need_unlock = true;
-	      goto exit_on_error;
 	    }
 	}
 
-      thread_info_p->io_type = FILEIO_READ;	/* reset */
-      /* check EOF */
-      if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
+      /* relock, free the emitted nodes back to the pool */
+      pthread_mutex_lock (&thread_info_p->mtx);
+      for (node_p = local_head; node_p != NULL; node_p = next_p)
 	{
-	  /* only write thread alive */
-	  pthread_mutex_unlock (&thread_info_p->mtx);
-	  break;
+	  next_p = node_p->next;
+	  fileio_reorder_queue_pool_free (thread_info_p, node_p);
 	}
-
-      pthread_cond_broadcast (&thread_info_p->rcv);	/* wake up all read threads */
+      /* loop: re-evaluate predicate (may now see abort from a write error above) */
     }
 
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "end io_backup_volume_write\n");
 #endif /* CUBRID_DEBUG */
-exit_on_end:
+  return NO_ERROR;
 
-  return thread_info_p->io_type;
-exit_on_error:
+abort_drain:
+  /* wait until all readers have joined, then reclaim ALL non-NULL slots */
+  while (thread_info_p->end_r_threads < thread_info_p->act_r_threads)
+    {
+      pthread_cond_wait (&thread_info_p->wcv, &thread_info_p->mtx);
+    }
 
-  /* set error info */
+  for (i = 0; i < reorder_queue_p->capacity; i++)
+    {
+      if (reorder_queue_p->slots[i] != NULL)
+	{
+	  fileio_reorder_queue_pool_free (thread_info_p, reorder_queue_p->slots[i]);
+	  reorder_queue_p->slots[i] = NULL;
+	}
+    }
+
+  /* set error info (preserve legacy er_set logic) */
   if (er_errid () == NO_ERROR)
     {
       switch (thread_info_p->errid)
@@ -8189,19 +8449,8 @@ exit_on_error:
 	}
     }
 
-  if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
-    {
-      /* only write thread alive an error (i.e, INTERRUPT) was broken out, so terminate the all threads. But, I am the
-       * last one, and all the readers are terminated */
-      pthread_mutex_unlock (&thread_info_p->mtx);
-      goto exit_on_end;
-    }
-
-  /* wake up all read threads and wait for all killed */
-  pthread_cond_broadcast (&thread_info_p->rcv);
-  pthread_cond_wait (&thread_info_p->wcv, &thread_info_p->mtx);
   pthread_mutex_unlock (&thread_info_p->mtx);
-  goto exit_on_end;
+  return thread_info_p->errid;
 }
 
 // *INDENT-OFF*
@@ -8215,21 +8464,39 @@ fileio_read_backup_volume_execute (cubthread::entry &thread_ref, FILEIO_BACKUP_S
 static int
 fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
 			    FILEIO_THREAD_INFO * thread_info_p, int from_npages, bool is_only_updated_pages,
-			    int check_ratio, int check_npages, FILEIO_QUEUE * queue_p)
+			    int check_ratio, int check_npages)
 {
   CSS_CONN_ENTRY *conn_p;
   int i;
 
   /* Initialize global MT variables */
   thread_info_p->end_r_threads = 0;
-  thread_info_p->pageid = 0;
   thread_info_p->from_npages = from_npages;
-  thread_info_p->io_type = FILEIO_READ;
   thread_info_p->errid = NO_ERROR;
   thread_info_p->only_updated_pages = is_only_updated_pages;
   thread_info_p->check_ratio = check_ratio;
   thread_info_p->check_npages = check_npages;
   thread_info_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* Slots must exist before readers spawn. capacity = readers x 4; the 4 is hardcoded, not measured.
+   * It gives each reader pipeline slack while the writer emits outside the mutex, and doubles as the memory
+   * knob: a slot may hold a FILEIO_DBVOLS_IO_PAGE_SIZE node buffer (512KB at full level with 16K pages, about
+   * twice that compressed), so memory grows with thread count and page size with no cap. */
+  thread_info_p->reorder_queue.capacity = MAX (thread_info_p->act_r_threads, 1) * 4;
+  thread_info_p->reorder_queue.slots =
+    (FILEIO_NODE **) calloc (thread_info_p->reorder_queue.capacity, sizeof (FILEIO_NODE *));
+  if (thread_info_p->reorder_queue.slots == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (thread_info_p->reorder_queue.capacity * sizeof (FILEIO_NODE *)));
+      thread_info_p->reorder_queue.capacity = 0;
+      return ER_FAILED;
+    }
+  thread_info_p->reorder_queue.next_read_pageid = 0;
+  thread_info_p->reorder_queue.next_emit_pageid = 0;
+  thread_info_p->reorder_queue.pool_total = 0;
+  thread_info_p->abort = false;
+
   /* start read threads */
   conn_p = css_get_current_conn_entry ();
   for (i = 1; i <= thread_info_p->act_r_threads; i++)
@@ -8243,7 +8510,8 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   /* work as write thread */
   (void) fileio_write_backup_volume (thread_p, session_p);
   /* at here, finished all read threads check error, interrupt */
-  if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT || queue_p->size != 0)
+  if (thread_info_p->abort
+      || thread_info_p->reorder_queue.next_emit_pageid < thread_info_p->reorder_queue.next_read_pageid)
     {
       return ER_FAILED;
     }
@@ -8292,7 +8560,6 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
   int check_npages = 0;
   FILEIO_THREAD_INFO *thread_info_p;
   FILEIO_QUEUE *queue_p = NULL;
-  FILEIO_BACKUP_PAGE *save_area_p;
   FILEIO_NODE *node_p = NULL;
   FILEIO_BACKUP_HEADER *backup_header_p;
   int rv;
@@ -8427,7 +8694,7 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
     {
 #if defined(SERVER_MODE)
       if (fileio_start_backup_thread (thread_p, session_p, thread_info_p, from_npages, is_only_updated_pages,
-				      check_ratio, check_npages, queue_p) != NO_ERROR)
+				      check_ratio, check_npages) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -8458,11 +8725,8 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	    }
 
 	  /* read one page sequentially */
-	  save_area_p = session_p->dbfile.area;	/* save link */
-	  session_p->dbfile.area = node_p->area;
 	  node_p->pageid = page_id;
-	  node_p->nread = fileio_read_backup (thread_p, session_p, node_p->pageid);
-	  session_p->dbfile.area = save_area_p;	/* restore link */
+	  node_p->nread = fileio_read_backup_to (thread_p, session_p, node_p->pageid, node_p->area);
 	  if (node_p->nread == -1)
 	    {
 	      goto error;
@@ -8501,9 +8765,7 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 		  goto error;
 		}
 
-	      save_area_p = session_p->dbfile.area;	/* save link */
 	      rv = fileio_write_backup_node (thread_p, session_p, node_p, backup_header_p);
-	      session_p->dbfile.area = save_area_p;	/* restore link */
 	      if (rv != NO_ERROR)
 		{
 		  goto error;
@@ -8548,9 +8810,7 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
       goto error;
     }
 
-  save_area_p = session_p->dbfile.area;	/* save link */
   rv = fileio_write_backup_node (thread_p, session_p, node_p, backup_header_p);
-  session_p->dbfile.area = save_area_p;	/* restore link */
   if (rv != NO_ERROR)
     {
       goto error;
@@ -8631,7 +8891,415 @@ error:
 }
 
 /*
- * fileio_flush_backup () - Flush any buffered data
+ * fileio_flush_backup () - Flush any buffered data (dispatcher)
+ *   return:
+ *   session(in/out): The session array
+ *
+ * Note: Thin dispatcher. When bkup.async_enabled is false -- the default whenever
+ *       CUBRID_BACKUP_ASYNC_WRITE is unset -- it forwards to the unchanged synchronous
+ *       implementation fileio_flush_backup_sync, so behavior is byte-for-byte identical
+ *       to the prior code (do no harm). When async_enabled is true it routes through the
+ *       writer-private kernel-async double-buffer (fileio_flush_backup_issue +
+ *       fileio_flush_backup_reap_slot), which produces byte-identical output because a
+ *       single thread issues and reaps writes in submission order.
+ */
+static int
+fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
+{
+  if (!session_p->bkup.async_enabled)
+    {
+      return fileio_flush_backup_sync (thread_p, session_p);
+    }
+
+  /* Async path: issue the just-filled active slot (reaping the other slot first). */
+  return fileio_flush_backup_issue (thread_p, session_p);
+}
+
+#if !defined(WINDOWS)
+/*
+ * fileio_emit_slot_positional () - Synchronously emit a ring slot's bytes positionally,
+ *                                  mirroring the synchronous flush volume-boundary loop.
+ *   return: error code
+ *   session(in/out): The session array
+ *   which(in): ring slot index (0/1) whose buffer_ring[which] holds the bytes
+ *   count(in): number of bytes still to write (from the start of the slot + offset already done)
+ *   offset(in): positional file offset at which the next byte lands
+ *
+ * Note: This is the positional (pwrite) analogue of the synchronous fileio_flush_backup_sync
+ *       inner do-loop. It must be used (never sequential write()) because in async mode prior
+ *       slots were written with aio_write at explicit offsets and the fd's implicit position is
+ *       NOT tracking voltotalio. The OFF_T_MAX / MAX_VOLUME_SIZE branch, the
+ *       EINTR/EAGAIN/EDQUOT/EFBIG/EIO/EINVAL/ENXIO/ENOSPC/EPIPE/default classification, and the
+ *       restart_newvol repeat-of-the-entire-current-block (the FULL slot, aiocb[which].aio_nbytes)
+ *       are byte-for-byte identical to the synchronous path.
+ */
+static int
+fileio_emit_slot_positional (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int which, INT64 count,
+			     off_t offset)
+{
+  char *buffer_p = session_p->bkup.buffer_ring[which] + ((INT64) session_p->bkup.aiocb[which].aio_nbytes - count);
+  ssize_t nbytes;
+  int ret;
+  bool is_interactive_need_new = false;
+  bool is_force_new_bkvol = false;
+
+restart_newvol:
+  /* Cap the writeable count to the per-volume max, identical to the sync path. */
+  if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
+    {
+      count = MIN (count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) - session_p->bkup.voltotalio);
+    }
+
+  while (count > 0 || is_interactive_need_new || is_force_new_bkvol)
+    {
+      if (count > 0 && !is_interactive_need_new && !is_force_new_bkvol)
+	{
+	  if (session_p->bkup.voltotalio >= OFF_T_MAX && session_p->bkup.dtype == FILEIO_BACKUP_VOL_DIRECTORY)
+	    {
+	      is_force_new_bkvol = true;
+	    }
+	  else
+	    {
+	      nbytes = pwrite (session_p->bkup.vdes, buffer_p, count, offset);
+	      if (nbytes <= 0)
+		{
+		  if (nbytes == 0)
+		    {
+		      is_interactive_need_new = true;	/* For raw partitions */
+		    }
+		  else
+		    {
+		      switch (errno)
+			{
+			case EINTR:
+			case EAGAIN:
+			  continue;
+#if !defined(WINDOWS)
+			case EDQUOT:
+#endif /* !WINDOWS */
+			case EFBIG:
+			case EIO:
+			case EINVAL:
+			  is_force_new_bkvol = true;
+			  break;
+			case ENXIO:
+			case ENOSPC:
+			case EPIPE:
+			  is_interactive_need_new = true;
+			  break;
+			default:
+			  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
+					       CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE),
+					       session_p->bkup.vlabel);
+			  return ER_FAILED;
+			}
+		    }
+		}
+	      else
+		{
+		  session_p->bkup.voltotalio += nbytes;
+		  count -= (INT64) nbytes;
+		  buffer_p += nbytes;
+		  offset += nbytes;
+		}
+	    }
+	}
+
+      if (is_interactive_need_new || is_force_new_bkvol
+	  || (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
+	      && ((UINT64) session_p->bkup.voltotalio >= prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
+	{
+	  /* Volume rollover. At most one slot is ever in flight (issue reaps the other slot
+	   * before issuing) so no in-flight write targets the old fd here; reassign vdes and
+	   * write the header on the NEW fd, then repeat the entire current block immediately
+	   * after it (the restart_newvol repeat-of-current-block, identical to the sync path). */
+	  ret = fileio_get_next_backup_volume (thread_p, session_p, is_interactive_need_new);
+	  if (ret != NO_ERROR || fileio_write_backup_header (session_p) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* Repeat the WHOLE slot block on the new volume, after the header. voltotalio now
+	   * equals FILEIO_BACKUP_HEADER_IO_SIZE, exactly where this block must land. */
+	  buffer_p = session_p->bkup.buffer_ring[which];
+	  count = (INT64) session_p->bkup.aiocb[which].aio_nbytes;
+	  offset = session_p->bkup.voltotalio;
+	  is_interactive_need_new = false;
+	  is_force_new_bkvol = false;
+	  goto restart_newvol;
+	}
+    }
+
+  return NO_ERROR;
+}
+#endif /* !WINDOWS */
+
+/*
+ * fileio_flush_backup_reap_slot () - Reap an in-flight async write of a ring slot.
+ *   return: error code
+ *   session(in/out): The session array
+ *   which(in): ring slot index (0/1) to reap
+ *
+ * Note: If slot `which` has an aio_write in flight, aio_suspend until it completes,
+ *       then aio_return to get bytes/errno. On success run the IDENTICAL post-write
+ *       bookkeeping the synchronous path runs (voltotalio += nbytes; the
+ *       OFF_T_MAX / MAX_VOLUME_SIZE volume-boundary branch; fileio_get_next_backup_volume
+ *       + fileio_write_backup_header; the restart_newvol repeat-of-current-block). On
+ *       error it runs the IDENTICAL EINTR/EAGAIN (re-issue), EDQUOT/EFBIG/EIO/EINVAL
+ *       (force new vol), ENXIO/ENOSPC/EPIPE (interactive new vol), default (ER_IO_WRITE)
+ *       handling. Byte-identity holds because a single thread emits in submission order
+ *       and reaps in that same order from buffer_ring[which].
+ *
+ *       This operates on buffer_ring[which] (the in-flight slot), NOT on bkup.buffer,
+ *       which by the time of reap aliases the *other* (now-active) slot being packed.
+ *       The slot's append offset is carried in aiocb[which].aio_offset.
+ */
+static int
+fileio_flush_backup_reap_slot (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int which)
+{
+#if !defined(WINDOWS)
+  struct aiocb *cb;
+  const struct aiocb *cblist[1];
+  INT64 count;
+  off_t offset;
+  ssize_t nbytes;
+  int aio_err, ret;
+  bool is_interactive_need_new;
+  bool is_force_new_bkvol;
+
+  if (!session_p->bkup.slot_in_flight[which])
+    {
+      return NO_ERROR;
+    }
+
+  cb = &session_p->bkup.aiocb[which];
+
+  /* Wait for the in-flight write to complete, then collect its result. */
+  while ((aio_err = aio_error (cb)) == EINPROGRESS)
+    {
+      cblist[0] = cb;
+      if (aio_suspend (cblist, 1, NULL) != 0 && errno != EINTR)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
+			       CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE), session_p->bkup.vlabel);
+	  session_p->bkup.slot_in_flight[which] = false;
+	  return ER_FAILED;
+	}
+    }
+
+  nbytes = aio_return (cb);
+
+  /* The slot is no longer in flight regardless of the result below; clear the flag now
+   * so error paths and re-issues do not double-reap it. */
+  session_p->bkup.slot_in_flight[which] = false;
+
+  /* Reconstruct the bytes the slot must land and the volume append offset. */
+  count = (INT64) cb->aio_nbytes;
+  offset = cb->aio_offset;
+
+  is_interactive_need_new = false;
+  is_force_new_bkvol = false;
+
+  if (aio_err == 0 && nbytes >= 0)
+    {
+      /* Account for the bytes the kernel already wrote via aio_write, then emit any
+       * remainder positionally with full volume-boundary handling. */
+      session_p->bkup.voltotalio += nbytes;
+      count -= (INT64) nbytes;
+      offset += nbytes;
+      if (count > 0)
+	{
+	  return fileio_emit_slot_positional (thread_p, session_p, which, count, offset);
+	}
+      return NO_ERROR;
+    }
+
+  /* aio_return failed: errno is in aio_err (the value aio_error returned). The kernel wrote
+   * nothing for this slot; classify exactly as the synchronous write() loop, then emit the
+   * full slot positionally. */
+  switch (aio_err)
+    {
+    case EINTR:
+    case EAGAIN:
+      /* try again: emit the full slot positionally below. */
+      break;
+#if !defined(WINDOWS)
+    case EDQUOT:
+#endif /* !WINDOWS */
+    case EFBIG:
+    case EIO:
+    case EINVAL:
+      is_force_new_bkvol = true;
+      break;
+    case ENXIO:
+    case ENOSPC:
+    case EPIPE:
+      is_interactive_need_new = true;
+      break;
+    default:
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
+			   CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE), session_p->bkup.vlabel);
+      return ER_FAILED;
+    }
+
+  if (is_force_new_bkvol || is_interactive_need_new)
+    {
+      /* Force a new volume up front, then emit the full slot on it. */
+      ret = fileio_get_next_backup_volume (thread_p, session_p, is_interactive_need_new);
+      if (ret != NO_ERROR || fileio_write_backup_header (session_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      count = (INT64) cb->aio_nbytes;
+      offset = session_p->bkup.voltotalio;
+    }
+
+  return fileio_emit_slot_positional (thread_p, session_p, which, count, offset);
+#else /* !WINDOWS */
+  /* No POSIX AIO on Windows; async_enabled is never set there. */
+  assert (false);
+  (void) thread_p;
+  (void) session_p;
+  (void) which;
+  return NO_ERROR;
+#endif /* !WINDOWS */
+}
+
+/*
+ * fileio_flush_backup_issue () - Issue an async write of the just-filled active slot.
+ *   return: error code
+ *   session(in/out): The session array
+ *
+ * Note: The active_slot buffer is full (count bytes). To keep at most one write in flight
+ *       and preserve submission order, first reap the OTHER slot (which makes the active
+ *       slot's append offset, bkup.voltotalio, final). Then issue aio_write of the active
+ *       slot at that offset (positional, never lseek -- backup devices may not seek), mark
+ *       it in flight, flip active_slot to the now-free slot, and reset
+ *       bkup.buffer = bkup.ptr = buffer_ring[active_slot], bkup.count = 0.
+ */
+static int
+fileio_flush_backup_issue (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
+{
+#if !defined(WINDOWS)
+  int cur = session_p->bkup.active_slot;
+  int other = cur ^ 1;
+  struct aiocb *cb;
+
+  /* Guard against the max-volume-size sanity check that the sync path also performs. */
+  if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
+      && (UINT64) session_p->bkup.count > prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
+    {
+      er_log_debug (ARG_FILE_LINE, "Backup_flush: Backup aborted because count %d larger than max volume size %ld\n",
+		    session_p->bkup.count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
+      return ER_FAILED;
+    }
+
+  if (session_p->bkup.count <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* Reap the other slot first: at most one write in flight, submission order preserved,
+   * and bkup.voltotalio becomes final so we can capture the active slot's append offset. */
+  if (fileio_flush_backup_reap_slot (thread_p, session_p, other) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* Set up the slot's control block: positional append at the current offset, full count. */
+  cb = &session_p->bkup.aiocb[cur];
+  memset (cb, 0, sizeof (*cb));
+  cb->aio_fildes = session_p->bkup.vdes;
+  cb->aio_buf = session_p->bkup.buffer_ring[cur];
+  cb->aio_nbytes = (size_t) session_p->bkup.count;
+  cb->aio_offset = (off_t) session_p->bkup.voltotalio;
+
+  if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
+    {
+      /* A max-volume-size is set: this chunk may straddle a volume boundary and require the
+       * cap + rollover + repeat-block split. Emit it synchronously (positionally) so the
+       * boundary handling is byte-identical to the sync path; a single in-flight aio cannot
+       * be split mid-slot across two volumes. The async overlap targets the no-volume-limit
+       * (split-disk perf) case; forced-rollover is the rare correctness case. */
+      session_p->bkup.slot_in_flight[cur] = false;
+      if (fileio_emit_slot_positional (thread_p, session_p, cur, (INT64) cb->aio_nbytes, cb->aio_offset) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      session_p->bkup.active_slot = other;
+      session_p->bkup.buffer = session_p->bkup.buffer_ring[other];
+      session_p->bkup.ptr = session_p->bkup.buffer;
+      session_p->bkup.count = 0;
+      return NO_ERROR;
+    }
+
+  if (aio_write (cb) != 0)
+    {
+      /* aio_write submission failed (e.g. EAGAIN: the system aio queue is momentarily full).
+       * This is near-impossible here -- the single-owner design keeps at most one aio
+       * outstanding -- but dropping the slot would lose backup bytes. The cb is fully
+       * populated (offset = current append position, nbytes = count), so emit the slot
+       * positionally with the same volume-boundary handling the reap path uses. We cannot
+       * fall back to the sequential-write() sync path: prior slots were written at explicit
+       * offsets and the fd position does not track voltotalio. */
+      session_p->bkup.slot_in_flight[cur] = false;
+      if (fileio_emit_slot_positional (thread_p, session_p, cur, (INT64) cb->aio_nbytes, cb->aio_offset) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      session_p->bkup.slot_in_flight[cur] = true;
+    }
+
+  /* Flip to the now-free slot and reset packing state onto it. */
+  session_p->bkup.active_slot = other;
+  session_p->bkup.buffer = session_p->bkup.buffer_ring[other];
+  session_p->bkup.ptr = session_p->bkup.buffer;
+  session_p->bkup.count = 0;
+
+  return NO_ERROR;
+#else /* !WINDOWS */
+  /* No POSIX AIO on Windows; async_enabled is never set there. */
+  assert (false);
+  return fileio_flush_backup_sync (thread_p, session_p);
+#endif /* !WINDOWS */
+}
+
+/*
+ * fileio_flush_backup_quiesce () - Reap all outstanding async writes (both slots) in
+ *                                  submission order, leaving no aio in flight.
+ *   return: error code
+ *   session(in/out): The session array
+ *
+ * Note: Used at teardown (normal completion and abort) before vdes is closed or the
+ *       header is rewritten via lseek, so no in-flight write races a close/seek. Slots are
+ *       reaped in submission order. Because issue reaps the other slot before issuing, at
+ *       most one slot is ever in flight, but this reaps both defensively and order-correctly.
+ */
+static int
+fileio_flush_backup_quiesce (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
+{
+  int active = session_p->bkup.active_slot;
+  int other = active ^ 1;
+
+  /* The other (older) slot was issued first; reap it first to preserve submission order. */
+  if (fileio_flush_backup_reap_slot (thread_p, session_p, other) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (fileio_flush_backup_reap_slot (thread_p, session_p, active) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * fileio_flush_backup_sync () - Flush any buffered data (synchronous, unchanged)
  *   return:
  *   session(in/out): The session array
  *
@@ -8639,9 +9307,12 @@ error:
  *       Incomplete blocks are repeated at the start of the following archive,
  *       in order to insure that we do not try to read from incomplete tape
  *       blocks.
+ *
+ *       This is the original fileio_flush_backup body, moved verbatim under a new
+ *       name (PW Step 2). It is the default path and produces byte-identical output.
  */
 static int
-fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
+fileio_flush_backup_sync (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 {
   char *buffer_p;
   ssize_t nbytes;
@@ -8775,11 +9446,12 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 }
 
 /*
- * fileio_read_backup () - Read a database page from the current database
- *                     volume/file that is backed up
+ * fileio_read_backup_to () - Read a database page from the current database
+ *                     volume/file that is backed up, into the caller's area
  *   return:
  *   session(in/out): The session array
  *   pageid(in): The page from which we are reading
+ *   area(out): Caller-owned buffer that receives the page
  *
  * Note: If we run into an end of file, we filled the page with nulls. This is
  *       needed since we write full pages to back up destination. Without this,
@@ -8787,7 +9459,8 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
  *       the whole volume/file is backed up.
  */
 static ssize_t
-fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int page_id)
+fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int page_id,
+		       FILEIO_BACKUP_PAGE * area)
 {
   int io_page_size = session_p->bkup.bkuphdr->bkpagesize;
 #if defined(WINDOWS)
@@ -8799,15 +9472,14 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
 
   /* Read until you acumulate io_pagesize or the EOF mark is reached. */
   nread = 0;
-  FILEIO_SET_BACKUP_PAGE_ID (session_p->dbfile.area, page_id, io_page_size);
+  FILEIO_SET_BACKUP_PAGE_ID (area, page_id, io_page_size);
 
 #if defined(CUBRID_DEBUG)
-  fprintf (stdout, "fileio_read_backup: %d\t%d,\t%d\n", ((FILEIO_BACKUP_PAGE *) (session_p->dbfile.area))->iopageid,
-	   *(PAGEID *) (((char *) (session_p->dbfile.area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) + io_page_size),
-	   io_page_size);
+  fprintf (stdout, "fileio_read_backup: %d\t%d,\t%d\n", ((FILEIO_BACKUP_PAGE *) (area))->iopageid,
+	   *(PAGEID *) (((char *) (area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) + io_page_size), io_page_size);
 #endif
 
-  buffer_p = (char *) &session_p->dbfile.area->iopage;
+  buffer_p = (char *) &area->iopage;
   while (nread < io_page_size)
     {
       /* Read the desired amount of bytes */
@@ -8825,7 +9497,7 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
 	  if (errno != EINTR)
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2,
-				   FILEIO_GET_BACKUP_PAGE_ID (session_p->dbfile.area), session_p->dbfile.vlabel);
+				   FILEIO_GET_BACKUP_PAGE_ID (area), session_p->dbfile.vlabel);
 	      return -1;
 	    }
 	}
@@ -8904,19 +9576,21 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
 }
 
 /*
- * fileio_write_backup () - Write the number of indicated bytes from the dbfile
- *                      area to to the backup destination
+ * fileio_write_backup_from () - Write the number of indicated bytes from the
+ *                      caller's buffer to the backup destination
  *   return:
  *   session(in/out): The session array
- *   towrite_nbytes(in): Number of bytes that must be written
+ *   src(in): Buffer holding the bytes to write
+ *   to_write_nbytes(in): Number of bytes that must be written
  */
 static int
-fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, ssize_t to_write_nbytes)
+fileio_write_backup_from (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, const char *src,
+			  ssize_t to_write_nbytes)
 {
   char *buffer_p;
   ssize_t nbytes;
 
-  buffer_p = (char *) session_p->dbfile.area;
+  buffer_p = (char *) src;
   while (to_write_nbytes > 0)
     {
       /*
@@ -8946,6 +9620,19 @@ fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * fileio_write_backup () - Behavior-preserving wrapper that writes from the
+ *                      session's shared dbfile.area buffer.
+ *   return: NO_ERROR / ER_FAILED (see fileio_write_backup_from)
+ *   session_p(in/out): The session array
+ *   to_write_nbytes(in): Number of bytes that must be written
+ */
+static int
+fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, ssize_t to_write_nbytes)
+{
+  return fileio_write_backup_from (thread_p, session_p, (const char *) session_p->dbfile.area, to_write_nbytes);
 }
 
 /*
@@ -9725,11 +10412,16 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
    */
   if (backup_header_p->bkup_iosize > session_p->bkup.iosize)
     {
-      session_p->bkup.buffer = (char *) realloc (session_p->bkup.buffer, backup_header_p->bkup_iosize);
-      if (session_p->bkup.buffer == NULL)
+      /* restore only ever uses the active slot (== buffer_ring[0]); realloc through the
+       * ring slot so the slot pointer stays valid for teardown (no double-free / dangling). */
+      char *resized = (char *) realloc (session_p->bkup.buffer_ring[session_p->bkup.active_slot],
+					backup_header_p->bkup_iosize);
+      if (resized == NULL)
 	{
 	  return NULL;
 	}
+      session_p->bkup.buffer_ring[session_p->bkup.active_slot] = resized;
+      session_p->bkup.buffer = resized;
       session_p->bkup.ptr = session_p->bkup.buffer;	/* reinit in case it moved */
     }
   /* Always use the saved size from the backup to restore with */
