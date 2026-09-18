@@ -4385,11 +4385,37 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
     {
       SM_ATTRIBUTE *att;
       int trace_n_histogrammable = 0, trace_n_skipped = 0, trace_n_dropped = 0;
+      int att_index, n_atts = 0;
+      char attname_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
 
       for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
 	{
+	  n_atts++;
+	}
 
-	  attname = (char *) att->header.name;
+      /* Walk the attributes by position, re-reading the list each time, and keep the name in a
+       * local buffer: the calls in the body are server round trips and one of them DECACHES the
+       * class -- sm_add_histogram () rolls its insert back to its own savepoint when another
+       * session created the same row first -- which frees the SM_ATTRIBUTEs (and the name) this
+       * loop would otherwise still point into.  db_get_attributes_force () recaches a decached
+       * class; if a concurrent DDL shortened the list, the walk ends early. */
+      for (att_index = 0; att_index < n_atts; att_index++)
+	{
+	  int i;
+
+	  att = (DB_ATTRIBUTE *) db_get_attributes_force (obj);
+	  for (i = 0; i < att_index && att != NULL; i++)
+	    {
+	      att = db_attribute_next (att);
+	    }
+	  if (att == NULL)
+	    {
+	      break;
+	    }
+
+	  strncpy (attname_buf, (const char *) att->header.name, sizeof (attname_buf) - 1);
+	  attname_buf[sizeof (attname_buf) - 1] = '\0';
+	  attname = attname_buf;
 	  if (do_histogram == DO_HISTOGRAM_DROP)
 	    {
 	      error = sm_drop_histogram (obj, attname);
