@@ -149,7 +149,6 @@ namespace parallel_scan
       ~xasl_snapshot_tls() = default;
       list_id_header *list_id_header_p;
       QFILE_TUPLE_RECORD tpl_buf;
-      QFILE_TUPLE_WALK walk;	/* domain-driven reader of the snapshot tuples */
   };
 
   union VPID64_t

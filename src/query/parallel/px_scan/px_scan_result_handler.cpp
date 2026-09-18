@@ -815,7 +815,7 @@ namespace parallel_scan
 	      }
 
 	    /* domain-driven sequential walk: the atomic domains drive the deform, read only after the header is published. */
-	    qfile_tuple_walk_init (&tl.walk, tl.tpl_buf.tpl, list_id_header_p->m_list_id_p->type_list.hdr_size,
+	    qfile_tuple_walk_init (&walk, tl.tpl_buf.tpl, list_id_header_p->m_list_id_p->type_list.hdr_size,
 				   list_id_header_p->m_type_cnt);
 
 	    for (val_list_iterator = dest->valp, val_list_index = 0; val_list_iterator
@@ -823,7 +823,7 @@ namespace parallel_scan
 	      {
 		domain_p = (TP_DOMAIN *)list_id_header_p->m_type_list[val_list_index]->load (std::memory_order_acquire);
 		pr_clear_value (val_list_iterator->val);
-		err_code = qfile_tuple_walk_read_value (&tl.walk, domain_p, val_list_iterator->val, false, &is_null);
+		err_code = qfile_tuple_walk_read_value (&walk, domain_p, val_list_iterator->val, false, &is_null);
 		if (err_code != NO_ERROR)
 		  {
 		    return S_ERROR;
