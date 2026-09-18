@@ -116,6 +116,8 @@ namespace cubload
       bool m_scancache_started;
       heap_scancache m_scancache;
 
+      int m_pruning_type;
+
       std::size_t m_rows;
   };
 
