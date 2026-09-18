@@ -209,6 +209,10 @@ struct btree_scan
 
   /* TO BE REMOVED - maybe */
   VPID O_vpid;			/* vpid of overflow page */
+  /* CBRD-27401: resuming by OID is exact only while two facts hold -- (a) a non-unique key's overflow chain is
+   * globally OID-ordered, and (b) a snapshot sees at most one version of an OID. Breaking either makes the resume
+   * point silently skip or repeat rows. See btree_ovf_scan_locate_resume () for (a) and the anchor comment in
+   * btree_range_scan_select_visible_oids () for (b). */
   OID O_last_oid;		/* CBRD-27401: OID of the last object of the current key's overflow chain that was
 				 * visible to this scan's snapshot, when the key is partially processed and the chain
 				 * is OID-ordered (non-unique index). The chain is resumed from this OID rather than
