@@ -444,11 +444,11 @@ desc_free (DESC_OBJ * obj)
     }
   if (obj->oos_stub_valid != NULL)
     {
-      free (obj->oos_stub_valid);
+      free_and_init (obj->oos_stub_valid);
     }
   if (obj->oos_stubs != NULL)
     {
-      free (obj->oos_stubs);
+      free_and_init (obj->oos_stubs);
     }
 
   free_and_init (obj);

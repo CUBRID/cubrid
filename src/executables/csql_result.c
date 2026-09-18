@@ -1351,7 +1351,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 			}
 		      if (is_stream != NULL)
 			{
-			  free (is_stream);
+			  free_and_init (is_stream);
 			}
 		      break;
 		    }
@@ -1461,7 +1461,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 		    }
 		  if (is_stream != NULL)
 		    {
-		      free (is_stream);
+		      free_and_init (is_stream);
 		    }
 		  if (error == TRUE)
 		    {
