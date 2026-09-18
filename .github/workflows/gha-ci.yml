@@ -2748,7 +2748,7 @@ jobs:
                 echo "| shard | case |"
                 echo "|---|---|"
                 head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
-                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is \`$d/collect/failed.list\`_"
+                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is [\`failed.list\`]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/collect/failed.list)._"
                 echo
               else
                 echo "### No failed cases"
