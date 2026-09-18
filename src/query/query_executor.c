@@ -13254,68 +13254,46 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       db_make_null (new_val);
       insert->vals[k] = new_val;
 
-      switch (attr->current_default_value.default_expr.default_expr_type)
+      if (attr->current_default_value.default_expr.default_expr_regu_stream != NULL)
 	{
-	case DB_DEFAULT_NONE:
-	  if (attr->current_default_value.default_expr.default_expr_regu_stream != NULL)
+	  /* residual DEFAULT: deserialize the stored REGU form ONCE here and
+	   * cache the FUNC_PRED (default_func_preds[k]) for reuse across rows,
+	   * capturing the effective volatility stamped on it at DDL time.  A
+	   * STABLE residual is evaluated now, once per statement, instead of
+	   * reading the frozen DDL-time snapshot; the result lands in new_val
+	   * already cast to the attribute domain, so the shared clone/cast tail
+	   * below is unnecessary.  A VOLATILE residual is left NULL here and
+	   * evaluated per row in qexec_evaluate_row_default_exprs -- evaluating
+	   * it here too would only be discarded by the per-row pass, and an
+	   * embedded UUID(7) would burn a sequence number for nothing. */
+	  error = qexec_prepare_default_expr_stream (thread_p, attr, &default_func_preds[k].func_pred,
+						     &default_func_preds[k].unpack_info, &default_vols[k]);
+	  if (error != NO_ERROR)
 	    {
-	      /* residual DEFAULT: deserialize the stored REGU form ONCE here and
-	       * cache the FUNC_PRED (default_func_preds[k]) for reuse across rows,
-	       * capturing the effective volatility stamped on it at DDL time.  A
-	       * STABLE residual is evaluated now, once per statement, instead of
-	       * reading the frozen DDL-time snapshot; the result lands in new_val
-	       * already cast to the attribute domain, so the shared clone/cast tail
-	       * below is unnecessary.  A VOLATILE residual is left NULL here and
-	       * evaluated per row in qexec_evaluate_row_default_exprs -- evaluating
-	       * it here too would only be discarded by the per-row pass, and an
-	       * embedded UUID(7) would burn a sequence number for nothing. */
-	      error = qexec_prepare_default_expr_stream (thread_p, attr, &default_func_preds[k].func_pred,
-							 &default_func_preds[k].unpack_info, &default_vols[k]);
-	      if (error != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (default_vols[k]))
-		{
-		  error =
-		    qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
-						       new_val);
-		  if (error != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		}
-	      continue;
+	      GOTO_EXIT_ON_ERROR;
 	    }
-	  else if (attr->current_default_value.val_length <= 0)
+	  if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (default_vols[k]))
 	    {
-	      /* leave default value as NULL */
-	      break;
-	    }
-	  else
-	    {
-	      error = qexec_get_attr_default (thread_p, attr, &insert_val);
+	      error =
+		qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
+						   new_val);
 	      if (error != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
-	  break;
-
-	default:
-	  assert (0);
-	  error = ER_FAILED;
-	  GOTO_EXIT_ON_ERROR;
-	  break;
+	  continue;
 	}
-
-      /* a constant is already in the attribute domain (a residual was cast above): the value is final */
-      pr_clone_value (&insert_val, insert->vals[k]);
-      pr_clear_value (&insert_val);
-
-      if (error != NO_ERROR)
+      if (attr->current_default_value.val_length > 0)
 	{
-	  GOTO_EXIT_ON_ERROR;
+	  /* a constant DEFAULT, already in the attribute domain; without a stored value it stays NULL */
+	  error = qexec_get_attr_default (thread_p, attr, &insert_val);
+	  if (error != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  pr_clone_value (&insert_val, new_val);
+	  pr_clear_value (&insert_val);
 	}
     }
 

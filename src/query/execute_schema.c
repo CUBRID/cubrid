@@ -12057,7 +12057,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
   if (!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
-      || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+      || att->default_value.default_expr.default_expr_text != NULL)
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
@@ -12108,7 +12108,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   else if (attr_def->info.attr_def.auto_increment != NULL)
     {
       if ((!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
-	   || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE))
+	   || att->default_value.default_expr.default_expr_text != NULL))
 	{
 	  attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_LOST;
 	}
@@ -14702,7 +14702,6 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
   PT_NODE *attr = NULL;
   PT_NODE *save = NULL;
   PT_NODE *copy = NULL;
-  DB_DEFAULT_EXPR default_expr;
 
   assert (alter->node_type == PT_ALTER);
   assert (alter->info.alter.code == PT_ADD_ATTR_MTHD);
@@ -14717,14 +14716,11 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
 	  continue;
 	}
 
-      pt_get_default_expression_from_data_default_node (parser, pt_data_default, &default_expr);
-      if (default_expr.default_expr_type == DB_DEFAULT_NONE && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (pt_data_default))
+      if (!PT_IS_VOLATILE_RESIDUAL_DEFAULT (pt_data_default))
 	{
-	  /* New DEFAULT path with effective volatility <= STABLE (constant,
-	   * Expression-Derived Literal, or STABLE residual): existing rows are
-	   * filled instantly via the frozen original_value -- no table rewrite.
-	   * A VOLATILE residual falls through to the eager rewrite below, since
-	   * a single frozen value cannot express "once per row". */
+	  /* effective volatility <= STABLE (constant, Expression-Derived Literal or STABLE residual): existing
+	   * rows are filled instantly via the frozen original_value -- no table rewrite.  A VOLATILE residual
+	   * falls through to the eager rewrite below, since one frozen value cannot express "once per row". */
 	  continue;
 	}
 
@@ -14932,8 +14928,7 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
   /* ptr_def is either NULL or pointing to address of def_value */
   assert (ptr_def == NULL || ptr_def == &def_value);
 
-  if (ptr_def && DB_IS_NULL (ptr_def)
-      && attribute->info.attr_def.data_default->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+  if (ptr_def && DB_IS_NULL (ptr_def))
     {
       for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
 	{

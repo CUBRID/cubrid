@@ -572,7 +572,6 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	    }
 	  else
 	    {
-	      assert (attribute.default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR);
 	      printer.describe_value (&attribute.default_value.value);
 	    }
 	}

@@ -14144,8 +14144,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spe
   attr = db_get_attributes (class_);
   while (attr)
     {
-      if (db_attribute_is_non_null (attr) && db_value_is_null (db_attribute_default (attr))
-	  && attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+      if (db_attribute_is_non_null (attr) && !SM_DEFAULT_SUPPLIES_VALUE (&attr->default_value)
 	  && (is_attr_not_in_insert_list (parser, attr_list, db_attribute_name (attr)) || has_default_values_list)
 	  && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{

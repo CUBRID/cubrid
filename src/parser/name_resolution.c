@@ -1914,12 +1914,10 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
     {
       for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
 	{
-	  if (DB_IS_DEFAULT_DATETIME_EXPR (attr->default_value.default_expr.default_expr_type)
-	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type)
-	      /* a residual DEFAULT expression referencing the statement clock needs the server time
-	       * synchronized before the Local Evaluation path evaluates it */
-	      || (DB_IS_RESIDUAL_DEFAULT_EXPR (&attr->default_value.default_expr)
-		  && pt_residual_default_needs_si_datetime (parser, attr, node)))
+	  /* a residual DEFAULT expression referencing the statement clock needs the server time
+	   * synchronized before the Local Evaluation path evaluates it */
+	  if (DB_IS_RESIDUAL_DEFAULT_EXPR (&attr->default_value.default_expr)
+	      && pt_residual_default_needs_si_datetime (parser, attr, node))
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
@@ -7675,11 +7673,8 @@ pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       const char *name = db_attr->header.name;
 
-      if (db_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
-	  && DB_IS_NULL (&db_attr->default_value.value)
-	  && !DB_IS_RESIDUAL_DEFAULT_EXPR (&db_attr->default_value.default_expr))
+      if (!SM_DEFAULT_SUPPLIES_VALUE (&db_attr->default_value))
 	{
-	  /* nothing to supply; a residual with a NULL snapshot still has a DEFAULT */
 	  continue;
 	}
 
