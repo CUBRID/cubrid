@@ -7065,15 +7065,17 @@ btree_class_test_unique (char *buf, int buf_size)
  * fill_factor (in)	: Target fill ratio in percent.
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow pages deallocated.
+ * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
  */
 int
-btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed)
+btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
+			INT64 * pairs_skipped)
 {
 #if defined(CS_MODE)
   int req_error, status = ER_NET_CLIENT_DATA_RECEIVE;
   OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE + OR_INT_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE * 2) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
   char *reply;
   char *ptr;
 
@@ -7090,6 +7092,7 @@ btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, IN
       ptr = or_unpack_int (reply, &status);
       ptr = or_unpack_int64 (ptr, keys_compacted);
       ptr = or_unpack_int64 (ptr, pages_freed);
+      ptr = or_unpack_int64 (ptr, pairs_skipped);
     }
   else
     {
@@ -7102,7 +7105,7 @@ btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, IN
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  success = xbtree_compact_overflow (thread_p, btid, fill_factor, keys_compacted, pages_freed);
+  success = xbtree_compact_overflow (thread_p, btid, fill_factor, keys_compacted, pages_freed, pairs_skipped);
 
   exit_server (*thread_p);
 

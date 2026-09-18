@@ -392,7 +392,7 @@ static int do_recreate_saved_indexes (MOP classmop, SM_CONSTRAINT_INFO * index_s
 static int do_alter_index_status (PARSER_CONTEXT * parser, const PT_NODE * statement);
 static int do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement);
 static int do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor,
-					     INT64 * keys_compacted, INT64 * pages_freed);
+					     INT64 * keys_compacted, INT64 * pages_freed, INT64 * pairs_skipped);
 
 int ib_thread_count = 0;
 
@@ -4260,15 +4260,17 @@ error_exit:
  *   fill_factor(in): Target fill ratio in percent
  *   keys_compacted(in/out): Accumulated number of keys whose chain lost at least one page
  *   pages_freed(in/out): Accumulated number of overflow pages deallocated
+ *   pairs_skipped(in/out): Accumulated number of page pairs left alone because vacuum has not removed a reused
+ *			   OID's old versions yet (no OID boundary to split at)
  */
 static int
 do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor, INT64 * keys_compacted,
-				  INT64 * pages_freed)
+				  INT64 * pages_freed, INT64 * pairs_skipped)
 {
   int error = NO_ERROR;
   SM_CLASS *smcls = NULL;
   SM_CLASS_CONSTRAINT *idx = NULL;
-  INT64 keys = 0, pages = 0;
+  INT64 keys = 0, pages = 0, skipped = 0;
 
   /* AU_FETCH_READ takes a SCH_S lock on the class for the rest of the transaction: DROP/ALTER of the index waits
    * until compaction is over, while concurrent DML (IX) is not blocked -- this is what makes the command online. */
@@ -4291,7 +4293,7 @@ do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fil
       return NO_ERROR;
     }
 
-  error = btree_compact_overflow (&idx->index_btid, fill_factor, &keys, &pages);
+  error = btree_compact_overflow (&idx->index_btid, fill_factor, &keys, &pages, &skipped);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4300,6 +4302,7 @@ do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fil
 
   *keys_compacted += keys;
   *pages_freed += pages;
+  *pairs_skipped += skipped;
   return NO_ERROR;
 }
 
@@ -4323,7 +4326,7 @@ do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement)
   int fill_factor;
   int partition_type = DB_NOT_PARTITIONED_CLASS;
   MOP *partitions = NULL;
-  INT64 keys_compacted = 0, pages_freed = 0;
+  INT64 keys_compacted = 0, pages_freed = 0, pairs_skipped = 0;
   int i;
 
   index_name = statement->info.index.index_name ? statement->info.index.index_name->info.name.original : NULL;
@@ -4350,7 +4353,8 @@ do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement)
       return error;
     }
 
-  error = do_alter_index_compact_one_class (obj, index_name, fill_factor, &keys_compacted, &pages_freed);
+  error = do_alter_index_compact_one_class (obj, index_name, fill_factor, &keys_compacted, &pages_freed,
+					    &pairs_skipped);
   if (error != NO_ERROR)
     {
       return error;
@@ -4367,7 +4371,7 @@ do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement)
       for (i = 0; partitions[i] != NULL; i++)
 	{
 	  error = do_alter_index_compact_one_class (partitions[i], index_name, fill_factor, &keys_compacted,
-						    &pages_freed);
+						    &pages_freed, &pairs_skipped);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -4382,8 +4386,8 @@ do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * statement)
   if (error == NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "ALTER INDEX %s ON %s COMPACT (fill_factor=%d): %lld keys compacted, %lld overflow "
-		    "pages freed\n", index_name, class_name, fill_factor, (long long) keys_compacted,
-		    (long long) pages_freed);
+		    "pages freed, %lld page pairs skipped (no OID boundary, vacuum pending)\n", index_name, class_name,
+		    fill_factor, (long long) keys_compacted, (long long) pages_freed, (long long) pairs_skipped);
     }
 
   return error;

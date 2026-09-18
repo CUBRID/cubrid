@@ -1451,9 +1451,10 @@ static int btree_ovf_scan_locate_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * b
 static int btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR left_page,
 				   PAGE_PTR * right_page, int num_move, const VPID * dir_head_vpid);
 static int btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid,
-				    int fill_factor, int *pages_freed, bool * work_done);
+				    int fill_factor, int max_merges, int *pages_freed, int *pairs_skipped,
+				    bool * work_done, bool * more);
 static int btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-				   PAGE_PTR * leaf_page, INT16 * slot);
+				   PAGE_PTR * leaf_page, INT16 * slot, bool * found);
 
 static int btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR leaf_pg,
 				       LEAF_REC * leafrec_pnt, BTREE_DELETE_HELPER * delete_helper,
@@ -14458,21 +14459,28 @@ btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR l
 /*
  * btree_ovf_compact_chain () - Compact one key's directory overflow chain: walk the data pages left to right and fill
  *				each page up to the fill factor from its right neighbor (merging the neighbor away when
- *				all of its objects fit). Called under the key's leaf write latch. Legacy chains and
- *				single-page chains are left untouched.
+ *				all of its objects fit). Called under the key's leaf write latch. Single-page chains
+ *				are left untouched.
  *
  * return		: Error code.
  * thread_p (in)	: Thread entry.
  * btid_int (in)	: B-tree info.
  * first_ovf_vpid (in)	: VPID of the chain's first data page.
  * fill_factor (in)	: Target fill ratio in percent of the data page capacity.
+ * max_merges (in)	: Stop after this many committed merges/redistributions and report more = true, so the
+ *			  caller can yield the leaf latch and call again for the same key. Re-walking the chain
+ *			  from its first page is idempotent: pages already at the target are skipped.
  * pages_freed (out)	: Number of data pages merged away (deallocated).
+ * pairs_skipped (out)	: Number of page pairs left as they are because no OID boundary was found in the neighbor:
+ *			  its whole movable prefix is one reusable OID's un-vacuumed run. Tells "nothing to do" from
+ *			  "could not do".
  * work_done (out)	: Set to true if the chain was modified at all. A chain can be redistributed without any page
  *			  being freed, and the caller must still yield the leaf latch in that case.
+ * more (out)		: Set to true if the chain was left unfinished because max_merges was reached.
  */
 static int
 btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid, int fill_factor,
-			 int *pages_freed, bool * work_done)
+			 int max_merges, int *pages_freed, int *pairs_skipped, bool * work_done, bool * more)
 {
   PAGE_PTR cur_page = NULL;
   PAGE_PTR next_page = NULL;
@@ -14482,16 +14490,20 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
   int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
   int target_size = (int) (((INT64) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int) * fill_factor) / 100);
   int cur_len, next_len, next_count, room, num_move;
+  int merges = 0;
   OID boundary_oid, prev_oid;
   bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
   assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
   assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
-  assert (pages_freed != NULL && work_done != NULL);
+  assert (pages_freed != NULL && pairs_skipped != NULL && work_done != NULL && more != NULL);
+  assert (max_merges > 0);
 
   *pages_freed = 0;
+  *pairs_skipped = 0;
   *work_done = false;
+  *more = false;
 
   cur_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (cur_page == NULL)
@@ -14504,9 +14516,17 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 #endif /* !NDEBUG */
 
   dir_hdr = btree_ovf_dir_get_header (thread_p, cur_page);
-  if (dir_hdr == NULL || VPID_ISNULL (&dir_hdr->dir_vpid))
+  if (dir_hdr == NULL)
     {
-      /* Legacy chain (nothing we know how to compact) or a single-page chain. */
+      /* A non-unique chain is always directory-format (CBRD-24094); a legacy header here is corruption, which
+       * btree_ovf_dir_check () also reports. Do not paper over it by "compacting" nothing. */
+      assert_release (false);
+      pgbuf_unfix_and_init (thread_p, cur_page);
+      return ER_FAILED;
+    }
+  if (VPID_ISNULL (&dir_hdr->dir_vpid))
+    {
+      /* Single-page chain: nothing to compact. */
       pgbuf_unfix_and_init (thread_p, cur_page);
       return NO_ERROR;
     }
@@ -14593,6 +14613,10 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 	}
       if (num_move <= 0)
 	{
+	  /* The neighbor starts with one reusable OID's un-vacuumed run that fills the whole prefix we could take: no
+	   * separator boundary exists, so this pair stays as it is until vacuum removes the run. Counted so the caller
+	   * can tell "nothing to do" from "could not do". */
+	  (*pairs_skipped)++;
 	  pgbuf_unfix_and_init (thread_p, cur_page);
 	  cur_page = next_page;
 	  next_page = NULL;
@@ -14609,6 +14633,15 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 	}
       log_sysop_commit (thread_p);
       *work_done = true;
+
+      if (++merges >= max_merges)
+	{
+	  /* Yield the leaf latch to concurrent DML on this leaf. The caller re-fixes the leaf and calls again for the
+	   * same key; re-walking the chain from its first page is idempotent because pages already at the target are
+	   * skipped by the room check above. */
+	  *more = true;
+	  goto exit;
+	}
 
       if (next_page == NULL)
 	{
@@ -14811,10 +14844,11 @@ btree_ovf_scan_locate_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, VPID * 
  * leaf_page (out) : Write latched leaf page.
  * slot (out)	   : First slot to process: the slot after key when key is found, otherwise the slot of the first key
  *		     greater than key (key count + 1 when there is none); 1 for the leftmost leaf.
+ * found (out)	   : Optional. True when key itself is present in the leaf (slot is then the slot after it).
  */
 static int
 btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, PAGE_PTR * leaf_page,
-			INT16 * slot)
+			INT16 * slot, bool * found)
 {
   PAGE_PTR page = NULL;
   PAGE_PTR child_page = NULL;
@@ -14828,6 +14862,11 @@ btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE *
 
   assert (leaf_page != NULL && *leaf_page == NULL);
   assert (slot != NULL);
+
+  if (found != NULL)
+    {
+      *found = false;
+    }
 
   vpid.volid = btid_int->sys_btid->vfid.volid;
   vpid.pageid = btid_int->sys_btid->root_pageid;
@@ -14916,6 +14955,10 @@ retry_root:
 	{
 	case BTREE_KEY_FOUND:
 	  *slot = search_key.slotid + 1;
+	  if (found != NULL)
+	    {
+	      *found = true;
+	    }
 	  break;
 	case BTREE_KEY_BETWEEN:
 	  /* Key was removed meanwhile; slotid is the position of the next greater key. */
@@ -14961,10 +15004,12 @@ error:
  * fill_factor (in)	: Target fill ratio in percent (BTREE_COMPACT_MIN_FILL_FACTOR..BTREE_COMPACT_MAX_FILL_FACTOR).
  * keys_compacted (out) : Number of keys whose chain lost at least one page.
  * pages_freed (out)	: Number of overflow data pages deallocated.
+ * pairs_skipped (out)	: Number of page pairs that could not be compacted because no OID boundary was found (see
+ *			  btree_ovf_compact_chain ()). Non-zero means "run vacuum, then COMPACT again".
  */
 int
 xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, INT64 * keys_compacted,
-			 INT64 * pages_freed)
+			 INT64 * pages_freed, INT64 * pairs_skipped)
 {
   BTID_INT btid_int;
   BTREE_ROOT_HEADER *root_header = NULL;
@@ -14980,14 +15025,19 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
   INT16 slot;
   int key_cnt;
   int freed;
+  int skipped;
+  int key_freed = 0;
   bool work_done;
+  bool more = false;
+  bool found = false;
   bool dummy_continue_checking;
   int error_code = NO_ERROR;
 
-  assert (btid != NULL && keys_compacted != NULL && pages_freed != NULL);
+  assert (btid != NULL && keys_compacted != NULL && pages_freed != NULL && pairs_skipped != NULL);
 
   *keys_compacted = 0;
   *pages_freed = 0;
+  *pairs_skipped = 0;
 
   if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
     {
@@ -15011,7 +15061,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 
   btree_init_temp_key_value (&clear_key, &key);
 
-  error_code = btree_compact_fix_leaf (thread_p, &btid_int, NULL, &leaf_page, &slot);
+  error_code = btree_compact_fix_leaf (thread_p, &btid_int, NULL, &leaf_page, &slot, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -15035,6 +15085,9 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	      pgbuf_unfix_and_init (thread_p, leaf_page);
 	      break;
 	    }
+	  /* Latch order: leaves are coupled strictly left to right (hold L, fix L+1), the same direction the ascending
+	   * range scan and btree_merge_node_and_advance () (left sibling first) use. Never fix a left neighbor while
+	   * holding a right one here -- page latches have no deadlock detector. */
 	  next_leaf = pgbuf_fix (thread_p, &next_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	  if (next_leaf == NULL)
 	    {
@@ -15084,27 +15137,35 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       VPID_COPY (&ovf_vpid, &leaf_rec_info.ovfl);
       assert (!VPID_ISNULL (&ovf_vpid));
 
-      error_code = btree_ovf_compact_chain (thread_p, &btid_int, &ovf_vpid, fill_factor, &freed, &work_done);
+      error_code = btree_ovf_compact_chain (thread_p, &btid_int, &ovf_vpid, fill_factor, BTREE_COMPACT_MERGES_PER_LATCH,
+					    &freed, &skipped, &work_done, &more);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
 	}
 
+      key_freed += freed;
+      *pairs_skipped += skipped;
+
       if (!work_done)
 	{
-	  /* The chain was only read: nothing was written under this leaf latch, so keep it and move on. */
+	  /* The chain was only read: nothing was written under this leaf latch, so keep it and move on. A key whose
+	   * chain was finished in an earlier latch round also ends here, so account for the key at this point. */
+	  assert (!more);
+	  *pages_freed += key_freed;
+	  if (key_freed > 0)
+	    {
+	      (*keys_compacted)++;
+	    }
+	  key_freed = 0;
 	  btree_clear_key_value (&clear_key, &key);
 	  slot++;
 	  continue;
 	}
-      *pages_freed += freed;
-      if (freed > 0)
-	{
-	  (*keys_compacted)++;
-	}
 
-      /* Let concurrent DML on this leaf in, then come back to the key after this one. */
+      /* Let concurrent DML on this leaf in, then come back: to this same key if its chain is not finished yet, else to
+       * the key after it. */
       pgbuf_unfix_and_init (thread_p, leaf_page);
 
       if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
@@ -15114,12 +15175,29 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	  goto exit;
 	}
 
-      error_code = btree_compact_fix_leaf (thread_p, &btid_int, &key, &leaf_page, &slot);
+      error_code = btree_compact_fix_leaf (thread_p, &btid_int, &key, &leaf_page, &slot, &found);
       btree_clear_key_value (&clear_key, &key);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+      if (more && found)
+	{
+	  /* The chain was left unfinished to yield the latch. BTREE_KEY_FOUND returned the slot after this key: step
+	   * back and finish it. If the key vanished meanwhile, slot already points at the next greater key and nothing
+	   * of the chain is left, so the key is accounted below instead. */
+	  slot--;
+	}
+      else
+	{
+	  /* This key is done, possibly over several latch rounds: account for it once. */
+	  *pages_freed += key_freed;
+	  if (key_freed > 0)
+	    {
+	      (*keys_compacted)++;
+	    }
+	  key_freed = 0;
 	}
     }
 
@@ -29807,7 +29885,10 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	       * a page of a directory chain that still has visible objects CAN go away while the scan holds no
 	       * latch, because ALTER INDEX ... COMPACT merges adjacent pages and frees one of them. Resuming from a
 	       * page would then fail to fix it, or silently skip the objects that moved into an already processed
-	       * page. */
+	       * page.
+	       * Correctness of the OID anchor relies on bts->C_page (the leaf) staying READ-latched from here through
+	       * the re-fix of overflow_vpid below: compaction needs the leaf WRITE latch, so no page of this chain can
+	       * move in between. Do not release the leaf before the resumed page is fixed. */
 	      error_code = btree_ovf_scan_locate_resume (thread_p, bts, &overflow_vpid, &resume_offset);
 	      if (error_code != NO_ERROR)
 		{
