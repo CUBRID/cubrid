@@ -543,12 +543,17 @@ struct cte_proc_node
 #define XASL_CORR_DBLINK		(0x1 << 23)	/* correlated push-down (per-row bind); mutually exclusive with XASL_DBLINK_CURSOR_REWIND */
 #define XASL_NL_SEMIJOIN		(0x1 << 24)	/* this scan proc is the inner of a NL semi join (first-match) */
 #define XASL_NL_ANTIJOIN		(0x1 << 25)	/* this scan proc is the inner of a NL anti join (zero-match) */
+#define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
 #define IS_CORR_DBLINK_XASL(x)		XASL_IS_FLAGED ((x), XASL_CORR_DBLINK)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
+
+/* qfile_open_list () backward-scan flag: set for the top-most XASL's result or a MERGELIST_PROC child list. */
+#define XASL_LIST_BACKWARD_FLAG(x) \
+  ((XASL_IS_FLAGED ((x), XASL_TOP_MOST_XASL) || XASL_IS_FLAGED ((x), XASL_LIST_BACKWARD)) ? QFILE_FLAG_BACKWARD : 0)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
 #define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v) \

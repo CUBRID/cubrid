@@ -124,7 +124,7 @@ extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID *
 extern bool qdump_check_xasl_tree (xasl_node * xasl);
 #endif /* CUBRID_DEBUG */
 
-extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, tp_domain * domain);
+extern int qexec_get_tuple_column_value (QFILE_TUPLE_RECORD * tplrec, int index, DB_VALUE * valp, tp_domain * domain);
 extern int qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 					 valptr_list_node * outptr_list, val_descr * vd, qfile_tuple_record * tplrec);
 extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, regu_variable_node * regu,
