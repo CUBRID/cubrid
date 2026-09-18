@@ -29395,13 +29395,12 @@ end:
 }
 
 /*
- * heap_recdes_get_oos_references () - collect the OOS references of a heap record together with the type of the
- *   attribute each one belongs to, so callers can tell ordinary OOS records apart from internal LOB chains.
+ * heap_recdes_get_oos_references () - collect the OOS references of a heap record together with the kind each
+ *   one holds (CLOB, BLOB or ordinary OOS), so callers can tell ordinary OOS records apart from internal LOB chains.
  *
  * return             : error code
- * thread_p (in)      : thread entry
- * class_oid (in)     : owner class; may be NULL for fixtures without a class representation, in which case every
- *                      reference keeps DB_TYPE_NULL and callers treat it as an ordinary OOS record
+ * thread_p (in)      : unused; kept for the callers' signature
+ * class_oid (in)     : unused; the stub itself says what it is (OR_OOS_KIND_*)
  * recdes (in)        : heap record
  * oos_references (out) : references in variable-attribute order
  */
@@ -29409,48 +29408,13 @@ int
 heap_recdes_get_oos_references (THREAD_ENTRY * thread_p, const OID * class_oid, const RECDES * recdes,
 				HEAP_OOS_REFERENCE_VECTOR & oos_references)
 {
-  OR_CLASSREP *classrepr = NULL;
-  int classrepr_cache_index = -1;
-  int error = heap_recdes_get_oos_slots (recdes, oos_references);
-
-  if (error != NO_ERROR || oos_references.empty ())
-    {
-      return error;
-    }
-
-  if (class_oid == NULL || OID_ISNULL (class_oid))
-    {
-      return NO_ERROR;
-    }
-
-  classrepr = heap_classrepr_get (thread_p, class_oid, NULL, or_rep_id ((RECDES *) recdes), &classrepr_cache_index);
-  if (classrepr == NULL)
-    {
-      if (er_errid () != NO_ERROR)
-	{
-	  return er_errid ();
-	}
-      /* No representation for this class (unit-test fixtures): every reference stays untyped. */
-      return NO_ERROR;
-    }
-
-  /* A reference whose variable attribute is not in the representation stays DB_TYPE_NULL (untyped). Callers
-   * treat an untyped reference as an ordinary OOS record only when the heap owns no internal LOB file. */
-for (HEAP_OOS_REFERENCE & reference:oos_references)
-    {
-      for (int attr_index = 0; attr_index < classrepr->n_attributes; attr_index++)
-	{
-	  OR_ATTRIBUTE *attribute = &classrepr->attributes[attr_index];
-	  if (!attribute->is_fixed && attribute->location == reference.variable_index)
-	    {
-	      reference.type = attribute->type;
-	      break;
-	    }
-	}
-    }
-
-  heap_classrepr_free (classrepr, &classrepr_cache_index);
-  return error;
+  /* The inline stub carries its own kind (OR_OOS_KIND_*), so heap_recdes_get_oos_slots () already types every
+   * reference as CLOB, BLOB or ordinary OOS -- which is all any caller asks (TP_IS_LOB_TYPE).  The class
+   * representation used to be consulted here as a "correction"; it added nothing and, from vacuum, fixed a
+   * catalog page while the home heap page was latched. */
+  (void) thread_p;
+  (void) class_oid;
+  return heap_recdes_get_oos_slots (recdes, oos_references);
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
