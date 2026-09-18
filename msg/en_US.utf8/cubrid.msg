@@ -1487,7 +1487,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1380 A stored procedure/function declared PARALLEL_ENABLE cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
 
-1381 Last Error
+1381 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this active node, which keeps its own row: current_val %2$s, image %3$s.
+
+1382 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

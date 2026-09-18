@@ -59,6 +59,7 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "record_descriptor.hpp"
+#include "serial.h"
 #include "slotted_page.h"
 #include "xasl_cache.h"
 #include "xasl_predicate.hpp"
@@ -7028,6 +7029,10 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE:
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
+	      if (serial_repl_image_is_stale (thread_p, &obj->class_oid, &obj->oid, &recdes))
+		{
+		  break;	/* the row on this node is newer; the object counts as applied */
+		}
 	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	      error_code =
 		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, has_index,
