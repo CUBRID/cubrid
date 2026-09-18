@@ -4536,6 +4536,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 			   (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
 		}
 	    }
+	  /* the attribute list is read again here on purpose: the store step above can decache the
+	   * class (store_one_histogram () recreates a row a concurrent DROP HISTOGRAM removed, and
+	   * that goes through sm_add_histogram ()'s savepoint).  dump_histogram () itself only reads,
+	   * so the pointer stays valid for the rest of this walk. */
 	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); (!quiet || trace_on) && att != NULL;
 	       att = db_attribute_next (att))
 	    {
