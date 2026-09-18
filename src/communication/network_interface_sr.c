@@ -10892,17 +10892,11 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
      __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
 
-  error_code =
-    cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
-			   extraction_classoids, num_extraction_class);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
   /* CBRD-27437: only now, fully validated, do we affect *other* connections
    * -- doing this earlier would let a request that fails a check above still
-   * kill a running consumer for nothing.
+   * kill a running consumer for nothing. The producer also has to be paused
+   * before cdc_set_configuration() below, which frees the extraction filter
+   * the producer reads in cdc_is_filtered_user() and cdc_is_filtered_class().
    *
    * scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
    * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
@@ -10943,6 +10937,14 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	}
 
       LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
+    }
+
+  error_code =
+    cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
+			   extraction_classoids, num_extraction_class);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
     }
 
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
