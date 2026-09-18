@@ -8358,13 +8358,14 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
-      if (pruning_type != DB_NOT_PARTITIONED_CLASS)
+      /* LC_FLUSH_UPDATE falls through into this case, and an update's attr_info holds only the assigned columns,
+       * so the partition key need not be there.  An update already runs with the row's own partition as its class. */
+      if (LC_IS_FLUSH_INSERT (operation) && pruning_type != DB_NOT_PARTITIONED_CLASS)
 	{
 	  /* The transform below stores OOS and Internal LOB values in the files of attr_info's class, so the partition
 	   * has to be known before the record exists. Otherwise every partition's out-of-row data lands in the root
-	   * class' files, where DROP PARTITION cannot reclaim it and PROMOTE PARTITION loses it. The key may still be
-	   * a default or an auto-increment, so fill those in first. locator_insert_force () prunes the finished record
-	   * again and lands on the same partition. */
+	   * class' files, where DROP PARTITION cannot reclaim it and PROMOTE PARTITION loses it.
+	   * locator_insert_force () prunes the finished record again and lands on the same partition. */
 	  OID part_class_oid;
 	  HFID part_hfid;
 
