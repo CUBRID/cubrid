@@ -235,8 +235,7 @@ crypt_ensure_openssl_providers (void)
 }
 
 #if OPENSSL_VERSION_NUMBER >= 0x30000000L
-/* Algorithm names as the providers register them, see
- * providers/implementations/include/prov/names.h in the OpenSSL sources. */
+/* Names as the providers register them, see prov/names.h in the OpenSSL sources. */
 static const char *crypt_Md_name[CRYPT_MD_COUNT] = {
   "MD5", "SHA1", "SHA2-224", "SHA2-256", "SHA2-384", "SHA2-512"
 };
@@ -255,8 +254,8 @@ static std::once_flag crypt_Cipher_onetime[CRYPT_CIPHER_COUNT];
 #endif
 
 /*
- * crypt_md_static() - The static digest objects, used before OpenSSL 3.0 and as
- *                     the fallback when a fetch fails.
+ * crypt_md_static() - The static digest objects: used before OpenSSL 3.0, and as the
+ *                     fallback when a fetch fails.
  */
 static const EVP_MD *
 crypt_md_static (CRYPT_MD_TYPE md_type)
@@ -281,9 +280,7 @@ crypt_md_static (CRYPT_MD_TYPE md_type)
     }
 }
 
-/*
- * crypt_cipher_static() - The static cipher objects, see crypt_md_static().
- */
+/* The static cipher objects, see crypt_md_static(). */
 static const EVP_CIPHER *
 crypt_cipher_static (CRYPT_CIPHER_TYPE cipher_type)
 {
@@ -306,22 +303,13 @@ crypt_cipher_static (CRYPT_CIPHER_TYPE cipher_type)
 /*
  * crypt_get_md() - Return a digest implementation fetched once per process.
  *
- *   Since OpenSSL 3.0 the objects returned by EVP_md5(), EVP_sha256() and friends
- *   carry no provider (type->prov == NULL), so every EVP_DigestInit() performs a
- *   full implicit EVP_MD_fetch(): NID to name conversion, a namemap lookup, a
- *   method store lookup under a lock, and reference counting. That is a fixed cost
- *   per call, about 100ns, which dominates short inputs, and MD5()/SHA1()/SHA2()
- *   run once per row. Reusing the digest context does not help either, because the
- *   fetch branch is taken on every Init as long as type->prov is NULL.
+ *   Since OpenSSL 3.0 EVP_md5(), EVP_sha256() and friends return objects with no
+ *   provider, so every Init runs an implicit fetch, a fixed cost of about 100ns
+ *   per call. Reusing the context does not avoid it. Fetching once and passing the
+ *   result to Init does; fetched objects are immutable and reference counted, so
+ *   sharing them between threads is safe. The cache is never freed on purpose.
  *
- *   Fetching once and passing the fetched object to Init removes the fetch from
- *   the per-call path. This is what the OpenSSL 3.0 migration guide calls explicit
- *   fetching. Fetched objects are immutable and reference counted, so sharing one
- *   between threads is safe. They are deliberately never freed: they may be used
- *   up to the last digest call of the process.
- *
- *   A failed fetch falls back to the static object, which keeps the previous
- *   behaviour instead of failing the statement.
+ *   A failed fetch falls back to the static object, keeping the old behaviour.
  */
 const struct evp_md_st *
 crypt_get_md (CRYPT_MD_TYPE md_type)
@@ -397,35 +385,16 @@ crypt_get_cipher (CRYPT_CIPHER_TYPE cipher_type)
  * context while ctx->digest is the same object, and a thread may hash with several
  * algorithms. The contexts are freed when the thread exits.
  *
- * EVP_DigestFinal_ex() has to be used with a pooled context. EVP_DigestFinal() runs
- * EVP_MD_CTX_reset(), which frees the algorithm context and defeats the reuse.
+ * Final has to be EVP_DigestFinal_ex(): the plain EVP_DigestFinal() resets the
+ * context, which frees the algorithm context and defeats the reuse.
  *
- * Not every algorithm may be pooled, see crypt_md_ctx_poolable().
+ * SHA-384 and SHA-512 leave the tail of the last message in the context until the
+ * next Init, because sha512.c SHA512_Final() has no OPENSSL_cleanse() while the
+ * HASH_FINAL() of md32_common.h, used by the other four, has one. They are pooled
+ * anyway: what runs per row hashes a column, whose plaintext is in the page buffer
+ * for far longer, and a host variable is one call per statement, which the pool
+ * does not speed up. A caller hashing a secret opts out with reuse_ctx.
  */
-
-/*
- * crypt_md_ctx_poolable() - Can a digest context for md_type be kept between calls
- *                           without leaving the input behind?
- *
- *   MD5, SHA-1, SHA-224 and SHA-256 are built from md32_common.h, whose HASH_FINAL()
- *   ends with OPENSSL_cleanse (p, HASH_CBLOCK), so no part of the message survives
- *   the digest. SHA-384 and SHA-512 are built from crypto/sha/sha512.c, whose
- *   SHA512_Final() has no such cleanse: the tail of the last message stays in the
- *   context until the next Init overwrites it. Verified on 1.1.1w and on 3.5.7 by
- *   scanning the context right after Final; the input turned up at offset 80 for
- *   SHA-384 and SHA-512 only.
- *
- *   Those two are therefore never pooled. That costs nothing that matters here: SQL
- *   SHA2() defaults to 256, and the 384 and 512 variants are not a per row path.
- *
- *   This rests on an OpenSSL implementation detail, not on a documented contract.
- *   Re-check it whenever the bundled OpenSSL is upgraded.
- */
-static bool
-crypt_md_ctx_poolable (CRYPT_MD_TYPE md_type)
-{
-  return md_type != CRYPT_MD_SHA384 && md_type != CRYPT_MD_SHA512;
-}
 
 // *INDENT-OFF*
 namespace
@@ -454,7 +423,6 @@ namespace
 	EVP_MD_CTX *ctx;
 
 	assert (md_type < CRYPT_MD_COUNT);
-	assert (crypt_md_ctx_poolable (md_type));
 
 	ctx = m_ctx[md_type];
 	if (ctx == NULL)
@@ -707,17 +675,10 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
     }
 
   /* The PKCS7 padding is added by crypt_default_encrypt() and removed below, so EVP
-   * must not remove it as well.
-   *
-   * Up to OpenSSL 1.1.1 leaving EVP padding on happened to work: EVP_DecryptUpdate()
-   * wrote the last block into the output buffer and only reported a shorter length,
-   * so the padding bytes that the check below reads were present. Since OpenSSL 3.0 a
-   * provider based cipher keeps that block inside the provider context instead, and
-   * EVP_DecryptFinal() strips the padding, so the tail of dest is never written and
-   * the check below would read uninitialized bytes.
-   *
-   * Turning EVP padding off makes Update write all src_len bytes and Final write
-   * none, on both versions. */
+   * must not remove it as well. Leaving it on worked up to OpenSSL 1.1.1, which wrote
+   * the held back block into the output buffer anyway, but a 3.x provider keeps that
+   * block to itself, so the tail of dest stayed unwritten and the check below read
+   * uninitialized bytes. */
   if (EVP_CIPHER_CTX_set_padding (context.get (), 0) != 1)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_INIT_ERR]);
@@ -749,9 +710,8 @@ crypt_default_decrypt (THREAD_ENTRY * thread_p, const char *src, int src_len, co
   /* PKCS7. The padding is the one crypt_default_encrypt() added, not OpenSSL's. */
   if (src_len != 0)
     {
-      /* Read the padding byte unsigned: as a signed char, 0x80 and above would come
-       * out negative, pass the range check below and end up as a negative pad_len,
-       * which would make dest_len larger than the buffer. */
+      /* Unsigned: as a signed char, 0x80 and above would pass the range check and
+       * give a negative pad_len, making dest_len larger than the buffer. */
       pad = (unsigned char) dest[src_len - 1];
       if (pad == 0 || pad > block_len)
 	{
@@ -809,12 +769,9 @@ crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **des
  *   need_hash_len(in):
  *   dest_p(out)
  *   dest_len_p(out):
- *   reuse_ctx(in): false when src is a secret, such as a plaintext password. For the
- *                  384 and 512 bit digests a reused context keeps the tail of src
- *                  until the next digest on the same thread, while a context per call
- *                  is cleansed right away. Those two are not pooled in any case, so
- *                  this is a second line of defence that does not depend on an
- *                  OpenSSL internal, see crypt_md_ctx_poolable().
+ *   reuse_ctx(in): false when src is a secret, such as a plaintext password. With the
+ *                  384 and 512 bit digests a pooled context holds the tail of src
+ *                  until the next digest on that thread; see the context pool above.
  * Note:
  */
 int
@@ -887,10 +844,6 @@ crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_
       assert (false);
       return ER_FAILED;
     }
-
-  /* The caller can only turn reuse off, never on: SHA-384 and SHA-512 leave the input
-   * in the context, so they are never pooled whatever the caller asked for. */
-  reuse_ctx = reuse_ctx && crypt_md_ctx_poolable (md_type);
 
   // *INDENT-OFF*
   /* Only set when reuse_ctx is false: the pooled context must not be freed here. */

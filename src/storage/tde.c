@@ -1116,16 +1116,12 @@ tde_decrypt_log_page (const LOG_PAGE * logpage_cipher, TDE_ALGORITHM tde_algo, L
 
 /*
  * TDE encrypts every flushed data page and log page, so the cipher context is kept
- * per thread and only re-keyed, instead of being allocated and bound per call.
- * Passing NULL as the cipher on re-init matters: a non-NULL cipher makes
- * EVP_EncryptInit_ex() reset the context and rebuild the algorithm context, which is
- * most of what the per call path costs. That holds for both OpenSSL 1.1.1, where the
- * cipher data is reallocated, and 3.x, where the provider context is freed and built
- * again; the output is byte identical to a context per call either way.
+ * per thread and only re-keyed instead of being allocated per call. The cipher must
+ * be NULL on re-init: a non-NULL one makes Init reset the context and rebuild the
+ * algorithm context, which is most of what the per call path costs.
  *
- * One slot per (algorithm, direction): the short re-init path only holds while the
- * algorithm stays the same, a thread may serve both AES and ARIA volumes, and a
- * context is bound to one direction. The contexts are freed when the thread exits.
+ * One slot per (algorithm, direction), because the short re-init path only holds
+ * while both stay the same. The contexts are freed when the thread exits.
  */
 // *INDENT-OFF*
 namespace
@@ -1215,9 +1211,8 @@ namespace
  * key (in)             : key
  * nonce (in)           : nonce, which has to be unique in time and space
  * cipher_buffer (out)  : Encrypted data
- * reuse_ctx (in)       : Use the per thread cipher context. It keeps the key in the
- *                        context between calls, so it is only for the page paths,
- *                        never for the paths that pass the master key.
+ * reuse_ctx (in)       : Use the per thread cipher context. It holds the key between
+ *                        calls, so it is for the page paths only, not the key paths.
  *
  * plain_buffer and cipher_buffer has more space than length
  */
@@ -1239,7 +1234,7 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
 
   if (reuse_ctx)
     {
-      // Page paths: a per thread context, re-keyed on every call.
+      // Page paths: a per thread context, re-keyed every call.
       ctx = tde_Cipher_ctx_pool.init (tde_algo, true, key, nonce);
       if (ctx == NULL)
 	{
@@ -1248,8 +1243,7 @@ tde_encrypt_internal (const unsigned char *plain_buffer, int length, TDE_ALGORIT
     }
   else
     {
-      // Key paths: the key is the master key, which must not be left behind in a
-      // long living context, so the context is allocated and freed per call.
+      // Key paths: the master key must not stay in a long living context.
       cipher_type = crypt_get_cipher (tde_algo == TDE_ALGORITHM_AES
 				      ? CRYPT_CIPHER_AES_256_CTR : CRYPT_CIPHER_ARIA_256_CTR);
       if (cipher_type == NULL || (ctx = EVP_CIPHER_CTX_new ()) == NULL)
@@ -1316,9 +1310,8 @@ exit:
  * key (in)             : key
  * nonce (in)           : nonce used during encryption
  * plain_buffer (out)   : Decrypted data
- * reuse_ctx (in)       : Use the per thread cipher context. It keeps the key in the
- *                        context between calls, so it is only for the page paths,
- *                        never for the paths that pass the master key.
+ * reuse_ctx (in)       : Use the per thread cipher context. It holds the key between
+ *                        calls, so it is for the page paths only, not the key paths.
  *
  * plain_buffer and cipher_buffer has more space than length
  */
@@ -1340,7 +1333,7 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
 
   if (reuse_ctx)
     {
-      // Page paths: a per thread context, re-keyed on every call.
+      // Page paths: a per thread context, re-keyed every call.
       ctx = tde_Cipher_ctx_pool.init (tde_algo, false, key, nonce);
       if (ctx == NULL)
 	{
@@ -1349,8 +1342,7 @@ tde_decrypt_internal (const unsigned char *cipher_buffer, int length, TDE_ALGORI
     }
   else
     {
-      // Key paths: the key is the master key, which must not be left behind in a
-      // long living context, so the context is allocated and freed per call.
+      // Key paths: the master key must not stay in a long living context.
       cipher_type = crypt_get_cipher (tde_algo == TDE_ALGORITHM_AES
 				      ? CRYPT_CIPHER_AES_256_CTR : CRYPT_CIPHER_ARIA_256_CTR);
       if (cipher_type == NULL || (ctx = EVP_CIPHER_CTX_new ()) == NULL)

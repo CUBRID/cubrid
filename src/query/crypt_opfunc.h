@@ -39,9 +39,7 @@ typedef enum
   DES_ECB
 } CIPHER_ENCRYPTION_TYPE;
 
-/* Digest and cipher algorithms that are prefetched once per process.
- * See crypt_get_md() in crypt_opfunc.c for why the fetch is hoisted out of the
- * per-call path. */
+/* Algorithms prefetched once per process, see crypt_get_md() in crypt_opfunc.c. */
 typedef enum
 {
   CRYPT_MD_MD5 = 0,
@@ -62,9 +60,8 @@ typedef enum
   CRYPT_CIPHER_COUNT
 } CRYPT_CIPHER_TYPE;
 
-/* Opaque OpenSSL handles: the callers that use the returned pointers include
- * <openssl/evp.h> themselves, so this header does not pull the OpenSSL headers
- * into every file that includes it. */
+/* Opaque OpenSSL handles, so this header does not pull in <openssl/evp.h>. The
+ * callers that dereference them include it themselves. */
 struct evp_md_st;
 struct evp_cipher_st;
 
