@@ -12444,6 +12444,7 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 {
   const char *accepted = NULL;
   char errmsg[256];
+  PT_NODE *cond;
   bool driving_pred;
   int num_set_subq;
 
@@ -12473,7 +12474,15 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
       break;
 
     case PT_UPDATE:
-      if (!pt_dblink_update_where_is_inscope (node, &driving_pred))
+      /* Overlap first, asked the way the gate asks it -- can_overlap reads the expression union, so the
+       * pushable check has to come before it. Naming the clause here would read as already satisfied: the
+       * statement does have a single local subquery predicate. */
+      cond = pt_dblink_dml_search_cond (node);
+      if (pt_dblink_dml_is_pushable_pred (cond) && pt_dblink_dml_pred_targets_can_overlap (cond))
+	{
+	  accepted = "IN, = ANY or a scalar comparison; the other quantified forms would update a row twice";
+	}
+      else if (!pt_dblink_update_where_is_inscope (node, &driving_pred))
 	{
 	  accepted = "a single uncorrelated WHERE subquery, or no WHERE";
 	}
@@ -12505,6 +12514,8 @@ static bool
 pt_dblink_dml_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * upd_spec,
 			   int sub_sel_server_cnt, int local_upd, int remote_upd)
 {
+  bool shape_driving_pred;	/* unused -- the gate below is asked for its verdict, not its track */
+
   /* Same-server mixed sink subquery: convert the embedded remote specs first. */
   if (pt_dblink_dml_is_local_subq_sink (snl) && sub_sel_server_cnt > 0)
     {
@@ -12533,10 +12544,14 @@ pt_dblink_dml_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_
 	}
     }
 
-  /* Decline diagnostics ahead of the generic catch-all. Only DELETE and UPDATE reach the body: the accessor
-   * hands back NULL for every other statement kind, and a NULL predicate is out of scope. */
+  /* Decline diagnostics ahead of the generic catch-all, each kind asking its own shape gate -- a statement
+   * its gate already refused must not be handed a decline reason that does not apply to it. Only DELETE and
+   * UPDATE reach the body: for any other kind the accessor hands back NULL and the shared check turns it
+   * away. The UPDATE gate takes a NULL WHERE, so it is the shared side that draws that line. */
   if (remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
-      && pt_dblink_dml_where_is_inscope (pt_dblink_dml_search_cond (node))
+      && ((node->node_type == PT_UPDATE)
+	  ? pt_dblink_update_where_is_inscope (node, &shape_driving_pred)
+	  : pt_dblink_dml_where_is_inscope (pt_dblink_dml_search_cond (node)))
       && pt_dblink_dml_reject_declined (parser, node, upd_spec))
     {
       return true;
