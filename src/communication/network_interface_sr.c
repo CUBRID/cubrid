@@ -10921,18 +10921,14 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
      __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
 
-  error_code =
-    cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
-			   extraction_classoids, num_extraction_class);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
   /* Only now, fully validated, do we affect *other* connections: close an
    * incumbent session and take cdc_Gl.conn (used by cdc_check_session_owner()
    * for every other CDC opcode). Doing this earlier would let a request that
-   * fails a later check still kill a running consumer for nothing. */
+   * fails a later check still kill a running consumer for nothing.
+   *
+   * The producer has to be paused before cdc_set_configuration() below, which
+   * frees the extraction filter the producer reads in cdc_is_filtered_user()
+   * and cdc_is_filtered_class(). */
   if (cdc_Gl.conn.fd != -1)
     {
       SOCKET prev_fd = cdc_Gl.conn.fd;
@@ -10968,6 +10964,14 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	}
 
       LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
+    }
+
+  error_code =
+    cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
+			   extraction_classoids, num_extraction_class);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
     }
 
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
