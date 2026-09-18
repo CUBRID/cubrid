@@ -191,7 +191,6 @@ static PT_NODE *get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * nod
 static void get_rank (QO_ENV * env);
 static PT_NODE *get_referenced_attrs (PT_NODE * entity);
 static bool expr_is_mergable (PT_NODE * pt_expr);
-static bool qo_is_equi_join_term (QO_TERM * term);
 static void add_hint (QO_ENV * env, PT_NODE * tree);
 static void add_using_index (QO_ENV * env, PT_NODE * using_index);
 static int get_opcode_rank (PT_OP_TYPE opcode);
@@ -1998,7 +1997,7 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     case PT_JOIN_SEMI:		/* semi/anti: structurally inner, but RHS frozen under the preceding (outer) side */
     case PT_JOIN_ANTI:
       QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-      QO_ADD_OUTER_DEP_SET (on_node, p_node);
+      QO_ADD_SEMI_ANTI_DEP_SET (on_node, p_node);
       break;
     default:
       /* this should not happen */
@@ -2745,7 +2744,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		{
 		  /* structurally inner, but freeze RHS under its outer antecedent; LHS stays reorderable */
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
-		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
+		  QO_ADD_SEMI_ANTI_DEP_SET (on_node, head_node);
 		}
 	    }
 	  else
@@ -2807,8 +2806,7 @@ wrapup:
 		    t_node = QO_TERM_TAIL (t_term);
 
 		    /* apply ordered dependency to the tail node */
-		    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)), &(QO_NODE_OUTER_DEP_SET (t_node)));
-		    bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)), QO_NODE_IDX (t_node));
+		    QO_ADD_OUTER_DEP_SET (tail_node, t_node);
 		  }
 	      }
 	  }
@@ -2827,8 +2825,7 @@ wrapup:
 	{
 	  assert (QO_TERM_CLASS (term) == QO_TC_PATH);
 
-	  bitset_union (&(QO_NODE_OUTER_DEP_SET (tail_node)), &(QO_NODE_OUTER_DEP_SET (head_node)));
-	  bitset_add (&(QO_NODE_OUTER_DEP_SET (tail_node)), QO_NODE_IDX (head_node));
+	  QO_ADD_OUTER_DEP_SET (tail_node, head_node);
 	}
       break;
 
@@ -3047,7 +3044,7 @@ expr_is_mergable (PT_NODE * pt_expr)
  *   return: bool
  *   term(in):
  */
-static bool
+bool
 qo_is_equi_join_term (QO_TERM * term)
 {
   PT_NODE *pt_expr;
@@ -6590,7 +6587,8 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  continue;		/* no need to classify */
 	}
 
-      /* traverse outer-dep nodeset */
+      /* Predicate placement follows both kinds of join dependency in the original graph, regardless of
+       * whether the planner later reads a SEMI node with DISTINCT. */
 
       QO_ASSERT (env, nidx_self >= 0);
 
@@ -6608,7 +6606,8 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    {
 	      node = QO_ENV_NODE (env, n);
 
-	      if (bitset_intersects (&dep_set, &(QO_NODE_OUTER_DEP_SET (node))))
+	      if (bitset_intersects (&dep_set, &(QO_NODE_OUTER_DEP_SET (node)))
+		  || bitset_intersects (&dep_set, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
 		{
 		  bitset_add (&dep_set, QO_NODE_IDX (node));
 		}
@@ -6665,7 +6664,7 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  continue;		/* go ahead */
 	}
 
-      /* at here, found non-sargable node in outer-dep nodeset */
+      /* Found a non-sargable node among the join dependencies. */
 
       if (QO_ON_COND_TERM (term))
 	{
@@ -8773,6 +8772,7 @@ qo_node_clear (QO_ENV * env, int idx)
   bitset_init (&(QO_NODE_SUBQUERIES (node)), env);
   bitset_init (&(QO_NODE_SEGS (node)), env);
   bitset_init (&(QO_NODE_OUTER_DEP_SET (node)), env);
+  bitset_init (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), env);
 
   QO_NODE_HINT (node) = PT_HINT_NONE;
 }
@@ -8791,6 +8791,7 @@ qo_node_free (QO_NODE * node)
   bitset_delset (&(QO_NODE_SEGS (node)));
   bitset_delset (&(QO_NODE_SUBQUERIES (node)));
   bitset_delset (&(QO_NODE_OUTER_DEP_SET (node)));
+  bitset_delset (&(QO_NODE_SEMI_ANTI_DEP_SET (node)));
   qo_free_class_info (QO_NODE_ENV (node), QO_NODE_INFO (node));
   if (QO_NODE_INDEXES (node))
     {
@@ -9127,6 +9128,12 @@ qo_node_dump (QO_NODE * node, FILE * f)
     {
       fputs (" (outer-dep-set ", f);
       bitset_print (&(QO_NODE_OUTER_DEP_SET (node)), f);
+      fputs (")", f);
+    }
+  if (!bitset_is_empty (&(QO_NODE_SEMI_ANTI_DEP_SET (node))))
+    {
+      fputs (" (semi-anti-dep-set ", f);
+      bitset_print (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), f);
       fputs (")", f);
     }
   if (!bitset_is_empty (&(QO_NODE_DEP_SET (node))))
