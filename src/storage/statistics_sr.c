@@ -121,14 +121,6 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
  * xstats_enter_update_gate () - serialize concurrent UPDATE STATISTICS on one class
  *   return: NO_ERROR, or an error code
  *   class_id_p(in): class whose statistics are about to be (re)collected
- *   out_stats_fresh(out): true when another session committed a collection of this class
- *                         while we waited on the gate -- a precondition for the caller to skip
- *                         its own (now redundant) scan / histogram build / store (piggyback).
- *                         The caller must still check that the collection satisfies its options
- *                         (out_stored_fullscan) and that it rebuilt the histograms; see
- *                         do_update_stats ()
- *   out_stored_fullscan(out): the stored statistics_strategy once the gate is granted
- *                             (nonzero: the last collection was a FULLSCAN)
  *
  * Note (CBRD-27369): since CBRD-26959 an UPDATE STATISTICS collects column histograms by
  *   default, writing one _db_histogram catalog row per column and holding those X locks
@@ -144,35 +136,18 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
  *   self-conflicting share-update lock a full statistics collection takes elsewhere; see
  *   database-reference).  See catcls_lock_class_stats_gate ().
  *
- *   Freshness is judged from the _db_class row's cache coherency number (chn), which every
- *   statistics write bumps (catcls_update_class_stats () stores old_chn + 1): a changed chn,
- *   or bookkeeping appearing where there was none, means a concurrent collection COMMITTED
- *   while we waited.  Unlike the second-granular timestamp this also catches two collections
- *   within the same second.  Both probes read the latest committed version (see
- *   catcls_get_class_stats ()), so a holder that rolled back leaves the chn -- and this flag --
- *   unchanged.
- *
- *   A DDL cannot slip into the window and bump that chn itself: the caller holds SCH_S on the
- *   class from its authorization fetch (au_check_class_authorization () / au_fetch_class_force ()
- *   in do_update_stats ()) for the whole wait, so a concurrent SCH_M blocks until the caller's
- *   statement is done.
- *
- *   Fresh class statistics are necessary but not sufficient for the caller to skip its own
- *   collection: the collection we waited for may have been WITH ... NO HISTOGRAM or DROP
- *   HISTOGRAM.  do_update_stats () proves separately that the histograms were rebuilt.
+ *   The session that waited here collects its own statistics once the gate is granted: it
+ *   does not try to prove that the collection it waited for is equivalent to the one it was
+ *   asked for and skip its own (the synchronous contract of an explicit UPDATE STATISTICS is
+ *   that its own collection is committed when it returns, as with PostgreSQL's ANALYZE).
  */
 int
-xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_stats_fresh, int *out_stored_fullscan)
+xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p)
 {
   char *class_name = NULL;
-  int chn_before = 0, chn_after = 0, fullscan_before = 0, fullscan_after = 0;
-  bool found_before = false, found_after = false, can_probe = true;
   int error_code = NO_ERROR;
 
-  assert (class_id_p != NULL && out_stats_fresh != NULL && out_stored_fullscan != NULL);
-
-  *out_stats_fresh = false;
-  *out_stored_fullscan = 0;
+  assert (class_id_p != NULL);
 
   /* the gate resource is keyed by class name (its _db_class row); failing to resolve it is fatal */
   if (heap_get_class_name (thread_p, class_id_p, &class_name) != NO_ERROR || class_name == NULL)
@@ -181,31 +156,7 @@ xstats_enter_update_gate (THREAD_ENTRY * thread_p, OID * class_id_p, bool * out_
       goto end;
     }
 
-  /* bookkeeping before we wait; a read failure only disables the piggyback shortcut */
-  if (catcls_get_class_stats (thread_p, class_name, &chn_before, &fullscan_before, &found_before) != NO_ERROR)
-    {
-      er_clear ();
-      can_probe = false;
-    }
-
   error_code = catcls_lock_class_stats_gate (thread_p, class_name);
-  if (error_code != NO_ERROR)
-    {
-      goto end;
-    }
-
-  if (can_probe)
-    {
-      if (catcls_get_class_stats (thread_p, class_name, &chn_after, &fullscan_after, &found_after) == NO_ERROR)
-	{
-	  *out_stats_fresh = found_after && (!found_before || chn_after != chn_before);
-	  *out_stored_fullscan = fullscan_after;
-	}
-      else
-	{
-	  er_clear ();
-	}
-    }
 
 end:
   if (class_name != NULL)

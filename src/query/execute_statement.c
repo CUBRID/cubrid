@@ -95,7 +95,6 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
-#include "histogram_cl.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4926,78 +4925,18 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (class_type == SM_CLASS_CT)
 	    {
 	      bool stats_updated = false;
-	      bool stats_fresh = false;
-	      int stored_fullscan = 0;
-	      int *histogram_generation = NULL;
-	      int histogram_generation_count = 0;
 
 	      /* CBRD-27369: serialize concurrent UPDATE STATISTICS on this class through a
 	       * per-class gate held to commit, so at most one session at a time writes its
 	       * statistics and _db_histogram rows (concurrent collectors otherwise deadlock-
-	       * storm on those catalog rows).  When another session already refreshed the
-	       * statistics AND the histograms while we waited, skip our now-redundant
-	       * collection (piggyback).  Read the histogram generation before we start
-	       * waiting, so it can be compared with the one the gate hands us. */
-	      if (!statement->info.update_stats.drop_histogram && !statement->info.update_stats.no_histogram)
-		{
-		  if (stats_get_histogram_generation (class_mop, &histogram_generation,
-						      &histogram_generation_count) != NO_ERROR)
-		    {
-		      /* a probe failure only costs the piggyback shortcut */
-		      er_clear ();
-		      histogram_generation = NULL;
-		      histogram_generation_count = 0;
-		    }
-		}
-
-	      error = stats_enter_update_gate (class_mop, &stats_fresh, &stored_fullscan);
+	       * storm on those catalog rows). */
+	      error = stats_enter_update_gate (class_mop);
 	      if (error != NO_ERROR)
 		{
-		  free_and_init (histogram_generation);
 		  return error;
 		}
-	      /* piggyback only on a collection equivalent to (or stronger than) this request: never for
-	       * explicit BUCKETS / RANDOM SEED (their result cannot be checked against what was stored),
-	       * a WITH FULLSCAN request only when the stored collection was itself a full scan, and a
-	       * plain (sampling) request on any collection.  The bookkeeping records no bucket count, so a
-	       * default-bucket request does piggyback on a collection made WITH n BUCKETS by another
-	       * session and keeps that bucket count (a valid histogram, only coarser or finer than the
-	       * default); a request that cares states its BUCKETS and collects itself. */
-	      if (stats_fresh && !statement->info.update_stats.drop_histogram
-		  && !statement->info.update_stats.no_histogram && statement->info.update_stats.bucket_count <= 0
-		  && !statement->info.update_stats.random_seed
-		  && (!statement->info.update_stats.with_fullscan || stored_fullscan))
-		{
-		  /* ... and only when that collection rebuilt the histograms as well: fresh class
-		   * statistics alone can come from a WITH ... NO HISTOGRAM (histograms left stale) or a
-		   * DROP HISTOGRAM (none left), neither of which satisfies this request */
-		  bool histograms_rebuilt = false;
 
-		  if (stats_histograms_rebuilt_since (class_mop, histogram_generation, histogram_generation_count,
-						      &histograms_rebuilt) != NO_ERROR)
-		    {
-		      er_clear ();
-		      histograms_rebuilt = false;
-		    }
-		  stats_updated = histograms_rebuilt;
-		}
-	      free_and_init (histogram_generation);
-
-	      if (stats_updated)
-		{
-		  /* the collection we piggyback on ran in another session, so nothing here refreshed THIS
-		   * session's cached statistics / histogram of the class -- sm_update_statistics (), which
-		   * normally does, is skipped below.  Drop them: the next compile's refetch is keyed by a
-		   * second-granular time_stamp (xstats_get_statistics_from_server ()), so a copy cached in the
-		   * same second as the other session's commit would otherwise be taken as current. */
-		  error = sm_decache_statistics (class_mop);
-		  if (error != NO_ERROR)
-		    {
-		      return error;
-		    }
-		}
-
-	      if (!stats_updated && statement->info.update_stats.drop_histogram)
+	      if (statement->info.update_stats.drop_histogram)
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
@@ -5025,7 +4964,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		  /* the histograms are gone; fall through to the plain statistics update below */
 		}
-	      else if (!stats_updated && !statement->info.update_stats.no_histogram)
+	      else if (!statement->info.update_stats.no_histogram)
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;

@@ -4486,18 +4486,14 @@ sboot_notify_ha_log_applier_state (THREAD_ENTRY *thread_p, unsigned int rid, cha
  *   request(in):
  *   reqlen(in):
  *
- * NOTE: acquire the per-class UPDATE STATISTICS gate (CBRD-27369) and report whether the
- *       statistics were already refreshed by a concurrent session while we waited.
+ * NOTE: acquire the per-class UPDATE STATISTICS gate (CBRD-27369).
  */
 void
 sqst_enter_update_gate (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error;
   OID classoid;
-  bool stats_fresh = false;
-  int stored_fullscan = 0;
-  char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   if (reqlen < OR_OID_SIZE)
@@ -4510,16 +4506,14 @@ sqst_enter_update_gate (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   (void) or_unpack_oid (request, &classoid);
 
-  error = xstats_enter_update_gate (thread_p, &classoid, &stats_fresh, &stored_fullscan);
+  error = xstats_enter_update_gate (thread_p, &classoid);
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
     }
 
 send:
-  ptr = or_pack_int (reply, error);
-  ptr = or_pack_int (ptr, stats_fresh ? 1 : 0);
-  ptr = or_pack_int (ptr, stored_fullscan);
+  (void) or_pack_int (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 

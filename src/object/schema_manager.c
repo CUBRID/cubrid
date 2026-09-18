@@ -4259,50 +4259,6 @@ sm_get_statistics_force (MOP classop)
 }
 
 /*
- * sm_decache_statistics () - drop this session's cached statistics and histogram of a class
- *   return: NO_ERROR on success, non-zero for ERROR
- *   classop(in): class object
- *
- * NOTE: the next sm_get_class_with_statistics () then refetches both from the server
- *       unconditionally (NULL cache).  sm_update_statistics () does this as part of its own
- *       refresh; this entry point is for the case where the statistics were refreshed by ANOTHER
- *       session and this one only waited for it (UPDATE STATISTICS piggyback, CBRD-27369) -- the
- *       server's time_stamp check is second-granular, so a copy cached in the same second as that
- *       commit would otherwise survive as "current".
- */
-int
-sm_decache_statistics (MOP classop)
-{
-  SM_CLASS *class_ = NULL;
-  int error;
-
-  if (classop == NULL || classop->object == NULL)
-    {
-      /* the class itself is not cached: there is nothing to drop */
-      return NO_ERROR;
-    }
-
-  error = au_fetch_class_force (classop, &class_, AU_FETCH_READ);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (class_->stats != NULL)
-    {
-      stats_free_statistics (class_->stats);
-      class_->stats = NULL;
-    }
-  if (class_->histogram != NULL)
-    {
-      stats_free_histogram_and_init (class_->histogram);
-      class_->histogram = NULL;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * sm_update_statistics () - Update statistics on the server for the
  *    particular class or index. When finished, fetch the new statistics and
  *    cache them with the class.

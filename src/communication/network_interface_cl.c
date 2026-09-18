@@ -6146,28 +6146,17 @@ end:
  * stats_enter_update_gate () - client stub for xstats_enter_update_gate ()
  *   return: NO_ERROR, or an error code
  *   classop(in): class about to have its statistics (re)collected
- *   out_stats_fresh(out): true if a concurrent session committed a statistics refresh of this
- *                         class while we waited on the per-class gate (a precondition for the
- *                         caller to skip its own collection, not a sufficient one -- see
- *                         do_update_stats ())
- *   out_stored_fullscan(out): the stored statistics_strategy after the gate was granted
  */
 int
-stats_enter_update_gate (MOP classop, bool * out_stats_fresh, int *out_stored_fullscan)
+stats_enter_update_gate (MOP classop)
 {
 #if defined(CS_MODE)
   int error = ER_NET_CLIENT_DATA_RECEIVE;
   int req_error;
-  int stats_fresh = 0;
-  int stored_fullscan = 0;
-  char *ptr;
   OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
   char *request = OR_ALIGNED_BUF_START (a_request);
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-  *out_stats_fresh = false;
-  *out_stored_fullscan = 0;
 
   (void) or_pack_oid (request, WS_OID (classop));
 
@@ -6176,29 +6165,17 @@ stats_enter_update_gate (MOP classop, bool * out_stats_fresh, int *out_stored_fu
 			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      ptr = or_unpack_int (reply, &error);
-      ptr = or_unpack_int (ptr, &stats_fresh);
-      ptr = or_unpack_int (ptr, &stored_fullscan);
-      *out_stats_fresh = (stats_fresh != 0);
-      *out_stored_fullscan = stored_fullscan;
+      (void) or_unpack_int (reply, &error);
     }
 
   return error;
 #else /* CS_MODE */
   int error;
-  bool stats_fresh = false;
-  int stored_fullscan = 0;
   THREAD_ENTRY *thread_p;
 
-  *out_stats_fresh = false;
-  *out_stored_fullscan = 0;
-
   thread_p = enter_server ();
-  error = xstats_enter_update_gate (thread_p, WS_OID (classop), &stats_fresh, &stored_fullscan);
+  error = xstats_enter_update_gate (thread_p, WS_OID (classop));
   exit_server (*thread_p);
-
-  *out_stats_fresh = stats_fresh;
-  *out_stored_fullscan = stored_fullscan;
 
   return error;
 #endif /* !CS_MODE */
