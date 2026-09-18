@@ -2975,7 +2975,7 @@ jobs:
             done < "$list"
 
             if [ "$left" -gt 0 ]; then
-              echo "_$left more cases failed. Their logs are in each shard's \`test-shell.xml\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
+              echo "_$left more cases failed. Their logs are in each shard's \`$xml_name\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
             fi
             echo "wrote $((i - left)) of $i case logs, $used bytes"
           done
