@@ -4656,7 +4656,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
    */
   db_make_null (&default_value);
   classobj_initialize_default_expr (&default_expr);
-  if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
+  if (new_default_value == NULL && new_default_expr->default_expr_text == NULL)
     {
       pr_clone_value (&(*found_att)->default_value.value, &default_value);
 
@@ -4665,7 +4665,9 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 	  new_default_value = &default_value;
 	}
 
-      if ((*found_att)->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+      /* no new DEFAULT clause: an expression DEFAULT keeps its text and streams (the value alone would
+       * freeze a residual to its DDL-time snapshot) */
+      if ((*found_att)->default_value.default_expr.default_expr_text != NULL)
 	{
 	  error = classobj_copy_default_expr (&default_expr, &(*found_att)->default_value.default_expr);
 	  if (error != NO_ERROR)
@@ -4678,7 +4680,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
     }
 
   is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
-  if (new_default_value != NULL || (new_default_expr != NULL && new_default_expr->default_expr_type != DB_DEFAULT_NONE))
+  if (new_default_value != NULL || (new_default_expr != NULL && new_default_expr->default_expr_text != NULL))
     {
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error = smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name), is_class_attr, new_default_value,
