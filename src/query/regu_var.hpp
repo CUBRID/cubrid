@@ -121,6 +121,38 @@ struct valptr_list_node
   REGU_VARIABLE_LIST valptrp;	/* value pointer list */
   int valptr_cnt;		/* value count */
 
+  /* compiled evaluation program covering the list's expressions (expr_compile.h).
+   * Server-side runtime state, never serialized; built lazily on the first evaluated
+   * row and owned by the XASL clone.  Columns the compiler cannot cover keep their
+   * per-column interpreted fetch (their eval_prog_idx entry is -1).
+   *
+   * Concurrency contract: these fields (and the program they point to) are written with
+   * plain, non-atomic stores.  That is safe only because an XASL clone is checked out to
+   * exactly one executing thread at a time (the xcache clone mutex publishes the stores
+   * when the clone changes hands).  Nothing here tolerates two threads sharing one clone
+   * -- do not add such a caller without making this state per-thread or synchronized. */
+  void *eval_prog;		/* EXPR_PROG * */
+  int *eval_prog_idx;		/* program root index per column, or -1 */
+  int eval_prog_state;		/* 0 = untried, 1 = active, 2 = disabled */
+  /* rows this list has waited for the plan's DB_TYPE_VARIABLE domains to be resolved by the
+   * interpreted path before compiling (expr_compile.h, EXPR_DOMAIN_DEFER_ROWS) */
+  int eval_prog_defer;
+  /* a covered column whose plan domain is DB_TYPE_VARIABLE exists, so the program must
+   * resolve that domain from its own result once per execution (the clone restores
+   * DB_TYPE_VARIABLE at every execution end) */
+  bool eval_prog_dom_any;
+  /* the execution (query id) whose domains are already resolved */
+  unsigned long long eval_prog_dom_stamp;
+  /* the program already holds the current row: set when the tuple-descriptor pass asks its
+   * caller to retry through qdata_copy_valptr_list_to_tuple (), consumed by the very next
+   * use of the list so that copy does not evaluate the same row a second time (see
+   * qdata_valptr_prog_ensure ()) */
+  bool eval_prog_row_ready;
+  /* the scan this list projects (ACCESS_SPEC_TYPE *) when it is the node's only heap scan,
+   * so the program may read values the scan's compiled data filter computes; NULL otherwise.
+   * Set by qexec_set_expr_share_spec () before the first row; runtime only. */
+  void *eval_prog_share_spec;
+
   valptr_list_node () = default;
 };
 
