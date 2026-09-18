@@ -400,11 +400,33 @@ crypt_get_cipher (CRYPT_CIPHER_TYPE cipher_type)
  * EVP_DigestFinal_ex() has to be used with a pooled context. EVP_DigestFinal() runs
  * EVP_MD_CTX_reset(), which frees the algorithm context and defeats the reuse.
  *
- * A pooled context keeps the tail of the last message until the next Init on that
- * thread, because the provider only cleanses the context when it is freed. Callers
- * that hash a secret must therefore not reuse: see the reuse_ctx argument of
- * crypt_sha_functions().
+ * Not every algorithm may be pooled, see crypt_md_ctx_poolable().
  */
+
+/*
+ * crypt_md_ctx_poolable() - Can a digest context for md_type be kept between calls
+ *                           without leaving the input behind?
+ *
+ *   MD5, SHA-1, SHA-224 and SHA-256 are built from md32_common.h, whose HASH_FINAL()
+ *   ends with OPENSSL_cleanse (p, HASH_CBLOCK), so no part of the message survives
+ *   the digest. SHA-384 and SHA-512 are built from crypto/sha/sha512.c, whose
+ *   SHA512_Final() has no such cleanse: the tail of the last message stays in the
+ *   context until the next Init overwrites it. Verified on 1.1.1w and on 3.5.7 by
+ *   scanning the context right after Final; the input turned up at offset 80 for
+ *   SHA-384 and SHA-512 only.
+ *
+ *   Those two are therefore never pooled. That costs nothing that matters here: SQL
+ *   SHA2() defaults to 256, and the 384 and 512 variants are not a per row path.
+ *
+ *   This rests on an OpenSSL implementation detail, not on a documented contract.
+ *   Re-check it whenever the bundled OpenSSL is upgraded.
+ */
+static bool
+crypt_md_ctx_poolable (CRYPT_MD_TYPE md_type)
+{
+  return md_type != CRYPT_MD_SHA384 && md_type != CRYPT_MD_SHA512;
+}
+
 // *INDENT-OFF*
 namespace
 {
@@ -432,6 +454,7 @@ namespace
 	EVP_MD_CTX *ctx;
 
 	assert (md_type < CRYPT_MD_COUNT);
+	assert (crypt_md_ctx_poolable (md_type));
 
 	ctx = m_ctx[md_type];
 	if (ctx == NULL)
@@ -786,9 +809,12 @@ crypt_sha_one (THREAD_ENTRY * thread_p, const char *src, int src_len, char **des
  *   need_hash_len(in):
  *   dest_p(out)
  *   dest_len_p(out):
- *   reuse_ctx(in): false when src is a secret, such as a plaintext password. A reused
- *                  context keeps the tail of src until the next digest on the same
- *                  thread, while a context per call is cleansed right away.
+ *   reuse_ctx(in): false when src is a secret, such as a plaintext password. For the
+ *                  384 and 512 bit digests a reused context keeps the tail of src
+ *                  until the next digest on the same thread, while a context per call
+ *                  is cleansed right away. Those two are not pooled in any case, so
+ *                  this is a second line of defence that does not depend on an
+ *                  OpenSSL internal, see crypt_md_ctx_poolable().
  * Note:
  */
 int
@@ -861,6 +887,10 @@ crypt_sha_functions (THREAD_ENTRY * thread_p, const char *src, int src_len, SHA_
       assert (false);
       return ER_FAILED;
     }
+
+  /* The caller can only turn reuse off, never on: SHA-384 and SHA-512 leave the input
+   * in the context, so they are never pooled whatever the caller asked for. */
+  reuse_ctx = reuse_ctx && crypt_md_ctx_poolable (md_type);
 
   // *INDENT-OFF*
   /* Only set when reuse_ctx is false: the pooled context must not be freed here. */
