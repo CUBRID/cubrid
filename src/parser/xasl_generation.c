@@ -1048,43 +1048,13 @@ pt_add_pseudocolumns_placeholders (PARSER_CONTEXT * parser, OUTPTR_LIST * outptr
       regu_list_pc->value.value.dbvalptr = NULL;
     }
 
-  /* add string placeholder for computing node's path from parent */
+  /* add LEVEL placeholder */
 
   outptr_list->valptr_cnt++;
   if (regu_list->next)
     {
       regu_list = regu_list->next;
     }
-
-  regu_alloc (regu_list_pc);
-  if (regu_list_pc == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  regu_list_pc->next = NULL;
-  regu_list_pc->value.type = TYPE_CONSTANT;
-  regu_list_pc->value.domain = &tp_String_domain;
-  if (alloc_vals)
-    {
-      regu_alloc (regu_list_pc->value.value.dbvalptr);
-      if (!regu_list_pc->value.value.dbvalptr)
-	{
-	  return ER_FAILED;
-	}
-      pt_register_orphan_db_value (parser, regu_list_pc->value.value.dbvalptr);
-    }
-  else
-    {
-      regu_list_pc->value.value.dbvalptr = NULL;
-    }
-
-  regu_list->next = regu_list_pc;
-
-  /* add LEVEL placeholder */
-
-  outptr_list->valptr_cnt++;
-  regu_list = regu_list->next;
 
   regu_alloc (regu_list_pc);
   if (regu_list_pc == NULL)
