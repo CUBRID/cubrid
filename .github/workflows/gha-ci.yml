@@ -161,7 +161,9 @@ env:
   CI_ROOT: /home/gha-ci
   CI_BUILD_ROOT: /home/gha-ci/builds
   TIMINGS: /home/gha-ci/timings/shell.tsv
-  STAMPS: /home/gha-ci/runs/${{ github.run_id }}/stamps
+  # Per attempt: run_id does not change on a re-run, so attempt 2 would read the
+  # stamps attempt 1 left and subtract times taken in different attempts.
+  STAMPS: /home/gha-ci/runs/${{ github.run_id }}/stamps/${{ github.run_attempt }}
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
   # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
@@ -231,6 +233,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
+      contents: read # a batch child reads its engine commit's date
       pull-requests: read # the head SHA of the commented PR
       actions: read # a re-run reads the source run's jobs to learn which suites failed
     # Only the comment path needs an author check -- it is the one event anyone with
@@ -256,6 +259,7 @@ jobs:
       rerun_from: ${{ steps.g.outputs.rerun_from }}
       sabotage: ${{ steps.g.outputs.sabotage }}
       testtools: ${{ steps.g.outputs.testtools }} # CTP branch; empty means develop
+      tc_until: ${{ steps.g.outputs.tc_until }} # batch child: testcases as of this instant
     steps:
       - name: Resolve the trigger
         id: g
@@ -340,9 +344,13 @@ jobs:
 
             issue_comment)
               pr="$ISSUE"
+              # The body ends in CRLF, and CR is not an IFS character: left in, it rides
+              # on the last suite word below and fails its case match, so a comment that
+              # used to be ignored would run nothing and say nothing. The newline is why
+              # both grammars end in [[:space:]]*$.
+              req=$(printf '%s' "$BODY" | tr -d '\r')
               # A trailing testtools=<branch> is taken off first, so both grammars below
               # read the request without it and neither regex had to change.
-              req="$BODY"
               if [[ "$req" =~ ^(/run[[:space:]].*)[[:space:]]+testtools=([^[:space:]]+)[[:space:]]*$ ]]; then
                 req="${BASH_REMATCH[1]}"
                 tt="${BASH_REMATCH[2]}"
@@ -374,7 +382,7 @@ jobs:
                 test_run=true
                 echo "comment: re-run the failures of run ${rerun} / suites: $(echo $sel)"
               # Regex must stay identical to comment_trigger.yml: one syntax to learn.
-              elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
+              elif [[ "$req" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}[[:space:]]*$ ]]; then
                 for w in $req; do
                   case "$w" in
                     all)              sel="shell sql medium" ;;
@@ -434,6 +442,22 @@ jobs:
             exit 1
           fi
 
+          # A batch child tests a commit that merged hours ago, so an answer fix merged
+          # since would grade it. Squash merges make the commit date the merge time, the
+          # same property the 48-hour window rests on.
+          tc_until=''
+          if [ "$EV" = workflow_dispatch ] && [ "$IN_NIGHTLY" = true ]; then
+            # Retried like probe_branch below: one blip here costs the commit a night,
+            # because a gate that dies posts no status and the next batch takes it again.
+            for i in 1 2 3; do
+              tc_until=$(gh api "repos/${REPO}/commits/${sha}" --jq '.commit.committer.date') && break
+              sleep $((i * 5))
+            done
+            # Empty would leave plan on the tip, which is the defect itself.
+            [ -n "$tc_until" ] || { echo "::error::no commit date for $sha"; exit 1; }
+            echo "tc pin: testcases as of $tc_until"
+          fi
+
           # Empty on the build-only paths, where plan never runs. jq drops the blank line
           # `printf` leaves behind for an empty selection, so that case yields [].
           suites=$(printf '%s\n' $sel | jq -Rc 'select(length > 0)' | jq -sc .)
@@ -452,6 +476,7 @@ jobs:
           emit rerun_from "$rerun"
           emit sabotage "$sab"
           emit testtools "$tt"
+          emit tc_until "$tc_until"
           echo "resolved: event=$EV test=$test_run suites=$suites namespace=$ns ccache_write=$cache_write status=$post_status"
 
   # One run per develop commit merged since the last batch, so a failure can be read
@@ -508,13 +533,14 @@ jobs:
           while IFS=$'\t' read -r c p t; do parent[$c]="$p"; title[$c]="$t"; done < /tmp/window.tsv
           echo "window: $(wc -l < /tmp/window.tsv) commits on $BRANCH since $since"
 
-          # A pending does not count; that commit still has no verdict.
+          # pending and error are what a run that never judged this commit leaves
+          # behind, so the batch takes it again.
           covered() {
             local body missing
             body=$(gh api "repos/${REPO}/commits/$1/status") || {
               echo "::error::could not read the statuses of $1"; exit 1; }
             missing=$(jq -r --argjson want "$want_ctx" \
-                '[.statuses[] | select(.state != "pending") | .context] as $done
+                '[.statuses[] | select(.state == "success" or .state == "failure") | .context] as $done
                  | ($want - $done) | join(", ")' <<<"$body")
             [ -z "$missing" ]
           }
@@ -789,13 +815,15 @@ jobs:
               rm -rf "$pat" && swept=$((swept + 1))
             done
           }
-          # Staging is dead the moment its run ended, so a day is generous.
+          # Staging is dead the moment its run ended, so a day is generous. The second
+          # testtools glob of each sweep is where runs made before the relayout put the
+          # seed; both carry it until the last of those runs is gone.
           sweep 0 "$CI_BUILD_ROOT"/*/*/*.tmp.* "$CI_BUILD_ROOT"/*/*/*.old.* \
-                  "$CI_ROOT"/runs/*/testtools.tmp.*
+                  "$CI_ROOT"/runs/*/plan/testtools.tmp.* "$CI_ROOT"/runs/*/testtools.tmp.*
           # The CTP seed is what a native "Re-run failed jobs" reads: plan does not run
           # again, so deleting the seed makes every re-run shard die at "no CTP seed".
           # GitHub keeps that button for 30 days; this window is 7 (59MB per run).
-          sweep 7 "$CI_ROOT"/runs/*/testtools
+          sweep 7 "$CI_ROOT"/runs/*/plan/testtools "$CI_ROOT"/runs/*/testtools
           echo "swept: $swept"
 
       - name: 4. Publish, staged then moved in with one rename
@@ -1121,6 +1149,7 @@ jobs:
           GHI_TOKEN: ${{ steps.app-token.outputs.token }}
           INPUT_PR: ${{ needs.gate.outputs.pr }}
           INPUT_TT: ${{ needs.gate.outputs.testtools }}
+          TC_UNTIL: ${{ needs.gate.outputs.tc_until }}
         run: |
           set -eo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
@@ -1223,6 +1252,22 @@ jobs:
 
             # Same command the CircleCI baseline runs on every node.
             export BRANCH_TESTCASES="$TC_BRANCH"
+            # Only the node mirror can answer as of a past instant: the entrypoint fetches
+            # --depth 1, which leaves this copy at one commit. It takes a SHA wherever it
+            # takes a branch -- the shards already align to one that way.
+            if [ -n "$TC_UNTIL" ]; then
+              mirror="$CI_ROOT/repos/${repo}.git"
+              [ -d "$mirror" ] || { echo "::error::no mirror for $repo: $mirror"; exit 1; }
+              # Commit dates cannot tell a quiet repo from a dead refresh. gha-repo-seed
+              # runs `git remote update` hourly, which rewrites FETCH_HEAD either way.
+              refreshed=$(stat -c %Y "$mirror/FETCH_HEAD")
+              [ "$refreshed" -ge "$(date -u -d "$TC_UNTIL" +%s)" ] || {
+                echo "::error::$repo mirror predates the cutoff $TC_UNTIL; gha-repo-seed is behind"; exit 1; }
+              BRANCH_TESTCASES=$(git -C "$mirror" rev-list -1 --first-parent --before="$TC_UNTIL" "$TC_BRANCH")
+              [ -n "$BRANCH_TESTCASES" ] || {
+                echo "::error::$repo has no $TC_BRANCH commit at or before $TC_UNTIL"; exit 1; }
+              echo "[$suite] tc pin  : $BRANCH_TESTCASES ($TC_BRANCH as of $TC_UNTIL)"
+            fi
             # CTP_BRANCH_NAME follows this in the entrypoint, so the CTP logs name it too.
             export BRANCH_TESTTOOLS="$CTP_BRANCH"
             /entrypoint.sh checkout "$suite"
@@ -1319,16 +1364,21 @@ jobs:
             esac
 
             if [ -n "$RERUN_FROM" ]; then
-              src="$CI_ROOT/runs/$RERUN_FROM/$suite/failed.list"
+              src="$CI_ROOT/runs/$RERUN_FROM/$suite/collect/failed.list"
               if [ ! -f "$src" ]; then
-                # Absent for three different reasons; naming the wrong one sends the
-                # reader after the wrong id. results/ is what separates them.
+                # Absent for four different reasons; naming the wrong one sends the
+                # reader after the wrong id. shard/ is what separates them.
                 rd="$CI_ROOT/runs/$RERUN_FROM"
                 if [ ! -d "$rd" ]; then
                   echo "::error::run $RERUN_FROM has no run directory: $rd"
                   echo "  Pruned 7 days after the run, or never a gha-ci run at all."
-                elif [ ! -d "$rd/$suite/results" ]; then
-                  echo "::error::run $RERUN_FROM never ran the $suite suite: no $rd/$suite/results"
+                elif [ -d "$rd/$suite/results" ]; then
+                  # Reachable only until the last run older than the relayout is pruned.
+                  echo "::error::run $RERUN_FROM predates the run directory relayout"
+                  echo "  Its results carry the old names, which nothing here reads."
+                  echo "  Use /run $suite for a full run."
+                elif [ ! -d "$rd/$suite/shard" ]; then
+                  echo "::error::run $RERUN_FROM never ran the $suite suite: no $rd/$suite/shard"
                   echo "  A push run builds only. Take the id from the 'current run' row"
                   echo "  of a run that ran the suite, not from 'built by run'."
                 else
@@ -1339,7 +1389,7 @@ jobs:
               fi
               # CircleCI's rerun runs the same commit as the workflow it came from.
               # gate re-resolves the head, so hold that guarantee here.
-              prev_sha=$(find "$CI_ROOT/runs/$RERUN_FROM/$suite/results" -mindepth 2 -maxdepth 2 \
+              prev_sha=$(find "$CI_ROOT/runs/$RERUN_FROM/$suite/shard" -mindepth 2 -maxdepth 2 \
                 -name build.read -exec awk -F= '/^sha=/ {print $2}' {} + 2>/dev/null | sort -u) \
                 || prev_sha=''
               n_sha=$(printf '%s' "$prev_sha" | grep -c . || :)
@@ -1353,13 +1403,13 @@ jobs:
               srcdir="$CI_ROOT/runs/$RERUN_FROM/$suite"
               vsrc=$(attr "$suite" verdict_src)
               : > /tmp/unrun.list
-              for sf in "$srcdir"/shards/*.list; do
+              for sf in "$srcdir"/plan/shards/*.list; do
                 [ -f "$sf" ] || continue
                 i=$(basename "$sf" .list)
                 # plan.tsv is the only record of how many cases a share covered, and
                 # for a directory share that is not the line count.
-                a=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$srcdir/plan.tsv")
-                st="$srcdir/results/$i/$vsrc"
+                a=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$srcdir/plan/plan.tsv")
+                st="$srcdir/shard/$i/$vsrc"
                 if [ ! -f "$st" ]; then
                   cat "$sf" >> /tmp/unrun.list   # already carries the repo prefix
                   unrun=$((unrun + ${a:-0}))
@@ -1380,12 +1430,12 @@ jobs:
               done
               # A share file that is gone takes its case names with it; plan.tsv is the
               # only remaining record that those cases existed.
-              if [ -f "$srcdir/plan.tsv" ]; then
+              if [ -f "$srcdir/plan/plan.tsv" ]; then
                 while IFS=$'\t' read -r si scnt _; do
                   [ -n "$si" ] || continue
-                  [ -f "$srcdir/shards/$si.list" ] && continue
+                  [ -f "$srcdir/plan/shards/$si.list" ] && continue
                   short=$((short + scnt))
-                done < "$srcdir/plan.tsv"
+                done < "$srcdir/plan/plan.tsv"
               fi
               cut -f2 "$src" | sed "s#^#$repo/#" > /tmp/want.list
               # A failure names a case; the unit that has to run again is whatever
@@ -1551,7 +1601,7 @@ jobs:
             fi
             echo "  matches"
 
-            mkdir -p "$out/shards" "$out/results"
+            mkdir -p "$out/plan/shards" "$out/shard" "$out/collect"
             for i in $(seq 0 $((par - 1))); do
               n=$(printf "%02d" "$i")
               # Fewer units than shards is a bug, not a normal state. Refuse it here.
@@ -1559,11 +1609,11 @@ jobs:
                 echo "::error::no units assigned to shard $i of $suite. Is parallelism($par) larger than the unit count($nunit)?"
                 exit 1
               fi
-              cp "/tmp/shards/$n.list" "$out/shards/$n.list"
+              cp "/tmp/shards/$n.list" "$out/plan/shards/$n.list"
               printf '{"suite":"%s","i":"%02d","runner":"%s"}\n' "$suite" "$i" "$runner" >> /tmp/matrix.jsonl
             done
-            cp /tmp/plan.tsv "$out/plan.tsv"
-            cp /tmp/sel.list "$out/cases.list"
+            cp /tmp/plan.tsv "$out/plan/plan.tsv"
+            cp /tmp/sel.list "$out/plan/cases.list"
             # Quoted, because shard and collect both source this file.
             {
               echo "total=$total"
@@ -1576,7 +1626,7 @@ jobs:
               echo "rerun_unrun=$unrun"
               echo "rerun_short=$short"
               echo "rerun_gone=$gone"
-            } > "$out/split.meta"
+            } > "$out/plan/split.meta"
 
             # Ticket 56's machine, built here first: 17k cases on a GlusterFS seed
             # cannot be pruned per shard, so plan publishes the tree once and each
@@ -1596,16 +1646,16 @@ jobs:
             case "$SABOTAGE" in
               empty-shard)
                 echo "::warning::sabotage=empty-shard, emptying shard 00's share. shard 00 must fail"
-                : > "$out/shards/00.list"
+                : > "$out/plan/shards/00.list"
                 ;;
               lose-shard)
                 echo "::warning::sabotage=lose-shard, deleting shard 00's share file. shard 00 must fail"
-                rm -f "$out/shards/00.list"
+                rm -f "$out/plan/shards/00.list"
                 ;;
               kill-shard)
                 # The other two take the share away, leaving a re-run nothing to carry.
                 echo "::warning::sabotage=kill-shard, shard 00 will die with its share intact. shard 00 must fail"
-                : > "$out/shards/00.kill"
+                : > "$out/plan/shards/00.kill"
                 ;;
             esac
           done
@@ -1628,7 +1678,7 @@ jobs:
           [ -d "$src/.git" ] || { echo "::error::checkout did not fetch CTP: $src"; exit 1; }
           # Per-run path, not a shared one: publishing leaves the seed briefly absent,
           # which another run's shard would read. collect removes it (59MB each).
-          seed="$CI_ROOT/runs/${GITHUB_RUN_ID}/testtools"
+          seed="$CI_ROOT/runs/${GITHUB_RUN_ID}/plan/testtools"
           head=$(git -C "$src" rev-parse HEAD)
 
           tmp="${seed}.tmp.${GITHUB_RUN_ID}"
@@ -1658,7 +1708,7 @@ jobs:
             echo "| suite | selected cases | units | shards | measured timings |"
             echo "|---|---|---|---|---|"
             for suite in $SUITES_RUN; do
-              . "$RUNDIR/$suite/split.meta"
+              . "$RUNDIR/$suite/plan/split.meta"
               echo "| \`$suite\` | $total | $units | $par | $timed |"
             done
             echo
@@ -1722,7 +1772,8 @@ jobs:
             echo "EXCLUDE=$(attr exclude)"
             echo "CASE_GLOB=$(attr case_glob)"
             echo "CASE_FILTER=$(attr case_filter)"
-            echo "SUITE_DIR=$RUNDIR/$SUITE"
+            echo "PLAN_DIR=$RUNDIR/$SUITE/plan"
+            echo "SHARD_DIR=$RUNDIR/$SUITE/shard/$IDX"
             echo "STAMP=$STAMPS/shard-$SUITE-$IDX.tsv"
           } >> "$GITHUB_ENV"
           # The App token is minted only where a private repo needs one.
@@ -1732,11 +1783,14 @@ jobs:
       - name: Check the pod template assumptions
         run: |
           set -eo pipefail
+          # plan does not run again under "Re-run failed jobs", so nothing has made
+          # this attempt's stamps directory.
+          mkdir -p "$(dirname "$STAMP")"
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMP"
 
           # Dying here, before the share is read, is the shape a pod lost at the hook
           # layer leaves.
-          if [ -f "$SUITE_DIR/shards/${IDX}.kill" ]; then
+          if [ -f "$PLAN_DIR/shards/${IDX}.kill" ]; then
             echo "::error::sabotage=kill-shard: shard ${IDX} is dying on purpose, with its share intact"
             exit 1
           fi
@@ -1756,7 +1810,7 @@ jobs:
         id: mine
         run: |
           set -eo pipefail
-          f="$SUITE_DIR/shards/${IDX}.list"
+          f="$PLAN_DIR/shards/${IDX}.list"
 
           # Guard 2 of 3. plan split everything, so an empty share is a bug.
           # CircleCI could legitimately answer "your share is 0"; here it cannot.
@@ -1773,8 +1827,8 @@ jobs:
           fi
           # A unit is one case for shell and one top-level directory for sql and
           # medium, so the case count this shard owes comes from plan.tsv.
-          want=$(awk -F'\t' -v i="$IDX" '$1 == i {print $2}' "$SUITE_DIR/plan.tsv")
-          [ -n "$want" ] || { echo "::error::shard $IDX is not in $SUITE_DIR/plan.tsv"; exit 1; }
+          want=$(awk -F'\t' -v i="$IDX" '$1 == i {print $2}' "$PLAN_DIR/plan.tsv")
+          [ -n "$want" ] || { echo "::error::shard $IDX is not in $PLAN_DIR/plan.tsv"; exit 1; }
           echo "my share: $n units, $want cases"
           head -3 "$f"
           echo "n=$want" >> "$GITHUB_OUTPUT"
@@ -1837,7 +1891,7 @@ jobs:
             echo "  The artifact changed mid-pipeline."; exit 1; }
 
           # collect counts these files to decide every shard read the same build.
-          out="$SUITE_DIR/results/${IDX}"
+          out="$SHARD_DIR"
           mkdir -p "$out"
           cp -f "$m" "$out/build.read"
           echo "matches: this shard reads the build from run $got_brid"
@@ -1847,7 +1901,7 @@ jobs:
           set -eo pipefail
           # Per-run path, so no other run can move it aside mid-read. One CTP serves
           # every suite of the run.
-          seed="$RUNDIR/testtools"
+          seed="$RUNDIR/plan/testtools"
           [ -d "$seed" ] || { echo "::error::no CTP seed: $seed"; exit 1; }
 
           # GlusterFS is LAN. No WAN here: one clone would be 25MB.
@@ -1896,7 +1950,7 @@ jobs:
           [ -d "$WORKDIR/cubrid-testtools/.git" ] || {
             echo "::error::CTP is missing. The steps are in the wrong order"; exit 1; }
 
-          . "$SUITE_DIR/split.meta"       # tc_sha, tc_branch -- what plan pinned
+          . "$PLAN_DIR/split.meta"       # tc_sha, tc_branch -- what plan pinned
 
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           if [ "$SHARE_MODE" = prune ]; then
@@ -1924,10 +1978,14 @@ jobs:
           if [ "$SHARE_MODE" = prune ]; then
             # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
             cd "$TC_DIR"
-            # The entrypoint drops its git credential on exit, so carry the token
-            # inline here. `-c` keeps it out of the on-disk config.
-            git -c "url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof=https://github.com/" \
-              fetch -q --depth 1 --no-tags origin "$tc_sha"
+            # The entrypoint drops its git credential on exit, so carry the token here.
+            # Through the environment, not `-c`: the seed is a partial clone, so `reset`
+            # to a commit the tip does not carry fetches the blobs from the promisor in a
+            # child process, which `-c` never reaches. Still not on disk.
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
+            export GIT_CONFIG_VALUE_0="https://github.com/"
+            git fetch -q --depth 1 --no-tags origin "$tc_sha"
             git reset -q --hard "$tc_sha"
             got=$(git rev-parse HEAD)
             [ "$got" = "$tc_sha" ] || {
@@ -1943,7 +2001,7 @@ jobs:
           echo "refresh WAN: $(( (rx1 - rx0) / 1048576 )) MB"
 
           # collect counts these to decide every shard saw the same testcases.
-          out="$SUITE_DIR/results/${IDX}"
+          out="$SHARD_DIR"
           mkdir -p "$out"
           printf 'tc_sha=%s\ntc_branch=%s\n' "$got" "$tc_branch" > "$out/tc.read"
 
@@ -1953,7 +2011,7 @@ jobs:
           MINE_UNITS: ${{ steps.mine.outputs.units }}
         run: |
           set -eo pipefail
-          f="$SUITE_DIR/shards/${IDX}.list"
+          f="$PLAN_DIR/shards/${IDX}.list"
 
           # The same rule plan counted by, so "cases left" and "expected" are
           # comparable. No match is grep exit 1, which pipefail would turn fatal.
@@ -2027,16 +2085,20 @@ jobs:
           CTP_RC: ${{ steps.ctp.outputs.rc }}
         run: |
           set -eo pipefail
-          out="$SUITE_DIR/results/${IDX}"
-          mkdir -p "$out"
+          out="$SHARD_DIR"
+          # The verdict file stays at the shard root next to build.read and shard.done:
+          # it is this shard's control record, not a result anyone else reads.
+          mkdir -p "$out/artifacts"
           logs="$CTP_HOME/$XML_SRC"
 
           if [ -d "$logs" ]; then
             case "$VERDICT_SRC" in
               test_status.data)
-                for f in test-shell.xml test_status.data feedback.log; do
-                  cp -f "$(readlink -f "$logs")/$f" "$out/$f" 2>/dev/null || true
-                done
+                real=$(readlink -f "$logs")
+                mkdir -p "$out/test-results"
+                cp -f "$real/test_status.data" "$out/test_status.data" 2>/dev/null || true
+                cp -f "$real/test-shell.xml" "$out/test-results/" 2>/dev/null || true
+                cp -f "$real/feedback.log" "$out/artifacts/" 2>/dev/null || true
                 ;;
               summary_info)
                 # The SQL runner writes one summary_info per level of the result
@@ -2077,27 +2139,27 @@ jobs:
 
             if [ -d "$logs" ]; then
               real=$(readlink -f "$logs")
-              tar czf "$out/ctp_log.tgz" -C "$(dirname "$real")" "$(basename "$real")" \
+              tar czf "$out/artifacts/ctp_log.tgz" -C "$(dirname "$real")" "$(basename "$real")" \
                 || echo "::warning::could not archive $logs"
             fi
 
             # The units this shard owned. plan's copy is the same list, but a reader of
             # a failed shard should not have to go looking for it.
-            cp -f "$SUITE_DIR/shards/${IDX}.list" "$out/tc.list" \
+            cp -f "$PLAN_DIR/shards/${IDX}.list" "$out/tc.list" \
               || echo "::warning::no share list for shard ${IDX}"
 
             # 1 GiB per file (decision 36). A debug core runs several GiB and 50 shards
             # share one GlusterFS volume, so an oversized core is recorded, not copied.
             cores="$CUBRID_DIR/log/coredump"
             if [ -d "$cores" ]; then
-              mkdir -p "$out/coredump"
+              mkdir -p "$out/artifacts/coredump"
               find "$cores" -maxdepth 1 -type f -print | while read -r c; do
                 sz=$(stat -c '%s' "$c")
                 if [ "$sz" -le 1073741824 ]; then
-                  cp -f "$c" "$out/coredump/"
+                  cp -f "$c" "$out/artifacts/coredump/"
                 else
                   echo "::warning::core $(basename "$c") is $((sz / 1048576)) MB, over the 1 GiB cap: not copied"
-                  printf '%s\t%s\n' "$(basename "$c")" "$sz" >> "$out/coredump/oversized.tsv"
+                  printf '%s\t%s\n' "$(basename "$c")" "$sz" >> "$out/artifacts/coredump/oversized.tsv"
                 fi
               done
             fi
@@ -2135,7 +2197,7 @@ jobs:
           MINE_N: ${{ steps.mine.outputs.n }}
         run: |
           set -eo pipefail
-          out="$SUITE_DIR/results/${IDX}"
+          out="$SHARD_DIR"
           st="$out/$VERDICT_SRC"
           [ -f "$st" ] || { echo "::error::no CTP result file ($VERDICT_SRC): the tests did not run"; exit 1; }
 
@@ -2224,7 +2286,7 @@ jobs:
           # feedback.log format: [OK]:  <case path> <milliseconds> EnvId=...
           # Only the shell runner writes one, so this is a no-op for the others.
           : > /tmp/new_timings.tsv
-          for f in "$RUNDIR"/*/results/*/feedback.log; do
+          for f in "$RUNDIR"/*/shard/*/artifacts/feedback.log; do
             [ -f "$f" ] || continue
             # A feedback.log with no verdict line is grep exit 1. This step has no
             # always(), so pipefail here would also drop Wall clock and Guard 3.
@@ -2298,7 +2360,10 @@ jobs:
 
           build_sec=$(dur "$STAMPS/build.tsv")
           plan_sec=$(dur "$STAMPS/plan.tsv")
-          build_start=$(awk -F'\t' '$1=="start"{print $2}' "$STAMPS/build.tsv" 2>/dev/null)
+          # Gone on a later attempt: build succeeded, so "Re-run failed jobs" did not
+          # run it again and this attempt's stamps hold nothing for it. Without `|| :`
+          # awk's exit 2 would end the step under set -e.
+          build_start=$(awk -F'\t' '$1=="start"{print $2}' "$STAMPS/build.tsv" 2>/dev/null || :)
           queue_sec=""
           [ -n "$run_started" ] && [ -n "$build_start" ] && queue_sec=$((build_start - run_started))
           total_sec=""
@@ -2370,28 +2435,28 @@ jobs:
             repo=$(attr "$suite" tc_repo)
             vsrc=$(attr "$suite" verdict_src)
             d="$RUNDIR/$suite"
-            . "$d/split.meta"          # total, units, par, timed, tc_*, rerun_*
+            . "$d/plan/split.meta"          # total, units, par, timed, tc_*, rerun_*
             echo "=================================================="
             echo "=== $suite: $total cases in $units units over $par shards"
 
             # --- gather -------------------------------------------------------
             # Not `ls <glob> | wc -l`: with no match it kills the step under pipefail --
             # exactly when every shard died and guard 3 must speak. find returns 0.
-            planned=$(find "$d/shards" -maxdepth 1 -name '*.list' 2>/dev/null | wc -l)
-            done_n=$(find "$d/results" -mindepth 2 -maxdepth 2 -name shard.done 2>/dev/null | wc -l)
-            read_n=$(find "$d/results" -mindepth 2 -maxdepth 2 -name build.read 2>/dev/null | wc -l)
-            tcread_n=$(find "$d/results" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
+            planned=$(find "$d/plan/shards" -maxdepth 1 -name '*.list' 2>/dev/null | wc -l)
+            done_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name shard.done 2>/dev/null | wc -l)
+            read_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name build.read 2>/dev/null | wc -l)
+            tcread_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
             echo "shard: planned $planned / published $done_n / build provenance $read_n / tc provenance $tcread_n"
 
             # A shard with no result file reached no case, so the failure list below
             # cannot see its share.
             unrun_n=0; dead_n=0
             : > /tmp/dead_shards.list
-            for f in "$d"/shards/*.list; do
+            for f in "$d"/plan/shards/*.list; do
               [ -f "$f" ] || continue
               i=$(basename "$f" .list)
-              [ -f "$d/results/$i/$vsrc" ] && continue
-              n=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$d/plan.tsv")
+              [ -f "$d/shard/$i/$vsrc" ] && continue
+              n=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$d/plan/plan.tsv")
               dead_n=$((dead_n + 1))
               unrun_n=$((unrun_n + ${n:-0}))
               printf 'shard %s: %s cases\n' "$i" "${n:-0}" >> /tmp/dead_shards.list
@@ -2400,7 +2465,7 @@ jobs:
             [ "$dead_n" -eq 0 ] || cat /tmp/dead_shards.list
 
             exec_sum=0; succ_sum=0; fail_sum=0; skip_sum=0
-            for r in "$d"/results/*/; do
+            for r in "$d"/shard/*/; do
               st="$r/$vsrc"
               [ -f "$st" ] || continue
               case "$vsrc" in
@@ -2429,7 +2494,7 @@ jobs:
             # --- provenance ---------------------------------------------------
             # Every shard recorded the meta it read. They must all name the same run.
             : > /tmp/brids.txt
-            for f in "$d"/results/*/build.read; do
+            for f in "$d"/shard/*/build.read; do
               [ -f "$f" ] || continue
               awk -F= '/^run_id=/ {print $2}' "$f" >> /tmp/brids.txt
             done
@@ -2449,7 +2514,7 @@ jobs:
             fi
 
             : > /tmp/tcs.txt
-            for f in "$d"/results/*/tc.read; do
+            for f in "$d"/shard/*/tc.read; do
               [ -f "$f" ] || continue
               awk -F= '/^tc_sha=/ {print $2}' "$f" >> /tmp/tcs.txt
             done
@@ -2472,9 +2537,10 @@ jobs:
             mkdir -p "/tmp/failed-logs/$suite"
             case "$vsrc" in
               test_status.data)
-                for x in "$d"/results/*/test-shell.xml; do
+                for sdir in "$d"/shard/*/; do
+                  x="$sdir/test-results/test-shell.xml"
                   [ -f "$x" ] || continue
-                  i=$(basename "$(dirname "$x")")
+                  i=$(basename "$sdir")
                   # Line k of failed.list is /tmp/failed-logs/<suite>/k.log. The offset
                   # carries that numbering across the shards.
                   off=$(wc -l < /tmp/failed.list)
@@ -2525,7 +2591,7 @@ jobs:
                 # judge_sqlresult reads the same lines. The path is absolute; cut it
                 # back to the repo-relative shape the shell suite's XML already has,
                 # because plan puts the repo prefix back when it reads this file.
-                for st in "$d"/results/*/summary_info; do
+                for st in "$d"/shard/*/summary_info; do
                   [ -f "$st" ] || continue
                   i=$(basename "$(dirname "$st")")
                   { grep -E ':nok[[:space:]]+[0-9]+ms$' "$st" || :; } \
@@ -2537,7 +2603,7 @@ jobs:
             failed_n=$(wc -l < /tmp/failed.list)
             echo "failed cases: $failed_n"
             [ "$failed_n" -eq 0 ] || head -30 /tmp/failed.list
-            cp /tmp/failed.list "$d/failed.list"
+            cp /tmp/failed.list "$d/collect/failed.list"
             cp /tmp/failed.list "/tmp/failed.$suite.list"
 
             # --- verdict ------------------------------------------------------
@@ -2574,6 +2640,10 @@ jobs:
                 [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of them are no longer in the tree (deleted or renamed), so this run cannot pass.**"
                 echo ">"
                 echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
+                echo
+              fi
+              if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ]; then
+                echo "> **Attempt $GITHUB_RUN_ATTEMPT.** GitHub's _Re-run failed jobs_ ran only the jobs that failed, so a stage that did not run again reads \`(not measured)\` below. This is not \`/run rerun\`, which starts a new run."
                 echo
               fi
               echo "### Coverage"
@@ -2641,7 +2711,7 @@ jobs:
                 echo "| shard | case |"
                 echo "|---|---|"
                 head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
-                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is \`$d/failed.list\`_"
+                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is \`$d/collect/failed.list\`_"
                 echo
               else
                 echo "### No failed cases"
@@ -2738,7 +2808,7 @@ jobs:
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
             # On the volume too, so the cleanup step below reads one file per suite
             # instead of three outputs it would have to name suite by suite.
-            echo "$v" > "$d/verdict"
+            echo "$v" > "$d/collect/verdict"
             unset total units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
                   shard_max shard_med shard_span shard_n
           done
@@ -2806,7 +2876,7 @@ jobs:
               log="/tmp/failed-logs/$suite/$i.log"
               {
                 echo "<details>"
-                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/results/$shard/test-shell.xml\">full log</a></summary>"
+                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/test-results/test-shell.xml\">full log</a></summary>"
                 echo
                 # <pre> opens its own line: a blank line inside the log would end the
                 # HTML block that <details> opened, and the rest would render as text.
@@ -2861,9 +2931,9 @@ jobs:
         if: always()
         run: |
           set -eo pipefail
-          seed="$RUNDIR/testtools"
+          seed="$RUNDIR/plan/testtools"
           for suite in $SUITES_RUN; do
-            [ "$(cat "$RUNDIR/$suite/verdict" 2>/dev/null)" = pass ] || {
+            [ "$(cat "$RUNDIR/$suite/collect/verdict" 2>/dev/null)" = pass ] || {
               echo "kept for a re-run: $seed ($suite did not end green)"; exit 0; }
           done
           if [ -d "$seed" ]; then
@@ -2909,7 +2979,10 @@ jobs:
             pass) state=success; desc="$SUITE suite passed" ;;
             fail) state=failure; desc="$SUITE suite failed -- see the run" ;;
             *)
-              state=failure
+              # error, not failure: collect reached no verdict for this suite, so the
+              # commit has not been judged. The batch takes such a commit again, and
+              # branch protection refuses an error the way it refuses a failure.
+              state=error
               if [ "$COLLECT" = cancelled ]; then
                 desc="run was superseded or cancelled"
               else
