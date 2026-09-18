@@ -194,8 +194,40 @@ flashback_reset ()
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
-  flashback_Current_conn->in_flashback = false;
-  flashback_Current_conn = NULL;
+  /* flashback_Current_conn is only set once flashback_initialize() has run;
+   * a request that fails before that (e.g. GET_LOGINFO with no preceding
+   * GET_SUMMARY) still routes through this shared reset, so guard against
+   * NULL here rather than crashing. */
+  if (flashback_Current_conn != NULL)
+    {
+      flashback_Current_conn->in_flashback = false;
+      flashback_Current_conn = NULL;
+    }
+}
+
+/*
+ * flashback_reset_if_owner - reset flashback global state, but only if the
+ *                            calling connection is the current owner
+ *
+ * A handler error path can reach the shared cleanup without this connection
+ * ever having become the owner (e.g. GET_LOGINFO with no preceding
+ * GET_SUMMARY) -- flashback_reset() itself doesn't check, so calling it
+ * unconditionally there would tear down an unrelated connection's live
+ * session. Handler error paths use this instead; flashback_initialize()'s
+ * own stale-entry takeover still calls flashback_reset() directly, since it
+ * already confirmed (via flashback_is_in_progress()) the entry is abandoned.
+ */
+void
+flashback_reset_if_owner (THREAD_ENTRY * thread_p)
+{
+  pthread_mutex_lock (&flashback_Conn_lock);
+
+  if (flashback_Current_conn == thread_p->conn_entry)
+    {
+      flashback_reset ();
+    }
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
 }
 
 /*
@@ -514,6 +546,32 @@ exit:
 }
 
 /*
+ * flashback_format_time () - format a time value for an error message
+ *
+ * buf (out)  : output buffer
+ * size (in)  : size of buf
+ * time_p (in): the time to format
+ *
+ * CBRD-27437: localtime() returns NULL for a value it cannot represent, and the
+ * times formatted here arrive from the client, so print the raw value in that
+ * case rather than handing NULL to strftime().
+ */
+static void
+flashback_format_time (char *buf, size_t size, time_t * time_p)
+{
+  struct tm *tm_p = localtime (time_p);
+
+  if (tm_p != NULL)
+    {
+      strftime (buf, size, "%d-%m-%Y:%H:%M:%S", tm_p);
+    }
+  else
+    {
+      snprintf (buf, size, "%lld", (long long) *time_p);
+    }
+}
+
+/*
  * flashback_verify_time () - verify the availablity of log records around the 'start_time' and 'end_time'
  *
  * return           : error_code
@@ -541,9 +599,9 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
       char db_creation_date[20];
       char cur_date[20];
 
-      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
-      strftime (cur_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+      flashback_format_time (start_date, 20, start_time);
+      flashback_format_time (db_creation_date, 20, &log_Gl.hdr.db_creation);
+      flashback_format_time (cur_date, 20, &current_time);
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date, db_creation_date,
 	      cur_date);
@@ -577,8 +635,8 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 	  char start_date[20];
 	  char db_creation_date[20];
 
-	  strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-	  strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
+	  flashback_format_time (start_date, 20, start_time);
+	  flashback_format_time (db_creation_date, 20, &log_Gl.hdr.db_creation);
 
 	  /* out of range : start_time (ret_time) can not be greater than end_time */
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
