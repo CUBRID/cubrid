@@ -27028,15 +27028,16 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
    * open and close its own, giving its row locks back inside the system operation below -- and an abort
    * of that operation then undoes a stamp whose row lock is already gone.
    *
-   * The halves do take transient row locks: qexec_open_scan () does not exclude MERGE (pt_to_merge_update_query ()
-   * sets upd_del_class_cnt on the driving select) and the force phase never consults it.  What keeps the
-   * locks today is the system savepoint do_merge () takes, which logtb_has_active_savepoint () reports --
-   * an unrelated guard that CBRD-27238 narrows to user savepoints.  This scope does not depend on it.
+   * Under this scope the halves run nested, so qexec_open_scan () answers no for them and they take no
+   * statement-scoped lock of their own.  That is why the end of this scope gives nothing back.
    *
    * It covers only the MERGE the server executes.  When a target carries a trigger or is a view, do_merge ()
    * sends the two halves down as separate server statements (server_op in execute_statement.c), each of them
-   * outermost in its own scope -- and there only that savepoint stands between them and a release inside the
-   * enclosing operation. */
+   * outermost in its own scope -- and those halves do take transient row locks, because qexec_open_scan ()
+   * does not exclude MERGE (pt_to_merge_update_query () sets upd_del_class_cnt on the driving select) and the
+   * force phase never consults it.  What keeps their locks today is the system savepoint do_merge () takes,
+   * which logtb_has_active_savepoint () reports -- an unrelated guard that CBRD-27238 narrows to user
+   * savepoints.  This scope does not depend on it; that path does. */
   lock_transient_scope_start (thread_p);
 
   /* start a topop */

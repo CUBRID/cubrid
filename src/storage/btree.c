@@ -1668,6 +1668,8 @@ static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * bti
 					 int *offset_to_object, BTREE_MVCC_INFO * mvcc_info,
 					 BTREE_MVCC_INFO * deleted_mvcc_info);
 
+STATIC_INLINE void btree_note_active_delete_owner (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * owner_mvcc_info,
+						  const BTREE_MVCC_INFO * mvcc_info) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
@@ -12690,7 +12692,7 @@ btree_ovf_dir_find_prev (THREAD_ENTRY * thread_p, const VPID * dir_head_vpid, co
  * prev_page (out)	  : If not NULL, previous chain page of found_page (leaf_page for the first data page).
  * offset_to_object (out) : Offset to object in found page's record or NOT_FOUND.
  * object_mvcc_info (out) : Output MVCC info when found.
-  * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
+ * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_ovf_dir_find_oid (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
@@ -14135,7 +14137,7 @@ btree_ovf_dir_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VA
  * offset_to_object (out) : Offset to object in the record of leaf/overflow.
  *
  * TODO: output overflow record
-  * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
+ * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_find_oid_and_its_page (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid, PAGE_PTR leaf_page,
@@ -14574,7 +14576,7 @@ error:
  * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
  * offset_to_object (out) : If object is found, it saves the offset to object. Otherwise, NOT_FOUND is output.
  * mvcc_info (out)	  : Output MVCC info if object is found.
-  * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
+ * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR overflow_page, OID * oid,
@@ -14750,7 +14752,7 @@ btree_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR
  * match_mvccinfo (in)	  : Non-null value to be matched or null if it doesn't matter.
  * offset_to_object (out) : If object is found, it saves the offset to object. Otherwise, NOT_FOUND is output.
  * mvcc_info (out)	  : Output MVCC info if object is found.
-  * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
+ * deleted_mvcc_info (out): See btree_note_active_delete_owner ().
  */
 static int
 btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * btid_int, OID * oid,
