@@ -1821,8 +1821,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (ctx.qualSingle == null) {
 
             // TODO: consider owner.pkg.var case
-            assert false : "not implemented yet";
-            return null;
+            throw new SemanticError(Misc.getLineColumnOf(ctx), "not implemented yet");
         } else {
 
             String fieldName = Misc.getNormalizedText(ctx.name);
@@ -1883,8 +1882,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (ctx.qualSingle == null) {
 
             // TODO: consider owner.pkg.var and owner.pkg.const cases
-            assert false : "not implemented yet";
-            return null;
+            throw new SemanticError(Misc.getLineColumnOf(ctx), "not implemented yet");
         } else {
 
             String fieldName = Misc.getNormalizedText(ctx.name);
@@ -1935,22 +1933,22 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private ExName visitQualifiedException(Qualified_idContext ctx) {
         // TODO
-        return null;
+        throw new SemanticError(Misc.getLineColumnOf(ctx), "not implemented yet");
     }
 
     private AstNode visitQualifiedCursor(Qualified_idContext ctx) {
         // TODO
-        return null;
+        throw new SemanticError(Misc.getLineColumnOf(ctx), "not implemented yet");
     }
 
     private AstNode visitQualifiedColumnOrVar(Qualified_idContext ctx) {
         // TODO
-        return null;
+        throw new SemanticError(Misc.getLineColumnOf(ctx), "not implemented yet");
     }
 
     private AstNode visitQualifiedRow(Qualified_idContext ctx) {
         // TODO
-        return null;
+        throw new SemanticError(Misc.getLineColumnOf(ctx), "not implemented yet");
     }
 
     @Override
