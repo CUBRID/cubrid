@@ -669,8 +669,7 @@ namespace cubload
 	    return;
 	  }
 
-	db_value &db_val = get_attribute_db_value (attr_index);
-	error_code = heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr ().id, &db_val, &m_attrinfo);
+	error_code = sink_heap (attr, get_attribute_db_value (attr_index));
 	if (error_code != NO_ERROR)
 	  {
 	    m_error_handler.on_syntax_failure ();
@@ -824,6 +823,12 @@ namespace cubload
   }
 
   int
+  server_object_loader::sink_heap (const attribute &attr, db_value &val)
+  {
+    return heap_attrinfo_set (&m_class_entry->get_class_oid (), attr.get_repr_id (), &val, &m_attrinfo);
+  }
+
+  int
   server_object_loader::process_constant (constant_type *cons, const attribute &attr)
   {
     string_type *str = NULL;
@@ -849,11 +854,8 @@ namespace cubload
       case LDR_XSTR:
       case LDR_ELO_INT:
       case LDR_ELO_EXT:
-	error_code = process_generic_constant (cons, attr);
-	break;
-
       case LDR_MONETARY:
-	error_code = process_monetary_constant (cons, attr);
+	error_code = process_generic_constant (cons, attr, false);
 	break;
 
       case LDR_COLLECTION:
@@ -895,20 +897,40 @@ namespace cubload
     return error_code;
   }
 
-  int
-  server_object_loader::process_generic_constant (constant_type *cons, const attribute &attr)
+  /*
+   * conv_func_for - pick the conversion for this token
+   *    return: conversion function
+   *    cons(in): the token
+   *    attr(in): attribute being set. For an element this is the collection attribute
+   *    is_element(in): true when the token is a collection element
+   * Note:
+   *    is_element says whether the token is a collection element rather than the attribute itself.
+   *    An element is converted to the literal's natural type and cast by the collection,
+   *    so it must not be looked up by attribute domain.
+   */
+  static conv_func &
+  conv_func_for (const constant_type *cons, const attribute &attr, bool is_element)
   {
-    string_type *str = reinterpret_cast<string_type *> (cons->val);
-    char *token = str != NULL ? str->val : NULL;
-    size_t str_size = str != NULL ? str->size : 0;
+    if (is_element)
+      {
+	return get_elem_conv_func (cons->type);
+      }
+
+    return get_conv_func (cons->type, attr.get_domain ().type->get_id ());
+  }
+
+  int
+  server_object_loader::process_generic_constant (constant_type *cons, const attribute &attr, bool is_element)
+  {
+    text_token tok (cons);
 
     db_value &db_val = get_attribute_db_value (attr.get_index ());
-    conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
+    conv_func &func = conv_func_for (cons, attr, is_element);
 
-    int error_code = func (token, str_size, &attr, &db_val);
+    int error_code = func (tok.text (), tok.size (), &attr, &db_val);
     if (error_code == ER_DATE_CONVERSION)
       {
-	m_error_handler.log_date_time_conversion_error (token, pr_type_name (attr.get_domain ().type->get_id ()));
+	m_error_handler.log_date_time_conversion_error (tok.text (), pr_type_name (attr.get_domain ().type->get_id ()));
       }
     else if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
       {
@@ -917,51 +939,6 @@ namespace cubload
 	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
       }
-
-    return error_code;
-  }
-
-  int
-  server_object_loader::process_monetary_constant (constant_type *cons, const attribute &attr)
-  {
-    int error_code = NO_ERROR;
-    monetary_type *mon = reinterpret_cast<monetary_type *> (cons->val);
-    string_type *str = mon->amount;
-
-    /* buffer size for monetary : numeric size + grammar currency symbol + string terminator */
-    char full_mon_str[NUM_BUF_SIZE + 3 + 1];
-    char *full_mon_str_p = full_mon_str;
-
-    /* In Loader grammar always print symbol before value (position of currency symbol is not localized) */
-    char *curr_str = intl_get_money_esc_ISO_symbol ((DB_CURRENCY) mon->currency_type);
-    size_t full_mon_str_len = (str->size + strlen (curr_str));
-
-    if (full_mon_str_len >= sizeof (full_mon_str))
-      {
-	full_mon_str_p = new char[full_mon_str_len + 1];
-      }
-
-    std::strcpy (full_mon_str_p, curr_str);
-    std::strcat (full_mon_str_p, str->val);
-
-    db_value &db_val = get_attribute_db_value (attr.get_index ());
-    conv_func &func = get_conv_func (cons->type, attr.get_domain ().type->get_id ());
-
-    error_code = func (full_mon_str_p, full_mon_str_len, &attr, &db_val);
-    if (error_code == ER_OBJ_ATTRIBUTE_CANT_BE_NULL)
-      {
-	char class_attr[DB_MAX_IDENTIFIER_LENGTH * 2];
-
-	snprintf (class_attr, DB_MAX_IDENTIFIER_LENGTH * 2, "%s.%s", m_class_entry->get_class_name (), attr.get_name ());
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, class_attr);
-      }
-
-    if (full_mon_str_p != full_mon_str)
-      {
-	delete [] full_mon_str_p;
-      }
-
-    delete mon;
 
     return error_code;
   }
@@ -1000,18 +977,6 @@ namespace cubload
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
 	    break;
 
-	  case LDR_NULL:
-	    /* An element being NULL does not make the attribute NULL, so the NOT NULL constraint of the
-	     * attribute must not be checked here.
-	     * Do not use to_db_null() for elements because it checks the NOT NULL constraint.
-	     * Refer to ldr_null_elem() of the SA loader. */
-	    error_code = db_make_null (&db_val);
-	    break;
-
-	  case LDR_MONETARY:
-	    error_code = process_monetary_constant (c, attr);
-	    break;
-
 	  case LDR_OID:
 	  case LDR_CLASS_OID:
 	    // Object References and Class Object Reference are not supported by server loaddb implementation
@@ -1020,7 +985,7 @@ namespace cubload
 	    break;
 
 	  default:
-	    error_code = process_generic_constant (c, attr);
+	    error_code = process_generic_constant (c, attr, true);
 	    break;
 	  }
 
