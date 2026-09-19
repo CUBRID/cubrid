@@ -124,9 +124,6 @@ extern int sm_rename_class (MOP op, const char *new_name);
 extern int sm_update_all_catalog_statistics (bool with_fullscan);
 extern int sm_update_catalog_statistics (const char *class_name, bool with_fullscan);
 extern int sm_force_write_all_classes (void);
-#ifdef SA_MODE
-extern void sm_mark_system_class_for_catalog (void);
-#endif /* SA_MODE */
 extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
 extern bool sm_is_reuse_oid_class (MOP op);
