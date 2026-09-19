@@ -1418,7 +1418,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return cursor;
         } else {
             // TODO
-            return null;
+            throw new SemanticError(Misc.getLineColumnOf(ctx), "not implemented yet");
         }
     }
 
@@ -1870,11 +1870,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         // TODO: try (owner.)pkg.var cases with API IdType
-    }
-
-    private AstNode visitQualifiedProc(Qualified_idContext ctx) {
-        // TODO
-        return null;
     }
 
     private AstNode visitQualifiedId(Qualified_idContext ctx) {
