@@ -1562,7 +1562,23 @@ exit:
 
     int auth_error = NO_ERROR;
     std::string owner_name;
+    std::string err_msg;
     int save;
+
+    // Take the error reason CAS already composed, so that the PL server reports it.
+    auto take_error = [&auth_error, &err_msg] (int fallback)
+    {
+      auth_error = er_errid ();
+      if (auth_error == NO_ERROR)
+	{
+	  auth_error = fallback;
+	}
+      const char *msg = er_msg ();
+      if (msg != NULL)
+	{
+	  err_msg.assign (msg);
+	}
+    };
 
     AU_SAVE_AND_DISABLE (save);
 
@@ -1570,19 +1586,11 @@ exit:
     if (routine_mop == NULL)
       {
 	// dropped between the caller's compilation and this execution
-	auth_error = er_errid ();
-	if (auth_error == NO_ERROR)
-	  {
-	    auth_error = ER_SP_NOT_EXIST;
-	  }
+	take_error (ER_SP_NOT_EXIST);
       }
     else if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
       {
-	auth_error = er_errid ();
-	if (auth_error == NO_ERROR)
-	  {
-	    auth_error = ER_FAILED;
-	  }
+	take_error (ER_FAILED);
       }
     else
       {
@@ -1592,11 +1600,7 @@ exit:
 	char *name = (owner == NULL) ? NULL : au_get_user_name (owner);
 	if (name == NULL)
 	  {
-	    auth_error = er_errid ();
-	    if (auth_error == NO_ERROR)
-	      {
-		auth_error = ER_FAILED;
-	      }
+	    take_error (ER_FAILED);
 	  }
 	else
 	  {
@@ -1607,8 +1611,8 @@ exit:
 
     AU_RESTORE (save);
 
-    // the owner name is empty unless the check passed
-    return xs_pack_and_queue (auth_error, owner_name);
+    // the owner name is empty unless the check passed, and the message empty unless it failed
+    return xs_pack_and_queue (auth_error, owner_name, err_msg);
   }
 
 //////////////////////////////////////////////////////////////////////////

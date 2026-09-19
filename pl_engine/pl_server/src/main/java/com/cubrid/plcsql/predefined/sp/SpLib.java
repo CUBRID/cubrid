@@ -133,34 +133,21 @@ public class SpLib {
     }
 
     // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
-    // Called from generated code the first time each call site is reached (see authChecked). Throws
-    // when the definer is no longer authorized to execute the target (e.g. the grant was revoked
-    // after the caller was compiled).
+    // Called from generated code the first time each call site is reached.
     public static String checkExecuteAuthorization(String uniqueName) {
         String[] ownerRef = new String[1];
-        if (ClassAccess.checkExecuteAuth(uniqueName, ownerRef) != 0) {
-            throw new SQL_ERROR("no authorization to execute " + uniqueName);
+        String[] errMsgRef = new String[1];
+        if (ClassAccess.checkExecuteAuth(uniqueName, ownerRef, errMsgRef) != 0) {
+            throw new SQL_ERROR(
+                    errMsgRef[0] == null
+                            ? "no authorization to execute " + uniqueName
+                            : errMsgRef[0]);
         }
         // the owner the caller has to switch the execution rights to before the direct call
         return ownerRef[0];
     }
 
-    // Execution rights around a direct call of an external PL/CSQL routine.
-    //
-    // A routine invoked through the server runs with its own owner's rights. A routine called
-    // directly from generated code would otherwise inherit the caller's, which both breaks
-    // AUTHID OWNER and opens a privilege escalation path in either direction. Generated code
-    // wraps such a call as
-    //
-    //     SpLib.pushExecRights("<owner of the callee>");
-    //     try {
-    //         ... the direct call ...
-    //     } finally {
-    //         SpLib.popExecRights();
-    //     }
-    //
-    // The CAS keeps a stack of users, so these nest correctly with the switch the server already
-    // performs for the routine being invoked.
+    // push and pop Execution rights around a direct call of an external PL/CSQL routine.
     public static void pushExecRight(String ownerName) {
         try {
             ClassAccess.pushExecRights(ownerName);

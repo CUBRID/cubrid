@@ -119,8 +119,9 @@ public class ClassAccess {
 
     // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
     // On success ownerRef[0] is set to the target's owner, which the caller switches the execution
-    // rights to before the call.
-    public static int checkExecuteAuth(String uniqueName, String[] ownerRef) {
+    // rights to before the call. On failure errMsgRef[0] is set to the reason the server gave,
+    // which is the only thing that tells a dropped routine from a revoked grant.
+    public static int checkExecuteAuth(String uniqueName, String[] ownerRef, String[] errMsgRef) {
         try {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
             // the executor's callback loop reads the request code from the payload
@@ -137,8 +138,11 @@ public class ClassAccess {
 
             int authError = unpacker.unpackInt();
             String ownerName = unpacker.unpackCString(); // empty unless the check passed
-            if (authError == 0 && ownerRef != null) {
+            String errMsg = unpacker.unpackCString(); // empty unless it failed
+            if (authError == 0) {
                 ownerRef[0] = ownerName;
+            } else if (!errMsg.isEmpty()) {
+                errMsgRef[0] = errMsg;
             }
             return authError;
         } catch (Exception e) {
