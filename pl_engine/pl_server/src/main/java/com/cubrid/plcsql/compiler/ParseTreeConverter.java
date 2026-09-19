@@ -1840,9 +1840,33 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             } catch (UndeclaredId e) {
 
-                // TODO: consider pkg.var case
-                assert false : "not implemented yet";
-                return null;
+                // TODO: consider pkg.var case too.
+                //  currently, only serial values are considered.
+
+                if (fieldName.equals("CURRENT_VALUE")
+                        || fieldName.equals("NEXT_VALUE")
+                        || fieldName.equals("CURRVAL")
+                        || fieldName.equals("NEXTVAL")) {
+
+                    connectionRequired = true;
+
+                    String recordText = Misc.getNormalizedText(ctx.qualSingle);
+                    // do not push a symbol table: no nested structure
+                    ExprSerialVal ret =
+                            new ExprSerialVal(
+                                    ctx,
+                                    recordText,
+                                    (fieldName.equals("CURRENT_VALUE")
+                                                    || fieldName.equals("CURRVAL"))
+                                            ? ExprSerialVal.SerialVal.CURR_VAL
+                                            : ExprSerialVal.SerialVal.NEXT_VAL,
+                                    getSqlSerialNo());
+                    addToSqlUses(ret);
+                    semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
+                    return ret;
+                } else {
+                    throw e;
+                }
             }
         }
 
@@ -1974,9 +1998,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return id;
         } else {
 
-            return visitQualifiedVar(ctx.qualified_id());
-
-            /* TODO: move code below to visitQualifiedVar()
             Expr e = (Expr) visitQualifiedVar(ctx.qualified_id()); // s079: undeclared id ...
             if (e instanceof ExprField) {
                 ExprField field = (ExprField) e;
@@ -1987,10 +2008,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 return field;
+            } else if (e instanceof ExprSerialVal) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.qualified_id()), // s081
+                        "serial value is not updatable");
             } else {
                 throw new RuntimeException("unreachable");
             }
-             */
         }
     }
 
