@@ -8096,8 +8096,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
   /* Whether these row locks end with the statement.  A DML target and a click counter (SELECT ... INCR) qualify,
    * SELECT ... FOR UPDATE does not; the facts that tell them apart (upd_del_class_cnt, selected_upd_list) sit on
-   * the top node only, so the caller passes the answer in.  The opener adds the per-class condition (the pruned
-   * partition, after a switch). */
+   * the top node only, so the caller passes the answer in.  For the click counter that answer is whether the
+   * caller opened a scope for these locks: the variant that locks in qexec_execute_selupd_list () opens its own
+   * later, and a yes here would count requests no scope gives back.  The opener adds the per-class condition (the
+   * pruned partition, after a switch). */
   upddel_target_scan = (mvcc_select_lock_needed && stmt_scoped_locks
 			&& lock_transient_scope_is_outermost (thread_p)
 			&& logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
@@ -17939,8 +17941,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 					       force_select_lock, specp->fixed_scan, specp->grouped_scan,
 					       iscan_oid_order, &specp->s_id, xasl_state->query_id, xasl->scan_op_type,
 					       scan_immediately_stop, &mvcc_select_lock_needed, xasl,
-					       (xasl->upd_del_class_cnt > 0
-						|| xasl->selected_upd_list != NULL)) != NO_ERROR)
+					       (xasl->upd_del_class_cnt > 0 || selupd_transient_scope)) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
@@ -17967,8 +17968,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 					       specp->fixed_scan, specp->grouped_scan, iscan_oid_order, &specp->s_id,
 					       xasl_state->query_id, xptr->scan_op_type, scan_immediately_stop,
 					       &mvcc_select_lock_needed, xptr,
-					       (xasl->upd_del_class_cnt > 0
-						|| xasl->selected_upd_list != NULL)) != NO_ERROR)
+					       (xasl->upd_del_class_cnt > 0 || selupd_transient_scope)) != NO_ERROR)
 			    {
 			      qexec_clear_mainblock_iterations (thread_p, xasl);
 			      GOTO_EXIT_ON_ERROR;
