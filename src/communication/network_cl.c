@@ -111,10 +111,15 @@ namespace
 #define PLAN_DUMP_STREAM_CHUNK_SIZE (64 * 1024)
 
 /* Contains the name of the current sever host machine.  */
-static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
+static CUB_THREAD_LOCAL char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
 
 /* Contains the name of the current server name. */
-static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
+static CUB_THREAD_LOCAL char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+static char *g_server_host_name = NULL;
+static char *g_server_db_name = NULL;
+#endif
 
 static void return_error_to_server (char *host, unsigned int eid);
 static int client_capabilities (void);
@@ -3658,6 +3663,13 @@ end:
     {
       __gv_cvar.css_terminate (false);
     }
+#if defined(MULTI_CONN_TO_A_SERVER)
+  else
+    {
+      g_server_host_name = net_Server_host;
+      g_server_db_name = net_Server_name;
+    }
+#endif
 
   return error;
 }
@@ -3666,7 +3678,37 @@ end:
 int
 net_client_sub_init ()
 {
-  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
+  int error = NO_ERROR;
+
+  if (g_server_host_name && g_server_host_name[0])
+    {
+      strcpy (net_Server_host, g_server_host_name);
+      if (g_server_db_name && g_server_db_name[0])
+	{
+	  strcpy (net_Server_name, g_server_db_name);
+	}
+      else
+	{
+	  error = ER_NET_INVALID_SERVER_NAME;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
+	}
+    }
+  else
+    {
+      error = ER_NET_INVALID_HOST_NAME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
+    }
+
+  if (error == NO_ERROR)
+    {
+      error = __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
+      if (error == ER_CSS_ALLOC)
+	{
+	  __gv_cvar.css_client_sub_terminate (net_Server_host);
+	}
+    }
+
+  return error;
 }
 
 void

@@ -342,6 +342,11 @@ static T_MAX_HEAP_NODE *session_request_q;
 
 static int hold_job = 0;
 
+
+static class client_support __gv_client_support_broker;
+#define __gv_cvar_broker (__gv_client_support_broker)
+
+
 static bool
 broker_add_new_cas (void)
 {
@@ -1949,7 +1954,7 @@ connect_to_master_for_server_monitor (const char *db_name, const char *db_host)
     }
 
   /* timeout : 5000 milliseconds */
-  return (__gv_cvar.css_connect_to_master_timeout (db_host, port_id, 5000, &rid));
+  return (__gv_cvar_broker.css_connect_to_master_timeout (db_host, port_id, 5000, &rid));
 }
 
 static int
@@ -1966,14 +1971,14 @@ get_server_state_from_master (CSS_CONN_ENTRY * conn, const char *db_name)
       return SERVER_STATE_DEAD;
     }
 
-  error = __gv_cvar.css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, (int) strlen (db_name) + 1);
+  error = __gv_cvar_broker.css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, (int) strlen (db_name) + 1);
   if (error != NO_ERRORS)
     {
       return SERVER_STATE_DEAD;
     }
 
   /* timeout : 5000 milliseconds */
-  error = __gv_cvar.css_receive_data (conn, request_id, (char **) &buffer, &buffer_size, 5000);
+  error = __gv_cvar_broker.css_receive_data (conn, request_id, (char **) &buffer, &buffer_size, 5000);
   if (error == NO_ERRORS)
     {
       if (buffer_size == sizeof (int))
@@ -2111,7 +2116,7 @@ server_monitor_thr_f (void *arg)
 
 	  if (conn != NULL)
 	    {
-	      __gv_cvar.css_free_conn (conn);
+	      __gv_cvar_broker.css_free_conn (conn);
 	      conn = NULL;
 	    }
 	}

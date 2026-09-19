@@ -68,7 +68,7 @@ endif(UNIX)
 
 
 add_executable(cub_master ${CUB_MASTER_SOURCES})
-target_compile_definitions(cub_master PRIVATE ${COMMON_DEFS})
+target_compile_definitions(cub_master PRIVATE ${COMMON_DEFS} CS_MODE)
 target_include_directories(cub_master PRIVATE ${EP_INCLUDES})
 target_link_libraries(cub_master LINK_PRIVATE cubridcs)
 if(WIN32)
@@ -136,12 +136,13 @@ SET_SOURCE_FILES_PROPERTIES(
   ${CUB_COMMDB_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
-  
+
 if(WIN32)
   list(APPEND CUB_COMMDB_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
 
 add_executable(cub_commdb ${CUB_COMMDB_SOURCES})
+target_compile_definitions(cub_commdb PRIVATE CS_MODE)
 
 target_link_libraries(cub_commdb LINK_PRIVATE cubridcs)
 if(WIN32)
