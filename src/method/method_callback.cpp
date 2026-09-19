@@ -859,7 +859,8 @@ namespace cubmethod
   {
     int err = NO_ERROR, match_cnt = 0;
     int save;
-    char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+    char uniq_name[DB_MAX_IDENTIFIER_LENGTH];
+    char uniq_name_1[DB_MAX_IDENTIFIER_LENGTH];
     std::string &name = question.name;
     bool wants_function = (question.type == GSQT_FUNCTION);
     MOP routine_mop = NULL;
@@ -909,9 +910,9 @@ namespace cubmethod
 	// second, try <pkg>.<name> case: search a routine with the name prefixed with the current owner
       {
 	MOP routine_mop2 = NULL;
-	if (prepend_user_name (name, uniq_name, sizeof (uniq_name)))
+	if (prepend_user_name (name, uniq_name_1, sizeof (uniq_name_1)))
 	  {
-	    err = find_routine_of_type (uniq_name, wants_function, routine_mop2, false);
+	    err = find_routine_of_type (uniq_name_1, wants_function, routine_mop2, false);
 	    if (err == NO_ERROR)
 	      {
 		if (routine_mop2)
@@ -931,8 +932,10 @@ namespace cubmethod
 
       if (match_cnt == 0)
 	{
-	  err = res.err_id = ER_FAILED;
-	  res.err_msg = "Failed to get attribute information";
+	  res.err_id = err = ER_SP_NOT_EXIST_2;
+	  const char *kind = wants_function ? "function" : "procedure";
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 4, kind, uniq_name, kind, uniq_name_1);
+	  res.err_msg = er_msg();
 	  return err;
 	}
       else if (match_cnt == 2)
