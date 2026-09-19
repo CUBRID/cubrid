@@ -30,9 +30,11 @@
 
 package com.cubrid.plcsql.compiler;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.plcsql.compiler.ast.NodeList;
 import java.io.PrintStream;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -102,11 +104,6 @@ public class Misc {
         return (nl == null || nl.nodes.size() == 0);
     }
 
-    public static String detachPkgName(String routineName) {
-        int idx = routineName.indexOf('$');
-        return idx >= 0 ? routineName.substring(idx + 1) : routineName;
-    }
-
     public static int[] getLineColumnOf(TerminalNode node) {
         if (node == null) {
             return UNKNOWN_LINE_COLUMN;
@@ -139,15 +136,19 @@ public class Misc {
     }
 
     public static String getNormalizedText(ParseTree ctx) {
+        return getNormalizedText(ctx, true);
+    }
+
+    public static String getNormalizedText(ParseTree ctx, boolean separate) {
         assert ctx != null;
         int children = ctx.getChildCount();
 
         if (children <= 1) {
-            return peelId(ctx.getText().toUpperCase());
+            return peelId(uppercaseLikeServer(ctx.getText()));
         } else {
             StringBuffer sbuf = new StringBuffer();
             for (int i = 0; i < children; i++) {
-                if (i > 0) {
+                if (i > 0 && separate) {
                     sbuf.append(' ');
                 }
                 ParseTree child = ctx.getChild(i);
@@ -157,8 +158,35 @@ public class Misc {
         }
     }
 
+    // Key of a direct call target: its generated Java class and the method in it. There is no
+    // overloading of routines (unique_name is the catalog's primary key), so the pair identifies
+    // the method. uniqueName is <owner>.<routine> or <owner>.<package>.<routine>.
+    public static String methodKey(String targetClass, String uniqueName) {
+        int dot = uniqueName.lastIndexOf('.');
+        return targetClass + "." + (dot < 0 ? uniqueName : uniqueName.substring(dot + 1));
+    }
+
+    /*
+     * Convert case of an identifier the way the server would.
+     *
+     * The output of these may reach the server as a lookup key, and the server converts it again with
+     * intl_identifier_lower () / _upper (), which follow the identifier alphabet of the database
+     * locale. Locale.ROOT would be wrong for a locale that tailors case mapping -- tr_TR maps i and
+     * I to the dotted and dotless forms -- so the database locale has to be used here.
+     *
+     * Use these only for names that server produced or that are compared with those. A string compared against an
+     * ASCII literal in this source, or against nothing but itself, takes Locale.ROOT instead.
+     */
+    public static String uppercaseLikeServer(String s) {
+        return s.toUpperCase(Server.getDbLocale());
+    }
+
+    public static String lowercaseLikeServer(String s) {
+        return s.toLowerCase(Server.getDbLocale());
+    }
+
     public static String getNormalizedText(String s) {
-        return peelId(s.toUpperCase());
+        return peelId(uppercaseLikeServer(s));
     }
 
     public static void printIndent(PrintStream out, int indentLevel) {
@@ -206,7 +234,7 @@ public class Misc {
         nonTerminal =
                 nonTerminal.substring(
                         0, nonTerminal.length() - 7); // 7: length of trailing 'Context'
-        return nonTerminal.toLowerCase();
+        return nonTerminal.toLowerCase(Locale.ROOT);
     }
 
     private static final int SMALL_INDENT_LEVEL_BOUND = 20;

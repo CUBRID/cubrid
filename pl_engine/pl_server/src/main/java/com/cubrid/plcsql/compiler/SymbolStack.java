@@ -590,7 +590,8 @@ public class SymbolStack {
     int pushSymbolTable(String name, Misc.RoutineType routineType) {
 
         int level = symbolTableStack.size();
-        name = name.toLowerCase();
+        // this name came from Misc.getNormalizedText (), so it is case-converted the same way
+        name = Misc.lowercaseLikeServer(name);
 
         String routine;
         if (routineType == null) {
@@ -603,7 +604,7 @@ public class SymbolStack {
                 routine = currSymbolTable.scope.routine;
             }
         } else {
-            routine = name.toUpperCase();
+            routine = Misc.uppercaseLikeServer(name);
         }
 
         String block = name + "_" + level;
@@ -661,6 +662,12 @@ public class SymbolStack {
             if (decl.givesBodyOf(old)) {
                 decl.setScope(symbolTable.scope);
                 old.setBodyDecl(decl);
+                if (old.isPkgItem) {
+                    decl.setPkgItem();
+                    if (old.isPkgPublic) {
+                        decl.setPkgPublic();
+                    }
+                }
             } else {
                 throw new SemanticError(
                         Misc.getLineColumnOf(decl.ctx), // s062

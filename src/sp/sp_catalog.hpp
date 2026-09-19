@@ -98,6 +98,7 @@ typedef sp_directive SP_DIRECTIVE_ENUM;
 struct sp_code_info
 {
   std::string name;
+  std::string compile_id;
   std::string created_time;
   MOP owner;
   int is_static;
@@ -119,6 +120,7 @@ struct sp_info
   bool is_system_generated;
   std::vector <sp_arg_info> args;
   SP_LANG_ENUM lang;
+  std::string compile_id;
   std::string target_class;
   std::string target_method;
   SP_DIRECTIVE_ENUM directive;
@@ -167,5 +169,8 @@ std::string sp_args_get_entry_name (int index);
 // misc
 void sp_normalize_name (std::string &s);
 void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
+
+// package
+MOP sp_find_pkg_var (const char *pkg_unique_name, const char *name);
 
 #endif // _SP_CATALOG_HPP_
