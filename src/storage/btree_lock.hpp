@@ -43,6 +43,10 @@ struct btree_find_unique_helper
   OID oid;			/* OID of found object (if found). */
   OID match_class_oid;		/* Object is only considered if its class OID matches this class OID. */
   LOCK lock_mode;		/* Lock mode for found unique object. */
+  bool lock_found_object;	/* Take lock_mode on the found object here.  False when the caller settles on the heap's
+				 * last version instead (locator_lock_and_get_object ()), where the row's owner is visible;
+				 * the key entry alone cannot show it, so a lock taken here would queue an owner behind a
+				 * waiter that already holds the row lock while it waits on the owner. */
   MVCC_SNAPSHOT *snapshot;	/* Snapshot used to filter objects not visible. If NULL, objects are not filtered. */
   bool found_object;		/* Set to true if object was found. */
 
@@ -59,6 +63,7 @@ struct btree_find_unique_helper
   { OID_INITIALIZER, /* oid */ \
     OID_INITIALIZER, /* match_class_oid */ \
     NULL_LOCK, /* lock_mode */ \
+    true, /* lock_found_object */ \
     NULL, /* snapshot */ \
     false, /* found_object */ \
     PERF_UTIME_TRACKER_INITIALIZER, /* time_track */ \
@@ -70,6 +75,7 @@ struct btree_find_unique_helper
   { OID_INITIALIZER, /* oid */ \
     OID_INITIALIZER, /* match_class_oid */ \
     NULL_LOCK, /* lock_mode */ \
+    true, /* lock_found_object */ \
     NULL, /* snapshot */ \
     false, /* found_object */ \
     PERF_UTIME_TRACKER_INITIALIZER /* time_track */ \

@@ -12051,6 +12051,10 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
   int local_op_type = SINGLE_ROW_DELETE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   BTREE_SEARCH r;
+  bool retry_index = false;
+#if !defined (NDEBUG)
+  int settle_retries = 0;
+#endif
 
   *removed_count = 0;
 
@@ -12126,7 +12130,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
       OID_SET_NULL (&unique_oid);
 
-      r = xbtree_find_unique (thread_p, &btid, S_DELETE, key_dbvalue, &pruned_oid, &unique_oid, is_global_index);
+      r =
+	xbtree_find_unique_unlocked (thread_p, &btid, S_DELETE, key_dbvalue, &pruned_oid, &unique_oid, is_global_index);
 
       if (r == BTREE_KEY_FOUND)
 	{
@@ -12158,7 +12163,10 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	      local_scan_cache = &pruning_cache->scan_cache;
 	    }
 
-	  /* last version was already locked and returned by xbtree_find_unique() */
+	  /* The lookup took no lock on the object.  The delete below settles on the row's last version
+	   * (locator_delete_force () -> locator_lock_and_get_object_with_evaluation ()), where the row's owner is
+	   * visible; a lock from the key entry alone would queue this transaction behind a waiter parked on its own
+	   * stamp. */
 	  error_code = locator_delete_lob_force (thread_p, &pruned_oid, &unique_oid, NULL);
 	  if (error_code != NO_ERROR)
 	    {
@@ -12166,7 +12174,6 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	    }
 
 	  force_count = 0;
-	  /* The object was locked during find unique */
 	  error_code =
 	    locator_attribute_info_force (thread_p, &pruned_hfid, &unique_oid, NULL, NULL, 0, LC_FLUSH_DELETE,
 					  local_op_type, local_scan_cache, &force_count, false,
@@ -12186,6 +12193,17 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	      assert (force_count == 1);
 	      *removed_count += force_count;
 	      force_count = 0;
+	    }
+	  else
+	    {
+	      /* The row went away between the lookup and the settle -- deleted and committed by another transaction --
+	       * and its key may since have been taken by a new row.  Ask the index again. */
+	      er_clear ();
+#if !defined (NDEBUG)
+	      settle_retries++;
+	      assert (settle_retries < 100);	/* churn on one key; the loop ends when the key settles */
+#endif
+	      retry_index = true;
 	    }
 	}
       else if (r == BTREE_ERROR_OCCURRED)
@@ -12207,6 +12225,11 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	{
 	  pr_clear_value (&dbvalue);
 	  key_dbvalue = NULL;
+	}
+      if (retry_index)
+	{
+	  retry_index = false;
+	  --i;
 	}
     }
 
@@ -12355,7 +12378,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	    }
 	}
 
-      r = xbtree_find_unique (thread_p, &btid, S_UPDATE, key_dbvalue, &class_oid, &unique_oid, is_global_index);
+      r =
+	xbtree_find_unique_unlocked (thread_p, &btid, S_UPDATE, key_dbvalue, &class_oid, &unique_oid, is_global_index);
 
       if (r == BTREE_KEY_FOUND)
 	{
@@ -12386,7 +12410,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	      *pruned_partition_scan_cache = &pruning_cache->scan_cache;
 	    }
 
-	  /* We now hold an X_LOCK on the instance. */
+	  /* No lock is taken here: the caller settles on the row's last version (qexec_execute_duplicate_key_update ()). */
 	  if (pruning_type == DB_PARTITION_CLASS)
 	    {
 	      if (!OID_EQ (&class_oid, &pcontext->selected_partition->class_oid))
@@ -12488,53 +12512,80 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   int local_op_type = SINGLE_ROW_UPDATE;
   HEAP_SCANCACHE *local_scan_cache = NULL;
   int ispeeking;
+#if !defined (NDEBUG)
+  int settle_retries = 0;
+#endif
 
   OID_SET_NULL (&unique_oid);
   OID_SET_NULL (&unique_class_oid);
 
-  local_scan_cache = scan_cache;
-
-  error =
-    qexec_oid_of_duplicate_key_update (thread_p, &local_scan_cache, scan_cache, attr_info, index_attr_info, idx_info,
-				       pruning_type, pcontext, &unique_oid, op_type);
-  if (error != NO_ERROR)
+  /* The lookup takes no lock on the duplicate; the fetch below settles on its last version instead, where the
+   * row's owner is visible (locator_lock_and_get_object (), owner_bypass_ok).  A lock from the key entry alone
+   * cannot see the owner -- an update of a non-key column leaves the entry as its inserter wrote it -- and would
+   * queue this transaction behind a waiter that already holds the row lock while parked on this transaction's
+   * own lock.  With no lock between the two, the row can be deleted and committed in between; the key may then
+   * already belong to a new row, so the index is asked again rather than the key taken as free. */
+  for (;;)
     {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
+      local_scan_cache = scan_cache;
+      error =
+	qexec_oid_of_duplicate_key_update (thread_p, &local_scan_cache, scan_cache, attr_info, index_attr_info,
+					   idx_info, pruning_type, pcontext, &unique_oid, op_type);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
 
-  if (OID_ISNULL (&unique_oid))
-    {
-      *force_count = 0;
-      return NO_ERROR;
-    }
+      if (OID_ISNULL (&unique_oid))
+	{
+	  *force_count = 0;
+	  return NO_ERROR;
+	}
 
-  /* get attribute values */
-  ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
+      /* get attribute values */
+      ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
-  /* A duplicate whose delete is in progress carries no row lock once the deleter has published, and the
-   * visible version hides that delete -- updating it would overwrite a record the deleter still has to
-   * undo. Fetch through the lock path instead: it waits the deleter out and re-reads. */
-  scan_code = heap_get_class_oid (thread_p, &unique_oid, &unique_class_oid);
-  if (scan_code != S_SUCCESS)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto exit_on_error;
-    }
+      /* A duplicate whose delete is in progress carries no row lock once the deleter has published, and the
+       * visible version hides that delete -- updating it would overwrite a record the deleter still has to
+       * undo. Fetch through the lock path instead: it waits the deleter out and re-reads. */
+      scan_code = heap_get_class_oid (thread_p, &unique_oid, &unique_class_oid);
+      if (scan_code != S_SUCCESS)
+	{
+	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* vacuumed away since the lookup */
+	      er_clear ();
+	      scan_code = S_DOESNT_EXIST;
+	    }
+	  else
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      goto exit_on_error;
+	    }
+	}
+      else
+	{
+	  scan_code =
+	    locator_lock_and_get_object (thread_p, &unique_oid, &unique_class_oid, &rec_descriptor, local_scan_cache,
+					 X_LOCK, ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED, false, true);
+	}
+      if (scan_code != S_DOESNT_EXIST)
+	{
+	  break;
+	}
 
-  scan_code =
-    locator_lock_and_get_object (thread_p, &unique_oid, &unique_class_oid, &rec_descriptor, local_scan_cache, X_LOCK,
-				 ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED, false, true);
-  if (scan_code == S_DOESNT_EXIST)
-    {
-      /* The last version is deleted and gone for us -- by a transaction that committed, or by this one in an
-       * earlier statement.  Either way the key is free, so this row is no longer a duplicate and the caller
-       * inserts.  A delete that a concurrent transaction committed after our snapshot does not arrive here:
-       * above READ COMMITTED it is an isolation conflict (locator_has_isolation_conflict ()) and comes back
-       * as S_ERROR. */
+      /* The last version is deleted and gone for us: a transaction deleted it and committed since the lookup.
+       * (The lookup itself skips a delete committed before our snapshot and our own delete from an earlier
+       * statement.)  A delete that a concurrent transaction committed after our snapshot does not arrive here
+       * above READ COMMITTED: it is an isolation conflict (locator_has_isolation_conflict ()) and comes back as
+       * S_ERROR. */
       er_clear ();
-      *force_count = 0;
-      return NO_ERROR;
+      OID_SET_NULL (&unique_oid);
+#if !defined (NDEBUG)
+      settle_retries++;
+      assert (settle_retries < 100);	/* churn on one key; the loop ends when the key settles */
+#endif
     }
   if (scan_code != S_SUCCESS)
     {

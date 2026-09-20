@@ -1669,7 +1669,7 @@ static int btree_seq_find_oid_from_ovfl (THREAD_ENTRY * thread_p, BTID_INT * bti
 					 BTREE_MVCC_INFO * deleted_mvcc_info);
 
 STATIC_INLINE void btree_note_active_delete_owner (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * owner_mvcc_info,
-						  const BTREE_MVCC_INFO * mvcc_info) __attribute__ ((ALWAYS_INLINE));
+						   const BTREE_MVCC_INFO * mvcc_info) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void btree_insert_sysop_end (THREAD_ENTRY * thread_p, BTREE_INSERT_HELPER * helper)
@@ -26358,6 +26358,16 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
+	  if (!find_unique_helper->lock_found_object)
+	    {
+	      /* The caller settles on the heap's last version instead (locator_lock_and_get_object ()), where the row's
+	       * owner is visible.  The key entry alone cannot show it -- an update of a non-key column leaves the entry
+	       * as its inserter wrote it -- so a lock taken here would queue the owner behind a waiter that already
+	       * holds the row lock while it waits on the owner's transaction lock. */
+	      COPY_OID (&find_unique_helper->oid, &unique_oid);
+	      find_unique_helper->found_object = true;
+	      return NO_ERROR;
+	    }
 	  /* Must lock object. */
 	  if (!OID_ISNULL (&find_unique_helper->locked_oid))
 	    {
@@ -26676,6 +26686,16 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
+	  if (!find_unique_helper->lock_found_object)
+	    {
+	      /* The caller settles on the heap's last version instead (locator_lock_and_get_object ()), where the row's
+	       * owner is visible.  The key entry alone cannot show it -- an update of a non-key column leaves the entry
+	       * as its inserter wrote it -- so a lock taken here would queue the owner behind a waiter that already
+	       * holds the row lock while it waits on the owner's transaction lock. */
+	      COPY_OID (&find_unique_helper->oid, &unique_oid);
+	      find_unique_helper->found_object = true;
+	      return NO_ERROR;
+	    }
 	  /* Must lock object. */
 	  if (!OID_ISNULL (&find_unique_helper->locked_oid))
 	    {
@@ -27238,7 +27258,7 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
 }
 
 /*
- * xbtree_find_unique () - Find (and sometimes lock) object in key of unique index.
+ * btree_find_unique_internal () - Find (and sometimes lock) object in key of unique index.
  *
  * return		  : BTREE_SEARCH result.
  * thread_p (in)	  : Thread entry.
@@ -27248,10 +27268,12 @@ btree_record_satisfies_snapshot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, R
  * class_oid (in)	  : Class OID.
  * oid (out)		  : Found (and sometimes locked) object OID.
  * is_all_class_srch (in) : True if search is based on all classes contained in the class hierarchy.
+ * lock_found_object (in) : False to return the first object of an S_DELETE / S_UPDATE lookup without locking it; the
+ *			    caller then settles on the heap's last version, where the row's owner is visible.
  */
-BTREE_SEARCH
-xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
-		    OID * class_oid, OID * oid, bool is_all_class_srch)
+static BTREE_SEARCH
+btree_find_unique_internal (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
+			    OID * class_oid, OID * oid, bool is_all_class_srch, bool lock_found_object)
 {
   /* Helper used to describe find unique process and to output results. */
   BTREE_FIND_UNIQUE_HELPER find_unique_helper = BTREE_FIND_UNIQUE_HELPER_INITIALIZER;
@@ -27270,6 +27292,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 	  || scan_op_type == S_UPDATE);
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
   assert (oid != NULL);
+  assert (lock_found_object || scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
 
   PERF_UTIME_TRACKER_START (thread_p, &find_unique_helper.time_track);
 
@@ -27337,8 +27360,9 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
       /* S_SELECT_LOCK_DIRTY, S_DELETE, S_UPDATE. */
       assert (scan_op_type == S_SELECT_WITH_LOCK || scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
 
-      /* First key object must be locked and returned. */
+      /* First key object must be returned, and locked unless the caller settles on it itself. */
       find_unique_helper.lock_mode = (scan_op_type == S_SELECT_WITH_LOCK) ? S_LOCK : X_LOCK;
+      find_unique_helper.lock_found_object = lock_found_object;
       key_function = btree_key_find_and_lock_unique;
     }
 
@@ -27409,7 +27433,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
 #if defined (SERVER_MODE)
       /* Safe guard: object is supposed to be locked. */
-      assert (scan_op_type == S_SELECT || lock_has_lock_on_object (oid, class_oid, find_unique_helper.lock_mode) > 0);
+      assert (scan_op_type == S_SELECT || !lock_found_object
+	      || lock_has_lock_on_object (oid, class_oid, find_unique_helper.lock_mode) > 0);
 #endif /* SERVER_MODE */
 
       return BTREE_KEY_FOUND;
@@ -27421,6 +27446,51 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
   assert (OID_ISNULL (&find_unique_helper.locked_oid));
 #endif /* SERVER_MODE */
   return BTREE_KEY_NOTFOUND;
+}
+
+/*
+ * xbtree_find_unique () - Find (and sometimes lock) object in key of unique index.
+ *
+ * return		  : BTREE_SEARCH result.
+ * thread_p (in)	  : Thread entry.
+ * btid (in)		  : B-tree identifier.
+ * scan_op_type (in)	  : Operation type (purpose) of finding unique key object.
+ * key (in)		  : Key value.
+ * class_oid (in)	  : Class OID.
+ * oid (out)		  : Found (and sometimes locked) object OID.
+ * is_all_class_srch (in) : True if search is based on all classes contained in the class hierarchy.
+ */
+BTREE_SEARCH
+xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
+		    OID * class_oid, OID * oid, bool is_all_class_srch)
+{
+  return btree_find_unique_internal (thread_p, btid, scan_op_type, key, class_oid, oid, is_all_class_srch, true);
+}
+
+/*
+ * xbtree_find_unique_unlocked () - Find the first object of a key in a unique index for S_DELETE / S_UPDATE without
+ *				    locking it.  An inserter or deleter still live on the key is waited out as usual;
+ *				    only the object lock is left to the caller, which settles on the heap's last
+ *				    version (locator_lock_and_get_object ()) where the row's owner is visible.  Nothing
+ *				    protects the object between this lookup and that settle, so a caller that then
+ *				    finds the row gone must ask the index again: the key may already belong to a new
+ *				    row.
+ *
+ * return		  : BTREE_SEARCH result.
+ * thread_p (in)	  : Thread entry.
+ * btid (in)		  : B-tree identifier.
+ * scan_op_type (in)	  : S_DELETE or S_UPDATE.
+ * key (in)		  : Key value.
+ * class_oid (in)	  : Class OID.
+ * oid (out)		  : Found object OID.
+ * is_all_class_srch (in) : True if search is based on all classes contained in the class hierarchy.
+ */
+BTREE_SEARCH
+xbtree_find_unique_unlocked (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE scan_op_type, DB_VALUE * key,
+			     OID * class_oid, OID * oid, bool is_all_class_srch)
+{
+  assert (scan_op_type == S_DELETE || scan_op_type == S_UPDATE);
+  return btree_find_unique_internal (thread_p, btid, scan_op_type, key, class_oid, oid, is_all_class_srch, false);
 }
 
 /*
