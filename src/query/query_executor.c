@@ -12857,11 +12857,12 @@ qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VAL
 
 /*
  * qexec_execute_remote_dml_sink () - Push local rows to a remote table via CCI: either streaming a local
- *   SELECT into a remote INSERT, or pushing one remote DELETE per value from a local WHERE subquery.
+ *   SELECT into a remote INSERT or REPLACE, or pushing one remote DELETE per value from a local WHERE
+ *   subquery.
  *   return: NO_ERROR or ER_FAILED
  *   xasl(in)       : XASL Tree block (INSERT_PROC or DELETE_PROC with sink.is_remote set, per kind)
  *   xasl_state(in) : XASL state
- *   kind(in)       : DBLINK_DML_INSERT or DBLINK_DML_DELETE
+ *   kind(in)       : which statement the proc sends -- INSERT and REPLACE both read INSERT_PROC
  *
  * Note: The aptr producing xasl->val_list has already been executed and xasl->list_id set up by the
  *       caller (qexec_execute_insert directly; qexec_execute_remote_delete_subquery for DELETE, since
@@ -12892,6 +12893,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   switch (kind)
     {
     case DBLINK_DML_INSERT:
+    case DBLINK_DML_REPLACE:
       {
 	INSERT_PROC_NODE *insert = &xasl->proc.insert;
 
@@ -12922,7 +12924,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 
   assert (sink->is_remote);
 
-  /* open remote connection and prepare the INSERT/DELETE statement */
+  /* open remote connection and prepare the INSERT, REPLACE or DELETE statement */
   if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
 		       val_no, key_col, op, &dblink_state) != NO_ERROR)
     {
@@ -12949,6 +12951,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	  switch (kind)
 	    {
 	    case DBLINK_DML_INSERT:
+	    case DBLINK_DML_REPLACE:
 	      {
 		INSERT_PROC_NODE *insert = &xasl->proc.insert;
 
@@ -13362,7 +13365,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->sink.is_remote)
     {
-      return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state, DBLINK_DML_INSERT);
+      return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state,
+					    insert->do_replace ? DBLINK_DML_REPLACE : DBLINK_DML_INSERT);
     }
 
   /* We might not hold a strong enough lock on the class yet. */
