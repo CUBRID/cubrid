@@ -11873,16 +11873,16 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       remote_ins = 1;
     }
 
-  /* remote INSERT SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t
+  /* remote INSERT / REPLACE SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t
    *
-   * Only plain INSERT ... SELECT is carved out to the remote sink path. REPLACE INTO ... SELECT and
-   * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE are intentionally excluded: the remote path emits a
-   * plain INSERT (dblink_dml_open) and cannot honor REPLACE/ODKU semantics. By not setting the flag
-   * here they fall through to pt_convert_dblink_dml_query's "local mixed remote DML is not allowed"
-   * rejection -- the same behavior develop gives for these statements. Supporting REPLACE/ODKU over a
-   * remote target is deferred. */
-  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
-      && !node->info.insert.do_replace && node->info.insert.odku_assignments == NULL)
+   * REPLACE INTO ... SELECT takes the same sink. The sink sends one statement per source row and
+   * REPLACE carries that meaning row by row, so honoring it is a matter of which statement
+   * dblink_dml_open prepares; the values travel the same way.
+   *
+   * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE is still excluded: the sink has nowhere to carry the
+   * update assignments yet. By not setting the flag here it falls through to the mixed local/remote
+   * rejection in pt_convert_dblink_dml_query -- the same behavior develop gives for it. */
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL && node->info.insert.odku_assignments == NULL)
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
     }
