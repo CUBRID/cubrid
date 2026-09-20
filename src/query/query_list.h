@@ -743,10 +743,13 @@ enum
 					 * first execution replans under the actual bind values */
   XASL_TRACE_PLAN_DETAIL = 0x1 << 19,	/* the session shows its plans in detail (csql ;plan detail): the trace
 					 * carries the compiled expression programs' section too */
-  BIND_WATCH_CANDIDATE = 0x1 << 20	/* the statement passed target selection for bind-value plan
+  BIND_WATCH_CANDIDATE = 0x1 << 20,	/* the statement passed target selection for bind-value plan
 					 * variants (joined nodes, a skewed host-var predicate not
 					 * pinned by a unique key): its executions choose among the
 					 * query's plans by fingerprint (bind_variant.h) */
+  NO_REACHABLE_SAVEPOINT = 0x1 << 21	/* the client asserts that no savepoint a partial rollback could
+					 * still go back to precedes this query; a client that does not
+					 * know the bit never asserts it */
 };
 
 /* the plan choices a LIMIT value decides (pt_recompile_for_limit_optimizations) */
@@ -759,6 +762,7 @@ enum
 #define IS_XASL_TRACE_PLAN_DETAIL(flag)    (((flag) & XASL_TRACE_PLAN_DETAIL) != 0)
 
 #define IS_TRIGGER_INVOLVED(flag)   (((flag) & TRIGGER_IS_INVOLVED) != 0)
+#define IS_NO_REACHABLE_SAVEPOINT(flag)   (((flag) & NO_REACHABLE_SAVEPOINT) != 0)
 
 #define IS_XASL_CACHE_PINNED_REFERENCE(flag)   (((flag) & XASL_CACHE_PINNED_REFERENCE) != 0)
 #define IS_QUERY_EXECUTED_WITHOUT_DATA_BUFFERS(flag)   (((flag) & EXECUTE_QUERY_WITHOUT_DATA_BUFFERS) != 0)

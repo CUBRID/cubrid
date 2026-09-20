@@ -109,6 +109,11 @@ static CUB_THREAD_LOCAL int tm_libcas_depth = 0;
  */
 static CUB_THREAD_LOCAL DB_NAMELIST *user_savepoint_list = NULL;
 
+/* A system savepoint gives one client statement its atomicity, and only that statement rolls back to it.  The
+ * server is told nothing when the statement succeeds, so the client remembers here that one may still be in use:
+ * set when a system savepoint is declared, cleared when the top-level statement that declared it is over. */
+static bool system_savepoint_is_live = false;
+
 static int tran_add_savepoint (const char *savept_name);
 static void tran_free_list_upto_savepoint (const char *savept_name);
 
@@ -1036,6 +1041,34 @@ tran_free_savepoint_list (void)
 {
   nlist_free (user_savepoint_list);
   user_savepoint_list = NULL;
+  system_savepoint_is_live = false;
+}
+
+/*
+ * tran_has_reachable_savepoint - Can a partial rollback still undo what this transaction does next?
+ *
+ * return: true if a user savepoint is declared, or a system savepoint may still be in use
+ *
+ * NOTE: What the server holds is the savepoint chain, which keeps every savepoint the transaction ever declared
+ *       and cannot tell either kind from the other.  This is the client's answer, sent with each query; see
+ *       NO_REACHABLE_SAVEPOINT.  A user who rolls back to a system savepoint by its generated name is not
+ *       accounted for: nothing refuses that today, and it is not a documented use.
+ */
+bool
+tran_has_reachable_savepoint (void)
+{
+  return user_savepoint_list != NULL || system_savepoint_is_live;
+}
+
+/*
+ * tran_end_system_savepoints - The top-level statement is over; nothing rolls back to its system savepoints now
+ *
+ * return:
+ */
+void
+tran_end_system_savepoints (void)
+{
+  system_savepoint_is_live = false;
 }
 
 /*
@@ -1159,6 +1192,10 @@ tran_savepoint_internal (const char *savept_name, SAVEPOINT_TYPE savepoint_type)
 	{
 	  return error_code;
 	}
+    }
+  else
+    {
+      system_savepoint_is_live = true;
     }
 
   return error_code;

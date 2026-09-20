@@ -1428,6 +1428,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       thread_p->trigger_involved = true;
     }
 
+  /* assigned, not only raised: whatever an earlier query left here must not answer for this one */
+  thread_p->no_reachable_savepoint = IS_NO_REACHABLE_SAVEPOINT (*flag_p);
+
   /* for result-cache only */
   params.size = dbval_count;
   params.vals = NULL;
@@ -1722,6 +1725,7 @@ end:
       session_set_trigger_state (thread_p, false);
       thread_p->trigger_involved = false;
     }
+  thread_p->no_reachable_savepoint = false;
 
 #if defined (SERVER_MODE)
   if (dbvals_p)
@@ -1941,6 +1945,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
       thread_p->trigger_involved = true;
     }
 
+  /* assigned, not only raised: whatever an earlier query left here must not answer for this one */
+  thread_p->no_reachable_savepoint = IS_NO_REACHABLE_SAVEPOINT (*flag_p);
+
   /* Make an query entry */
   /* mark that this transaction is running a query */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
@@ -2030,6 +2037,7 @@ end:
       session_set_trigger_state (thread_p, false);
       thread_p->trigger_involved = false;
     }
+  thread_p->no_reachable_savepoint = false;
 
 #if defined (SERVER_MODE)
   if (dbvals_p)

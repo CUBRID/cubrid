@@ -1200,7 +1200,8 @@ extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 
 extern bool logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
-extern bool logtb_has_active_savepoint (THREAD_ENTRY * thread_p);
+extern void logtb_get_savepoint_lsa (THREAD_ENTRY * thread_p, LOG_LSA * savept_lsa);
+extern bool logtb_has_reachable_savepoint (THREAD_ENTRY * thread_p, const LOG_LSA * savept_lsa_at_start);
 extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern bool logtb_is_mvccid_committed (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern MVCC_SNAPSHOT *logtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);

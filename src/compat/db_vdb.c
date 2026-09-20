@@ -93,6 +93,7 @@ static int db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE 
 				      const PARSER_CONTEXT * bind_domains_from, DB_SESSION ** typed_p);
 static int db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values);
 static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
+static int db_execute_and_keep_statement_internal (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
 static char *get_reasonable_predicate (DB_ATTRIBUTE * att, char *predicate, int predicate_buf_sz);
@@ -3114,7 +3115,35 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
 }
 
 /*
- * db_execute_and_keep_statement_local() - This function executes the SQL
+ * db_execute_and_keep_statement_local() - Execute one statement and mark where the top-level one ends
+ * return : what db_execute_and_keep_statement_internal () returns
+ * session(in) : contains the SQL query that has been compiled
+ * stmt(in) : int returned by a successful compilation
+ * result(out): query results descriptor
+ *
+ * note : A system savepoint serves the statement that declared it, and the server is not told when that
+ *    statement succeeds.  Its end is only visible here.  Execution re-enters this function -- a stored
+ *    procedure's statements, the statements a DDL runs for itself, a recompile -- so the savepoints are
+ *    given up when the outermost call returns and not before.
+ */
+static int
+db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+{
+  static int depth = 0;
+  int err;
+
+  depth++;
+  err = db_execute_and_keep_statement_internal (session, stmt_ndx, result);
+  if (--depth == 0)
+    {
+      tran_end_system_savepoints ();
+    }
+
+  return err;
+}
+
+/*
+ * db_execute_and_keep_statement_internal() - This function executes the SQL
  *    statement identified by the stmt argument and returns the result.
  *    The statement ID must have already been returned by a successful call
  *    to the db_open_file() function or the db_open_buffer() function that
@@ -3129,7 +3158,7 @@ do_execute_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int
  * result(out): query results descriptor
  */
 static int
-db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
+db_execute_and_keep_statement_internal (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *statement;

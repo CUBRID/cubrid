@@ -122,6 +122,11 @@ execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int var_cnt, const
       cdc_Trigger_involved = false;
     }
 
+  if (!tran_has_reachable_savepoint ())
+    {
+      flag |= NO_REACHABLE_SAVEPOINT;
+    }
+
   query_timeout = tran_get_query_timeout ();
   /* send XASL file id and host variables to the server and get QFILE_LIST_ID */
   *list_idp =
@@ -177,6 +182,11 @@ prepare_and_execute_query (char *stream, int stream_size, QUERY_ID * query_id, i
   else
     {
       cdc_Trigger_involved = false;
+    }
+
+  if (!tran_has_reachable_savepoint ())
+    {
+      flag |= NO_REACHABLE_SAVEPOINT;
     }
 
   query_timeout = tran_get_query_timeout ();

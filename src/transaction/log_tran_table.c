@@ -4316,18 +4316,64 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
- * logtb_has_active_savepoint () - Is a savepoint declared, so a partial rollback can reach back to here?
+ * logtb_get_savepoint_lsa () - Where the savepoint chain of this transaction stands now
  *
- * return: true if this transaction has declared a savepoint
+ * return:
  *
  *   thread_p(in): thread entry
+ *   savept_lsa(out): the latest savepoint, or a null lsa if none was ever declared
  */
-bool
-logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
+void
+logtb_get_savepoint_lsa (THREAD_ENTRY * thread_p, LOG_LSA * savept_lsa)
 {
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
-  return tdes != NULL && !LSA_ISNULL (&tdes->savept_lsa);
+  if (tdes != NULL)
+    {
+      LSA_COPY (savept_lsa, &tdes->savept_lsa);
+    }
+  else
+    {
+      LSA_SET_NULL (savept_lsa);
+    }
+}
+
+/*
+ * logtb_has_reachable_savepoint () - Can a partial rollback undo this statement without ending the transaction?
+ *
+ * return: true if a savepoint that precedes the statement may still be rolled back to
+ *
+ *   thread_p(in): thread entry
+ *   savept_lsa_at_start(in): logtb_get_savepoint_lsa () as the statement began
+ *
+ * NOTE: The chain in tdes keeps every savepoint the transaction ever declared.  It does not tell a user
+ *       savepoint, which stays reachable to the end of the transaction, from a system savepoint, which serves
+ *       one client statement and is dead once that statement is over -- the request that declares one carries
+ *       only its name, and no request marks a client statement's end.  The client knows both, and says so with
+ *       the query: NO_REACHABLE_SAVEPOINT.  Its word is taken only about the chain as it stood when the query
+ *       began.  A savepoint declared since then, by something the statement itself ran, is not covered and
+ *       counts as reachable; so does every savepoint when the client says nothing, which is what a client that
+ *       does not know the flag does.
+ *
+ *       Not covered: a user can roll back to a system savepoint by its generated name (UisP_1, ...) after its
+ *       statement is over.  Nothing refuses that, here or before this change, and it is not a documented use.
+ */
+bool
+logtb_has_reachable_savepoint (THREAD_ENTRY * thread_p, const LOG_LSA * savept_lsa_at_start)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (tdes == NULL || LSA_ISNULL (&tdes->savept_lsa))
+    {
+      return false;
+    }
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  return !thread_p->no_reachable_savepoint || !LSA_EQ (&tdes->savept_lsa, savept_lsa_at_start);
 }
 
 /*

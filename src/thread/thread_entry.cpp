@@ -139,6 +139,7 @@ namespace cubthread
     , trigger_involved (false)
     , serial_restart (false)
     , is_cdc_daemon (false)
+    , no_reachable_savepoint (false)
 #if !defined (NDEBUG)
     , fi_test_array (NULL)
     , count_private_allocators (0)
@@ -309,6 +310,8 @@ namespace cubthread
     serial_restart = false;
 
     is_cdc_daemon = false;
+
+    no_reachable_savepoint = false;
 
     end_resource_tracks ();
 
