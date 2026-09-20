@@ -5726,9 +5726,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
 								      local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
 								      LOG_ERROR_IF_DELETED,
-								      LOCATOR_LOCK_IS_TRANSIENT (lock_policy),
-								      LOCATOR_LOCKED_AT_SELECT (lock_policy)
-								      || LOCATOR_LOCK_IS_TRANSIENT (lock_policy));
+								      LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true);
 		}
 	      else
 		{
@@ -6265,9 +6263,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   scan_code =
     locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
 						 mvcc_reev_data, LOG_WARNING_IF_DELETED,
-						 LOCATOR_LOCK_IS_TRANSIENT (lock_policy),
-						 LOCATOR_LOCKED_AT_SELECT (lock_policy)
-						 || LOCATOR_LOCK_IS_TRANSIENT (lock_policy));
+						 LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true);
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
@@ -7587,8 +7583,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  /* the select phase did not lock this row, so this request is the statement's and follows its
 	   * policy -- locator_update_force () below sees oldrecdes filled and does not lock it again */
 	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
-					      NULL_CHN, LOG_ERROR_IF_DELETED, LOCATOR_LOCK_IS_TRANSIENT (lock_policy),
-					      LOCATOR_LOCK_IS_TRANSIENT (lock_policy));
+					      NULL_CHN, LOG_ERROR_IF_DELETED, LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true);
 	  if (saved_mvcc_snapshot != NULL)
 	    {
 	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;

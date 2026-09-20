@@ -12587,7 +12587,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 
   scan_code =
     locator_lock_and_get_object (thread_p, &unique_oid, &unique_class_oid, &rec_descriptor, local_scan_cache, X_LOCK,
-				 ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED, false, false);
+				 ispeeking, NULL_CHN, LOG_WARNING_IF_DELETED, false, true);
   if (scan_code == S_DOESNT_EXIST)
     {
       /* The last version is deleted and gone for us -- by a transaction that committed, or by this one in an
