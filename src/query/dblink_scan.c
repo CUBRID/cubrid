@@ -1712,8 +1712,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
  *   vals(in)          : array of DB_VALUE* (one per SELECT output column)
  *   num_vals(in)      : length of vals
  *   affected_rows(out): remote-reported affected row count for this execute (cci_execute's return
- *                        value); NULL if the caller does not need it (e.g. a positional INSERT row
- *                        always affects exactly one row, so the INSERT SELECT caller ignores this).
+ *                        value); NULL when the caller does not use the count.
  *
  * Remote transaction behavior (distinct from local session AUTOCOMMIT and DBLINK_AUTO_COMMIT):
  *   dblink_dml_open always sets CCI_AUTOCOMMIT_FALSE on the remote connection.
@@ -1748,7 +1747,6 @@ dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VA
 	}
     }
 
-  /* execute INSERT/DELETE */
   result = cci_execute (state->stmt_handle, 0, 0, &err_buf);
   if (result < 0)
     {

@@ -12960,16 +12960,17 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 		    goto exit_on_error;
 		  }
 
-		/* affected_rows is not read here: a positional INSERT row is expected to affect exactly one
-		 * row, though a remote-side trigger/constraint could in principle alter that. Reconciling
-		 * INSERT accounting against such cases is out of scope here. */
-		if (dblink_dml_execute_row (thread_p, &dblink_state, insert->vals, val_no, NULL) != NO_ERROR)
+		/* Take the count the remote reports rather than assuming one row per statement sent. A
+		 * REPLACE that replaces counts the row it removed as well as the one it inserted, so it
+		 * answers 2. This is the rule the text-push path already follows, and the DELETE sink
+		 * accumulates the remote's number the same way. */
+		if (dblink_dml_execute_row (thread_p, &dblink_state, insert->vals, val_no, &row_affected) != NO_ERROR)
 		  {
 		    qexec_failure_line (__LINE__, xasl_state);
 		    goto exit_on_error;
 		  }
 
-		xasl->list_id->tuple_cnt++;
+		xasl->list_id->tuple_cnt += row_affected;
 		break;
 	      }
 	    case DBLINK_DML_DELETE:
