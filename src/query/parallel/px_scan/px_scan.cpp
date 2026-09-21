@@ -436,6 +436,7 @@ extern "C"
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
+    /* should check LIST_MERGE in checker */
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
 	scan_id->s.phsid.result_type = parallel_scan::RESULT_TYPE::MERGEABLE_LIST;
@@ -865,8 +866,10 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
-    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* mergeable results are flattened at the result-cache point in xqmgr_execute_query when the query is
+     * cacheable; other cacheable result types would still leak worker intermediate state, so they stay blocked. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
+	&& !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
 	return NO_ERROR;
       }
@@ -1318,8 +1321,10 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
-    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* mergeable results are flattened at the result-cache point in xqmgr_execute_query when the query is
+     * cacheable; other cacheable result types would still leak worker intermediate state, so they stay blocked. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
+	&& !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
 	return NO_ERROR;
       }

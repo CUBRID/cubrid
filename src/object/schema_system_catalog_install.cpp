@@ -2223,16 +2223,19 @@ namespace cubschema
   system_catalog_definition
   system_catalog_initializer::get_view_db_histogram ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_HISTOGRAM_NAME,
 		   // columns
     {
-      {"class_name", "object"},
-      {"key_attr", format_varchar (255)},
-      {"with_fullscan", format_varchar (32)},
-      {"null_frequency", "double"},
+      /* the view domain overrides the query spec result type, so class_name must be declared as a string
+       * (it was "object") and null_frequency must match the NUMERIC (18, 12) the spec casts to (CBRD-27043) */
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"class_name", format_varchar (255)},
+      {"attr_name", format_varchar (255)},
+      {"scan_type", format_varchar (32)},
+      {"null_frequency", format_numeric (18, 12)},
+      // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_histogram_spec ()}
     },
 // constraint

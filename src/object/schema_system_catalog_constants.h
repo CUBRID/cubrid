@@ -116,20 +116,25 @@
  * and if the SELECT result exceeds this number, we assume that at least one
  * general object domain exists in a user class.
  *
- * The number of general object domains in system classes is currently 10 and
+ * The number of general object domains in system classes is currently 9 and
  * is hard-coded. Therefore, when a general object domain is added to or
  * removed from any system class, this value MUST be reviewed.
+ *
+ * CBRD-27382 took it to 10 by storing a referential class in _db_index, and
+ * this change takes one back off: db_histogram.class_name stopped being an
+ * OBJECT column and became VARCHAR (CBRD-27043).
  *
  * If the number changes, CNT_CATCLS_OBJECTS MUST be updated accordingly.
  *
  * A QA test case has been added to verify that system classes contain exactly
- * 10 general object domains. This test is intended to catch violations of this
- * assumption early. If CNT_CATCLS_OBJECTS is modified, the corresponding QA
- * test MUST also be updated.
+ * this many general object domains (the shell case catcls_general_object).
+ * This test is intended to catch violations of this assumption early. If
+ * CNT_CATCLS_OBJECTS is modified, the corresponding QA test MUST also be
+ * updated.
  *
  * See CBRD-23983 and CBRD-25697 for details.
  */
 
-#define CNT_CATCLS_OBJECTS              (10)	/* number of general object domains in system classes */
+#define CNT_CATCLS_OBJECTS              (9)	/* number of general object domains in system classes */
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */
