@@ -1483,7 +1483,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  if (cached_result)
 	    {
 	      /* found the cached result */
-	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	      if (server_cache_time_p != NULL)
+		{
+		  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+		}
 	    }
 	}
     }
@@ -1607,14 +1610,26 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	      goto end;
 	    }
 
-	  /* the type of the result file should be FILE_QUERY_AREA in order not to deleted at the time of query_end */
-	  if (list_id_p->tfile_vfid != NULL && list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA)
+	  /* list_id_p is a QFILE_SKIP_DEPENDENT clone, so a borrowed worker-page chain (qfile_connect_list) is only
+	   * visible on the query entry's original list. Cache entries outlive the query while those worker FILE_TEMP
+	   * files are retired at query end, so flatten whenever the base is not FILE_QUERY_AREA or a chain exists. */
+	  if (list_id_p->tfile_vfid != NULL
+	      && (list_id_p->tfile_vfid->temp_file_type != FILE_QUERY_AREA
+		  || (query_p->list_id != NULL && query_p->list_id->dependent_list_id != NULL)))
 	    {
 	      /* duplicate the list file */
 	      tmp_list_id_p = qfile_duplicate_list (thread_p, list_id_p, QFILE_FLAG_RESULT_FILE);
 	      if (tmp_list_id_p)
 		{
-		  qfile_destroy_list (thread_p, list_id_p);
+		  /* Retire the base and any borrowed worker files through the owner, then hand the duplicate to the
+		   * query entry: later page fetches go through query_p->list_id->tfile_vfid, and destroying a
+		   * FILE_QUERY_AREA base frees that struct. */
+		  qfile_destroy_list (thread_p, query_p->list_id);
+		  if (qfile_copy_list_id (query_p->list_id, tmp_list_id_p, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		    {
+		      QFILE_FREE_AND_INIT_LIST_ID (tmp_list_id_p);
+		      goto exit_on_error;
+		    }
 		  QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
 		  list_id_p = tmp_list_id_p;
 		}
@@ -1667,7 +1682,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
 	  /* record list cache entry into the query entry for qfile_end_use_of_list_cache_entry() */
 	  query_p->list_ent = list_cache_entry_p;
 
-	  CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	  if (server_cache_time_p != NULL)
+	    {
+	      CACHE_TIME_MAKE (server_cache_time_p, &list_cache_entry_p->time_created);
+	    }
 	}
     }
 
