@@ -688,8 +688,10 @@ namespace cubconn::connection
   bool worker::claim_reading (context *ctx, bool from_edge)
   {
     bool claimed;
+    int r;
 
-    rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+    r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
     claimed = !ctx->m_recv.m_recv_busy.load (std::memory_order_relaxed);
     if (claimed)
       {
@@ -699,7 +701,8 @@ namespace cubconn::connection
       {
 	ctx->m_recv.m_missed_edge = true;
       }
-    rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+    r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
 
     return claimed;
   }
