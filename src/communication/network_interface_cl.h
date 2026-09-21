@@ -426,7 +426,9 @@ extern int file_delete_target_file (const char *target_vfid_str);
 extern int stream_from_init (int stream_kind, const char *config, int config_len);
 extern int stream_from_send_data (const char *data, int data_len);
 extern int stream_from_end (INT64 * count);
+extern int stream_from_abort (void);
 extern bool stream_from_is_open (void);
+extern bool stream_from_ends_unit_of_work (void);
 extern void stream_from_reset (void);
 
 /* COPY FROM STDIN binding over the stream transport */

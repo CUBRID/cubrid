@@ -10549,6 +10549,35 @@ ux_stream_is_open (void)
   return stream_from_is_open ();
 }
 
+/*
+ * ux_stream_init () - Open a stream session the driver asked for directly
+ *
+ * The statement path does not come through here: a statement that opens a
+ * stream defers its own auto-commit in do_commit_after_execute (), with the
+ * mode that statement ran in. A driver-opened stream has no such statement, so
+ * what END owes is settled here instead -- from the kind's own answer, which
+ * the open reply carries, and this connection's mode.
+ */
+int
+ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  err_code = stream_from_init (stream_kind, config, config_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  stream_Deferred_auto_commit = (stream_from_ends_unit_of_work () && as_info->auto_commit_mode == TRUE);
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
 int
 ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -10614,5 +10643,41 @@ ux_stream_end (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
    * binding's count follows, 64-bit so a value stream's byte count fits */
   net_buf_cp_int (net_buf, NO_ERROR, NULL);
   net_buf_cp_bigint (net_buf, count, NULL);
+  return 0;
+}
+
+/*
+ * ux_stream_abort () - Give up on the stream without ending it
+ *
+ * The bytes the session already flushed stay in the transaction, so the
+ * auto-commit it deferred is paid back as a rollback -- the same reckoning as a
+ * failed chunk, and for the same reason: left unpaid, the next statement's
+ * auto-commit would commit them.
+ */
+int
+ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+  bool auto_commit_owed;
+
+  auto_commit_owed = stream_Deferred_auto_commit;
+  stream_Deferred_auto_commit = false;
+
+  err_code = stream_from_abort ();
+
+  if (auto_commit_owed)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
   return 0;
 }

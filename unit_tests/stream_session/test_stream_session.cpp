@@ -71,10 +71,10 @@ namespace
 	return NO_ERROR;
       }
 
-      int finish (THREAD_ENTRY *thread_p, std::int64_t *count) override
+      int finish (THREAD_ENTRY *thread_p, stream_result *result) override
       {
 	(void) thread_p;
-	*count = (std::int64_t) m_received.size ();
+	result->count = (std::int64_t) m_received.size ();
 	return NO_ERROR;
       }
 
@@ -128,6 +128,9 @@ namespace
   const int KIND_A = STREAM_KIND_MIN;
   const int KIND_B = STREAM_KIND_MIN + 1;
   const int KIND_UNREGISTERED = STREAM_KIND_MIN + 2;
+  /* its own tag, so the case below need not hand the slot back -- registering
+   * NULL to undo would trip the registry's own assert in a debug build */
+  const int KIND_REFUSING = STREAM_KIND_MIN + 3;
 
   /* The registry is process-wide and registration is one-way, so the cases share
    * one arrangement rather than fighting over it. */
@@ -139,8 +142,10 @@ namespace
 
       if (!registered)
 	{
-	  stream_session_register (KIND_A, make_fake<'A'>);
-	  stream_session_register (KIND_B, make_fake<'B'>);
+	  /* one kind whose END finishes the statement, one that only stages bytes */
+	  stream_session_register (KIND_A, make_fake<'A'>, true);
+	  stream_session_register (KIND_B, make_fake<'B'>, false);
+	  stream_session_register (KIND_REFUSING, refuse, true);
 	  registered = true;
 	}
 
@@ -196,13 +201,8 @@ TEST_CASE_METHOD (registry_fixture, "the factory's own refusal is passed through
 {
   int error_code = NO_ERROR;
 
-  stream_session_register (KIND_UNREGISTERED, refuse);
-
-  CHECK (stream_session_create (NULL, KIND_UNREGISTERED, NULL, 0, &error_code) == NULL);
+  CHECK (stream_session_create (NULL, KIND_REFUSING, NULL, 0, &error_code) == NULL);
   CHECK (error_code == ER_STREAM_SESSION_ERROR);
-
-  /* put the slot back so the case above keeps meaning what it says */
-  stream_session_register (KIND_UNREGISTERED, NULL);
 }
 
 TEST_CASE_METHOD (registry_fixture, "the config blob reaches the factory bounded by its length", "[stream_session]")
@@ -225,21 +225,37 @@ TEST_CASE_METHOD (registry_fixture, "the config blob reaches the factory bounded
 TEST_CASE_METHOD (registry_fixture, "the seam carries bytes through to the binding's count", "[stream_session]")
 {
   int error_code = ER_FAILED;
-  std::int64_t count = -1;
+  stream_result result;
+
+  result.count = -1;
 
   stream_session *s = stream_session_create (NULL, KIND_A, NULL, 0, &error_code);
   REQUIRE (s != NULL);
 
   CHECK (s->receive_chunk (NULL, "abc", 3) == NO_ERROR);
   CHECK (s->receive_chunk (NULL, "de", 2) == NO_ERROR);
-  CHECK (s->finish (NULL, &count) == NO_ERROR);
-  CHECK (count == 5);
+  CHECK (s->finish (NULL, &result) == NO_ERROR);
+  CHECK (result.count == 5);
 
   /* abort () drops whatever had not been reported yet */
   CHECK (s->receive_chunk (NULL, "fgh", 3) == NO_ERROR);
   s->abort (NULL);
-  CHECK (s->finish (NULL, &count) == NO_ERROR);
-  CHECK (count == 0);
+  CHECK (s->finish (NULL, &result) == NO_ERROR);
+  CHECK (result.count == 0);
 
   delete s;
+}
+
+TEST_CASE_METHOD (registry_fixture, "each kind answers for its own unit of work", "[stream_session]")
+{
+  /* the transport reads this off the registry rather than off the wire, so a
+   * client cannot claim a commit its consumer never promised */
+  CHECK (stream_session_kind_ends_unit_of_work (KIND_A) == true);
+  CHECK (stream_session_kind_ends_unit_of_work (KIND_B) == false);
+
+  /* nothing was opened for a tag the registry does not hold, so nothing is owed */
+  CHECK (stream_session_kind_ends_unit_of_work (KIND_UNREGISTERED) == false);
+  CHECK (KIND_REFUSING < STREAM_KIND_MAX);
+  CHECK (stream_session_kind_ends_unit_of_work (STREAM_KIND_MIN - 1) == false);
+  CHECK (stream_session_kind_ends_unit_of_work (STREAM_KIND_MAX) == false);
 }

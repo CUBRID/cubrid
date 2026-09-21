@@ -720,6 +720,12 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sstream_end;
 
+  /* the only one of the four without CHECK_DB_MODIFICATION: it writes nothing, and a server that
+   * turned read-only mid-stream would otherwise refuse the request that cleans the stream up */
+  req_p = &net_Requests[NET_SERVER_STREAM_ABORT];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sstream_abort;
+
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];
   req_p->action_attribute = IN_TRANSACTION;

@@ -228,6 +228,11 @@ extern "C"
     /* PROTOCOL_V13; a driver checks for it before opening a stream */
     CAS_FC_STREAM_SEND_DATA = 45,
     CAS_FC_STREAM_END = 46,
+    /* Open and give up, for a consumer whose client half is the driver itself.
+     * A stream opened by a statement needs neither: the statement opens it, and
+     * the failure the server can see closes it. */
+    CAS_FC_STREAM_INIT = 47,
+    CAS_FC_STREAM_ABORT = 48,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */

@@ -413,6 +413,17 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
     {
       /* need to hide the previous error, ER_LK_UNILATERALLY_ABORTED to rollback the current transaction. */
       er_stack_push ();
+
+      /* This is the one transaction end that does not arrive as a commit/abort request: a deadlock
+       * victim is rolled back here, on its own worker. The stream session has to go with it for the
+       * same reason as in stran_server_*_internal () -- the next chunk would otherwise build on work
+       * that was already rolled back. Before the rollback, so the session never sees a transaction
+       * that has ended, and inside the pushed stack, because reaching for a session that is already
+       * gone raises an error of its own and the error being reported to the client is the one that
+       * has to survive. Freeing it is safe here for the reason it is safe there: this is the worker
+       * that would be running receive_chunk, and the stream is lockstep. */
+      session_end_stream_session (thread_p);
+
       tran_state = tran_server_unilaterally_abort_tran (thread_p);
       er_stack_pop ();
     }
@@ -12577,6 +12588,7 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *ptr = request;
   int stream_kind = 0;
   int error_code = NO_ERROR;
+  bool ends_unit_of_work = false;
   stream_session *session = NULL;
 
   if (reqlen < OR_INT_SIZE)
@@ -12597,6 +12609,10 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	  session->abort (thread_p);
 	  delete session;
 	}
+      else
+	{
+	  ends_unit_of_work = stream_session_kind_ends_unit_of_work (stream_kind);
+	}
     }
   else if (error_code == NO_ERROR)
     {
@@ -12616,10 +12632,14 @@ send_reply:
     }
 
   {
-    OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+    /* the kind's answer rides back with the open so the CAS knows, without naming
+     * the consumer, whether this stream's END finishes a statement */
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr_reply;
 
-    or_pack_int (reply, error_code);
+    ptr_reply = or_pack_int (reply, error_code);
+    (void) or_pack_int (ptr_reply, ends_unit_of_work ? 1 : 0);
     css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   }
 }
@@ -12686,7 +12706,11 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     }
   else
     {
-      error_code = session->finish (thread_p, &count);	/* the binding may still have buffered work */
+      stream_result result;
+
+      result.count = 0;
+      error_code = session->finish (thread_p, &result);	/* the binding may still have buffered work */
+      count = (INT64) result.count;
 
       if (error_code != NO_ERROR)
 	{
@@ -12712,4 +12736,45 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     ptr = or_pack_int64 (ptr, count);
     css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   }
+}
+
+/*
+ * sstream_abort () - Drop the open stream session at the client's request
+ *   request format: (empty)
+ *   reply format: error_code (int)
+ *
+ * The server already drops the session on a chunk it cannot consume. This is the
+ * other direction: the consumer's client half failed -- its encoder threw, the
+ * user cancelled -- and there is nothing left to send. Without it the session
+ * would sit in the connection until the transaction ended, refusing the next
+ * statement's open with "a stream session is already active".
+ */
+void
+sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  stream_session *session = NULL;
+
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      session->abort (thread_p);
+      delete session;
+      (void) session_set_stream_session (thread_p, NULL);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
