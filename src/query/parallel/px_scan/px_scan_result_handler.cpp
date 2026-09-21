@@ -230,7 +230,6 @@ namespace parallel_scan
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
-	int size;
 	tl.vd = vd;
 	{
 	  std::lock_guard<std::mutex> lock (m_.writer_results_mutex);
@@ -275,7 +274,6 @@ namespace parallel_scan
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return;
 	  }
-	size = tl.writer_result_p->type_list.type_cnt * sizeof (bool);
 	tl.tpl_buf.tpl = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
 	if (tl.tpl_buf.tpl == nullptr)
 	  {
@@ -722,10 +720,7 @@ namespace parallel_scan
 	VPID next_vpid;
 	int err_code;
 	TP_DOMAIN *domain_p;
-	OR_BUF buf;
 	QFILE_TUPLE_WALK walk;
-	const char *body;
-	int len;
 	bool is_null;
 	QPROC_DB_VALUE_LIST val_list_iterator;
 	int val_list_index;

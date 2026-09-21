@@ -555,9 +555,6 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
   const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
-  char *ptr;
   bool is_null;
 
   /* assert */
@@ -699,11 +696,8 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
   const PR_TYPE *pr_type;
-  OR_BUF buf;
   DB_LOGICAL rc;
-  int length;
   int card;
-  char *ptr;
   bool is_null;
 
   /* assert */
@@ -912,14 +906,9 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   DB_VALUE list_val, list_val2;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
-  char *p_tplp;
   SCAN_CODE qp_scan;
-  const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
   bool list_on;
   int tpl_len;
-  char *ptr;
   bool is_null;
 
   /* assert */
@@ -942,7 +931,6 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     }
 
   res = V_TRUE;
-  pr_type = list_id->type_list.domp[0]->type;
 
   tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   p_tplrec.size = DB_PAGESIZE;
@@ -1095,14 +1083,9 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   DB_VALUE list_val, list_val2;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
-  char *p_tplp;
   SCAN_CODE qp_scan;
-  const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
   bool list_on;
   int tpl_len;
-  char *ptr;
   bool is_null;
 
   /* assert */
@@ -1125,7 +1108,6 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     }
 
   res = V_TRUE;
-  pr_type = list_id1->type_list.domp[0]->type;
 
   tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   p_tplrec.size = DB_PAGESIZE;

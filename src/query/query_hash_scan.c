@@ -416,10 +416,7 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
   HASH_METHOD hash_list_scan_type;
   QFILE_TUPLE_VALUE_TYPE_LIST *type_list_p;
   DB_VALUE dbval;
-  const PR_TYPE *pr_type_p;
   int i;
-  char *tuple_p;
-  OR_BUF buf;
 
   if (data == NULL || type_list == NULL || args == NULL)
     {
@@ -439,7 +436,6 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     }
 
   QFILE_TUPLE_RECORD slot = QFILE_TUPLE_RECORD_INITIALIZER;
-  int len;
   bool is_null;
 
   db_make_null (&dbval);

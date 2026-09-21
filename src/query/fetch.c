@@ -4628,10 +4628,6 @@ int
 fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid,
 		       OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval)
 {
-  int length;
-  const PR_TYPE *pr_type;
-  OR_BUF buf;
-  char *ptr;
   bool is_null;
   REGU_VARIABLE *head_regu = NULL, *regu = NULL;
   int error = NO_ERROR;

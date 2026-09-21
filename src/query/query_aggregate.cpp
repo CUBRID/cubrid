@@ -946,9 +946,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   DB_VALUE *percentile_val = NULL;
   const PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
-  OR_BUF buf;
-  char *disk_repr_p = NULL;
-  int dbval_size, i, error;
+  int i, error;
   cubxasl::aggregate_percentile_info *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
   DB_VALUE stack_values[AGG_MAX_OPERANDS];
@@ -1756,9 +1754,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   QFILE_LIST_SCAN_ID scan_id;
   SCAN_CODE scan_code;
   QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
-  char *tuple_p;
-  const PR_TYPE *pr_type_p;
-  OR_BUF buf;
   double dbl;
 
   error = qdata_propagate_shared_accumulators (agg_list_p);
@@ -1895,8 +1890,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		}
 	      else
 		{
-		  pr_type_p = list_id_p->type_list.domp[0]->type;
-
 		  /* scan list file, accumulating total for sum/avg */
 		  error = qfile_open_list_scan (list_id_p, &scan_id);
 		  if (error != NO_ERROR)

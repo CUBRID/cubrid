@@ -139,9 +139,6 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   DB_VALUE dbval, sqr_val;
   DB_VALUE *opr_dbval_p = NULL;
   const PR_TYPE *pr_type_p;
-  OR_BUF buf;
-  char *disk_repr_p = NULL;
-  int dbval_size;
   int copy_opr;
   TP_DOMAIN *tmp_domain_p = NULL;
   DB_TYPE dbval_type;
@@ -859,9 +856,6 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 {
   DB_VALUE dbval;
   QFILE_LIST_ID *list_id_p;
-  char *tuple_p;
-  const PR_TYPE *pr_type_p;
-  OR_BUF buf;
   QFILE_LIST_SCAN_ID scan_id;
   SCAN_CODE scan_code;
   DB_VALUE xavgval, xavg_1val, x2avgval;
@@ -919,8 +913,6 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	}
       else
 	{
-	  pr_type_p = list_id_p->type_list.domp[0]->type;
-
 	  /* scan list file, accumulating total for sum/avg */
 	  if (qfile_open_list_scan (list_id_p, &scan_id) != NO_ERROR)
 	    {

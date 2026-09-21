@@ -511,10 +511,7 @@ qdata_tuple_to_val_list (THREAD_ENTRY * thread_p, qfile_tuple_value_type_list * 
 {
   QPROC_DB_VALUE_LIST val_list_iterator;
   int val_list_index;
-  OR_BUF buf;
   int err_code;
-  const char *body;
-  int len;
   bool is_null;
 
   /* sequential column reads through the slot cache are O(n) overall */
@@ -7263,8 +7260,6 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
   SCAN_CODE scan_code;
   QFILE_LIST_ID *list_id_p;
   int i, seq_pos;
-  int val_size;
-  OR_BUF buf;
   DB_VALUE dbval, *result_p;
   DB_COLLECTION *collection_p = NULL;
   SETOBJ *setobj_p;

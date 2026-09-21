@@ -143,10 +143,6 @@ namespace cubpl
       {
 	m_current_row_index++;
 
-	char *ptr;
-	int length;
-	OR_BUF buf;
-
 	assert (m_query_entry != NULL);
 	if (m_query_entry->list_id == NULL || m_query_entry->alloc_no != m_query_entry_no)
 	  {

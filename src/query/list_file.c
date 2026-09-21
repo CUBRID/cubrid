@@ -1121,7 +1121,6 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
   QFILE_LIST_ID *list_id_p;
   int len, i;
   SORT_LIST *src_sort_list_p, *dest_sort_list_p;
-  size_t type_list_size;
 
   if (existing_list_id != NULL)
     {
