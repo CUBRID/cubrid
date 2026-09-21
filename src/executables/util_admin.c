@@ -422,6 +422,15 @@ static GETOPT_LONG ua_Alterdbhost_Option[] = {
   {0, 0, 0, 0}
 };
 
+static UTIL_ARG_MAP ua_Activatehistory_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Activatehistory_Option[] = {
+  {0, 0, 0, 0}
+};
+
 static UTIL_ARG_MAP ua_Plandump_Option_Map[] = {
   {OPTION_STRING_TABLE, {0}, {0}},
   {PLANDUMP_DROP_S, {ARG_BOOLEAN}, {0}},
@@ -1009,6 +1018,8 @@ static UTIL_MAP ua_Utility_Map[] = {
   {TDE, SA_CS, 1, UTIL_OPTION_TDE, "tde", ua_Tde_Option, ua_Tde_Option_Map},
   {FLASHBACK, CS_ONLY, 2, UTIL_OPTION_FLASHBACK, "flashback", ua_Flashback_Option, ua_Flashback_Option_Map},
   {MEMMON, CS_ONLY, 1, UTIL_OPTION_MEMMON, "memmon", ua_Memmon_Option, ua_Memmon_Option_Map},
+  {ACTIVATEHISTORYDB, SA_ONLY, 1, UTIL_OPTION_ACTIVATEHISTORYDB, "activatehistorydb",
+   ua_Activatehistory_Option, ua_Activatehistory_Option_Map},
   {-1, -1, 0, 0, 0, 0, 0}
 };
 

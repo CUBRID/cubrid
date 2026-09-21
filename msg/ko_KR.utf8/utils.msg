@@ -1366,3 +1366,7 @@ valid options:\n\
     -o, --output-file=FILE        출력 메시지를 FILE로 리디렉션합니다. 기본값: 없음.\n\
     -l, --list                    모든 파일 항목 출력\n\
     -c, --clean-invalid-file      유효하지 않은 파일 정리\n
+
+$set 61 MSGCAT_UTIL_SET_ACTIVATEHISTORYDB
+60 activatehistorydb: 정상 종료한 데이터베이스의 OOS 이력 형식을 활성화합니다 (되돌릴 수 없음).\n\
+usage: %1$s activatehistorydb database-name\n

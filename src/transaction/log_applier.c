@@ -40,6 +40,7 @@
 
 
 #include "log_applier.h"
+#include "release_string.h"
 
 #include "authenticate.h"
 #include "porting.h"
@@ -2678,6 +2679,14 @@ la_find_log_pagesize (LA_ACT_LOG * act_log, const char *logpath, const char *dbn
 
 	  LA_SLEEP (0, 200 * 1000);
 	  continue;
+	}
+
+      if (rel_get_disk_compatible (act_log->log_hdr->db_compatibility, NULL) != REL_FULLY_COMPATIBLE)
+	{
+	  la_applier_need_shutdown = true;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_INCOMPATIBLE_DATABASE, 2, rel_name (),
+		  rel_release_string ());
+	  return ER_LOG_INCOMPATIBLE_DATABASE;
 	}
 
       /* The active log header is corrupted. */

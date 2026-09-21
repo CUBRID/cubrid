@@ -1787,7 +1787,13 @@
 
 #define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1386
 
-#define ER_LAST_ERROR                               -1387
+#define ER_OOS_HISTORY_ACTIVATION_REQUIRED           -1387
+
+#define ER_OOS_HISTORY_REQUIRES_CLEAN_SHUTDOWN       -1388
+
+#define ER_CDC_LEGACY_OOS_IMAGE                      -1389
+#define ER_CDC_INVALID_HISTORY_IMAGE                 -1390
+#define ER_LAST_ERROR                               -1391
 
 
 

@@ -2232,6 +2232,55 @@ error_exit:
 }
 
 /*
+ * activatehistorydb () - Establish the durable OOS history disk format offline.
+ */
+int
+activatehistorydb (UTIL_FUNCTION_ARG * arg)
+{
+  const char *db_name;
+  DB_INFO *db;
+  int error;
+
+  db_name = utility_get_option_string_value (arg->arg_map, OPTION_STRING_TABLE, 0);
+  if (utility_get_option_string_table_size (arg->arg_map) != 1 || db_name == NULL)
+    {
+      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ACTIVATEHISTORYDB, 60),
+	       basename (arg->argv0));
+      return EXIT_FAILURE;
+    }
+  if (check_database_name (db_name))
+    {
+      return EXIT_FAILURE;
+    }
+
+  if (sysprm_load_and_init (db_name, NULL, SYSPRM_LOAD_ALL) != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      return EXIT_FAILURE;
+    }
+  /* Activation must never skip the offline exclusion lock. */
+  prm_set_bool_value (PRM_ID_IO_LOCKF_ENABLE, true);
+
+  db = cfg_find_db (db_name);
+  if (db == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_UNKNOWN_DATABASE, 1, db_name);
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      return EXIT_FAILURE;
+    }
+
+  COMPOSE_FULL_NAME (BO_DB_FULLNAME, sizeof (BO_DB_FULLNAME), db->pathname, db_name);
+  error = logpb_activate_history (NULL, BO_DB_FULLNAME, db->logpath, fileio_get_base_file_name (db_name));
+  cfg_free_directory (db);
+  if (error != NO_ERROR)
+    {
+      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+      return EXIT_FAILURE;
+    }
+  return EXIT_SUCCESS;
+}
+
+/*
  * genlocale() - generate locales binary files
  *   return: EXIT_SUCCESS/EXIT_FAILURE
  */

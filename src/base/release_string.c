@@ -102,7 +102,7 @@ static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, 
 /*
  * Disk (database image) Version Compatibility
  */
-static float disk_compatibility_level = 11.5f;
+static float disk_compatibility_level = REL_DISK_COMPATIBILITY_OOS_HISTORY;
 
 /*
  * rel_copy_version_string - version string of the product
@@ -270,6 +270,10 @@ rel_bit_platform (void)
  * {base_level (of database), apply_level (of system), compatibility, fix_func}
  */
 static const COMPATIBILITY_RULE disk_compatibility_rules[] = {
+  {{11, 5, 0}, {11, 6, 0}, REL_FULLY_COMPATIBLE, NULL},
+  /* A CS utility may have negotiated the inactive level with its server. The
+   * upgraded reader still understands current-format copied logs. */
+  {{11, 6, 0}, {11, 5, 0}, REL_FULLY_COMPATIBLE, NULL},
   /* a zero indicates the end of the table */
   {{0, 0, 0}, {0, 0, 0}, REL_NOT_COMPATIBLE, NULL}
 };

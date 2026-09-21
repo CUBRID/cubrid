@@ -46,6 +46,7 @@ libedit.pc
 *.i*86
 *.x86_64
 *.hex
+!unit_tests/oos/scripts/cdc_history_payload.hex
 
 # Debug files
 *.dSYM/

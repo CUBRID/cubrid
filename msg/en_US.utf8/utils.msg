@@ -1380,3 +1380,7 @@ valid options:\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
     -l, --list                    list all files\n\
     -c, --clean-invalid-file      clean invalid files\n
+
+$set 61 MSGCAT_UTIL_SET_ACTIVATEHISTORYDB
+60 activatehistorydb: Activate durable OOS history after a clean shutdown (one-way).\n\
+usage: %1$s activatehistorydb database-name\n

@@ -432,6 +432,7 @@ typedef enum supplement_rec_type
   LOG_SUPPLEMENT_TRIGGER_INSERT, /* INSERT, UPDATE, DELETE logs appended by a trigger action */
   LOG_SUPPLEMENT_TRIGGER_UPDATE,
   LOG_SUPPLEMENT_TRIGGER_DELETE,
+  LOG_SUPPLEMENT_OOS_IMAGE, /* Expanded historical row: record type followed by owned row bytes. */
   LOG_SUPPLEMENT_LARGER_REC_TYPE,
 } SUPPLEMENT_REC_TYPE;
 

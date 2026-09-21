@@ -54,7 +54,10 @@ typedef enum
 {
   FLASHBACK_INSERT = 0,
   FLASHBACK_UPDATE,
-  FLASHBACK_DELETE
+  FLASHBACK_DELETE,
+  FLASHBACK_TRIGGER_INSERT,
+  FLASHBACK_TRIGGER_UPDATE,
+  FLASHBACK_TRIGGER_DELETE
 } FLASHBACK_DML_TYPE;
 
 #if defined(WINDOWS)
@@ -1149,18 +1152,24 @@ flashback_print_loginfo (char *loginfo, int num_item, dynamic_array * classlist,
 
       class_index = flashback_find_class_index (oidlist, da_size (classlist), classoid);
 
-      da_get (classlist, class_index, classname);
+      if (class_index < 0 || da_get (classlist, class_index, classname) != NO_ERROR)
+	{
+	  return ER_FLASHBACK_INVALID_CLASS;
+	}
 
       switch (dml_type)
 	{
 	case FLASHBACK_INSERT:
+	case FLASHBACK_TRIGGER_INSERT:
 	  error = flashback_print_insert (&ptr, trid, user, classname, is_detail, outfp);
 	  break;
 	case FLASHBACK_UPDATE:
+	case FLASHBACK_TRIGGER_UPDATE:
 	  /* UPDATE */
 	  error = flashback_print_update (&ptr, trid, user, classname, is_detail, outfp);
 	  break;
 	case FLASHBACK_DELETE:
+	case FLASHBACK_TRIGGER_DELETE:
 	  /* DELETE */
 	  error = flashback_print_delete (&ptr, trid, user, classname, is_detail, outfp);
 	  break;
