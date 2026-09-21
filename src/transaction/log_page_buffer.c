@@ -1411,7 +1411,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
 
   loghdr->ha_server_state = HA_SERVER_STATE_IDLE;
   loghdr->ha_file_status = -1;
-  LSA_SET_NULL (&loghdr->eof_lsa);
+  loghdr->eof_lsa.store (NULL_LSA);
   LSA_SET_NULL (&loghdr->smallest_lsa_at_last_chkpt);
 
   logpb_vacuum_reset_log_header_cache (thread_p, loghdr);
@@ -3492,7 +3492,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  error_code = ER_FAILED;
 	  goto error;
 	}
-      log_Gl.hdr.eof_lsa = log_Gl.append.prev_lsa;
+      log_Gl.hdr.eof_lsa.store (log_Gl.append.prev_lsa.load ());
 
       log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_FLUSHED_END_OF_LOG;
     }
@@ -3756,7 +3756,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 	  /* Dump latest portion of page, for debugging purpose. */
 	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.append.get_nxio_lsa ().offset),
 				    (int) sizeof (LOG_RECORD_HEADER));
-	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.hdr.eof_lsa.offset),
+	  logpb_dump_log_page_area (thread_p, bufptr->logpage, (int) (log_Gl.hdr.eof_lsa.load ().offset),
 				    (int) sizeof (LOG_RECORD_HEADER));
 	}
     }
@@ -4330,7 +4330,7 @@ logpb_start_append (THREAD_ENTRY * thread_p, LOG_RECORD_HEADER * header)
       assert (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS
 	      || log_Pb.partial_append.status == LOGPB_APPENDREC_PARTIAL_ENDED);
 
-      log_Gl.hdr.eof_lsa = log_Gl.hdr.append_lsa;
+      log_Gl.hdr.eof_lsa.store (log_Gl.hdr.append_lsa.load ());
 
       logpb_set_dirty (thread_p, log_Gl.append.log_pgptr);
     }
@@ -10119,8 +10119,7 @@ logpb_copy_database (THREAD_ENTRY * thread_p, VOLID num_perm_vols, const char *t
       goto error;
     }
 
-  log_Gl.hdr.eof_lsa.pageid = to_malloc_log_pgptr->hdr.logical_pageid;
-  log_Gl.hdr.eof_lsa.offset = 0;
+  log_Gl.hdr.eof_lsa.store (LOG_LSA (to_malloc_log_pgptr->hdr.logical_pageid, 0));
 
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
   if (fileio_write (thread_p, to_vdes, to_malloc_log_pgptr, phy_pageid, LOG_PAGESIZE, write_mode) == NULL)
