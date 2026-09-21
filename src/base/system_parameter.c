@@ -5590,6 +5590,10 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   /* Optimizer cost unit prices (CBRD-27126). The optimizer runs on the client, so these are
    * PRM_FOR_CLIENT and take effect from the next compilation after SET SYSTEM PARAMETERS.
+   * PRM_FOR_QRY_STRING puts a tuned value into the XASL cache key (like max_hash_list_scan_size):
+   * without it a session that changes a price keeps hitting plans another session -- or its own
+   * past -- compiled under the old prices, and a new session inherits them. Only values that
+   * differ from the default are appended, so an untouched configuration keeps its cache keys.
    * Every default is the literal query_planner.c used to hard-code, so an untouched
    * configuration prices plans exactly as before. cost_seq_page is the unit of the model
    * (one sequential page read = 1.0); tune the others as ratios to it. The per-tuple CPU
@@ -5603,7 +5607,7 @@ SYSPRM_PARAM prm_Def[] = {
    * default equals the former 32768 on every page size. */
   {PRM_ID_COST_SEQ_PAGE,
    PRM_NAME_COST_SEQ_PAGE,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_FLOAT,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.f = 1.0f}},
@@ -5615,7 +5619,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COST_RANDOM_PAGE,
    PRM_NAME_COST_RANDOM_PAGE,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_FLOAT,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.f = 1.0f}},
@@ -5627,7 +5631,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COST_CPU_TUPLES_PER_PAGE,
    PRM_NAME_COST_CPU_TUPLES_PER_PAGE,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 400}},
@@ -5639,7 +5643,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
    PRM_NAME_COST_EFFECTIVE_CACHE_PAGES,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 32768}},
@@ -5651,7 +5655,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COST_HEAP_FETCH_PER_OID,
    PRM_NAME_COST_HEAP_FETCH_PER_OID,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 5}},
