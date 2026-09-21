@@ -1489,7 +1489,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1381 stream session error: %1$s.
 
-1382 Last Error
+1382 COPY FROM is not supported for "%1$s".
+
+1383 COPY binary format error: %1$s.
+
+1384 COPY CSV format error: %1$s.
+
+1385 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

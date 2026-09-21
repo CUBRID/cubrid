@@ -13793,6 +13793,36 @@ xlocator_demote_class_lock (THREAD_ENTRY * thread_p, const OID * class_oid, LOCK
   return lock_demote_class_lock (thread_p, class_oid, lock, ex_lock);
 }
 
+/*
+ * locator_bulk_use_page_logging () - Can the bulk page-fill loop log one page
+ *   image instead of a record per row?
+ *   return: true when nothing reads the per-row records
+ *
+ * The page image is the cheaper record by a wide margin, but it is the wrong
+ * shape for anything that reads a row through the LSA of that row's own heap
+ * record, because a page image leaves no such record behind. Two readers do:
+ * logical replication, whose applier navigates by exactly that LSA, and
+ * supplemental logging, which stores the same LSA for the change feed. Each is
+ * turned on independently of the other, so both have to be asked.
+ *
+ * When the page image is not usable the loop still batches page allocation and
+ * still skips the per-row MVCC id and per-row lock; only the logging shape
+ * changes.
+ */
+static bool
+locator_bulk_use_page_logging (THREAD_ENTRY * thread_p, OID * class_oid)
+{
+  if (log_does_allow_replication ())
+    {
+      return false;
+    }
+  if (heap_is_supplemental_log_needed (thread_p, class_oid))
+    {
+      return false;
+    }
+  return true;
+}
+
 // *INDENT-OFF*
 int
 locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
@@ -13800,6 +13830,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 			    HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type, PRUNING_CONTEXT * pcontext,
 			    FUNC_PRED_UNPACK_INFO * func_preds, UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk)
 {
+  const bool use_page_logging = locator_bulk_use_page_logging (thread_p, class_oid);
   int error_code = NO_ERROR;
   size_t accumulated_records_size = 0;
   size_t heap_max_page_size;
@@ -13865,7 +13896,7 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		  error_code = locator_insert_force (thread_p, hfid, class_oid, &dummy_oid, &recdes_array[j], has_index,
 						     op_type, scan_cache, force_count, pruning_type, pcontext,
 						     func_preds, force_in_place, &home_hint_p, has_BU_lock,
-						     dont_check_fk, true);
+						     dont_check_fk, use_page_logging);
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -13889,8 +13920,11 @@ locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oi
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &home_hint_p);
 		}
 
-	      // Now log the whole page.
-	      pgbuf_log_redo_new_page (thread_p, home_hint_p.pgptr, DB_PAGESIZE, PAGE_HEAP);
+	      if (use_page_logging)
+		{
+		  // Now log the whole page. The rows themselves were not logged.
+		  pgbuf_log_redo_new_page (thread_p, home_hint_p.pgptr, DB_PAGESIZE, PAGE_HEAP);
+		}
 
 	      // Add the new VPID to the VPID array.
 	      assert (!VPID_ISNULL (&new_page_vpid));

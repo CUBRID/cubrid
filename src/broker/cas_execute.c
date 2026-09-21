@@ -302,6 +302,7 @@ static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
+static void ux_stream_give_up_after_error (bool opened_by_this_statement);
 
 static T_FETCH_FUNC fetch_func[] = {
   fetch_result,			/* query */
@@ -1043,6 +1044,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
   bool recompile = false;
+  bool stream_opened_here = false;
 
   char stmt_type;
 
@@ -1163,7 +1165,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     }
 
   hm_set_current_srv_handle (srv_handle->id);
+  stream_opened_here = !stream_from_is_open ();
   n = db_execute_and_keep_statement (session, stmt_id, &result);
+  stream_opened_here = (stream_opened_here && stream_from_is_open ());
   hm_set_current_srv_handle (-1);
 
   stmt_type = db_get_statement_type (session, stmt_id);
@@ -1340,6 +1344,8 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 execute_error:
   NET_BUF_ERR_SET (net_buf);
 
+  ux_stream_give_up_after_error (stream_opened_here);
+
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
       db_session_set_xasl_cache_pinned (session, false, false);
@@ -1383,6 +1389,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   char savepoint[BROKER_PATH_MAX];
   char is_savepoint = FALSE;
   int query_index = 0;
+  bool stream_opened_here = false;
 
   srv_handle->query_info_flag = FALSE;
 
@@ -1501,7 +1508,9 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
       hm_set_current_srv_handle (srv_handle->id);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
+      stream_opened_here = !stream_from_is_open ();
       n = db_execute_and_keep_statement (session, stmt_id, &result);
+      stream_opened_here = (stream_opened_here && stream_from_is_open ());
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
       hm_set_current_srv_handle (-1);
 
@@ -1684,6 +1693,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
 execute_all_error:
   NET_BUF_ERR_SET (net_buf);
+
+  ux_stream_give_up_after_error (stream_opened_here);
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -10576,6 +10587,33 @@ ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_b
 
   net_buf_cp_int (net_buf, 0, NULL);
   return 0;
+}
+
+/*
+ * ux_stream_give_up_after_error () - Drop a stream the failing statement had just opened
+ *   opened_by_this_statement(in): did the stream open during this execute?
+ *
+ * A statement that opens a stream leaves it open for the transfer that follows.
+ * When that same statement then fails, the transfer never comes -- the driver
+ * is answered with an error and moves on. In auto-commit mode the rollback the
+ * error path already asks for ends the stream with the transaction, but inside
+ * an explicit transaction nothing does, and the session sits in the connection
+ * refusing the next open until the user commits or rolls back.
+ *
+ * Only a stream this statement opened is given up. One that was already open is
+ * a client sending a statement in the middle of its own transfer, and an
+ * unrelated failure is not the transport's cue to discard those bytes.
+ */
+static void
+ux_stream_give_up_after_error (bool opened_by_this_statement)
+{
+  if (!opened_by_this_statement || !stream_from_is_open ())
+    {
+      return;
+    }
+
+  (void) stream_from_abort ();
+  ux_stream_reset ();
 }
 
 int
