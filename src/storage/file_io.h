@@ -310,6 +310,10 @@ struct fileio_backup_header
   FILEIO_ZIP_METHOD zip_method;	/* compression method */
   FILEIO_ZIP_LEVEL zip_level;	/* compression level */
   int skip_activelog;
+  LOG_LSA start_log_end_lsa;	/* Log end (next LSA to be assigned) when this backup started; no page was copied
+				 * before it.  Valid from bk_hdr_version 3, NULL_LSA in older headers.  Media recovery
+				 * lets a no-logging index build's barrier pass when it precedes this LSA of the level
+				 * that holds every page of the build (CBRD-27298). */
 };
 
 /* Shouldn't this structure should use int and such? */

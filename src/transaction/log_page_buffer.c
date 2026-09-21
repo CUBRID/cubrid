@@ -8214,6 +8214,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
   VOLID volid;			/* Current volume to backup */
   LOG_LSA bkup_start_lsa;	/* Start point of backup */
   LOG_LSA chkpt_lsa;		/* Checkpoint address where the backup process starts */
+  LOG_LSA bkup_start_log_end_lsa;	/* Log end when this backup starts; recorded in the backup header (CBRD-27298) */
 #if defined(SERVER_MODE)
   LOG_PAGEID saved_run_nxchkpt_atpageid = NULL_PAGEID;
 #endif /* SERVER_MODE */
@@ -8370,6 +8371,11 @@ loop:
   rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+
+  /* Log end at backup start.  Every page copy below happens after this point, so a no-logging index build whose
+   * barrier record precedes it had already flushed and synced its pages; media recovery compares against it.
+   * LOG_CS -> prior_lsa_mutex is the order logpb_prior_lsa_append_all_list () already uses. */
+  log_get_prior_lsa (&bkup_start_log_end_lsa);
 
   LOG_CS_EXIT (thread_p);
 
@@ -8603,6 +8609,7 @@ loop:
   /* Begin backing up in earnest */
   assert (!skip_activelog);
   session.bkup.bkuphdr->skip_activelog = skip_activelog;
+  LSA_COPY (&session.bkup.bkuphdr->start_log_end_lsa, &bkup_start_log_end_lsa);
 
   if (fileio_start_backup (thread_p, log_Db_fullname, &log_Gl.hdr.db_creation, backup_level, &bkup_start_lsa,
 			   &chkpt_lsa, all_bkup_info, &session, zip_method, zip_level) == NULL)
