@@ -144,6 +144,7 @@ namespace cubthread
     , m_px_stats (NULL)
     , m_px_orig_thread_entry (NULL)
     , m_uses_px_stats (false)
+    , internal_lob_adopts_locators (false)
     , m_is_private_lru_enabled (false)
     , m_holder_anchor (NULL)
     , uuidv7_last_ms (0)
