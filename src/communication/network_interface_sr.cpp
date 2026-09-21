@@ -65,6 +65,7 @@
 #include "chartype.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
+#include "internal_lob_file.hpp"
 #include "pl_sr.h"
 #include "replication.h"
 #include "server_support.h"
@@ -83,6 +84,9 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
 #include "load_session.hpp"
+#include "copy_session.hpp"
+#include "internal_lob_dml_executor.hpp"
+#include "internal_lob_stream_session.hpp"
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -902,6 +906,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   int content_size;
   int num_objs = 0;
   int nparallel_process, nparallel_process_idx, request_pages;
+  int keep_oos_locators = 0;
   NET_ENDIAN server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 1;
@@ -916,6 +921,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   ptr = or_unpack_int (ptr, &request_pages);
   ptr = or_unpack_int (ptr, &nparallel_process);
   ptr = or_unpack_int (ptr, &nparallel_process_idx);
+  ptr = or_unpack_int (ptr, &keep_oos_locators);
   ptr = or_unpack_int (ptr, &client_endian);
 
   if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN)
@@ -939,7 +945,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   copy_area = NULL;
   success =
 	  xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
-			      &nfetched, &last_oid, &copy_area, request_pages);
+			      &nfetched, &last_oid, &copy_area, request_pages, keep_oos_locators != 0);
 
   if (nparallel_process > 1)
     {
@@ -10225,13 +10231,25 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
   OOS_STATS_INFO info;
   int err = NO_ERROR;
 
-  (void) or_unpack_oid (request, &class_oid);
-
   memset (&info, 0, sizeof (info));
-  err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
-  if (err != NO_ERROR)
+
+  /* A request with no payload leaves the buffer NULL: css_internal_request_handler only receives data when the
+   * size is non-zero.  Unpacking it unchecked dereferences NULL and takes the server down. */
+  if (request == NULL || reqlen < OR_OID_SIZE)
     {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
       (void) return_error_to_client (thread_p, rid);
+    }
+  else
+    {
+      (void) or_unpack_oid (request, &class_oid);
+
+      err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
+      if (err != NO_ERROR)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	}
     }
 
   char *ptr = or_pack_int (reply, err);
@@ -10244,6 +10262,220 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
   ptr = or_pack_int64 (ptr, info.recs_sumlen);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * stream_reply_error_code () - Send the reply of a stream request whose reply is only its error code.
+ *   On error the error (code + message) is staged first so it travels with the reply.
+ */
+static void
+stream_reply_error_code (THREAD_ENTRY *thread_p, unsigned int rid, int error_code)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  (void) or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * unpack_client_locator () - Read a locator string out of an untrusted request buffer.
+ *
+ * The buffer may be NULL and the packed length is whatever the client claims, so both are checked and the string
+ * must end with a NUL inside the bytes that actually arrived.  Its length comes back in locator_len.
+ *
+ *   fixed_len: bytes of fixed arguments ahead of the string.
+ */
+static int
+unpack_client_locator (char *request, int reqlen, int fixed_len, const char **locator, int *locator_len)
+{
+  char *ptr;
+  int packed_len;
+  int string_len;
+
+  *locator = NULL;
+  *locator_len = 0;
+
+  if (request == NULL || reqlen < fixed_len + OR_INT_SIZE)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ptr = request + fixed_len;
+  packed_len = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  if (packed_len < 1 || packed_len > reqlen - fixed_len - OR_INT_SIZE)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* or_pack_string_with_length stores the NUL and the padding to a 4-byte boundary in the length, so the
+   * string ends at the first NUL within it.  strnlen keeps the scan inside the bytes that arrived; reaching
+   * the end without one means the payload is not a packed string. */
+  string_len = (int) strnlen (ptr, (size_t) packed_len);
+  if (string_len == packed_len)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  *locator = ptr;
+  *locator_len = string_len;
+  return NO_ERROR;
+}
+
+/*
+ * sinternal_lob_stream_open - Open a forward-only server-side reader cursor.
+ *   Request : start_offset (int64) + locator string
+ *   Reply   : token (int64) + err (int)
+ */
+void
+sinternal_lob_stream_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  const char *locator_string = NULL;
+  char *ptr = NULL;
+  INT64 token = 0;
+  INT64 start_offset = 0;
+  int locator_len = 0;
+  int err = NO_ERROR;
+  INTERNAL_LOB_LOCATOR locator;
+  unsigned long long locator_sig = 0;
+
+  if (unpack_client_locator (request, reqlen, OR_INT64_SIZE, &locator_string, &locator_len) != NO_ERROR
+      || !internal_lob_parse_locator_string (locator_string, locator_len, &locator, &locator_sig))
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  /* a client may read only a locator this session issued, so it cannot reach content it was not given */
+  if (!internal_lob_verify_locator_sig (thread_p, locator, locator_sig))
+    {
+      err = ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  err = internal_lob_lock_locator_class (thread_p, locator);
+  if (err != NO_ERROR)
+    {
+      goto reply;
+    }
+
+  (void) or_unpack_int64 (request, &start_offset);
+  err = xinternal_lob_stream_open (thread_p, locator, start_offset, &token);
+
+reply:
+  ptr = or_pack_int64 (reply, token);
+  (void) or_pack_int (ptr, err);
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sinternal_lob_stream_read - Read the next bytes from a server-side reader cursor.
+ *   Request : token (int64) + count (int)
+ *   Reply   : data_size (int) + err (int)
+ *   Data    : raw bytes when err is NO_ERROR and data_size > 0
+ */
+void
+sinternal_lob_stream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = request;
+  char *buffer = NULL;
+  INT64 token = 0;
+  int count = 0;
+  int nread = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE + OR_INT_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  ptr = or_unpack_int64 (ptr, &token);
+  (void) or_unpack_int (ptr, &count);
+
+  if (token <= 0 || count < 0 || count > INTERNAL_LOB_READ_MAX_CHUNK)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  if (count > 0)
+    {
+      buffer = (char *) malloc ((size_t) count);
+      if (buffer == NULL)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, (size_t) count);
+	  goto reply;
+	}
+    }
+
+  err = xinternal_lob_stream_read (thread_p, token, buffer, count, &nread);
+
+reply:
+  ptr = or_pack_int (reply, nread);
+  (void) or_pack_int (ptr, err);
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  auto deleter = [buffer]() noexcept
+  {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  /* css_send_reply_and_data_to_client () asserts !!buffer == !!buffer_size, so pass NULL when nothing was read;
+   * the deleter still frees buffer. */
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     nread > 0 ? buffer : NULL, nread, std::move (deleter));
+}
+
+/*
+ * sinternal_lob_stream_close - Close a server-side reader cursor.
+ *   Request : token (int64)
+ *   Reply   : err (int)
+ */
+void
+sinternal_lob_stream_close (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  INT64 token = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+    }
+  else
+    {
+      (void) or_unpack_int64 (request, &token);
+      err = xinternal_lob_stream_close (thread_p, token);
+    }
+
+  stream_reply_error_code (thread_p, rid, err);
 }
 
 /*
@@ -12589,3 +12821,393 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 #endif
+
+/*
+ * create_copy_session_from_config () - Decode the COPY config blob and build a copy_session.
+ *   config_ptr(in): pointer to the COPY config bytes (table/ncols/options/col_types)
+ *   config_len(in): length of the config blob
+ *   error_code(out): NO_ERROR or the failure code
+ *   return: opened copy_session on success, NULL on error
+ *
+ * Encoding: table_name (string), then ints num_cols, format, delimiter, quote, header, bulk, col_types[num_cols],
+ * optionally followed by col_attr_ids[num_cols] (explicit column list).
+ */
+static stream_session *
+create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int config_len, int *error_code)
+{
+  char *ptr = config_ptr;
+  char *table_name = NULL;
+  int packed_table_name_len;
+  int num_cols = 0;
+  int format = 0;
+  int delimiter = 0;
+  int quote = 0;
+  int header = 0;
+  int bulk = 0;
+  DB_TYPE *col_types = NULL;
+  int *col_attr_ids = NULL;
+  copy_session *session = NULL;
+
+  *error_code = NO_ERROR;
+
+  if (config_ptr == NULL || config_len < OR_INT_SIZE)
+    {
+      *error_code = stream_session_set_error ("invalid COPY stream configuration");
+      return NULL;
+    }
+  packed_table_name_len = OR_GET_INT (config_ptr);
+  if (packed_table_name_len <= 0 || packed_table_name_len > config_len - OR_INT_SIZE
+      || memchr (config_ptr + OR_INT_SIZE, '\0', (size_t) packed_table_name_len) == NULL)
+    {
+      *error_code = stream_session_set_error ("invalid COPY table name");
+      return NULL;
+    }
+  ptr = config_ptr + OR_INT_SIZE + packed_table_name_len;
+  if (config_ptr + config_len - ptr < OR_INT_SIZE * 6)
+    {
+      *error_code = stream_session_set_error ("incomplete COPY stream configuration");
+      return NULL;
+    }
+  num_cols = OR_GET_INT (ptr);
+  /* Two shapes: [..6 ints..][num_cols types] from an older or hand-built client, or the same followed by
+   * [num_cols attribute ids] naming the column each value goes to.  Without the ids columns map by definition
+   * order, which silently misplaces an explicit column list. */
+  if (num_cols <= 0 || num_cols > (config_len - (int) (ptr - config_ptr) - OR_INT_SIZE * 6) / OR_INT_SIZE
+      || (config_len != (int) (ptr - config_ptr) + OR_INT_SIZE * (6 + num_cols)
+	  && config_len != (int) (ptr - config_ptr) + OR_INT_SIZE * (6 + 2 * num_cols)))
+    {
+      *error_code = stream_session_set_error ("invalid COPY column metadata");
+      return NULL;
+    }
+
+  ptr = config_ptr;
+  ptr = or_unpack_string_nocopy (ptr, &table_name);
+  ptr = or_unpack_int (ptr, &num_cols);
+  /* format: 0 = BINARY, 1 = CSV */
+  ptr = or_unpack_int (ptr, &format);
+  ptr = or_unpack_int (ptr, &delimiter);
+  ptr = or_unpack_int (ptr, &quote);
+  ptr = or_unpack_int (ptr, &header);
+  ptr = or_unpack_int (ptr, &bulk);
+
+  col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
+  if (col_types == NULL)
+    {
+      *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
+    }
+
+  for (int i = 0; i < num_cols; i++)
+    {
+      int type_val;
+      ptr = or_unpack_int (ptr, &type_val);
+      col_types[i] = (DB_TYPE) type_val;
+    }
+  if (config_ptr + config_len - ptr >= OR_INT_SIZE * num_cols)
+    {
+      col_attr_ids = (int *) db_private_alloc (thread_p, num_cols * sizeof (int));
+      if (col_attr_ids == NULL)
+	{
+	  *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+      for (int i = 0; i < num_cols; i++)
+	{
+	  ptr = or_unpack_int (ptr, &col_attr_ids[i]);
+	}
+    }
+
+  {
+    OID class_oid;
+    LC_FIND_CLASSNAME status;
+
+    /* bulk mode pre-acquires a class-level BU_LOCK (like loaddb) so the batch
+     * insert can skip per-row MVCC-id and per-row class/btree locks. */
+    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, (bulk ? BU_LOCK : NULL_LOCK));
+    if (status != LC_CLASSNAME_EXIST)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_name);
+	*error_code = ER_LC_UNKNOWN_CLASSNAME;
+	goto exit;
+      }
+
+    session = new copy_session ();
+    if (session == NULL)
+      {
+	*error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	goto exit;
+      }
+
+    *error_code = session->init (thread_p, &class_oid, col_types, col_attr_ids, num_cols, format, delimiter, quote,
+				 header, bulk);
+    if (*error_code != NO_ERROR)
+      {
+	delete session;
+	session = NULL;
+	goto exit;
+      }
+  }
+
+exit:
+  if (col_types != NULL)
+    {
+      db_private_free (thread_p, col_types);
+    }
+  if (col_attr_ids != NULL)
+    {
+      db_private_free (thread_p, col_attr_ids);
+    }
+
+  return session;
+}
+
+/*
+ * create_stream_session () - Factory: build the stream_session for a stream_kind.
+ *   stream_kind(in): STREAM_KIND_* consumer tag
+ *   config_ptr(in): consumer-specific config blob
+ *   config_len(in): length of the config blob
+ *   error_code(out): NO_ERROR or the failure code
+ *   return: opened stream_session on success, NULL on error
+ *
+ * Add a new consumer by appending a case here (and a STREAM_KIND_* value);
+ * the transport and the SEND_DATA / END handlers stay unchanged.
+ */
+static stream_session *
+create_stream_session (THREAD_ENTRY *thread_p, int stream_kind, char *config_ptr, int config_len, int *error_code)
+{
+  switch (stream_kind)
+    {
+    case STREAM_KIND_COPY:
+      return create_copy_session_from_config (thread_p, config_ptr, config_len, error_code);
+
+    case STREAM_KIND_INTERNAL_LOB:
+    {
+      int type;
+      INT64 data_length;
+      INT64 logical_length;
+      internal_lob_stream_session *session;
+
+      if (config_ptr == NULL || config_len != OR_INT_SIZE + OR_INT64_SIZE * 2)
+	{
+	  *error_code = stream_session_set_error ("invalid internal LOB stream configuration");
+	  return NULL;
+	}
+      (void) or_unpack_int (config_ptr, &type);
+      OR_GET_INT64 (config_ptr + OR_INT_SIZE, &data_length);
+      OR_GET_INT64 (config_ptr + OR_INT_SIZE + OR_INT64_SIZE, &logical_length);
+      if (type != INTERNAL_LOB_STREAM_TYPE_BLOB && type != INTERNAL_LOB_STREAM_TYPE_CLOB)
+	{
+	  *error_code = stream_session_set_error ("invalid internal LOB stream type");
+	  return NULL;
+	}
+
+      session = new internal_lob_stream_session ();
+      if (session == NULL)
+	{
+	  *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return NULL;
+	}
+      *error_code = session->init (thread_p, type == INTERNAL_LOB_STREAM_TYPE_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB,
+				   (DB_BIGINT) data_length,
+				   (DB_BIGINT) logical_length);
+      if (*error_code != NO_ERROR)
+	{
+	  delete session;
+	  return NULL;
+	}
+      return session;
+    }
+
+    case STREAM_KIND_INTERNAL_LOB_DML:
+      return internal_lob_dml_create_session (thread_p, config_ptr, config_len, error_code);
+
+    case STREAM_KIND_INTERNAL_LOB_LOAD:
+    {
+      /* loaddb batch payload: the load session routes it to the batch's worker, see load_internal_lob.hpp */
+      int type;
+      INT64 data_length;
+      INT64 logical_length;
+      int clsid;
+      INT64 id;
+      load_session *load_session_p = NULL;
+      stream_session *session = NULL;
+      const char *ptr = config_ptr;
+
+      if (config_ptr == NULL || config_len != INTERNAL_LOB_LOAD_STREAM_CONFIG_SIZE)
+	{
+	  *error_code = stream_session_set_error ("invalid internal LOB load stream configuration");
+	  return NULL;
+	}
+      ptr = or_unpack_int ((char *) ptr, &type);
+      OR_GET_INT64 (ptr, &data_length);
+      ptr += OR_INT64_SIZE;
+      OR_GET_INT64 (ptr, &logical_length);
+      ptr += OR_INT64_SIZE;
+      ptr = or_unpack_int ((char *) ptr, &clsid);
+      OR_GET_INT64 (ptr, &id);
+      if (type != INTERNAL_LOB_STREAM_TYPE_BLOB && type != INTERNAL_LOB_STREAM_TYPE_CLOB)
+	{
+	  *error_code = stream_session_set_error ("invalid internal LOB load stream type");
+	  return NULL;
+	}
+
+      *error_code = session_get_load_session (thread_p, load_session_p);
+      if (*error_code != NO_ERROR || load_session_p == NULL)
+	{
+	  *error_code = stream_session_set_error ("no active load session");
+	  return NULL;
+	}
+
+      *error_code = load_session_p->internal_lob_stream_open (*thread_p, (cubload::class_id) clsid,
+		    (cubload::batch_id) id,
+		    type == INTERNAL_LOB_STREAM_TYPE_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB,
+		    (DB_BIGINT) data_length, (DB_BIGINT) logical_length, session);
+      return *error_code == NO_ERROR ? session : NULL;
+    }
+
+    default:
+      *error_code = stream_session_set_error ("unknown stream kind");
+      return NULL;
+    }
+}
+
+/*
+ * stream_get_active_session () - Fetch the connection's open stream session.
+ *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR when there is none
+ */
+static int
+stream_get_active_session (THREAD_ENTRY *thread_p, stream_session *&session)
+{
+  if (session_get_stream_session (thread_p, session) != NO_ERROR || session == NULL)
+    {
+      session = NULL;
+      return stream_session_set_error ("no active stream session");
+    }
+  return NO_ERROR;
+}
+
+/*
+ * stream_discard_session () - Abort and free the connection's open stream session and detach it.
+ */
+static void
+stream_discard_session (THREAD_ENTRY *thread_p, stream_session *session)
+{
+  session->abort (thread_p);
+  delete session;
+  session_set_stream_session (thread_p, NULL);
+}
+
+/*
+ * sstream_from_init () - Open a client->server byte-stream session
+ *   request format: stream_kind (int), consumer config blob
+ *   reply format: error_code (int)
+ */
+void
+sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr = request;
+  int stream_kind = 0;
+  int error_code = NO_ERROR;
+  stream_session *session = NULL;
+
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      error_code = stream_session_set_error ("stream init request is too short");
+      goto reply;
+    }
+
+  ptr = or_unpack_int (ptr, &stream_kind);
+
+  session = create_stream_session (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
+  if (session != NULL)
+    {
+      error_code = session_set_stream_session (thread_p, session);
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	  delete session;
+	}
+    }
+
+reply:
+  stream_reply_error_code (thread_p, rid, error_code);
+}
+
+/*
+ * sstream_send_data () - Receive binary data chunk for COPY session
+ *   request format: raw binary data
+ *   reply format: error_code (int)
+ */
+void
+sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  stream_session *session = NULL;
+  int error_code = stream_get_active_session (thread_p, session);
+
+  if (error_code == NO_ERROR)
+    {
+      error_code = session->receive_chunk (thread_p, request, reqlen);
+      if (error_code != NO_ERROR)
+	{
+	  stream_discard_session (thread_p, session);
+	}
+    }
+
+  stream_reply_error_code (thread_p, rid, error_code);
+}
+
+/*
+ * sstream_end () - Finalize COPY session and return row count
+ *   request format: (empty)
+ *   reply format: error_code (int), consumer result (int64)
+ */
+void
+sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  INT64 stream_result_count = 0;
+  stream_session *session = NULL;
+  int error_code = stream_get_active_session (thread_p, session);
+
+  if (error_code == NO_ERROR)
+    {
+      stream_result result;
+      result.count = 0;
+      error_code = session->finish (thread_p, &result);	/* may flush a trailing CSV record */
+      stream_result_count = (INT64) result.count;
+
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	}
+      delete session;
+      session_set_stream_session (thread_p, NULL);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+    (void) or_pack_int (reply, error_code);
+    OR_PUT_INT64 (reply + OR_INT_SIZE, &stream_result_count);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
+}
+
+void
+sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  stream_session *session = NULL;
+  int error_code = stream_get_active_session (thread_p, session);
+
+  if (error_code == NO_ERROR)
+    {
+      stream_discard_session (thread_p, session);
+    }
+
+  stream_reply_error_code (thread_p, rid, error_code);
+}
