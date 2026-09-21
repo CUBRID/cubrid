@@ -110,8 +110,8 @@ namespace
     { "DATETIME", "'2020-01-01 01:00:00.123'", "'2021-01-01 01:00:00.123'" },
     { "DATETIMETZ", "'2020-01-01 01:00:00.123 +00:00'", "'2021-01-01 01:00:00.123 +00:00'" },
     { "DATETIMELTZ", "'2020-01-01 01:00:00.123 +00:00'", "'2021-01-01 01:00:00.123 +00:00'" },
-    { "CHAR(40)", "'abcdefghijklmnopqrst'", "'m'" },
-    { "VARCHAR(80)", "'abcdefghijklmnopqrst'", "'m'" }
+    { "CHAR(40)", "'abcdefghijklmnopqrstuvwxyz'", "'m'" },
+    { "VARCHAR(80)", "'abcdefghijklmnopqrstuvwxyz'", "'m'" }
   };
 
   static int
@@ -775,12 +775,12 @@ TEST_F (OosSqlShow, InternalAndAddressReservationsBypassPreparation)
 TEST_F (OosSqlShow, ForcedOutlineKeyRoutesFromPreparedBytes)
 {
   ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part ("
-		       "k VARCHAR(80) DEFAULT 'abcdefghijklmnopqrst' STORAGE FORCE_OUTLINE, "
+		       "k VARCHAR(80) DEFAULT 'abcdefghijklmnopqrstuvwxyz' STORAGE FORCE_OUTLINE, "
 		       "payload BIT VARYING) PARTITION BY RANGE(k) ("
 		       "PARTITION p0 VALUES LESS THAN ('m'), PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
   ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part(payload) VALUES(REPEAT(X'AB', 40000))"), 0);
   int matches = 0;
-  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrst' "
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrstuvwxyz' "
 			       "AND payload = CAST(REPEAT(X'AB', 40000) AS BIT VARYING)", &matches), NO_ERROR);
   EXPECT_EQ (matches, 1);
   DB_QUERY_RESULT *result = nullptr;
@@ -1144,6 +1144,7 @@ TEST_F (OosSqlShow, ConstraintFailureAfterOosAllowsNextInsert)
 
 TEST_F (OosSqlShow, DuplicateProbesDoNotPersistCandidateValues)
 {
+  /* FORCE_OUTLINE keys must remain larger than the 24-byte OOS inline stub. */
   for (bool replace :
        {
 	       true, false
@@ -1159,8 +1160,8 @@ TEST_F (OosSqlShow, DuplicateProbesDoNotPersistCandidateValues)
 			"PARTITION p1 VALUES LESS THAN MAXVALUE)";
       ASSERT_GE (exec_sql (ddl), 0);
       const char *sql = replace
-			? "REPLACE INTO t_oos_show_part VALUES('abcdefghijklmnopqrst', REPEAT(X'AB', 8192))"
-			: "INSERT INTO t_oos_show_part VALUES('abcdefghijklmnopqrst', REPEAT(X'AB', 8192)) "
+			? "REPLACE INTO t_oos_show_part VALUES('abcdefghijklmnopqrstuvwxyz', REPEAT(X'AB', 8192))"
+			: "INSERT INTO t_oos_show_part VALUES('abcdefghijklmnopqrstuvwxyz', REPEAT(X'AB', 8192)) "
 			"ON DUPLICATE KEY UPDATE payload = REPEAT(X'CD', 8192)";
       for (int attempt = 0; attempt < 2; ++attempt)
 	{
@@ -1182,9 +1183,9 @@ TEST_F (OosSqlShow, DuplicateProbesDoNotPersistCandidateValues)
 	  EXPECT_EQ (count, replace ? 1 : 2);
 	  db_query_end (stats);
 	  const char *readback = !replace && attempt == 1
-				 ? "SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrst' "
+				 ? "SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrstuvwxyz' "
 				 "AND payload = CAST(REPEAT(X'CD', 8192) AS BIT VARYING)"
-				 : "SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrst' "
+				 : "SELECT COUNT(*) FROM t_oos_show_part WHERE k = 'abcdefghijklmnopqrstuvwxyz' "
 				 "AND payload = CAST(REPEAT(X'AB', 8192) AS BIT VARYING)";
 	  ASSERT_EQ (fetch_single_int (readback, &count), NO_ERROR);
 	  EXPECT_EQ (count, 1);
@@ -1205,8 +1206,8 @@ TEST_F (OosSqlShow, DuplicateProbesReadCompositeKeys)
       ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (a VARCHAR(100) STORAGE FORCE_OUTLINE, "
 			   "b INT, payload BIT VARYING, UNIQUE(a, b))"), 0);
       const char *sql = replace
-			? "REPLACE INTO t_oos_show_yes VALUES('abcdefghijklmnopqrst', 1, REPEAT(X'AB', 8192))"
-			: "INSERT INTO t_oos_show_yes VALUES('abcdefghijklmnopqrst', 1, REPEAT(X'AB', 8192)) "
+			? "REPLACE INTO t_oos_show_yes VALUES('abcdefghijklmnopqrstuvwxyz', 1, REPEAT(X'AB', 8192))"
+			: "INSERT INTO t_oos_show_yes VALUES('abcdefghijklmnopqrstuvwxyz', 1, REPEAT(X'AB', 8192)) "
 			"ON DUPLICATE KEY UPDATE payload = REPEAT(X'CD', 8192)";
       ASSERT_EQ (exec_sql (sql), 1) << db_error_string (1);
       if (!replace)
@@ -1394,19 +1395,19 @@ TEST_F (OosSqlShow, ReplaceProbeReadsOutlinedCandidateAgainstInlineExistingKey)
   /* Keep the old key inline: standalone DELETE's baseline eager cleanup precedes index-key
    * reading for already-outlined old keys. Only the new candidate uses FORCE_OUTLINE here. */
   ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (k VARCHAR(80), b INT, payload BIT VARYING, UNIQUE(k, b))"), 0);
-  ASSERT_EQ (exec_sql ("INSERT INTO t_oos_show_yes VALUES('abcdefghijklmnopqrst', 1, X'AB')"), 1);
+  ASSERT_EQ (exec_sql ("INSERT INTO t_oos_show_yes VALUES('abcdefghijklmnopqrstuvwxyz', 1, X'AB')"), 1);
   ASSERT_EQ (db_commit_transaction (), NO_ERROR);
   ASSERT_GE (exec_sql ("ALTER TABLE t_oos_show_yes MODIFY k VARCHAR(80) STORAGE FORCE_OUTLINE"), 0);
 #if defined(CUBRID_UNIT_TEST_ENABLED)
   bridge_oos_debug_counters_reset ();
 #endif
-  ASSERT_EQ (exec_sql ("REPLACE INTO t_oos_show_yes VALUES('abcdefghijklmnopqrst', 1, REPEAT(X'CD', 8192))"), 2)
+  ASSERT_EQ (exec_sql ("REPLACE INTO t_oos_show_yes VALUES('abcdefghijklmnopqrstuvwxyz', 1, REPEAT(X'CD', 8192))"), 2)
       << db_error_string (1);
 #if defined(CUBRID_UNIT_TEST_ENABLED)
   EXPECT_EQ (bridge_oos_debug_counters_get ().insert_many_requests, 2U);
 #endif
   int count = -1;
-  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE k = 'abcdefghijklmnopqrst' AND b = 1 "
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE k = 'abcdefghijklmnopqrstuvwxyz' AND b = 1 "
 			       "AND payload = CAST(REPEAT(X'CD', 8192) AS BIT VARYING)", &count), NO_ERROR);
   EXPECT_EQ (count, 1);
 }
@@ -1540,7 +1541,7 @@ TEST_F (OosSqlShow, UpdateDomainsPreserveUnassignedValuesThroughMovementAndRollb
 
 TEST_F (OosSqlShow, UpdateForcedKeyUsesCanonicalValueAndRejectsWrongPartition)
 {
-  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (k VARCHAR(80) DEFAULT 'abcdefghijklmnopqrst' "
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (k VARCHAR(80) DEFAULT 'abcdefghijklmnopqrstuvwxyz' "
 		       "STORAGE FORCE_OUTLINE, payload BIT VARYING) PARTITION BY RANGE(k) "
 		       "(PARTITION p0 VALUES LESS THAN('m'), PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
   ASSERT_GE (exec_sql ("INSERT INTO t_oos_show_part(payload) VALUES(REPEAT(X'AB', 8192))"), 0);
@@ -1554,7 +1555,7 @@ TEST_F (OosSqlShow, UpdateForcedKeyUsesCanonicalValueAndRejectsWrongPartition)
 			       "AND payload = CAST(REPEAT(X'AB', 8192) AS BIT VARYING)", &matches), NO_ERROR);
   EXPECT_EQ (matches, 1);
   ASSERT_GE (exec_sql ("UPDATE t_oos_show_part SET k = DEFAULT"), 0);
-  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE k = 'abcdefghijklmnopqrst'",
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE k = 'abcdefghijklmnopqrstuvwxyz'",
 			       &matches), NO_ERROR);
   EXPECT_EQ (matches, 1);
 }
