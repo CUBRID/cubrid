@@ -48,10 +48,20 @@ enum STREAM_KIND
 
   /* Allocated so far -- a consumer takes the next free value and names it in
    * its own header, and this list is what stops two of them colliding:
-   *   0  COPY          (src/loaddb/copy_stream_kind.h)
-   *   1  internal-LOB  (not landed)
+   *   0  COPY               (src/loaddb/copy_stream_kind.h)
+   *   1  internal-LOB upload    (not landed; CBRD-26780)
+   *   2  internal-LOB DML       (not landed; CBRD-26780)
    */
   STREAM_KIND_MAX = 4		/* factory slots; raise when a fifth consumer lands */
+};
+
+/* What END reports back. A struct rather than a bare count because the second
+ * consumer is being written against this shape (CBRD-26780) and because a
+ * consumer that has more to report should not change every other one's
+ * signature to say it. */
+struct stream_result
+{
+  std::int64_t count;		/* rows for COPY, bytes for a value stream */
 };
 
 class stream_session
@@ -63,9 +73,9 @@ class stream_session
      * payload needs is the implementation's concern. */
     virtual int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) = 0;
 
-    /* Flush pending work and report the binding's count: rows_loaded for COPY,
-     * bytes written for internal-LOB. 64-bit so a 4GB LOB value fits. */
-    virtual int finish (THREAD_ENTRY *thread_p, std::int64_t *count) = 0;
+    /* Flush pending work and report the binding's result: rows_loaded for COPY,
+     * bytes written for internal-LOB. The count is 64-bit so a 4GB LOB value fits. */
+    virtual int finish (THREAD_ENTRY *thread_p, stream_result *result) = 0;
 
     /* Discard in-flight state so no partial result survives an error. */
     virtual void abort (THREAD_ENTRY *thread_p) = 0;
@@ -78,8 +88,19 @@ using stream_session_factory = stream_session * (*) (THREAD_ENTRY *thread_p, con
 
 /* A consumer registers the factory for its own kind; the transport dispatches
  * through the table and never names a concrete session type. Registration
- * happens once, at load time, before any connection can open a session. */
-extern void stream_session_register (int kind, stream_session_factory factory);
+ * happens once, at load time, before any connection can open a session.
+ *
+ * ends_unit_of_work says whether END finishes the statement the bytes belong
+ * to. COPY's does -- the transfer is the whole of it. A stream that only stages
+ * bytes for a later statement to consume (internal-LOB upload) does not, and
+ * committing at its END would commit that later statement's transaction early.
+ * It is declared here, once per consumer, rather than read off the wire,
+ * because the answer is the consumer's and not the client's to assert. */
+extern void stream_session_register (int kind, stream_session_factory factory, bool ends_unit_of_work);
+
+/* Does a stream of this kind finish a unit of work? Answered for an unknown or
+ * unregistered kind with false: nothing was opened, so nothing is owed. */
+extern bool stream_session_kind_ends_unit_of_work (int kind);
 
 /* Open path, called by the transport: dispatch to the registered factory. */
 extern stream_session *stream_session_create (THREAD_ENTRY *thread_p, int kind, const char *config, int config_len,

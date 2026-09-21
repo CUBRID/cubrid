@@ -427,6 +427,7 @@ extern int stream_from_init (int stream_kind, const char *config, int config_len
 extern int stream_from_send_data (const char *data, int data_len);
 extern int stream_from_end (INT64 * count);
 extern bool stream_from_is_open (void);
+extern bool stream_from_ends_unit_of_work (void);
 extern void stream_from_reset (void);
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

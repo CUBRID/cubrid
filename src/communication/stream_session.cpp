@@ -36,12 +36,18 @@
 
 namespace
 {
+  struct kind_entry
+  {
+    stream_session_factory factory;
+    bool ends_unit_of_work;
+  };
+
   /* Held in a function-local static so a consumer registering from its own
    * load-time initializer cannot run before this table is constructed. */
-  stream_session_factory *
-  factory_table ()
+  kind_entry *
+  kind_table ()
   {
-    static stream_session_factory table[STREAM_KIND_MAX] = { NULL };
+    static kind_entry table[STREAM_KIND_MAX] = {};
 
     return table;
   }
@@ -51,14 +57,32 @@ namespace
  * stream_session_register () - Register the factory that builds sessions of one kind
  *   kind(in): the STREAM_KIND_* value the consumer owns
  *   factory(in): builder for that kind
+ *   ends_unit_of_work(in): does END of this kind finish the statement?
  */
 void
-stream_session_register (int kind, stream_session_factory factory)
+stream_session_register (int kind, stream_session_factory factory, bool ends_unit_of_work)
 {
   assert (kind >= STREAM_KIND_MIN && kind < STREAM_KIND_MAX);
   assert (factory != NULL);
 
-  factory_table ()[kind] = factory;
+  kind_table ()[kind].factory = factory;
+  kind_table ()[kind].ends_unit_of_work = ends_unit_of_work;
+}
+
+/*
+ * stream_session_kind_ends_unit_of_work () - What the consumer declared at registration
+ *   return: true if END of this kind finishes the statement, false otherwise
+ *   kind(in): STREAM_KIND_* taken off the wire, not yet trusted
+ */
+bool
+stream_session_kind_ends_unit_of_work (int kind)
+{
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX)
+    {
+      return false;
+    }
+
+  return kind_table ()[kind].ends_unit_of_work;
 }
 
 /*
@@ -74,14 +98,14 @@ stream_session_create (THREAD_ENTRY *thread_p, int kind, const char *config, int
 {
   stream_session_factory factory;
 
-  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || factory_table ()[kind] == NULL)
+  if (kind < STREAM_KIND_MIN || kind >= STREAM_KIND_MAX || kind_table ()[kind].factory == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream kind");
       *error_code = ER_STREAM_SESSION_ERROR;
       return NULL;
     }
 
-  factory = factory_table ()[kind];
+  factory = kind_table ()[kind].factory;
 
   return factory (thread_p, config, config_len, error_code);
 }

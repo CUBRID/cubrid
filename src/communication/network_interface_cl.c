@@ -11955,6 +11955,11 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
  * that opened one needs to know that bytes are still to come, without knowing
  * which consumer opened it. */
 static bool stream_Is_open = false;
+
+/* What the open reply said about the kind that was opened: does its END finish
+ * the statement the bytes belong to? Cached here because the CAS asks after the
+ * open has returned, and it must not have to name the consumer to find out. */
+static bool stream_Ends_unit_of_work = false;
 #endif /* CS_MODE */
 
 /*
@@ -11986,7 +11991,27 @@ stream_from_reset (void)
 {
 #if defined(CS_MODE)
   stream_Is_open = false;
+  stream_Ends_unit_of_work = false;
 #endif /* CS_MODE */
+}
+
+/*
+ * stream_from_ends_unit_of_work () - Does this stream's END finish the statement?
+ *   return: what the consumer declared for the kind that was opened
+ *
+ * Only a stream opened without a statement needs this: a statement that opens
+ * one defers its own auto-commit and END pays that back with the mode the
+ * statement ran in. A driver-opened stream has no such statement, so the answer
+ * has to come from the kind.
+ */
+bool
+stream_from_ends_unit_of_work (void)
+{
+#if defined(CS_MODE)
+  return stream_Ends_unit_of_work;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
 }
 
 /*
@@ -12025,14 +12050,16 @@ stream_from_init (int stream_kind, const char *config, int config_len)
       memcpy (ptr, config, config_len);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int ends_unit_of_work = 0;
 
   int req_error = net_client_request (NET_SERVER_STREAM_INIT, request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      or_unpack_int (reply, &rc);
+      char *reply_ptr = or_unpack_int (reply, &rc);
+      (void) or_unpack_int (reply_ptr, &ends_unit_of_work);
     }
   else
     {
@@ -12046,6 +12073,7 @@ stream_from_init (int stream_kind, const char *config, int config_len)
     }
 
   stream_Is_open = (rc == NO_ERROR);
+  stream_Ends_unit_of_work = (stream_Is_open && ends_unit_of_work != 0);
 
   free_and_init (request);
 
@@ -12192,6 +12220,7 @@ stream_from_send_data (const char *data, int data_len)
     {
       /* the server drops the session on a failed chunk, so nothing is open here either */
       stream_Is_open = false;
+      stream_Ends_unit_of_work = false;
     }
 
   return rc;
@@ -12220,6 +12249,7 @@ stream_from_end (INT64 * count)
 
   /* the server drops the session on END whether or not it reported an error */
   stream_Is_open = false;
+  stream_Ends_unit_of_work = false;
 
   if (!req_error)
     {

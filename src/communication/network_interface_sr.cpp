@@ -12588,6 +12588,7 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *ptr = request;
   int stream_kind = 0;
   int error_code = NO_ERROR;
+  bool ends_unit_of_work = false;
   stream_session *session = NULL;
 
   if (reqlen < OR_INT_SIZE)
@@ -12608,6 +12609,10 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	  session->abort (thread_p);
 	  delete session;
 	}
+      else
+	{
+	  ends_unit_of_work = stream_session_kind_ends_unit_of_work (stream_kind);
+	}
     }
   else if (error_code == NO_ERROR)
     {
@@ -12627,10 +12632,14 @@ send_reply:
     }
 
   {
-    OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+    /* the kind's answer rides back with the open so the CAS knows, without naming
+     * the consumer, whether this stream's END finishes a statement */
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr_reply;
 
-    or_pack_int (reply, error_code);
+    ptr_reply = or_pack_int (reply, error_code);
+    (void) or_pack_int (ptr_reply, ends_unit_of_work ? 1 : 0);
     css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   }
 }
@@ -12697,7 +12706,11 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     }
   else
     {
-      error_code = session->finish (thread_p, &count);	/* the binding may still have buffered work */
+      stream_result result;
+
+      result.count = 0;
+      error_code = session->finish (thread_p, &result);	/* the binding may still have buffered work */
+      count = (INT64) result.count;
 
       if (error_code != NO_ERROR)
 	{
