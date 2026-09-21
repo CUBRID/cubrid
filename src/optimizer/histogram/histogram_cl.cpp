@@ -1980,14 +1980,15 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   int src_coll_id = (lhs_name != NULL && lhs_name->data_type != NULL)
 		    ? lhs_name->data_type->info.data_type.collation_id : db_get_string_collation (rhs_db_value);
 
-  /* column width and charset for CHAR re-padding (histogram_repad_char_value); a column node
-   * without data_type yields precision 0, which disables it */
+  /* Column width and charset for CHAR re-padding (histogram_repad_char_value), both taken from
+   * what describes the column rather than from the query text: the width from the blob the
+   * sampler wrote, the charset from the collation resolved just above. A blob collected before
+   * CBRD-27251 carries width 0, which disables re-padding until the statistics are collected
+   * again. */
   const DB_TYPE column_type = histogram_reader.value_type ();
-  const int column_precision = (lhs_name != NULL && lhs_name->data_type != NULL)
-			       ? lhs_name->data_type->info.data_type.precision : 0;
-  const INTL_CODESET column_codeset = (lhs_name != NULL && lhs_name->data_type != NULL)
-				      ? static_cast<INTL_CODESET> (lhs_name->data_type->info.data_type.units)
-				      : LANG_SYS_CODESET;
+  const int column_precision = histogram_reader.value_precision ();
+  const LANG_COLLATION *src_collation = lang_get_collation (src_coll_id);
+  const INTL_CODESET column_codeset = (src_collation != NULL) ? src_collation->codeset : LANG_SYS_CODESET;
   std::string pad_buf;
 
   /* MCVs: exact LIKE test against each MCV value, weighted by its population frequency. */
@@ -2176,14 +2177,14 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
       return;
     }
 
-  /* column width and charset for CHAR re-padding (histogram_repad_char_value); a column node
-   * without data_type yields precision 0, which disables it */
+  /* Column width and charset for CHAR re-padding (histogram_repad_char_value), both taken from
+   * what describes the column rather than from the query text: the width from the blob the
+   * sampler wrote, the charset from the collation the regex was compiled under. A blob collected before
+   * CBRD-27251 carries width 0, which disables re-padding until the statistics are collected
+   * again. */
   const DB_TYPE column_type = histogram_reader.value_type ();
-  const int column_precision = (lhs_name != NULL && lhs_name->data_type != NULL)
-			       ? lhs_name->data_type->info.data_type.precision : 0;
-  const INTL_CODESET column_codeset = (lhs_name != NULL && lhs_name->data_type != NULL)
-				      ? static_cast<INTL_CODESET> (lhs_name->data_type->info.data_type.units)
-				      : LANG_SYS_CODESET;
+  const int column_precision = histogram_reader.value_precision ();
+  const INTL_CODESET column_codeset = collation->codeset;
   std::string pad_buf;
 
   /* An invalid pattern must keep raising its error at execution time, not at planning time:
