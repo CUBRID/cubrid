@@ -267,7 +267,7 @@ static void planner_permutate (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NO
 static QO_PLAN *qo_find_best_nljoin_inner_plan_on_info (QO_PLAN *, QO_INFO *, JOIN_TYPE, int);
 static QO_PLAN *qo_distinct_new (QO_PLAN *, QO_INFO *);
 static void qo_prepare_distinct_info (QO_PLANNER *);
-static QO_INFO *qo_distinct_info_ahead (QO_PLANNER *, QO_NODE *, BITSET *);
+static QO_INFO *qo_get_distinct_info_ahead (QO_PLANNER *, QO_NODE *, BITSET *);
 static QO_PLAN *qo_find_best_plan_on_info (QO_INFO *, QO_EQCLASS *, double);
 static bool qo_check_new_best_plan_on_info (QO_INFO *, QO_PLAN *);
 static int qo_check_plan_on_info (QO_INFO *, QO_PLAN *);
@@ -6648,7 +6648,7 @@ exit:
  *       searched once per outer row and is kept behind the side it is joined to (QO_NODE_SEMI_ANTI_DEP_SET).  With
  *       one row left per distinct join value that reason is gone -- an ordinary join over those rows returns
  *       the same result -- and the inner may come first.  The join order search lets such an inner ahead of
- *       the side it depends on in that form only (qo_distinct_info_ahead ()); this is where the form is made
+ *       the side it depends on in that form only (qo_get_distinct_info_ahead ()); this is where the form is made
  *       ready, once, before the search starts.  It wins when reading the inner out once is cheaper than
  *       searching it for every outer row, a small or empty inner most plainly.  ANTI JOIN has no such form.
  */
@@ -6779,7 +6779,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 }
 
 /*
- * qo_distinct_info_ahead () - the info to use for a node the join order search is about to place before the
+ * qo_get_distinct_info_ahead () - the info to use for a node the join order search is about to place before the
  *      side it depends on, when the node may be read that way; NULL otherwise
  *   return: the node's distinct_info, or NULL
  *   planner(in):
@@ -6793,7 +6793,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
  *       is joined to it as a SEMI JOIN inner in the usual way and node_info is the right one -- this returns NULL then.
  */
 static QO_INFO *
-qo_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
+qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
 {
   QO_INFO *distinct_info;
 
@@ -8044,7 +8044,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (bitset_cardinality (visited_nodes) == 1)
     {
       /* current prefix has only one node; a SEMI JOIN inner placed first is read with the duplicates removed */
-      head_info = qo_distinct_info_ahead (planner, head_node, visited_nodes);
+      head_info = qo_get_distinct_info_ahead (planner, head_node, visited_nodes);
       head_reads_distinct = (head_info != NULL);
       if (head_info == NULL)
 	{
@@ -8064,7 +8064,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
   /* tail_info points to the node for the single class being added to the prefix; a SEMI JOIN inner added ahead
    * of the side it depends on is read with the duplicates removed */
-  tail_info = qo_distinct_info_ahead (planner, tail_node, visited_nodes);
+  tail_info = qo_get_distinct_info_ahead (planner, tail_node, visited_nodes);
   tail_reads_distinct = (tail_info != NULL);
   if (tail_info == NULL)
     {
@@ -8730,7 +8730,7 @@ go_ahead_subvisit:
 	      continue;
 	    }
 	  if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node)))
-	      && qo_distinct_info_ahead (planner, node, visited_nodes) == NULL)
+	      && qo_get_distinct_info_ahead (planner, node, visited_nodes) == NULL)
 	    {
 	      /* Only a SEMI node read with DISTINCT may precede its SEMI/ANTI dependencies. */
 	      continue;
@@ -8930,7 +8930,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 	  continue;
 	}
       if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (head_node)))
-	  && qo_distinct_info_ahead (planner, head_node, visited_nodes) == NULL)
+	  && qo_get_distinct_info_ahead (planner, head_node, visited_nodes) == NULL)
 	{
 	  /* Only a SEMI node read with DISTINCT may precede its SEMI/ANTI dependencies. */
 	  continue;
@@ -8939,7 +8939,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
       if (bitset_is_empty (visited_nodes))
 	{			/* not found outermost nodes */
 
-	  head_info = qo_distinct_info_ahead (planner, head_node, visited_nodes);
+	  head_info = qo_get_distinct_info_ahead (planner, head_node, visited_nodes);
 	  if (head_info == NULL)
 	    {
 	      head_info = planner->node_info[QO_NODE_IDX (head_node)];
@@ -8968,7 +8968,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 		  continue;
 		}
 	      if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (tail_node)))
-		  && qo_distinct_info_ahead (planner, tail_node, visited_nodes) == NULL)
+		  && qo_get_distinct_info_ahead (planner, tail_node, visited_nodes) == NULL)
 		{
 		  continue;
 		}
