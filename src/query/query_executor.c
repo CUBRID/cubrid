@@ -571,9 +571,10 @@ static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_N
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
 					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state,
-					     PT_VOLATILITY * default_vols, FUNC_PRED_UNPACK_INFO * default_func_preds);
+					     FUNC_PRED_UNPACK_INFO * default_func_preds);
 static void qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr,
-					    PT_VOLATILITY ** default_vols, FUNC_PRED_UNPACK_INFO ** default_func_preds);
+					    FUNC_PRED_UNPACK_INFO ** default_func_preds);
+static bool qexec_default_func_pred_is_volatile (const FUNC_PRED_UNPACK_INFO * default_func_pred);
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -12798,40 +12799,41 @@ exit_on_error:
 /*
  * qexec_prepare_default_expr_stream () - deserialize a residual DEFAULT's stored
  *	REGU form once, returning the FUNC_PRED (and the XASL_UNPACK_INFO that owns
- *	it, which the caller must free) plus the effective volatility stamped on the
- *	root regu at DDL time.  Deserializing once per statement and reusing the
- *	FUNC_PRED across rows avoids one stx_map_stream_to_func_pred /
+ *	it, which the caller must free).  Deserializing once per statement and
+ *	reusing the FUNC_PRED across rows avoids one stx_map_stream_to_func_pred /
  *	free_xasl_unpack_info cycle per inserted row.
  *   return: NO_ERROR or ER_code
  *   thread_p(in): thread entry
  *   attr(in): attribute metadata carrying the REGU stream
  *   func_pred(out): deserialized predicate (points into *unpack_info)
  *   unpack_info(out): backing storage to be freed with free_xasl_unpack_info
- *   out_volatility(out): effective volatility stamped on the root regu
  */
 static int
 qexec_prepare_default_expr_stream (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, FUNC_PRED ** func_pred,
-				   XASL_UNPACK_INFO ** unpack_info, PT_VOLATILITY * out_volatility)
+				   XASL_UNPACK_INFO ** unpack_info)
 {
-  int error = NO_ERROR;
-
   assert (attr->current_default_value.default_expr.default_expr_regu_stream != NULL);
 
-  error = stx_map_stream_to_func_pred (thread_p, func_pred,
-				       (char *) attr->current_default_value.default_expr.default_expr_regu_stream,
-				       attr->current_default_value.default_expr.default_expr_regu_stream_size,
-				       unpack_info);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  return stx_map_stream_to_func_pred (thread_p, func_pred,
+				      (char *) attr->current_default_value.default_expr.default_expr_regu_stream,
+				      attr->current_default_value.default_expr.default_expr_regu_stream_size,
+				      unpack_info);
+}
 
-  /* effective volatility stamped on the root regu at DDL time: lets the caller
-   * evaluate a VOLATILE residual once per row and a STABLE one once per statement,
-   * without a parser on the server */
-  *out_volatility = REGU_VARIABLE_GET_DEFAULT_VOLATILITY ((*func_pred)->func_regu);
-
-  return NO_ERROR;
+/*
+ * qexec_default_func_pred_is_volatile () - whether a cached residual DEFAULT is VOLATILE, per the effective
+ *	volatility stamped on its root regu at DDL time (no parser is needed on the server): it is then evaluated
+ *	once per row instead of once per statement.  A constant or Expression-Derived Literal DEFAULT has no
+ *	func_pred.
+ *   return: true if so
+ *   default_func_pred(in): cache entry of the DEFAULT
+ */
+static bool
+qexec_default_func_pred_is_volatile (const FUNC_PRED_UNPACK_INFO * default_func_pred)
+{
+  return (default_func_pred->func_pred != NULL
+	  && PT_VOLATILITY_IS_VOLATILE_RESIDUAL (REGU_VARIABLE_GET_DEFAULT_VOLATILITY
+						 (default_func_pred->func_pred->func_regu)));
 }
 
 /*
@@ -12887,17 +12889,16 @@ qexec_eval_default_expr_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pre
 
 /*
  * qexec_free_default_expr_caches () - release the per-statement residual DEFAULT
- *	caches allocated in qexec_execute_insert: the effective-volatility array and
- *	the func_pred / unpack_info parallel array.  Each cached unpack_info owns
- *	its func_pred, so it is released with free_xasl_unpack_info.  Both pointers
- *	are nulled.  Safe to call when none were allocated.
+ *	cache allocated in qexec_execute_insert: the func_pred / unpack_info array.
+ *	Each cached unpack_info owns its func_pred, so it is released with
+ *	free_xasl_unpack_info.  The pointer is nulled.  Safe to call when none was
+ *	allocated.
  *   thread_p(in): thread entry
  *   num_default_expr(in): array length
- *   default_vols(in/out): effective-volatility array
  *   default_func_preds(in/out): cached predicate array
  */
 static void
-qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr, PT_VOLATILITY ** default_vols,
+qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr,
 				FUNC_PRED_UNPACK_INFO ** default_func_preds)
 {
   int k;
@@ -12923,10 +12924,6 @@ qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr, P
 	}
       db_private_free_and_init (thread_p, *default_func_preds);
     }
-  if (*default_vols != NULL)
-    {
-      db_private_free_and_init (thread_p, *default_vols);
-    }
 }
 
 /*
@@ -12937,8 +12934,8 @@ qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr, P
  *   insert(in): INSERT_PROC_NODE
  *   attr_info(in): attribute info
  *   xasl_state(in): XASL state containing value descriptor
- *   default_vols(in): per default-attr effective volatility of residual DEFAULTs (may be NULL)
- *   default_func_preds(in): per residual DEFAULT, the func_pred deserialized once per statement
+ *   default_func_preds(in): per DEFAULT the INSERT fills, the func_pred of a residual deserialized once per
+ *			      statement (may be NULL when none is filled)
  *
  * Note: a constant or STABLE residual keeps the value computed once per statement in the fill loop of
  *       qexec_execute_insert; a VOLATILE residual is re-evaluated from the cached func_pred for every row.
@@ -12946,48 +12943,50 @@ qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr, P
 static int
 qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
 				  HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state,
-				  PT_VOLATILITY * default_vols, FUNC_PRED_UNPACK_INFO * default_func_preds)
+				  FUNC_PRED_UNPACK_INFO * default_func_preds)
 {
   int k;
   int num_default_expr = insert->num_default_expr;
 
-  if (num_default_expr <= 0)
+  if (num_default_expr <= 0 || default_func_preds == NULL)
     {
       return NO_ERROR;
     }
 
   for (k = 0; k < num_default_expr; k++)
     {
-      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
+      OR_ATTRIBUTE *attr;
       int error;
 
+      if (!qexec_default_func_pred_is_volatile (&default_func_preds[k]))
+	{
+	  continue;
+	}
+
+      attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
       if (attr == NULL)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
 	}
 
-      if (default_vols != NULL && PT_VOLATILITY_IS_VOLATILE_RESIDUAL (default_vols[k]))
+      /* VOLATILE residual: re-evaluate the cached func_pred so every row gets a distinct value */
+      pr_clear_value (insert->vals[k]);
+      error = qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
+						 insert->vals[k]);
+      if (error != NO_ERROR)
 	{
-	  /* VOLATILE residual: re-evaluate the cached func_pred so every row gets a distinct value */
-	  assert (default_func_preds != NULL && default_func_preds[k].func_pred != NULL);
-	  pr_clear_value (insert->vals[k]);
-	  error = qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
-						     insert->vals[k]);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-#if !defined(NDEBUG)
-	  /* A VOLATILE residual must never settle to REGU_VARIABLE_FETCH_ALL_CONST:
-	   * its NOT_CONST leaf (UUID/SYS_GUID/...) propagates up so fetch_peek_arith
-	   * recomputes per row rather than returning a cached value.  If a function
-	   * were classified VOLATILE on the client (PT_VOLATILITY) yet failed to
-	   * self-mark NOT_CONST on the server, the reused func_pred would hand back
-	   * row 1's value for every row -- this guard trips before that ships. */
-	  assert (!REGU_VARIABLE_IS_FLAGED (default_func_preds[k].func_pred->func_regu, REGU_VARIABLE_FETCH_ALL_CONST));
-#endif
+	  return error;
 	}
+#if !defined(NDEBUG)
+      /* A VOLATILE residual must never settle to REGU_VARIABLE_FETCH_ALL_CONST:
+       * its NOT_CONST leaf (UUID/SYS_GUID/...) propagates up so fetch_peek_arith
+       * recomputes per row rather than returning a cached value.  If a function
+       * were classified VOLATILE on the client (PT_VOLATILITY) yet failed to
+       * self-mark NOT_CONST on the server, the reused func_pred would hand back
+       * row 1's value for every row -- this guard trips before that ships. */
+      assert (!REGU_VARIABLE_IS_FLAGED (default_func_preds[k].func_pred->func_regu, REGU_VARIABLE_FETCH_ALL_CONST));
+#endif
     }
 
   return NO_ERROR;
@@ -13076,7 +13075,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   int scan_cache_op_type = 0;
   int force_count = 0;
   int num_default_expr = 0;
-  PT_VOLATILITY *default_vols = NULL;	/* per default-attr effective volatility (residual DEFAULTs) */
+  bool has_volatile_default = false;	/* a VOLATILE residual DEFAULT is re-evaluated for every row */
   FUNC_PRED_UNPACK_INFO *default_func_preds = NULL;	/* per residual DEFAULT: deserialized once, reused per row */
   LC_COPYAREA_OPERATION operation = LC_FLUSH_INSERT;
   PRUNING_CONTEXT context, *volatile pcontext = NULL;
@@ -13214,21 +13213,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (num_default_expr > 0)
     {
-      /* per default-attr effective volatility, captured while the fill loop
-       * deserializes each residual REGU once; consulted per row to re-evaluate
-       * only the VOLATILE residuals (qexec_evaluate_row_default_exprs).  The
-       * func_pred / unpack_info parallel array caches that single deserialization
-       * so the per-row pass reuses it instead of re-deserializing each row. */
-      default_vols = (PT_VOLATILITY *) db_private_alloc (thread_p, num_default_expr * sizeof (PT_VOLATILITY));
+      /* the func_pred / unpack_info of each residual DEFAULT, deserialized once by the fill loop below and
+       * reused by the per-row pass (qexec_evaluate_row_default_exprs) for the VOLATILE ones */
       default_func_preds =
 	(FUNC_PRED_UNPACK_INFO *) db_private_alloc (thread_p, num_default_expr * sizeof (FUNC_PRED_UNPACK_INFO));
-      if (default_vols == NULL || default_func_preds == NULL)
+      if (default_func_preds == NULL)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
       for (k = 0; k < num_default_expr; k++)
 	{
-	  default_vols[k] = PT_VOLATILITY_UNSET;
 	  default_func_preds[k].func_pred = NULL;
 	  default_func_preds[k].unpack_info = NULL;
 	}
@@ -13256,23 +13250,20 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
       if (attr->current_default_value.default_expr.default_expr_regu_stream != NULL)
 	{
-	  /* residual DEFAULT: deserialize the stored REGU form ONCE here and
-	   * cache the FUNC_PRED (default_func_preds[k]) for reuse across rows,
-	   * capturing the effective volatility stamped on it at DDL time.  A
-	   * STABLE residual is evaluated now, once per statement, instead of
-	   * reading the frozen DDL-time snapshot; the result lands in new_val
-	   * already cast to the attribute domain, so the shared clone/cast tail
-	   * below is unnecessary.  A VOLATILE residual is left NULL here and
-	   * evaluated per row in qexec_evaluate_row_default_exprs -- evaluating
-	   * it here too would only be discarded by the per-row pass, and an
-	   * embedded UUID(7) would burn a sequence number for nothing. */
+	  /* residual DEFAULT: deserialize the stored REGU form ONCE here and cache the FUNC_PRED for reuse
+	   * across rows.  A STABLE residual is evaluated now, once per statement; a VOLATILE one is left NULL
+	   * and evaluated per row, where an embedded UUID(7) would otherwise burn a sequence number here. */
 	  error = qexec_prepare_default_expr_stream (thread_p, attr, &default_func_preds[k].func_pred,
-						     &default_func_preds[k].unpack_info, &default_vols[k]);
+						     &default_func_preds[k].unpack_info);
 	  if (error != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
-	  if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (default_vols[k]))
+	  if (qexec_default_func_pred_is_volatile (&default_func_preds[k]))
+	    {
+	      has_volatile_default = true;
+	    }
+	  else
 	    {
 	      error =
 		qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
@@ -13356,9 +13347,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  insert->vals[k] = vallist->val;
 		}
 
-	      /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
-	      if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state, default_vols,
-						    default_func_preds) != NO_ERROR)
+	      /* re-evaluate the VOLATILE residual DEFAULTs (UUID, SYS_GUID, ...) for this row */
+	      if (has_volatile_default
+		  && qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state,
+						       default_func_preds) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -13541,9 +13533,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      insert->vals[k] = valp;
 	    }
 
-	  /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
-	  if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state, default_vols,
-						default_func_preds) != NO_ERROR)
+	  /* re-evaluate the VOLATILE residual DEFAULTs (UUID, SYS_GUID, ...) for this row */
+	  if (has_volatile_default
+	      && qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state,
+						   default_func_preds) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -13769,7 +13762,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       pr_clear_value (insert->vals[k]);
       db_private_free_and_init (thread_p, insert->vals[k]);
     }
-  qexec_free_default_expr_caches (thread_p, num_default_expr, &default_vols, &default_func_preds);
+  qexec_free_default_expr_caches (thread_p, num_default_expr, &default_func_preds);
 
   if (odku_assignments && insert->has_uniques)
     {
@@ -13785,7 +13778,7 @@ exit_on_error:
       pr_clear_value (insert->vals[k]);
       db_private_free_and_init (thread_p, insert->vals[k]);
     }
-  qexec_free_default_expr_caches (thread_p, num_default_expr, &default_vols, &default_func_preds);
+  qexec_free_default_expr_caches (thread_p, num_default_expr, &default_func_preds);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
   if (func_indx_preds)
