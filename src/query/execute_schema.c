@@ -1020,14 +1020,22 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 
-	  /* Fix CUBRIDSUS-8035. FOR Primary Key situation, we will throw another ERROR in function
-	   * dbt_change_default, so I excluded it from here. */
-	  if (DB_IS_NULL (&src_val) && (def_attr->flags & SM_ATTFLAG_NON_NULL)
-	      && !(def_attr->flags & SM_ATTFLAG_PRIMARY_KEY))
+	  /* a NULL DDL-time value is refused on a PRIMARY KEY or NOT NULL column, as CREATE / ADD / CHANGE refuse
+	   * it; a VOLATILE residual has no DDL-time value to check: every row evaluates its own, under the
+	   * constraints */
+	  if (DB_IS_NULL (&src_val) && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (d)
+	      && (def_attr->flags & (SM_ATTFLAG_NON_NULL | SM_ATTFLAG_PRIMARY_KEY)))
 	    {
 	      db_value_clear (&src_val);
 	      parser_free_tree (parser, data_type);
-	      ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, attr_name);
+	      if (def_attr->flags & SM_ATTFLAG_PRIMARY_KEY)
+		{
+		  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, attr_name);
+		}
+	      else
+		{
+		  ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, attr_name);
+		}
 	      break;
 	    }
 
@@ -8107,7 +8115,9 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       goto error_exit;
     }
 
-  if (default_value && DB_IS_NULL (default_value))
+  /* a VOLATILE residual has no DDL-time value to check: every row evaluates its own, under the constraints */
+  if (default_value && DB_IS_NULL (default_value)
+      && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (attribute->info.attr_def.data_default))
     {
       /* don't allow a default value of NULL for NOT NULL constrained columns */
       if (attribute->info.attr_def.constrain_not_null)
@@ -13984,9 +13994,9 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
  * get_att_default_from_data_default () - the DDL-time DEFAULT value of an attribute from its PT_DATA_DEFAULT
  *	node, coerced to the attribute type.  A literal is coerced as written.  A residual (STABLE or VOLATILE)
  *	is evaluated once and its result coerced, so an incompatible expression is rejected here rather than at
- *	the first INSERT; INSERTs re-evaluate the stored residual, and the value is the snapshot that rows
- *	predating the DEFAULT read back.  Shared by CREATE TABLE, ALTER ADD / CHANGE / MODIFY and
- *	ALTER ... SET DEFAULT.
+ *	the first INSERT; INSERTs re-evaluate the stored residual.  The value of a STABLE residual is the
+ *	snapshot that rows predating the DEFAULT read back; a VOLATILE residual has no DDL-time value and leaves
+ *	it NULL.  Shared by CREATE TABLE, ALTER ADD / CHANGE / MODIFY and ALTER ... SET DEFAULT.
  *  return : NO_ERROR, if success; error code otherwise
  *  parser(in): parser context
  *  data_default(in): PT_DATA_DEFAULT node of the attribute
@@ -14104,9 +14114,10 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
       else
 	{
 	  /* a residual (STABLE or VOLATILE): evaluate it once at DDL time and coerce the result to the
-	   * attribute type, so an incompatible result is rejected here rather than at the first INSERT.  The
-	   * coerced value seeds value/original_value (what unbound pre-existing rows read back); INSERTs
-	   * re-evaluate the stored residual, so for VOLATILE the snapshot is only a type-checked placeholder. */
+	   * attribute type, so an incompatible result is rejected here rather than at the first INSERT.  A
+	   * STABLE result becomes the DDL-time value (what unbound pre-existing rows read back).  A VOLATILE
+	   * residual has no DDL-time value -- one value cannot stand for a per-row evaluation -- so its result
+	   * is discarded and the value stays NULL. */
 	  DB_VALUE src;
 	  PT_NODE *temp_val;
 
@@ -14131,7 +14142,7 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
 
 	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, data_type, true);
 	  db_value_clear (&src);
-	  if (error == NO_ERROR)
+	  if (error == NO_ERROR && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (data_default))
 	    {
 	      pt_evaluate_tree (parser, temp_val, default_value, 1);
 	    }
@@ -14907,7 +14918,8 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
   /* ptr_def is either NULL or pointing to address of def_value */
   assert (ptr_def == NULL || ptr_def == &def_value);
 
-  if (ptr_def && DB_IS_NULL (ptr_def))
+  /* a VOLATILE residual has no DDL-time value to check: every row evaluates its own, under the constraints */
+  if (ptr_def && DB_IS_NULL (ptr_def) && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (attribute->info.attr_def.data_default))
     {
       for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
 	{

@@ -1338,8 +1338,10 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	  ERROR1 (error, ER_SM_DEFAULT_NOT_ALLOWED, att->type->name);
 	  return error;
 	}
-      else if (proposed_value && DB_IS_NULL (proposed_value) && (att->flags & SM_ATTFLAG_PRIMARY_KEY))
+      else if (proposed_value && DB_IS_NULL (proposed_value) && (att->flags & SM_ATTFLAG_PRIMARY_KEY)
+	       && (default_expr == NULL || !DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr)))
 	{
+	  /* the DDL layer checks a residual DEFAULT on its DDL-time value, which a VOLATILE one does not have */
 	  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, name);
 	  return error;
 	}
