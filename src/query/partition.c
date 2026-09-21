@@ -3454,64 +3454,59 @@ error_exit:
 }
 
 /*
- * partition_find_partition_for_record () - find the partition in which a
- *					    record should be placed
+ * partition_attr_info_init_once () - start the pruning context's attribute cache for the partition key
  * return : error code or NO_ERROR
- * pinfo (in)	  : pruning context
- * class_oid (in) : OID of the root class
- * recdes (in)	  : record descriptor
- * partition_oid (in/out) : OID of the partition in which the record fits
- * partition_hfid (in/out): HFID of the partition in which the record fits
+ * pinfo (in) : pruning context
  */
 static int
-partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
-				     OID * partition_oid, HFID * partition_hfid)
+partition_attr_info_init_once (PRUNING_CONTEXT * pinfo)
+{
+  int error;
+
+  if (pinfo->is_attr_info_inited)
+    {
+      return NO_ERROR;
+    }
+
+  error = heap_attrinfo_start (pinfo->thread_p, &pinfo->root_oid, 1, &pinfo->attr_id, &pinfo->attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  partition_set_cache_info_for_expr (pinfo->partition_pred->func_regu, pinfo->attr_id, &pinfo->attr_info);
+  pinfo->is_attr_info_inited = true;
+
+  return NO_ERROR;
+}
+
+/*
+ * partition_select_partition_for_attr_info () - evaluate the partition expression over the key value held in
+ *						 pinfo->attr_info and pick the one partition it falls into
+ * return : error code or NO_ERROR
+ * pinfo (in)	  : pruning context, attr_info loaded with the key value
+ * class_oid (in) : OID of the root class
+ * selected (out) : the partition
+ */
+static int
+partition_select_partition_for_attr_info (PRUNING_CONTEXT * pinfo, const OID * class_oid, OR_PARTITION ** selected)
 {
   PRUNING_BITSET pruned;
   PRUNING_BITSET_ITERATOR it;
-  bool clear_dbvalues = false;
   DB_VALUE *result = NULL;
   MATCH_STATUS status = MATCH_NOT_FOUND;
-  int error = NO_ERROR, count = 0, pos;
   PRUNING_OP op = PO_EQ;
-  REPR_ID repr_id = NULL_REPRID;
+  int error = NO_ERROR, count = 0, pos;
 
-  assert (partition_oid != NULL);
-  assert (partition_hfid != NULL);
-
+  *selected = NULL;
   pruningset_init (&pruned, PARTITIONS_COUNT (pinfo));
-
-  if (pinfo->is_attr_info_inited == false)
-    {
-      error = heap_attrinfo_start (pinfo->thread_p, &pinfo->root_oid, 1, &pinfo->attr_id, &pinfo->attr_info);
-      if (error != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      partition_set_cache_info_for_expr (pinfo->partition_pred->func_regu, pinfo->attr_id, &pinfo->attr_info);
-      pinfo->is_attr_info_inited = true;
-    }
-
-  /* set root representation id to the recdes so that we can read the value as belonging to the partitioned table */
-  repr_id = or_rep_id (recdes);
-  or_set_rep_id (recdes, pinfo->root_repr_id);
-
-  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, &pinfo->attr_info);
-
-  or_set_rep_id (recdes, repr_id);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-  clear_dbvalues = true;
 
   error =
     fetch_peek_dbval (pinfo->thread_p, pinfo->partition_pred->func_regu, NULL, (OID *) class_oid,
 		      &pinfo->attr_info.inst_oid, NULL, &result);
   if (error != NO_ERROR)
     {
-      goto cleanup;
+      return error;
     }
 
   assert (result != NULL);
@@ -3527,8 +3522,7 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   if (status != MATCH_OK)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
-      error = ER_PARTITION_NOT_EXIST;
-      goto cleanup;
+      return ER_PARTITION_NOT_EXIST;
     }
 
   if (count != 1)
@@ -3539,14 +3533,11 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
 	{
 	  /* no appropriate partition found */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_NOT_EXIST, 0);
-	  error = ER_PARTITION_NOT_EXIST;
+	  return ER_PARTITION_NOT_EXIST;
 	}
-      else
-	{
-	  /* This is an internal *error (allocation, etc). Error was set by the calls above, just set *error code */
-	  error = pinfo->error_code;
-	}
-      goto cleanup;
+
+      /* This is an internal *error (allocation, etc). Error was set by the calls above, just set *error code */
+      return pinfo->error_code;
     }
 
   pruningset_iterator_init (&pruned, &it);
@@ -3554,8 +3545,60 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
   pos = pruningset_iterator_next (&it);
   assert_release (pos >= 0);
 
-  COPY_OID (partition_oid, &pinfo->partitions[pos + 1].class_oid);
-  HFID_COPY (partition_hfid, &pinfo->partitions[pos + 1].class_hfid);
+  *selected = &pinfo->partitions[pos + 1];
+
+  return NO_ERROR;
+}
+
+/*
+ * partition_find_partition_for_record () - find the partition in which a
+ *					    record should be placed
+ * return : error code or NO_ERROR
+ * pinfo (in)	  : pruning context
+ * class_oid (in) : OID of the root class
+ * recdes (in)	  : record descriptor
+ * partition_oid (in/out) : OID of the partition in which the record fits
+ * partition_hfid (in/out): HFID of the partition in which the record fits
+ */
+static int
+partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
+				     OID * partition_oid, HFID * partition_hfid)
+{
+  OR_PARTITION *selected = NULL;
+  bool clear_dbvalues = false;
+  int error = NO_ERROR;
+  REPR_ID repr_id = NULL_REPRID;
+
+  assert (partition_oid != NULL);
+  assert (partition_hfid != NULL);
+
+  error = partition_attr_info_init_once (pinfo);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  /* set root representation id to the recdes so that we can read the value as belonging to the partitioned table */
+  repr_id = or_rep_id (recdes);
+  or_set_rep_id (recdes, pinfo->root_repr_id);
+
+  error = heap_attrinfo_read_dbvalues (pinfo->thread_p, &pinfo->attr_info.inst_oid, recdes, &pinfo->attr_info);
+
+  or_set_rep_id (recdes, repr_id);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  clear_dbvalues = true;
+
+  error = partition_select_partition_for_attr_info (pinfo, class_oid, &selected);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  COPY_OID (partition_oid, &selected->class_oid);
+  HFID_COPY (partition_hfid, &selected->class_hfid);
 
   if (!OID_EQ (class_oid, partition_oid))
     {
@@ -3566,9 +3609,69 @@ partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_
        * will be exactly the same. Because of this, we can take a shortcut here and only update the bits from the
        * representation id */
 
-      repr_id = pinfo->partitions[pos + 1].rep_id;
+      repr_id = selected->rep_id;
       error = or_set_rep_id (recdes, repr_id);
     }
+
+cleanup:
+  if (clear_dbvalues)
+    {
+      heap_attrinfo_clear_dbvalues (&pinfo->attr_info);
+    }
+
+  return error;
+}
+
+/*
+ * partition_find_partition_for_attr_info () - find the partition a row falls into from its attribute values,
+ *					       before the record is built
+ * return : error code or NO_ERROR
+ * pinfo (in)	       : pruning context
+ * class_oid (in)      : OID of the root class
+ * attr_info (in)      : attribute values of the row
+ * partition_oid (out) : OID of the partition in which the row fits
+ * partition_hfid (out): HFID of the partition in which the row fits
+ */
+static int
+partition_find_partition_for_attr_info (PRUNING_CONTEXT * pinfo, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info,
+					OID * partition_oid, HFID * partition_hfid)
+{
+  OR_PARTITION *selected = NULL;
+  DB_VALUE *key_value = NULL;
+  bool clear_dbvalues = false;
+  int error = NO_ERROR;
+
+  assert (partition_oid != NULL);
+  assert (partition_hfid != NULL);
+
+  error = partition_attr_info_init_once (pinfo);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  key_value = heap_attrinfo_access (pinfo->attr_id, attr_info);
+  if (key_value == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  error = heap_attrinfo_set (&pinfo->attr_info.inst_oid, pinfo->attr_id, key_value, &pinfo->attr_info);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  clear_dbvalues = true;
+
+  error = partition_select_partition_for_attr_info (pinfo, class_oid, &selected);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  COPY_OID (partition_oid, &selected->class_oid);
+  HFID_COPY (partition_hfid, &selected->class_hfid);
 
 cleanup:
   if (clear_dbvalues)
@@ -3675,6 +3778,90 @@ partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES *
   if (superclass_oid != NULL)
     {
       COPY_OID (superclass_oid, &pcontext->root_oid);
+    }
+
+cleanup:
+  if (keep_pruning_context && error == NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  (void) partition_clear_pruning_context (pcontext);
+
+  return error;
+}
+
+/*
+ * partition_prune_insert_attr_info () - perform pruning for insert from the attribute values, before the record exists
+ * return : error code or NO_ERROR
+ * thread_p (in)  : thread entry
+ * class_oid (in) : OID of the class the insert was issued on
+ * attr_info (in) : attribute values of the row
+ * pcontext (in)  : pruning context, or NULL to load one here
+ * pruning_type (in) : pruning type
+ * pruned_class_oid (in/out) : preset to class_oid; replaced with the partition to insert into
+ * pruned_hfid (in/out)	     : preset to the HFID of class_oid; replaced with the HFID of the partition
+ *
+ * Note: partition_prune_insert () reads the key back from the finished record. The record transform stores OOS and
+ *	 Internal LOB values in the files of the class attr_info names, so a caller that builds the record picks the
+ *	 partition with this first and lets the later pruning of the record confirm it.
+ */
+int
+partition_prune_insert_attr_info (THREAD_ENTRY * thread_p, const OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info,
+				  PRUNING_CONTEXT * pcontext, int pruning_type, OID * pruned_class_oid,
+				  HFID * pruned_hfid)
+{
+  PRUNING_CONTEXT pinfo;
+  bool keep_pruning_context = false;
+  int error = NO_ERROR;
+
+  assert (pruned_class_oid != NULL);
+  assert (pruned_hfid != NULL);
+  assert (pruning_type != DB_NOT_PARTITIONED_CLASS);
+
+  if (pcontext == NULL)
+    {
+      /* set it to point to pinfo so that we use the same variable */
+      pcontext = &pinfo;
+
+      (void) partition_init_pruning_context (pcontext);
+      error = partition_load_pruning_context (thread_p, class_oid, pruning_type, pcontext);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  else
+    {
+      keep_pruning_context = true;
+
+      if (pcontext->partitions == NULL)
+	{
+	  error = partition_load_pruning_context (thread_p, class_oid, pruning_type, pcontext);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
+  if (pcontext->partitions == NULL)
+    {
+      /* no partitions, cleanup and exit */
+      goto cleanup;
+    }
+
+  error = partition_find_partition_for_attr_info (pcontext, class_oid, attr_info, pruned_class_oid, pruned_hfid);
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  if (pruning_type == DB_PARTITION_CLASS && !OID_EQ (pruned_class_oid, &pcontext->selected_partition->class_oid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INVALID_DATA_FOR_PARTITION, 0);
+      error = ER_INVALID_DATA_FOR_PARTITION;
+      goto cleanup;
     }
 
 cleanup:

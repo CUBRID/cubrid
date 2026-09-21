@@ -203,7 +203,6 @@ static PT_NODE *pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * exp
 					  PT_NODE * arg3, EXPRESSION_SIGNATURE sig);
 static PT_NODE *pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg1, PT_NODE * arg2,
 						PT_NODE * arg3, EXPRESSION_SIGNATURE sig);
-static bool pt_lob_function_accepts_arg (PARSER_CONTEXT * parser, PT_NODE * expr);
 static bool pt_is_range_comp_op (const PT_OP_TYPE op);
 static bool pt_is_range_expression (const PT_OP_TYPE op);
 static bool pt_are_unmatchable_types (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM op_type);
@@ -6060,99 +6059,6 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
 }
 
 /*
- * pt_lob_function_accepts_arg () - enforce the LOB function argument matrix
- * before the generic expression coercion logic wraps arguments in implicit
- * CASTs. LOB conversion helpers intentionally accept only the advertised
- * families; accepting a broader generic STRING/BIT match would hide type
- * mistakes during semantic checking.
- */
-static bool
-pt_lob_function_accepts_arg (PARSER_CONTEXT * parser, PT_NODE * expr)
-{
-  PT_OP_TYPE op;
-  PT_NODE *arg1;
-  PT_TYPE_ENUM arg_type;
-  bool accepted = true;
-
-  assert (expr != NULL && expr->node_type == PT_EXPR);
-
-  op = expr->info.expr.op;
-  arg1 = expr->info.expr.arg1;
-  if (arg1 == NULL)
-    {
-      return true;
-    }
-
-  arg_type = arg1->type_enum;
-  if (arg_type == PT_TYPE_NULL || arg_type == PT_TYPE_MAYBE)
-    {
-      return true;
-    }
-
-  switch (op)
-    {
-    case PT_BLOB_LENGTH:
-    case PT_BLOB_TO_BIT:
-      accepted = (arg_type == PT_TYPE_BLOB);
-      break;
-
-    case PT_CLOB_LENGTH:
-    case PT_CLOB_TO_CHAR:
-      accepted = (arg_type == PT_TYPE_CLOB);
-      break;
-
-    case PT_BLOB_TO_BFILE:
-      accepted = (arg_type == PT_TYPE_BLOB || PT_IS_BIT_STRING_TYPE (arg_type));
-      break;
-
-    case PT_CLOB_TO_CFILE:
-      accepted = (arg_type == PT_TYPE_CLOB || PT_IS_CHAR_STRING_TYPE (arg_type));
-      break;
-
-    case PT_BFILE_LENGTH:
-    case PT_BFILE_TO_BIT:
-    case PT_BFILE_TO_BLOB:
-      accepted = (arg_type == PT_TYPE_BFILE);
-      break;
-
-    case PT_CFILE_LENGTH:
-    case PT_CFILE_TO_CHAR:
-    case PT_CFILE_TO_CLOB:
-      accepted = (arg_type == PT_TYPE_CFILE);
-      break;
-
-    case PT_BIT_TO_BLOB:
-    case PT_BIT_TO_BFILE:
-      accepted = PT_IS_BIT_STRING_TYPE (arg_type);
-      break;
-
-    case PT_CHAR_TO_BLOB:
-    case PT_CHAR_TO_CLOB:
-    case PT_CHAR_TO_BFILE:
-    case PT_CHAR_TO_CFILE:
-      accepted = PT_IS_CHAR_STRING_TYPE (arg_type);
-      break;
-
-    case PT_BLOB_FROM_FILE:
-    case PT_CLOB_FROM_FILE:
-    case PT_BFILE_FROM_FILE:
-    case PT_CFILE_FROM_FILE:
-      accepted = (arg1->node_type == PT_VALUE && PT_IS_CHAR_STRING_TYPE (arg_type));
-      break;
-
-    default:
-      return true;
-    }
-
-  if (!accepted)
-    {
-      PT_ERRORf (parser, arg1, "Invalid argument in %s()", pt_show_binopcode (op));
-    }
-
-  return accepted;
-}
-
-/*
  *  pt_apply_expressions_definition () - evaluate which expression signature
  *					 best matches the received arguments
  *					 and cast arguments to the types
@@ -6223,11 +6129,6 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     {
       expr->type_enum = PT_TYPE_NULL;
       return NO_ERROR;
-    }
-
-  if (!pt_lob_function_accepts_arg (parser, expr))
-    {
-      return ER_FAILED;
     }
 
   /* UUID does not accept a NULL version argument */
@@ -17386,7 +17287,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_BLOB_FROM_FILE:
-      error = db_blob_from_file (arg1, result);
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_LOB_DIRECT_INSERT))
+	{
+	  error = db_blob_from_file_pending (arg1, result);
+	}
+      else
+	{
+	  error = db_blob_from_file (arg1, result);
+	}
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17434,7 +17342,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_CLOB_FROM_FILE:
-      error = db_clob_from_file (arg1, result);
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_LOB_DIRECT_INSERT))
+	{
+	  error = db_clob_from_file_pending (arg1, result);
+	}
+      else
+	{
+	  error = db_clob_from_file (arg1, result);
+	}
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17458,7 +17373,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_BFILE_TO_BLOB:
-      error = db_bfile_to_blob (arg1, result);
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_LOB_DIRECT_INSERT))
+	{
+	  error = db_bfile_to_blob_pending (arg1, result);
+	}
+      else
+	{
+	  error = db_bfile_to_blob (arg1, result);
+	}
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17482,7 +17404,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_CFILE_TO_CLOB:
-      error = db_cfile_to_clob (arg1, result);
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_LOB_DIRECT_INSERT))
+	{
+	  error = db_cfile_to_clob_pending (arg1, result);
+	}
+      else
+	{
+	  error = db_cfile_to_clob (arg1, result);
+	}
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -18563,14 +18492,16 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	    }
 	}
     }
-  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BFILE || op == PT_CHAR_TO_BFILE ||
-	   op == PT_BFILE_TO_BIT || op == PT_BFILE_LENGTH || op == PT_CHAR_TO_CFILE || op == PT_CFILE_TO_CHAR ||
-	   op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB ||
-	   op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR ||
-	   op == PT_CLOB_LENGTH || op == PT_BLOB_TO_BFILE || op == PT_BFILE_TO_BLOB || op == PT_CLOB_TO_CFILE ||
-	   op == PT_CFILE_TO_CLOB || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET ||
-	   op == PT_ESTIMATED_TABLE_ROWS || op == PT_ESTIMATED_AVG_ROW_LENGTH ||
-	   op == PT_ESTIMATED_DATA_LENGTH || op == PT_ESTIMATED_DATA_FREE)
+  else if (op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BFILE || op == PT_CHAR_TO_BFILE
+	   || op == PT_BFILE_FROM_FILE || op == PT_BFILE_TO_BIT || op == PT_BFILE_LENGTH
+	   || op == PT_CHAR_TO_CFILE || op == PT_CFILE_FROM_FILE || op == PT_CFILE_TO_CHAR
+	   || op == PT_CFILE_LENGTH || op == PT_BIT_TO_BLOB || op == PT_BLOB_FROM_FILE
+	   || op == PT_CHAR_TO_BLOB || op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH
+	   || op == PT_CHAR_TO_CLOB || op == PT_CLOB_FROM_FILE || op == PT_CLOB_TO_CHAR || op == PT_CLOB_LENGTH
+	   || op == PT_BLOB_TO_BFILE || op == PT_BFILE_TO_BLOB || op == PT_CLOB_TO_CFILE || op == PT_CFILE_TO_CLOB
+	   || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET
+	   || op == PT_ESTIMATED_TABLE_ROWS || op == PT_ESTIMATED_AVG_ROW_LENGTH
+	   || op == PT_ESTIMATED_DATA_LENGTH || op == PT_ESTIMATED_DATA_FREE)
     {
       goto end;
     }
