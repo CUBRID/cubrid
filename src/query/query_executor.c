@@ -593,6 +593,7 @@ static int qexec_execute_selupd_list_find_class (THREAD_ENTRY * thread_p, XASL_N
 static int qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_update_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					  QFILE_TUPLE_RECORD * tplrec);
+static void qexec_sync_start_with_type_list (CONNECTBY_PROC_NODE * connect_by);
 static void qexec_end_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static void qexec_clear_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -19881,6 +19882,43 @@ exit_on_error:
 }
 
 /*
+ * qexec_sync_start_with_type_list () - adopt into start_with_list_id the domains that input_list_id's descriptor resolved.
+ *    return:
+ *  connect_by(in): CONNECT BY proc node
+ *
+ * Note: qexec_update_connect_by_lists () lays the START WITH tuple out with input_list_id's descriptor and appends the
+ *	same bytes to start_with_list_id. The assembler resolves a DB_TYPE_VARIABLE column (a host variable) on its first
+ *	bound value and recomputes that descriptor only. start_with_list_id is an independent copy of the same initial
+ *	descriptor (qexec_start_connect_by_lists) and never goes through the assembler, so it would keep the VAR/COMPOSITE
+ *	layout and misread the FIXED bytes. Adopting the domain is safe here: a column still unresolved in
+ *	start_with_list_id has stored only NULL so far, since a bound value would have resolved input_list_id first.
+ */
+static void
+qexec_sync_start_with_type_list (CONNECTBY_PROC_NODE * connect_by)
+{
+  QFILE_TUPLE_VALUE_TYPE_LIST *dst = &connect_by->start_with_list_id->type_list;
+  const QFILE_TUPLE_VALUE_TYPE_LIST *src = &connect_by->input_list_id->type_list;
+  bool changed = false;
+  int i;
+
+  assert (dst->type_cnt == src->type_cnt);
+
+  for (i = 0; i < dst->type_cnt; i++)
+    {
+      if (TP_DOMAIN_TYPE (dst->domp[i]) == DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (src->domp[i]) != DB_TYPE_VARIABLE)
+	{
+	  dst->domp[i] = src->domp[i];
+	  changed = true;
+	}
+    }
+
+  if (changed)
+    {
+      qfile_set_layout (dst);
+    }
+}
+
+/*
  * qexec_update_connect_by_lists () - updates the START WITH list file and
  *	the CONNECT BY input list file with new data
  *    return:
@@ -19922,6 +19960,9 @@ qexec_update_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	      return ER_FAILED;
 	    }
 	}
+
+      /* the tuple was laid out with input_list_id's descriptor; start_with_list_id must read it the same way */
+      qexec_sync_start_with_type_list (connect_by);
 
       if (qfile_add_tuple_to_list (thread_p, connect_by->start_with_list_id, tplrec->tpl) != NO_ERROR)
 	{
