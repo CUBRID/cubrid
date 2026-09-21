@@ -692,7 +692,7 @@ namespace cubschema
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", "integer"},
       {"status", "integer"},
-      {"referential_index", CT_INDEX_NAME},
+      {"referential_class", "object"},
       {"delete_rule", "integer"},
       {"update_rule", "integer"},
       {"referential_match_option", "integer"},
