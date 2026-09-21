@@ -2550,12 +2550,15 @@ ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC 
   CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
 
 error_exit:
-  if (!slot->direct)
-    {
-      /* A direct store hands the value's memory to the instance image; only the
-       * template store copies, so only it leaves something to clear. */
-      db_value_clear (&val);
-    }
+  /*
+   * Clear either way. A direct store does not hand the value's memory to the
+   * instance image - setmem () copies, and mr_setmem_elo () deep copies the
+   * locator and the meta data into a DB_ELO of its own - so whatever the
+   * converter allocated is still ours to free. to_db_elo_ext () is the one
+   * converter reached from here that allocates, and it says so by setting
+   * need_clear; for every other slot db_value_clear () finds nothing to do.
+   */
+  db_value_clear (&val);
 
   return err;
 }

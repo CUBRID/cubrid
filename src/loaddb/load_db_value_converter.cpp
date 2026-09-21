@@ -700,6 +700,19 @@ namespace cubload
     const unsigned char *p = (const unsigned char *) str;
     const unsigned char *token = (const unsigned char *) str;
 
+    if (token == NULL || str_size == 0)
+      {
+	if (er_errid() != NO_ERROR)
+	  {
+	    return er_errid();
+	  }
+	else
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	    return ER_LDR_MEMORY_ERROR;
+	  }
+      }
+
     if (str_size >= 2
 	&& intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
 				    (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
