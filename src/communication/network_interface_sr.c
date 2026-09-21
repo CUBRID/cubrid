@@ -10778,8 +10778,7 @@ cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char 
  *   response (out)     : hex digest, CSS_CDC_AUTH_RESPONSE_SIZE bytes
  *
  * The client computes the same digest from the password the user typed, so the
- * password itself never crosses the CDC channel and a recorded answer is useless
- * against the next challenge.
+ * password never crosses the channel and a recorded answer dies with its nonce.
  */
 static int
 cdc_auth_make_response (THREAD_ENTRY * thread_p, const char *nonce, const char *stored_password, char *response)
@@ -10807,10 +10806,9 @@ cdc_auth_make_response (THREAD_ENTRY * thread_p, const char *nonce, const char *
 /*
  * scdc_auth_challenge () - first half of the CDC channel handshake.
  *
- * Replies with a fresh challenge and with the scheme the account's password is
- * stored under, which the client needs to reproduce the stored form. The reply
- * is the same shape whether or not the account exists, so this does not tell a
- * caller which account names are real.
+ * Sends a fresh challenge plus the scheme the password is stored under, which
+ * the client needs to reproduce that form. Unknown accounts get the same reply
+ * shape, so this does not reveal which names are real.
  */
 void
 scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
@@ -10892,9 +10890,8 @@ cdc_auth_response_matches (const char *expected, const char *given)
 /*
  * scdc_auth_response () - second half of the CDC channel handshake.
  *
- * Accepts the connection as a DBA only if the digest matches the one computed
- * for the outstanding challenge. The challenge is spent either way, so a wrong
- * answer cannot be retried against the same one.
+ * Accepts the connection only if the digest matches the outstanding challenge,
+ * which is spent either way so a wrong answer cannot be retried against it.
  */
 void
 scdc_auth_response (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
@@ -10961,11 +10958,9 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  /* CBRD-27436: the CDC channel has no server-side client identity (opened after
-   * db_shutdown, never runs boot_register_client), so the central
-   * CHECK_AUTHORIZATION gate can't protect it -- require instead that the
-   * connection has already passed the CDC challenge-response as a DBA. The db
-   * user still leads the request, but it is now only a field to step over. */
+  /* CBRD-27436: no client identity on this channel, so CHECK_AUTHORIZATION can't
+   * gate it -- require the challenge-response instead. The db user still leads
+   * the request, but is now only a field to step over. */
   if (request == NULL || reqlen < OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);

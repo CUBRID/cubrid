@@ -14402,11 +14402,9 @@ cdc_wakeup_consumer ()
 }
 
 /*
- * Server-side account lookup for the CDC log-server channel (CBRD-27436).
- *
- * That channel carries no server-verified identity, so logtb_am_i_dba_client()
- * is always false on it. Whatever it decides about the caller therefore has to
- * be read out of the catalog rather than taken from the request.
+ * Server-side account lookup for the CDC log-server channel (CBRD-27436). The
+ * channel has no server-verified identity, so what it decides about the caller
+ * has to come from the catalog rather than from the request.
  */
 static int cdc_User_attr_password = -1;
 static int cdc_User_attr_groups = -1;
@@ -14415,10 +14413,8 @@ static int cdc_User_attr_groups = -1;
  * cdc_load_user_attr_ids () - resolve the db_user attribute ids read below.
  *   return: NO_ERROR, or ER_FAILED if the class record could not be read.
  *
- * Attribute ids are positions in the class representation, so resolving them
- * once per server is enough. Two threads racing here would resolve the same
- * ids, and each id is only published once it is known good, so no lock is
- * needed.
+ * Resolved once per server. A race resolves the same ids twice, and each is
+ * published only once known good, so no lock is needed.
  */
 static int
 cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
@@ -14511,8 +14507,7 @@ end:
  *   user_name (in): account name
  *   user_oid (out): the instance oid
  *
- * db_user carries a unique index on "name", so this is a key lookup rather than
- * a scan of every account.
+ * db_user has a unique index on "name", so this is a key lookup, not a scan.
  */
 static bool
 cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oid)
@@ -14665,11 +14660,8 @@ cdc_set_contains_oid (DB_VALUE * set_value, const OID * oid)
  *   password_size (in) : size of the password buffer
  *   is_dba_group (out) : whether the account is DBA or a member of the DBA group
  *
- * db_user."groups" is the flattened membership set, so nested groups need no
- * extra walk here.
- *
- * The CDC channel never registers a client, so the calling thread usually has no
- * transaction index; one is borrowed for the duration of the read.
+ * "groups" is the flattened membership set, so nested groups need no extra walk.
+ * The CDC thread has no transaction index of its own; one is borrowed here.
  */
 bool
 cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
@@ -14774,19 +14766,15 @@ end:
  *   return: true if the requester is a verified DBA.
  *   thread_p (in):
  *
- * The CDC log-server channel carries no booted client, so logtb_am_i_dba_client()
- * is never true on it. It instead answers a challenge of its own first
- * (NET_SERVER_CDC_AUTH_CHALLENGE/RESPONSE), and only the result of that -- not
- * anything the request itself claims -- is trusted here.
+ * The channel carries no booted client, so it answers a challenge of its own
+ * first and only that result is trusted here. logtb_am_i_dba_client() is
+ * deliberately not a fallback: no CDC client has a booted connection, so it
+ * could only match one sending CDC requests over an SQL connection to skip the
+ * challenge.
  */
 bool
 cdc_check_dba_authorization (THREAD_ENTRY * thread_p)
 {
-  if (logtb_am_i_dba_client (thread_p))
-    {
-      return true;
-    }
-
 #if defined (SERVER_MODE)
   return (thread_p->conn_entry != NULL && thread_p->conn_entry->cdc_auth_done && thread_p->conn_entry->cdc_auth_is_dba);
 #else
