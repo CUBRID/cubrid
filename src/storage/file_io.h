@@ -381,7 +381,6 @@ struct file_zip_info
 typedef struct fileio_node FILEIO_NODE;
 struct fileio_node
 {
-  struct fileio_node *prev;
   struct fileio_node *next;
   int pageid;
   ssize_t nread;
@@ -395,10 +394,7 @@ struct fileio_node
 typedef struct fileio_queue FILEIO_QUEUE;
 struct fileio_queue
 {
-  int size;
-  FILEIO_NODE *head;
-  FILEIO_NODE *tail;
-  FILEIO_NODE *free_list;
+  FILEIO_NODE *free_list;	/* recycled nodes; the queue itself is gone, only the pool is left */
 };
 
 /* parallel-read reorder queue.
