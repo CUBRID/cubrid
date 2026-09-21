@@ -1257,8 +1257,11 @@ jobs:
             case "$probe_rc" in
               0) ;;
               2)
-                echo "::warning::$repo has no $TC_BRANCH, falling back to develop"
-                TC_BRANCH=develop ;;
+                echo "::error::$repo has no $TC_BRANCH"
+                echo "  TC Branch Sync creates tc/pr-<N> when the pull request opens, so check"
+                echo "  that run, or push the branch. Not falling back to develop: the verdict"
+                echo "  would be against cases the requester never asked for."
+                exit 1 ;;
               *)
                 echo "::error::could not reach $TC_REPO_URL after 5 attempts. Not falling back"
                 echo "  to develop: the run would report failures against the wrong cases."
