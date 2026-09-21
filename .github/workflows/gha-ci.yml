@@ -1154,11 +1154,8 @@ jobs:
           set -euo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
 
-          # The branch may not exist, e.g. a PR opened before the sync bot ran, and
-          # then develop is right. A network error is not that. ls-remote exits 2 for
-          # "no such ref" and non-zero otherwise, so retry like the baseline's
-          # resolve_sha (config.yml 168-179) and only fall back on a real absence --
-          # a transient failure silently testing develop's cases misattributes results.
+          # ls-remote exits 2 only for "no such ref", so the retries keep a network
+          # blip from reading as a branch that was never pushed.
           probe_branch() {
             local i rc
             for i in 1 2 3 4 5; do
