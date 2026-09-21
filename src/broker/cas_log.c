@@ -36,6 +36,9 @@
 #else
 #include <unistd.h>
 #include <sys/time.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <stdint.h>
 #endif
 #include <assert.h>
 
@@ -55,7 +58,7 @@ typedef int mode_t;
 #endif /* WINDOWS */
 
 #define CAS_LOG_BUFFER_SIZE (8192)
-#define SQL_LOG_BUFFER_SIZE 163840
+#define SQL_LOG_BUFFER_SIZE (163840)
 #define ACCESS_LOG_IS_DENIED_TYPE(T)  ((T)==ACL_REJECTED)
 
 #define CAS_LOG_VISIBLE_PW     0
@@ -67,15 +70,14 @@ static char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
 
 static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name);
 static void cas_log_backup (T_CUBRID_FILE_ID fid);
-static void cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...);
 
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index);
 #endif
-static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, bool do_flush,
+static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num,
 				    const char *fmt, va_list ap);
-static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap);
+static void cas_log_write2_internal (FILE * fp, const char *fmt, va_list ap);
 
 static FILE *access_log_open (char *log_file_name);
 static void cas_log_write_query_string_internal (char *query, int size, bool newline,
@@ -87,8 +89,59 @@ static char cas_log_error_flag;
 #endif
 static FILE *log_fp = NULL, *slow_log_fp = NULL;
 static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
-static INT64 saved_log_fpos = 0;
+static INT64 saved_log_fpos = 0;	/* start of the in-flight unit; the handler reads it as one aligned INT64 load */
 static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
+
+/*
+ * SQL / slow logs bypass stdio to buffer writes and reduce flushes.
+ * A one-shot SIGUSR2 timer flushes pending data with pwrite ().
+ */
+#define SLOW_LOG_BUFFER_SIZE (SQL_LOG_BUFFER_SIZE)
+static char slow_log_buffer[SLOW_LOG_BUFFER_SIZE];
+
+typedef struct cas_log_fd CAS_LOG_FD;
+struct cas_log_fd
+{
+  int fd;			/* raw fd, -1 while closed */
+  char *buf;
+
+  /* buf_capacity >= buf_used >= buf_flushed */
+  int buf_capacity;		/* size of buf */
+  volatile sig_atomic_t buf_used;	/* committed data; main flow only */
+  volatile sig_atomic_t buf_flushed;	/* flushed data; main flow or signal handler */
+
+  /* file position = file_buf_base + buffer offset */
+  INT64 file_open_pos;		/* file size when opened; rewind never goes below this */
+  INT64 file_buf_base;		/* file position represented by buf[0] */
+};
+
+/* buf_used / buf_flushed must hold the entire buffer size. */
+static_assert (SIG_ATOMIC_MAX >= SQL_LOG_BUFFER_SIZE, "SQL_LOG_BUFFER_SIZE does not fit in sig_atomic_t");
+
+static CAS_LOG_FD sql_log_fd = { -1, sql_log_buffer, SQL_LOG_BUFFER_SIZE, 0, 0, 0, 0 };
+static CAS_LOG_FD slow_log_fd = { -1, slow_log_buffer, SLOW_LOG_BUFFER_SIZE, 0, 0, 0, 0 };
+
+#define CAS_LOG_FD_OF(fp) \
+  ((fp) == (FILE *) &sql_log_fd ? &sql_log_fd : ((fp) == (FILE *) &slow_log_fd ? &slow_log_fd : (CAS_LOG_FD *) NULL))
+#define CAS_LOG_COMPILER_BARRIER() __asm__ __volatile__ ("" ::: "memory")
+
+static sigset_t usr2_set;
+static sigset_t usr2_block_old;	/* mask saved by cas_log_block_usr2 () */
+static volatile sig_atomic_t usr2_in_crit = 0;	/* wrapper is in its critical section */
+static volatile sig_atomic_t usr2_flush_deferred = 0;	/* handler deferred the flush */
+static timer_t sql_log_timer;
+static bool sql_log_timer_ok = false;
+static bool sql_log_sig_inited = false;
+
+static void arm_flush_timer_1s (void);
+static void cas_log_timer_init (void);
+static void cas_log_crit_enter (void);
+static void cas_log_crit_leave (void);
+static void cas_log_block_usr2 (void);
+static void cas_log_restore_usr2 (void);
+static int pwrite_all (int fd, const char *p, size_t len, INT64 off);
+static int cas_fflush_internal (CAS_LOG_FD * lfd, int end);
+static int cas_log_timer_bound (CAS_LOG_FD * lfd);
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
 static void cas_fwrite_oneline (FILE * fp, const char *str);
@@ -99,9 +152,7 @@ static FILE *cas_fopen (const char *path, const char *mode);
 static FILE *cas_fopen_and_lock (const char *path, const char *mode);
 #endif
 static int cas_fclose (FILE * fp);
-static int cas_ftruncate (int fd, off_t length);
 static int cas_fflush (FILE * stream);
-static int cas_fileno (FILE * stream);
 static int cas_fprintf (FILE * stream, const char *format, ...);
 static int cas_fputc (int c, FILE * stream);
 static int cas_unlink (const char *pathname);
@@ -195,10 +246,6 @@ cas_log_open (char *br_name)
 	  saved_log_fpos = 0;
 	}
 
-      if (log_fp)
-	{
-	  setvbuf (log_fp, sql_log_buffer, _IOFBF, SQL_LOG_BUFFER_SIZE);
-	}
       cas_log_fd_status = CAS_LOG_FD_OPENED;
     }
   else
@@ -241,8 +288,7 @@ cas_log_close (bool flag)
     {
       if (flag)
 	{
-	  cas_fseek (log_fp, saved_log_fpos, SEEK_SET);
-	  cas_ftruncate (cas_fileno (log_fp), saved_log_fpos);
+	  cas_fseek (log_fp, saved_log_fpos, SEEK_SET);	/* discard the unfinished unit */
 	}
       cas_log_fd_status = CAS_LOG_FD_CLOSING;
       cas_fclose (log_fp);
@@ -253,12 +299,25 @@ cas_log_close (bool flag)
 
 }
 
+
+/*
+ * cas_log_flush_on_exit () - flush pending SQL / slow logs from the terminating signal handler.
+ *   Async-signal-safe.  Ignores usr2_in_crit because only committed bytes are flushed.
+ */
 void
-cas_log_flush_if_needed (void)
+cas_log_flush_on_exit (void)
 {
-  if (log_fp != NULL && as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL)
+  if (sql_log_sig_inited)
     {
-      cas_fflush (log_fp);
+      sigprocmask (SIG_BLOCK, &usr2_set, NULL);	/* no restore: the process is exiting */
+    }
+  if (sql_log_fd.fd >= 0)
+    {
+      (void) cas_fflush_internal (&sql_log_fd, sql_log_fd.buf_used);
+    }
+  if (slow_log_fd.fd >= 0)
+    {
+      (void) cas_fflush_internal (&slow_log_fd, slow_log_fd.buf_used);
     }
 }
 
@@ -292,24 +351,6 @@ cas_log_backup (T_CUBRID_FILE_ID fid)
   cas_rename (filepath, backup_filepath);
 }
 
-static void
-cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
-{
-  va_list ap;
-
-  if (log_fp == NULL)
-    {
-      return;
-    }
-
-  va_start (ap, fmt);
-  cas_log_write_internal (log_fp, NULL, 0, false, fmt, ap);
-  va_end (ap);
-
-  cas_fseek (log_fp, saved_log_fpos, SEEK_SET);
-
-  return;
-}
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void
@@ -388,7 +429,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 
       if (abandon)
 	{
-	  cas_log_write_and_set_savedpos (log_fp, "%s", "END OF LOG\n\n");
+	  cas_fseek (log_fp, saved_log_fpos, SEEK_SET);	/* discard the unit */
 	}
       else
 	{
@@ -397,6 +438,10 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	      cas_log_write (0, false, "*** elapsed time %d.%03d\n", run_time_sec, run_time_msec);
 	    }
 	  saved_log_fpos = cas_ftell (log_fp);
+	  if (as_info->cur_sql_log_mode != SQL_LOG_MODE_ALL)
+	    {
+	      arm_flush_timer_1s ();	/* the unit is confirmed; flush it within 1 s */
+	    }
 
 	  if ((saved_log_fpos / 1000) > shm_appl->sql_log_max_size)
 	    {
@@ -404,18 +449,13 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	      cas_log_backup (FID_SQL_LOG_DIR);
 	      cas_log_open (NULL);
 	    }
-	  else
-	    {
-	      cas_log_write_and_set_savedpos (log_fp, "%s", "END OF LOG\n\n");
-	    }
 	}
     }
 
 }
 
 static void
-cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, bool do_flush, const char *fmt,
-			va_list ap)
+cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, const char *fmt, va_list ap)
 {
   char *buf, *p;
   int len, n;
@@ -446,10 +486,6 @@ cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_nu
 
   cas_fwrite (buf, (p - buf), 1, fp);
 
-  if (do_flush == true)
-    {
-      cas_fflush (fp);
-    }
 }
 
 void
@@ -470,7 +506,7 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 	  saved_log_fpos = cas_ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write_internal (log_fp, NULL, seq_num, fmt, ap);
       va_end (ap);
     }
 
@@ -494,7 +530,7 @@ cas_log_write_nonl_noflush (unsigned int seq_num, bool unit_start, const char *f
 	  saved_log_fpos = cas_ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, NULL, seq_num, false, fmt, ap);
+      cas_log_write_internal (log_fp, NULL, seq_num, fmt, ap);
       va_end (ap);
     }
 
@@ -507,7 +543,6 @@ cas_log_query_cancel (int dummy, ...)
   va_list ap;
   const char *fmt;
   char buf[LINE_MAX];
-  bool log_mode;
   struct timeval tv;
 
   if (log_fp == NULL || query_cancel_flag != 1)
@@ -530,9 +565,8 @@ cas_log_query_cancel (int dummy, ...)
       snprintf (buf, LINE_MAX, "query_cancel");
     }
 
-  log_mode = as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL;
   va_start (ap, dummy);
-  cas_log_write_internal (log_fp, &tv, 0, log_mode, buf, ap);
+  cas_log_write_internal (log_fp, &tv, 0, buf, ap);
   va_end (ap);
   cas_fputc ('\n', log_fp);
 
@@ -560,7 +594,7 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 	  saved_log_fpos = cas_ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write_internal (log_fp, NULL, seq_num, fmt, ap);
       va_end (ap);
       cas_fputc ('\n', log_fp);
     }
@@ -585,7 +619,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, .
 	  saved_log_fpos = cas_ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write_internal (log_fp, NULL, seq_num, fmt, ap);
       va_end (ap);
       cas_fputc ('\n', log_fp);
       cas_log_end (SQL_LOG_MODE_ALL, -1, -1);
@@ -613,22 +647,36 @@ cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, co
 	    }
 	}
 
-      fp = cas_fopen (log_filepath, "a");
-      if (fp == NULL)
+      if (log_fp != NULL)
 	{
-	  fp = cas_fopen (log_filepath, "w");
+	  fp = log_fp;
+	}
+      else
+	{
+	  fp = cas_fopen (log_filepath, "a");
 	  if (fp == NULL)
 	    {
-	      return;
+	      fp = cas_fopen (log_filepath, "w");
+	      if (fp == NULL)
+		{
+		  return;
+		}
 	    }
 	}
 
       va_start (ap, fmt);
-      cas_log_write_internal (fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write_internal (fp, NULL, seq_num, fmt, ap);
       va_end (ap);
       cas_fputc ('\n', fp);
 
-      fclose (fp);
+      if (fp == log_fp)
+	{
+	  cas_fflush (fp);
+	}
+      else
+	{
+	  cas_fclose (fp);
+	}
       fp = NULL;
     }
 }
@@ -640,7 +688,7 @@ cas_log_get_fd_status (void)
 }
 
 static void
-cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap)
+cas_log_write2_internal (FILE * fp, const char *fmt, va_list ap)
 {
   char *buf, *p;
   int len, n;
@@ -658,10 +706,6 @@ cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap)
 
   cas_fwrite (buf, (p - buf), 1, fp);
 
-  if (do_flush == true)
-    {
-      cas_fflush (fp);
-    }
 }
 
 void
@@ -678,7 +722,7 @@ cas_log_write2_nonl_noflush (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (log_fp, false, fmt, ap);
+      cas_log_write2_internal (log_fp, fmt, ap);
       va_end (ap);
     }
 
@@ -698,7 +742,7 @@ cas_log_write2 (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (log_fp, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write2_internal (log_fp, fmt, ap);
       va_end (ap);
       cas_fputc ('\n', log_fp);
     }
@@ -843,7 +887,7 @@ cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_P
 
       if (newline)
 	{
-	  fputc ('\n', log_fp);
+	  cas_fputc ('\n', log_fp);
 	}
     }
 }
@@ -1224,7 +1268,7 @@ cas_slow_log_write_and_end (struct timeval *log_time, unsigned int seq_num, cons
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write_internal (slow_log_fp, log_time, seq_num, false, fmt, ap);
+      cas_log_write_internal (slow_log_fp, log_time, seq_num, fmt, ap);
       va_end (ap);
 
       cas_slow_log_end ();
@@ -1247,7 +1291,7 @@ cas_slow_log_write (struct timeval *log_time, unsigned int seq_num, bool unit_st
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write_internal (slow_log_fp, log_time, seq_num, false, fmt, ap);
+      cas_log_write_internal (slow_log_fp, log_time, seq_num, fmt, ap);
       va_end (ap);
     }
 
@@ -1267,7 +1311,7 @@ cas_slow_log_write2 (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (slow_log_fp, false, fmt, ap);
+      cas_log_write2_internal (slow_log_fp, fmt, ap);
       va_end (ap);
     }
 
@@ -1306,13 +1350,317 @@ cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_p
 
 }
 
+/*
+ * cas_log_timer_init () - create the one-shot timer that delivers SIGUSR2 for log flushing.
+ *   Called from cas_fopen () on the first SQL / slow log open.  The SIGUSR2 handler is registered
+ *   separately in cas_sig_init () before any log is opened.
+ */
+static void
+cas_log_timer_init (void)
+{
+  struct sigevent sev;
+
+  memset (&sev, 0, sizeof (sev));
+  sev.sigev_notify = SIGEV_SIGNAL;
+  sev.sigev_signo = SIGUSR2;
+  sev.sigev_value.sival_ptr = &sql_log_fd;	/* tag: the handler ignores other SIGUSR2 signals */
+  sql_log_timer_ok = (timer_create (CLOCK_MONOTONIC, &sev, &sql_log_timer) == 0);
+
+  /* If timer creation fails, the buffer is still flushed when full, at close and on exit.
+   * arm_flush_timer_1s () retries timer creation. */
+}
+
+/*
+ * cas_log_sigusr2_handler () - flush the SQL log buffer from the flush timer.
+ *   Handles only SIGUSR2 from our timer, identified by si_code / si_value.
+ *   If a wrapper is in its critical section, defer the flush to the main flow.
+ *   Async-signal-safe.
+ */
+void
+cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx)
+{
+  int saved_errno = errno;
+
+  (void) signo;
+  (void) ctx;
+
+  /* only our timer: ignore other SIGUSR2 signals */
+  if (info == NULL || info->si_code != SI_TIMER || info->si_value.sival_ptr != (void *) &sql_log_fd)
+    {
+      return;
+    }
+
+  /* SIGUSR2 is auto-blocked while this handler runs, so it cannot nest.
+   * Use CAS_LOG_FD directly: log_fp may be NULL, and CAS_LOG_FD_OF (NULL) would call
+   * fflush (NULL), flushing every stdio stream of the process. */
+  if (usr2_in_crit)
+    {
+      usr2_flush_deferred = 1;	/* main flow is inside a wrapper: let it flush on the way out */
+      errno = saved_errno;
+      return;
+    }
+
+  if (sql_log_fd.fd >= 0)
+    {
+      (void) cas_fflush_internal (&sql_log_fd, cas_log_timer_bound (&sql_log_fd));
+    }
+
+  errno = saved_errno;
+}
+
+/*
+ * arm_flush_timer_1s () - arm the one-shot flush timer for 1 s from now.
+ *   Called when the first line enters an empty buffer, when a unit is confirmed in ERROR / TIMEOUT
+ *   mode, and when retrying after a failed flush.  it_interval must stay 0: a periodic SIGUSR2 would
+ *   keep restarting the CAS poll () loops, whose timeouts count in DEFAULT_CHECK_INTERVAL (1 s) steps.
+ */
+static void
+arm_flush_timer_1s (void)
+{
+  struct itimerspec its;
+
+  if (!sql_log_timer_ok)
+    {
+      /* Retry timer creation at most once a second.  Do not log from here: this runs inside the
+       * wrappers' critical section and a log call would re-enter them. */
+      static time_t last_try = 0;
+      time_t now = time (NULL);
+
+      if (now == last_try)
+	{
+	  return;
+	}
+      last_try = now;
+      cas_log_timer_init ();
+      if (!sql_log_timer_ok)
+	{
+	  return;
+	}
+    }
+
+  memset (&its, 0, sizeof (its));
+  its.it_value.tv_sec = 1;
+  timer_settime (sql_log_timer, 0, &its, NULL);
+}
+
+/*
+ * cas_log_block_usr2 () / cas_log_restore_usr2 () - block SIGUSR2 while changing multiple fields
+ *   together (buffer reset, oversized line, rewind, flush, open, close).  Restore with SIG_SETMASK,
+ *   not SIG_UNBLOCK, so an outer block (cas_log_flush_on_exit) is preserved.  Not nestable.
+ */
+static void
+cas_log_block_usr2 (void)
+{
+  sigprocmask (SIG_BLOCK, &usr2_set, &usr2_block_old);
+}
+
+static void
+cas_log_restore_usr2 (void)
+{
+  sigprocmask (SIG_SETMASK, &usr2_block_old, NULL);
+}
+
+/*
+ * cas_log_crit_enter () / cas_log_crit_leave () - the wrappers' critical section against the
+ *   SIGUSR2 handler.  A flag, not a syscall: a bind line goes through four log calls.
+ *   It is not nestable, and need not be: cub_cas is single-threaded and the wrappers never call
+ *   each other.  A flush deferred by the handler while the flag is up is done in leave, under the
+ *   kernel block like every other flush.
+ */
+static void
+cas_log_crit_enter (void)
+{
+  usr2_in_crit = 1;
+  CAS_LOG_COMPILER_BARRIER ();
+}
+
+static void
+cas_log_crit_leave (void)
+{
+  CAS_LOG_COMPILER_BARRIER ();
+  usr2_in_crit = 0;
+  if (usr2_flush_deferred)
+    {
+      usr2_flush_deferred = 0;
+      if (sql_log_fd.fd >= 0)
+	{
+	  cas_log_block_usr2 ();
+	  (void) cas_fflush_internal (&sql_log_fd, cas_log_timer_bound (&sql_log_fd));
+	  cas_log_restore_usr2 ();
+	}
+    }
+}
+
+static int
+pwrite_all (int fd, const char *p, size_t len, INT64 off)
+{
+  while (len > 0)
+    {
+      ssize_t w = pwrite (fd, p, len, (off_t) off);
+
+      if (w < 0)
+	{
+	  if (errno == EINTR)
+	    {
+	      continue;
+	    }
+	  return -1;
+	}
+      p += w;
+      len -= (size_t) w;
+      off += w;
+    }
+  return 0;
+}
+
+/*
+ * cas_log_timer_bound () - limit timer / deferred flush to the current unit boundary.
+ *   In ALL mode, flush all committed bytes.  In modes that discard units, stop at saved_log_fpos
+ *   so the in-flight unit reaches the file only through an overflow.
+ */
+static int
+cas_log_timer_bound (CAS_LOG_FD * lfd)
+{
+  INT64 off;
+
+  if (lfd != &sql_log_fd || as_info == NULL || as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL)
+    {
+      return lfd->buf_used;
+    }
+  off = saved_log_fpos - lfd->file_buf_base;
+  if (off < 0)
+    {
+      off = 0;
+    }
+  if (off > lfd->buf_used)
+    {
+      off = lfd->buf_used;
+    }
+  return (int) off;
+}
+
+/*
+ * cas_fflush_internal () - pwrite [buf_flushed, end) and advance buf_flushed.
+ *   Callers have already closed the SIGUSR2 window with cas_log_block_usr2 (), are the SIGUSR2
+ *   handler, or are on the exit path.
+ */
+static int
+cas_fflush_internal (CAS_LOG_FD * lfd, int end)
+{
+  int from;
+
+  if (lfd->fd < 0)
+    {
+      return 0;
+    }
+  from = lfd->buf_flushed;
+  if (end <= from)
+    {
+      return 0;
+    }
+  if (pwrite_all (lfd->fd, lfd->buf + from, (size_t) (end - from), lfd->file_buf_base + from) < 0)
+    {
+      /* Keep buf_flushed unchanged so the same range can be retried.  
+       * Re-arm the timer even if no further line arrives. */
+      if (lfd == &sql_log_fd && sql_log_timer_ok)
+	{
+	  arm_flush_timer_1s ();	/* timer exists: settime only, safe in the handler */
+	}
+      return -1;
+    }
+  lfd->buf_flushed = end;
+  return 0;
+}
+
+/*
+ * cas_fwrite () - append one record to the log buffer; the only place that commits to it.
+ *   A record larger than the buffer goes straight to the file; one that does not fit in the
+ *   remaining space flushes the buffer first.  The record is copied beyond buf_used and then
+ *   committed by updating buf_used, so the handler sees whole records only.  The first record into
+ *   an empty buffer arms the flush timer.
+ */
 static size_t
 cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream)
 {
+  CAS_LOG_FD *lfd = CAS_LOG_FD_OF (stream);
+  size_t n;
   size_t result;
+  bool was_empty;
+  INT64 at;
+  INT64 advance;
 
-  result = fwrite (ptr, size, nmemb, stream);
+  if (lfd == NULL)
+    {
+      return fwrite (ptr, size, nmemb, stream);
+    }
 
+  n = size * nmemb;
+  if (n == 0)
+    {
+      return 0;
+    }
+  if (lfd->fd < 0)
+    {
+      return 0;
+    }
+
+  result = nmemb;
+  cas_log_crit_enter ();	/* buffer critical section */
+
+  /* record larger than the buffer: bypass the buffer */
+  if ((INT64) n > (INT64) lfd->buf_capacity)
+    {
+      cas_log_block_usr2 ();	/* close the signal window while updating multiple fields */
+      if (cas_fflush_internal (lfd, lfd->buf_used) < 0)
+	{
+	  result = 0;
+	  cas_log_restore_usr2 ();
+	  goto done;
+	}
+      at = lfd->file_buf_base + lfd->buf_used;	/* logical end == physical end after the flush */
+      lfd->buf_used = 0;
+      lfd->buf_flushed = 0;
+      lfd->file_buf_base = at;
+      if (pwrite_all (lfd->fd, (const char *) ptr, n, at) < 0)
+	{
+	  result = 0;
+	  cas_log_restore_usr2 ();
+	  goto done;
+	}
+      lfd->file_buf_base = at + (INT64) n;
+      cas_log_restore_usr2 ();
+      goto done;
+    }
+
+  /* record does not fit in the remaining space: flush the buffer first */
+  if (lfd->buf_used + (int) n > lfd->buf_capacity)
+    {
+      cas_log_block_usr2 ();	/* close the signal window while updating multiple fields */
+      if (cas_fflush_internal (lfd, lfd->buf_used) < 0)
+	{
+	  advance = lfd->buf_flushed;	/* keep the file contiguous when the flush fails; the rest is dropped */
+	}
+      else
+	{
+	  advance = lfd->buf_used;
+	}
+      lfd->buf_used = 0;	/* zero buf_used first so a terminating handler flushes nothing */
+      lfd->buf_flushed = 0;
+      lfd->file_buf_base += advance;
+      cas_log_restore_usr2 ();
+    }
+
+  was_empty = (lfd->buf_used == lfd->buf_flushed);
+  memcpy (lfd->buf + lfd->buf_used, ptr, n);
+  CAS_LOG_COMPILER_BARRIER ();	/* the copy must complete before the commit below */
+  lfd->buf_used += (int) n;
+  if (was_empty && lfd == &sql_log_fd)
+    {
+      arm_flush_timer_1s ();	/* empty -> non-empty: once per episode, never per line */
+    }
+
+done:
+  cas_log_crit_leave ();
   return result;
 }
 
@@ -1349,27 +1697,143 @@ cas_fwrite_oneline (FILE * fp, const char *str)
 static INT64
 cas_ftell (FILE * stream)
 {
+  CAS_LOG_FD *lfd = CAS_LOG_FD_OF (stream);
+
+  if (lfd != NULL)
+    {
+      return lfd->file_buf_base + lfd->buf_used;	/* logical position; no syscall */
+    }
   return ftell (stream);
 }
 
 static int
 cas_fseek (FILE * stream, INT64 offset, int whence)
 {
-  int result;
+  CAS_LOG_FD *lfd = CAS_LOG_FD_OF (stream);
+  INT64 new_len;
 
-  result = fseek (stream, offset, whence);
+  if (lfd == NULL)
+    {
+      return fseek (stream, offset, whence);
+    }
+  if (lfd->fd < 0)
+    {
+      return -1;
+    }
+  if (whence == SEEK_END)
+    {
+      /* The logical end is already file_buf_base + buf_used.  Offset 0 would truncate the whole file. */
+      return 0;
+    }
+  assert (whence == SEEK_SET);
+  if (whence != SEEK_SET)
+    {
+      return -1;
+    }
+  if (offset < lfd->file_open_pos)
+    {
+      /* Never truncate below the file size at open.  Reachable at runtime, so no assert. */
+      return -1;
+    }
 
-  return result;
+  cas_log_crit_enter ();
+  cas_log_block_usr2 ();	/* close the signal window while updating multiple fields */
+  new_len = offset - lfd->file_buf_base;
+
+  /* target inside the buffer: shrink it */
+  if (new_len >= 0)
+    {
+      if (new_len < lfd->buf_used)
+	{
+	  lfd->buf_used = (int) new_len;	/* shrink buf_used first so a terminating handler flushes nothing */
+	  if (lfd->buf_flushed > new_len)
+	    {
+	      /* Discarded bytes are already in the file: truncate them, or readers would take the
+	       * abandoned unit for real log.  Failure is tolerated: later flushes overwrite the stale tail. */
+	      (void) ftruncate (lfd->fd, (off_t) offset);
+	      lfd->buf_flushed = (int) new_len;
+	    }
+	}
+    }
+  /* target before the buffer start: discard the whole buffer */
+  else
+    {
+      lfd->buf_used = 0;	/* zero buf_used first so a terminating handler flushes nothing */
+      lfd->buf_flushed = 0;
+      (void) ftruncate (lfd->fd, (off_t) offset);	/* failure tolerated as above */
+      lfd->file_buf_base = offset;
+    }
+
+  cas_log_restore_usr2 ();
+  cas_log_crit_leave ();
+  return 0;
 }
 
 static FILE *
 cas_fopen (const char *path, const char *mode)
 {
-  FILE *result;
+  CAS_LOG_FD *lfd;
+  int fd;
+  int flags;
+  INT64 end;
 
-  result = fopen (path, mode);
+  if (log_filepath[0] != '\0' && strcmp (path, log_filepath) == 0)
+    {
+      lfd = &sql_log_fd;
+    }
+  else if (slow_log_filepath[0] != '\0' && strcmp (path, slow_log_filepath) == 0)
+    {
+      lfd = &slow_log_fd;
+    }
+  else
+    {
+      return fopen (path, mode);	/* access log etc.: plain stdio */
+    }
 
-  return result;
+  if (!sql_log_sig_inited)
+    {
+      /* first log open: one-time signal set-up */
+      sigemptyset (&usr2_set);
+      sigaddset (&usr2_set, SIGUSR2);
+      cas_log_timer_init ();
+      sql_log_sig_inited = true;
+    }
+
+  if (lfd->fd >= 0)
+    {
+      /* already open: one CAS_LOG_FD per log, so do not reopen and overwrite its state */
+      assert (false);
+      return (FILE *) lfd;
+    }
+
+  flags = O_WRONLY | O_CREAT;	/* no O_APPEND: pwrite must honour the offset */
+  if (mode != NULL && mode[0] == 'w')
+    {
+      flags |= O_TRUNC;		/* "w": truncate, as fopen () would */
+    }
+  fd = open (path, flags, 0666);	/* same mode bits as fopen () */
+  if (fd < 0)
+    {
+      return NULL;
+    }
+  end = lseek (fd, 0, SEEK_END);	/* existing file end == where we continue writing */
+  if (end < 0)
+    {
+      close (fd);
+      return NULL;
+    }
+
+  cas_log_crit_enter ();
+  cas_log_block_usr2 ();
+  lfd->file_open_pos = end;
+  lfd->file_buf_base = end;
+  lfd->buf_used = 0;
+  lfd->buf_flushed = 0;
+  lfd->fd = fd;			/* fd last: no valid fd is visible with stale offsets */
+  cas_log_restore_usr2 ();
+  cas_log_crit_leave ();
+
+  return (FILE *) lfd;		/* opaque marker; callers only test it against NULL */
 }
 
 #if defined (WINDOWS)
@@ -1406,41 +1870,56 @@ retry:
 static int
 cas_fclose (FILE * fp)
 {
-  int result;
+  CAS_LOG_FD *lfd = CAS_LOG_FD_OF (fp);
+  int fd;
 
-  result = fclose (fp);
+  if (lfd == NULL)
+    {
+      return fclose (fp);
+    }
+  if (lfd->fd < 0)
+    {
+      return 0;
+    }
 
-  return result;
-}
+  cas_log_crit_enter ();
+  cas_log_block_usr2 ();
+  (void) cas_fflush_internal (lfd, lfd->buf_used);	/* like fclose (): close even if the flush failed */
+  if (lfd == &sql_log_fd && sql_log_timer_ok)
+    {
+      struct itimerspec off;
 
-static int
-cas_ftruncate (int fd, off_t length)
-{
-  int result;
-
-  result = ftruncate (fd, length);
-
-  return result;
+      memset (&off, 0, sizeof (off));
+      timer_settime (sql_log_timer, 0, &off, NULL);	/* disarm: no SIGUSR2 for a closed log */
+    }
+  fd = lfd->fd;
+  lfd->fd = -1;			/* fd first: the handler must not write to a closed descriptor */
+  lfd->buf_used = 0;
+  lfd->buf_flushed = 0;
+  lfd->file_buf_base = 0;
+  lfd->file_open_pos = 0;
+  close (fd);
+  cas_log_restore_usr2 ();
+  cas_log_crit_leave ();
+  return 0;
 }
 
 static int
 cas_fflush (FILE * stream)
 {
+  CAS_LOG_FD *lfd = CAS_LOG_FD_OF (stream);
   int result;
 
-  result = fflush (stream);
+  if (lfd == NULL)
+    {
+      return fflush (stream);
+    }
 
-  return result;
-
-}
-
-static int
-cas_fileno (FILE * stream)
-{
-  int result;
-
-  result = fileno (stream);
-
+  cas_log_crit_enter ();
+  cas_log_block_usr2 ();
+  result = cas_fflush_internal (lfd, lfd->buf_used);
+  cas_log_restore_usr2 ();
+  cas_log_crit_leave ();
   return result;
 }
 
@@ -1452,7 +1931,52 @@ cas_fprintf (FILE * stream, const char *format, ...)
 
   va_start (ap, format);
 
-  result = vfprintf (stream, format, ap);
+  if (CAS_LOG_FD_OF (stream) != NULL)
+    {
+      if (strcmp (format, "%s") == 0)
+	{
+	  /* password_fprintf () emits the SQL in newline-delimited "%s" pieces; a piece can be tens
+	   * of KB, so pass it through untouched instead of bouncing it off a fixed buffer */
+	  const char *str = va_arg (ap, const char *);
+	  size_t len = (str == NULL) ? 0 : strlen (str);
+
+	  if (len > 0)
+	    {
+	      cas_fwrite (str, 1, len, stream);
+	    }
+	  result = (int) len;
+	}
+      else if (strchr (format, '%') == NULL)
+	{
+	  size_t len = strlen (format);	/* plain literal, e.g. the " " that replaces a newline */
+
+	  if (len > 0)
+	    {
+	      cas_fwrite (format, 1, len, stream);
+	    }
+	  result = (int) len;
+	}
+      else
+	{
+	  /* other formats go through an 8 KB buffer and are cut there; no sql / slow log caller uses one today */
+	  char tmp[CAS_LOG_BUFFER_SIZE];
+	  int n = vsnprintf (tmp, sizeof (tmp), format, ap);
+
+	  if (n >= (int) sizeof (tmp))
+	    {
+	      n = (int) sizeof (tmp) - 1;
+	    }
+	  if (n > 0)
+	    {
+	      cas_fwrite (tmp, 1, (size_t) n, stream);
+	    }
+	  result = n;
+	}
+    }
+  else
+    {
+      result = vfprintf (stream, format, ap);
+    }
 
   va_end (ap);
 
@@ -1462,11 +1986,13 @@ cas_fprintf (FILE * stream, const char *format, ...)
 static int
 cas_fputc (int c, FILE * stream)
 {
-  int result;
+  if (CAS_LOG_FD_OF (stream) != NULL)
+    {
+      unsigned char b = (unsigned char) c;
 
-  result = fputc (c, stream);
-
-  return result;
+      return (cas_fwrite (&b, 1, 1, stream) == 1) ? (int) b : EOF;
+    }
+  return fputc (c, stream);
 }
 
 static int

@@ -276,6 +276,9 @@ add_library(cas_common_lib STATIC ${CAS_COMMON_LIB_SOURCES})
 target_compile_definitions(cas_common_lib PRIVATE ${BROKER_DEFS})
 target_include_directories(cas_common_lib PRIVATE ${EP_INCLUDES})
 target_link_libraries(cas_common_lib PRIVATE cubridcs)
+if(UNIX)
+  target_link_libraries(cas_common_lib PRIVATE rt)   # timer_create in cas_log.c
+endif(UNIX)
 
 message(STATUS "Building CGW libraries.")
 
