@@ -785,6 +785,11 @@ if(WIN32)
     list(APPEND JVM_LIBS -DELAYLOAD:jvm.dll)
 endif(WIN32)
 
+if(AT_LEAST_ONE_UNIT_TEST)
+  enable_testing()
+  add_compile_definitions(CUBRID_UNIT_TEST_ENABLED)
+endif()
+
 # include subdirectories
 add_subdirectory(sa)
 add_subdirectory(cs)

@@ -1486,7 +1486,17 @@ $ LOADDB
 
 1380 PARALLEL_ENABLE로 선언된 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
 
-1381 마지막 에러
+1382 내부 에러: 오브젝트 "%1$d|%2$d|%3$d"의 out-of-row storage 저장 레코드가 손상되었을 수 있습니다.
+
+1383 큰 가변 길이 컬럼을 out-of-row 저장소(OOS)로 옮긴 후에도 레코드 크기(%1$d 바이트)가 최대 레코드 크기(%2$d 바이트)를 초과하여 저장할 수 없습니다. 고정 길이 컬럼이나 OOS 대상이 아닌 컬럼의 크기를 줄이십시오.
+
+1384 내부 에러: out-of-row storage 저장 레코드 메타데이터가 일치하지 않거나 손상되었습니다.
+
+1385 내부 에러: out-of-row storage 인자가 유효하지 않습니다.
+
+1386 오브젝트 %2$d|%3$d|%4$d 의 %1$s 처리 중 out-of-row storage(OOS) 정리를 건너뛰었습니다. 이전 레코드가 참조한 OOS value chain %9$d 개가 더 이상 존재하지 않으며, 그 중 첫 번째의 head OOS OID 는 %5$d|%6$d|%7$d 입니다(%8$s). 해당 chain 들에 대해 삭제된 데이터는 없으며 연산은 정상 완료되었습니다.
+
+1387 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1998,6 +2008,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 337 파티션 이름이 너무 깁니다.
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
+339 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 storage 옵션을 정의할 수 있습니다.
+340 STORAGE 옵션은 클래스의 가변 타입 일반 속성에만 지정할 수 있습니다: '%1$s'.
 341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.

@@ -1,0 +1,201 @@
+#
+#  Copyright 2016 CUBRID Corporation
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+#
+
+project(test_oos_project)
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/52eb8108c5bdec04579160ae17225d66034bd723.zip
+)
+FetchContent_MakeAvailable(googletest)
+
+# =============================================================================
+# SA_MODE tests (linked to cubridsa, standalone in-process server)
+# =============================================================================
+set(SA_MODE_TESTS
+  test_oos
+  test_oos_delete
+  test_oos_identity_stamp
+  test_oos_eager_diagnostics
+  test_oos_no_logging
+  test_oos_remove_file
+  test_oos_bestspace
+  test_oos_growth_sweep
+  test_oos_record_flags
+  test_byte_span_writer
+  test_oos_tde_gate
+)
+
+foreach(test_name ${SA_MODE_TESTS})
+  add_executable(${test_name} ${test_name}.cpp)
+  target_link_libraries(${test_name} PRIVATE ${EP_LIBS} cubridsa GTest::gtest)
+  target_compile_definitions(${test_name} PRIVATE ${COMMON_DEFS} SA_MODE)
+  target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES})
+endforeach()
+
+# =============================================================================
+# SERVER_MODE tests (linked to cubrid, in-process server with MVCC/threading)
+# =============================================================================
+set(SERVER_MODE_TESTS
+  test_oos_server
+  test_oos_delete_server
+  test_oos_remove_file_server
+  test_oos_mock_vacuum_server
+  test_oos_vacuum_server
+  test_oos_real_vacuum_server
+)
+
+foreach(test_name ${SERVER_MODE_TESTS})
+  add_executable(${test_name} ${test_name}.cpp)
+  target_link_libraries(${test_name} PRIVATE ${EP_LIBS} cubrid GTest::gtest)
+  target_compile_definitions(${test_name} PRIVATE ${COMMON_DEFS} SERVER_MODE)
+  target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES})
+endforeach()
+
+# =============================================================================
+# CTest fixture: auto-create unittestdb before OOS tests, delete it after
+# =============================================================================
+add_test(NAME oos_setup_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_unittestdb.sh"
+)
+set_tests_properties(oos_setup_db PROPERTIES FIXTURES_SETUP OOS_DB)
+
+add_test(NAME oos_cleanup_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_unittestdb.sh"
+)
+set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 30)
+
+# =============================================================================
+# CTest fixtures: databases owned by a single binary
+#
+# A binary that turns logging off for its whole process, or that kills a writer and recovers, must
+# not run against the shared unittestdb fixture: what it leaves behind would reach every other OOS
+# binary. Each such binary gets its own database, recreated from scratch by its setup so its disk
+# layout is always the one this build writes (CBRD-26950).
+# =============================================================================
+add_test(NAME oos_setup_no_logging_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosnologdb
+)
+set_tests_properties(oos_setup_no_logging_db PROPERTIES FIXTURES_SETUP OOS_NO_LOGGING_DB TIMEOUT 180)
+
+add_test(NAME oos_cleanup_no_logging_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosnologdb
+)
+set_tests_properties(oos_cleanup_no_logging_db PROPERTIES FIXTURES_CLEANUP OOS_NO_LOGGING_DB TIMEOUT 60)
+
+add_test(NAME oos_setup_recovery_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_isolated_db.sh" oosrecoverydb
+)
+set_tests_properties(oos_setup_recovery_db PROPERTIES FIXTURES_SETUP OOS_RECOVERY_DB TIMEOUT 180)
+
+add_test(NAME oos_cleanup_recovery_db
+  COMMAND ${CMAKE_COMMAND} -E env
+    "CUBRID=$ENV{CUBRID}"
+    "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
+    "PATH=$ENV{PATH}"
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_isolated_db.sh" oosrecoverydb
+)
+set_tests_properties(oos_cleanup_recovery_db PROPERTIES FIXTURES_CLEANUP OOS_RECOVERY_DB TIMEOUT 60)
+
+# =============================================================================
+# Register SA_MODE tests
+# =============================================================================
+add_test(NAME test_oos COMMAND test_oos)
+add_test(NAME test_oos_delete COMMAND test_oos_delete)
+# identity stamp contract: insert issues it, reads verify it, deletes require it (CBRD-26950).
+add_test(NAME test_oos_identity_stamp COMMAND test_oos_identity_stamp)
+# eager (non-MVCC) DML completes and diagnoses skipped OOS reclamation (CBRD-26950); the SQL-level
+# test_oos_sql_eager_cleanup covers that unskipped eager reclamation actually reclaims.
+add_test(NAME test_oos_eager_diagnostics COMMAND test_oos_eager_diagnostics)
+# the identity stamp's logging precondition (CBRD-26950): distinct stamps across slot reuse need
+# logged operations. Owns oosnologdb because log_set_no_logging() is process-global and one-way and
+# what it writes is not recoverable.
+add_test(NAME test_oos_no_logging COMMAND test_oos_no_logging)
+set_tests_properties(test_oos_no_logging
+  PROPERTIES FIXTURES_REQUIRED OOS_NO_LOGGING_DB RUN_SERIAL TRUE TIMEOUT 120
+)
+add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
+add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
+# growth-gate incremental sweep: delete bursts must not grow the OOS file on re-insert (CBRD-26786).
+add_test(NAME test_oos_growth_sweep COMMAND test_oos_growth_sweep)
+# pure-logic test for separating record metadata from MVCC lifecycle flags.
+add_test(NAME test_oos_record_flags COMMAND test_oos_record_flags)
+# pure-logic test for the bounded writer used by oos_read; no DB fixture.
+add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
+# pure-logic guard that the OOS forward-delete rcvindex is TDE-gated (CBRD-26668); no DB fixture.
+add_test(NAME test_oos_tde_gate COMMAND test_oos_tde_gate)
+
+set_tests_properties(
+  test_oos_delete test_oos_remove_file test_oos_bestspace test_oos_growth_sweep
+  PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 30
+)
+# Error-path cases pay for an error-stack dump each in debug builds: test_oos_identity_stamp runs 22 to 39 s
+# alone and test_oos has exceeded 30 s under full-suite load. test_oos_eager_diagnostics runs real heap DML
+# with page reclaim and relocation and measured 11 to 13 s; it shares the headroom for the same reason.
+set_tests_properties(test_oos test_oos_identity_stamp test_oos_eager_diagnostics
+  PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 60
+)
+
+# =============================================================================
+# Register SERVER_MODE tests
+# =============================================================================
+add_test(NAME test_oos_server COMMAND test_oos_server)
+add_test(NAME test_oos_delete_server COMMAND test_oos_delete_server)
+add_test(NAME test_oos_remove_file_server COMMAND test_oos_remove_file_server)
+add_test(NAME test_oos_mock_vacuum_server COMMAND test_oos_mock_vacuum_server)
+add_test(NAME test_oos_vacuum_server COMMAND test_oos_vacuum_server)
+add_test(NAME test_oos_real_vacuum_server COMMAND test_oos_real_vacuum_server)
+
+set_tests_properties(
+  test_oos_server test_oos_delete_server test_oos_remove_file_server
+  test_oos_mock_vacuum_server test_oos_vacuum_server
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
+)
+
+# Real-vacuum E2E test polls the vacuum master daemon — needs extra headroom.
+set_tests_properties(
+  test_oos_real_vacuum_server
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 120
+)
+
+# Note: add_test vs. gtest_discover_tests
+# - Prefer add_test if you want to share global setup/teardown, which speeds up test
+# - Prefer gtest_discover_tests for isolation between tests, at the cost of test speed
+# - Since we do not need isolation here, we use add_test above.
+
+add_subdirectory(sql)

@@ -1,0 +1,213 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+#pragma once
+#include "gtest/gtest.h"
+#include <cstdio>
+#include <cstring>
+#include "db_client_type.hpp"
+#include "dbi.h"
+#include "error_manager.h"
+#include "record_descriptor.hpp"
+#include "storage_common.h"
+#include "thread_manager.hpp"
+#include "page_buffer.h"
+#include "oos_file.hpp"
+
+static cubthread::entry *thread_p;
+
+/* Boots one database in-process for the whole binary. The defaults are the shared unittestdb
+ * fixture; a binary that must own its database (it changes process-global state, or it crashes and
+ * recovers) passes its own name and error-log prefix so a failure there cannot damage the fixture
+ * every other OOS binary shares. */
+class ServerEnv : public ::testing::Environment
+{
+  public:
+    explicit ServerEnv (const char *db_name = "unittestdb", const char *er_log_prefix = "./test_oos_log")
+      : m_db_name (db_name)
+      , m_er_log_prefix (er_log_prefix)
+    {
+    }
+
+    void SetUp() override
+    {
+      StartServer();
+    }
+    void TearDown() override
+    {
+      StopServer();
+    }
+  private:
+    const char *m_db_name;
+    const char *m_er_log_prefix;
+
+    void StartServer()
+    {
+      printf ("##### Starting Server For OOS Unit Testing (%s) #####\n", m_db_name);
+
+      // CUBRID log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
+      // when run directly, log files will be created in the current working directory
+      //
+      // Note that oos_error/oos_warn write through the server error log. Debug-only OOS trace/debug/info
+      // messages go to $CUBRID/log/oos.log.
+      er_init (m_er_log_prefix,ER_NEVER_EXIT);
+
+      // hacky way to detour pl_server_init(), not needed for oos unit tests
+      db_set_client_type (DB_CLIENT_TYPE_MAX);
+      auto err = db_restart ("unit_test", TRUE, m_db_name);
+
+      printf ("will be written at %s\n", er_get_msglog_filename());
+      assert (err == NO_ERROR);
+      thread_p = thread_get_thread_entry_info();
+      assert (thread_p != nullptr);
+    }
+    void StopServer()
+    {
+      printf ("##### Stopping Server For OOS Unit Testing #####\n");
+      auto err = db_shutdown();
+      fflush (stdout);
+      assert (err == NO_ERROR);
+    }
+};
+
+// ****************************************************************************
+// utilities for tests
+// ****************************************************************************
+
+namespace test_oos_utils
+{
+
+  inline std::string make_repeated_pattern_string (int size)
+  {
+    const std::string pattern = "ABCDEFGHIJK"; // pattern size is 11
+    if (size <= 0)
+      return {};
+
+    std::string large_data;
+    large_data.reserve (size); // reserve full size, not size - 1
+
+    for (int i = 0; i < size; ++i)
+      {
+	large_data.push_back (pattern[i % pattern.size()]);
+      }
+
+    return large_data;
+  }
+
+  /* Wraps a test RECDES as the oos_buffer src that oos_insert expects. */
+  inline int oos_insert_from_recdes (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const RECDES &recdes, OID &oid)
+  {
+    return oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, static_cast<std::size_t> (recdes.length)), oid);
+  }
+
+  /* Builds the chain reference for oid from the identity stamp its head chunk currently carries.
+   * Test-only shortcut: production callers take the stamp from the owning heap record's OOS inline
+   * stub. Fails for an absent chunk, which keeps "reading a deleted chain errors" observable. */
+  inline int oos_current_chain_ref (THREAD_ENTRY *thread_p, const OID &oid, oos_chain_ref &ref_out)
+  {
+    ref_out.head_oid = oid;
+    ref_out.identity_stamp = NULL_LSA;
+    return oos_get_identity_stamp (thread_p, oid, &ref_out.identity_stamp);
+  }
+
+  /* Deletes the chain at oid through the identity stamp its head chunk currently carries. Test-only
+   * shortcut: production callers pass the reference parsed from the owning heap record's OOS inline
+   * stub. A missing chunk fails inside oos_get_identity_stamp, preserving the old "deleting a gone
+   * chunk errors" observable where tests relied on it (CBRD-26950). */
+  inline int oos_delete_with_current_identity_stamp (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+      std::vector<VPID> *emptied_vpids = NULL)
+  {
+    oos_chain_ref ref;
+    int err = oos_current_chain_ref (thread_p, oid, ref);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    return oos_delete (thread_p, oos_vfid, ref, emptied_vpids);
+  }
+
+  /* Reads OID into a fresh RECDES, sized via oos_get_length (tests have no heap-inline length),
+   * through the chain reference its head chunk currently carries. */
+  inline int oos_read_with_alloc (THREAD_ENTRY *thread_p, const OID &oid, RECDES &recdes)
+  {
+    recdes = RECDES{};
+    int len = oos_get_length (thread_p, oid);
+    if (len < 0)
+      {
+	return er_errid ();
+      }
+    oos_chain_ref ref;
+    int err = oos_current_chain_ref (thread_p, oid, ref);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    err = recdes_allocate_data_area (&recdes, len);
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+    err = oos_read (thread_p, ref, oos_buffer (recdes.data, static_cast<std::size_t> (len)));
+    if (err != NO_ERROR)
+      {
+	recdes_free_data_area (&recdes);
+	return err;
+      }
+    recdes.length = len;
+    return NO_ERROR;
+  }
+
+  inline int from_string_into_recdes (const std::string &large_data, RECDES &rec)
+  {
+    int err = recdes_allocate_data_area (&rec, static_cast<int> (large_data.size() + 1));
+    if (err != NO_ERROR)
+      {
+	return err;
+      }
+
+    rec.type = REC_HOME;
+    rec.length = static_cast<int> (large_data.size() + 1);
+
+    // copy data including null terminator
+    std::memcpy (rec.data, large_data.c_str(), large_data.size() + 1);
+    return NO_ERROR;
+  }
+
+  // ****************************************************************************
+  // RAII helpers
+  //
+  // - auto_unfixed_page_ptr: automatically unfixed page when goes out of scope
+  // - auto_freed_recdes_ptr: automatically frees RECDES data area when goes out of scope
+  //
+  // these are better to be in a common header, but for now they are only used here
+  // ****************************************************************************
+
+  struct page_auto_unfix
+  {
+    THREAD_ENTRY *thread_p;
+    void operator() (PAGE_PTR p) const noexcept
+    {
+      if (p)
+	{
+	  pgbuf_unfix (thread_p, p);
+	}
+    }
+  };
+  using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
+  using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
+}
