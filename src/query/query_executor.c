@@ -6533,8 +6533,9 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
 		      break;	/* reached the bottom of the group */
 		    }
 
-		  /* move the inner(right) scan to the next tuple */
-		  QEXEC_MERGE_NEXT_SCAN (thread_p, inner, true);
+		  /* move the inner(right) scan to the next tuple, and re-position the tuple values: the
+		   * move can cross a page, which unfixes the page the current peek pointers point into. */
+		  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, true);
 		}
 	    }			/* while (1) */
 
