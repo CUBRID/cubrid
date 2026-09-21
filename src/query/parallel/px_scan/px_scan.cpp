@@ -436,8 +436,6 @@ extern "C"
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
-    /* result mode is the checker's call; non-linked dptr plans reach SNAPSHOT only via
-     * NO_PARALLEL_SCAN (blocked upstream). Caching of mergeable results is handled by CBRD-27291. */
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
 	scan_id->s.phsid.result_type = parallel_scan::RESULT_TYPE::MERGEABLE_LIST;

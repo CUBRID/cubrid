@@ -3411,9 +3411,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
  *   dptr_list(in): xasl->dptr_list
  *   xasl_state(in):
  *   truncate(in): clear the subquery list files with truncate
- *
- * Note: regu-linked dptrs are only cleared; they run lazily when their regu variable is evaluated.
- *       Shared by the serial scan/merge/fetch paths and the parallel scan workers (CBRD-27205).
  */
 int
 qexec_execute_dptr_list (THREAD_ENTRY * thread_p, XASL_NODE * dptr_list, XASL_STATE * xasl_state, bool truncate)

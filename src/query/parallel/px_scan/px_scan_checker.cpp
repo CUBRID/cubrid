@@ -544,16 +544,8 @@ namespace parallel_scan
     return result;
   }
 
-  /* memo for one dptr_subtree_worker_safe walk; sentinel true breaks XASL ref cycles like xasl_check_cache. */
   using dptr_walk_cache_t = std::unordered_map<XASL_NODE *, bool>;
 
-  /* Worker-execution validation of a non-linked dptr subtree (CBRD-27205). Workers run the whole
-   * subtree per row via qexec_execute_mainblock, so the main-tree relaxations do not apply:
-   * outptr_list must pass the strict check (check<true> downgrades SP to CANNOT_LIST_MERGE, but a
-   * dptr's select list is evaluated on the worker), scan_ptr levels need the strong spec check
-   * (sibling_check lets METHOD/DBLINK specs through as CANNOT_LIST_MERGE), and non-linked aptrs
-   * and group-by/aggregate internals are worker-executed too. Only CANNOT_PARALLEL_SCAN
-   * disqualifies: the subtree runs serially inside each worker, so merge flags do not apply. */
   static bool
   dptr_subtree_worker_safe_impl (XASL_NODE *arg, bool is_scan_level, dptr_walk_cache_t &cache)
   {
@@ -572,8 +564,6 @@ namespace parallel_scan
 
     if (is_scan_level)
       {
-	/* scan_ptr nodes are SCAN_PROC, which check<XASL_NODE> rejects wholesale; mirror its
-	 * content checks here, but with the strong access-spec check. */
 	if (arg->selected_upd_list || arg->scan_op_type != S_SELECT || arg->upd_del_class_cnt > 0
 	    || XASL_IS_FLAGED (arg, XASL_MULTI_UPDATE_AGG) || arg->bptr_list || arg->fptr_list || arg->connect_by_ptr)
 	  {
@@ -600,9 +590,6 @@ namespace parallel_scan
 	flags |= check<false> (arg->outptr_list->valptrp);
       }
 
-    /* worker-evaluated too: rownum/orderby_num predicates and LIMIT expressions of the dptr
-     * subtree (check<XASL_NODE> skips their contents - they are coordinator-side in the main
-     * tree). An SP/serial expression here must force the serial fallback. */
     flags |= check<false> (arg->instnum_pred);
     flags |= check<false> (arg->ordbynum_pred);
     flags |= check<false> (arg->limit_offset);
@@ -613,7 +600,6 @@ namespace parallel_scan
       case BUILDLIST_PROC:
 	if (arg->proc.buildlist.eptr_list || arg->proc.buildlist.a_eval_list)
 	  {
-	    /* analytic internals are outside check<>'s coverage; keep such plans serial. */
 	    safe = false;
 	  }
 	if (arg->proc.buildlist.g_outptr_list)
@@ -637,8 +623,6 @@ namespace parallel_scan
 	  }
 	break;
       case HASHJOIN_PROC:
-	/* build/probe inputs and their during-join key regus run on the worker; check<XASL_NODE>
-	 * does not descend into them. */
 	flags |= check<false> (arg->proc.hashjoin.outer.regu_list_pred);
 	flags |= check<false> (arg->proc.hashjoin.inner.regu_list_pred);
 	safe = safe && dptr_subtree_worker_safe_impl (arg->proc.hashjoin.outer.xasl, false, cache)
@@ -804,10 +788,6 @@ namespace parallel_scan
 	  }
 	else if (!dptr_subtree_worker_safe (xaslp, false))
 	  {
-	    /* CBRD-27205: workers execute non-linked dptrs per row on their private clone
-	     * (qexec_execute_dptr_list from px_scan_task); anything the worker must not run falls
-	     * back to serial scan. A passing subtree still runs serially inside each worker
-	     * (process_xasl_node_recursive_force_cannot_parallel). */
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
@@ -966,7 +946,6 @@ namespace parallel_scan
       }
     for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	/* dptr subtrees also get sort/hash-join parallelism forced serial (they run per outer row) */
 	process_xasl_node_recursive_force_cannot_parallel (xaslp, true);
       }
     for (XASL_NODE *xaslp = arg->fptr_list; xaslp; xaslp = xaslp->next)
@@ -1037,8 +1016,6 @@ namespace parallel_scan
 	      }
 	    else
 	      {
-		/* XASL_SNAPSHOT workers pre-evaluate after_join/if preds but never run non-linked
-		 * dptrs; a pred depending on a dptr value would misqualify rows (CBRD-27205). */
 		const bool nonlinked_dptr = has_nonlinked_dptr (arg);
 
 		/* list merge blocked → row-by-row fallback. */
@@ -1072,9 +1049,6 @@ namespace parallel_scan
 
     if (serialize_nested_parallel)
       {
-	/* the subtree runs serially per outer row (inside a scan worker or on the main thread), so its
-	 * sorts / hash joins must not reserve parallel workers either; 1 = forced serial in
-	 * compute_parallel_degree (). Replaces the former runtime scan-worker thread gate (CBRD-27205). */
 	arg->parallelism = 1;
       }
 
