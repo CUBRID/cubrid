@@ -60,6 +60,9 @@
 #include "db_session.h"
 #include "object_primitive.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* ========================================================================
  * Forward Function Declarations
  * ======================================================================== */
@@ -2469,4 +2472,128 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 			 query_timeout);
 	}
     }
+}
+
+FN_RETURN
+fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *data = NULL;
+  int data_len = 0;
+
+  if (argc != 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_str (&data, &data_len, argv[0]);
+
+  ux_stream_send_data (data, data_len, net_buf);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind;
+  char *config = NULL;
+  int config_len = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+  ux_stream_init (stream_kind, config, config_len, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+
+  err_code = ux_stream_end (net_buf);
+  if (err_code >= 0 && ux_stream_ends_unit_of_work () && as_info->auto_commit_mode == TRUE)
+    {
+      /* A COPY stream and an Internal LOB DML stream each complete a statement, so they end the unit of work
+       * exactly like any other fn_* -- only when the driver runs in autocommit mode.  Committing regardless
+       * of that mode swallowed the caller's later rollback (and its earlier DML with it).  An upload stream
+       * (STREAM_KIND_INTERNAL_LOB) never commits here: it is staged in a temporary file until the statement
+       * that binds its token runs. */
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  if (argc != 0)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  (void) ux_stream_abort (net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *locator = NULL;
+  int locator_len = 0;
+  DB_BIGINT start_offset = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_str (&locator, &locator_len, argv[0]);
+  net_arg_get_bigint (&start_offset, argv[1]);
+  (void) ux_lob_stream_open (locator, locator_len, start_offset, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+  int size = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_bigint (&token, argv[0]);
+  net_arg_get_int (&size, argv[1]);
+  (void) ux_lob_stream_read (token, size, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+
+  if (argc != 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_bigint (&token, argv[0]);
+  (void) ux_lob_stream_close (token, net_buf);
+  return FN_KEEP_CONN;
 }
