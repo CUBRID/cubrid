@@ -2944,6 +2944,13 @@ boot_reset_mk_after_restart_from_backup (THREAD_ENTRY * thread_p, BO_RESTART_ARG
 	   * Nothing to do */
 	  goto exit;
 	}
+
+      if (err != ER_TDE_MASTER_KEY_NOT_FOUND && err != ER_TDE_INVALID_MASTER_KEY)
+	{
+	  /* the key file itself is fine and something else failed, so case (2)
+	   * below would discard a usable key file. */
+	  goto exit;
+	}
     }
 
   /* 

@@ -1324,7 +1324,7 @@ $ LOADDB
 1251 Error while TDE-encrypting.
 1252 Error while TDE-decrypting.
 1253 TDE Module is not loaded.
-1254 Cannot create a key.
+1254 Cannot create or verify a key.
 1255 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
 1256 Cannot copy key file (_keys). You can't use TDE feature on the copied database.
@@ -2000,8 +2000,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
-
 338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
+342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
+343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 
 
 
