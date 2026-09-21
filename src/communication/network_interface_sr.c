@@ -49,6 +49,8 @@
 #include "error_manager.h"
 #include "object_representation.h"
 #include "network.h"
+#include "crypt_opfunc.h"
+#include "authenticate_password.hpp"
 #include "log_comm.h"
 #include "network_interface_sr.h"
 #include "page_buffer.h"
@@ -10767,6 +10769,177 @@ cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char 
   return or_unpack_string_nocopy (ptr, out_string);
 }
 
+/*
+ * cdc_auth_make_response () - digest that answers a CDC challenge.
+ *   return: NO_ERROR, or an error from the hash function.
+ *   thread_p (in):
+ *   nonce (in)         : challenge, as hex
+ *   stored_password (in): password exactly as db_password holds it
+ *   response (out)     : hex digest, CSS_CDC_AUTH_RESPONSE_SIZE bytes
+ *
+ * The client computes the same digest from the password the user typed, so the
+ * password itself never crosses the CDC channel and a recorded answer is useless
+ * against the next challenge.
+ */
+static int
+cdc_auth_make_response (THREAD_ENTRY * thread_p, const char *nonce, const char *stored_password, char *response)
+{
+  char buffer[CSS_CDC_AUTH_NONCE_SIZE + AU_MAX_PASSWORD_BUF + 4];
+  char *digest = NULL;
+  int digest_len, error;
+
+  snprintf (buffer, sizeof (buffer), "%s%s", nonce, stored_password);
+
+  error = crypt_sha_two (thread_p, buffer, (int) strlen (buffer), 256, &digest, &digest_len);
+  if (error != NO_ERROR || digest == NULL)
+    {
+      return (error != NO_ERROR) ? error : ER_FAILED;
+    }
+
+  strncpy (response, digest, CSS_CDC_AUTH_RESPONSE_SIZE - 1);
+  response[CSS_CDC_AUTH_RESPONSE_SIZE - 1] = '\0';
+
+  db_private_free_and_init (thread_p, digest);
+
+  return NO_ERROR;
+}
+
+/*
+ * scdc_auth_challenge () - first half of the CDC channel handshake.
+ *
+ * Replies with a fresh challenge and with the scheme the account's password is
+ * stored under, which the client needs to reproduce the stored form. The reply
+ * is the same shape whether or not the account exists, so this does not tell a
+ * caller which account names are real.
+ */
+void
+scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + CSS_CDC_AUTH_NONCE_SIZE + MAX_ALIGNMENT) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  char *user_name = NULL;
+  char stored_password[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  char nonce_bytes[CSS_CDC_AUTH_NONCE_SIZE / 2];
+  char nonce[CSS_CDC_AUTH_NONCE_SIZE];
+  bool is_dba = false;
+
+  /* a new challenge invalidates whatever the connection had before */
+  thread_p->conn_entry->cdc_auth_expected[0] = '\0';
+  thread_p->conn_entry->cdc_auth_is_dba = false;
+  thread_p->conn_entry->cdc_auth_done = false;
+
+  if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &user_name) == NULL
+      || user_name == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
+      return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  if (crypt_generate_random_bytes (nonce_bytes, sizeof (nonce_bytes)) != NO_ERROR)
+    {
+      return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+  str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
+
+  /* an account that does not exist still gets a challenge; it simply has no
+   * stored password to answer it with */
+  (void) cdc_get_user_info (thread_p, user_name, stored_password, sizeof (stored_password), &is_dba);
+
+  if (cdc_auth_make_response (thread_p, nonce, stored_password, thread_p->conn_entry->cdc_auth_expected) != NO_ERROR)
+    {
+      thread_p->conn_entry->cdc_auth_expected[0] = '\0';
+      return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+  thread_p->conn_entry->cdc_auth_is_dba = is_dba;
+
+  ptr = or_pack_int (reply, NO_ERROR);
+  ptr = or_pack_int (ptr, IS_ENCODED_ANY (stored_password) ? (int) stored_password[0] : 0);
+  ptr = or_pack_string (ptr, nonce);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, (int) (ptr - reply));
+}
+
+/*
+ * cdc_auth_response_matches () - compare two challenge answers without leaking
+ *   how far they agree.
+ *   return: true if they are identical.
+ */
+static bool
+cdc_auth_response_matches (const char *expected, const char *given)
+{
+  int i, diff = 0;
+
+  if (strlen (given) != CSS_CDC_AUTH_RESPONSE_SIZE - 1)
+    {
+      return false;
+    }
+
+  for (i = 0; i < CSS_CDC_AUTH_RESPONSE_SIZE - 1; i++)
+    {
+      diff |= (expected[i] ^ given[i]);
+    }
+
+  return (diff == 0);
+}
+
+/*
+ * scdc_auth_response () - second half of the CDC channel handshake.
+ *
+ * Accepts the connection as a DBA only if the digest matches the one computed
+ * for the outstanding challenge. The challenge is spent either way, so a wrong
+ * answer cannot be retried against the same one.
+ */
+void
+scdc_auth_response (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char expected[CSS_CDC_AUTH_RESPONSE_SIZE];
+  char *response = NULL;
+  int error_code = NO_ERROR;
+
+  /* spend the challenge before looking at the answer */
+  memcpy (expected, thread_p->conn_entry->cdc_auth_expected, sizeof (expected));
+  thread_p->conn_entry->cdc_auth_expected[0] = '\0';
+  thread_p->conn_entry->cdc_auth_done = false;
+
+  if (request == NULL || cdc_flashback_unpack_bounded_string (request, request, reqlen, &response) == NULL
+      || response == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
+      return_error_to_client (thread_p, rid);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  if (expected[0] == '\0' || !cdc_auth_response_matches (expected, response))
+    {
+      thread_p->conn_entry->cdc_auth_is_dba = false;
+      error_code = ER_AU_AUTHORIZATION_FAILURE;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE, 0);
+    }
+  else if (!thread_p->conn_entry->cdc_auth_is_dba)
+    {
+      /* the password was right, the account just has no business driving CDC */
+      error_code = ER_AU_DBA_ONLY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
+    }
+  else
+    {
+      thread_p->conn_entry->cdc_auth_done = true;
+    }
+
+  (void) or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
 void
 scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -10790,8 +10963,9 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   /* CBRD-27436: the CDC channel has no server-side client identity (opened after
    * db_shutdown, never runs boot_register_client), so the central
-   * CHECK_AUTHORIZATION gate can't protect it -- enforce DBA here instead, from
-   * the db user the client declares as the request's first field. */
+   * CHECK_AUTHORIZATION gate can't protect it -- require instead that the
+   * connection has already passed the CDC challenge-response as a DBA. The db
+   * user still leads the request, but it is now only a field to step over. */
   if (request == NULL || reqlen < OR_INT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
@@ -10806,7 +10980,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
-  if (!cdc_check_dba_authorization (thread_p, cdc_db_user))
+  if (!cdc_check_dba_authorization (thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
       error_code = ER_AU_DBA_ONLY;
