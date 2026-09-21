@@ -81,6 +81,9 @@ struct load_args
   BTID_INT *btid;
   const char *bt_name;		/* index name */
   bool no_redo;			/* No-logging index build: its pages skip content redo logging only; all disk writes take the ordinary flush path (including DWB when enabled).  Durability is enforced by the pre-commit flush+sync gate. */
+  LOG_LSA build_start_lsa;	/* no_redo only: log end when this build began; every page it allocates logs at or after it.
+				 * Travels in the barrier postpone's payload so media recovery can tell which backup level
+				 * re-copied all of them (CBRD-27298). NULL_LSA for logged builds. */
 
   RECDES *out_recdes;		/* Pointer to current record descriptor collecting objects. */
   RECDES leaf_nleaf_recdes;	/* Record descriptor used for leaf and non-leaf records. */
@@ -1439,6 +1442,14 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->vacuum_capacity = 0;
 #if defined (SERVER_MODE)
   load_args->no_redo = eligible_no_redo;
+  if (eligible_no_redo)
+    {
+      log_get_prior_lsa (&load_args->build_start_lsa);
+    }
+  else
+    {
+      LSA_SET_NULL (&load_args->build_start_lsa);
+    }
   /* Do NOT open a build sysop here. For SERVER_MODE, the topop rmutex must not be held across
    * btree_index_sort()'s parallel in-phase sort: px workers share this transaction's tdes and briefly
    * lock_topop() it themselves (e.g. disk_reserve_sectors() -> log_sysop_start() while creating their
@@ -1450,6 +1461,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
    * log_check_system_op_is_started() once btree_index_sort() completes. */
 #else
   load_args->no_redo = false;
+  LSA_SET_NULL (&load_args->build_start_lsa);
 #endif
   load_args->vacuum_payload_size = 0;
 
@@ -1830,7 +1842,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       LOG_DATA_ADDR addr = { NULL, NULL, 0 };
 
-      log_append_postpone (thread_p, RVBT_NO_LOGGING_INDEX_DURABLE, &addr, 0, NULL);
+      /* payload: the build start; the barrier's own LSA is handed to its redo function as rcv->reference_lsa */
+      log_append_postpone (thread_p, RVBT_NO_LOGGING_INDEX_DURABLE, &addr, sizeof (LOG_LSA),
+			   &load_args->build_start_lsa);
     }
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);

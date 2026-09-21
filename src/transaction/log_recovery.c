@@ -117,6 +117,8 @@ static int log_recovery_get_redo_parallel_count ();
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p);
 static void log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa);
+static void log_rv_no_logging_index_refuse_unless_covered (THREAD_ENTRY * thread_p, const LOG_LSA * build_start_lsa,
+							   const LOG_LSA * barrier_lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
 static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -3416,7 +3418,7 @@ log_recovery_set_restore_backup_level (int level, const LOG_LSA * start_lsa, con
  *   first, and both refuse here; a build that never committed leaves no marker and the replay undoes it.
  *
  * thread_p(in): thread entry
- * lsa(in): LSA of the barrier or marker record, or NULL if unavailable on this dispatch path
+ * lsa(in): LSA of the barrier record, or NULL_LSA when the record predates CBRD-27298
  */
 static void
 log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa)
@@ -3440,46 +3442,107 @@ log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_
     }
 }
 
+/* payload of RVBT_NO_LOGGING_INDEX_COMMITTED (CBRD-27298); records written before it carry no payload */
+typedef struct log_rcv_no_logging_index_marker LOG_RCV_NO_LOGGING_INDEX_MARKER;
+struct log_rcv_no_logging_index_marker
+{
+  LOG_LSA build_start_lsa;	/* copied from the barrier postpone's payload; NULL_LSA if it had none */
+  LOG_LSA barrier_lsa;		/* LSA of the RVBT_NO_LOGGING_INDEX_DURABLE record */
+};
+
+/*
+ * log_rv_no_logging_index_refuse_unless_covered () - fail-stop media recovery unless the restored backup chain holds
+ *   every page of the build (log_rcv_no_logging_index_is_covered_by_backup).
+ *
+ * return: nothing (does not return when it refuses)
+ * thread_p(in): thread entry
+ * build_start_lsa(in): from the record payload, NULL_LSA when unknown
+ * barrier_lsa(in): the barrier record's LSA, NULL_LSA when unknown
+ */
+static void
+log_rv_no_logging_index_refuse_unless_covered (THREAD_ENTRY * thread_p, const LOG_LSA * build_start_lsa,
+					       const LOG_LSA * barrier_lsa)
+{
+  assert (log_Rcv_is_media_crash);
+
+  if (log_rcv_no_logging_index_is_covered_by_backup (log_Rcv_backup_levels, log_Rcv_backup_num_levels,
+						     build_start_lsa, barrier_lsa))
+    {
+      return;
+    }
+
+  log_recovery_refuse_no_logging_index_replay (thread_p, barrier_lsa);
+  /* not reached */
+}
+
 /*
  * log_rv_no_logging_index_durable_redo () - redo for RVBT_NO_LOGGING_INDEX_DURABLE, the barrier postpone action.
- *   Media recovery refuses; otherwise the barrier is really executing (runtime commit, or restart
- *   recovery finishing an interrupted one), so append the redo-only RVBT_NO_LOGGING_INDEX_COMMITTED marker.
+ *   Manual logical run postpone: rcv->reference_lsa is the barrier record's own LSA.  Under media recovery the
+ *   build is judged against the restored backup chain and refused unless the chain holds its pages.  Then (runtime
+ *   commit, or restart recovery finishing an interrupted commit) the barrier executes: append the marker inside a
+ *   system operation ended by the logical run postpone record.
  *
- * return: NO_ERROR (does not return while media recovery is in progress)
+ * return: NO_ERROR (does not return when media recovery refuses)
  * thread_p(in): thread entry
- * rcv(in): recovery structure; rcv->reference_lsa carries the barrier's LSA when available
+ * rcv(in): recovery structure; rcv->data is the build start LSA when the record carries one
  */
 int
 log_rv_no_logging_index_durable_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
-  if (log_Rcv_is_media_crash)
+  LOG_RCV_NO_LOGGING_INDEX_MARKER marker;
+  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
+
+  LSA_COPY (&marker.barrier_lsa, &rcv->reference_lsa);
+  if (rcv->length == (int) sizeof (LOG_LSA) && rcv->data != NULL)
     {
-      log_recovery_refuse_no_logging_index_replay (thread_p, &rcv->reference_lsa);
-      /* not reached: log_recovery_refuse_no_logging_index_replay() never returns */
+      memcpy (&marker.build_start_lsa, rcv->data, sizeof (LOG_LSA));
+    }
+  else
+    {
+      /* barrier written before CBRD-27298 */
+      LSA_SET_NULL (&marker.build_start_lsa);
     }
 
-  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
-  log_append_redo_data (thread_p, RVBT_NO_LOGGING_INDEX_COMMITTED, &addr, 0, NULL);
+  if (log_Rcv_is_media_crash)
+    {
+      log_rv_no_logging_index_refuse_unless_covered (thread_p, &marker.build_start_lsa, &marker.barrier_lsa);
+    }
+
+  log_sysop_start (thread_p);
+  log_append_redo_data (thread_p, RVBT_NO_LOGGING_INDEX_COMMITTED, &addr, (int) sizeof (marker), &marker);
+  log_sysop_end_logical_run_postpone (thread_p, &rcv->reference_lsa);
 
   return NO_ERROR;
 }
 
 /*
  * log_rv_no_logging_index_committed_redo () - redo for RVBT_NO_LOGGING_INDEX_COMMITTED, the marker recording that a
- *   no-logging index build's barrier postpone executed.  Replaying it under media recovery means the chain
- *   contains a completed no-logging index build -- refuse.  A no-op everywhere else.
+ *   no-logging index build's barrier postpone executed.  Under media recovery the build is judged against the
+ *   restored backup chain and refused unless the chain holds its pages.  A no-op everywhere else.
  *
- * return: NO_ERROR (does not return while media recovery is in progress)
+ * return: NO_ERROR (does not return when media recovery refuses)
  * thread_p(in): thread entry
- * rcv(in): recovery structure; rcv->reference_lsa carries the marker's LSA when available
+ * rcv(in): recovery structure; rcv->data is a LOG_RCV_NO_LOGGING_INDEX_MARKER when the record carries one
  */
 int
 log_rv_no_logging_index_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   if (log_Rcv_is_media_crash)
     {
-      log_recovery_refuse_no_logging_index_replay (thread_p, &rcv->reference_lsa);
-      /* not reached: log_recovery_refuse_no_logging_index_replay() never returns */
+      LOG_RCV_NO_LOGGING_INDEX_MARKER marker;
+
+      if (rcv->length == (int) sizeof (marker) && rcv->data != NULL)
+	{
+	  memcpy (&marker, rcv->data, sizeof (marker));
+	}
+      else
+	{
+	  /* marker written before CBRD-27298: nothing to judge */
+	  LSA_SET_NULL (&marker.build_start_lsa);
+	  LSA_SET_NULL (&marker.barrier_lsa);
+	}
+
+      log_rv_no_logging_index_refuse_unless_covered (thread_p, &marker.build_start_lsa, &marker.barrier_lsa);
     }
 
   return NO_ERROR;
