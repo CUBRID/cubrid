@@ -3723,7 +3723,7 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
       return default_value_string;
     }
 
-  if (attr->default_value.default_expr.default_expr_text != NULL)
+  if (DB_HAS_DEFAULT_EXPR (&attr->default_value.default_expr))
     {
       /* an expression DEFAULT is reported as its original text, like ;schema and the catalog views */
       default_value_string = strdup (attr->default_value.default_expr.default_expr_text);

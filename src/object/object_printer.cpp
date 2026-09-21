@@ -561,11 +561,11 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	}
 
       if (!DB_IS_NULL (&attribute.default_value.value)
-	  || attribute.default_value.default_expr.default_expr_text != NULL)
+	  || DB_HAS_DEFAULT_EXPR (&attribute.default_value.default_expr))
 	{
 	  m_buf (" DEFAULT ");
 
-	  if (attribute.default_value.default_expr.default_expr_text != NULL)
+	  if (DB_HAS_DEFAULT_EXPR (&attribute.default_value.default_expr))
 	    {
 	      /* an expression DEFAULT: its original text, already in the parenthesized normal form, e.g. "(1+1)" */
 	      m_buf ("%s", attribute.default_value.default_expr.default_expr_text);

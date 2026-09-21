@@ -25863,7 +25863,7 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  /* default values */
 	  alloced_string = 0;
-	  if (attrepr->default_value.default_expr.default_expr_text != NULL)
+	  if (DB_HAS_DEFAULT_EXPR (&attrepr->default_value.default_expr))
 	    {
 	      /* an expression DEFAULT is reported as its original text, like ;schema and the catalog views */
 	      size_t deflen = strlen (attrepr->default_value.default_expr.default_expr_text) + 1;

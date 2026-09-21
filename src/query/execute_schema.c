@@ -12067,7 +12067,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
   if (!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
-      || att->default_value.default_expr.default_expr_text != NULL)
+      || DB_HAS_DEFAULT_EXPR (&att->default_value.default_expr))
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
@@ -12118,7 +12118,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   else if (attr_def->info.attr_def.auto_increment != NULL)
     {
       if ((!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
-	   || att->default_value.default_expr.default_expr_text != NULL))
+	   || DB_HAS_DEFAULT_EXPR (&att->default_value.default_expr)))
 	{
 	  attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_LOST;
 	}

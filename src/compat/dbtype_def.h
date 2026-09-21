@@ -1280,7 +1280,8 @@ extern "C"
   typedef struct db_default_expr DB_DEFAULT_EXPR;
   struct db_default_expr
   {
-    const char *default_expr_text;	/* original text of an Expression-Derived Literal DEFAULT; NULL otherwise */
+    const char *default_expr_text;	/* original text of an expression DEFAULT (Expression-Derived Literal or
+					 * residual); NULL otherwise */
     const char *default_expr_regu_stream;	/* serialized REGU form (FUNC_PRED stream) of a residual DEFAULT
 						 * expression for Server Evaluation; NULL otherwise */
     int default_expr_regu_stream_size;	/* size in bytes of default_expr_regu_stream */
@@ -1293,6 +1294,10 @@ extern "C"
  * at execution time.  It is the only DEFAULT form with a tree stream.  (e) is a DB_DEFAULT_EXPR pointer. */
 #define DB_IS_RESIDUAL_DEFAULT_EXPR(e) \
   ( (e)->default_expr_tree_stream != NULL && (e)->default_expr_tree_stream_size > 0 )
+
+/* An expression DEFAULT, Expression-Derived Literal or residual: its source text is stored and stands for the
+ * DEFAULT wherever it is shown.  (e) is a DB_DEFAULT_EXPR pointer. */
+#define DB_HAS_DEFAULT_EXPR(e) ((e)->default_expr_text != NULL)
 
   typedef DB_DATETIME DB_C_DATETIME;
   typedef DB_DATETIMETZ DB_C_DATETIMETZ;

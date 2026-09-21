@@ -650,7 +650,7 @@ namespace cubmethod
 	return "";
       }
 
-    if (attr->default_value.default_expr.default_expr_text != NULL)
+    if (DB_HAS_DEFAULT_EXPR (&attr->default_value.default_expr))
       {
 	/* an expression DEFAULT is reported as its original text, like ;schema */
 	return std::string (attr->default_value.default_expr.default_expr_text);

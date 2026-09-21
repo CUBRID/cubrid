@@ -3093,14 +3093,14 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 
   default_value = db_attribute_default (attribute);
   if ((default_value != NULL && !DB_IS_NULL (default_value))
-      || attribute->default_value.default_expr.default_expr_text != NULL)
+      || DB_HAS_DEFAULT_EXPR (&attribute->default_value.default_expr))
     {
       if (qualifier != SHARED_ATTRIBUTE)
 	{
 	  output_ctx (" DEFAULT ");
 	}
 
-      if (attribute->default_value.default_expr.default_expr_text != NULL)
+      if (DB_HAS_DEFAULT_EXPR (&attribute->default_value.default_expr))
 	{
 	  /* an expression DEFAULT is emitted as its original text, in the parenthesized normal form, e.g. "(1+1)" */
 	  output_ctx ("%s", attribute->default_value.default_expr.default_expr_text);
