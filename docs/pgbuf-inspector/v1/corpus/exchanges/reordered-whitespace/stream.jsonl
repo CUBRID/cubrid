@@ -1,6 +1,0 @@
-{"supported_majors": [1], "type": "client_hello"}
-{"private_lru_count": 3, "shared_lru_count": 2, "volumes": [{"volid": 0, "volume_creation": "2", "device": "3", "inode": "18446744073709551615"}], "database_creation": "1", "incarnation": "0123456789abcdef0123456789abcdef", "protocol_minor": 0, "protocol_major": 1, "type": "server_hello"}
-{"incarnation": "0123456789abcdef0123456789abcdef", "type": "scan_request"}
-{"start_time_us": "1000", "scan_seq": "1", "incarnation": "0123456789abcdef0123456789abcdef", "type": "scan_header"}
-{"page_kind": "oos", "oldest_unflush_lsa": null, "page_lsa": {"pageid": "9223372036854775807", "offset": 12}, "lru_list_index": 1, "lru_list_kind": "private", "lru_zone": "lru2", "to_vacuum": true, "async_flush_requested": false, "flushing": false, "dirty": true, "fix_count": 2, "waiter_present": true, "latch_mode": "read", "pageid": 7, "volid": 0, "scan_seq": "1", "incarnation": "0123456789abcdef0123456789abcdef", "type": "page"}
-{"truncated": false, "visited_slots": 2, "record_count": 1, "end_time_us": "900", "scan_seq": "1", "incarnation": "0123456789abcdef0123456789abcdef", "type": "scan_footer"}
