@@ -86,6 +86,8 @@ struct ws_repl_obj
   int packed_pkey_value_length;
   bool has_index;
   int operation;
+  int oos_attrid;
+  int oos_flags;
   RECDES *recdes;
 };
 
@@ -691,7 +693,8 @@ public:
    ~ws_repl ();
 
   int ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-			       RECDES * recdes, int operation, bool has_index);
+			       RECDES * recdes, int operation, bool has_index, int oos_attrid = NULL_ATTRID,
+			       int oos_flags = 0);
   void ws_init_repl_objs (void);
   void ws_clear_all_repl_objs (void);
   void ws_free_repl_obj (WS_REPL_OBJ * obj);
