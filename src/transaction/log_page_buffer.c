@@ -59,6 +59,7 @@
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
+#include "log_recovery.h"
 #include "log_prior_inflight.hpp"
 #include "log_comm.h"
 #include "log_reader.hpp"
@@ -9309,6 +9310,11 @@ logpb_restore (THREAD_ENTRY * thread_p, const char *db_fullname, const char *log
       /* add new bkvinf entry into cache data */
       fileio_add_volume_to_backup_info (session->bkup.vlabel, try_level, session->bkup.bkuphdr->unit_num,
 					FILEIO_SECOND_BACKUP_VOL_INFO);
+
+      /* hand this level's page filter threshold and start position to media recovery, which judges whether a
+       * no-logging index build's pages are all inside the restored chain (CBRD-27298) */
+      log_recovery_set_restore_backup_level ((int) try_level, &session->bkup.bkuphdr->start_lsa,
+					     &session->bkup.bkuphdr->start_log_end_lsa);
 
       if (first_time)
 	{
