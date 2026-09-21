@@ -466,21 +466,25 @@ namespace cubload
 	if (char_count > precision)
 	  {
 	    /*
-	     * May be a violation, but first we have to check for trailing pad
-	     * characters that might allow us to successfully truncate the
-	     * thing.
+	     * May be a violation, but the overflow can be nothing but trailing pad
+	     * characters, and then the value is truncated rather than refused.
+	     *
+	     * Ask the same question INSERT asks, through the same call it makes -
+	     * see varchar_truncated () in string_opfunc.c. A real space always
+	     * pads, and so does the codeset's own pad character, which is the wide
+	     * space 0xa1a1 under EUC-KR. A tab or a carriage return does not pad,
+	     * in either place.
 	     */
-	    const char *p;
+	    unsigned char pad[2];
+	    int pad_size = 0;
+	    int trim_length = 0, trim_size = 0;
 	    int truncate_size;
 
-	    intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
+	    intl_pad_char (codeset, pad, &pad_size);
+	    qstr_trim_trailing (pad, pad_size, (const unsigned char *) str, type, char_count, str_len, codeset,
+				&trim_length, &trim_size, true);
 
-	    p = intl_skip_spaces (&str[truncate_size], &str[str_len], codeset);
-	    if (p >= &str[str_len])
-	      {
-		str_len = truncate_size;
-	      }
-	    else
+	    if (trim_length > precision)
 	      {
 		/*
 		 * It's a genuine violation; raise an error.
@@ -488,6 +492,9 @@ namespace cubload
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
 		return ER_IT_DATA_OVERFLOW;
 	      }
+
+	    intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
+	    str_len = truncate_size;
 	  }
       }
 
