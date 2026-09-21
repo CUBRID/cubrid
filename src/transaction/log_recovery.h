@@ -35,6 +35,25 @@ extern int log_rv_get_unzip_and_diff_redo_log_data (THREAD_ENTRY * thread_p, log
 						    LOG_RCV * rcv, int undo_length, const char *undo_data,
 						    LOG_ZIP & redo_unzip);
 extern void log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat);
+
+/* CBRD-27298: what media recovery needs from every restored backup level to judge a no-logging index build.
+ * Index 0 is the full backup.  LOG_RCV_MAX_BACKUP_LEVELS == FILEIO_BACKUP_UNDEFINED_LEVEL (asserted in log_recovery.c). */
+#define LOG_RCV_MAX_BACKUP_LEVELS 3
+
+typedef struct log_rcv_backup_level_info LOG_RCV_BACKUP_LEVEL_INFO;
+struct log_rcv_backup_level_info
+{
+  LOG_LSA start_lsa;		/* FILEIO_BACKUP_HEADER.start_lsa: the level copied only pages with a greater LSA;
+				 * NULL_LSA for a full backup */
+  LOG_LSA start_log_end_lsa;	/* FILEIO_BACKUP_HEADER.start_log_end_lsa: log end when the level began; NULL_LSA when
+				 * the header predates the field */
+};
+
+extern bool log_rcv_no_logging_index_is_covered_by_backup (const LOG_RCV_BACKUP_LEVEL_INFO * levels, int num_levels,
+							   const LOG_LSA * build_start_lsa,
+							   const LOG_LSA * barrier_lsa);
+extern void log_recovery_set_restore_backup_level (int level, const LOG_LSA * start_lsa,
+						   const LOG_LSA * start_log_end_lsa);
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);
 extern int log_rv_undoredo_record_partial_changes (THREAD_ENTRY * thread_p, char *rcv_data, int rcv_data_length,
 						   RECDES * record, bool is_undo);
