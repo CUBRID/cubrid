@@ -885,6 +885,12 @@ locator_dump_copy_area_one_object (FILE * out_fp, LC_COPYAREA_ONEOBJ * obj, int 
     case LC_FETCH_VERIFY_CHN:
       str_operation = "FETCH_VERIFY_CHN";
       break;
+    case LC_FLUSH_INSERT_OOS:
+      str_operation = "FLUSH_INSERT_OOS";
+      break;
+    case LC_FLUSH_INSERT_INTERNAL_LOB:
+      str_operation = "FLUSH_INSERT_INTERNAL_LOB";
+      break;
     default:
       str_operation = "UNKNOWN";
       break;
