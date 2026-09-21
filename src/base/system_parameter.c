@@ -821,6 +821,12 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
+#define PRM_NAME_COST_SEQ_PAGE "cost_seq_page"
+#define PRM_NAME_COST_RANDOM_PAGE "cost_random_page"
+#define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
+#define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
+#define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+
 // #endregion 
 
 /*
@@ -5579,6 +5585,79 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* Optimizer cost unit prices (CBRD-27126). The optimizer runs on the client, so these are
+   * PRM_FOR_CLIENT and take effect from the next compilation after SET SYSTEM PARAMETERS.
+   * Every default is the literal query_planner.c used to hard-code, so an untouched
+   * configuration prices plans exactly as before. cost_seq_page is the unit of the model
+   * (one sequential page read = 1.0); tune the others as ratios to it. The per-tuple CPU
+   * price is an integer reciprocal, cost_cpu_tuples_per_page = 400 ("one page read costs as
+   * much as handling 400 tuples"), because the former literal 0.0025 has no exact float and
+   * 1.0 / 400 reproduces that double bit for bit; a float parameter would have shifted every
+   * cost by 2e-8 and flipped .5 roundings in plan dumps. Its lower bound is 1 (a divisor).
+   * A lower bound of 0 is allowed on the page prices, as in PostgreSQL, to price a term as
+   * free; the Mackert-Lohman formula degrades safely to "no caching" when
+   * cost_effective_cache_pages is 0. That one is denominated in pages (not bytes) so the
+   * default equals the former 32768 on every page size. */
+  {PRM_ID_COST_SEQ_PAGE,
+   PRM_NAME_COST_SEQ_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_RANDOM_PAGE,
+   PRM_NAME_COST_RANDOM_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_CPU_TUPLES_PER_PAGE,
+   PRM_NAME_COST_CPU_TUPLES_PER_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 400}},
+   {false, {.i = 400}},
+   {false, {.i = 100000000}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
+   PRM_NAME_COST_EFFECTIVE_CACHE_PAGES,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 32768}},
+   {false, {.i = 32768}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_HEAP_FETCH_PER_OID,
+   PRM_NAME_COST_HEAP_FETCH_PER_OID,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 100000}},
+   {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
