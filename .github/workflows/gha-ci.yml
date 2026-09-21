@@ -164,6 +164,10 @@ env:
   # Per attempt: run_id does not change on a re-run, so attempt 2 would read the
   # stamps attempt 1 left and subtract times taken in different attempts.
   STAMPS: /home/ci/shared/runs/${{ github.run_id }}/stamps/${{ github.run_attempt }}
+  # CTP, like the testcases below, comes from the node copy the gha-node-seed
+  # DaemonSet refreshes hourly: every byte a test reads is node-local, and the
+  # volume carries only what two nodes must share -- CUBRIDQA-1501 ticket 72.
+  CTP_SEED: /home/ci/seed/test/cubrid-testtools
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
   # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
@@ -172,9 +176,8 @@ env:
   # image's resolve_category is one table for the whole entrypoint. No job below
   # names a suite outside this block.
   #
-  #   tc_seed     the read-only tree the testcases are mounted from. The private
-  #               repo is on the node (/ro); the public one only on the volume,
-  #               where the seed CronJob refreshes it hourly
+  #   tc_seed     the node copy the testcases are overlay-mounted from. The
+  #               DaemonSet refreshes it hourly and the pod has it read-only
   #   unit        what one line of a shard's share file holds, and so what the
   #               split moves around: one case, or one top-level directory.
   #   case_glob   find -path pattern that names one case file
@@ -191,7 +194,7 @@ env:
     {
       "shell": {
         "tc_repo": "cubrid-testcases-private-ex", "tc_private": "yes",
-        "tc_seed": "/ro",
+        "tc_seed": "/home/ci/seed/test/cubrid-testcases-private-ex",
         "ctp_cmd": "shell", "ctp_conf": "conf/shell_ci.conf",
         "xml_src": "result/shell/current_runtime_logs",
         "verdict_src": "test_status.data",
@@ -202,7 +205,7 @@ env:
       },
       "sql": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
-        "tc_seed": "/home/gha-ci/repos/cubrid-testcases",
+        "tc_seed": "/home/ci/seed/test/cubrid-testcases",
         "ctp_cmd": "sql", "ctp_conf": "conf/sql.conf",
         "xml_src": "sql/result",
         "verdict_src": "summary_info",
@@ -213,7 +216,7 @@ env:
       },
       "medium": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
-        "tc_seed": "/home/gha-ci/repos/cubrid-testcases",
+        "tc_seed": "/home/ci/seed/test/cubrid-testcases",
         "ctp_cmd": "medium", "ctp_conf": "conf/medium_dev.conf",
         "xml_src": "sql/result",
         "verdict_src": "summary_info",
@@ -1190,19 +1193,20 @@ jobs:
           fi
           echo "ctp branch : $CTP_BRANCH"
 
-          # The entrypoint below clones CTP whole when .git is absent, and that
-          # clone was 124s of WAN. From the seed the hourly CronJob refreshes it
-          # fetches the tip instead -- CUBRIDQA-1497. file://, because a clone from
-          # a local path takes the mirror's whole history and ignores --depth: 111MB
-          # against 60MB, and every shard copies what this one publishes.
-          ctp_seed="$CI_ROOT/repos/cubrid-testtools"
-          if git clone -q --depth 1 --no-tags --single-branch \
-               "file://$ctp_seed" "$WORKDIR/cubrid-testtools" \
-             && git -C "$WORKDIR/cubrid-testtools" remote set-url origin "$CTP_REPO"; then
-            echo "ctp seed  : $ctp_seed @ $(git -C "$WORKDIR/cubrid-testtools" rev-parse --short HEAD)"
+          # The entrypoint below clones CTP whole when .git is absent, and that clone
+          # was 124s of WAN. Mounted from the node copy it finds .git and fetches the
+          # tip instead -- CUBRIDQA-1497. The shards mount the same copy, so nothing
+          # is published for them.
+          if [ -d "$CTP_SEED/.git" ]; then
+            mkdir -p /rw/ctp-upper /rw/ctp-work "$WORKDIR/cubrid-testtools"
+            mount -t overlay overlay \
+              -o "lowerdir=$CTP_SEED,upperdir=/rw/ctp-upper,workdir=/rw/ctp-work" \
+              "$WORKDIR/cubrid-testtools"
+            git -C "$WORKDIR/cubrid-testtools" remote set-url origin "$CTP_REPO"
+            echo "ctp seed  : $CTP_SEED @ $(git -C "$WORKDIR/cubrid-testtools" rev-parse --short HEAD)"
           else
             # A generation swap is two renames, so the seed is briefly not there.
-            echo "::warning::no usable CTP seed at $ctp_seed; the entrypoint will clone"
+            echo "::warning::no usable CTP seed at $CTP_SEED; the entrypoint will clone"
             rm -rf "$WORKDIR/cubrid-testtools"
           fi
 
@@ -1220,8 +1224,8 @@ jobs:
             dir="$WORKDIR/$repo"
             [ -d "$seed" ] || {
               echo "::error::no testcase seed for $suite: $seed"
-              echo "  The private repo is seeded on the node; the public one only on the"
-              echo "  volume, by the gha-repo-seed CronJob."; exit 1; }
+              echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
+              exit 1; }
 
             # Overlay first: the seed is the lowerdir, so the entrypoint sees .git.
             mkdir -p "/rw/$repo-upper" "/rw/$repo-work" "$dir"
@@ -1255,13 +1259,13 @@ jobs:
             # --depth 1, which leaves this copy at one commit. It takes a SHA wherever it
             # takes a branch -- the shards already align to one that way.
             if [ -n "$TC_UNTIL" ]; then
-              mirror="$CI_ROOT/repos/${repo}.git"
+              mirror="${seed}.git"
               [ -d "$mirror" ] || { echo "::error::no mirror for $repo: $mirror"; exit 1; }
-              # Commit dates cannot tell a quiet repo from a dead refresh. gha-repo-seed
+              # Commit dates cannot tell a quiet repo from a dead refresh. gha-node-seed
               # runs `git remote update` hourly, which rewrites FETCH_HEAD either way.
               refreshed=$(stat -c %Y "$mirror/FETCH_HEAD")
               [ "$refreshed" -ge "$(date -u -d "$TC_UNTIL" +%s)" ] || {
-                echo "::error::$repo mirror predates the cutoff $TC_UNTIL; gha-repo-seed is behind"; exit 1; }
+                echo "::error::$repo mirror predates the cutoff $TC_UNTIL; gha-node-seed is behind"; exit 1; }
               BRANCH_TESTCASES=$(git -C "$mirror" rev-list -1 --first-parent --before="$TC_UNTIL" "$TC_BRANCH")
               [ -n "$BRANCH_TESTCASES" ] || {
                 echo "::error::$repo has no $TC_BRANCH commit at or before $TC_UNTIL"; exit 1; }
@@ -1676,30 +1680,6 @@ jobs:
           echo "published: $rundir"
           echo "shards: $(jq length <<<"$matrix")"
 
-      - name: Publish CTP for the shards
-        run: |
-          set -eo pipefail
-          # On GlusterFS so 50 shards copy it over the LAN and shard WAN stays 0.
-          # What plan seeded from repos/cubrid-testtools, moved to the branch tip.
-          src="$WORKDIR/cubrid-testtools"
-          [ -d "$src/.git" ] || { echo "::error::checkout did not fetch CTP: $src"; exit 1; }
-          # Per-run path, not a shared one: publishing leaves the seed briefly absent,
-          # which another run's shard would read. collect removes it (59MB each).
-          seed="$CI_ROOT/runs/${GITHUB_RUN_ID}/plan/testtools"
-          head=$(git -C "$src" rev-parse HEAD)
-
-          tmp="${seed}.tmp.${GITHUB_RUN_ID}"
-          rm -rf "$tmp"
-          mkdir -p "$(dirname "$seed")"
-          cp -a "$src" "$tmp"
-
-          # One rename publishes it, so no consumer sees a half-copied tree.
-          rm -rf "${seed}.old"
-          [ -d "$seed" ] && mv -T "$seed" "${seed}.old"
-          mv -T "$tmp" "$seed"
-          rm -rf "${seed}.old"
-          echo "CTP seed: $seed @ $head"
-
           printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/plan.tsv"
 
       - name: Split summary
@@ -1847,10 +1827,11 @@ jobs:
           WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
         run: |
           set -eo pipefail
-          # Only a pruning suite mounts its testcases: it needs the whole tree here
-          # and deletes what is not its share. A publishing suite copies its share
-          # out of what plan published, so there is nothing to mount.
           if [ "$SHARE_MODE" = prune ]; then
+            [ -d "$TC_SEED/.git" ] || {
+              echo "::error::no testcase seed: $TC_SEED"
+              echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
+              exit 1; }
             mkdir -p /rw/upper /rw/work "$TC_DIR"
             mount -t overlay overlay -o "lowerdir=$TC_SEED,upperdir=/rw/upper,workdir=/rw/work" "$TC_DIR"
             echo "testcases mounted: $TC_SEED"
@@ -1903,19 +1884,20 @@ jobs:
           cp -f "$m" "$out/build.read"
           echo "matches: this shard reads the build from run $got_brid"
 
-      - name: Copy CTP from what plan published
+      - name: CTP, mounted from the node copy
         run: |
           set -eo pipefail
-          # Per-run path, so no other run can move it aside mid-read. One CTP serves
-          # every suite of the run.
-          seed="$RUNDIR/plan/testtools"
-          [ -d "$seed" ] || { echo "::error::no CTP seed: $seed"; exit 1; }
-
-          # GlusterFS is LAN. No WAN here: one clone would be 25MB.
-          rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          cp -a "$seed" "$WORKDIR/cubrid-testtools"
-          rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          echo "CTP copy WAN: $(( (rx1 - rx0) / 1048576 )) MB (must be 0)"
+          # The same copy plan read, on this node's disk. Nothing to publish and
+          # nothing to copy: the mount is the delivery. One CTP serves every suite.
+          [ -d "$CTP_SEED/.git" ] || {
+            echo "::error::no CTP seed: $CTP_SEED"
+            echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
+            exit 1; }
+          mkdir -p /rw/ctp-upper /rw/ctp-work "$WORKDIR/cubrid-testtools"
+          mount -t overlay overlay \
+            -o "lowerdir=$CTP_SEED,upperdir=/rw/ctp-upper,workdir=/rw/ctp-work" \
+            "$WORKDIR/cubrid-testtools"
+          echo "CTP mounted: $CTP_SEED @ $(git -C "$WORKDIR/cubrid-testtools" rev-parse --short HEAD)"
           # Deliberately the image's CTP_HOME, not a stated one: this line is the
           # cross-check that where we just put CTP is where the image expects it.
           # Stating it here would only compare the copy against itself, and would
@@ -1953,7 +1935,7 @@ jobs:
           CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
         run: |
           set -eo pipefail
-          # CTP must be copied first: entrypoint needs .git to fetch instead of clone.
+          # CTP must be mounted first: entrypoint needs .git to fetch instead of clone.
           [ -d "$WORKDIR/cubrid-testtools/.git" ] || {
             echo "::error::CTP is missing. The steps are in the wrong order"; exit 1; }
 
@@ -1962,7 +1944,7 @@ jobs:
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           if [ "$SHARE_MODE" = prune ]; then
             export BRANCH_TESTCASES="$tc_branch"
-            # Without this the checkout below moves the copied seed back to develop, and
+            # Without this the checkout below moves the mounted seed back to develop, and
             # a suite asked to run another CTP branch would run develop's in every shard.
             export BRANCH_TESTTOOLS="$CTP_BRANCH"
             /entrypoint.sh checkout "$SUITE"
@@ -2962,30 +2944,6 @@ jobs:
             fi
             echo "wrote $((i - left)) of $i case logs, $used bytes"
           done
-
-      # 59MB per run, nothing worth keeping, and the cleanup CronJob does not see it.
-      #
-      # Keep it when anything failed. "Re-run failed jobs" does not re-run plan,
-      # so the re-run shards read this seed; deleting it here made every one of them
-      # die at "no CTP seed" and the whole re-run path unusable.
-      #
-      # A cancelled run skips this step; the build job sweeps what it leaves.
-      - name: Clean up the CTP seed
-        if: always()
-        run: |
-          set -eo pipefail
-          seed="$RUNDIR/plan/testtools"
-          for suite in $SUITES_RUN; do
-            [ "$(cat "$RUNDIR/$suite/collect/verdict" 2>/dev/null)" = pass ] || {
-              echo "kept for a re-run: $seed ($suite did not end green)"; exit 0; }
-          done
-          if [ -d "$seed" ]; then
-            du -sh "$seed" 2>/dev/null || true
-            rm -rf "$seed" "${seed}.tmp.${GITHUB_RUN_ID}" "${seed}.old"
-            echo "removed: $seed"
-          else
-            echo "nothing to remove: $seed"
-          fi
 
   # always(), not success(): a red verdict is what the gate exists to show.
   status:
