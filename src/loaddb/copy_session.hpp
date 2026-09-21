@@ -53,7 +53,7 @@ class copy_session : public stream_session
 
     /* stream_session seam */
     int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;
-    int finish (THREAD_ENTRY *thread_p, std::int64_t *count) override;
+    int finish (THREAD_ENTRY *thread_p, stream_result *result) override;
     void abort (THREAD_ENTRY *thread_p) override;
 
   private:

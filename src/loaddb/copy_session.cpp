@@ -512,7 +512,7 @@ done:
 }
 
 int
-copy_session::finish (THREAD_ENTRY *thread_p, std::int64_t *count)
+copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
 {
   /* CSV has no in-band footer; a final line without a trailing newline is held
    * in m_leftover. Feed a synthetic newline so that last record is decoded and
@@ -534,7 +534,7 @@ copy_session::finish (THREAD_ENTRY *thread_p, std::int64_t *count)
       return error;
     }
 
-  *count = m_rows_loaded;
+  result->count = m_rows_loaded;
   return NO_ERROR;
 }
 
@@ -700,7 +700,8 @@ namespace
   {
     copy_session_registrar ()
     {
-      stream_session_register (STREAM_KIND_COPY, copy_session_create);
+      /* COPY's END is the end of the statement: the transfer is the whole of it */
+      stream_session_register (STREAM_KIND_COPY, copy_session_create, true);
     }
   };
 
