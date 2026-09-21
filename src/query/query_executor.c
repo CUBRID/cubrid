@@ -28965,6 +28965,15 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
       if (host_var_count > 0)
 	{
 	  dbval_p = (DB_VALUE *) malloc (sizeof (DB_VALUE) * host_var_count);
+	  if (dbval_p == NULL)
+	    {
+	      xcache_unfix (thread_p, ent);
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      sizeof (DB_VALUE) * host_var_count);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+
 	  for (i = 0; i < host_var_count; i++)
 	    {
 	      dbval_p[i] = xasl_state->vd.dbval_ptr[host_var_index[i]];
