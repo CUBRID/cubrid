@@ -30,7 +30,6 @@
 
 #include <vector>
 
-extern bool oos_oid_in_vector (const std::vector<OID> &oids, const OID *oid);
 
 #if !defined (NDEBUG)
 // DO NOT REMOVE THIS. Debug-only VOT auditor; it has no release-build caller, so
