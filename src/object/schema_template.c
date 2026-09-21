@@ -1339,9 +1339,10 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	  return error;
 	}
       else if (proposed_value && DB_IS_NULL (proposed_value) && (att->flags & SM_ATTFLAG_PRIMARY_KEY)
-	       && (default_expr == NULL || !DB_IS_RESIDUAL_DEFAULT_EXPR (default_expr)))
+	       && (default_expr == NULL || !DB_HAS_DEFAULT_EXPR (default_expr)))
 	{
-	  /* the DDL layer checks a residual DEFAULT on its DDL-time value, which a VOLATILE one does not have */
+	  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT: the DDL layer leaves its
+	   * NULL to the rows, which are checked when each supplies its own value */
 	  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, name);
 	  return error;
 	}

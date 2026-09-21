@@ -307,6 +307,11 @@ struct json_t;
 #define PT_IS_FUNCTION(n) \
         ( (n) && ((n)->node_type == PT_FUNCTION) )
 
+/* An expression DEFAULT, Expression-Derived Literal or residual: its normalized source text is stored and
+ * stands for the DEFAULT.  (n) is a PT_DATA_DEFAULT node. */
+#define PT_HAS_DEFAULT_EXPR(n) \
+        ( (n) && ((n)->node_type == PT_DATA_DEFAULT) && ((n)->info.data_default.expr_text != NULL) )
+
 /* a PT_DATA_DEFAULT node carrying a residual DEFAULT expression: classified
  * STABLE or VOLATILE by pt_check_data_default.  A STABLE residual is
  * evaluated once per statement, a VOLATILE one once per row. */

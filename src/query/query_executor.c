@@ -12837,6 +12837,44 @@ qexec_default_func_pred_is_volatile (const FUNC_PRED_UNPACK_INFO * default_func_
 }
 
 /*
+ * qexec_default_expr_notnull_error () - report the NOT NULL violation of a column whose DEFAULT the row
+ *	supplied for itself, naming the column the way the client evaluation path (populate_defaults) names it.
+ *	The name is read from the class record; without it the violation is still reported, unnamed.
+ *   return: the error code set
+ *   thread_p(in): thread entry
+ *   class_oid(in): class being inserted into
+ *   attr_id(in): the attribute whose DEFAULT is NULL
+ */
+static int
+qexec_default_expr_notnull_error (THREAD_ENTRY * thread_p, const OID * class_oid, int attr_id)
+{
+  HEAP_SCANCACHE scan;
+  RECDES class_record;
+  char *name = NULL;
+  int alloced_name = 0;
+
+  if (class_oid != NULL && !OID_ISNULL (class_oid))
+    {
+      heap_scancache_quick_start_root_hfid (thread_p, &scan);
+      if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) == S_SUCCESS
+	  && or_get_attrname (&class_record, attr_id, &name, &alloced_name) == NO_ERROR && name != NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, name);
+	  if (alloced_name == 1)
+	    {
+	      db_private_free_and_init (thread_p, name);
+	    }
+	  heap_scancache_end (thread_p, &scan);
+	  return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
+	}
+      heap_scancache_end (thread_p, &scan);
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+  return ER_NULL_CONSTRAINT_VIOLATION;
+}
+
+/*
  * qexec_eval_default_expr_func_pred () - evaluate an already-deserialized residual
  *	DEFAULT (Server Evaluation of a Stored DEFAULT Form) and cast to the
  *	attribute domain.  STABLE state (e.g. sys_datetime) comes from
@@ -12852,12 +12890,13 @@ qexec_default_func_pred_is_volatile (const FUNC_PRED_UNPACK_INFO * default_func_
  *   thread_p(in): thread entry
  *   func_pred(in): deserialized predicate (from qexec_prepare_default_expr_stream)
  *   xasl_state(in): XASL state containing value descriptor
+ *   class_oid(in): class being inserted into, to name the column of a NOT NULL violation
  *   attr(in): attribute metadata (for the target domain)
  *   result(out): evaluated value, cast to the attribute domain
  */
 static int
 qexec_eval_default_expr_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pred, XASL_STATE * xasl_state,
-				   OR_ATTRIBUTE * attr, DB_VALUE * result)
+				   const OID * class_oid, OR_ATTRIBUTE * attr, DB_VALUE * result)
 {
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
   int error = NO_ERROR;
@@ -12874,14 +12913,11 @@ qexec_eval_default_expr_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pre
       error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, attr->domain);
     }
 
-  /* a residual DEFAULT that evaluated to NULL for an omitted NOT NULL column is
-   * not covered by cons_pred (built from the explicitly-listed columns only), so
-   * enforce the NOT NULL constraint here.  Only an evaluated NULL can reach this
-   * point: a constant NULL DEFAULT on a NOT NULL column is rejected at DDL. */
+  /* the DEFAULT this row evaluated for itself is NULL, which its NOT NULL column refuses: cons_pred does not
+   * cover the column (that predicate is built from the explicitly-listed ones only) */
   if (error == NO_ERROR && attr->is_notnull && DB_IS_NULL (result))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
-      error = ER_NULL_CONSTRAINT_VIOLATION;
+      error = qexec_default_expr_notnull_error (thread_p, class_oid, attr->id);
     }
 
   return error;
@@ -12972,8 +13008,8 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
 
       /* VOLATILE residual: re-evaluate the cached func_pred so every row gets a distinct value */
       pr_clear_value (insert->vals[k]);
-      error = qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
-						 insert->vals[k]);
+      error = qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state,
+						 &insert->class_oid, attr, insert->vals[k]);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -13266,8 +13302,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  else
 	    {
 	      error =
-		qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
-						   new_val);
+		qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state,
+						   &insert->class_oid, attr, new_val);
 	      if (error != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;

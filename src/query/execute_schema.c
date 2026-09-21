@@ -1020,22 +1020,14 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 
-	  /* a NULL DDL-time value is refused on a PRIMARY KEY or NOT NULL column, as CREATE / ADD / CHANGE refuse
-	   * it; a VOLATILE residual has no DDL-time value to check: every row evaluates its own, under the
-	   * constraints */
-	  if (DB_IS_NULL (&src_val) && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (d)
-	      && (def_attr->flags & (SM_ATTFLAG_NON_NULL | SM_ATTFLAG_PRIMARY_KEY)))
+	  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT, so its NULL is left to
+	   * the rows.  A PRIMARY KEY column is refused by smt_set_attribute_default below (CUBRIDSUS-8035). */
+	  if (DB_IS_NULL (&src_val) && !PT_HAS_DEFAULT_EXPR (d) && (def_attr->flags & SM_ATTFLAG_NON_NULL)
+	      && !(def_attr->flags & SM_ATTFLAG_PRIMARY_KEY))
 	    {
 	      db_value_clear (&src_val);
 	      parser_free_tree (parser, data_type);
-	      if (def_attr->flags & SM_ATTFLAG_PRIMARY_KEY)
-		{
-		  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, attr_name);
-		}
-	      else
-		{
-		  ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, attr_name);
-		}
+	      ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, attr_name);
 	      break;
 	    }
 
@@ -8115,35 +8107,50 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       goto error_exit;
     }
 
-  /* a VOLATILE residual has no DDL-time value to check: every row evaluates its own, under the constraints */
-  if (default_value && DB_IS_NULL (default_value)
-      && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (attribute->info.attr_def.data_default))
+  if (default_value && DB_IS_NULL (default_value))
     {
-      /* don't allow a default value of NULL for NOT NULL constrained columns */
-      if (attribute->info.attr_def.constrain_not_null)
+      if (PT_HAS_DEFAULT_EXPR (attribute->info.attr_def.data_default))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
-	  error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
-	  goto error_exit;
-	}
-
-      /* don't allow a default value of NULL in new PK constraint */
-      for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
-	{
-	  if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
+	  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT, so its NULL is left to
+	   * the rows.  The rows already in the class supply nothing of their own: everything but a VOLATILE
+	   * residual fills them instantly with the one value they share, so it is checked once, for all. */
+	  if (attribute->info.attr_def.constrain_not_null
+	      && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (attribute->info.attr_def.data_default) && ctemplate->op != NULL
+	      && db_is_class (ctemplate->op) > 0 && db_class_has_instance (ctemplate->op))
 	    {
-	      break;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTR_NOT_NULL, 1, attr_name);
+	      error = ER_SM_ATTR_NOT_NULL;
+	      goto error_exit;
 	    }
 	}
-      if (cnstr != NULL)
+      else
 	{
-	  for (pk_attr = cnstr->info.constraint.un.primary_key.attrs; pk_attr != NULL; pk_attr = pk_attr->next)
+	  /* don't allow a default value of NULL for NOT NULL constrained columns */
+	  if (attribute->info.attr_def.constrain_not_null)
 	    {
-	      if (intl_identifier_casecmp (pk_attr->info.name.original, attr_name) == 0)
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
+	      error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
+	      goto error_exit;
+	    }
+
+	  /* don't allow a default value of NULL in new PK constraint */
+	  for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
+	    {
+	      if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_HAVE_PK_DEFAULT_NULL, 1, attr_name);
-		  error = ER_CANNOT_HAVE_PK_DEFAULT_NULL;
-		  goto error_exit;
+		  break;
+		}
+	    }
+	  if (cnstr != NULL)
+	    {
+	      for (pk_attr = cnstr->info.constraint.un.primary_key.attrs; pk_attr != NULL; pk_attr = pk_attr->next)
+		{
+		  if (intl_identifier_casecmp (pk_attr->info.name.original, attr_name) == 0)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_HAVE_PK_DEFAULT_NULL, 1, attr_name);
+		      error = ER_CANNOT_HAVE_PK_DEFAULT_NULL;
+		      goto error_exit;
+		    }
 		}
 	    }
 	}
@@ -14918,8 +14925,9 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
   /* ptr_def is either NULL or pointing to address of def_value */
   assert (ptr_def == NULL || ptr_def == &def_value);
 
-  /* a VOLATILE residual has no DDL-time value to check: every row evaluates its own, under the constraints */
-  if (ptr_def && DB_IS_NULL (ptr_def) && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (attribute->info.attr_def.data_default))
+  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT: a row is checked against its
+   * constraints when it supplies its own value, and a CHANGE fills no row from the snapshot */
+  if (ptr_def && DB_IS_NULL (ptr_def) && !PT_HAS_DEFAULT_EXPR (attribute->info.attr_def.data_default))
     {
       for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
 	{
