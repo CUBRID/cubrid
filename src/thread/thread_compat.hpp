@@ -29,11 +29,24 @@
 // forward definition for THREAD_ENTRY
 #if defined (SERVER_MODE) || (defined (SA_MODE) && defined (__cplusplus))
 #include <thread>
-#ifndef _THREAD_ENTRY_HPP_
 namespace cubthread
 {
   class entry;
+
+  enum class stats_t : bool
+  {
+    on = true,
+    off = false
+  };
+
+  enum class pool_t : std::uint8_t
+  {
+    basic,
+    elastic
+  };
+
 } // namespace cubthread
+#ifndef _THREAD_ENTRY_HPP_
 typedef cubthread::entry THREAD_ENTRY;
 typedef std::thread::id thread_id_t;
 #endif // _THREAD_ENTRY_HPP_

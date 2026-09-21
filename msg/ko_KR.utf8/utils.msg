@@ -225,10 +225,12 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     restart\n\
     info\n\
     status      [-b] [-f] [-q] [-t] [-s <sec>] [-S] [-P] [-m] [-c] [-u] [<expr>]\n\
+    status      -r [-b] [-t] [-s <sec>] [<expr>]\n\
     on          <브로커 이름>\n\
     off         <브로커 이름>\n\
     reset       <브로커 이름>\n\
     acl         <status|reload> [브로커 이름]\n\
+    qr          <status [브로커 이름]> | <add|reload|disable|enable> <브로커 이름> <user@dbname/file>\n\
     getid       -b <브로커 이름> [-f] shard-key\n\
     test        <브로커 이름> [-D <database_name>] [-u <user_name>] [-p <user_password>] [-c <SQL_command>] [-i <input_file>] [-o <output_file>] [-v] [-s]\n
 27 cubrid 유틸리티, 버전 %1$s\n\

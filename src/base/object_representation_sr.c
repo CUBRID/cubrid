@@ -222,9 +222,9 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
   rep->n_fixed = 0;
   rep->n_variable = 0;
   rep->fixed_length = or_rep->fixed_length;
-#if 0				/* reserved for future use */
-  rep->repr_reserved_1 = 0;
-#endif
+  /* a representation built here is only ever written, and the writer emits the current layout; set it anyway so a
+   * reader handed this struct never sees an uninitialized layout (CBRD-27140) */
+  rep->stats_layout = CATALOG_STATS_LAYOUT_V1;
   rep->fixed = NULL;
   rep->variable = NULL;
 
@@ -398,12 +398,12 @@ orc_diskrep_from_record (THREAD_ENTRY * thread_p, RECDES * record)
 		  bt_statsp->pkeys_size = BTREE_STATS_PKEYS_NUM;
 		}
 
-	      bt_statsp->pkeys = (int *) malloc (bt_statsp->pkeys_size * sizeof (int));
+	      bt_statsp->pkeys = (INT64 *) malloc (bt_statsp->pkeys_size * sizeof (INT64));
 	      if (bt_statsp->pkeys == NULL)
 		{
 		  bt_statsp->pkeys_size = 0;
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  bt_statsp->pkeys_size * sizeof (int));
+			  bt_statsp->pkeys_size * sizeof (INT64));
 		  goto error;
 		}
 
@@ -1798,6 +1798,7 @@ or_install_btids_filter_pred (DB_SEQ * pred_seq, OR_INDEX * index)
       return NO_ERROR;
 
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
       /* continue */
       break;
 
@@ -4103,6 +4104,7 @@ or_install_btids_function_info (DB_SEQ * fi_seq, OR_INDEX * index)
       return;
 
     case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
       /* continue */
       break;
 

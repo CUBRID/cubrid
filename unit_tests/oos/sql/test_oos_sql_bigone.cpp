@@ -28,6 +28,12 @@
  * To force the residual record over the limit we use a large FIXED BIT(n) column:
  * BIT (unlike BIT VARYING) is not OOS-eligible, so it cannot be demoted and keeps
  * the inline record large regardless of the OOS column beside it.
+ *
+ * The OOS-eligible column is BIT VARYING, not VARCHAR: CUBRID LZ4-compresses strings,
+ * and a repeated 1000-character string lands at roughly 20 bytes on disk, right next to
+ * the 24-byte OOS inline stub (OID + length + identity stamp, CBRD-26950). A value must be
+ * strictly larger than the stub to be demoted, so only an uncompressed type gives these
+ * tests an exact, stub-size-independent disk size.
  */
 
 #include "test_oos_sql_common.hpp"
@@ -48,18 +54,18 @@ class OosSqlBigone : public ::testing::Test
 };
 
 // Core: a record that still overflows after OOS demotion is rejected.
-// BIT(140000) = 17500 B fixed (cannot be demoted); b (> OR_OOS_INLINE_SIZE = 16 B,
+// BIT(140000) = 17500 B fixed (cannot be demoted); b (1000 B > OR_OOS_INLINE_SIZE = 24 B,
 // variable) is demoted to OOS, setting has_oos. The residual record (~17.5 KB)
 // exceeds heap_Maxslotted_reclength, so the insert is rejected and stores nothing.
 TEST_F (OosSqlBigone, OosColumnWithBigoneRejected)
 {
   int rc;
 
-  rc = exec_sql ("CREATE TABLE t_oos_big (a BIT(140000), b VARCHAR(2000))");
+  rc = exec_sql ("CREATE TABLE t_oos_big (a BIT(140000), b BIT VARYING(16000))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  rc = exec_sql ("INSERT INTO t_oos_big VALUES (B'1', REPEAT('x', 1000))");
+  rc = exec_sql ("INSERT INTO t_oos_big VALUES (B'1', CAST(REPEAT('AA', 1000) AS BIT VARYING))");
   int errid = er_errid ();
   EXPECT_LT (rc, 0);
   EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);
@@ -102,11 +108,11 @@ TEST_F (OosSqlBigone, OosColumnInlineBetween4kAnd16kSucceeds)
 {
   int rc;
 
-  rc = exec_sql ("CREATE TABLE t_oos_big (a BIT(100000), b VARCHAR(2000))");
+  rc = exec_sql ("CREATE TABLE t_oos_big (a BIT(100000), b BIT VARYING(16000))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  rc = exec_sql ("INSERT INTO t_oos_big VALUES (B'1', REPEAT('x', 1000))");
+  rc = exec_sql ("INSERT INTO t_oos_big VALUES (B'1', CAST(REPEAT('AA', 1000) AS BIT VARYING))");
   EXPECT_GE (rc, 0);
   db_commit_transaction ();
 
@@ -119,13 +125,13 @@ TEST_F (OosSqlBigone, OosColumnInlineBetween4kAnd16kSucceeds)
 // UPDATE that grows a row into OOS + bigone is rejected too, exercising the same
 // gate from the update path. The row starts as a plain REC_BIGONE: b is NULL, so
 // it is not OOS-eligible and the large fixed BIT keeps it a (non-OOS) overflow
-// record, which inserts fine. Updating b to a > 16 B value demotes it to OOS,
+// record, which inserts fine. Updating b to a 1000 B (> 24 B) value demotes it to OOS,
 // making the now-has_oos record exceed heap_Maxslotted_reclength.
 TEST_F (OosSqlBigone, UpdateIntoOosBigoneRejected)
 {
   int rc;
 
-  rc = exec_sql ("CREATE TABLE t_oos_big (a BIT(140000), b VARCHAR(2000))");
+  rc = exec_sql ("CREATE TABLE t_oos_big (a BIT(140000), b BIT VARYING(16000))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
@@ -133,7 +139,7 @@ TEST_F (OosSqlBigone, UpdateIntoOosBigoneRejected)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  rc = exec_sql ("UPDATE t_oos_big SET b = REPEAT('x', 1000)");
+  rc = exec_sql ("UPDATE t_oos_big SET b = CAST(REPEAT('AA', 1000) AS BIT VARYING)");
   int errid = er_errid ();
   EXPECT_LT (rc, 0);
   EXPECT_EQ (errid, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE);

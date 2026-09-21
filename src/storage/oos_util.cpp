@@ -29,14 +29,17 @@
 #include "memory_wrapper.hpp"
 
 /*
- * oos_oid_in_vector () - True if oid appears in oids (linear scan; vector is small by design).
+ * oos_refs_contain_head_oid () - True if head_oid is the head OOS OID of some reference in refs (linear
+ *   scan; the vector holds one heap record's parsed OOS inline stubs, so it is small by design). The
+ *   identity stamp is not compared: this answers "does the record still name this address", not "is
+ *   this the same chain".
  */
 bool
-oos_oid_in_vector (const std::vector<OID> &oids, const OID *oid)
+oos_refs_contain_head_oid (const std::vector<oos_chain_ref> &refs, const OID *head_oid)
 {
-  for (const OID &candidate : oids)
+  for (const oos_chain_ref &candidate : refs)
     {
-      if (OID_EQ (&candidate, oid))
+      if (OID_EQ (&candidate.head_oid, head_oid))
 	{
 	  return true;
 	}

@@ -38,6 +38,8 @@
 #else
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #endif
 
 #include "broker_shm.h"

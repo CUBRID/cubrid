@@ -5303,6 +5303,42 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * pgbuf_set_force_latch_wait () - make page latches ignore the transaction's no-wait setting
+ *   return: the old value, to be restored by the caller
+ *   thread_p(in): thread entry
+ *   force(in): new value
+ *
+ * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
+ *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
+ *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
+ *       inconsistency.
+ *       The flag lives in the thread entry rather than in LOG_TDES because parallel scan workers share their
+ *       parent's tran_index: a save/restore on tdes->wait_msecs would race between sibling workers and could
+ *       drop the user's lock_timeout.
+ */
+bool
+pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force)
+{
+#if defined (SERVER_MODE)
+  bool old_val;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+      assert (thread_p != NULL);
+    }
+
+  old_val = thread_p->force_latch_wait;
+  thread_p->force_latch_wait = force;
+
+  return old_val;
+#else /* not SERVER_MODE = SA_MODE */
+  /* single threaded, no latch contention */
+  return false;
+#endif /* not SERVER_MODE */
+}
+
+/*
  * pgbuf_set_lsa_as_temporary () - The log sequence address of the page is set to temporary lsa address
  *   return: void
  *   pgptr(in): Pointer to page
@@ -16850,17 +16886,35 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
+  int wait_msecs;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
+  wait_msecs = (tdes != NULL) ? tdes->wait_msecs : LK_ZERO_WAIT;
+
+#if defined (SERVER_MODE)
+  /* The two disk manager fixes must not inherit the transaction's no-wait setting; see
+   * pgbuf_set_force_latch_wait ().
+   * Both no-wait values are in scope although they have different owners - LK_ZERO_WAIT carries the user's
+   * lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. Every check fed by this function tests
+   * that same pair - the demotion in pgbuf_fix_internal (), the sleep budget in pgbuf_timed_sleep () and the
+   * early give-up in pgbuf_ordered_fix () - and a fix that must not be refused has to clear all of them.
+   * Lift only those two: a finite or an already infinite policy is left as the transaction set it, because
+   * pgbuf_timed_sleep () classifies a watchdog expiry by this very value and would otherwise report
+   * ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED. Resolve NULL the way pgbuf_set_force_latch_wait ()
+   * does, so the flag is read from the entry it was written to. */
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
-      return tdes->wait_msecs;
+      THREAD_ENTRY *flag_owner_p = (thread_p != NULL) ? thread_p : thread_get_thread_entry_info ();
+
+      if (flag_owner_p != NULL && flag_owner_p->force_latch_wait)
+	{
+	  return LK_INFINITE_WAIT;
+	}
     }
-  else
-    {
-      return 0;
-    }
+#endif /* SERVER_MODE */
+
+  return wait_msecs;
 }
 
 /*

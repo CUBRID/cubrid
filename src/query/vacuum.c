@@ -711,7 +711,8 @@ static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfi
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+			       VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
 					    bool update_best_space_stat, bool unlatch_page);
@@ -943,7 +944,7 @@ static cubthread::daemon *vacuum_Master_daemon = NULL;                       // 
 static vacuum_master_entry_manager *vacuum_Master_entry_manager = NULL;  // entry manager
 
 // vacuum worker globals
-static cubthread::stats_worker_pool_type *vacuum_Worker_threads = NULL;   // thread pool
+static worker_pool_type<cubthread::stats_t::on> *vacuum_Worker_threads = NULL;   // thread pool
 static vacuum_worker_entry_manager *vacuum_Worker_entry_manager = NULL;	  // entry manager
 
 /* *INDENT-ON* */
@@ -1362,7 +1363,7 @@ vacuum_boot (THREAD_ENTRY * thread_p)
     || flag<int>::is_flag_set (prm_get_integer_value (PRM_ID_ER_LOG_VACUUM), VACUUM_ER_LOG_WORKER);
 
   // create thread pool
-  vacuum_Worker_threads = thread_create_stats_worker_pool (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), 1, "vacuum", *vacuum_Worker_entry_manager);
+  vacuum_Worker_threads = thread_create_worker_pool<cubthread::stats_t::on> (prm_get_integer_value (PRM_ID_VACUUM_WORKER_COUNT), 1, "vacuum", *vacuum_Worker_entry_manager);
   // m_log = log_vacuum_worker_pool
 
   assert (vacuum_Worker_threads != NULL);
@@ -1607,6 +1608,8 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   int error_code = NO_ERROR;	/* Error code. */
   int obj_index = 0;		/* Index used to iterate the object array. */
 
+  VACUUM_OOS_EMPTIED_PAGES oos_emptied_pages;
+
   /* Assert expected arguments. */
   assert (heap_objects != NULL);
   assert (n_heap_objects > 0);
@@ -1768,7 +1771,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.can_vacuum == VACUUM_RECORD_REMOVE)
 	    {
 	      /* Record has been deleted and it can be removed. */
-	      error_code = vacuum_heap_record (thread_p, &helper);
+	      error_code = vacuum_heap_record (thread_p, &helper, &oos_emptied_pages);
 	    }
 	  else if (helper.can_vacuum == VACUUM_RECORD_DELETE_INSID_PREV_VER)
 	    {
@@ -1782,6 +1785,11 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  if (helper.forward_page != NULL)
 	    {
 	      pgbuf_unfix_and_init (thread_p, helper.forward_page);
+	    }
+	  if (error_code == ER_INTERRUPTED)
+	    {
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
 	    }
 	  if (error_code != NO_ERROR)
 	    {
@@ -1924,6 +1932,18 @@ end:
   if (helper.home_page != NULL)
     {
       vacuum_heap_page_log_and_reset (thread_p, &helper, true, true);
+    }
+
+  /* Reclaim only after the home page is unfixed: the reclaim takes the OOS stats header WRITE
+   * latch and one dealloc sysop per page, which must not extend the home page latch hold. */
+  if (error_code == NO_ERROR && !oos_emptied_pages.empty ())
+    {
+      assert (!VFID_ISNULL (&helper.oos_vfid));
+      error_code = vacuum_oos_reclaim_empty_pages (thread_p, &helper.oos_vfid, &oos_emptied_pages);
+      if (error_code != NO_ERROR)
+	{
+	  vacuum_check_shutdown_interruption (thread_p, error_code);
+	}
     }
 
   return error_code;
@@ -2397,15 +2417,19 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  * return	 : Error code.
  * thread_p (in) : Thread entry.
  * helper (in)	 : Vacuum heap helper.
+ * oos_emptied_pages_out (out) : OOS pages the deletes emptied are appended, each once; the caller
+ *				 reclaims them AFTER unfixing the home page, never here.
  */
 static int
-vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
+		    VACUUM_OOS_EMPTIED_PAGES * oos_emptied_pages_out)
 {
   /* Assert expected arguments. */
   assert (helper != NULL);
   assert (helper->can_vacuum == VACUUM_RECORD_REMOVE);
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
+  assert (oos_emptied_pages_out != NULL);
 
   /* Does removing this record touch more than the home page?  Two independent axes decide:
    *
@@ -2428,8 +2452,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
    * cannot leave it half-done (heap slot vacuumed but its OOS chunks still referenced, or vice versa).
    * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
    * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
-   * an otherwise single-page REC_HOME into the sysop path.  See
-   * docs/adr/0001-synchronous-oos-reclaim-in-vacuum-sysop.md. */
+   * an otherwise single-page REC_HOME into the sysop path. */
   bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));
@@ -2497,7 +2520,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       /* Delete OOS records (if any) before committing the sysop. */
       if (has_oos)
 	{
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record);
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
+							     oos_emptied_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2556,7 +2580,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record);
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
+							     oos_emptied_pages_out);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -3230,14 +3255,14 @@ vacuum_master_task::is_cursor_entry_ready_to_vacuum () const
       return false;
     }
 
-  if (m_cursor.get_current_entry ().start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.pageid)
+  if (m_cursor.get_current_entry ().start_lsa.pageid + 1 >= log_Gl.append.prev_lsa.load ().pageid)
     {
       // too close to end of log; let more log be appended before trying to vacuum the block
       vacuum_er_log (VACUUM_ER_LOG_JOBS,
                        "Cannot generate job for " VACUUM_LOG_DATA_ENTRY_MSG ("entry") ". "
                        "log_Gl.append.prev_lsa.pageid = %d.",
                        VACUUM_LOG_DATA_ENTRY_AS_ARGS (&m_cursor.get_current_entry ()),
-                       (long long int) log_Gl.append.prev_lsa.pageid);
+                       (long long int) log_Gl.append.prev_lsa.load ().pageid);
       return false;
     }
 
@@ -3550,7 +3575,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   *   - Other heap ops log no undo image, so the undo_data_size check above already skips them. */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
-	      vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	      error_code =
+		vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	      if (error_code != NO_ERROR)
+		{
+		  vacuum_check_shutdown_interruption (thread_p, error_code);
+		  goto end;
+		}
 	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
@@ -3689,7 +3720,13 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
 	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
 	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
-	  vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  error_code =
+	    vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
+	  if (error_code != NO_ERROR)
+	    {
+	      vacuum_check_shutdown_interruption (thread_p, error_code);
+	      goto end;
+	    }
 	}
       else
 	{
@@ -4397,9 +4434,11 @@ vacuum_data_load_and_recover (THREAD_ENTRY * thread_p)
 	{
 	  // we can be here if log has not yet passed first block. one case may be soon after copydb.
 	  assert (log_blockid == VACUUM_NULL_LOG_BLOCKID);
+	  const LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
+
 	  vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA | VACUUM_ER_LOG_RECOVERY,
 			 "vacuum_data_load_and_recover: do not update last_blockid; prev_lsa = %lld|%d",
-			 LSA_AS_ARGS (&log_Gl.append.prev_lsa));
+			 (long long int) prev_lsa.pageid, (int) prev_lsa.offset);
 	}
       else if (LSA_ISNULL (&vacuum_Data.recovery_lsa) && LSA_ISNULL (&log_Gl.hdr.mvcc_op_log_lsa))
 	{
@@ -7905,7 +7944,7 @@ vacuum_sa_reflect_last_blockid (THREAD_ENTRY * thread_p)
 
   vacuum_er_log (VACUUM_ER_LOG_VACUUM_DATA,
 		 "vacuum_sa_reflect_last_blockid: last_blockid=%lld, append_prev_pageid=%d\n",
-		 (long long int) last_blockid, (int) log_Gl.append.prev_lsa.pageid);
+		 (long long int) last_blockid, (int) log_Gl.append.prev_lsa.load ().pageid);
   if (last_blockid == VACUUM_NULL_LOG_BLOCKID)
     {
       vacuum_data_unload_first_and_last_page (thread_p);

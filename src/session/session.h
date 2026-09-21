@@ -93,6 +93,7 @@ extern int session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_sessi
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
+extern void session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p);
 
 extern void session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 extern void session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);

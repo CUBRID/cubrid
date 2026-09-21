@@ -113,6 +113,7 @@ extern int expecting_pl_lang_spec;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
+static void pt_fill_sp_option_container(PARSER_CONTEXT *parser, int buffer_pos, container_3 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
 %{
@@ -314,6 +315,13 @@ typedef enum
   CONN_INFO_COMMENT,
   CONN_INFO_OWNER,
 } CONN_INFO_DEFINE;
+
+typedef enum
+{
+  SP_OPTION_AUTHID = 0,
+  SP_OPTION_DETERMINISTIC,
+  SP_OPTION_PARALLEL_ENABLE,
+} SP_OPTION_DEFINE;
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
@@ -651,7 +659,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> show_type_arg1_opt
 %type <number> show_type_arg_named
 %type <number> show_type_id
+%type <number> show_heap_type_id
 %type <number> show_type_id_dot_id
+%type <number> opt_show_scan_mode
 %type <number> kill_type
 %type <number> procedure_or_function
 %type <boolean> opt_analytic_from_last
@@ -662,6 +672,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> opt_index_with_clause_no_online
 %type <number> opt_authid
 %type <number> opt_deterministic
+%type <c3> opt_sp_option_list
+%type <c3> sp_option_list
+%type <c2> sp_option_item
 /*}}}*/
 
 /* define rule type (node) */
@@ -1099,7 +1112,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
 %type <c2> index_with_item_list
-%type <c2> opt_authid_and_deterministic
 
 /*}}}*/
 
@@ -1517,6 +1529,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ADDDATE
 %token <cptr> AES
 %token <cptr> ANALYZE
+%token <cptr> APPROX
 %token <cptr> ARCHIVE
 %token <cptr> ARIA
 %token <cptr> AUTHID
@@ -1556,6 +1569,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> EMPTY
 %token <cptr> ENCRYPT
 %token <cptr> ERROR_
+%token <cptr> EXACT
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
@@ -1655,6 +1669,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> OWNER
 %token <cptr> PAGE
 %token <cptr> PARALLEL
+%token <cptr> PARALLEL_ENABLE
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
 %token <cptr> PASSWORD
@@ -2968,16 +2983,11 @@ create_stmt
 		}
 	  procedure_or_function_name_without_dot        /* 5 */
 	  opt_sp_param_list	                        /* 6 */
-          opt_authid_and_deterministic                  /* 7 */
+          opt_sp_option_list                            /* 7 */
 	  is_or_as pl_language_spec		        /* 8, 9 */
 	  opt_comment_spec				/* 10 */
 		{ pop_msg(); }
 		{{
-			if (TO_NUMBER (CONTAINER_AT_1 ($7)) != 0)
-                          {
-                            push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
-                          }
-
                         PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
@@ -3009,6 +3019,18 @@ create_stmt
                               {
                                 node->info.sp.auth_id = PT_AUTHID_OWNER;
                               }
+                            if (TO_NUMBER (CONTAINER_AT_1 ($7)) != 0)
+                              {
+                                /* DETERMINISTIC | NOT DETERMINISTIC is allowed only for functions */
+                                PT_ERROR (this_parser, node, "DETERMINISTIC can be specified only for FUNCTION");
+                              }
+                            if (((int) TO_NUMBER (CONTAINER_AT_2 ($7)) & (0x01 << SP_OPTION_PARALLEL_ENABLE)) != 0)
+                              {
+                                /* PARALLEL_ENABLE is allowed only for functions: a procedure never appears in a
+                                 * query expression, so the declaration could not take effect anywhere */
+                                PT_ERROR (this_parser, node, "PARALLEL_ENABLE can be specified only for FUNCTION");
+                              }
+                            node->info.sp.parallel_enable = 0;
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.ret_data_type = NULL;
@@ -3031,7 +3053,7 @@ create_stmt
 	  procedure_or_function_name_without_dot        /* 5 */
 	  opt_sp_param_list	                        /* 6 */
 	  RETURN sp_return_type		                /* 7, 8 */
-          opt_authid_and_deterministic                  /* 9 */
+          opt_sp_option_list                            /* 9 */
 	  is_or_as pl_language_spec		        /* 10, 11 */
 	  opt_comment_spec				/* 12 */
 		{ pop_msg(); }
@@ -3073,6 +3095,8 @@ create_stmt
                               {
                                 node->info.sp.dtrm_type = PT_NOT_DETERMINISTIC;
                               }
+                            node->info.sp.parallel_enable =
+                              ((int) TO_NUMBER (CONTAINER_AT_2 ($9)) & (0x01 << SP_OPTION_PARALLEL_ENABLE)) ? 1 : 0;
 			    node->info.sp.param_list = $6;
 
                             ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
@@ -7386,6 +7410,26 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| SHOW show_heap_type_id OF class_name opt_show_scan_mode
+		{{
+			int type = $2;
+			PT_NODE *node, *args = $4;
+			PT_NODE *scan_mode = pt_make_integer_value (this_parser, $5);
+
+			if (scan_mode == NULL)
+			  {
+			    PT_INTERNAL_ERROR (this_parser, "allocate new node");
+			  }
+
+			/* pt_check_table_in_show_heap () inserts the partition type BEFORE the scan mode,
+			 * so the scan mode always stays last */
+			args->next = scan_mode;
+
+			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| SHOW show_type_id_dot_id OF class_name DOT identifier
 		{{
 			int type = $2;
@@ -7538,7 +7582,7 @@ show_type_arg_named
 		}}
 	;
 
-show_type_id
+show_heap_type_id
 	: HEAP HEADER
 		{{
 			$$ = SHOWSTMT_HEAP_HEADER;
@@ -7555,7 +7599,10 @@ show_type_id
 		{{
 			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
 		}}
-	| HEAP OOS
+	;
+
+show_type_id
+	: HEAP OOS
 		{{
 			$$ = SHOWSTMT_HEAP_OOS;
 		}}
@@ -7570,6 +7617,21 @@ show_type_id
 	| ALL INDEXES CAPACITY
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_CAPACITY;
+		}}
+	;
+
+opt_show_scan_mode
+	: /* empty */
+		{{
+			$$ = SHOWSTMT_SCAN_EXACT;
+		}}
+	| EXACT
+		{{
+			$$ = SHOWSTMT_SCAN_EXACT;
+		}}
+	| APPROX
+		{{
+			$$ = SHOWSTMT_SCAN_APPROX;
 		}}
 	;
 
@@ -11713,37 +11775,56 @@ opt_deterministic
                 }}
         ;
 
-opt_authid_and_deterministic
+opt_sp_option_list
         : /* empty */
 		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, NULL, NULL);
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, NULL, NULL, FROM_NUMBER (0));
 			$$ = ctn;
 		}}
-        | opt_authid opt_deterministic
+        | sp_option_list
 		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), FROM_NUMBER($2));
-			$$ = ctn;
+			$$ = $1;
 		}}
-        | opt_deterministic opt_authid
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($2), FROM_NUMBER($1));
-			$$ = ctn;
-		}}
-        | opt_authid
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), NULL);
-			$$ = ctn;
-		}}
+        ;
+
+sp_option_list
+        : sp_option_list sp_option_item
+          {{
+                container_3 ctn = $1;
+
+                pt_fill_sp_option_container (this_parser, @$.buffer_pos, &ctn, $2);
+		$$ = ctn;
+           }}
+        | sp_option_item
+          {{
+                container_3 ctn;
+                SET_CONTAINER_3 (ctn, NULL, NULL, FROM_NUMBER (0));
+
+                pt_fill_sp_option_container (this_parser, @$.buffer_pos, &ctn, $1);
+		$$ = ctn;
+           }}
+        ;
+
+sp_option_item
+        : opt_authid
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_AUTHID), FROM_NUMBER ($1));
+                $$ = ctn;
+          }}
         | opt_deterministic
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER($1));
-			$$ = ctn;
-		}}
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_DETERMINISTIC), FROM_NUMBER ($1));
+                $$ = ctn;
+          }}
+        | PARALLEL_ENABLE
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_PARALLEL_ENABLE), FROM_NUMBER (1));
+                $$ = ctn;
+          }}
         ;
 
 is_or_as
@@ -20629,6 +20710,7 @@ identifier
 	| ADDDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| AES                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ANALYZE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| APPROX                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ARCHIVE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ARIA                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| AUTHID                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20670,6 +20752,7 @@ identifier
 	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| EXACT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FORCE_OUTLINE          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20763,6 +20846,7 @@ identifier
 	| OWNER                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PAGE                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARALLEL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARALLEL_ENABLE        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARTITIONING           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARTITIONS             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PASSWORD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -25942,6 +26026,50 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
     unsigned int set_bits = (unsigned int)TO_NUMBER(CONTAINER_AT_9(*ctn));
     set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
     ctn->c10 = FROM_NUMBER(set_bits);
+}
+
+static void
+pt_fill_sp_option_container(PARSER_CONTEXT *parser,  int buffer_pos, container_3 *ctn, container_2 info)
+{
+  /* container order
+  * 1: AUTHID
+  * 2: DETERMINISTIC
+  * 3: bits
+  */
+   PT_NODE* node = pt_top(parser);
+   PARSER_SAVE_ERR_CONTEXT (node, buffer_pos)
+
+   unsigned int set_bits = (unsigned int)TO_NUMBER(CONTAINER_AT_2(*ctn));
+
+   switch(TO_NUMBER (CONTAINER_AT_0(info)))
+     {
+        case SP_OPTION_AUTHID:
+                if (set_bits & (0x01 << SP_OPTION_AUTHID))
+                {
+                    PT_ERROR (parser, node, "AUTHID option was duplicated.");
+                }
+                ctn->c1 = CONTAINER_AT_1(info);
+                break;
+        case SP_OPTION_DETERMINISTIC:
+                if (set_bits & (0x01 << SP_OPTION_DETERMINISTIC))
+                {
+                    PT_ERROR (parser, node, "DETERMINISTIC option was duplicated.");
+                }
+                ctn->c2 = CONTAINER_AT_1(info);
+                break;
+        case SP_OPTION_PARALLEL_ENABLE:
+                if (set_bits & (0x01 << SP_OPTION_PARALLEL_ENABLE))
+                {
+                    PT_ERROR (parser, node, "PARALLEL_ENABLE option was duplicated.");
+                }
+                break;
+        default:
+                assert(0);
+                break;
+    }
+
+    set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
+    ctn->c3 = FROM_NUMBER(set_bits);
 }
 
 static bool

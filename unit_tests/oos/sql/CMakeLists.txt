@@ -22,13 +22,16 @@ project(test_oos_sql_project)
 # =============================================================================
 file(GLOB TEST_SQL_SOURCES test_oos_sql_*.cpp)
 
+# The parent directory holds helpers shared with the storage-level OOS tests (test_oos_error_log.hpp).
+get_filename_component(TEST_OOS_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
+
 foreach(src ${TEST_SQL_SOURCES})
   get_filename_component(test_name ${src} NAME_WE)
 
   add_executable(${test_name} ${src})
   target_link_libraries(${test_name} PRIVATE ${EP_LIBS} cubridsa GTest::gtest)
   target_compile_definitions(${test_name} PRIVATE ${COMMON_DEFS} SA_MODE)
-  target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR})
+  target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR} ${TEST_OOS_DIR})
 endforeach()
 
 # Register SA_MODE tests
@@ -53,4 +56,14 @@ set_tests_properties(
   test_oos_sql_show
   test_oos_sql_visible_version
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
+)
+
+# OOS values survive a crash through their persisted inline-stub identity (CBRD-26950). Owns
+# oosrecoverydb (fixture in the parent directory) because it kills a process that has the database
+# open, and boots per test rather than once per binary. Multi-chunk loads plus two or three boots,
+# one of them through the redo phase, need more headroom than the other SQL binaries.
+add_test(NAME test_oos_sql_crash_recovery COMMAND test_oos_sql_crash_recovery)
+set_tests_properties(
+  test_oos_sql_crash_recovery
+  PROPERTIES FIXTURES_REQUIRED OOS_RECOVERY_DB RUN_SERIAL TRUE TIMEOUT 180
 )
