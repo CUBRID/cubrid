@@ -282,7 +282,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
 
           emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
 
@@ -507,7 +507,7 @@ jobs:
           IN_LIMIT: ${{ inputs.limit }}
           IN_TT: ${{ inputs.testtools }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
 
           BRANCH=develop
           WINDOW_HOURS=48 # one missed batch heals on the next night
@@ -602,7 +602,7 @@ jobs:
           PR: ${{ needs.gate.outputs.pr }}
           SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
@@ -692,7 +692,7 @@ jobs:
           # Inputs via env, never interpolated into the body.
           INPUT_SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           echo "=== identity ==="
           echo "job pod    : $(hostname)"
           echo "runner     : ${RUNNER_NAME:-(none)}"
@@ -736,7 +736,7 @@ jobs:
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # No `step halt` in GHA: emit an output and gate later steps on it.
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
           # Named reuse, not mode: this job already calls the matrix leg MODE.
@@ -756,7 +756,7 @@ jobs:
       - name: 2. Source, the node copy with only the delta fetched
         if: steps.reuse.outputs.reuse != 'reused'
         run: |
-          set -eo pipefail
+          set -euo pipefail
           cd "$GITHUB_WORKSPACE"
 
           # The seed is already checked out, so the image's fetch_source skips its
@@ -782,7 +782,7 @@ jobs:
       - name: 3. Build
         if: steps.reuse.outputs.reuse != 'reused'
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # One level up from the source on purpose: run_build finds cubrid/build.sh
           # from here and writes build.log to cwd, which is where step 5 reads it.
           cd "$GITHUB_WORKSPACE"
@@ -813,7 +813,7 @@ jobs:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
           REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
 
           # The reuse decision is 8 to 40 minutes old by now, and a duplicate run on
@@ -922,7 +922,7 @@ jobs:
       - name: 5. WAN and build log
         if: always()
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [ -f "$RUNNER_TEMP/rx0" ]; then
             rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
             echo "WAN received by this job: $(( (rx1 - $(cat "$RUNNER_TEMP/rx0")) / 1048576 )) MB"
@@ -959,7 +959,7 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
@@ -1053,7 +1053,7 @@ jobs:
           IN_SAB: ${{ needs.gate.outputs.sabotage }}
           IN_RERUN: ${{ needs.gate.outputs.rerun_from }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # Inputs arrive through env, never interpolated into the script body.
           # Empty is how a request asks for the suite's own default, which only the
           # table below knows, so the split resolves it and this only bounds it.
@@ -1084,7 +1084,7 @@ jobs:
         env:
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug"
 
           # The sentinel marks a finished tree; directory existence passes a partial one.
@@ -1133,14 +1133,11 @@ jobs:
           INPUT_TT: ${{ needs.gate.outputs.testtools }}
           TC_UNTIL: ${{ needs.gate.outputs.tc_until }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
 
-          # The branch may not exist, e.g. a PR opened before the sync bot ran, and
-          # then develop is right. A network error is not that. ls-remote exits 2 for
-          # "no such ref" and non-zero otherwise, so retry like the baseline's
-          # resolve_sha (config.yml 168-179) and only fall back on a real absence --
-          # a transient failure silently testing develop's cases misattributes results.
+          # ls-remote exits 2 only for "no such ref", so the retries keep a network
+          # blip from reading as a branch that was never pushed.
           probe_branch() {
             local i rc
             for i in 1 2 3 4 5; do
@@ -1240,8 +1237,11 @@ jobs:
             case "$probe_rc" in
               0) ;;
               2)
-                echo "::warning::$repo has no $TC_BRANCH, falling back to develop"
-                TC_BRANCH=develop ;;
+                echo "::error::$repo has no $TC_BRANCH"
+                echo "  TC Branch Sync creates tc/pr-<N> when the pull request opens, so check"
+                echo "  that run, or push the branch. Not falling back to develop: the verdict"
+                echo "  would be against cases the requester never asked for."
+                exit 1 ;;
               *)
                 echo "::error::could not reach $TC_REPO_URL after 5 attempts. Not falling back"
                 echo "  to develop: the run would report failures against the wrong cases."
@@ -1298,7 +1298,7 @@ jobs:
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
 
           rundir="$CI_ROOT/runs/${GITHUB_RUN_ID}"
@@ -1661,7 +1661,7 @@ jobs:
           SHA: ${{ needs.gate.outputs.sha }}
           BRID: ${{ steps.build.outputs.build_run_id }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           {
             echo "## Split"
             echo
@@ -1715,7 +1715,7 @@ jobs:
       - name: Resolve the suite
         id: suite
         run: |
-          set -eo pipefail
+          set -euo pipefail
           attr() { jq -r --arg s "$SUITE" --arg k "$1" '.[$s][$k] // ""' <<<"$SUITES"; }
           repo=$(attr tc_repo)
           # Every step below reads these and never the table, the way the entrypoint's
@@ -1742,7 +1742,7 @@ jobs:
 
       - name: Check the pod template assumptions
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # plan does not run again under "Re-run failed jobs", so nothing has made
           # this attempt's stamps directory.
           mkdir -p "$(dirname "$STAMP")"
@@ -1769,7 +1769,7 @@ jobs:
       - name: Take my share (guard 2 of 3)
         id: mine
         run: |
-          set -eo pipefail
+          set -euo pipefail
           f="$PLAN_DIR/shards/${IDX}.list"
 
           # Guard 2 of 3. plan split everything, so an empty share is a bug.
@@ -1799,7 +1799,7 @@ jobs:
           SHA: ${{ needs.plan.outputs.sha }}
           WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # The whole tree, from the node copy: this shard deletes what is not its
           # share below. Nothing crosses the network, and the write layer is tmpfs.
           [ -d "$TC_SEED/.git" ] || {
@@ -1857,7 +1857,7 @@ jobs:
 
       - name: CTP, mounted from the node copy
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # The same copy plan read, on this node's disk. Nothing to publish and
           # nothing to copy: the mount is the delivery. One CTP serves every suite.
           [ -d "$CTP_SEED/.git" ] || {
@@ -1905,7 +1905,7 @@ jobs:
           WANT_CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
           CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # CTP must be mounted first: entrypoint needs .git to fetch instead of clone.
           [ -d "$WORKDIR/cubrid-testtools/.git" ] || {
             echo "::error::CTP is missing. The steps are in the wrong order"; exit 1; }
@@ -1967,7 +1967,7 @@ jobs:
           MINE_N: ${{ steps.mine.outputs.n }}
           MINE_UNITS: ${{ steps.mine.outputs.units }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           f="$PLAN_DIR/shards/${IDX}.list"
 
           # The same rule plan counted by, so "cases left" and "expected" are
@@ -2020,7 +2020,7 @@ jobs:
           # The only CircleCI variable CTP reads. Without it every shard logs as `local`.
           CIRCLE_NODE_INDEX: ${{ matrix.i }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           ulimit -c 10485760
           set +e
           ( cd "$CTP_HOME" && HOME="$WORKDIR" ./bin/ctp.sh "$CTP_CMD" -c "$CTP_HOME/$CTP_CONF" )
@@ -2036,7 +2036,7 @@ jobs:
           MINE_N: ${{ steps.mine.outputs.n }}
           CTP_RC: ${{ steps.ctp.outputs.rc }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           out="$SHARD_DIR"
           # The verdict file stays at the shard root next to build.read and shard.done:
           # it is this shard's control record, not a result anyone else reads.
@@ -2151,7 +2151,7 @@ jobs:
         env:
           MINE_N: ${{ steps.mine.outputs.n }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           out="$SHARD_DIR"
           st="$out/$VERDICT_SRC"
           [ -f "$st" ] || { echo "::error::no CTP result file ($VERDICT_SRC): the tests did not run"; exit 1; }
@@ -2223,7 +2223,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           PLAN_RESULT: ${{ needs.plan.result }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [ -z "$RUNDIR" ] || [ ! -d "$RUNDIR" ]; then
             # Say which stage broke, not just that something did.
             if [ "$BUILD_RESULT" != 'success' ]; then
@@ -2237,7 +2237,7 @@ jobs:
 
       - name: Update timings for the next split
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # feedback.log format: [OK]:  <case path> <milliseconds> EnvId=...
           # Only the shell runner writes one, so this is a no-op for the others.
           : > /tmp/new_timings.tsv
@@ -2288,7 +2288,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           now=$(date -u +%s)
           mkdir -p "$STAMPS"
           printf 'start\t%s\n' "$now" > "$STAMPS/collect.tsv"
@@ -2381,7 +2381,7 @@ jobs:
           C_PLAN: ${{ steps.clock.outputs.plan }}
           C_TOTAL: ${{ steps.clock.outputs.total }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
           rc=0
           rm -rf /tmp/failed-logs; mkdir -p /tmp/failed-logs
@@ -2683,7 +2683,7 @@ jobs:
                 echo "| shard | case |"
                 echo "|---|---|"
                 head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
-                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is \`$d/collect/failed.list\`_"
+                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is [\`failed.list\`]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/collect/failed.list)._"
                 echo
               else
                 echo "### No failed cases"
@@ -2810,7 +2810,7 @@ jobs:
       - name: The log of each failed case
         if: always()
         run: |
-          set -eo pipefail
+          set -euo pipefail
           for suite in $SUITES_RUN; do
             list="/tmp/failed.$suite.list"
             [ -f "$list" ] || continue
@@ -2921,7 +2921,7 @@ jobs:
           # the others' contexts. Empty means it never reached a verdict for this one.
           VERDICT: ${{ needs.collect.outputs[format('verdict_{0}', matrix.suite)] }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
