@@ -395,7 +395,9 @@ namespace parallel_query
 			  {
 			    break;	/* reached the bottom of the group */
 			  }
-			PXMJ_NEXT_SCAN (inner, true);
+			/* PVALS too: this walk can cross a page, and crossing unfixes the page the previous peek
+			 * pointers point into -- that frame becomes reusable immediately. */
+			PXMJ_NEXT_SCAN_PVALS (inner, true);
 		      }
 		  }
 
