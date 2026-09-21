@@ -187,7 +187,7 @@ static int rv;
 
 #define LOG_APPEND_SETDIRTY_ADD_ALIGN(thread_p, add) \
   do { \
-    log_Gl.hdr.append_lsa.advance (add); \
+    log_Gl.hdr.append_lsa.advance_offset (add); \
     LOG_APPEND_ALIGN ((thread_p), LOG_SET_DIRTY); \
   } while (0)
 
@@ -1192,13 +1192,15 @@ logpb_dump_information (FILE * out_fp)
   const LOG_LSA append_lsa = log_Gl.hdr.append_lsa;
   const LOG_LSA prev_lsa = log_Gl.append.prev_lsa;
 
+  const LOG_LSA prior_lsa = log_Gl.prior_info.prior_lsa;
+  const LOG_LSA prior_prev_lsa = log_Gl.prior_info.prev_lsa;
+
   fprintf (out_fp, " Next IO_LSA = %lld|%d, Current append LSA = %lld|%d, Prev append LSA = %lld|%d\n"
 	   " Prior LSA = %lld|%d, Prev prior LSA = %lld|%d\n\n",
 	   (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset,
 	   (long long int) append_lsa.pageid, (int) append_lsa.offset,
 	   (long long int) prev_lsa.pageid, (int) prev_lsa.offset,
-	   (long long int) log_Gl.prior_info.prior_lsa.pageid, (int) log_Gl.prior_info.prior_lsa.offset,
-	   (long long int) log_Gl.prior_info.prev_lsa.pageid, (int) log_Gl.prior_info.prev_lsa.offset);
+	   LSA_AS_ARGS (&prior_lsa), LSA_AS_ARGS (&prior_prev_lsa));
 
   if (log_Gl.append.log_pgptr == NULL)
     {
@@ -1477,7 +1479,7 @@ logpb_fetch_header (THREAD_ENTRY * thread_p, LOG_HEADER * hdr)
   logpb_fetch_header_with_buffer (thread_p, hdr, log_Gl.loghdr_pgptr);
 
   /* sync append_lsa to prior_lsa */
-  log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
+  log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
 }
 
 /*
@@ -1512,7 +1514,7 @@ logpb_fetch_header_with_buffer (THREAD_ENTRY * thread_p, LOG_HEADER * hdr, LOG_P
     }
 
   log_hdr = (LOG_HEADER *) (log_pgptr->area);
-  *hdr = *log_hdr;
+  memcpy (hdr, log_hdr, sizeof (*hdr));
 
   assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
   assert (log_pgptr->hdr.offset == NULL_OFFSET);
@@ -1574,7 +1576,7 @@ logpb_fetch_header_from_active_log (THREAD_ENTRY * thread_p, const char *db_full
     }
 
   log_hdr = (LOG_HEADER *) (log_pgptr->area);
-  *hdr = *log_hdr;
+  memcpy (hdr, log_hdr, sizeof (*hdr));
 
   /* keep active log mounted : this prevents other process to access/change DB parameters */
 
@@ -1635,7 +1637,7 @@ logpb_peek_header_of_active_log_from_backup (THREAD_ENTRY * thread_p, const char
     }
 
   log_hdr = (LOG_HEADER *) (log_pgptr->area);
-  *hdr = *log_hdr;
+  memcpy (hdr, log_hdr, sizeof (*hdr));
 
   if (log_pgptr->hdr.logical_pageid != LOGPB_HEADER_PAGE_ID || log_pgptr->hdr.offset != NULL_OFFSET)
     {
@@ -1718,7 +1720,7 @@ logpb_flush_header (THREAD_ENTRY * thread_p)
     }
 
   log_hdr = (LOG_HEADER *) (log_Gl.loghdr_pgptr->area);
-  *log_hdr = log_Gl.hdr;
+  memcpy (log_hdr, &log_Gl.hdr, sizeof (*log_hdr));
 
   log_Gl.loghdr_pgptr->hdr.logical_pageid = LOGPB_HEADER_PAGE_ID;
   log_Gl.loghdr_pgptr->hdr.offset = NULL_OFFSET;
@@ -2681,7 +2683,7 @@ logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty)
 
   log_Gl.append.log_pgptr = NULL;
 
-  log_Gl.hdr.append_lsa.store (LOG_LSA (log_Gl.hdr.append_lsa.load ().pageid + 1, 0));
+  log_Gl.hdr.append_lsa.advance_page ();
 
   /*
    * Is the next logical page to archive, currently located at the physical
@@ -4408,13 +4410,13 @@ logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *data)
 	  ptr += copy_length;
 	  data += copy_length;
 	  length -= copy_length;
-	  log_Gl.hdr.append_lsa.advance (copy_length);
+	  log_Gl.hdr.append_lsa.advance_offset (copy_length);
 	}
     }
   else
     {
       memcpy (ptr, data, length);
-      log_Gl.hdr.append_lsa.advance (length);
+      log_Gl.hdr.append_lsa.advance_offset (length);
     }
 
   /*
@@ -4491,13 +4493,13 @@ logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * 
 	    ptr += copy_length;
 	    data += copy_length;
 	    length -= copy_length;
-	    log_Gl.hdr.append_lsa.advance (copy_length);
+	    log_Gl.hdr.append_lsa.advance_offset (copy_length);
 	  }
       else
 	{
 	  memcpy (ptr, data, length);
 	  ptr += length;
-	  log_Gl.hdr.append_lsa.advance (length);
+	  log_Gl.hdr.append_lsa.advance_offset (length);
 	}
     }
 
