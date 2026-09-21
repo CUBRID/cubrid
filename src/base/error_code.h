@@ -1789,8 +1789,9 @@
 #define ER_COPY_CSV_FORMAT_ERROR                    -1387
 #define ER_LDR_INTERNAL_LOB_CHARSET_MISMATCH         -1388
 #define ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED       -1389
+#define ER_COPY_INVALID_OPTION                      -1390
 
-#define ER_LAST_ERROR                               -1390
+#define ER_LAST_ERROR                               -1391
 
 
 

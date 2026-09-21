@@ -39,7 +39,7 @@
 #include "internal_lob_marker.h"
 #include "optimizer.h"
 #include "network_interface_cl.h"
-#include "stream_session.hpp"
+#include "internal_lob_stream_kind.h"
 #include "transaction_cl.h"
 #include "xasl.h"
 #include "execute_statement.h"

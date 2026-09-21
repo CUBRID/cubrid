@@ -23,6 +23,7 @@
 #include "internal_lob_dml_protocol.hpp"
 #include "log_lsa.hpp"
 #include "stream_session.hpp"
+#include "internal_lob_stream_kind.h"
 
 #include <cstddef>
 #include <cstdio>

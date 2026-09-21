@@ -20,6 +20,7 @@
 #define _INTERNAL_LOB_STREAM_SESSION_HPP_
 
 #include "stream_session.hpp"
+#include "internal_lob_stream_kind.h"
 #include "dbtype_def.h"
 
 class internal_lob_stream_session : public stream_session

@@ -200,6 +200,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_cl.c
   ${COMMUNICATION_DIR}/network_histogram.cpp
+  ${COMMUNICATION_DIR}/stream_session.cpp
   )
 
 set(DEBUGGING_HEADERS
@@ -621,9 +622,12 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_object_table.h
   ${LOADDB_DIR}/load_sa_loader.hpp
   ${LOADDB_DIR}/load_semantic_helper.hpp
+  ${LOADDB_DIR}/copy_stream_kind.h
+  ${LOADDB_DIR}/copy_column_types.h
   ${LOADDB_DIR}/copy_binary_format.hpp
   ${LOADDB_DIR}/copy_binary_decoder.hpp
   ${LOADDB_DIR}/copy_session.hpp
+  ${LOADDB_DIR}/internal_lob_stream_kind.h
   )
 
 if(UNIX)

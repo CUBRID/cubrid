@@ -86,3 +86,65 @@ internal_lob_stream_session::abort (THREAD_ENTRY *thread_p)
       m_active = false;
     }
 }
+
+/*
+ * internal_lob_stream_session_create () - Decode the upload config blob and build an internal_lob_stream_session.
+ *   config(in): INTERNAL_LOB_STREAM_TYPE (int), data length (int64), logical length (int64)
+ *   config_len(in): length of the config blob
+ *   error_code(out): NO_ERROR or the failure code
+ *   return: opened session on success, NULL on error
+ */
+static stream_session *
+internal_lob_stream_session_create (THREAD_ENTRY *thread_p, const char *config, int config_len, int *error_code)
+{
+  int type;
+  INT64 data_length;
+  INT64 logical_length;
+  internal_lob_stream_session *session;
+
+  if (config == NULL || config_len != OR_INT_SIZE + OR_INT64_SIZE * 2)
+    {
+      *error_code = stream_session_set_error ("invalid internal LOB stream configuration");
+      return NULL;
+    }
+  /* or_unpack_int takes a mutable pointer although it only reads through it */
+  (void) or_unpack_int (const_cast<char *> (config), &type);
+  OR_GET_INT64 (config + OR_INT_SIZE, &data_length);
+  OR_GET_INT64 (config + OR_INT_SIZE + OR_INT64_SIZE, &logical_length);
+  if (type != INTERNAL_LOB_STREAM_TYPE_BLOB && type != INTERNAL_LOB_STREAM_TYPE_CLOB)
+    {
+      *error_code = stream_session_set_error ("invalid internal LOB stream type");
+      return NULL;
+    }
+
+  session = new internal_lob_stream_session ();
+  if (session == NULL)
+    {
+      *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      return NULL;
+    }
+  *error_code = session->init (thread_p, type == INTERNAL_LOB_STREAM_TYPE_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB,
+			       (DB_BIGINT) data_length, (DB_BIGINT) logical_length);
+  if (*error_code != NO_ERROR)
+    {
+      delete session;
+      return NULL;
+    }
+  return session;
+}
+
+/* The upload registers itself with the transport, as COPY does (copy_session.cpp). Runs at load time, before any
+ * connection can open a session. */
+namespace
+{
+  struct internal_lob_stream_session_registrar
+  {
+    internal_lob_stream_session_registrar ()
+    {
+      /* an upload only stages bytes for a later statement: its END is not the end of a unit of work */
+      stream_session_register (STREAM_KIND_INTERNAL_LOB, internal_lob_stream_session_create, false);
+    }
+  };
+
+  internal_lob_stream_session_registrar internal_lob_stream_session_registrar_instance;
+}

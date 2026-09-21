@@ -94,7 +94,8 @@
 #include "execute_schema.h"
 #include "authenticate.h"
 #include "internal_lob_marker.h"
-#include "stream_session.hpp"	/* STREAM_KIND_* */
+#include "copy_stream_kind.h"	/* STREAM_KIND_COPY */
+#include "internal_lob_stream_kind.h"	/* STREAM_KIND_INTERNAL_LOB_DML */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -7597,6 +7598,12 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
     }
 
+  /* nothing commits inside a stream (tran_commit), the server's own auto-commit included */
+  if (stream_from_is_open ())
+    {
+      flag &= ~TRAN_AUTO_COMMIT;
+    }
+
   /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
    * request data */
   ptr = request;
@@ -12271,14 +12278,80 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 #endif /* !CS_MODE */
 }
 
+#if defined(CS_MODE)
+/* Whether this client holds an open stream session. The caller of a statement
+ * that opened one needs to know that bytes are still to come, without knowing
+ * which consumer opened it. */
+static bool stream_Is_open = false;
+
+/* What the open reply said about the kind that was opened: does its END finish
+ * the statement the bytes belong to? Cached here because the CAS asks after the
+ * open has returned, and it must not have to name the consumer to find out. */
+static bool stream_Ends_unit_of_work = false;
+#endif /* CS_MODE */
+
+/*
+ * stream_from_is_open () - Is a stream session open for this client?
+ *   return: true between a successful stream_from_init () and stream_from_end ()
+ */
+bool
+stream_from_is_open (void)
+{
+#if defined(CS_MODE)
+  return stream_Is_open;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
+/*
+ * stream_from_reset () - Forget the stream session this connection was holding
+ *
+ * Called where the server-side session is known to be gone: ending the client
+ * session, shutting the database connection down, or rolling back the transaction
+ * the stream was opened in. A client that goes away mid-stream never sends END, and
+ * this flag would otherwise survive into the next client the CAS process serves
+ * -- where do_commit_after_execute () would read it and defer every auto-commit
+ * forever.
+ */
+void
+stream_from_reset (void)
+{
+#if defined(CS_MODE)
+  stream_Is_open = false;
+  stream_Ends_unit_of_work = false;
+#endif /* CS_MODE */
+}
+
+/*
+ * stream_from_ends_unit_of_work () - Does this stream's END finish the statement?
+ *   return: what the consumer declared for the kind that was opened
+ *
+ * Only a stream opened without a statement needs this: a statement that opens
+ * one defers its own auto-commit and END pays that back with the mode the
+ * statement ran in. A driver-opened stream has no such statement, so the answer
+ * has to come from the kind.
+ */
+bool
+stream_from_ends_unit_of_work (void)
+{
+#if defined(CS_MODE)
+  return stream_Ends_unit_of_work;
+#else /* CS_MODE */
+  return false;
+#endif /* !CS_MODE */
+}
+
 /*
  * stream_from_init () - Open a client->server byte-stream session on the server
  *   return: error code
- *   stream_kind(in): STREAM_KIND_* consumer tag (e.g. STREAM_KIND_COPY)
+ *   stream_kind(in): the consumer's own STREAM_KIND_* tag
  *   config(in): consumer-specific config blob (already or_pack_*'d by the caller)
  *   config_len(in): length of config in bytes
  *
- * Sends [int stream_kind][config bytes] to NET_SERVER_STREAM_INIT; the config blob is opaque here.
+ * Sends [int stream_kind][config bytes] to NET_SERVER_STREAM_INIT. The server
+ * factory dispatches on stream_kind to build the matching session. This entry is
+ * consumer-agnostic; the config blob is opaque here.
  */
 int
 stream_from_init (int stream_kind, const char *config, int config_len)
@@ -12305,21 +12378,43 @@ stream_from_init (int stream_kind, const char *config, int config_len)
       memcpy (ptr, config, config_len);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int ends_unit_of_work = 0;
 
   int req_error = net_client_request (NET_SERVER_STREAM_INIT, request, request_size, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
-      or_unpack_int (reply, &rc);
+      char *reply_ptr = or_unpack_int (reply, &rc);
+      (void) or_unpack_int (reply_ptr, &ends_unit_of_work);
+    }
+  else
+    {
+      /* server returned a standard error reply; propagate its code (and the
+       * message net_client_request placed in the error stack) to the caller */
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
+
+  /* a refused open leaves whatever was open before it */
+  if (rc == NO_ERROR)
+    {
+      stream_Is_open = true;
+      stream_Ends_unit_of_work = (ends_unit_of_work != 0);
     }
 
   free_and_init (request);
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  /* there is no client->server hop in standalone mode, and reporting success
+   * would let a consumer stream into nothing and call it a zero-row load */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
@@ -12495,7 +12590,7 @@ internal_lob_dml_from_send_data (int slot, DB_BIGINT offset, const char *data, i
  * name + options + col_types, unchanged encoding) and opens with STREAM_KIND_COPY.
  */
 int
-copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_attr_ids, int ncols, int format,
+copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols, int format,
 		int delimiter, int quote, int header, int bulk)
 {
 #if defined(CS_MODE)
@@ -12504,11 +12599,10 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *co
   char *config = NULL;
   char *ptr;
 
-  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk + ncols * int */
-  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk + ncols * type + ncols * attr id.
-   * The trailing attr ids are what the server maps columns with; a config without them (an older or hand-built
-   * client) still loads by definition order. */
-  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE) * 2;
+  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk
+   * + ncols * col_type + ncols * attribute id. The attribute ids carry the user's
+   * column list, which the column types alone cannot express. */
+  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE * 2);
 
   config = (char *) malloc (config_size);
   if (config == NULL)
@@ -12530,7 +12624,7 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *co
     }
   for (int i = 0; i < ncols; i++)
     {
-      ptr = or_pack_int (ptr, col_attr_ids != NULL ? col_attr_ids[i] : -1);
+      ptr = or_pack_int (ptr, col_ids[i]);
     }
 
   rc = stream_from_init (STREAM_KIND_COPY, config, config_size);
@@ -12539,7 +12633,10 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *co
 
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  /* The stream transport is a client->server network path; standalone mode has
+   * no server to stream to, so report it instead of silently loading nothing. */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "COPY FROM STDIN in standalone mode");
+  return ER_COPY_NOT_SUPPORTED;
 #endif /* !CS_MODE */
 }
 
@@ -12642,7 +12739,7 @@ file_delete_target_file (const char *target_vfid_str)
 #endif
 
 /*
- * stream_from_send_data () - Send a chunk of binary data to the COPY session
+ * stream_from_send_data () - Send one chunk of the byte stream to the server
  *   return: error code
  *   data(in): binary data buffer
  *   data_len(in): length of data in bytes
@@ -12673,32 +12770,47 @@ stream_from_send_data (const char *data, int data_len)
 	}
     }
 
+  if (rc != NO_ERROR)
+    {
+      /* the server drops the session on a failed chunk, so nothing is open here either */
+      stream_Is_open = false;
+      stream_Ends_unit_of_work = false;
+    }
+
   return rc;
 #else /* CS_MODE */
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
 /*
- * stream_from_end () - Finalize COPY session and retrieve row count
+ * stream_from_end () - End the stream and retrieve the session's result
  *   return: error code
- *   result_count(out): consumer result (rows for COPY, token for Internal LOB)
+ *   count(out): the binding's result -- rows for COPY and internal-LOB DML, the upload token for an
+ *               internal-LOB upload, the batch-local slot for an internal-LOB load (see stream_result)
  */
 int
-stream_from_end (INT64 * result_count)
+stream_from_end (INT64 * count)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
 
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE) a_reply;
+  OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   int req_error = net_client_request (NET_SERVER_STREAM_END, NULL, 0, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  /* the server drops the session on END whether or not it reported an error */
+  stream_Is_open = false;
+  stream_Ends_unit_of_work = false;
+
   if (!req_error)
     {
-      (void) or_unpack_int (reply, &rc);
-      OR_GET_INT64 (reply + OR_INT_SIZE, result_count);
+      char *ptr;
+      ptr = or_unpack_int (reply, &rc);
+      ptr = or_unpack_int64 (ptr, count);
     }
   else
     {
@@ -12711,22 +12823,40 @@ stream_from_end (INT64 * result_count)
 
   return rc;
 #else /* CS_MODE */
-  *result_count = 0;
-  return NO_ERROR;
+  *count = 0;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
 #endif /* !CS_MODE */
 }
 
+/*
+ * stream_from_abort () - Drop the open stream session without ending it
+ *   return: error code
+ *
+ * For the failure the server cannot see: the consumer's client half gave up
+ * before it had a chunk to send -- its encoder failed, the statement it belongs
+ * to unwound, the user cancelled. Sending a chunk just to make the server refuse
+ * it would report the wrong error; this says so directly. Nothing in the
+ * transaction is undone by it -- whatever the session already flushed stays
+ * where it is, and the caller's own rollback is what removes it.
+ */
 int
 stream_from_abort (void)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
+
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error = net_client_request (NET_SERVER_STREAM_ABORT, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				      NULL, 0, NULL, 0);
-  if (req_error == NO_ERROR)
+  int req_error = net_client_request (NET_SERVER_STREAM_ABORT, NULL, 0, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  /* the session is gone either way: the server dropped it, or it was never there */
+  stream_Is_open = false;
+  stream_Ends_unit_of_work = false;
+
+  if (!req_error)
     {
       or_unpack_int (reply, &rc);
     }
@@ -12738,8 +12868,10 @@ stream_from_abort (void)
 	  rc = ER_FAILED;
 	}
     }
+
   return rc;
-#else
-  return NO_ERROR;
-#endif
+#else /* CS_MODE */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NOT_IN_STANDALONE, 1, "stream session");
+  return ER_NOT_IN_STANDALONE;
+#endif /* !CS_MODE */
 }

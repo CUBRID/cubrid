@@ -46,7 +46,6 @@
 #include "buffer.hpp"
 #include "thread_manager.hpp"
 #include "error_manager.h"
-#include "session.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -876,8 +875,7 @@ namespace cubconn::connection
      * session down any earlier could free it under an in-flight sstream_* request. */
     if (ctx->m_conn->session_p != NULL)
       {
-	ssession_destroy_load_session (m_entry, ctx->m_conn->session_p);
-	session_destroy_stream_session (m_entry, ctx->m_conn->session_p);
+	ssession_destroy_attached_sessions (m_entry, ctx->m_conn->session_p);
       }
 
     m_events.remove_descriptor (ctx->m_conn->fd);

@@ -431,11 +431,18 @@ extern int file_delete_target_file (const char *target_vfid_str);
 
 /* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
 extern int stream_from_init (int stream_kind, const char *config, int config_len);
-extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_attr_ids, int ncols,
-			   int format, int delimiter, int quote, int header, int bulk);
 extern int stream_from_send_data (const char *data, int data_len);
-extern int stream_from_end (INT64 * result_count);
+extern int stream_from_end (INT64 * count);
 extern int stream_from_abort (void);
+extern bool stream_from_is_open (void);
+extern bool stream_from_ends_unit_of_work (void);
+extern void stream_from_reset (void);
+
+/* COPY FROM STDIN binding over the stream transport */
+extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, const int *col_ids, int ncols,
+			   int format, int delimiter, int quote, int header, int bulk);
+
+/* internal LOB DML binding over the stream transport */
 extern int internal_lob_dml_make_slot_value (DB_VALUE * value, DB_TYPE type, int slot);
 extern int internal_lob_dml_from_init (const XASL_ID * xasl_id, int dbval_count, const DB_VALUE * dbvals,
 				       QUERY_FLAG query_flag, const CACHE_TIME * client_cache_time, int query_timeout,

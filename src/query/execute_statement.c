@@ -71,6 +71,7 @@
 #include "memory_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
+#include "copy_column_types.h"
 #include "object_representation.h"
 #include "trigger_manager.h"
 #include "release_string.h"
@@ -22902,6 +22903,13 @@ do_check_copy_target (DB_OBJECT * class_obj)
   error = db_check_authorization (class_obj, DB_AUTH_INSERT);
   if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
+      if (error == ER_AU_INSERT_FAILURE)
+	{
+	  /* promote from warning to error severity, as loaddb does; this message takes no arguments, so other
+	   * errors (an invalid user, a lock failure) keep the arguments they were raised with */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
       return error;
     }
 
@@ -22959,8 +22967,9 @@ do_check_copy_target (DB_OBJECT * class_obj)
  *   parser(in): Parser context
  *   statement(in): Parse tree node for COPY statement
  *
- * Resolves the table and column types, then calls copy_from_init(); the CAS broker transfers the data itself
- * via stream_from_send_data() and stream_from_end().
+ * Resolves the table and column types, then calls copy_from_init(). Actual
+ * binary data transfer is handled by the CAS broker via stream_from_send_data()
+ * and stream_from_end().
  */
 int
 do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -22971,10 +22980,12 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_ATTRIBUTE *attr;
   PT_NODE *col;
   DB_TYPE *col_types = NULL;
-  int *col_attr_ids = NULL;
+  int *col_ids = NULL;
   int ncols = 0;
   PT_NODE *entity_spec;
   PT_NODE *entity;
+
+  CHECK_MODIFICATION_ERROR ();
 
   /* table_name is stored as a PT_SPEC from class_spec_without_server_name */
   entity_spec = statement->info.copy.table_name;
@@ -23012,6 +23023,9 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
+  /* Count the target columns first: an explicit list as given, otherwise every
+   * instance attribute in schema order. Shared attributes have no per-instance
+   * slot in the heap record, so they are not COPY targets. */
   if (statement->info.copy.column_list != NULL)
     {
       for (col = statement->info.copy.column_list; col != NULL; col = col->next)
@@ -23021,45 +23035,127 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      /* no column list: use all columns in schema order */
       for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
 	{
-	  ncols++;
+	  if (!db_attribute_is_shared (attr))
+	    {
+	      ncols++;
+	    }
 	}
     }
 
-  col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
-  col_attr_ids = (int *) malloc (ncols * sizeof (int));
-  if (col_types == NULL || col_attr_ids == NULL)
+  if (ncols <= 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (ncols * sizeof (DB_TYPE)));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, table_name);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  col_types = (DB_TYPE *) malloc (ncols * sizeof (DB_TYPE));
+  col_ids = (int *) malloc (ncols * sizeof (int));
+  if (col_types == NULL || col_ids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (ncols * (sizeof (DB_TYPE) + sizeof (int))));
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
 
+  {
+    int i = 0;
+
+    if (statement->info.copy.column_list != NULL)
+      {
+	for (col = statement->info.copy.column_list; col != NULL; col = col->next)
+	  {
+	    attr = db_get_attribute (class_obj, col->info.name.original);
+	    if (attr == NULL)
+	      {
+		error = er_errid ();
+		error = (error != NO_ERROR) ? error : ER_FAILED;
+		goto end;
+	      }
+	    if (db_attribute_is_shared (attr))
+	      {
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 32];
+
+		snprintf (detail, sizeof (detail), "shared column %s", db_attribute_name (attr));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
+	    if (!copy_type_is_supported (db_attribute_type (attr)))
+	      {
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 64];
+
+		snprintf (detail, sizeof (detail), "column %s of type %s", db_attribute_name (attr),
+			  pr_type_name (db_attribute_type (attr)));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
+	    col_types[i] = db_attribute_type (attr);
+	    col_ids[i] = db_attribute_id (attr);
+
+	    for (int j = 0; j < i; j++)
+	      {
+		if (col_ids[j] == col_ids[i])
+		  {
+		    char detail[DB_MAX_IDENTIFIER_LENGTH + 40];
+
+		    snprintf (detail, sizeof (detail), "column %s is named more than once", db_attribute_name (attr));
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1, detail);
+		    error = ER_COPY_INVALID_OPTION;
+		    goto end;
+		  }
+	      }
+	    i++;
+	  }
+      }
+    else
+      {
+	for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
+	  {
+	    if (db_attribute_is_shared (attr))
+	      {
+		continue;
+	      }
+	    if (!copy_type_is_supported (db_attribute_type (attr)))
+	      {
+		char detail[DB_MAX_IDENTIFIER_LENGTH + 64];
+
+		snprintf (detail, sizeof (detail), "column %s of type %s", db_attribute_name (attr),
+			  pr_type_name (db_attribute_type (attr)));
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, detail);
+		error = ER_COPY_NOT_SUPPORTED;
+		goto end;
+	      }
+	    col_types[i] = db_attribute_type (attr);
+	    col_ids[i] = db_attribute_id (attr);
+	    i++;
+	  }
+      }
+
+    assert (i == ncols);
+  }
+
+  /* A column list may leave a NOT NULL column out. INSERT refuses that unless
+   * the column has somewhere else to get a value -- a default, a default
+   * expression, or AUTO_INCREMENT -- and COPY applies defaults the same way, so
+   * it refuses the same set. Same conditions as check_missing_non_null_attrs ();
+   * without a column list every instance attribute is supplied. */
   if (statement->info.copy.column_list != NULL)
     {
-      int i = 0;
-      for (col = statement->info.copy.column_list; col != NULL; col = col->next)
-	{
-	  attr = db_get_attribute (class_obj, col->info.name.original);
-	  if (attr == NULL)
-	    {
-	      error = er_errid ();
-	      error = (error != NO_ERROR) ? error : ER_FAILED;
-	      goto end;
-	    }
-	  col_attr_ids[i] = db_attribute_id (attr);
-	  col_types[i++] = db_attribute_type (attr);
-	}
-    }
-  else
-    {
-      int i = 0;
       for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
 	{
-	  col_attr_ids[i] = db_attribute_id (attr);
-	  col_types[i++] = db_attribute_type (attr);
+	  if (db_attribute_is_non_null (attr) && db_value_is_null (db_attribute_default (attr))
+	      && attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+	      && is_attr_not_in_insert_list (parser, statement->info.copy.column_list, db_attribute_name (attr))
+	      && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_MISSING_NON_NULL_ASSIGN, 1, db_attribute_name (attr));
+	      error = ER_OBJ_MISSING_NON_NULL_ASSIGN;
+	      goto end;
+	    }
 	}
     }
 
@@ -23068,21 +23164,60 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       && (statement->info.copy.fmt.csv.delimiter != 0 || statement->info.copy.fmt.csv.quote != 0
 	  || statement->info.copy.fmt.csv.header != 0))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
-	      "DELIMITER/QUOTE/HEADER are only valid with FORMAT CSV");
-      error = ER_COPY_NOT_SUPPORTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+	      "DELIMITER, QUOTE and HEADER are only valid with FORMAT CSV");
+      error = ER_COPY_INVALID_OPTION;
       goto end;
     }
 
-  /* The attribute ids pin each incoming column to the attribute the user named; without them the server
-   * mapped columns by definition order and ignored the list. */
-  error = copy_from_init (table_name, col_types, col_attr_ids, ncols, statement->info.copy.format,
+  /* The grammar marks a DELIMITER / QUOTE literal that is not exactly one character as -1. */
+  if (statement->info.copy.fmt.csv.delimiter < 0 || statement->info.copy.fmt.csv.quote < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+	      "DELIMITER and QUOTE must be exactly one character");
+      error = ER_COPY_INVALID_OPTION;
+      goto end;
+    }
+
+  /* A delimiter that is also the quote, or either one being a line terminator,
+   * describes a format no encoder can write and no decoder can read back.
+   * QUOTE '<LF>' is the worst of them: it opens a quoted field that the row
+   * terminator can never close, so the decoder buffers the whole stream and
+   * then reports a zero-row success. */
+  if (statement->info.copy.format == 1)
+    {
+      int delim = (statement->info.copy.fmt.csv.delimiter != 0) ? statement->info.copy.fmt.csv.delimiter : ',';
+      int quote = (statement->info.copy.fmt.csv.quote != 0) ? statement->info.copy.fmt.csv.quote : '"';
+
+      if (delim == quote)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		  "DELIMITER and QUOTE must be different characters");
+	  error = ER_COPY_INVALID_OPTION;
+	  goto end;
+	}
+      if (delim == '\n' || delim == '\r' || quote == '\n' || quote == '\r')
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_INVALID_OPTION, 1,
+		  "DELIMITER and QUOTE cannot be a line terminator");
+	  error = ER_COPY_INVALID_OPTION;
+	  goto end;
+	}
+    }
+
+  error = copy_from_init (table_name, col_types, col_ids, ncols, statement->info.copy.format,
 			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
 			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk);
 
 end:
-  free_and_init (col_types);
-  free_and_init (col_attr_ids);
+  if (col_types != NULL)
+    {
+      free_and_init (col_types);
+    }
+  if (col_ids != NULL)
+    {
+      free_and_init (col_ids);
+    }
 
   return error;
 }

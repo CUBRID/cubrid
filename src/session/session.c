@@ -36,6 +36,7 @@
 #include "system.h"
 #include "session.h"
 #include "stream_session.hpp"
+#include "internal_lob_stream_kind.h"
 #include "internal_lob_dml_session.hpp"
 #include "internal_lob_upload.hpp"
 
@@ -3322,7 +3323,7 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
     }
 
   /* The session state can outlive its load session: connection teardown (see
-   * session_destroy_load_session) frees the load session while the state is still
+   * session_destroy_attached_sessions) frees the load session while the state is still
    * reachable. Report an error here so sloaddb_* handlers take the error path
    * instead of dereferencing a NULL load session. */
   if (state_p->load_session_p == NULL)
@@ -3350,9 +3351,9 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
   /* one stream session per connection (the invariant the transport seam depends on) */
   if (stream_session_p != NULL && state_p->stream_session_p != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
 	      "a stream session is already active on this connection");
-      return ER_DB_UNIMPLEMENTED;
+      return ER_STREAM_SESSION_ERROR;
     }
 
   state_p->stream_session_p = stream_session_p;
@@ -3376,12 +3377,80 @@ session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
   return NO_ERROR;
 }
 
+bool
+session_has_stream_session (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  /* Read off the connection, as session_abort_stream_session () does: a client that ended its session first
+   * (db_shutdown ends it before its last commit or abort) has no stream left, and asking must not raise
+   * ER_SES_SESSION_EXPIRED on the way. */
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return false;
+    }
+
+  return thread_p->conn_entry->session_p->stream_session_p != NULL;
+#else /* SERVER_MODE */
+  stream_session *stream_session_p = NULL;
+
+  (void) session_get_stream_session (thread_p, stream_session_p);
+
+  return stream_session_p != NULL;
+#endif /* not SERVER_MODE */
+}
+
+/*
+ * session_end_stream_session () - End the stream session when its transaction rolls back
+ *   thread_p(in): this thread handle
+ *
+ * A stream session cannot outlive the transaction it was opened in. Its
+ * consumer has already put work into that transaction, so a chunk arriving
+ * after a rollback would build on state that was undone. Rolling back
+ * therefore ends the stream, and the next chunk is refused with "no active
+ * stream session". Nothing commits inside a stream (stran_server_commit_internal).
+ *
+ * Unlike the interrupt path, this is safe to free here: the transaction is
+ * ended by the same worker that would be running receive_chunk, and the stream
+ * protocol is lockstep, so no chunk can be in flight.
+ */
+void
+session_end_stream_session (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = NULL;
+
+  /* a loaddb worker's batch transaction does not own the connection's stream; see session_abort_stream_session () */
+  if (thread_p != NULL && thread_p->type == TT_LOADDB)
+    {
+      return;
+    }
+
+  /* read off the connection for the reason session_has_stream_session () gives */
+  if (thread_p == NULL || thread_p->conn_entry == NULL)
+    {
+      return;
+    }
+  state_p = thread_p->conn_entry->session_p;
+  if (state_p == NULL || state_p->stream_session_p == NULL)
+    {
+      return;
+    }
+
+  state_p->stream_session_p->abort (thread_p);
+
+  delete state_p->stream_session_p;
+  state_p->stream_session_p = NULL;
+#endif /* SERVER_MODE */
+}
+
 /*
  * session_abort_stream_session () - Abort and drop the connection's stream session, if one is open.
  *
  *   A stream session holds transaction state of the statement that opened it (the savepoint of its direct LOB
  *   writes, its OOS replication tracking), so it must not outlive that transaction.  Called by the commit/abort
- *   entry points before the log manager ends the transaction, while the savepoint is still valid.
+ *   entry points before the log manager ends the transaction, while the savepoint is still valid.  A rollback the
+ *   client asks for, or a deadlock victim's, has already ended the stream through session_end_stream_session ();
+ *   this is the backstop for every other way a transaction ends.
  */
 void
 session_abort_stream_session (THREAD_ENTRY * thread_p)
@@ -3619,15 +3688,17 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
   /* Interrupt only; keep the load session object alive so that in-flight requests
    * still holding a reference (via session_get_load_session) do not access freed
-   * memory. The object is freed later by session_destroy_load_session, once the
+   * memory. The object is freed later by session_destroy_attached_sessions, once the
    * connection workers have drained. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->interrupt ();
     }
 
-  /* Do not tear down the stream session here: an in-flight sstream_* request may still hold a raw pointer to it.
-   * session_destroy_stream_session frees it once the connection workers have drained. */
+  /* The stream session (COPY / LOB / ...) is left alone here for the same reason
+   * as the load session: a worker may still be inside receive_chunk. It is
+   * aborted and freed by session_destroy_attached_sessions, once the workers have
+   * drained. */
 
   if (session->pl_session_p)
     {
@@ -3641,7 +3712,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 }
 
 void
-session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
+session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3649,7 +3720,7 @@ session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
   assert (session != NULL);
 
   /* Must be called only after the connection workers have drained, otherwise an
-   * in-flight sloaddb_* request may still be using the load session. */
+   * in-flight sloaddb_* or sstream_* request may still be using the session. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->wait_for_completion ();
@@ -3657,20 +3728,7 @@ session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
       delete session->load_session_p;
       session->load_session_p = NULL;
     }
-#endif
-}
 
-void
-session_destroy_stream_session (THREAD_ENTRY * thread_p, void *session_arg)
-{
-#if defined (SERVER_MODE)
-  SESSION_STATE *session = (SESSION_STATE *) session_arg;
-
-  assert (session != NULL);
-
-  /* Must be called only after the connection workers have drained, otherwise an
-   * in-flight sstream_* request may still hold a raw pointer to the stream session
-   * (obtained via session_get_stream_session). Mirrors session_destroy_load_session. */
   if (session->stream_session_p != NULL)
     {
       session->stream_session_p->abort (thread_p);
@@ -3692,7 +3750,6 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
   /* Session-state uninit path: no concurrent worker can reach this session, so
    * interrupt and destroy in one shot. */
   session_interrupt_attached_threads (thread_p, session);
-  session_destroy_load_session (thread_p, session);
-  session_destroy_stream_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session);
 #endif
 }

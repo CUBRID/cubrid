@@ -58,7 +58,7 @@
 #include "execute_statement.h"
 #include "dbtype.h"
 #include "internal_lob_marker.h"
-#include "stream_session.hpp"
+#include "internal_lob_stream_kind.h"
 
 /*
  * OBJ_MAX_ARGS

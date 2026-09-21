@@ -23,7 +23,7 @@
 #include "error_manager.h"
 #include "heap_file.h"
 #include "internal_lob_file.hpp"
-#include "stream_session.hpp"
+#include "internal_lob_stream_kind.h"
 #include <algorithm>
 #include <new>
 #include <unistd.h>

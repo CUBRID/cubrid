@@ -16,14 +16,20 @@
  *
  */
 
-#ifndef _INTERNAL_LOB_DML_EXECUTOR_HPP_
-#define _INTERNAL_LOB_DML_EXECUTOR_HPP_
+/*
+ * copy_stream_kind.h - COPY's tag on the byte-stream transport.
+ *
+ * The transport declares only the bound of the tag space; the value is this
+ * consumer's to name. It is shared because the two halves of the COPY binding
+ * sit on opposite sides of the wire: the client packs the open request
+ * (copy_from_init) and the server registers the factory that answers it
+ * (copy_session). The value is reserved in the allocation list beside
+ * STREAM_KIND_MAX in stream_session.hpp.
+ */
 
-#include "internal_lob_dml_protocol.hpp"
-#include "stream_session.hpp"
-#include "internal_lob_stream_kind.h"
+#ifndef _COPY_STREAM_KIND_H_
+#define _COPY_STREAM_KIND_H_
 
-extern stream_session *internal_lob_dml_create_session (THREAD_ENTRY *thread_p, const char *config, int config_len,
-    int *error_code);
+#define STREAM_KIND_COPY 0
 
-#endif /* _INTERNAL_LOB_DML_EXECUTOR_HPP_ */
+#endif /* _COPY_STREAM_KIND_H_ */

@@ -16,14 +16,24 @@
  *
  */
 
-#ifndef _INTERNAL_LOB_DML_EXECUTOR_HPP_
-#define _INTERNAL_LOB_DML_EXECUTOR_HPP_
+#ifndef _INTERNAL_LOB_DML_PROTOCOL_HPP_
+#define _INTERNAL_LOB_DML_PROTOCOL_HPP_
 
-#include "internal_lob_dml_protocol.hpp"
-#include "stream_session.hpp"
-#include "internal_lob_stream_kind.h"
+#include "dbtype_def.h"
+#include "object_representation.h"
 
-extern stream_session *internal_lob_dml_create_session (THREAD_ENTRY *thread_p, const char *config, int config_len,
-    int *error_code);
+#define INTERNAL_LOB_DML_CONFIG_VERSION 2
 
-#endif /* _INTERNAL_LOB_DML_EXECUTOR_HPP_ */
+#define INTERNAL_LOB_DML_SLOT_FLAG_DIRECT_REVERSE 0x01
+#define INTERNAL_LOB_DML_SLOT_CONFIG_SIZE (OR_INT_SIZE * 2 + OR_INT64_SIZE * 2 + OR_OID_SIZE)
+
+struct internal_lob_dml_slot_config
+{
+  DB_TYPE type = DB_TYPE_NULL;
+  DB_BIGINT data_length = -1;
+  DB_BIGINT logical_length = -1;
+  int flags = 0;
+  OID class_oid = OID_INITIALIZER;
+};
+
+#endif /* _INTERNAL_LOB_DML_PROTOCOL_HPP_ */

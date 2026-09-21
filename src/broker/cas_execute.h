@@ -94,11 +94,13 @@ extern int ux_lobfile_new (int lobfile_type, T_NET_BUF * net_buf);
 extern int ux_lobfile_write (DB_VALUE * lobfile_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
 extern int ux_lobfile_read (DB_VALUE * lobfile_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
 
-extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf);
-extern int ux_stream_end (T_NET_BUF * net_buf);
+extern void ux_stream_reset (void);
+extern bool ux_stream_is_open (void);
+extern bool ux_stream_admits_request (int func_code);
 extern int ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf);
-extern int ux_stream_abort (T_NET_BUF * net_buf);
-extern bool ux_stream_ends_unit_of_work (void);
+extern int ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_end (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern int ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NET_BUF * net_buf);
 extern int ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf);
 extern int ux_lob_stream_close (DB_BIGINT token, T_NET_BUF * net_buf);

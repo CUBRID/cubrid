@@ -300,6 +300,10 @@ static const char *server_func_name[] = {
   "fn_lob_stream_close"
 };
 
+/* process_request () indexes the names the same way, before the admission check can swap the function */
+static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
+	       "server_func_name must have one entry per CAS function code");
+
 
 static void set_db_connection_info (void);
 static void clear_db_connection_info (void);
@@ -601,6 +605,8 @@ cas_cleanup_session (void)
   if (cas_main_fn_ret != FN_KEEP_SESS)
     {
       ux_end_session ();
+      /* the server session, and with it any stream session it held, is gone */
+      ux_stream_reset ();
     }
 
   if (is_xa_prepared ())
@@ -1241,6 +1247,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
   strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 
   server_fn = server_fn_table[func_code - 1];
+  if (!ux_stream_admits_request (func_code))
+    {
+      server_fn = fn_stream_refused;
+    }
 
   if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
     {
@@ -1420,6 +1430,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
 	(as_info->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
+
+      /* Cleared as well as set: init_msg_header () leaves this bit at 1. */
+      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_STREAM_OPEN;
+      if (ux_stream_is_open ())
+	{
+	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |= CAS_INFO_FLAG_MASK_STREAM_OPEN;
+	}
 
       if (cas_shard_flag == ON)
 	{

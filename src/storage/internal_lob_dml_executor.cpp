@@ -260,3 +260,19 @@ internal_lob_dml_create_session (THREAD_ENTRY *thread_p, const char *config, int
     }
   return session;
 }
+
+/* The DML stream registers itself with the transport, as COPY does (copy_session.cpp). Runs at load time, before
+ * any connection can open a session. */
+namespace
+{
+  struct internal_lob_dml_session_registrar
+  {
+    internal_lob_dml_session_registrar ()
+    {
+      /* END runs the statement the payload belongs to, so it is the end of a unit of work */
+      stream_session_register (STREAM_KIND_INTERNAL_LOB_DML, internal_lob_dml_create_session, true);
+    }
+  };
+
+  internal_lob_dml_session_registrar internal_lob_dml_session_registrar_instance;
+}

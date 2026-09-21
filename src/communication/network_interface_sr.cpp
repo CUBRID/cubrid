@@ -84,9 +84,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
 #include "load_session.hpp"
-#include "copy_session.hpp"
-#include "internal_lob_dml_executor.hpp"
-#include "internal_lob_stream_session.hpp"
+#include "stream_session.hpp"
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -170,7 +168,17 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   assert (should_conn_reset != NULL);
   has_updated = logtb_has_updated (thread_p);
 
-  state = xtran_server_commit (thread_p, retain_lock);
+  /* an open stream is one statement still running, and nothing commits inside it */
+  if (session_has_stream_session (thread_p))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "commit inside an open stream session");
+      state = TRAN_ACTIVE;
+    }
+  else
+    {
+      state = xtran_server_commit (thread_p, retain_lock);
+    }
 
   PL_SESSION *session = cubpl::get_session ();
   if (!session || session->is_sp_running () == false)
@@ -207,6 +215,9 @@ stran_server_abort_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool *sho
   bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
+
+  /* the transaction ends here, and with it any stream session opened in it */
+  session_end_stream_session (thread_p);
 
   state = xtran_server_abort (thread_p);
 
@@ -411,6 +422,17 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
     {
       /* need to hide the previous error, ER_LK_UNILATERALLY_ABORTED to rollback the current transaction. */
       er_stack_push ();
+
+      /* This is the one transaction end that does not arrive as a commit/abort request: a deadlock
+       * victim is rolled back here, on its own worker. The stream session has to go with it for the
+       * same reason as in stran_server_abort_internal () -- the next chunk would otherwise build on work
+       * that was already rolled back. Before the rollback, so the session never sees a transaction
+       * that has ended, and inside the pushed stack, because reaching for a session that is already
+       * gone raises an error of its own and the error being reported to the client is the one that
+       * has to survive. Freeing it is safe here for the reason it is safe there: this is the worker
+       * that would be running receive_chunk, and the stream is lockstep. */
+      session_end_stream_session (thread_p);
+
       tran_state = tran_server_unilaterally_abort_tran (thread_p);
       er_stack_pop ();
     }
@@ -3584,7 +3606,19 @@ stran_server_partial_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   ptr = or_unpack_string_nocopy (request, &savept_name);
 
-  state = xtran_server_partial_abort (thread_p, savept_name, &savept_lsa);
+  /* for the reason stran_server_commit_internal () gives: the savepoint may predate the stream */
+  if (session_has_stream_session (thread_p))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "rollback to a savepoint inside an open stream session");
+      state = TRAN_ACTIVE;
+      LSA_SET_NULL (&savept_lsa);
+    }
+  else
+    {
+      state = xtran_server_partial_abort (thread_p, savept_name, &savept_lsa);
+    }
   if (state != TRAN_UNACTIVE_ABORTED)
     {
       /* Likely the abort failed.. somehow */
@@ -11441,9 +11475,9 @@ ssession_interrupt_attached_threads (THREAD_ENTRY *thread_p, void *session)
 }
 
 void
-ssession_destroy_load_session (THREAD_ENTRY *thread_p, void *session)
+ssession_destroy_attached_sessions (THREAD_ENTRY *thread_p, void *session)
 {
-  session_destroy_load_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -12823,281 +12857,6 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
 #endif
 
 /*
- * create_copy_session_from_config () - Decode the COPY config blob and build a copy_session.
- *   config_ptr(in): pointer to the COPY config bytes (table/ncols/options/col_types)
- *   config_len(in): length of the config blob
- *   error_code(out): NO_ERROR or the failure code
- *   return: opened copy_session on success, NULL on error
- *
- * Encoding: table_name (string), then ints num_cols, format, delimiter, quote, header, bulk, col_types[num_cols],
- * optionally followed by col_attr_ids[num_cols] (explicit column list).
- */
-static stream_session *
-create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int config_len, int *error_code)
-{
-  char *ptr = config_ptr;
-  char *table_name = NULL;
-  int packed_table_name_len;
-  int num_cols = 0;
-  int format = 0;
-  int delimiter = 0;
-  int quote = 0;
-  int header = 0;
-  int bulk = 0;
-  DB_TYPE *col_types = NULL;
-  int *col_attr_ids = NULL;
-  copy_session *session = NULL;
-
-  *error_code = NO_ERROR;
-
-  if (config_ptr == NULL || config_len < OR_INT_SIZE)
-    {
-      *error_code = stream_session_set_error ("invalid COPY stream configuration");
-      return NULL;
-    }
-  packed_table_name_len = OR_GET_INT (config_ptr);
-  if (packed_table_name_len <= 0 || packed_table_name_len > config_len - OR_INT_SIZE
-      || memchr (config_ptr + OR_INT_SIZE, '\0', (size_t) packed_table_name_len) == NULL)
-    {
-      *error_code = stream_session_set_error ("invalid COPY table name");
-      return NULL;
-    }
-  ptr = config_ptr + OR_INT_SIZE + packed_table_name_len;
-  if (config_ptr + config_len - ptr < OR_INT_SIZE * 6)
-    {
-      *error_code = stream_session_set_error ("incomplete COPY stream configuration");
-      return NULL;
-    }
-  num_cols = OR_GET_INT (ptr);
-  /* Two shapes: [..6 ints..][num_cols types] from an older or hand-built client, or the same followed by
-   * [num_cols attribute ids] naming the column each value goes to.  Without the ids columns map by definition
-   * order, which silently misplaces an explicit column list. */
-  if (num_cols <= 0 || num_cols > (config_len - (int) (ptr - config_ptr) - OR_INT_SIZE * 6) / OR_INT_SIZE
-      || (config_len != (int) (ptr - config_ptr) + OR_INT_SIZE * (6 + num_cols)
-	  && config_len != (int) (ptr - config_ptr) + OR_INT_SIZE * (6 + 2 * num_cols)))
-    {
-      *error_code = stream_session_set_error ("invalid COPY column metadata");
-      return NULL;
-    }
-
-  ptr = config_ptr;
-  ptr = or_unpack_string_nocopy (ptr, &table_name);
-  ptr = or_unpack_int (ptr, &num_cols);
-  /* format: 0 = BINARY, 1 = CSV */
-  ptr = or_unpack_int (ptr, &format);
-  ptr = or_unpack_int (ptr, &delimiter);
-  ptr = or_unpack_int (ptr, &quote);
-  ptr = or_unpack_int (ptr, &header);
-  ptr = or_unpack_int (ptr, &bulk);
-
-  col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
-  if (col_types == NULL)
-    {
-      *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto exit;
-    }
-
-  for (int i = 0; i < num_cols; i++)
-    {
-      int type_val;
-      ptr = or_unpack_int (ptr, &type_val);
-      col_types[i] = (DB_TYPE) type_val;
-    }
-  if (config_ptr + config_len - ptr >= OR_INT_SIZE * num_cols)
-    {
-      col_attr_ids = (int *) db_private_alloc (thread_p, num_cols * sizeof (int));
-      if (col_attr_ids == NULL)
-	{
-	  *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto exit;
-	}
-      for (int i = 0; i < num_cols; i++)
-	{
-	  ptr = or_unpack_int (ptr, &col_attr_ids[i]);
-	}
-    }
-
-  {
-    OID class_oid;
-    LC_FIND_CLASSNAME status;
-
-    /* bulk mode pre-acquires a class-level BU_LOCK (like loaddb) so the batch
-     * insert can skip per-row MVCC-id and per-row class/btree locks. */
-    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, (bulk ? BU_LOCK : NULL_LOCK));
-    if (status != LC_CLASSNAME_EXIST)
-      {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_name);
-	*error_code = ER_LC_UNKNOWN_CLASSNAME;
-	goto exit;
-      }
-
-    session = new copy_session ();
-    if (session == NULL)
-      {
-	*error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	goto exit;
-      }
-
-    *error_code = session->init (thread_p, &class_oid, col_types, col_attr_ids, num_cols, format, delimiter, quote,
-				 header, bulk);
-    if (*error_code != NO_ERROR)
-      {
-	delete session;
-	session = NULL;
-	goto exit;
-      }
-  }
-
-exit:
-  if (col_types != NULL)
-    {
-      db_private_free (thread_p, col_types);
-    }
-  if (col_attr_ids != NULL)
-    {
-      db_private_free (thread_p, col_attr_ids);
-    }
-
-  return session;
-}
-
-/*
- * create_stream_session () - Factory: build the stream_session for a stream_kind.
- *   stream_kind(in): STREAM_KIND_* consumer tag
- *   config_ptr(in): consumer-specific config blob
- *   config_len(in): length of the config blob
- *   error_code(out): NO_ERROR or the failure code
- *   return: opened stream_session on success, NULL on error
- *
- * Add a new consumer by appending a case here (and a STREAM_KIND_* value);
- * the transport and the SEND_DATA / END handlers stay unchanged.
- */
-static stream_session *
-create_stream_session (THREAD_ENTRY *thread_p, int stream_kind, char *config_ptr, int config_len, int *error_code)
-{
-  switch (stream_kind)
-    {
-    case STREAM_KIND_COPY:
-      return create_copy_session_from_config (thread_p, config_ptr, config_len, error_code);
-
-    case STREAM_KIND_INTERNAL_LOB:
-    {
-      int type;
-      INT64 data_length;
-      INT64 logical_length;
-      internal_lob_stream_session *session;
-
-      if (config_ptr == NULL || config_len != OR_INT_SIZE + OR_INT64_SIZE * 2)
-	{
-	  *error_code = stream_session_set_error ("invalid internal LOB stream configuration");
-	  return NULL;
-	}
-      (void) or_unpack_int (config_ptr, &type);
-      OR_GET_INT64 (config_ptr + OR_INT_SIZE, &data_length);
-      OR_GET_INT64 (config_ptr + OR_INT_SIZE + OR_INT64_SIZE, &logical_length);
-      if (type != INTERNAL_LOB_STREAM_TYPE_BLOB && type != INTERNAL_LOB_STREAM_TYPE_CLOB)
-	{
-	  *error_code = stream_session_set_error ("invalid internal LOB stream type");
-	  return NULL;
-	}
-
-      session = new internal_lob_stream_session ();
-      if (session == NULL)
-	{
-	  *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  return NULL;
-	}
-      *error_code = session->init (thread_p, type == INTERNAL_LOB_STREAM_TYPE_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB,
-				   (DB_BIGINT) data_length,
-				   (DB_BIGINT) logical_length);
-      if (*error_code != NO_ERROR)
-	{
-	  delete session;
-	  return NULL;
-	}
-      return session;
-    }
-
-    case STREAM_KIND_INTERNAL_LOB_DML:
-      return internal_lob_dml_create_session (thread_p, config_ptr, config_len, error_code);
-
-    case STREAM_KIND_INTERNAL_LOB_LOAD:
-    {
-      /* loaddb batch payload: the load session routes it to the batch's worker, see load_internal_lob.hpp */
-      int type;
-      INT64 data_length;
-      INT64 logical_length;
-      int clsid;
-      INT64 id;
-      load_session *load_session_p = NULL;
-      stream_session *session = NULL;
-      const char *ptr = config_ptr;
-
-      if (config_ptr == NULL || config_len != INTERNAL_LOB_LOAD_STREAM_CONFIG_SIZE)
-	{
-	  *error_code = stream_session_set_error ("invalid internal LOB load stream configuration");
-	  return NULL;
-	}
-      ptr = or_unpack_int ((char *) ptr, &type);
-      OR_GET_INT64 (ptr, &data_length);
-      ptr += OR_INT64_SIZE;
-      OR_GET_INT64 (ptr, &logical_length);
-      ptr += OR_INT64_SIZE;
-      ptr = or_unpack_int ((char *) ptr, &clsid);
-      OR_GET_INT64 (ptr, &id);
-      if (type != INTERNAL_LOB_STREAM_TYPE_BLOB && type != INTERNAL_LOB_STREAM_TYPE_CLOB)
-	{
-	  *error_code = stream_session_set_error ("invalid internal LOB load stream type");
-	  return NULL;
-	}
-
-      *error_code = session_get_load_session (thread_p, load_session_p);
-      if (*error_code != NO_ERROR || load_session_p == NULL)
-	{
-	  *error_code = stream_session_set_error ("no active load session");
-	  return NULL;
-	}
-
-      *error_code = load_session_p->internal_lob_stream_open (*thread_p, (cubload::class_id) clsid,
-		    (cubload::batch_id) id,
-		    type == INTERNAL_LOB_STREAM_TYPE_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB,
-		    (DB_BIGINT) data_length, (DB_BIGINT) logical_length, session);
-      return *error_code == NO_ERROR ? session : NULL;
-    }
-
-    default:
-      *error_code = stream_session_set_error ("unknown stream kind");
-      return NULL;
-    }
-}
-
-/*
- * stream_get_active_session () - Fetch the connection's open stream session.
- *   return: NO_ERROR, or ER_STREAM_SESSION_ERROR when there is none
- */
-static int
-stream_get_active_session (THREAD_ENTRY *thread_p, stream_session *&session)
-{
-  if (session_get_stream_session (thread_p, session) != NO_ERROR || session == NULL)
-    {
-      session = NULL;
-      return stream_session_set_error ("no active stream session");
-    }
-  return NO_ERROR;
-}
-
-/*
- * stream_discard_session () - Abort and free the connection's open stream session and detach it.
- */
-static void
-stream_discard_session (THREAD_ENTRY *thread_p, stream_session *session)
-{
-  session->abort (thread_p);
-  delete session;
-  session_set_stream_session (thread_p, NULL);
-}
-
-/*
  * sstream_from_init () - Open a client->server byte-stream session
  *   request format: stream_kind (int), consumer config blob
  *   reply format: error_code (int)
@@ -13108,17 +12867,28 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *ptr = request;
   int stream_kind = 0;
   int error_code = NO_ERROR;
+  bool ends_unit_of_work = false;
   stream_session *session = NULL;
 
   if (request == NULL || reqlen < OR_INT_SIZE)
     {
-      error_code = stream_session_set_error ("stream init request is too short");
-      goto reply;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto send_reply;
     }
 
   ptr = or_unpack_int (ptr, &stream_kind);
 
-  session = create_stream_session (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
+  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
+  if (session_has_stream_session (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a stream session is already active on this connection");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto send_reply;
+    }
+
+  session = stream_session_create (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
   if (session != NULL)
     {
       error_code = session_set_stream_session (thread_p, session);
@@ -13127,60 +12897,116 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	  session->abort (thread_p);
 	  delete session;
 	}
+      else
+	{
+	  ends_unit_of_work = stream_session_kind_ends_unit_of_work (stream_kind);
+	}
+    }
+  else if (error_code == NO_ERROR)
+    {
+      /* a factory lives outside the transport and cannot be checked at compile
+       * time; without this the client would read "opened" and start sending */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "stream session was not opened");
+      error_code = ER_STREAM_SESSION_ERROR;
     }
 
-reply:
-  stream_reply_error_code (thread_p, rid, error_code);
+send_reply:
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    /* the kind's answer rides back with the open so the CAS knows, without naming
+     * the consumer, whether this stream's END finishes a statement */
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr_reply;
+
+    ptr_reply = or_pack_int (reply, error_code);
+    (void) or_pack_int (ptr_reply, ends_unit_of_work ? 1 : 0);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
 }
 
 /*
- * sstream_send_data () - Receive binary data chunk for COPY session
+ * sstream_send_data () - Hand one chunk of the byte stream to the open session
  *   request format: raw binary data
  *   reply format: error_code (int)
  */
 void
 sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
-  stream_session *session = NULL;
-  int error_code = stream_get_active_session (thread_p, session);
+  int error_code = NO_ERROR;
 
-  if (error_code == NO_ERROR)
+  stream_session *session = NULL;
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
     {
       error_code = session->receive_chunk (thread_p, request, reqlen);
       if (error_code != NO_ERROR)
 	{
-	  stream_discard_session (thread_p, session);
+	  session->abort (thread_p);
+	  delete session;
+	  (void) session_set_stream_session (thread_p, NULL);
 	}
     }
 
-  stream_reply_error_code (thread_p, rid, error_code);
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
- * sstream_end () - Finalize COPY session and return row count
+ * sstream_end () - End the stream and report the session's result
  *   request format: (empty)
- *   reply format: error_code (int), consumer result (int64)
+ *   reply format: error_code (int), count (int64) -- rows for COPY and internal-LOB DML,
+ *                 the upload token for an upload, the batch-local slot for a load
+ *                 (see stream_result in stream_session.hpp)
  */
 void
 sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
-  INT64 stream_result_count = 0;
-  stream_session *session = NULL;
-  int error_code = stream_get_active_session (thread_p, session);
+  int error_code = NO_ERROR;
+  INT64 count = 0;
 
-  if (error_code == NO_ERROR)
+  stream_session *session = NULL;
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
     {
       stream_result result;
+
       result.count = 0;
-      error_code = session->finish (thread_p, &result);	/* may flush a trailing CSV record */
-      stream_result_count = (INT64) result.count;
+      error_code = session->finish (thread_p, &result);	/* the binding may still have buffered work */
+      count = (INT64) result.count;
 
       if (error_code != NO_ERROR)
 	{
 	  session->abort (thread_p);
 	}
       delete session;
-      session_set_stream_session (thread_p, NULL);
+      (void) session_set_stream_session (thread_p, NULL);
     }
 
   if (error_code != NO_ERROR)
@@ -13189,25 +13015,55 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
     }
 
   {
-    OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE) a_reply;
+    /* two ints ahead of the count, so or_pack_int64 () lands on its alignment */
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr;
 
-    (void) or_pack_int (reply, error_code);
-    OR_PUT_INT64 (reply + OR_INT_SIZE, &stream_result_count);
+    ptr = or_pack_int (reply, error_code);
+    ptr = or_pack_int (ptr, 0);	/* the padding or_pack_int64 () would skip over */
+    ptr = or_pack_int64 (ptr, count);
     css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
   }
 }
 
+/*
+ * sstream_abort () - Drop the open stream session at the client's request
+ *   request format: (empty)
+ *   reply format: error_code (int)
+ *
+ * The server already drops the session on a chunk it cannot consume. This is the
+ * other direction: the consumer's client half failed -- its encoder threw, the
+ * user cancelled -- and there is nothing left to send. Without it the session
+ * would sit in the connection until the transaction ended, refusing the next
+ * statement's open with "a stream session is already active".
+ */
 void
 sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
+  int error_code = NO_ERROR;
   stream_session *session = NULL;
-  int error_code = stream_get_active_session (thread_p, session);
 
-  if (error_code == NO_ERROR)
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
     {
-      stream_discard_session (thread_p, session);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      session->abort (thread_p);
+      delete session;
+      (void) session_set_stream_session (thread_p, NULL);
     }
 
-  stream_reply_error_code (thread_p, rid, error_code);
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }

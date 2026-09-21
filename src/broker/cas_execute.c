@@ -82,7 +82,7 @@
 #include "cas_common_vars.h"
 #include "network_interface_cl.h"
 #include "internal_lob_marker.h"
-#include "stream_session.hpp"
+#include "internal_lob_stream_kind.h"
 #include "query_replace.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -304,6 +304,8 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static bool refuse_stream_opened_mid_request (void);
+static void ux_stream_give_up_after_error (void);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 #if defined (CAS_FOR_CGW)
@@ -648,6 +650,8 @@ ux_database_shutdown (bool request_server)
   memset (database_passwd, 0, sizeof (database_passwd));
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
+
+  ux_stream_reset ();
 }
 
 int
@@ -839,6 +843,18 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       srv_handle->is_prepared = TRUE;
     }
 
+  /* A shard CAS serves one shard, and a COPY stream carries no shard key --
+   * the rows have nowhere to be routed. The proxy refuses only the chunks
+   * (fn_stream_send_data), by which time the statement has opened a session
+   * and a transaction on one backend and the client has begun sending.
+   * Refuse it here, where the statement type is already known. */
+  if (cas_shard_flag == ON && stmt_type == CUBRID_STMT_COPY)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "a SHARD broker");
+      err_code = ERROR_INFO_SET (ER_COPY_NOT_SUPPORTED, DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
 prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
@@ -940,6 +956,20 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 {
   int err_code = 0;
 
+  /* A COMMIT cannot finish a stream still running. It rolls back and fails instead -- what every driver already
+   * takes a failed END_TRAN to have done. */
+  if (tran_type == CCI_TRAN_COMMIT && stream_from_is_open ())
+    {
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, reset_con_status, ddl_audit_log);
+      if (err_code < 0)
+	{
+	  return err_code;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a COMMIT inside an open stream session rolls the transaction back");
+      return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+    }
+
   ux_end_tran_cleanup (tran_type);
 
   if (tran_type == CCI_TRAN_COMMIT)
@@ -953,6 +983,9 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     }
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
+      /* the server ends any open stream session with the rollback, so this
+       * connection is no longer holding one either */
+      ux_stream_reset ();
       err_code = db_abort_transaction ();
       cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
@@ -1362,6 +1395,8 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 execute_error:
   NET_BUF_ERR_SET (net_buf);
 
+  ux_stream_give_up_after_error ();
+
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
       db_session_set_xasl_cache_pinned (session, false, false);
@@ -1612,6 +1647,12 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      as_info->num_holdable_results++;
 	    }
 	}
+
+      if (db_statement_count (session) > 1 && refuse_stream_opened_mid_request ())
+	{
+	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+	  goto execute_all_error;
+	}
     }
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
@@ -1706,6 +1747,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
 execute_all_error:
   NET_BUF_ERR_SET (net_buf);
+
+  ux_stream_give_up_after_error ();
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -2067,6 +2110,12 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  goto batch_error;
 	}
 
+      if (refuse_stream_opened_mid_request ())
+	{
+	  db_query_end (result);
+	  goto batch_error;
+	}
+
       /* success; peek the values in tuples */
       if (result != NULL)
 	{
@@ -2417,6 +2466,12 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	      num_query--;
 	      continue;
 	    }
+	  goto exec_db_error;
+	}
+
+      if (refuse_stream_opened_mid_request ())
+	{
+	  db_query_end (result);
 	  goto exec_db_error;
 	}
 
@@ -4528,7 +4583,7 @@ dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locato
 }
 
 /*
- * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V13.
+ * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V14.
  *
  * A leading discriminator byte tells, per value, whether it is a reference to stored content (pulled later with
  * CAS_FC_LOB_STREAM_*) or inline content with no storage behind it, such as a CHAR_TO_CLOB('x') result.
@@ -4603,10 +4658,10 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     DB_BIGINT lob_byte_length = 0;
     bool is_reference = dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length);
 
-    /* Only the BLOB/CLOB framing to a V13 driver can carry a reference. Anywhere else (older driver, or a
+    /* Only the BLOB/CLOB framing to a V14 driver can carry a reference. Anywhere else (older driver, or a
      * VARCHAR/VARBIT reference) the locator text is not the value, so fail rather than return it as content. */
     if (is_reference
-	&& !(DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13)
+	&& !(DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V14)
 	     && (lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)))
       {
 	ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
@@ -4614,10 +4669,10 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	return 0;
       }
 
-    /* Every BLOB/CLOB going to a V13 driver is framed with the discriminator, reference or not - the driver
+    /* Every BLOB/CLOB going to a V14 driver is framed with the discriminator, reference or not - the driver
      * reads the same shape for both and decides from the byte, not from the connection version. */
     if ((lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)
-	&& DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V13))
+	&& DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V14))
       {
 	if (is_reference)
 	  {
@@ -10628,6 +10683,10 @@ encode_ext_type_to_short (T_BROKER_VERSION client_version, unsigned char cas_typ
 // return             : true to commit, false otherwise
 // server_handle (in) : server handle
 //
+/* Auto-commit owed by a statement that opened a stream session; the stream
+ * END pays it once the transfer is done. */
+static bool stream_Deferred_auto_commit = false;
+
 static bool
 do_commit_after_execute (const t_srv_handle & server_handle)
 {
@@ -10646,13 +10705,16 @@ do_commit_after_execute (const t_srv_handle & server_handle)
   //                      one page) and when other conditions are met too, server commits automatically.
   //
 
-  if (server_handle.auto_commit_mode != TRUE)
+  /* A statement that opened a stream session is not finished here: the byte
+   * transfer follows and the stream END ends the statement, so the commit is
+   * deferred to it -- with the mode this statement ran in. */
+  if (stream_from_is_open ())
     {
+      stream_Deferred_auto_commit = (server_handle.auto_commit_mode == TRUE);
       return false;
     }
 
-  /* COPY FROM STDIN: data transfer follows, do not commit yet */
-  if (server_handle.q_result != NULL && server_handle.q_result->stmt_type == CUBRID_STMT_COPY)
+  if (server_handle.auto_commit_mode != TRUE)
     {
       return false;
     }
@@ -10714,8 +10776,152 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
   return err_code;
 }
 
+/*
+ * ux_stream_reset () - Drop the stream state this connection was carrying
+ *
+ * Called where the server-side session is known to be gone. Without it the
+ * deferred auto-commit of a client that vanished mid-stream would be read by
+ * the next client the CAS process serves.
+ */
+void
+ux_stream_reset (void)
+{
+  stream_from_reset ();
+  stream_Deferred_auto_commit = false;
+}
+
+/*
+ * ux_stream_is_open () - Does this connection hold an open stream session?
+ *
+ * The reply header carries this so a driver that runs auto-commit from its own
+ * side can hold its commit back the way the CAS holds its own.
+ */
+bool
+ux_stream_is_open (void)
+{
+  return stream_from_is_open ();
+}
+
+/*
+ * ux_stream_admits_request () - May this request run on the connection now?
+ *
+ * An open stream is one statement still running: only its own requests and the
+ * ones that end the whole transaction are admitted (a COMMIT rolls back, see
+ * ux_end_tran).
+ *
+ * The internal LOB read cursor (CAS_FC_LOB_STREAM_*) is admitted as well. It is
+ * not a statement: it runs nothing, writes nothing and ends nothing, and it
+ * touches neither the open stream nor its transaction boundary. A driver may
+ * also need it in the middle of a stream -- copying a stored LOB into an INSERT
+ * reads the source through its locator while sending the bytes up the stream.
+ */
+bool
+ux_stream_admits_request (int func_code)
+{
+  if (!stream_from_is_open ())
+    {
+      return true;
+    }
+
+  switch (func_code)
+    {
+    case CAS_FC_STREAM_SEND_DATA:
+    case CAS_FC_STREAM_END:
+    case CAS_FC_STREAM_ABORT:
+    case CAS_FC_END_TRAN:
+    case CAS_FC_CHECK_CAS:
+    case CAS_FC_END_SESSION:
+    case CAS_FC_CON_CLOSE:
+    case CAS_FC_LOB_STREAM_OPEN:
+    case CAS_FC_LOB_STREAM_READ:
+    case CAS_FC_LOB_STREAM_CLOSE:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * refuse_stream_opened_mid_request () - Give up a stream a statement opened with more of its request to run
+ *
+ * What runs next -- another statement, the batch's own commit, a rollback to the request's savepoint --
+ * would run inside the stream, so a stream is opened only by a request that runs one statement.
+ */
+static bool
+refuse_stream_opened_mid_request (void)
+{
+  if (!stream_from_is_open ())
+    {
+      return false;
+    }
+
+  (void) stream_from_abort ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a statement that opens a stream must be executed on its own");
+  return true;
+}
+
+/*
+ * ux_stream_give_up_after_error () - Drop the stream a failing statement opened
+ *
+ * It was opened for the transfer that follows, and an error reply means that transfer never comes. No statement
+ * runs while a stream is open (ux_stream_admits_request), so one open here is this statement's.
+ */
+static void
+ux_stream_give_up_after_error (void)
+{
+  if (stream_from_is_open ())
+    {
+      (void) stream_from_abort ();
+      ux_stream_reset ();
+    }
+}
+
+/*
+ * ux_stream_init () - Open a stream session the driver asked for directly
+ *
+ * The statement path does not come through here: a statement that opens a
+ * stream defers its own auto-commit in do_commit_after_execute (), with the
+ * mode that statement ran in. A driver-opened stream has no such statement, so
+ * what END owes is settled here instead -- from the kind's own answer, which
+ * the open reply carries, and this connection's mode.
+ */
 int
-ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
+ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  /* Only a consumer whose client half is the driver may be opened here: the internal-LOB upload, which has no
+   * statement of its own. COPY, the internal-LOB DML stream and the loaddb stream are opened by the statement or
+   * utility that owns them, and that is where their target is checked (privilege, view, partition, trigger) --
+   * opening one directly would hand the server a target nothing has checked. */
+  if (stream_kind != STREAM_KIND_INTERNAL_LOB)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a driver may open only an internal LOB upload stream directly");
+      err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  err_code = stream_from_init (stream_kind, config, config_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  stream_Deferred_auto_commit = (stream_from_ends_unit_of_work () && as_info->auto_commit_mode == TRUE);
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+int
+ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
 
@@ -10725,6 +10931,17 @@ ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
       errors_in_transaction++;
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
+
+      /* The server dropped the session on the failed chunk, so the statement
+       * that opened the stream ends here. Whatever it already flushed is still
+       * in the transaction, so the auto-commit it deferred is paid back as a
+       * rollback -- otherwise the next statement's auto-commit commits it. */
+      if (stream_Deferred_auto_commit)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	  stream_Deferred_auto_commit = false;
+	}
+
       return err_code;
     }
 
@@ -10732,63 +10949,69 @@ ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
   return 0;
 }
 
-/* Kind of the stream session opened by the last ux_stream_init (); see ux_stream_ends_unit_of_work (). */
-static int cas_Stream_kind = -1;
-
-/*
- * ux_stream_ends_unit_of_work () - Does the stream session now ending stand for a complete unit of work?
- *
- * COPY and the Internal LOB DML session (which runs the target statement itself) do. A plain Internal LOB upload
- * only stages bytes for a later statement in the caller's transaction, so it must not become a commit point.
- */
-bool
-ux_stream_ends_unit_of_work (void)
-{
-  return cas_Stream_kind == STREAM_KIND_COPY || cas_Stream_kind == STREAM_KIND_INTERNAL_LOB_DML;
-}
-
 int
-ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf)
-{
-  int err_code = stream_from_init (stream_kind, config, config_len);
-  if (err_code < 0)
-    {
-      cas_Stream_kind = -1;
-      errors_in_transaction++;
-      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-      NET_BUF_ERR_SET (net_buf);
-      return err_code;
-    }
-
-  cas_Stream_kind = stream_kind;
-  net_buf_cp_int (net_buf, 0, NULL);
-  return 0;
-}
-
-int
-ux_stream_end (T_NET_BUF * net_buf)
+ux_stream_end (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
-  INT64 result_count = 0;
+  INT64 count = 0;
+  bool auto_commit_owed;
 
-  err_code = stream_from_end (&result_count);
+  /* The statement that opened the stream deferred its auto-commit to here; it
+   * is owed only if that statement ran in auto-commit mode. */
+  auto_commit_owed = stream_Deferred_auto_commit;
+  stream_Deferred_auto_commit = false;
+
+  err_code = stream_from_end (&count);
   if (err_code < 0)
     {
       errors_in_transaction++;
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
       NET_BUF_ERR_SET (net_buf);
+
+      if (auto_commit_owed)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	}
+
       return err_code;
     }
 
-  net_buf_cp_int (net_buf, 0, NULL);
-  net_buf_cp_bigint (net_buf, result_count, NULL);
+  if (auto_commit_owed)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
+  /* first field is the result code, as every other CAS reply has it; the
+   * kind's 64-bit count follows: rows for COPY, the token for an upload */
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  net_buf_cp_bigint (net_buf, count, NULL);
   return 0;
 }
 
+/*
+ * ux_stream_abort () - Give up on the stream without ending it
+ *
+ * The bytes the session already flushed stay in the transaction, so the
+ * auto-commit it deferred is paid back as a rollback -- the same reckoning as a
+ * failed chunk, and for the same reason: left unpaid, the next statement's
+ * auto-commit would commit them.
+ */
 int
-ux_stream_abort (T_NET_BUF * net_buf)
+ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
-  int err_code = stream_from_abort ();
+  int err_code;
+  bool auto_commit_owed;
+
+  auto_commit_owed = stream_Deferred_auto_commit;
+  stream_Deferred_auto_commit = false;
+
+  err_code = stream_from_abort ();
+
+  if (auto_commit_owed)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10797,7 +11020,7 @@ ux_stream_abort (T_NET_BUF * net_buf)
       return err_code;
     }
 
-  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
   return 0;
 }
 

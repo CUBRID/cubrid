@@ -1499,7 +1499,8 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 1387 COPY CSV format error: %1$s.
 1388 The unload file's internal LOB charset (%1$s) differs from this database (%2$s); load aborted.
 1389 Internal LOB locator is not authorized for the current user or session.
-1390 Last Error
+1390 COPY FROM: %1$s.
+1391 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
