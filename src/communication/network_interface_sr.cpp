@@ -413,6 +413,17 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
     {
       /* need to hide the previous error, ER_LK_UNILATERALLY_ABORTED to rollback the current transaction. */
       er_stack_push ();
+
+      /* This is the one transaction end that does not arrive as a commit/abort request: a deadlock
+       * victim is rolled back here, on its own worker. The stream session has to go with it for the
+       * same reason as in stran_server_*_internal () -- the next chunk would otherwise build on work
+       * that was already rolled back. Before the rollback, so the session never sees a transaction
+       * that has ended, and inside the pushed stack, because reaching for a session that is already
+       * gone raises an error of its own and the error being reported to the client is the one that
+       * has to survive. Freeing it is safe here for the reason it is safe there: this is the worker
+       * that would be running receive_chunk, and the stream is lockstep. */
+      session_end_stream_session (thread_p);
+
       tran_state = tran_server_unilaterally_abort_tran (thread_p);
       er_stack_pop ();
     }
