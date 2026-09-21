@@ -183,10 +183,6 @@ env:
   #   case_glob   find -path pattern that names one case file
   #   case_filter perl regex a case path must also match; shell alone has one,
   #               because there a case is <name>/cases/<name>.sh
-  #   share_mode  prune   = the shard gets the whole tree and deletes the rest
-  #               publish = plan publishes the tree, the shard copies its share.
-  #                         Which is the only affordable way for 17k cases whose
-  #                         seed is on GlusterFS -- CUBRIDQA-1523
   #   runner      which lane a shard of this suite queues in. Expected duration,
   #               not resource use: the queue is FIFO and a one-minute job holds
   #               the same slot as a 28-minute one -- CUBRIDQA-1501 ticket 62
@@ -198,7 +194,7 @@ env:
         "ctp_cmd": "shell", "ctp_conf": "conf/shell_ci.conf",
         "xml_src": "result/shell/current_runtime_logs",
         "verdict_src": "test_status.data",
-        "unit": "case", "share_mode": "prune", "par_default": "50",
+        "unit": "case", "par_default": "50",
         "runner": "cubrid-arc",
         "case_glob": "*/cases/*.sh", "case_filter": "/([^/]+)/cases/\\1\\.sh$",
         "exclude": "_25_unstable", "status_ctx": "gha-ci: test_shell"
@@ -209,7 +205,7 @@ env:
         "ctp_cmd": "sql", "ctp_conf": "conf/sql.conf",
         "xml_src": "sql/result",
         "verdict_src": "summary_info",
-        "unit": "dir", "share_mode": "publish", "par_default": "10",
+        "unit": "dir", "par_default": "10",
         "runner": "cubrid-arc",
         "case_glob": "*/cases/*.sql", "case_filter": "",
         "exclude": "", "status_ctx": "gha-ci: test_sql"
@@ -220,7 +216,7 @@ env:
         "ctp_cmd": "medium", "ctp_conf": "conf/medium_dev.conf",
         "xml_src": "sql/result",
         "verdict_src": "summary_info",
-        "unit": "dir", "share_mode": "publish", "par_default": "1",
+        "unit": "dir", "par_default": "1",
         "runner": "cubrid-arc-light",
         "case_glob": "*/cases/*.sql", "case_filter": "",
         "exclude": "", "status_ctx": "gha-ci: test_medium"
@@ -1327,7 +1323,6 @@ jobs:
             repo=$(attr "$suite" tc_repo)
             unit=$(attr "$suite" unit)
             excl=$(attr "$suite" exclude)
-            mode=$(attr "$suite" share_mode)
             runner=$(attr "$suite" runner)
             par="${PAR:-$(attr "$suite" par_default)}"
             # Every re-run goes to one shard, whatever the suite's width. That is a
@@ -1345,7 +1340,7 @@ jobs:
             root="$dir/$suite"
             out="$rundir/$suite"
             want=0; unrun=0; short=0; gone=0
-            echo "=== $suite: unit=$unit share=$mode parallelism=$par"
+            echo "=== $suite: unit=$unit parallelism=$par"
 
             # Must be removed after the checkout: `reset --hard` restores it.
             [ -z "$excl" ] || rm -rf "${root:?}/$excl"    # same exclusion as CircleCI
@@ -1631,28 +1626,6 @@ jobs:
               echo "rerun_gone=$gone"
             } > "$out/plan/split.meta"
 
-            # Ticket 56's machine, built here first: 17k cases on a GlusterFS seed
-            # cannot be pruned per shard, so plan publishes the tree once and each
-            # shard copies out the part it owns. shell keeps pruning until 56.
-            #
-            # One archive, not a tree: creating sql's 42,415 entries over FUSE was
-            # 128s of this step, and the shard reads its share by name either way
-            # -- CUBRIDQA-1501 ticket 73. Everything that is not a unit comes along
-            # whole, so tc.rest names those for the shard: reading them back out of
-            # the archive would mean decompressing it twice.
-            if [ "$mode" = publish ]; then
-              dst="$rundir/tc/$suite.tar.gz"
-              tmp="${dst}.tmp.${GITHUB_RUN_ID}"
-              rm -f "$tmp"
-              mkdir -p "$(dirname "$dst")"
-              find "$root" -mindepth 1 -maxdepth 1 ! -name '_*' -printf './%f\n' \
-                | sort > "$out/plan/tc.rest"
-              tar -C "$root" -cf - . | gzip -1 > "$tmp"
-              # One rename publishes it, so no shard sees a half-written archive.
-              mv -T "$tmp" "$dst"
-              echo "published testcases: $dst ($(du -sh "$dst" | cut -f1)), rest $(wc -l < "$out/plan/tc.rest")"
-            fi
-
             # sabotage: check that the guards actually fire.
             case "$SABOTAGE" in
               empty-shard)
@@ -1755,7 +1728,7 @@ jobs:
             echo "CTP_CONF=$(attr ctp_conf)"
             echo "XML_SRC=$(attr xml_src)"
             echo "VERDICT_SRC=$(attr verdict_src)"
-            echo "SHARE_MODE=$(attr share_mode)"
+            echo "UNIT=$(attr unit)"
             echo "EXCLUDE=$(attr exclude)"
             echo "CASE_GLOB=$(attr case_glob)"
             echo "CASE_FILTER=$(attr case_filter)"
@@ -1765,7 +1738,7 @@ jobs:
           } >> "$GITHUB_ENV"
           # The App token is minted only where a private repo needs one.
           echo "tc_private=$(attr tc_private)" >> "$GITHUB_OUTPUT"
-          echo "suite $SUITE / shard $IDX / repo $repo / share $(attr share_mode)"
+          echo "suite $SUITE / shard $IDX / repo $repo"
 
       - name: Check the pod template assumptions
         run: |
@@ -1827,17 +1800,15 @@ jobs:
           WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
         run: |
           set -eo pipefail
-          if [ "$SHARE_MODE" = prune ]; then
-            [ -d "$TC_SEED/.git" ] || {
-              echo "::error::no testcase seed: $TC_SEED"
-              echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
-              exit 1; }
-            mkdir -p /rw/upper /rw/work "$TC_DIR"
-            mount -t overlay overlay -o "lowerdir=$TC_SEED,upperdir=/rw/upper,workdir=/rw/work" "$TC_DIR"
-            echo "testcases mounted: $TC_SEED"
-          else
-            mkdir -p "$TC_DIR"
-          fi
+          # The whole tree, from the node copy: this shard deletes what is not its
+          # share below. Nothing crosses the network, and the write layer is tmpfs.
+          [ -d "$TC_SEED/.git" ] || {
+            echo "::error::no testcase seed: $TC_SEED"
+            echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
+            exit 1; }
+          mkdir -p /rw/upper /rw/work "$TC_DIR"
+          mount -t overlay overlay -o "lowerdir=$TC_SEED,upperdir=/rw/upper,workdir=/rw/work" "$TC_DIR"
+          echo "testcases mounted: $TC_SEED"
 
           # The lowerdir must live inside the pod -- pointed at the volume,
           # every process launch in every case is a FUSE read. The write layer
@@ -1942,13 +1913,11 @@ jobs:
           . "$PLAN_DIR/split.meta"       # tc_sha, tc_branch -- what plan pinned
 
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          if [ "$SHARE_MODE" = prune ]; then
-            export BRANCH_TESTCASES="$tc_branch"
-            # Without this the checkout below moves the mounted seed back to develop, and
-            # a suite asked to run another CTP branch would run develop's in every shard.
-            export BRANCH_TESTTOOLS="$CTP_BRANCH"
-            /entrypoint.sh checkout "$SUITE"
-          fi
+          export BRANCH_TESTCASES="$tc_branch"
+          # Without this the checkout below moves the mounted seed back to develop, and
+          # a suite asked to run another CTP branch would run develop's in every shard.
+          export BRANCH_TESTTOOLS="$CTP_BRANCH"
+          /entrypoint.sh checkout "$SUITE"
 
           # Pin CTP the way the testcases are pinned below: the checkout took the branch
           # tip, which moves under a suite whose CTP branch is still being pushed to.
@@ -1964,26 +1933,25 @@ jobs:
           [ "$got_ctp" = "$WANT_CTP_SHA" ] || {
             echo "::error::could not align CTP to the SHA plan saw($WANT_CTP_SHA); at $got_ctp"; exit 1; }
 
-          if [ "$SHARE_MODE" = prune ]; then
-            # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
-            cd "$TC_DIR"
-            # The entrypoint drops its git credential on exit, so carry the token here.
-            # Through the environment, not `-c`: the seed is a partial clone, so `reset`
-            # to a commit the tip does not carry fetches the blobs from the promisor in a
-            # child process, which `-c` never reaches. Still not on disk.
+          # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
+          cd "$TC_DIR"
+          # The entrypoint drops its git credential on exit, so carry the token here.
+          # Through the environment, not `-c`: the seed is a partial clone, so `reset`
+          # to a commit the tip does not carry fetches the blobs from the promisor in a
+          # child process, which `-c` never reaches. Still not on disk.
+          #
+          # Only a private repo has a token. Setting the rewrite with an empty one
+          # turns an anonymous fetch into a failed authentication.
+          if [ -n "$GHI_TOKEN" ]; then
             export GIT_CONFIG_COUNT=1
             export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
             export GIT_CONFIG_VALUE_0="https://github.com/"
-            git fetch -q --depth 1 --no-tags origin "$tc_sha"
-            git reset -q --hard "$tc_sha"
-            got=$(git rev-parse HEAD)
-            [ "$got" = "$tc_sha" ] || {
-              echo "::error::could not align to the tc SHA plan saw($tc_sha); at $got"; exit 1; }
-          else
-            # Nothing to align: plan checked the tree out once, at this commit, and
-            # published it. What this shard copies below is that tree, byte for byte.
-            got="$tc_sha"
           fi
+          git fetch -q --depth 1 --no-tags origin "$tc_sha"
+          git reset -q --hard "$tc_sha"
+          got=$(git rev-parse HEAD)
+          [ "$got" = "$tc_sha" ] || {
+            echo "::error::could not align to the tc SHA plan saw($tc_sha); at $got"; exit 1; }
           rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
           echo "tc branch  : $tc_branch"
           echo "tc SHA    : $got"
@@ -2010,51 +1978,33 @@ jobs:
               | wc -l
           }
 
-          if [ "$SHARE_MODE" = prune ]; then
-            [ -z "$EXCLUDE" ] || rm -rf "$TC_DIR/$SUITE/$EXCLUDE"
+          [ -z "$EXCLUDE" ] || rm -rf "$TC_DIR/$SUITE/$EXCLUDE"
 
-            # plan emits a repo-prefixed path; the delete side is absolute. Align them.
+          # Keeping everything is grep -v exit 1, not an error: parallelism 1 with no
+          # limit does exactly that. pipefail would kill the step.
+          if [ "$UNIT" = dir ]; then
+            # A unit is a top-level directory, so the delete is at that level too.
+            # Everything that is not a unit stays: medium's files/ and both suites'
+            # config/. CircleCI keeps them the same way -- its prune deletes *.sql
+            # files and nothing else (config.yml 259-261).
+            sed "s#^$TC_REPO/$SUITE/##" "$f" | sort -u > /tmp/keep_units.list
+            find "$TC_DIR/$SUITE" -mindepth 1 -maxdepth 1 -type d -name '_*' -printf '%f\n' \
+              | { grep -vxF -f /tmp/keep_units.list || :; } \
+              | sed "s#^#$TC_DIR/$SUITE/#" \
+              | xargs -r rm -rf
+          else
+            # A unit is one case file, so the delete is by the directory holding it.
+            # plan emits a repo-prefixed path; the delete side is absolute.
             sed "s#^$TC_REPO/#$TC_DIR/#" "$f" \
               | xargs -n1 dirname | sort -u > /tmp/keep_dirs.list
-            echo "directories kept: $(wc -l < /tmp/keep_dirs.list)"
-
-            # Keeping every directory is grep -v exit 1, not an error: parallelism 1
-            # with no limit does exactly that. pipefail would kill the step.
             find "$TC_DIR/$SUITE" -name cases -type d \
               | { grep -v -F -f /tmp/keep_dirs.list || :; } \
               | xargs -r rm -rf
-
-            left=$(count_cases)
-          else
-            arc="$RUNDIR/tc/$SUITE.tar.gz"
-            src="$RUNDIR/tc/$SUITE"
-            mkdir -p "$TC_DIR/$SUITE"
-            # Everything that is not a unit comes along whole: medium's
-            # files/mdb.tar.gz, and both suites' config/. CircleCI keeps them too --
-            # its prune deletes *.sql files and nothing else (config.yml 259-261).
-            # plan named those in tc.rest; a unit is the last component of a line of
-            # my share, and both sit one level under the archive's `.`.
-            if [ -f "$arc" ]; then
-              { awk -F/ 'NF {print "./" $NF}' "$f"; cat "$PLAN_DIR/tc.rest"; } > /tmp/members.list
-              # A name that is not in the archive is tar exit 2, and so a failed
-              # step: a shard that quietly ran fewer cases would be reported green.
-              tar -xzf "$arc" -C "$TC_DIR/$SUITE" --no-wildcards --files-from=/tmp/members.list
-            elif [ -d "$src" ]; then
-              # A tree: planned before ticket 73 and re-run from GitHub's button,
-              # which runs this shard again without running plan.
-              find "$src" -mindepth 1 -maxdepth 1 ! -name '_*' -exec cp -a {} "$TC_DIR/$SUITE/" \;
-              while read -r u; do
-                [ -n "$u" ] || continue
-                cp -a "$src/$(basename "$u")" "$TC_DIR/$SUITE/"
-              done < "$f"
-            else
-              echo "::error::plan published no testcases: $arc"; exit 1
-            fi
-            echo "units copied: $MINE_UNITS"
-
-            left=$(count_cases)
           fi
 
+          left=$(count_cases)
+
+          echo "units kept: $MINE_UNITS"
           echo "cases left: $left (expected: $MINE_N)"
           # Both are tmpfs and charged to this container's memory cgroup, with no
           # swap to reclaim to. This is the baseline before any test has run;
