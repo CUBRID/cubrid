@@ -942,8 +942,8 @@ cleanup:
       assert (build->list_scan_id.status != S_CLOSED);
 
       // *INDENT-OFF*
-      probe->tuple_record = { nullptr, 0 };
-      build->tuple_record = { nullptr, 0 };
+      probe->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+      build->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
       // *INDENT-ON*
 
       hash_scan = &m_context->hash_scan;
@@ -1247,8 +1247,8 @@ cleanup:
       assert (build->list_scan_id.status != S_CLOSED);
 
       // *INDENT-OFF*
-      probe->tuple_record = { nullptr, 0 };
-      build->tuple_record = { nullptr, 0 };
+      probe->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+      build->tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
       // *INDENT-ON*
 
       hash_scan = &m_context->hash_scan;
