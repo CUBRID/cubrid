@@ -91,6 +91,9 @@ namespace cubthread
 
       // true if any core still has work that could not be dispatched
       bool has_queued_tasks (void) const;
+      // true if the core a given connection's tasks are pushed to still has work
+      // that could not be dispatched
+      bool has_queued_task (std::size_t core_hash) const;
 
       void check_progress (void);
 
@@ -642,6 +645,17 @@ namespace cubthread
   worker_pool_elastic<Stats>::get_max_worker (void) const
   {
     return m_max_worker.load ();
+  }
+
+  template <stats_t Stats>
+  bool
+  worker_pool_elastic<Stats>::has_queued_task (std::size_t core_hash) const
+  {
+    if (!this->is_running () || this->m_cores.empty ())
+      {
+	return false;
+      }
+    return static_cast<const core_elastic *> (this->m_cores[core_hash % this->m_cores.size ()].get ())->has_queued_task ();
   }
 
   template <stats_t Stats>

@@ -802,6 +802,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
 #define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
+#define PRM_NAME_CSS_STICKY_RECEIVE_WINDOW_MS "sticky_receive_window_ms"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -5399,6 +5400,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 32 * 1024}},	/* 32KB */
    {false, {.i = 1 * 1024 * 1024 * 1024}},	/* 1GB */
    {false, {.i = 0}},		/* no limit */
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_STICKY_RECEIVE_WINDOW_MS,
+   PRM_NAME_CSS_STICKY_RECEIVE_WINDOW_MS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2}},		/* ms a transaction thread waits on its socket for the next request */
+   {false, {.i = 2}},
+   {false, {.i = 50}},
+   {false, {.i = 0}},		/* 0 disables */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

@@ -31,6 +31,7 @@
 #include "buffer.hpp"
 #include "span.hpp"
 
+#include <atomic>
 #include <condition_variable>
 
 namespace cubconn
@@ -172,6 +173,19 @@ namespace cubconn::connection
       /* if received command packet, task will be pushed into worker pool */
       /* when data packet is completely received. */
       bool m_command;
+
+      /* Someone is receiving from this socket: the connection worker, or the
+       * transaction thread that answered the last request. The claim is decided
+       * under m_conn->cmutex, so the two can never both take it; the flag is
+       * atomic because its owner clears it without retaking the lock. */
+      std::atomic<bool> m_recv_busy { false };
+      /* while m_inline is set, a complete request is counted in m_inline_count
+       * instead of being pushed as a task; the sticky thread runs it itself */
+      bool m_inline { false };
+      int m_inline_count { 0 };
+      /* the worker met an EPOLLIN edge while the sticky thread owned this socket
+       * and dropped it; guarded by m_conn->cmutex like m_owner's transitions */
+      bool m_missed_edge { false };
     } m_recv;
 
     /* --------------------------------------------------------------------------- */

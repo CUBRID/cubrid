@@ -92,6 +92,15 @@
 #error Belongs to server module
 #endif /* !defined (SERVER_MODE) */
 
+
+/* Rounds one transaction thread may spend on one connection before it goes back
+ * to the pool. A defensive bound, not a correctness one: a stay already ends on
+ * shutdown, on a queued task for this connection's pool core, on a failed claim
+ * and on an empty window. What it bounds is how long the pool goes without a
+ * completion from this thread, because one stay is one css_server_task: with a
+ * 2 ms window, 64 rounds of short requests stay well inside the pool's 500 ms
+ * progress interval (CAPACITY_ADJUSTMENT_INTERVAL). */
+#define CSS_STICKY_MAX_ROUNDS 64
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -199,6 +208,8 @@ static int css_get_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
 
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref);
+static void css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
 static bool css_check_ha_log_applier_done (void);
@@ -2081,15 +2092,20 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
   thread_get_manager ()->push_task (css_Server_request_worker_pool, new css_server_external_task (conn, task));
 }
 
-void
-css_server_task::execute (context_type &thread_ref)
+/*
+ * css_run_one_request () - put the thread in the state a task starts in, then run
+ *   one request on this connection. Shared by css_server_task::execute () and the
+ *   sticky loop so that the two cannot drift apart.
+ */
+static void
+css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
   session_state *session_p;
 
-  thread_ref.conn_entry = &m_conn;
-  session_p = thread_ref.conn_entry->session_p;
+  thread_ref.conn_entry = &conn_ref;
+  session_p = conn_ref.session_p;
 
-  m_conn.start_request ();
+  conn_ref.start_request ();
 
   if (session_p != NULL)
     {
@@ -2106,7 +2122,102 @@ css_server_task::execute (context_type &thread_ref)
   // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
   //       convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
-  (void) css_internal_request_handler (thread_ref, m_conn);
+  (void) css_internal_request_handler (thread_ref, conn_ref);
+}
+
+/*
+ * css_recycle_between_inline_requests () - apply the reset the worker pool puts
+ *   between two tasks. recycle_context () also clears entry::shutdown, which
+ *   inside one task would drop a stop the pool has already asked for, so this
+ *   puts that one field back. The write is conditional because another thread
+ *   raises the same flag: worker_pool::stop_execution () may set it while this
+ *   thread is inside recycle_context (), and an unconditional store would drop
+ *   that stop too.
+ */
+static void
+css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref)
+{
+  bool was_shutdown = thread_ref.shutdown;
+
+  css_Server_request_worker_pool->get_entry_manager ().recycle_context (thread_ref);
+  if (was_shutdown)
+    {
+      thread_ref.shutdown = true;
+    }
+}
+
+/*
+ * css_sticky_receive_loop () - having answered a request, wait briefly on the
+ *   connection's own socket for the next one and run it on this thread, so an
+ *   active connection is served without a round trip through the connection
+ *   worker. Window: sticky_receive_window_ms (0 disables).
+ *
+ *   worker::sticky_poll_and_receive () owns the socket protocol; this loop only
+ *   decides whether to keep waiting and runs what came in.
+ *
+ *   The connection cannot be closed underneath the loop: the task that opened it
+ *   has not called end_working_task () yet, and
+ *   worker::handle_connection_close () defers the close while a task is working.
+ *
+ *   The thread running here was dispatched to the core of conn.idx, so requests run
+ *   here keep the connection's core. The pool counts one completion per stay, not
+ *   per request, so a stay delays this thread's progress signal by its own length;
+ *   the window and CSS_STICKY_MAX_ROUNDS keep that under the pool's 500 ms interval.
+ *   A queued task on that core ends the stay at the next round, so a stay cannot
+ *   make the core look stalled while it has demand.
+ */
+static void
+css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
+{
+  cubconn::result status;
+  int window_ms, received, i, rounds;
+  bool handed_back;
+
+  window_ms = prm_get_integer_value (PRM_ID_CSS_STICKY_RECEIVE_WINDOW_MS);
+  if (window_ms <= 0 || css_Server_request_worker_pool == NULL)
+    {
+      return;
+    }
+
+  for (rounds = 0; rounds < CSS_STICKY_MAX_ROUNDS; rounds++)
+    {
+      /* the connection's own state is checked under cmutex by the claim below */
+      if (thread_ref.shutdown)
+	{
+	  return;
+	}
+      if (css_Server_request_worker_pool->has_queued_task (static_cast < std::size_t > (conn_ref.idx)))
+	{
+	  /* the core this connection's tasks go to has work waiting; that work
+	   * outranks this thread's wait, so give the thread back */
+	  return;
+	}
+
+      received = 0;
+      handed_back = false;
+      status = cubconn::connection::worker::sticky_poll_and_receive (conn_ref, &thread_ref, window_ms, received,
+	       handed_back);
+
+      /* Run what was received before reacting to status: the requests are already
+       * parsed and counted, and each one owes a start_request (). */
+      for (i = 0; i < received; i++)
+	{
+	  css_recycle_between_inline_requests (thread_ref);
+	  css_run_one_request (thread_ref, conn_ref);
+	}
+
+      if (handed_back || status != cubconn::result::Ok || received == 0)
+	{
+	  return;
+	}
+    }
+}
+
+void
+css_server_task::execute (context_type &thread_ref)
+{
+  css_run_one_request (thread_ref, m_conn);
+  css_sticky_receive_loop (thread_ref, m_conn);
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
