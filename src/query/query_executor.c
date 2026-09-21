@@ -7633,7 +7633,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		  /* for partitioned class */
 		  if (xasl->list_id->tfile_vfid != NULL && !VPID_ISNULL (&xasl->list_id->first_vpid))
 		    {
-		      qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+		      if (qfile_reopen_list_as_append_mode (thread_p, xasl->list_id) != NO_ERROR)
+			{
+			  goto exit_on_error;
+			}
 		    }
 #endif /* SERVER_MODE && !WINDOWS */
 		  error_code =
@@ -7737,7 +7740,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		/* for partitioned class */
 		if (xasl->list_id->tfile_vfid != NULL && !VPID_ISNULL (&xasl->list_id->first_vpid))
 		  {
-		    qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+		    if (qfile_reopen_list_as_append_mode (thread_p, xasl->list_id) != NO_ERROR)
+		      {
+			goto exit_on_error;
+		      }
 		  }
 	      }
 #endif /* SERVER_MODE && !WINDOWS */
@@ -9393,7 +9399,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		  /* for partitioned class */
 		  if (xasl->list_id->tfile_vfid != NULL && !VPID_ISNULL (&xasl->list_id->first_vpid))
 		    {
-		      qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+		      if (qfile_reopen_list_as_append_mode (thread_p, xasl->list_id) != NO_ERROR)
+			{
+			  return S_ERROR;
+			}
 		    }
 #endif /* SERVER_MODE && !WINDOWS */
 		  error =
@@ -9550,7 +9559,10 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		  /* for partitioned class */
 		  if (xasl->list_id->tfile_vfid != NULL && !VPID_ISNULL (&xasl->list_id->first_vpid))
 		    {
-		      qfile_reopen_list_as_append_mode (thread_p, xasl->list_id);
+		      if (qfile_reopen_list_as_append_mode (thread_p, xasl->list_id) != NO_ERROR)
+			{
+			  return S_ERROR;
+			}
 		    }
 		}
 #endif /* SERVER_MODE && !WINDOWS */
