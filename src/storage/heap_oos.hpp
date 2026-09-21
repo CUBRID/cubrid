@@ -29,8 +29,6 @@
 
 #include <vector>
 
-extern int heap_oos_copy_expanded_record (THREAD_ENTRY *thread_p, const RECDES *source, RECDES *copy);
-
 enum heap_oos_demote_priority
 {
   HEAP_OOS_DEMOTE_NORMAL = 0,
