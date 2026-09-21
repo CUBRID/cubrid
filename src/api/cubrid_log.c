@@ -967,6 +967,12 @@ cubrid_log_authenticate (char *password)
   int digest_len;
   int scheme, reply_code;
 
+  /* A server that predates these requests answers with an error packet, which
+   * css_receive_data () does not recognise and simply keeps waiting through. The
+   * handshake is two small round trips on an already-open connection, so cap the
+   * wait well below the connect timeout to turn that into a prompt failure. */
+  int timeout = ((g_connection_timeout < 30) ? g_connection_timeout : 30) * 1000;
+
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
 
@@ -993,11 +999,11 @@ cubrid_log_authenticate (char *password)
 				 "Request(NET_SERVER_CDC_AUTH_CHALLENGE) failed. request size (%d)\n", request_size);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, timeout) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN,
-				 "receive data from the request(NET_SERVER_CDC_AUTH_CHALLENGE) failed. "
-				 "(timeout : %d sec)\n", g_connection_timeout);
+				 "receive data from the request(NET_SERVER_CDC_AUTH_CHALLENGE) failed. The server may "
+				 "predate CDC channel authentication. (timeout : %d sec)\n", timeout / 1000);
     }
 
   if (recv_data == NULL || recv_data_size < OR_INT_SIZE * 3)
@@ -1075,11 +1081,11 @@ cubrid_log_authenticate (char *password)
 				 "Request(NET_SERVER_CDC_AUTH_RESPONSE) failed. request size (%d)\n", request_size);
     }
 
-  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, g_connection_timeout * 1000) != NO_ERRORS)
+  if (css_receive_data (g_conn_entry, rid, &recv_data, &recv_data_size, timeout) != NO_ERRORS)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN,
 				 "receive data from the request(NET_SERVER_CDC_AUTH_RESPONSE) failed. "
-				 "(timeout : %d sec)\n", g_connection_timeout);
+				 "(timeout : %d sec)\n", timeout / 1000);
     }
 
   if (recv_data == NULL || recv_data_size != OR_INT_SIZE)

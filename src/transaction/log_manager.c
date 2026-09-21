@@ -14408,7 +14408,6 @@ cdc_wakeup_consumer ()
  * is always false on it. Whatever it decides about the caller therefore has to
  * be read out of the catalog rather than taken from the request.
  */
-static bool cdc_User_attrs_loaded = false;
 static int cdc_User_attr_password = -1;
 static int cdc_User_attr_groups = -1;
 
@@ -14417,7 +14416,9 @@ static int cdc_User_attr_groups = -1;
  *   return: NO_ERROR, or ER_FAILED if the class record could not be read.
  *
  * Attribute ids are positions in the class representation, so resolving them
- * once per server is enough.
+ * once per server is enough. Two threads racing here would resolve the same
+ * ids, and each id is only published once it is known good, so no lock is
+ * needed.
  */
 static int
 cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
@@ -14428,9 +14429,10 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
   char *attr_name;
   int alloced;
   int i, error = NO_ERROR;
+  int password_id = -1, groups_id = -1;
   bool scan_started = false, attrinfo_started = false;
 
-  if (cdc_User_attrs_loaded)
+  if (cdc_User_attr_password != -1 && cdc_User_attr_groups != -1)
     {
       return NO_ERROR;
     }
@@ -14467,11 +14469,11 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
 
       if (strcmp (attr_name, "password") == 0)
 	{
-	  cdc_User_attr_password = i;
+	  password_id = i;
 	}
       else if (strcmp (attr_name, "groups") == 0)
 	{
-	  cdc_User_attr_groups = i;
+	  groups_id = i;
 	}
 
       if (alloced)
@@ -14480,13 +14482,14 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
 	}
     }
 
-  if (cdc_User_attr_password == -1 || cdc_User_attr_groups == -1)
+  if (password_id == -1 || groups_id == -1)
     {
       error = ER_FAILED;
       goto end;
     }
 
-  cdc_User_attrs_loaded = true;
+  cdc_User_attr_password = password_id;
+  cdc_User_attr_groups = groups_id;
 
 end:
   if (attrinfo_started)
