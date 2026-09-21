@@ -6310,6 +6310,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->total_rows = total_rows;
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
   info->hit_prob = 1.0;
+  info->reads_distinct = false;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -6905,41 +6906,32 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 	  continue;
 	}
 
+      distinct_info->reads_distinct = true;
       planner->distinct_info[QO_NODE_IDX (node)] = distinct_info;
     }
 }
 
 /*
- * qo_get_distinct_info_ahead () - the info to use for a node the join order search is about to place before the
- *      side it depends on, when the node may be read that way; NULL otherwise
- *   return: the node's distinct_info, or NULL
+ * qo_get_distinct_info_ahead () - get a DISTINCT input for a SEMI node placed before its dependencies
+ *   return: the node's DISTINCT info if needed and available, NULL otherwise
  *   planner(in):
  *   node(in): the node about to be placed
  *   visited_nodes(in): the nodes already placed before it
  *
- * Note: with a SEMI JOIN inner read once with the duplicates removed, the join around it is an ordinary join,
- *       so its SEMI order constraint (QO_NODE_SEMI_ANTI_DEP_SET) does not apply to it.  Outer join and hint
- *       dependencies remain mandatory.  The search lets the node through when this returns non-NULL and
- *       uses the returned info instead of node_info.  Once the side it depends on is already placed, the node
- *       is joined to it as a SEMI JOIN inner in the usual way and node_info is the right one -- this returns NULL then.
+ * Note: only a SEMI node with a DISTINCT alternative may precede its SEMI/ANTI dependencies. The caller
+ *       checks dependent-table, outer-join and hint requirements separately. When the SEMI/ANTI dependencies
+ *       are already satisfied, the caller uses node_info to retain ordinary SEMI execution.
  */
 static QO_INFO *
 qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
 {
-  QO_INFO *distinct_info;
-
-  if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI || planner->distinct_info == NULL)
+  if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI || planner->distinct_info == NULL
+      || bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
     {
       return NULL;
     }
 
-  distinct_info = planner->distinct_info[QO_NODE_IDX (node)];
-  if (distinct_info == NULL || bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
-    {
-      return NULL;
-    }
-
-  return distinct_info;
+  return planner->distinct_info[QO_NODE_IDX (node)];
 }
 
 /*
@@ -8070,8 +8062,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   int i, j;
   bool check_afj_terms = false;
   bool is_dummy_term = false;
-  bool head_reads_distinct = false;	/* head_info / tail_info is a distinct_info: a SEMI JOIN inner placed ahead */
-  bool tail_reads_distinct = false;	/* of the side it depends on, read once with the duplicates removed */
   BITSET_ITERATOR bi, bj;
   BITSET nl_join_terms;		/* nested-loop join terms */
   BITSET sm_join_terms;		/* sort merge join terms */
@@ -8185,7 +8175,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     {
       /* current prefix has only one node; a SEMI JOIN inner placed first is read with the duplicates removed */
       head_info = qo_get_distinct_info_ahead (planner, head_node, visited_nodes);
-      head_reads_distinct = (head_info != NULL);
       if (head_info == NULL)
 	{
 	  head_info = planner->node_info[QO_NODE_IDX (head_node)];
@@ -8205,7 +8194,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   /* tail_info points to the node for the single class being added to the prefix; a SEMI JOIN inner added ahead
    * of the side it depends on is read with the duplicates removed */
   tail_info = qo_get_distinct_info_ahead (planner, tail_node, visited_nodes);
-  tail_reads_distinct = (tail_info != NULL);
   if (tail_info == NULL)
     {
       tail_info = planner->node_info[QO_NODE_IDX (tail_node)];
@@ -8598,7 +8586,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
    * A raw SEMI/ANTI tail still requires first-match execution even when the prefix contains DISTINCT.
    * Otherwise a SEMI/ANTI edge connects a DISTINCT input, possibly inside a multi-node prefix, and the
    * candidate is an ordinary join. Only this local type changes; graph terms and shared plans keep theirs. */
-  if (!IS_OUTER_JOIN_TYPE (join_type) && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_reads_distinct)
+  if (!IS_OUTER_JOIN_TYPE (join_type) && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->reads_distinct)
     {
       join_type = QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI ? JOIN_SEMI : JOIN_ANTI;
     }
@@ -8756,7 +8744,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* STEP 5-2: examine idx-join.  Not for a SEMI JOIN inner added ahead of the side it depends on:
 	 * qo_examine_correlated_index () builds index scans of the node itself, which read it with its
 	 * duplicates, and the only way to read the node in that position is the plan distinct_info holds. */
-	if (idx_join_cnt && !tail_reads_distinct)
+	if (idx_join_cnt && !tail_info->reads_distinct)
 	  {
 	    idx_join_plan_n =
 	      qo_examine_idx_join (new_info, join_type, head_info, tail_info, &afj_terms, &sarged_terms,
@@ -8779,7 +8767,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* skip for a semi/anti inner: merge/hash inner gives wrong results, so never cost it (M3 prune).  Also skip
 	 * when the outer is a SEMI JOIN inner read once with the duplicates removed: feeding that file straight into
 	 * a merge or hash join is left for the merge/hash SEMI JOIN work, so for now it is joined by nl/idx only. */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_reads_distinct)
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_info->reads_distinct)
 	  {
 	    kept +=
 	      qo_examine_merge_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
@@ -8789,7 +8777,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_reads_distinct)
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_info->reads_distinct)
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
@@ -8869,6 +8857,7 @@ go_ahead_subvisit:
 	      /* DISTINCT does not relax outer join or hint dependencies. */
 	      continue;
 	    }
+
 	  if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node)))
 	      && qo_get_distinct_info_ahead (planner, node, visited_nodes) == NULL)
 	    {
@@ -9069,8 +9058,9 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 	  /* DISTINCT does not relax outer join or hint dependencies. */
 	  continue;
 	}
-      if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (head_node)))
-	  && qo_get_distinct_info_ahead (planner, head_node, visited_nodes) == NULL)
+
+      head_info = qo_get_distinct_info_ahead (planner, head_node, visited_nodes);
+      if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (head_node))) && head_info == NULL)
 	{
 	  /* Only a SEMI node read with DISTINCT may precede its SEMI/ANTI dependencies. */
 	  continue;
@@ -9079,7 +9069,6 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
       if (bitset_is_empty (visited_nodes))
 	{			/* not found outermost nodes */
 
-	  head_info = qo_get_distinct_info_ahead (planner, head_node, visited_nodes);
 	  if (head_info == NULL)
 	    {
 	      head_info = planner->node_info[QO_NODE_IDX (head_node)];
