@@ -65,7 +65,7 @@ TEST_F (OosSqlVisibleVersion, ScanrangeNextFirstObjectFetchDoesNotExpandWholeRec
   OID class_oid = *reinterpret_cast<OID *> (db_identifier (class_object));
   HFID hfid;
   FILE_TYPE file_type;
-  rc = heap_get_class_info (thread_p, &class_oid, &hfid, &file_type, nullptr);
+  rc = heap_get_class_hfid (thread_p, &class_oid, &hfid, &file_type);
   ASSERT_EQ (rc, NO_ERROR);
 
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);

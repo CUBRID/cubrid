@@ -84,6 +84,7 @@
 #include "porting.h"
 #include "log_manager.h"
 #include "catalog_class.h"
+#include "system_metadata_version.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2334,9 +2335,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* we need to manually add root class HFID to cache */
-  error_code =
-    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
-			   boot_Db_parm->rootclass_name);
+  error_code = heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -2605,6 +2604,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (skip_to_check_ct_classes_for_rebuild == false)
     {
+      if (log_Gl.hdr.sysmeta_version != SYSTEM_METADATA_VERSION)
+	{
+	  error_code = (log_Gl.hdr.sysmeta_version > SYSTEM_METADATA_VERSION)
+	    ? ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED : ER_SYSMETA_UPGRADE_REQUIRED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  goto error;
+	}
+
       if (catcls_Enable != true)
 	{
 	  error_code = catcls_compile_catalog_classes (thread_p);
@@ -3640,7 +3647,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
     }
 
-  if (heap_get_class_info (thread_p, oid, &hfid, NULL, NULL) != NO_ERROR || HFID_IS_NULL (&hfid))
+  if (heap_get_class_hfid (thread_p, oid, &hfid, NULL) != NO_ERROR)
     {
       return DISK_ERROR;
     }
@@ -5031,9 +5038,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
   /* we need to manually add root class HFID to cache */
-  error_code =
-    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
-			   boot_Db_parm->rootclass_name);
+  error_code = heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
