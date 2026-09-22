@@ -2765,24 +2765,11 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	}
     }
-  else if (QO_TERM_CLASS (term) == QO_TC_OTHER && QO_ON_COND_TERM (term))
-    {
-      QO_NODE *on_node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
-
-      if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
-	{
-	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
-	    {
-	      if (t != QO_NODE_IDX (on_node))
-		{
-		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
-		}
-	    }
-	}
-    }
 
   /* a node an ON-clause predicate reads must be joined before the node that owns the ON clause, or the predicate
-   * cannot be evaluated there. Outside the class dispatch above so QO_TC_SARG and QO_TC_OTHER are covered too */
+   * cannot be evaluated there. Outside the class dispatch above so QO_TC_SARG and QO_TC_OTHER are covered too.
+   * An ANTI join is covered as well: it emits an outer row only when the inner side has no match, so ordering it
+   * ahead of a node its ON clause reads loses rows just as an outer join does */
   if (QO_ON_COND_TERM (term))
     {
       int location = QO_TERM_LOCATION (term);
@@ -2793,7 +2780,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
       on_node = QO_ENV_NODE (env, location);
       QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
 
-      if (QO_NODE_IS_OUTER_JOIN (on_node))
+      if (QO_NODE_IS_OUTER_JOIN (on_node) || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
 	{
 	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
 	    {
