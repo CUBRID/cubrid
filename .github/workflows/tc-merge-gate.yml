@@ -24,7 +24,7 @@ name: TC Merge Gate
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - develop
   schedule:
@@ -255,9 +255,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
-      checks: read
-      issues: write
-      pull-requests: write
+      checks: write
+      pull-requests: read
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -274,22 +273,17 @@ jobs:
         shell: bash
         run: echo "::add-mask::${APP_TOKEN}"
 
-      - name: Judge open PRs again, and start a fresh check where the posted one is stale
+      - name: Judge open PRs again, and post the verdict where the standing one is stale
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ github.token }}
           ENGINE_REPO: ${{ github.repository }}
-          RECHECK_LABEL: tc-gate-recheck
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
 
           printf '%s' "${JUDGE}" > "${RUNNER_TEMP}/judge.sh"
-
-          GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/labels" \
-            -f name="${RECHECK_LABEL}" -f color=ededed \
-            -f description='Transient — makes TC Merge Gate judge this PR again' \
-            > /dev/null 2>&1 || true
 
           # An open TC PR blocks on its own, so one list per TC repo settles most
           # PRs without asking about them one by one.
@@ -302,50 +296,59 @@ jobs:
           sort -u -o "${RUNNER_TEMP}/open-tc.txt" "${RUNNER_TEMP}/open-tc.txt"
 
           GH_TOKEN="${GITHUB_TOKEN}" gh pr list --repo "${ENGINE_REPO}" --base develop --state open \
-            --limit 300 --json number,statusCheckRollup \
+            --limit 300 --json number,headRefOid,statusCheckRollup \
             --jq '.[] | . as $pr
                   | ([$pr.statusCheckRollup[]? | select(.name == "Check TC PRs")] | max_by(.completedAt // ""))
                   | select(. != null)
-                  | "\($pr.number)\t\(.conclusion // "")\t\(.completedAt // "")"' \
+                  | "\($pr.number)\t\($pr.headRefOid)\t\(.conclusion // "")\t\(.completedAt // "")"' \
             > "${RUNNER_TEMP}/prs.tsv"
 
-          # Leave a verdict younger than this alone: its run may still be settling,
-          # and a gate that keeps disagreeing would otherwise be started every sweep.
+          # Leave a verdict younger than this alone: its run may still be settling.
           MIN_AGE_SEC=1800
           NOW=$(date -u +%s)
-          STARTED=0
+          POSTED_N=0
 
-          while IFS=$'\t' read -r PR_NUMBER POSTED COMPLETED; do
+          while IFS=$'\t' read -r PR_NUMBER HEAD_SHA STANDING COMPLETED; do
             [ -z "${PR_NUMBER}" ] && continue
             [ -z "${COMPLETED}" ] && continue
             [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && continue
 
+            OUT=''
             if grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
               EXPECTED=FAILURE
             else
-              VERDICT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}" | head -n 1)
-              EXPECTED=$( [ "${VERDICT}" = BLOCK ] && echo FAILURE || echo SUCCESS )
+              OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}")
+              EXPECTED=$( [ "$(head -n 1 <<< "${OUT}")" = BLOCK ] && echo FAILURE || echo SUCCESS )
             fi
-            [ "${POSTED}" = "${EXPECTED}" ] && continue
+            [ "${STANDING}" = "${EXPECTED}" ] && continue
 
-            # A labeled event starts a fresh run on develop's current workflow.
-            # Re-running the old run would replay the workflow pinned to that run,
-            # which still holds whatever rules were in force when it started.
-            echo "::notice::PR #${PR_NUMBER}: posted ${POSTED}, now ${EXPECTED} — judging again"
-            # Take it off first. Adding a label that is already on the PR changes
-            # nothing, and a label that changes nothing starts no run — a sweep
-            # that failed to take it off last time would otherwise go quiet here.
-            GH_TOKEN="${GITHUB_TOKEN}" gh api -X DELETE \
-              "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/labels/${RECHECK_LABEL}" > /dev/null 2>&1 || true
+            [ -z "${OUT}" ] && OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}")
+            VERDICT=$(head -n 1 <<< "${OUT}")
+            DETAIL=$(tail -n +2 <<< "${OUT}")
 
-            if GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/labels" \
-                 -f "labels[]=${RECHECK_LABEL}" > /dev/null 2>&1; then
-              GH_TOKEN="${GITHUB_TOKEN}" gh api -X DELETE \
-                "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/labels/${RECHECK_LABEL}" > /dev/null 2>&1 || true
-              STARTED=$((STARTED + 1))
+            if [ "${VERDICT}" = BLOCK ]; then
+              CONCLUSION=failure
+              TITLE='TC changes are not on TC develop yet'
             else
-              echo "::warning::PR #${PR_NUMBER}: could not add ${RECHECK_LABEL}"
+              CONCLUSION=success
+              TITLE='Nothing is left on the TC branches that develop does not have'
+            fi
+
+            # Post the check run directly. A label or any other event raised with
+            # GITHUB_TOKEN starts no workflow run, so the verdict has to be written
+            # rather than triggered. The name is what branch protection requires.
+            if jq -n --arg sha "${HEAD_SHA}" --arg conclusion "${CONCLUSION}" \
+                    --arg title "${TITLE}" --arg url "${RUN_URL}" \
+                    --arg summary "${DETAIL}"$'\n\n'"Posted by the scheduled sweep, because the standing verdict no longer matched." \
+                    '{name: "Check TC PRs", head_sha: $sha, status: "completed",
+                      conclusion: $conclusion, details_url: $url,
+                      output: {title: $title, summary: $summary}}' \
+               | GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/check-runs" --input - > /dev/null; then
+              echo "::notice::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED} — posted"
+              POSTED_N=$((POSTED_N + 1))
+            else
+              echo "::warning::PR #${PR_NUMBER}: could not post the check run"
             fi
           done < "${RUNNER_TEMP}/prs.tsv"
 
-          echo "Started a fresh gate run on ${STARTED} PR(s)." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Posted a fresh verdict on ${POSTED_N} PR(s)." >> "${GITHUB_STEP_SUMMARY}"
