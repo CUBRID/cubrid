@@ -2577,6 +2577,21 @@ histogram_split_hv_range (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_n
   return false;
 }
 
+/*
+ * histogram_split_hv_predicate () - is this a (column op ?) predicate the bind-sensitive planner can price?
+ * return            : true when matched
+ * node (in)         : expression node to test
+ * out_name (out)    : the column node (end of a path expression)
+ * out_hv (out)      : the user host variable
+ * out_reversed (out): true for the `? op col` spelling of a comparison
+ *
+ * Note: the candidate set is defined by what qo_expr_selectivity () prices with the bound VALUE --
+ *       equality and the comparisons (histogram_get_equal/comp_selectivity) and LIKE / NOT LIKE
+ *       (qo_like_selectivity -> histogram_get_like_selectivity). A LIKE qualifies only when the
+ *       pattern is the host variable itself: `col LIKE ? ESCAPE '\\'` wraps it in a PT_LIKE_ESCAPE
+ *       expression the planner does not classify as a host variable (it falls back to
+ *       like_term_selectivity), so pricing it here would replan for an estimate that never lands.
+ */
 static bool
 histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_name, PT_NODE **out_hv,
 			      bool *out_reversed)
@@ -2600,7 +2615,7 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
     }
 
   PT_OP_TYPE op = node->info.expr.op;
-  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
+  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE && op != PT_LIKE && op != PT_NOT_LIKE)
     {
       return false;
     }
@@ -2620,6 +2635,13 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
 	  *out_hv = a2;
 	}
       return true;
+    }
+
+  if (op == PT_LIKE || op == PT_NOT_LIKE)
+    {
+      /* `? LIKE col`: the pattern is the column and the host variable is the matched string --
+       * the histogram estimator matches a pattern against the column's values, not the reverse */
+      return false;
     }
 
   if (a1 != NULL && a1->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a1)
@@ -2803,6 +2825,15 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
     case PT_LE:
       histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
       break;
+    case PT_LIKE:
+    case PT_NOT_LIKE:
+      histogram_get_like_selectivity (name, val, &sel, &ok);
+      if (ok && op == PT_NOT_LIKE)
+	{
+	  /* the same complement qo_expr_selectivity () applies: NOT LIKE is priced as 1 - LIKE */
+	  sel = 1.0 - sel;
+	}
+      break;
     default:
       break;
     }
@@ -2815,8 +2846,9 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
        * a raw value hash here would (a) replan the first execution of statements on
        * never-analyzed tables for zero gain (the recompile still prices with
        * DEFAULT_*_SELECTIVITY) and (b) under bind sensitivity give every distinct value
-       * its own fingerprint, replanning per value. Value-shape recompiles (LIKE, MRO,
-       * SORT-LIMIT) have their own machinery and do not need this one. */
+       * its own fingerprint, replanning per value. Value-shape recompiles (MRO, SORT-LIMIT,
+       * the LIKE removability check behind LIKE_RECOMPILE_CANDIDATE) have their own machinery
+       * and do not need this one. */
       return node;
     }
 
@@ -2826,6 +2858,21 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
       /* equality estimates are stepwise (MCV hit or the flat non-MCV residual): values in
        * the same class produce the same estimate, hence the same fingerprint, hence reuse */
       component = (std::uint64_t) (sel * 1.0e12);
+    }
+  else if (op == PT_LIKE || op == PT_NOT_LIKE)
+    {
+      /* LIKE estimates span decades -- a rare prefix sits at 1/N, a leading-wildcard pattern
+       * near 1 -- and mix stepwise parts (MCV hits, bucket-boundary match counts) with a
+       * continuous heuristic on small histograms. The range rule's 0.01 steps would fold every
+       * prefix pattern below 1% into one band, so a pattern 10x rarer than the one the plan was
+       * fixed under would never replan. A power-of-two band tells 0.1% from 1% apart (scan cost
+       * is roughly linear in selectivity, so 2x is the unit at which a plan can flip) and caps a
+       * predicate's distinct fingerprints at ~log2 (N) regardless of histogram size. frexp:
+       * sel = m * 2^e with 0.5 <= m < 1; e alone is the band (0 for a 1 - LIKE of exactly 0). */
+      int band = 0;
+
+      (void) std::frexp (sel, &band);
+      component = (std::uint64_t) (band + 1024);	/* offset keeps the band non-negative (e <= 1 for sel <= 1) */
     }
   else
     {
