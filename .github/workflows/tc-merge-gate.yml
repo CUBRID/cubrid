@@ -296,12 +296,19 @@ jobs:
           sort -u -o "${RUNNER_TEMP}/open-tc.txt" "${RUNNER_TEMP}/open-tc.txt"
 
           GH_TOKEN="${GITHUB_TOKEN}" gh pr list --repo "${ENGINE_REPO}" --base develop --state open \
-            --limit 300 --json number,headRefOid,statusCheckRollup \
-            --jq '.[] | . as $pr
+            --limit 300 --json number,headRefOid,statusCheckRollup > "${RUNNER_TEMP}/open-prs.json"
+
+          # Past the limit the rest would drop out without a word.
+          OPEN_N=$(jq 'length' "${RUNNER_TEMP}/open-prs.json")
+          if [ "${OPEN_N}" -ge 300 ]; then
+            echo "::warning::${OPEN_N} open PRs reached the list limit — raise it"
+          fi
+
+          jq -r '.[] | . as $pr
                   | ([$pr.statusCheckRollup[]? | select(.name == "Check TC PRs")] | max_by(.completedAt // ""))
                   | select(. != null)
                   | "\($pr.number)\t\($pr.headRefOid)\t\(.conclusion // "")\t\(.completedAt // "")"' \
-            > "${RUNNER_TEMP}/prs.tsv"
+            "${RUNNER_TEMP}/open-prs.json" > "${RUNNER_TEMP}/prs.tsv"
 
           # Leave a verdict younger than this alone: its run may still be settling.
           MIN_AGE_SEC=1800
@@ -317,12 +324,20 @@ jobs:
             if grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
               EXPECTED=FAILURE
             else
-              OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}")
+              OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}") || {
+                echo "::warning::PR #${PR_NUMBER}: the judge did not finish — left as it stands"
+                continue
+              }
               EXPECTED=$( [ "$(head -n 1 <<< "${OUT}")" = BLOCK ] && echo FAILURE || echo SUCCESS )
             fi
             [ "${STANDING}" = "${EXPECTED}" ] && continue
 
-            [ -z "${OUT}" ] && OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}")
+            if [ -z "${OUT}" ]; then
+              OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}") || {
+                echo "::warning::PR #${PR_NUMBER}: the judge did not finish — left as it stands"
+                continue
+              }
+            fi
             VERDICT=$(head -n 1 <<< "${OUT}")
             DETAIL=$(tail -n +2 <<< "${OUT}")
 
@@ -337,12 +352,10 @@ jobs:
             # Post the check run directly. A label or any other event raised with
             # GITHUB_TOKEN starts no workflow run, so the verdict has to be written
             # rather than triggered. The name is what branch protection requires.
-            if jq -n --arg sha "${HEAD_SHA}" --arg conclusion "${CONCLUSION}" \
-                    --arg title "${TITLE}" --arg url "${RUN_URL}" \
-                    --arg summary "${DETAIL}"$'\n\n'"Posted by the scheduled sweep, because the standing verdict no longer matched." \
+            if jq -n --arg sha "${HEAD_SHA}" --arg conclusion "${CONCLUSION}" --arg title "${TITLE}" \
+                    --arg summary "${DETAIL}"$'\n\n'"Posted by the scheduled sweep (${RUN_URL}), because the standing verdict no longer matched." \
                     '{name: "Check TC PRs", head_sha: $sha, status: "completed",
-                      conclusion: $conclusion, details_url: $url,
-                      output: {title: $title, summary: $summary}}' \
+                      conclusion: $conclusion, output: {title: $title, summary: $summary}}' \
                | GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/check-runs" --input - > /dev/null; then
               echo "::notice::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED} — posted"
               POSTED_N=$((POSTED_N + 1))
