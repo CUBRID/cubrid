@@ -4142,7 +4142,6 @@ btree_get_disk_size_of_key (DB_VALUE * key)
  *   node_type(in):
  *   key_type(in):
  *   key_len(in):
- *   during_loading(in):
  *   class_oid(in):
  *   oid(in):
  *   p_mvcc_rec_header(in): MVCC record header
@@ -4158,10 +4157,9 @@ btree_get_disk_size_of_key (DB_VALUE * key)
  */
 int
 btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key, BTREE_NODE_TYPE node_type,
-		    int key_type, int key_len, bool during_loading, OID * class_oid, OID * oid,
-		    BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
+		    int key_type, int key_len, OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
 {
-  return btree_write_record_ex (thread_p, btid, node_rec, key, node_type, key_type, key_len, during_loading, class_oid,
+  return btree_write_record_ex (thread_p, btid, node_rec, key, node_type, key_type, key_len, class_oid,
 				oid, mvcc_info, rec, NULL, NULL);
 }
 
@@ -4177,7 +4175,7 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
  */
 int
 btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-		       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading, OID * class_oid,
+		       BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid,
 		       OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
 		       BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn, void *store_ovf_key_arg)
 {
@@ -17096,7 +17094,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= qheader->max_key_len)
 	{
 	  ret =
-	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len, false,
+	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len,
 				&btid->topclass_oid, &dummy_oid, NULL, &rec);
 	  if (ret != NO_ERROR)
 	    {
@@ -17324,7 +17322,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   ret =
-    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, false, NULL, NULL,
+    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, NULL, NULL,
 			NULL, &rec);
   if (ret != NO_ERROR)
     {
@@ -17701,7 +17699,7 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID
 	    {
 	      ret =
 		btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len,
-				    false, &btid->topclass_oid, &dummy_oid, NULL, &rec);
+				    &btid->topclass_oid, &dummy_oid, NULL, &rec);
 
 	      btree_leaf_set_flag (&rec, BTREE_LEAF_RECORD_FENCE);
 	      fence_insert = true;
@@ -17965,7 +17963,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= pheader->node.max_key_len)
 	{
 	  ret =
-	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len, false,
+	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len,
 				&btid->topclass_oid, &dummy_oid, NULL, &rec);
 	  if (ret != NO_ERROR)
 	    {
@@ -18219,7 +18217,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   ret =
-    btree_write_record (thread_p, btid, &nleaf_rec, neg_inf_key, BTREE_NON_LEAF_NODE, key_type, key_len, false, NULL,
+    btree_write_record (thread_p, btid, &nleaf_rec, neg_inf_key, BTREE_NON_LEAF_NODE, key_type, key_len, NULL,
 			NULL, NULL, &rec);
   if (ret != NO_ERROR)
     {
@@ -18261,7 +18259,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   ret =
-    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, false, NULL, NULL,
+    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, NULL, NULL,
 			NULL, &rec);
   if (ret != NO_ERROR)
     {
@@ -32282,7 +32280,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   record.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
   record.area_size = DB_PAGESIZE;
   error_code =
-    btree_write_record (thread_p, btid_int, NULL, new_key, BTREE_LEAF_NODE, key_type, key_len, false,
+    btree_write_record (thread_p, btid_int, NULL, new_key, BTREE_LEAF_NODE, key_type, key_len,
 			BTREE_INSERT_CLASS_OID (insert_helper), BTREE_INSERT_OID (insert_helper),
 			BTREE_INSERT_MVCC_INFO (insert_helper), &record);
   if (new_key == &local_key)

@@ -935,11 +935,11 @@ typedef int (*BTREE_STORE_OVF_KEY_FUNC) (THREAD_ENTRY * thread_p, void *arg, DB_
 					 BTREE_NODE_TYPE node_type, VPID * first_vpid);
 
 extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-			       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
-			       OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
+			       BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid, OID * oid,
+			       BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
 extern int btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-				  BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
-				  OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
+				  BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid, OID * oid,
+				  BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
 				  BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn, void *store_ovf_key_arg);
 extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
 			      void *rec_header, BTREE_NODE_TYPE node_type, bool * clear_key, int *offset, int copy,

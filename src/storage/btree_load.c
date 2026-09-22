@@ -4980,11 +4980,11 @@ bt_load_write_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, void *node
 {
   if (key_type != BTREE_OVERFLOW_KEY || load_args->provider == NULL)
     {
-      return btree_write_record (thread_p, load_args->btid, node_rec, key, node_type, key_type, key_len, true,
+      return btree_write_record (thread_p, load_args->btid, node_rec, key, node_type, key_type, key_len,
 				 class_oid, oid, mvcc_info, rec);
     }
 
-  return btree_write_record_ex (thread_p, load_args->btid, node_rec, key, node_type, key_type, key_len, true,
+  return btree_write_record_ex (thread_p, load_args->btid, node_rec, key, node_type, key_type, key_len,
 				class_oid, oid, mvcc_info, rec, bt_load_store_overflow_key_hook, load_args);
 }
 
