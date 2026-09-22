@@ -933,18 +933,15 @@ error:
 }
 
 /*
- * cubrid_log_authenticate () - prove to the server which account this channel runs as.
+ * cubrid_log_request_challenge () - ask the server for a one-time challenge.
  *   return: CUBRID_LOG_SUCCESS, or a CUBRID_LOG_* error code.
- *   password(in): the password the caller supplied, in plain text
- *
- * The CDC channel is opened after db_shutdown(), so the server sees no registered
- * client on it and cannot tell who is asking. Two exchanges settle that: the
- * server sends a one-time challenge together with the scheme its stored password
- * uses, and this answers with a digest over the challenge and the password in
- * that same stored form. The password itself is never sent.
+ *   timeout(in)   : how long to wait for the reply, in milliseconds
+ *   scheme(out)   : the form the stored password is kept in
+ *   nonce(out)    : the challenge, copied out of the reply buffer
+ *   nonce_size(in): size of nonce, CSS_CDC_AUTH_NONCE_SIZE
  */
 static int
-cubrid_log_authenticate (char *password)
+cubrid_log_request_challenge (int timeout, int *scheme, char *nonce, int nonce_size)
 {
   unsigned short rid = 0;
 
@@ -953,30 +950,17 @@ cubrid_log_authenticate (char *password)
   int request_size;
 
   OR_ALIGNED_BUF (OR_INT_SIZE * 2 + CSS_CDC_AUTH_NONCE_SIZE + MAX_ALIGNMENT) a_challenge_reply;
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *challenge_reply = OR_ALIGNED_BUF_START (a_challenge_reply);
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
 
   char *recv_data = NULL;
   int recv_data_size;
 
-  char encrypted[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
-  char plain_buffer[CSS_CDC_AUTH_NONCE_SIZE + AU_MAX_PASSWORD_BUF + 4];
-  char *nonce = NULL;
-  char *digest = NULL;
-  int digest_len;
-  int scheme, reply_code;
-
-  /* A server that predates these requests answers with an error packet, which
-   * css_receive_data () does not recognise and simply keeps waiting through. The
-   * handshake is two small round trips on an already-open connection, so cap the
-   * wait well below the connect timeout to turn that into a prompt failure. */
-  int timeout = ((g_connection_timeout < 30) ? g_connection_timeout : 30) * 1000;
+  char *server_nonce = NULL;
+  char *after_len;
+  int declared_len, reply_code;
 
   CSS_QUEUE_ENTRY *queue_entry;
   int err_code;
-
-  /* --- ask for a challenge --- */
 
   request_size = or_packed_string_length (g_db_user, NULL);
 
@@ -1018,36 +1002,84 @@ cubrid_log_authenticate (char *password)
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "reply code from server is %d\n", reply_code);
     }
 
-  ptr = or_unpack_int (ptr, &scheme);
+  ptr = or_unpack_int (ptr, scheme);
 
   /* The nonce is a length-prefixed string; validate its length lies within
    * recv_data_size before or_unpack_string_nocopy () trusts the prefix, so a
    * short, corrupt, or malicious server reply cannot cause an out-of-bounds
    * read here or in the strlen () below. */
-  {
-    int declared_len;
-    char *after_len;
+  if (recv_data_size - (int) (ptr - recv_data) < OR_INT_SIZE)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a truncated authentication challenge\n");
+    }
 
-    if (recv_data_size - (int) (ptr - recv_data) < OR_INT_SIZE)
-      {
-	CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a truncated authentication challenge\n");
-      }
-
-    after_len = or_unpack_int (ptr, &declared_len);
-    if (declared_len < 0 || declared_len > (recv_data_size - (int) (after_len - recv_data))
-	|| memchr (after_len, '\0', declared_len) == NULL)
-      {
-	CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a malformed authentication challenge\n");
-      }
-  }
-
-  ptr = or_unpack_string_nocopy (ptr, &nonce);
-  if (nonce == NULL || strlen (nonce) != CSS_CDC_AUTH_NONCE_SIZE - 1)
+  after_len = or_unpack_int (ptr, &declared_len);
+  if (declared_len < 0 || declared_len > (recv_data_size - (int) (after_len - recv_data))
+      || memchr (after_len, '\0', declared_len) == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a malformed authentication challenge\n");
     }
 
-  /* --- answer it --- */
+  ptr = or_unpack_string_nocopy (ptr, &server_nonce);
+  if (server_nonce == NULL || strlen (server_nonce) != CSS_CDC_AUTH_NONCE_SIZE - 1)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a malformed authentication challenge\n");
+    }
+
+  /* server_nonce points into recv_data, which is released just below */
+  strncpy (nonce, server_nonce, nonce_size - 1);
+  nonce[nonce_size - 1] = '\0';
+
+  /* css_receive_data () hands back the caller's own buffer when the reply fits in it */
+  if (recv_data != challenge_reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  free_and_init (a_request);
+
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  if (recv_data != NULL && recv_data != challenge_reply)
+    {
+      free_and_init (recv_data);
+    }
+
+  queue_entry = css_find_queue_entry (g_conn_entry->buffer_queue, rid);
+  if (queue_entry != NULL)
+    {
+      queue_entry->buffer = NULL;
+      css_queue_remove_header_entry_ptr (&g_conn_entry->buffer_queue, queue_entry);
+    }
+
+  if (a_request != NULL)
+    {
+      free_and_init (a_request);
+    }
+
+  return err_code;
+}
+
+/*
+ * cubrid_log_make_auth_digest () - compute the answer to a challenge.
+ *   return: CUBRID_LOG_SUCCESS, or a CUBRID_LOG_* error code.
+ *   password(in): the password the caller supplied, in plain text
+ *   scheme(in)  : the form the stored password is kept in
+ *   nonce(in)   : the challenge the server sent
+ *   digest(out) : the answer, released by the caller with db_private_free_and_init ()
+ *
+ * The password is first put into the same form the server has stored, so the
+ * digest matches the one the server computes without the password being sent.
+ */
+static int
+cubrid_log_make_auth_digest (char *password, int scheme, const char *nonce, char **digest)
+{
+  char encrypted[AU_MAX_PASSWORD_BUF + 4] = { '\0' };
+  char plain_buffer[CSS_CDC_AUTH_NONCE_SIZE + AU_MAX_PASSWORD_BUF + 4];
+  int digest_len;
+  int err_code;
 
   switch (scheme)
     {
@@ -1068,19 +1100,43 @@ cubrid_log_authenticate (char *password)
 
   snprintf (plain_buffer, sizeof (plain_buffer), "%s%s", nonce, encrypted);
 
-  if (crypt_sha_two (NULL, plain_buffer, (int) strlen (plain_buffer), 256, &digest, &digest_len) != NO_ERROR
-      || digest == NULL)
+  if (crypt_sha_two (NULL, plain_buffer, (int) strlen (plain_buffer), 256, digest, &digest_len) != NO_ERROR
+      || *digest == NULL)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Failed to compute the authentication response\n");
     }
 
-  /* css_receive_data () hands back the caller's own buffer when the reply fits in it */
-  if (recv_data != challenge_reply)
-    {
-      free_and_init (recv_data);
-    }
-  recv_data = NULL;
-  free_and_init (a_request);
+  return CUBRID_LOG_SUCCESS;
+
+cubrid_log_error:
+
+  return err_code;
+}
+
+/*
+ * cubrid_log_send_auth_response () - answer the challenge and read the verdict.
+ *   return: CUBRID_LOG_SUCCESS, or a CUBRID_LOG_* error code.
+ *   digest(in) : the answer computed for the outstanding challenge
+ *   timeout(in): how long to wait for the reply, in milliseconds
+ */
+static int
+cubrid_log_send_auth_response (const char *digest, int timeout)
+{
+  unsigned short rid = 0;
+
+  char *a_request = NULL;
+  char *request, *ptr;
+  int request_size;
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  char *recv_data = NULL;
+  int recv_data_size;
+  int reply_code;
+
+  CSS_QUEUE_ENTRY *queue_entry;
+  int err_code;
 
   request_size = or_packed_string_length (digest, NULL);
 
@@ -1124,19 +1180,18 @@ cubrid_log_authenticate (char *password)
 				 reply_code);
     }
 
-  db_private_free_and_init (NULL, digest);
+  if (recv_data != reply)
+    {
+      free_and_init (recv_data);
+    }
+
   free_and_init (a_request);
 
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
 
-  if (digest != NULL)
-    {
-      db_private_free_and_init (NULL, digest);
-    }
-
-  if (recv_data != NULL && recv_data != challenge_reply && recv_data != reply)
+  if (recv_data != NULL && recv_data != reply)
     {
       free_and_init (recv_data);
     }
@@ -1152,6 +1207,50 @@ cubrid_log_error:
     {
       free_and_init (a_request);
     }
+
+  return err_code;
+}
+
+/*
+ * cubrid_log_authenticate () - prove to the server which account this channel runs as.
+ *   return: CUBRID_LOG_SUCCESS, or a CUBRID_LOG_* error code.
+ *   password(in): the password the caller supplied, in plain text
+ *
+ * The CDC channel is opened after db_shutdown(), so the server sees no registered
+ * client on it and cannot tell who is asking. Two exchanges settle that: the
+ * server sends a one-time challenge together with the scheme its stored password
+ * uses, and this answers with a digest over the challenge and the password in
+ * that same stored form. The password itself is never sent.
+ */
+static int
+cubrid_log_authenticate (char *password)
+{
+  char nonce[CSS_CDC_AUTH_NONCE_SIZE];
+  char *digest = NULL;
+  int scheme;
+  int err_code;
+
+  /* A server that predates these requests answers with an error packet, which
+   * css_receive_data () does not recognise and simply keeps waiting through. The
+   * handshake is two small round trips on an already-open connection, so cap the
+   * wait well below the connect timeout to turn that into a prompt failure. */
+  int timeout = ((g_connection_timeout < 30) ? g_connection_timeout : 30) * 1000;
+
+  err_code = cubrid_log_request_challenge (timeout, &scheme, nonce, sizeof (nonce));
+  if (err_code != CUBRID_LOG_SUCCESS)
+    {
+      return err_code;
+    }
+
+  err_code = cubrid_log_make_auth_digest (password, scheme, nonce, &digest);
+  if (err_code != CUBRID_LOG_SUCCESS)
+    {
+      return err_code;
+    }
+
+  err_code = cubrid_log_send_auth_response (digest, timeout);
+
+  db_private_free_and_init (NULL, digest);
 
   return err_code;
 }

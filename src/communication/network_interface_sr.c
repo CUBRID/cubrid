@@ -10831,16 +10831,12 @@ scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
       || user_name == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, reqlen, OR_INT_SIZE);
-      return_error_to_client (thread_p, rid);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      return;
+      goto error;
     }
 
   if (crypt_generate_random_bytes (nonce_bytes, sizeof (nonce_bytes)) != NO_ERROR)
     {
-      return_error_to_client (thread_p, rid);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      return;
+      goto error;
     }
   str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
 
@@ -10860,27 +10856,21 @@ scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
 
       if (crypt_generate_random_bytes (secret_bytes, sizeof (secret_bytes)) != NO_ERROR)
 	{
-	  return_error_to_client (thread_p, rid);
-	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  return;
+	  goto error;
 	}
       str_to_hex_prealloced (secret_bytes, sizeof (secret_bytes), secret, sizeof (secret), HEX_UPPERCASE);
 
       if (cdc_auth_make_response (thread_p, nonce, secret, thread_p->conn_entry->cdc_auth_expected) != NO_ERROR)
 	{
 	  thread_p->conn_entry->cdc_auth_expected[0] = '\0';
-	  return_error_to_client (thread_p, rid);
-	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  return;
+	  goto error;
 	}
     }
   else if (cdc_auth_make_response (thread_p, nonce, stored_password, thread_p->conn_entry->cdc_auth_expected) !=
 	   NO_ERROR)
     {
       thread_p->conn_entry->cdc_auth_expected[0] = '\0';
-      return_error_to_client (thread_p, rid);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      return;
+      goto error;
     }
   thread_p->conn_entry->cdc_auth_is_dba = is_dba;
 
@@ -10889,6 +10879,13 @@ scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
   ptr = or_pack_string (ptr, nonce);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, (int) (ptr - reply));
+
+  return;
+
+error:
+
+  return_error_to_client (thread_p, rid);
+  css_send_abort_to_client (thread_p->conn_entry, rid);
 }
 
 /*
