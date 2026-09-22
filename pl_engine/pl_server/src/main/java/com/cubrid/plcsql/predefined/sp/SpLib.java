@@ -103,7 +103,8 @@ public class SpLib {
             Throwable cause = e.getCause();
             if (cause == null) {
                 // unlikely
-                throw new SQL_ERROR("error while initializing the package of " + method.getName());
+                throw new SQL_ERROR(
+                        "error while initializing a package instance of " + method.getName());
             } else {
                 throw new SQL_ERROR(
                         "error while initializing the package of "
@@ -111,6 +112,9 @@ public class SpLib {
                                 + ": "
                                 + cause.getMessage());
             }
+        } catch (NoClassDefFoundError e) {
+            Server.log(e);
+            throw new SQL_ERROR(method.getName() + ": package instance undefined");
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
             if (cause == null) {
