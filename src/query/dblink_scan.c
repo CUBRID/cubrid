@@ -161,8 +161,10 @@ static int type_map[] = {
 
 /*
  * dblink_dml_src_utype () - The CCI type a remote marker carries when its domain is this source type.
- *   return: CCI_U_TYPE_NULL for a type with no CCI equivalent (the caller then leaves the cast to the
- *           formatter, which also declines it)
+ *   return: CCI_U_TYPE_NULL for a type with no CCI equivalent. A resolved marker then reads as a
+ *           disagreement, where the formatter spells a cast for object, the LOBs and the collections and
+ *           declines the rest -- either way dblink_bind_dbval_to_param () has no case for such a source
+ *           and refuses it before the comparison.
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
  * Its counterpart is the u_type dblink_bind_dbval_to_param() picks when sending the value (and
