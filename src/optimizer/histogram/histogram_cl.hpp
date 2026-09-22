@@ -105,8 +105,10 @@ int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_
  * sensitivity). */
 bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp);
 /* structural (value-independent): true if the statement has a (column op ?) predicate the
- * bind-sensitive planner could price. Used at plan generation to flag a plan built with
- * unbound host-variable markers so the first execution replans under the real values. */
+ * bind-sensitive planner could price -- a candidate operator on a column that carries a
+ * histogram. Used at plan generation to flag a plan built with unbound host-variable markers
+ * so the first execution replans under the real values; a statement no value can re-price is
+ * not flagged (the flag alone makes the SQL EXECUTE path recompile every execution). */
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
