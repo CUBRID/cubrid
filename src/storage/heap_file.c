@@ -17450,8 +17450,7 @@ heap_get_class_hfid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
     }
   if (!found)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, class_oid->volid, class_oid->pageid,
-	      class_oid->slotid);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, OID_AS_ARGS (class_oid));
       return ER_HEAP_UNKNOWN_OBJECT;
     }
   return NO_ERROR;
