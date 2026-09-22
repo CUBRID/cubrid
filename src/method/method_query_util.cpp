@@ -563,6 +563,10 @@ namespace cubmethod
 	  {
 	    i = consume_tokens (sql, i + 1, DOUBLE_QUOTED_STRING);
 	  }
+	else if (sql[i] == '[')
+	  {
+	    i = consume_tokens (sql, i + 1, BRACKETED_IDENTIFIER);
+	  }
       }
 
     num_markers += numbered_markers.size ();
@@ -626,6 +630,20 @@ namespace cubmethod
 		index++;
 	      }
 	    else if (sql[index] == '\"')
+	      {
+		break;
+	      }
+	  }
+      }
+    else if (stmt_status == BRACKETED_IDENTIFIER)
+      {
+	for (; index < sql_len; index++)
+	  {
+	    if (sql[index] == ']' && sql[index + 1] == ']')
+	      {
+		index++;
+	      }
+	    else if (sql[index] == ']')
 	      {
 		break;
 	      }
