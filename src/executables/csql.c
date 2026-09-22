@@ -3843,7 +3843,8 @@ csql_display_trace (void)
     {
       pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
       fprintf (pf, "\n=== Auto Trace ===\n");
-      fprintf (pf, "%s\n", db_get_char (&trace));
+      /* peeked value: the bytes are not NUL-terminated, print exactly the string size */
+      fprintf (pf, "%.*s\n", db_get_string_size (&trace), db_get_char (&trace));
       csql_pclose (pf, csql_Output_fp);
     }
 
