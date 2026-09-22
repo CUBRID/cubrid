@@ -248,6 +248,10 @@ hm_srv_handle_unset_prepare_flag_all (void)
  *       prepare_call_info) belongs to the previous transaction, and an auto-commit deferred by that
  *       statement must not be applied to whatever transaction is open now.  Call this after the
  *       per-handle cleanup, which still needs the flag to tell the two apart.
+ *
+ *       Walk the whole table rather than max_handle_id: hm_srv_handle_free_all () lowers that bound to
+ *       the index of the last surviving handle, which would leave the handle itself unvisited.
+ *       hm_find_srv_handle () bounds ids by max_srv_handle, so the table is what keeps them reachable.
  */
 void
 hm_srv_handle_end_transaction_all (void)
@@ -255,7 +259,7 @@ hm_srv_handle_end_transaction_all (void)
   T_SRV_HANDLE *srv_handle;
   int i;
 
-  for (i = 0; i < max_handle_id; i++)
+  for (i = 0; i < max_srv_handle; i++)
     {
       srv_handle = srv_handle_table[i];
       if (srv_handle != NULL)
