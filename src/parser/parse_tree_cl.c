@@ -14917,6 +14917,18 @@ pt_init_select (PT_NODE * p)
  *   hidden column gets that column's own expression back, which a fresh parse turns into a hidden
  *   column again. A hidden column holding a constant is the one that cannot be printed as it stands,
  *   and it is replaced by a cast constant instead -- see the sort spec loop below.
+ *
+ *   Every give_up below, this function's only way to signal "false", is reached identically whether
+ *   the shape genuinely can't be rewritten or a node allocation failed along the way (parser_copy_tree (),
+ *   pt_make_integer_value (), pt_wrap_with_cast_op () each already er_set () an out-of-memory error on
+ *   failure, through parser_create_node_block ()) -- this function never calls er_clear (), so that error
+ *   code is still the current one when it returns. That is deliberate, not an oversight: the only current
+ *   caller of static-SQL printing, callback_handler::get_sql_semantics () in method_callback.cpp, checks
+ *   er_errid () once after the whole statement is printed and turns a still-set error into a compile
+ *   failure for that statement -- so an allocation failure here surfaces as a real error there instead of
+ *   silently being treated as "nothing to omit". A future caller of pt_print_select ()/pt_print_cte ()/
+ *   pt_print_spec () under is_parsing_static_sql that does not check er_errid () afterward would lose that
+ *   guarantee.
  */
 static bool
 pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE ** rewritten_order_by)
@@ -18535,6 +18547,12 @@ pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared,
 
       parser_free_tree (parser, aligned);
       aligned = filtered;
+
+      /* pt_static_sql_can_omit_hidden_columns () only returns true when query's select list has at
+       * least one visible column, so this filter can never remove every declared name; both callers
+       * (pt_print_cte (), pt_print_spec ()) still fall back to leaving the column-list clause out
+       * entirely if that invariant is ever wrong, rather than printing an empty, invalid "()". */
+      assert (aligned != NULL);
     }
 
   return aligned;
@@ -18566,11 +18584,19 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes_l (parser, p->info.cte.name);
   q = pt_append_varchar (parser, q, r1);
 
-  /* attribute list */
-  q = pt_append_nulstring (parser, q, "(");
-  r1 = pt_print_bytes_l (parser, as_attr_list);
-  q = pt_append_varchar (parser, q, r1);
-  q = pt_append_nulstring (parser, q, ")");
+  /* attribute list -- as_attr_list is NULL only if pt_static_sql_align_declared_names () omitted every
+   * declared column, which pt_static_sql_can_omit_hidden_columns () already refuses to do (it returns
+   * false, leaving nothing to omit, whenever that would leave no visible column); skip the parens
+   * instead of printing an empty "()" if that invariant is ever wrong -- a CTE with no explicit column
+   * list still gets its columns' names from its own select list, so this stays valid CTE syntax either
+   * way, the same fallback pt_print_spec () already relies on for a plain derived table's alias list. */
+  if (as_attr_list != NULL)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+      r1 = pt_print_bytes_l (parser, as_attr_list);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+    }
 
   /* AS keyword */
   q = pt_append_nulstring (parser, q, " as ");
