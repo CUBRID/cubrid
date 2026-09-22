@@ -296,13 +296,6 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       return false;
     }
 
-  /* uncorrelated IN / = SOME belongs to qo_rewrite_subqueries (), which ran just above; the ANTI forms
-   * have no such path */
-  if (info->is_in_form && !info->is_anti && subq->info.query.correlation_level != 1)
-    {
-      return false;
-    }
-
   inner_spec = subq->info.query.q.select.from;
   on_cond = subq->info.query.q.select.where;
 
@@ -536,8 +529,8 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 
       inner_spec->info.spec.join_type = (info.is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
 
-      /* count the position rather than read the last spec's location: a derived spec appended earlier by
-       * qo_rewrite_subqueries () still carries the unset -1, and qo_analyze_term () indexes the node array by
+      /* count the position rather than read the last spec's location: a spec the rewriter appended carries
+       * the unset -1 (pt_bind_names () is long past), and qo_analyze_term () indexes the node array by
        * location, so it must equal the FROM position */
       loc = 0;
       for (spec = node->info.query.q.select.from; spec->next != NULL; spec = spec->next)
