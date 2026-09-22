@@ -98,11 +98,24 @@ public class SpLib {
         } catch (IllegalArgumentException e) {
             Server.log(e);
             throw new PROGRAM_ERROR(method.getName() + ": illegal argument");
+        } catch (ExceptionInInitializerError e) {
+            Server.log(e);
+            Throwable cause = e.getCause();
+            if (cause == null) {
+                // unlikely
+                throw new SQL_ERROR("error while initializing the package of " + method.getName());
+            } else {
+                throw new SQL_ERROR(
+                        "error while initializing the package of "
+                                + method.getName()
+                                + ": "
+                                + cause.getMessage());
+            }
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
             if (cause == null) {
-                assert false; // unlikely
-                throw new PROGRAM_ERROR("error in invocation target " + method.getName());
+                // unlikely
+                throw new PROGRAM_ERROR("error while executing " + method.getName());
             } else {
                 if (cause instanceof Error) {
                     throw (Error) cause;
@@ -111,7 +124,7 @@ public class SpLib {
                 } else {
                     Server.log(cause);
                     throw new PROGRAM_ERROR(
-                            "error in invocation target "
+                            "error while executing "
                                     + method.getName()
                                     + ": "
                                     + cause.getMessage());
