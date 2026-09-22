@@ -36,6 +36,9 @@
 
 #include <vector>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* bridge functions defined in oos_file.cpp */
 int bridge_oos_get_max_chunk_size_within_page ();
 void bridge_oos_debug_counters_reset ();

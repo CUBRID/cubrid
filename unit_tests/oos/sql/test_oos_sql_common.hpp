@@ -43,9 +43,6 @@
 #include "vacuum.h"
 #endif /* SA_MODE */
 
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
-
 // ============================================================================
 // Server environment (reusable across all SQL test binaries)
 // ============================================================================
