@@ -1324,7 +1324,7 @@ $ LOADDB
 1251 TDE 암호화를 수행 중에 문제가 발생했습니다.
 1252 TDE 복호화를 수행 중에 문제가 발생했습니다.
 1253 TDE 모듈이 로드 (load)되지 않았습니다.
-1254 키 생성에 실패했습니다.
+1254 키 생성 또는 검증에 실패했습니다.
 1255 TDE 모듈 로드 (load)에 실패했습니다. TDE 기능을 사용할 수 없습니다.\n\
  키 파일 (_keys)의 경로와 키 파일이 올바른 키를 포함하고 있는지 확인하세요.
 1256 키 파일 (_keys)을 복사할 수 없습니다. 복사된 데이터베이스에서 TDE 기능을 사용할 수 없습니다.\n
@@ -1482,7 +1482,14 @@ $ LOADDB
 
 1378 사용자 "%1$s"의 login 가능 여부를 변경할 수 없습니다.
 
-1379 마지막 에러
+1379 CDC: 클라이언트에 전달한 추출 위치 (%1$lld|%2$d) 때문에 archive log 볼륨 %3$d 를 보존합니다.
+
+1380 PARALLEL_ENABLE로 선언된 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
+
+1381 시스템 메타데이터가 현재 CUBRID 버전과 호환되지 않습니다. 'cubrid upgradedb'를 실행하세요.
+1382 시스템 메타데이터 버전이 현재 CUBRID 버전이 지원하는 것보다 최신입니다. 다운그레이드는 지원되지 않습니다.
+
+1383 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1990,11 +1997,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 333 Stored Procedure를 호출하는 CALL 문은 INTO 절을 가질 수 없습니다.
 
 334 가상 클래스 속성은 visibility를 정의할 수 없습니다.
-335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서 visibility를 정의할 수 있습니다.
+335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 visibility를 정의할 수 있습니다.
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 337 파티션 이름이 너무 깁니다.
-
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
+341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
+342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
+343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 
 
 

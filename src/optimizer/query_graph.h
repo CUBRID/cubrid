@@ -423,11 +423,17 @@ struct qo_node
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER)
 
+#define QO_NODE_IS_SEMI_ANTI_JOIN(node) \
+  (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI       || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI)
+
 #define QO_NODE_IS_ANSI_JOIN(node) \
   (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_NATURAL     || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI         || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI         || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_INNER)
 
 #define QO_ADD_OUTER_DEP_SET(tail,head) \

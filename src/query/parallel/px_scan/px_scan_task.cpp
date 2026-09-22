@@ -247,14 +247,31 @@ namespace parallel_scan
 
 		if (specp->type == TARGET_LIST)
 		  {
-		    assert_release_error (scan_info.list_id != NULL);
+		    QFILE_LIST_ID *open_list_id = scan_info.list_id;
+		    XASL_NODE *src_xasl = specp->s.list_node.xasl_node;
+		    if (src_xasl != NULL)
+		      {
+			for (xasl_node *lv = m_xasl; lv != nullptr && open_list_id != src_xasl->list_id;
+			     lv = lv->scan_ptr)
+			  {
+			    for (xasl_node *dp = lv->dptr_list; dp != nullptr; dp = dp->next)
+			      {
+				if (dp == src_xasl)
+				  {
+				    open_list_id = src_xasl->list_id;
+				    break;
+				  }
+			      }
+			  }
+		      }
+		    assert_release_error (open_list_id != NULL);
 		    if (er_errid() != NO_ERROR)
 		      {
 			return er_errid();
 		      }
 		    err_code =
 			    scan_open_list_scan (&thread_ref, &specp->s_id, specp->s_id.grouped, specp->single_fetch, specp->s_dbval,xptr->val_list,
-						 m_vd,scan_info.list_id, specp->s.list_node.list_regu_list_pred,specp->where_pred,
+						 m_vd,open_list_id, specp->s.list_node.list_regu_list_pred,specp->where_pred,
 						 specp->s.list_node.list_regu_list_rest,specp->s.list_node.list_regu_list_build, specp->s.list_node.list_regu_list_probe,
 						 specp->s.list_node.hash_list_scan_yn,true);
 		    if (err_code != NO_ERROR)
@@ -264,9 +281,22 @@ namespace parallel_scan
 		  }
 		else if (specp->type == TARGET_CLASS)
 		  {
+		    bool inner_cached_scan = false;
+		    bool chain_has_dptr = false;
+		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_has_dptr; cn = cn->scan_ptr)
+		      {
+			chain_has_dptr = (cn->dptr_list != nullptr);
+		      }
 		    if (xptr->scan_ptr == NULL)
 		      {
-			fixed_scan = true;
+			if (!chain_has_dptr)
+			  {
+			    fixed_scan = true;
+			  }
+			else if (!specp->s_id.grouped)
+			  {
+			    inner_cached_scan = true;
+			  }
 		      }
 
 		    if (thread_ref.on_trace && HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
@@ -292,10 +322,6 @@ namespace parallel_scan
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
-			/* Cached scan is restricted to the driving (level-0) scan, opened above with
-			 * m_is_cached_scan. Intermediate scans of the chain always open with cached
-			 * scan off (defaulted last argument), matching the serial-path gate in
-			 * qexec_execute_mainblock_internal (). */
 			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
@@ -304,7 +330,7 @@ namespace parallel_scan
 							specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
 							specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
 							specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
-							specp->s.cls_node.cls_regu_list_reserved);
+							specp->s.cls_node.cls_regu_list_reserved, inner_cached_scan);
 			if (err_code != NO_ERROR)
 			  {
 			    return err_code;
@@ -361,11 +387,31 @@ namespace parallel_scan
 		    return err_code;
 		  }
 
-		err_code = new_memoize_storage (&thread_ref, xptr);
-		if (err_code != NO_ERROR)
-		  {
-		    return err_code;
-		  }
+		/* skip memoize if any scan on the scan_ptr chain from here down is a SEMI / ANTI single-fetch
+		 * inner, as the serial path does (qexec_execute_mainblock_internal): a memo hit replays the
+		 * cached subtree result without probing, and for an ANTI inner a cached "no match" comes back
+		 * as S_END, which the parent takes as "no combination" and drops an outer row it must keep */
+		{
+		  bool sa_in_chain = false;
+
+		  for (xasl_node *dxp = xptr; dxp != NULL; dxp = dxp->scan_ptr)
+		    {
+		      if (XASL_IS_NL_SEMI_OR_ANTI (dxp))
+			{
+			  sa_in_chain = true;
+			  break;
+			}
+		    }
+
+		  if (!sa_in_chain)
+		    {
+		      err_code = new_memoize_storage (&thread_ref, xptr);
+		      if (err_code != NO_ERROR)
+			{
+			  return err_code;
+			}
+		    }
+		}
 
 		if (thread_ref.on_trace && partition_pruned)
 		  {
@@ -460,6 +506,12 @@ namespace parallel_scan
 				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
 				    m_scan_id,
 				    elapsed_time);
+	/* a worker evaluates the SPs of if_pred, and of outptr_list in list-merge mode; carry that
+	 * back or the FUNC line would report the leader's share alone */
+	m_trace_handler->add_sp_stats (perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_CALL_EVALS),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_EVAL_TIME_10USEC),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_FETCHES),
+				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_IOREADS));
 	perfmon_destroy_parallel_stats (&thread_ref);
       }
     m_result_handler->write_finalize (&thread_ref);
@@ -520,52 +572,6 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
-  static void clear_xasl_dptr_node (THREAD_ENTRY *thread_p, XASL_NODE *xaslp, bool uses_clones)
-  {
-    if (uses_clones)
-      {
-	if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
-	  {
-	    xaslp->status = XASL_CLEARED;
-	  }
-	else
-	  {
-	    /* The values allocated during execution will be cleared and the xasl is reused. */
-	    xaslp->status = XASL_INITIALIZED;
-	  }
-      }
-    else
-      {
-	xaslp->status = XASL_CLEARED;
-      }
-    if (xaslp->list_id->tuple_cnt > 0)
-      {
-	qfile_truncate_list (thread_p, xaslp->list_id);
-      }
-    if (xaslp->single_tuple)
-      {
-	QPROC_DB_VALUE_LIST value_list;
-	int i;
-	for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
-	     value_list = value_list->next, i++)
-	  {
-	    pr_clear_value (value_list->val);
-	  }
-      }
-  }
-
-  /* walk the full scan_ptr chain; mainline qexec_clear_scan_all_lists does the same. */
-  static void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
-  {
-    for (XASL_NODE *scan_xasl = xasl; scan_xasl != nullptr; scan_xasl = scan_xasl->scan_ptr)
-      {
-	for (XASL_NODE *xaslp = scan_xasl->dptr_list; xaslp != nullptr; xaslp = xaslp->next)
-	  {
-	    clear_xasl_dptr_node (thread_p, xaslp, uses_clones);
-	  }
-      }
-  }
-
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   int task<result_type, ST>::clone_xasl (cubthread::entry &thread_ref)
   {
@@ -611,7 +617,22 @@ namespace parallel_scan
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
 
+    /* The agg-expr marking is a run-time decision and is not inherited by XASL
+     * clones. Re-derive it here for each worker; FETCH_ALL_CONST and FETCH_NOT_CONST
+     * must not be carried across, and the fixed query shape yields the same result.
+     */
+    qexec_mark_aggregate_operand_expressions (m_xasl);
+
     m_scan_id = &m_xasl->spec_list->s_id;
+
+    for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+      {
+	if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    m_run_nonlinked_dptr = true;
+	    break;
+	  }
+      }
 
     m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
     if (m_xasl_state == nullptr)
@@ -647,7 +668,6 @@ namespace parallel_scan
   SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
   {
     SCAN_CODE scan_code, xs_scan;
-    bool uses_clones = xcache_uses_clones ();
     DB_LOGICAL ev_res;
     result_handler<result_type> *result_handler_p = m_result_handler;
 
@@ -666,12 +686,25 @@ namespace parallel_scan
 	    return S_ERROR;
 	  }
 
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	  {
+	    /* dptrs must run before after_join_pred/if_pred, as in qexec_intprt_fnc */
+	    if (m_run_nonlinked_dptr
+		&& qexec_execute_dptr_list (&thread_ref, m_xasl->dptr_list, m_xasl_state, true) != NO_ERROR)
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		return S_ERROR;
+	      }
+	  }
+
 	if (m_xasl->after_join_pred)
 	  {
 	    ev_res = eval_pred (&thread_ref, m_xasl->after_join_pred, m_vd, NULL);
 	    if (ev_res != V_TRUE)
 	      {
-		clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+		qexec_clear_scan_all_lists (&thread_ref, m_xasl);
 		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
 		  {
 		    continue;
@@ -691,7 +724,7 @@ namespace parallel_scan
 	    ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
 	    if (ev_res != V_TRUE)
 	      {
-		clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+		qexec_clear_scan_all_lists (&thread_ref, m_xasl);
 		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
 		  {
 		    continue;
@@ -787,9 +820,7 @@ namespace parallel_scan
 	    result_handler_p->write (&thread_ref, m_xasl->val_list);
 	  }
 
-	/* dptrs reaching here are per-row re-evaluated correlated subqueries; checker blocks join-type and IN-clause variants. clear all. */
-
-	clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+	qexec_clear_scan_all_lists (&thread_ref, m_xasl);
       }
     return S_END;
   }

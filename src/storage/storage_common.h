@@ -967,6 +967,15 @@ typedef enum
   SHOWSTMT_END
 } SHOWSTMT_TYPE;
 
+/* Scan mode of the show statements which acquire a class lock (SHOW HEAP HEADER/CAPACITY for now).
+ * It is passed as the last show argument; a request which does not carry it at all gets the
+ * default, EXACT. */
+typedef enum
+{
+  SHOWSTMT_SCAN_EXACT = 0,	/* S_LOCK: statistics consistent with the committed DML */
+  SHOWSTMT_SCAN_APPROX		/* IS_LOCK: concurrent with DML, but approximate */
+} SHOWSTMT_SCAN_MODE;
+
 #define NUM_F_GENERIC_ARGS 32
 #define NUM_F_INSERT_SUBSTRING_ARGS 4
 
@@ -1029,8 +1038,7 @@ typedef enum
   SM_FK_INFO_REF_CLASS_PK_BTID_INDEX = 1,
   SM_FK_INFO_DELETE_ACTION_INDEX = 2,
   SM_FK_INFO_UPDATE_ACTION_INDEX = 3,
-  SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX = 4,
-  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 5,
+  SM_FK_INFO_REF_MATCH_OPTION_INDEX = 4,
 
   SM_FK_INFO_SIZE
 } SM_FOREIGN_KEY_INFO_INDEX;

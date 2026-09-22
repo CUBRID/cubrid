@@ -147,12 +147,13 @@
 /* CUBRID does not currently support column privilege.
  * This view returns empty results until column privilege support is implemented.
  */
-const char *sm_define_view_column_privileges_spec (void)
+std::string
+sm_define_view_column_privileges_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "NULL AS [grantor], "
       "NULL AS [grantee], "
@@ -168,16 +169,18 @@ const char *sm_define_view_column_privileges_spec (void)
       "FALSE",
     CT_DUAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_columns_spec (void)
+std::string
+sm_define_view_columns_spec (void)
 {
-  static char stmt [8192];
+  char stmt [8192];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[cls].[owner].[name] AS [table_schema], "
@@ -299,6 +302,7 @@ const char *sm_define_view_columns_spec (void)
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
@@ -306,12 +310,13 @@ const char *sm_define_view_columns_spec (void)
 /* CUBRID does not currently support domains.
  * This view returns empty results until domain support is implemented.
  */
-const char *sm_define_view_domains_spec (void)
+std::string
+sm_define_view_domains_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "NULL AS [domain_catalog], "
       "NULL AS [domain_schema], "
@@ -342,16 +347,18 @@ const char *sm_define_view_domains_spec (void)
       "FALSE",
     CT_DUAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_foreign_servers_spec (void)
+std::string
+sm_define_view_foreign_servers_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [foreign_server_catalog], " /* string -> varchar(255) */
       "[srv].[link_name] AS [foreign_server_name], "
@@ -375,16 +382,18 @@ const char *sm_define_view_foreign_servers_spec (void)
       AUTH_CHECK_OBJECT_ANY("[srv].[owner].[name]", "[srv]"),
     CT_SERVER_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_key_column_usage_spec (void)
+std::string
+sm_define_view_key_column_usage_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "[idx].[class_of].[owner].[name] AS [constraint_schema], "
@@ -395,34 +404,44 @@ const char *sm_define_view_key_column_usage_spec (void)
       "[idx_key].[key_attr_name] AS [column_name], "
       "([idx_key].[key_order] + 1) AS [ordinal_position], "
       "([ref_key].[key_order] + 1) AS [position_in_unique_constraint], "
-      "[idx].[referential_index].[class_of].[owner].[name] AS [referenced_table_schema], "
-      "[idx].[referential_index].[class_of].[class_name] AS [referenced_table_name], "
+      "[ref_class].[owner].[name] AS [referenced_table_schema], "
+      "[ref_class].[class_name] AS [referenced_table_name], "
       "[ref_key].[key_attr_name] AS [referenced_column_name] "
     "FROM "
       /* CT_INDEXKEY_NAME */
       "[%s] AS [idx_key] "
       /* CT_INDEX_NAME */
       "INNER JOIN [%s] AS [idx] ON [idx] = [idx_key].[index_of] "
+      /* CT_CLASS_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_class] ON [ref_class].[class_of] = [idx].[referential_class] "
+      /* CT_INDEX_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_idx] "
+        "ON [ref_idx].[class_of] = [ref_class] AND [ref_idx].[is_primary_key] = 1 "
       /* CT_INDEXKEY_NAME */
-      "LEFT OUTER JOIN [%s] AS [ref_key] ON [ref_key].[index_of] = [idx].[referential_index] AND [ref_key].[key_order] = [idx_key].[key_order] "
+      "LEFT OUTER JOIN [%s] AS [ref_key] "
+        "ON [ref_key].[index_of] = [ref_idx] AND [ref_key].[key_order] = [idx_key].[key_order] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ") "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
+    CT_CLASS_NAME,
+    CT_INDEX_NAME,
     CT_INDEXKEY_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_parameters_spec (void)
+std::string
+sm_define_view_parameters_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp_args].[sp_of].[owner].[name] AS [specific_schema], "
@@ -467,16 +486,18 @@ const char *sm_define_view_parameters_spec (void)
     CT_STORED_PROC_ARGS_NAME,
     CT_DATATYPE_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_partitions_spec (void)
+std::string
+sm_define_view_partitions_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[super].[owner].[name] AS [table_schema], "
@@ -517,23 +538,25 @@ const char *sm_define_view_partitions_spec (void)
     CT_PARTITION_NAME,
     CT_CLASS_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_referential_constraints_spec (void)
+std::string
+sm_define_view_referential_constraints_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "[idx].[class_of].[owner].[name] AS [constraint_schema], "
       "[idx].[index_name] AS [constraint_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [unique_constraint_catalog], " /* string -> varchar(255) */
-      "[idx].[referential_index].[class_of].[owner].[name] AS [unique_constraint_schema], "
-      "[idx].[referential_index].[index_name] AS [unique_constraint_name], "
+      "[ref_class].[owner].[name] AS [unique_constraint_schema], "
+      "[ref_pk].[index_name] AS [unique_constraint_name], "
       /* SM_FK_MATCH_NONE, SM_FK_MATCH_PARTIAL, SM_FK_MATCH_FULL */
       "DECODE ([idx].[referential_match_option], %d, 'NONE', %d, 'PARTIAL', %d, 'FULL') AS [match_option], "
       /* SM_FOREIGN_KEY_RESTRICT, SM_FOREIGN_KEY_NO_ACTION, SM_FOREIGN_KEY_SET_NULL */
@@ -541,10 +564,15 @@ const char *sm_define_view_referential_constraints_spec (void)
       /* SM_FOREIGN_KEY_CASCADE, SM_FOREIGN_KEY_RESTRICT, SM_FOREIGN_KEY_NO_ACTION, SM_FOREIGN_KEY_SET_NULL */
       "DECODE ([idx].[delete_rule], %d, 'CASCADE', %d, 'RESTRICT', %d, 'NO ACTION', %d, 'SET NULL') AS [delete_rule], "
       "[idx].[class_of].[class_name] AS [table_name], "
-      "[idx].[referential_index].[class_of].[class_name] AS [referenced_table_name] "
+      "[ref_class].[class_name] AS [referenced_table_name] "
     "FROM "
       /* CT_INDEX_NAME */
       "[%s] AS [idx] "
+      /* CT_CLASS_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_class] ON [ref_class].[class_of] = [idx].[referential_class] "
+      /* CT_INDEX_NAME */
+      "LEFT OUTER JOIN [%s] AS [ref_pk] "
+        "ON [ref_pk].[class_of] = [ref_class] AND [ref_pk].[is_primary_key] = 1 "
     "WHERE "
       AUTH_CHECK_OBJECT_WRITE("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
       "AND [idx].[is_foreign_key] = 1",
@@ -558,18 +586,22 @@ const char *sm_define_view_referential_constraints_spec (void)
     SM_FOREIGN_KEY_RESTRICT,
     SM_FOREIGN_KEY_NO_ACTION,
     SM_FOREIGN_KEY_SET_NULL,
+    CT_INDEX_NAME,
+    CT_CLASS_NAME,
     CT_INDEX_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_routine_privileges_spec (void)
+std::string
+sm_define_view_routine_privileges_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "[auth].[grantor].[name] AS [grantor], "
       "[auth].[grantee].[name] AS [grantee], "
@@ -594,16 +626,18 @@ const char *sm_define_view_routine_privileges_spec (void)
     CT_STORED_PROC_NAME,
     DB_OBJECT_PROCEDURE);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_routines_spec (void)
+std::string
+sm_define_view_routines_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [specific_schema], "
@@ -643,6 +677,8 @@ const char *sm_define_view_routines_spec (void)
       "'SQL' AS [parameter_style], "
       /* SP_DIRECTIVE_DETERMINISTIC */
       "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_deterministic], "
+      /* SP_DIRECTIVE_PARALLEL_ENABLE */
+      "IF (([sp].[directive] & %d) <> 0, 'YES', 'NO') AS [is_parallel_enabled], "
       "CASE [sp].[sql_data_access] "
         "WHEN %d THEN 'NO SQL' "
         "WHEN %d THEN 'CONTAINS SQL' "
@@ -682,6 +718,7 @@ const char *sm_define_view_routines_spec (void)
     SP_LANG_JAVA,
     SP_LANG_PLCSQL, SP_LANG_JAVA,
     SP_DIRECTIVE_DETERMINISTIC,
+    SP_DIRECTIVE_PARALLEL_ENABLE,
     SP_SQL_TYPE_NO_SQL,
     SP_SQL_TYPE_CONTAINS_SQL,
     SP_SQL_TYPE_READS_SQL_DATA,
@@ -693,16 +730,18 @@ const char *sm_define_view_routines_spec (void)
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_schemata_spec (void)
+std::string
+sm_define_view_schemata_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [catalog_name], " /* string -> varchar(255) */
       "[usr].[name] AS [schema_name], "
@@ -727,16 +766,18 @@ const char *sm_define_view_schemata_spec (void)
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_sequences_spec (void)
+std::string
+sm_define_view_sequences_spec (void)
 {
-  static char stmt [2048];
+  char stmt [2048];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [sequence_catalog], " /* string -> varchar(255) */
       "[serial].[owner].[name] AS [sequence_schema], "
@@ -766,16 +807,18 @@ const char *sm_define_view_sequences_spec (void)
     DB_DEFAULT_NUMERIC_SCALE,
     CT_SERIAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_statistics_spec (void)
+std::string
+sm_define_view_statistics_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[cls].[owner].[name] AS [table_schema], "
@@ -826,16 +869,18 @@ const char *sm_define_view_statistics_spec (void)
     CT_CLASS_NAME,
     CT_ATTRIBUTE_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_synonyms_spec (void)
+std::string
+sm_define_view_synonyms_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [synonym_catalog], " /* string -> varchar(255) */
       "[syn].[owner].[name] AS [synonym_schema], "
@@ -854,16 +899,18 @@ const char *sm_define_view_synonyms_spec (void)
       AUTH_CHECK_SYNONYM("[syn].[is_public]", "[syn].[owner].[name]"),
     CT_SYNONYM_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_table_constraints_spec (void)
+std::string
+sm_define_view_table_constraints_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [constraint_catalog], " /* string -> varchar(255) */
       "[idx].[class_of].[owner].[name] AS [constraint_schema], "
@@ -888,16 +935,18 @@ const char *sm_define_view_table_constraints_spec (void)
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEX_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_table_privileges_spec (void)
+std::string
+sm_define_view_table_privileges_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "[auth].[grantor].[name] AS [grantor], "
       "[auth].[grantee].[name] AS [grantee], "
@@ -919,16 +968,18 @@ const char *sm_define_view_table_privileges_spec (void)
     CT_CLASS_NAME,
     DB_OBJECT_CLASS);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_tables_spec (void)
+std::string
+sm_define_view_tables_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[cls].[owner].[name] AS [table_schema], "
@@ -989,16 +1040,18 @@ const char *sm_define_view_tables_spec (void)
     CT_COLLATION_NAME,
     CT_SERIAL_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_triggers_spec (void)
+std::string
+sm_define_view_triggers_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [trigger_catalog], " /* string -> varchar(255) */
       "[tr].[owner].[name] AS [trigger_schema], "
@@ -1052,16 +1105,18 @@ const char *sm_define_view_triggers_spec (void)
     CT_CLASS_NAME,
     TR_EVENT_UPDATE, TR_EVENT_STATEMENT_INSERT);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }
 
-const char *sm_define_view_views_spec (void)
+std::string
+sm_define_view_views_spec (void)
 {
-  static char stmt [4096];
+  char stmt [4096];
 
   // *INDENT-OFF*
-  snprintf (stmt, sizeof (stmt),
+  int n = snprintf (stmt, sizeof (stmt),
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [table_catalog], " /* string -> varchar(255) */
       "[q].[class_of].[owner].[name] AS [table_schema], "
@@ -1088,6 +1143,7 @@ const char *sm_define_view_views_spec (void)
     SM_CLASSFLAG_LOCALCHECKOPTION,
     CT_QUERYSPEC_NAME);
   // *INDENT-ON*
+  assert (n > 0 && n < (int) sizeof (stmt));
 
   return stmt;
 }

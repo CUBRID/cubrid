@@ -398,7 +398,6 @@ static char *sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_T
 static int sm_load_online_index (MOP classmop, const char *constraint_name);
 
 static const char *sm_locate_method_file (SM_CLASS * class_, const char *function);
-static MOP find_index_catalog (const char *index_name);
 
 #if defined (WINDOWS)
 static void sm_method_final (void);
@@ -11273,35 +11272,6 @@ allocate_unique_constraint (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT 
   return NO_ERROR;
 }
 
-static MOP
-find_index_catalog (const char *index_name)
-{
-  assert (index_name != NULL);
-
-  MOP db_index_class = NULL;
-  DB_VALUE value;
-  MOP db_index_inst = NULL;
-  int save;
-
-  AU_SAVE_AND_DISABLE (save);
-
-  db_index_class = db_find_class (CT_INDEX_NAME);
-  if (db_index_class == NULL)
-    {
-      assert (false);
-      goto end;
-    }
-
-  db_make_string (&value, index_name);
-  db_index_inst = db_find_unique (db_index_class, "index_name", &value);
-
-end:
-  AU_RESTORE (save);
-
-  return db_index_inst;
-}
-
-
 /*
  * allocate_foreign_key() - Allocate index for foreign key
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -11373,19 +11343,6 @@ allocate_foreign_key (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * con,
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
-    }
-
-  if (con->fk_info->index_catalog_of_ref_class == NULL)
-    {
-      SM_CLASS *ref_class = (classop == ref_clsop) ? class_ : (SM_CLASS *) ref_clsop->object;
-
-      pk = classobj_find_cons_primary_key (ref_class->constraints);
-      if (pk == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class));
-	  return ER_FK_REF_CLASS_HAS_NOT_PK;
-	}
-      con->fk_info->index_catalog_of_ref_class = find_index_catalog (pk->name);
     }
 
   return NO_ERROR;
@@ -15908,6 +15865,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
   HFID prev_hfid;
+  HFID new_hfid;
   SM_CLASS *class_ = NULL;
   OID *oid = NULL;
   DB_OBJLIST *subs;
@@ -15952,28 +15910,18 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   prev_hfid = *insts_hfid;
 
-  /* Destroy the heap */
-  error = heap_destroy_newly_created (insts_hfid, oid, true);
+  /* Create the new heap first and flush the class straight from the old HFID to the new one, so the class record
+   * never exposes a NULL HFID on disk; a concurrent lock-free reader caching that transient state aborted the
+   * server (CBRD-27286). The old heap is destroyed last - its destruction is postponed to commit time anyway, so
+   * the ordering does not change when the pages are actually freed. */
+  HFID_SET_NULL (&new_hfid);
+  error = heap_create (&new_hfid, oid, reuse_oid);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
-  HFID_SET_NULL (insts_hfid);
-  ws_dirty (class_mop);
-
-  error = locator_flush_class (class_mop);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* Create a new heap */
-  error = heap_create (insts_hfid, oid, reuse_oid);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  *insts_hfid = new_hfid;
 
   /* Destroy and Create the lob dir if need */
   error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
@@ -15984,6 +15932,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* Destroy the old heap */
+  error = heap_destroy_newly_created (&prev_hfid, oid, true);
 
 end:
   return error;
@@ -16862,4 +16817,19 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
+}
+
+/*
+ * sm_is_catcls_disabled () - check whether catalog class updates are disabled
+ *   return: true in SA_MODE when catcls_Enable is false
+ */
+bool
+sm_is_catcls_disabled (void)
+{
+#if defined(SA_MODE)
+  extern bool catcls_Enable;
+  return !catcls_Enable;
+#else
+  return false;
+#endif
 }
