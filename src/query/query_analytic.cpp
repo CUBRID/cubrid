@@ -34,6 +34,7 @@
 #include "xasl_analytic.hpp"
 
 #include <cmath>
+#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -53,11 +54,19 @@ static int qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::an
  * list file and is also excluded.
  */
 static inline bool
-qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p)
+qdata_analytic_is_plain_sum_avg (cubthread::entry *thread_p, const ANALYTIC_TYPE *func_p)
 {
-  return ((func_p->function == PT_SUM || func_p->function == PT_AVG)
-	  && func_p->option != Q_DISTINCT && func_p->opr_dbtype != DB_TYPE_VARIABLE
-	  && TP_DOMAIN_COLLATION_FLAG (func_p->domain) == TP_DOMAIN_COLL_NORMAL);
+  if ((func_p->function != PT_SUM && func_p->function != PT_AVG) || func_p->option == Q_DISTINCT)
+    {
+      return false;
+    }
+  if (func_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      /* Count domain-based rejection, not every visit to the general path. */
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
+      return false;
+    }
+  return true;
 }
 
 /*
@@ -157,7 +166,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
    * it directly to the accumulator. The first value, a restored partial, and
    * NULL stay on the general path, which owns the fetched value and clears it
    * afterward. */
-  if (qdata_analytic_is_plain_sum_avg (func_p) && func_p->curr_cnt >= 1 && func_p->sum_acc.is_active)
+  if (qdata_analytic_is_plain_sum_avg (thread_p, func_p) && func_p->curr_cnt >= 1 && func_p->sum_acc.is_active)
     {
       DB_VALUE *peek_operand_p = NULL;
 
@@ -188,6 +197,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   if ((func_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL)
       && !DB_IS_NULL (&dbval))
     {
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
       /* set function default domain when late binding */
       switch (func_p->function)
 	{
@@ -284,6 +294,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       if (TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
 	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
 	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
 	  if (tp_value_coerce (&dbval, &dbval, func_p->list_id->type_list.domp[0]) != DOMAIN_COMPATIBLE)
 	    {
 	      error = ER_FAILED;
@@ -683,6 +694,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  if (func_p->is_first_exec_time)
 	    {
 	      func_p->is_first_exec_time = false;
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
 	      /* determine domain based on first value */
 	      switch (func_p->opr_dbtype)
 		{

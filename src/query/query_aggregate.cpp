@@ -42,6 +42,8 @@
 #include "statistics.h"
 
 #include <cmath>
+#include "perf_monitor.h"
+#include "thread_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -3342,6 +3344,10 @@ qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_no
   dbval_type = TP_DOMAIN_TYPE (agg_p->domain);
   if (dbval_type == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL)
     {
+      if (perfmon_is_perf_tracking ())
+        {
+          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
+        }
       dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
       agg_p->domain = tp_domain_resolve_default (dbval_type);
     }

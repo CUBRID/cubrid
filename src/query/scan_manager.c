@@ -38,6 +38,7 @@
 #include "system_parameter.h"
 #include "btree_load.h"
 #include "perf_monitor.h"
+#include "thread_manager.hpp"
 #include "query_manager.h"
 #include "query_evaluator.h"
 #include "query_opfunc.h"
@@ -609,6 +610,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	      REGU_VARIABLE *regu = &kr->key1->value.funcp->operand->value;
 
 	      regu->type = TYPE_DBVAL;
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
 	      regu->domain = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (last_key));
 
 	      pr_clear_value (&regu->value.dbval);
@@ -626,6 +628,7 @@ scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_I
 	      REGU_VARIABLE *regu = &kr->key2->value.funcp->operand->value;
 
 	      regu->type = TYPE_DBVAL;
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
 	      regu->domain = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (last_key));
 
 	      pr_clear_value (&regu->value.dbval);
@@ -2018,6 +2021,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	    }
 
 	  /* Coerce the value to index domain. If there is loss, we should make a new setdomain. */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
 	  ret = tp_value_coerce_strict (val, &coerced_values[i], idx_dom);
 	  if (ret != NO_ERROR)
 	    {
@@ -8216,6 +8220,11 @@ static void
 resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list)
 {
   regu_variable_list_node *scan_regu = NULL;
+
+  if (perfmon_is_perf_tracking ())
+    {
+      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
+    }
 
   assert (llsidp != NULL);
 

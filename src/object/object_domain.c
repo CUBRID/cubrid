@@ -63,6 +63,10 @@
 
 #include "dbtype.h"
 #include "error_manager.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "perf_monitor.h"
+#include "thread_manager.hpp"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -10523,6 +10527,12 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	   * May need to be using the domain returned by
 	   * tp_domain_resolve_value here ?
 	   */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+	  if (perfmon_is_perf_tracking ())
+	    {
+	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE);
+	    }
+#endif
 	  if (do_coercion && !ARE_COMPARABLE (vtype1, vtype2))
 	    {
 	      db_make_null (&temp1);

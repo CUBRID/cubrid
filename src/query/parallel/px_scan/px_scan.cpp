@@ -1974,6 +1974,7 @@ namespace parallel_scan
 	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
 	if (m_g_agg_domain_resolve_need)
 	  {
+	    perfmon_inc_stat (m_thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
 	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (m_thread_p, m_xasl, m_vd,
 		&m_xasl->proc.buildlist.g_agg_domains_resolved);
 

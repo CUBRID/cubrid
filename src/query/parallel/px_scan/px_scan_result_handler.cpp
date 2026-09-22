@@ -41,6 +41,7 @@
 #include "query_executor.h"
 #include "px_scan_trace_handler.hpp"
 
+#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -77,6 +78,10 @@ namespace parallel_scan
 	  }
 	else
 	  {
+	    if (list_id_p->type_list.domp[i] != valp->dom)
+	      {
+	        perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
+	      }
 	    list_id_p->type_list.domp[i] = valp->dom;
 	  }
       }
@@ -953,6 +958,7 @@ namespace parallel_scan
 	      {
 		if (unlikely (!tl.g_agg_domains_resolved))
 		  {
+		    perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
 		    if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (thread_p, tl.xasl, tl.vd,
 			&tl.g_agg_domains_resolved) != NO_ERROR)
 		      {
@@ -1682,6 +1688,7 @@ namespace parallel_scan
 	      }
 	    else
 	      {
+		perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
 		acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
 	      }
 	    acc_dom->value2_dom = &tp_Null_domain;
@@ -1777,6 +1784,7 @@ namespace parallel_scan
 		  }
 		else
 		  {
+		    perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
 		    acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
 		  }
 	      }
@@ -2006,6 +2014,7 @@ namespace parallel_scan
 	      }
 	    else
 	      {
+		perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
 		acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
 	      }
 	    acc_dom->value2_dom = &tp_Null_domain;
@@ -2027,6 +2036,7 @@ namespace parallel_scan
 	      }
 	    else
 	      {
+		perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
 		acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
 	      }
 	    acc_dom->value2_dom = &tp_Null_domain;
@@ -2172,6 +2182,7 @@ namespace parallel_scan
   {
     if (!tl_xasl_p->proc.buildvalue.agg_domains_resolved)
       {
+	perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
 	if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (thread_p, tl_xasl_p, tl_vd,
 	    &tl_xasl_p->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
 	  {
@@ -2712,6 +2723,7 @@ namespace parallel_scan
 	   * Copy the resolved domain to the main agg node before merging the accumulators. */
 	  if (orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE)
 	    {
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
 	      orig_agg_p->domain = cur_agg_p->domain;
 	      orig_agg_p->opr_dbtype = cur_agg_p->opr_dbtype;
 	    }

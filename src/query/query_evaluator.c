@@ -43,6 +43,7 @@
 #include "dbtype.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
+#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -225,6 +226,7 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 	      vtype2 = DB_VALUE_DOMAIN_TYPE (dbval2);
 	      if (vtype1 != vtype2)
 		{
+		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE);
 		  HL_HEAPID save_heapid = 0;
 
 		  if (REGU_VARIABLE_IS_FLAGED (et_comp->rhs, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))

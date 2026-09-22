@@ -375,6 +375,17 @@ typedef enum
   PSTAT_QM_NUM_OBJFETCHES,
   PSTAT_QM_NUM_HOLDABLE_CURSORS,
 
+  /* Domain decisions, clone restoration, and planned value conversions. */
+  PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH,
+  PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE,
+  PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST,
+  PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG,
+  PSTAT_QM_NUM_DOMAIN_KEY_COERCE,
+  PSTAT_QM_NUM_DOMAIN_PX_RESOLVE,
+  PSTAT_QM_NUM_DOMAIN_RESTORE_CLONE,
+  PSTAT_QM_NUM_DOMAIN_GATE_CONVERT,
+  PSTAT_QM_NUM_PLANNED_CONVERT,
+
   /* Execution statistics for external sort */
   PSTAT_SORT_NUM_IO_PAGES,
   PSTAT_SORT_NUM_DATA_PAGES,
@@ -996,7 +1007,17 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if ((tran_index >= 0 && tran_index < pstat_Global.n_trans) && pstat_Global.is_watching[tran_index])
     {
-      if (thread_p != NULL && thread_p->m_uses_px_stats)
+      /* These contiguous counters must include every PX worker even without TRACE.
+       * The existing PX trace collectors merge selected statistics only. Keep domain
+       * session totals in the existing transaction array and serialize their updates.
+       * This path is reached only while performance collection is enabled. */
+      if (offset >= pstat_Metadata[PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH].start_offset
+          && offset <= pstat_Metadata[PSTAT_QM_NUM_PLANNED_CONVERT].start_offset)
+        {
+          assert (pstat_Global.tran_stats[tran_index] != NULL);
+          ATOMIC_INC_64 (&pstat_Global.tran_stats[tran_index][offset], amount);
+        }
+      else if (thread_p != NULL && thread_p->m_uses_px_stats)
 	{
 	  assert (thread_p->m_px_orig_thread_entry != NULL);
 	  if (thread_p->m_px_stats != NULL)

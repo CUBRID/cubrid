@@ -22112,6 +22112,10 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	}
       else
 	{
+	  if (perfmon_is_perf_tracking ())
+	    {
+	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
+	    }
 	  c = tp_value_compare_with_error (key1, key2, do_coercion, total_order, &comparable);
 
 	  if (!comparable)
@@ -22306,6 +22310,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	  assert (multi_range_opt->sort_col_dom[i] != NULL);
 	  if (multi_range_opt->sort_col_dom[i] == &tp_Null_domain)
 	    {
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
 	      domain = tp_domain_resolve_value (&new_key_value[i], NULL);
 	      if (domain != &tp_Null_domain)
 		{

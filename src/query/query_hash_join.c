@@ -1026,6 +1026,7 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
       outer_value_index = outer_value_indexes[domain_index];
       inner_value_index = inner_value_indexes[domain_index];
 
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
       outer_domains[domain_index] = outer_list_id->type_list.domp[outer_value_index];
       inner_domains[domain_index] = inner_list_id->type_list.domp[inner_value_index];
       assert (outer_domains[domain_index] != NULL);

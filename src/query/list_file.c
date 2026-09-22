@@ -51,6 +51,7 @@
 #if defined (SERVER_MODE)
 #include "bit.h"
 #endif /* SERVER_MODE */
+#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -910,6 +911,10 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
       if (type1 == DB_TYPE_VARIABLE)
 	{
 	  /* The domain of list1 is not resolved, because there is no tuple. */
+	  if (perfmon_is_perf_tracking ())
+	    {
+	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
+	    }
 	  assert_release (list_id1_p->tuple_cnt == 0);
 	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
 	  continue;
@@ -4504,6 +4509,10 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 
 	  if (p->pos_descr.dom->type->id == DB_TYPE_VARIABLE)
 	    {
+	      if (perfmon_is_perf_tracking ())
+	        {
+	          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
+	        }
 	      subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	    }
 	  else
@@ -7070,11 +7079,13 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 	      /* In this case, we cannot resolve the value's domain. We will try to do for the next tuple. */
 	      if (list_id_p->is_domain_resolved)
 		{
+		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
 		  list_id_p->is_domain_resolved = false;
 		}
 	    }
 	  else
 	    {
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
 	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
 	    }
 	}
@@ -7086,11 +7097,13 @@ qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list
 	      /* In this case, we cannot resolve the value's domain. We will try to do for the next tuple. */
 	      if (list_id_p->is_domain_resolved)
 		{
+		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
 		  list_id_p->is_domain_resolved = false;
 		}
 	    }
 	  else
 	    {
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
 	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
 	    }
 	}
