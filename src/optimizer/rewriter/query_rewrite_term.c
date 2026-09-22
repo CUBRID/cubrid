@@ -274,6 +274,11 @@ qo_check_nullable_op (PT_NODE * node)
        * operand always is. */
       return true;
 
+    case PT_IS:
+      /* IS UNKNOWN is true for a NULL operand; IS TRUE / IS FALSE are not. */
+      return (node->info.expr.arg2 != NULL && node->info.expr.arg2->node_type == PT_VALUE
+	      && node->info.expr.arg2->type_enum == PT_TYPE_NULL);
+
     case PT_EQ_ALL:
     case PT_NE_ALL:
     case PT_GE_ALL:
