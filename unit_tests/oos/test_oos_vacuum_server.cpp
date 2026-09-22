@@ -34,6 +34,9 @@
 #include "test_oos_server_common.hpp"
 #include "vacuum_oos.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 using test_oos_error_log::error_log_mentions_since;
 using test_oos_error_log::error_log_size;
 using test_oos_error_log::notification_log_scope;

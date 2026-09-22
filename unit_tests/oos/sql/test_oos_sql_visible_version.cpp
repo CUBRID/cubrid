@@ -25,6 +25,9 @@
 #include "log_impl.h"
 #include "test_oos_sql_common.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* bridge functions defined in oos_file.cpp (CUBRID_UNIT_TEST_ENABLED builds) */
 void bridge_oos_debug_counters_reset ();
 oos_debug_counters bridge_oos_debug_counters_get ();

@@ -16,7 +16,8 @@
  *
  */
 
-#pragma once
+#ifndef _PAGE_BUFFER_UTIL_HPP_
+#define _PAGE_BUFFER_UTIL_HPP_
 
 #include "page_buffer.h"
 #include "thread_compat.hpp"
@@ -55,3 +56,4 @@ pgbuf_fix_auto_unfix (
   return auto_unfix_page_ptr (p, page_auto_unfix{thread_p});
 }
 
+#endif /* _PAGE_BUFFER_UTIL_HPP_ */
