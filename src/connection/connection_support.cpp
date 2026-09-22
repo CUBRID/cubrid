@@ -2440,15 +2440,9 @@ clean_string:
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  error = heap_get_class_hfid (thread_p, class_oid, &hfid, NULL);
   if (error != NO_ERROR)
     {
-      goto end;
-    }
-
-  if (HFID_IS_NULL (&hfid))
-    {
-      error = ER_FAILED;
       goto end;
     }
 

@@ -2339,6 +2339,9 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 
       if (is_foreign_key)
 	{
+	  OID ref_class_oid;
+	  int volid, pageid, slotid;
+
 	  error = set_get_element (key_seq_p,
 				   get_class_constraint_index (key_size, SM_CONSTRAINT_OPTIONAL_INFO_INDEX), &svalue);
 	  if (error != NO_ERROR)
@@ -2354,15 +2357,24 @@ catcls_get_or_value_from_indexes (DB_SEQ * seq_p, OR_VALUE * values, int is_uniq
 	    }
 
 	  seq = db_get_set (&svalue);
-	  error = set_get_element (seq, SM_FK_INFO_INDEX_CATALOG_OF_REF_CLASS_INDEX, &val);
+	  error = set_get_element (seq, SM_FK_INFO_REF_CLASS_OID_INDEX, &val);
 	  if (error != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  if (db_value_is_null (&val) == false)
+
+	  if (DB_VALUE_TYPE (&val) != DB_TYPE_STRING
+	      || classobj_decompose_property_oid (db_get_string (&val), &pageid, &slotid, &volid) != 3)
 	    {
-	      db_make_oid (&attrs[CT_INDEX_REFERENTIAL_INDEX_INDEX].value, db_get_oid (&val));
+	      error = ER_SM_INVALID_PROPERTY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      goto error;
 	    }
+
+	  pr_clear_value (&val);
+
+	  SET_OID (&ref_class_oid, (VOLID) volid, (PAGEID) pageid, (PGSLOTID) slotid);
+	  db_make_oid (&attrs[CT_INDEX_REFERENTIAL_CLASS_INDEX].value, &ref_class_oid);
 
 	  error = set_get_element (seq, SM_FK_INFO_DELETE_ACTION_INDEX, &val);
 	  if (error != NO_ERROR)
@@ -4987,10 +4999,9 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
   scan_cache_inited = false;
 
   /* read values of the single record in heap */
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
-  if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+  error = heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       goto exit;
     }
 
@@ -5429,10 +5440,9 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   scan_cache_inited = false;
 
   /* read values of all records in heap */
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
-  if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+  error = heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       goto exit;
     }
 
@@ -5650,10 +5660,9 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
-  error = heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL);
-  if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+  error = heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       goto exit;
     }
 
