@@ -322,6 +322,7 @@ static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *);
 static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, QO_SCANMETHOD, BITSET *, BITSET *);
 static int qo_has_is_not_null_term (QO_NODE * node);
 
+static bool qo_index_has_notnull_column (QO_INDEX_ENTRY * index_entryp);
 static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp);
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
 static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
@@ -12173,6 +12174,54 @@ qo_is_iscan_from_orderby (QO_PLAN * plan)
 }
 
 /*
+ * qo_index_has_notnull_column () - check whether every row of the table reaches the index
+ *   return: true, if no row of the table can be left out of the index
+ *   index_entryp(in): index entry to check
+ *
+ * Note:
+ *   A row whose key is NULL is never entered into the B-tree, and a multi-column key counts as NULL
+ *   only when every one of its columns is NULL (see btree_multicol_key_is_null ()). One NOT NULL
+ *   column is therefore enough to keep every row of the table in the index, whatever the other
+ *   columns hold, so a scan of the index loses no row and the sorting of a GROUP BY or an ORDER BY
+ *   may be skipped on the strength of the index order alone.
+ *
+ *   The columns recorded for a function index are the ones its expression reads, not the key it
+ *   stores, and an expression over NOT NULL columns may still evaluate to NULL (NULLIF (a, 0), say).
+ *   Only the plain key columns carry the guarantee; they come first and end at attr_index_start.
+ */
+static bool
+qo_index_has_notnull_column (QO_INDEX_ENTRY * index_entryp)
+{
+  SM_CLASS_CONSTRAINT *constraint;
+  int i;
+
+  assert (index_entryp != NULL);
+
+  constraint = index_entryp->constraints;
+  if (constraint == NULL || constraint->attributes == NULL)
+    {
+      /* nothing to read the guarantee from */
+      return false;
+    }
+
+  for (i = 0; constraint->attributes[i] != NULL; i++)
+    {
+      if (constraint->func_index_info != NULL && i >= constraint->func_index_info->attr_index_start)
+	{
+	  /* from here on the columns are the expression's arguments, not key columns */
+	  break;
+	}
+
+      if (constraint->attributes[i]->flags & SM_ATTFLAG_NON_NULL)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_validate_index_term_notnull ()
  *   return: true/false
  */
@@ -12416,7 +12465,6 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 {
   bool key_notnull = false;	/* init */
   QO_INDEX_ENTRY *index_entryp;
-  QO_CLASS_INFO_ENTRY *index_class;
 
   int pos;
   PT_NODE *node = NULL;
@@ -12426,11 +12474,16 @@ qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   assert (ni_entryp->head->class_ != NULL);
 
   index_entryp = ni_entryp->head;
-  index_class = index_entryp->class_;
 
   if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
     {
       goto end;
+    }
+
+  key_notnull = qo_index_has_notnull_column (index_entryp);
+  if (key_notnull)
+    {
+      goto final_;
     }
 
   key_notnull = qo_validate_index_term_notnull (env, index_entryp);
@@ -13031,17 +13084,16 @@ qo_is_iscan_from_groupby (QO_PLAN * plan)
 }
 
 /*
- * qo_validate_index_for_groupby () - checks for isnull(key) or not null flag
+ * qo_validate_index_for_groupby () - checks whether omitted NULL keys can affect grouping
  *  env(in): pointer to the optimizer environment
  *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
- *  return: 1 if the index can be used, 0 elseware
+ *  return: 1 if the index can be used, 0 otherwise
  */
 static int
 qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
 {
   bool key_notnull = false;	/* init */
   QO_INDEX_ENTRY *index_entryp;
-  QO_CLASS_INFO_ENTRY *index_class;
 
   PT_NODE *groupby_expr = NULL;
 
@@ -13050,11 +13102,16 @@ qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
   assert (ni_entryp->head->class_ != NULL);
 
   index_entryp = ni_entryp->head;
-  index_class = index_entryp->class_;
 
   if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
     {
       goto end;
+    }
+
+  key_notnull = qo_index_has_notnull_column (index_entryp);
+  if (key_notnull)
+    {
+      goto final;
     }
 
   key_notnull = qo_validate_index_term_notnull (env, index_entryp);
