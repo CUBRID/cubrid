@@ -74,6 +74,7 @@
 #include "slotted_page.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "set_object.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "fault_injection.h"
@@ -14398,6 +14399,432 @@ cdc_wakeup_consumer ()
 {
   cdc_log ("cdc_wakeup_consumer : producer request the consumer to wakeup");
   cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_RUN;
+}
+
+/*
+ * Server-side account lookup for the CDC log-server channel (CBRD-27436). The
+ * channel has no server-verified identity, so what it decides about the caller
+ * has to come from the catalog rather than from the request.
+ */
+static int cdc_User_attr_password = -1;
+static int cdc_User_attr_groups = -1;
+
+/*
+ * cdc_load_user_attr_ids () - resolve the db_user attribute ids read below.
+ *   return: NO_ERROR, or ER_FAILED if the class record could not be read.
+ *
+ * Resolved once per server. A race resolves the same ids twice, and each is
+ * published only once known good, so no lock is needed.
+ */
+static int
+cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
+{
+  HEAP_SCANCACHE scan;
+  RECDES class_record;
+  HEAP_CACHE_ATTRINFO attr_info;
+  char *attr_name;
+  int alloced;
+  int i, error = NO_ERROR;
+  int password_id = -1, groups_id = -1;
+  bool scan_started = false, attrinfo_started = false;
+
+  if (cdc_User_attr_password != -1 && cdc_User_attr_groups != -1)
+    {
+      return NO_ERROR;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, oid_User_class_oid) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  scan_started = true;
+
+  if (heap_get_class_record (thread_p, oid_User_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, oid_User_class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  attrinfo_started = true;
+
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      attr_name = NULL;
+      alloced = 0;
+
+      if (or_get_attrname (&class_record, i, &attr_name, &alloced) != NO_ERROR || attr_name == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      if (strcmp (attr_name, "password") == 0)
+	{
+	  password_id = i;
+	}
+      else if (strcmp (attr_name, "groups") == 0)
+	{
+	  groups_id = i;
+	}
+
+      if (alloced)
+	{
+	  db_private_free_and_init (thread_p, attr_name);
+	}
+    }
+
+  if (password_id == -1 || groups_id == -1)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  cdc_User_attr_password = password_id;
+  cdc_User_attr_groups = groups_id;
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+
+  return error;
+}
+
+/*
+ * cdc_find_user_oid () - locate a db_user instance by account name.
+ *   return: true if the account exists.
+ *   thread_p (in):
+ *   user_name (in): account name
+ *   user_oid (out): the instance oid
+ *
+ * db_user has a unique index on "name", so this is a key lookup, not a scan.
+ */
+static bool
+cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oid)
+{
+  BTID btid;
+  DB_VALUE key;
+  char upper_name[DB_MAX_IDENTIFIER_LENGTH];
+  BTREE_SEARCH search;
+
+  if (user_name == NULL || *user_name == '\0' || strlen (user_name) >= DB_MAX_IDENTIFIER_LENGTH)
+    {
+      return false;
+    }
+
+  /* account names are stored upper-cased */
+  intl_identifier_upper (user_name, upper_name);
+
+  if (heap_get_index_with_name (thread_p, oid_User_class_oid, "u_db_user_name", &btid) != NO_ERROR
+      || BTID_IS_NULL (&btid))
+    {
+      return false;
+    }
+
+  db_make_string (&key, upper_name);
+  search = xbtree_find_unique (thread_p, &btid, S_SELECT, &key, oid_User_class_oid, user_oid, false);
+  pr_clear_value (&key);
+
+  return (search == BTREE_KEY_FOUND);
+}
+
+/*
+ * cdc_read_password_string () - read the stored password out of a db_password
+ *   instance.
+ *   return: true if the password object was read; false on any read failure.
+ *   thread_p (in):
+ *   password_oid (in)  : oid held by db_user.password (a real password object)
+ *   password (out)     : the stored string, which is already encrypted
+ *   password_size (in) : size of the output buffer
+ *
+ * The caller only reaches here when db_user.password holds an object, so a
+ * failure to read that object is a genuine error, not a passwordless account:
+ * it must be reported (false) rather than left as an empty password, or a read
+ * failure would make the account look passwordless and let a caller answer the
+ * challenge with a hash of the public nonce alone.
+ */
+static bool
+cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, char *password, int password_size)
+{
+  HEAP_SCANCACHE scan;
+  RECDES recdes;
+  HEAP_CACHE_ATTRINFO attr_info;
+  OID class_oid;
+  DB_VALUE *value;
+  const char *stored;
+  bool ok = false;
+  bool scan_started = false, attrinfo_started = false;
+
+  if (OID_ISNULL (password_oid))
+    {
+      return false;
+    }
+
+  if (heap_get_class_oid (thread_p, password_oid, &class_oid) != S_SUCCESS)
+    {
+      return false;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, &class_oid) != NO_ERROR)
+    {
+      return false;
+    }
+  scan_started = true;
+
+  if (heap_get_visible_version (thread_p, password_oid, &class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+    {
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  attrinfo_started = true;
+
+  if (heap_attrinfo_read_dbvalues (thread_p, password_oid, &recdes, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* The password object was read; that alone is success. An empty or NULL stored
+   * string is a legitimately passwordless account (password left empty), not a
+   * read failure -- only the heap failures above return false. */
+  ok = true;
+
+  /* db_password holds a single attribute, the encrypted password */
+  value = heap_attrinfo_access (0, &attr_info);
+  if (value != NULL && !DB_IS_NULL (value) && TP_IS_CHAR_TYPE (DB_VALUE_TYPE (value)))
+    {
+      stored = db_get_string (value);
+      if (stored != NULL)
+	{
+	  strncpy (password, stored, password_size - 1);
+	  password[password_size - 1] = '\0';
+	}
+    }
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+
+  return ok;
+}
+
+/*
+ * cdc_set_contains_oid () - does an object set hold this instance?
+ *   return: true if found.
+ *   set_value (in): a set-typed attribute value read from a heap record
+ *   oid (in)      : instance to look for
+ */
+static bool
+cdc_set_contains_oid (DB_VALUE * set_value, const OID * oid)
+{
+  DB_COLLECTION *set;
+  DB_VALUE element;
+  int i, size;
+
+  set = db_get_set (set_value);
+  if (set == NULL)
+    {
+      return false;
+    }
+
+  size = set_size (set);
+  for (i = 0; i < size; i++)
+    {
+      if (set_get_element_nocopy (set, i, &element) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      /* object-typed attributes come back as plain oids on the server side */
+      if (DB_VALUE_TYPE (&element) == DB_TYPE_OID && OID_EQ (db_get_oid (&element), oid))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * cdc_get_user_info () - read an account's stored password and DBA group
+ *   membership straight from the catalog.
+ *   return: true if the account exists and could be read.
+ *   thread_p (in):
+ *   user_name (in)     : account name declared by the client
+ *   password (out)     : the stored (already encrypted) password, empty if none
+ *   password_size (in) : size of the password buffer
+ *   is_dba_group (out) : whether the account is DBA or a member of the DBA group
+ *
+ * "groups" is the flattened membership set, so nested groups need no extra walk.
+ * The CDC thread has no transaction index of its own; one is borrowed here.
+ */
+bool
+cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+		   bool * is_dba_group)
+{
+  HEAP_SCANCACHE scan;
+  RECDES recdes;
+  HEAP_CACHE_ATTRINFO attr_info;
+  DB_VALUE *value;
+  OID user_oid, dba_oid;
+  int saved_tran_index = thread_p->tran_index;
+  bool dba_found, borrowed_tran = false;
+  bool found = false, scan_started = false, attrinfo_started = false;
+
+  assert (password != NULL && password_size > 0 && is_dba_group != NULL);
+
+  password[0] = '\0';
+  *is_dba_group = false;
+
+  if (saved_tran_index == NULL_TRAN_INDEX)
+    {
+      if (logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+				   TRAN_DEFAULT_ISOLATION_LEVEL ()) == NULL_TRAN_INDEX)
+	{
+	  return false;
+	}
+      borrowed_tran = true;
+    }
+
+  if (cdc_load_user_attr_ids (thread_p) != NO_ERROR || !cdc_find_user_oid (thread_p, user_name, &user_oid))
+    {
+      goto end;
+    }
+
+  dba_found = cdc_find_user_oid (thread_p, "DBA", &dba_oid);
+  if (dba_found && OID_EQ (&user_oid, &dba_oid))
+    {
+      *is_dba_group = true;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, oid_User_class_oid) != NO_ERROR)
+    {
+      goto end;
+    }
+  scan_started = true;
+
+  if (heap_get_visible_version (thread_p, &user_oid, oid_User_class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+    {
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, oid_User_class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  attrinfo_started = true;
+
+  if (heap_attrinfo_read_dbvalues (thread_p, &user_oid, &recdes, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* "password" references a db_password instance, it is not the string itself. A
+   * NULL/absent reference is a genuinely passwordless account (empty password is
+   * fine); an object we cannot read is a failure and must not pass as empty. */
+  value = heap_attrinfo_access (cdc_User_attr_password, &attr_info);
+  if (value != NULL && !DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_OID)
+    {
+      if (!cdc_read_password_string (thread_p, db_get_oid (value), password, password_size))
+	{
+	  /* the account has a password but it could not be read -- fail closed */
+	  *is_dba_group = false;
+	  found = false;
+	  goto end;
+	}
+    }
+
+  if (!*is_dba_group && dba_found)
+    {
+      value = heap_attrinfo_access (cdc_User_attr_groups, &attr_info);
+      if (value != NULL && !DB_IS_NULL (value))
+	{
+	  *is_dba_group = cdc_set_contains_oid (value, &dba_oid);
+	}
+    }
+
+  found = true;
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+  if (borrowed_tran)
+    {
+      (void) xtran_server_commit (thread_p, false);
+      logtb_free_tran_index (thread_p, thread_p->tran_index);
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, saved_tran_index);
+    }
+
+  return found;
+}
+
+/*
+ * cdc_check_dba_authorization () - is this connection allowed to drive CDC?
+ *   return: true if the requester is a verified DBA.
+ *   thread_p (in):
+ *
+ * The channel carries no booted client, so it answers a challenge of its own
+ * first and only that result is trusted here. logtb_am_i_dba_client() is
+ * deliberately not a fallback: no CDC client has a booted connection, so it
+ * could only match one sending CDC requests over an SQL connection to skip the
+ * challenge.
+ */
+bool
+cdc_check_dba_authorization (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return (thread_p->conn_entry != NULL && thread_p->conn_entry->cdc_auth_done && thread_p->conn_entry->cdc_auth_is_dba);
+#else
+  return false;
+#endif
+}
+
+/*
+ * cdc_check_session_owner () - is the calling connection the one that opened the
+ *   active CDC session with scdc_start_session()?
+ *   return: true if there is an active session and this connection owns it.
+ *   thread_p (in):
+ *
+ * CBRD-27436: scdc_start_session() is the only CDC request that carries a
+ * client-declared identity to check with cdc_check_dba_authorization(); every
+ * other CDC request (FIND_LSA, GET_LOGINFO_METADATA, GET_LOGINFO, END_SESSION)
+ * had no authorization of any kind, so a client could skip START_SESSION
+ * entirely and reach them directly. Only a DBA-authorized connection can ever
+ * become cdc_Gl's owner (scdc_start_session enforces that), so requiring the
+ * caller to BE that owner is sufficient here and needs no new wire field on
+ * these requests (which would reopen the CDC wire-compatibility question for
+ * four more opcodes instead of the one).
+ */
+bool
+cdc_check_session_owner (THREAD_ENTRY * thread_p)
+{
+  return (cdc_Gl.conn.fd != -1
+	  && thread_p->conn_entry->fd == cdc_Gl.conn.fd && thread_p->conn_entry->client_id == cdc_Gl.conn.client_id);
 }
 
 int
