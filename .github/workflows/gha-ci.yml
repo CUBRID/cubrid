@@ -283,7 +283,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
 
           emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
 
@@ -508,7 +508,7 @@ jobs:
           IN_LIMIT: ${{ inputs.limit }}
           IN_TT: ${{ inputs.testtools }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
 
           BRANCH=develop
           WINDOW_HOURS=48 # one missed batch heals on the next night
@@ -603,7 +603,7 @@ jobs:
           PR: ${{ needs.gate.outputs.pr }}
           SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
@@ -691,7 +691,7 @@ jobs:
           # Inputs via env, never interpolated into the body.
           INPUT_SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           echo "=== identity ==="
           echo "job pod    : $(hostname)"
           echo "runner     : ${RUNNER_NAME:-(none)}"
@@ -733,7 +733,7 @@ jobs:
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # No `step halt` in GHA: emit an output and gate later steps on it.
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
           # Named reuse, not mode: this job already calls the matrix leg MODE.
@@ -753,7 +753,7 @@ jobs:
       - name: 2. Source, borrowed from the mirror with only the delta fetched
         if: steps.reuse.outputs.reuse != 'reused'
         run: |
-          set -eo pipefail
+          set -euo pipefail
           cd "$GITHUB_WORKSPACE"
 
           # cubridci#112 moved this into the image: a --shared clone off $BUILD_MIRROR,
@@ -766,7 +766,7 @@ jobs:
       - name: 3. Build
         if: steps.reuse.outputs.reuse != 'reused'
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # One level up from the source on purpose: run_build finds cubrid/build.sh
           # from here and writes build.log to cwd, which is where step 5 reads it.
           cd "$GITHUB_WORKSPACE"
@@ -800,7 +800,7 @@ jobs:
       - name: 3b. Sweep what cancelled runs left behind
         if: matrix.mode == 'release'
         run: |
-          set -eo pipefail
+          set -euo pipefail
           swept=0
           sweep() {
             local age="$1" pat
@@ -831,7 +831,7 @@ jobs:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
           REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
 
           # The reuse decision is 8 to 40 minutes old by now, and a duplicate run on
@@ -940,7 +940,7 @@ jobs:
       - name: 5. WAN and build log
         if: always()
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [ -f "$RUNNER_TEMP/rx0" ]; then
             rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
             echo "WAN received by this job: $(( (rx1 - $(cat "$RUNNER_TEMP/rx0")) / 1048576 )) MB"
@@ -977,7 +977,7 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
@@ -1071,7 +1071,7 @@ jobs:
           IN_SAB: ${{ needs.gate.outputs.sabotage }}
           IN_RERUN: ${{ needs.gate.outputs.rerun_from }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # Inputs arrive through env, never interpolated into the script body.
           # Empty is how a request asks for the suite's own default, which only the
           # table below knows, so the split resolves it and this only bounds it.
@@ -1102,7 +1102,7 @@ jobs:
         env:
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug"
 
           # The sentinel marks a finished tree; directory existence passes a partial one.
@@ -1151,14 +1151,11 @@ jobs:
           INPUT_TT: ${{ needs.gate.outputs.testtools }}
           TC_UNTIL: ${{ needs.gate.outputs.tc_until }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
 
-          # The branch may not exist, e.g. a PR opened before the sync bot ran, and
-          # then develop is right. A network error is not that. ls-remote exits 2 for
-          # "no such ref" and non-zero otherwise, so retry like the baseline's
-          # resolve_sha (config.yml 168-179) and only fall back on a real absence --
-          # a transient failure silently testing develop's cases misattributes results.
+          # ls-remote exits 2 only for "no such ref", so the retries keep a network
+          # blip from reading as a branch that was never pushed.
           probe_branch() {
             local i rc
             for i in 1 2 3 4 5; do
@@ -1189,10 +1186,10 @@ jobs:
           # would report failures against a tree the requester never asked for.
           # Probed rather than left to the entrypoint, whose clone retries five times
           # over 100s before it says the branch is missing.
+          CTP_REPO=https://github.com/CUBRID/cubrid-testtools.git
           CTP_BRANCH="${INPUT_TT:-develop}"
           if [ -n "$INPUT_TT" ]; then
             use_token
-            CTP_REPO=https://github.com/CUBRID/cubrid-testtools.git
             probe_rc=0
             probe_branch "$CTP_REPO" "$CTP_BRANCH" || probe_rc=$?
             case "$probe_rc" in
@@ -1206,6 +1203,22 @@ jobs:
             esac
           fi
           echo "ctp branch : $CTP_BRANCH"
+
+          # The entrypoint below clones CTP whole when .git is absent, and that
+          # clone was 124s of WAN. From the seed the hourly CronJob refreshes it
+          # fetches the tip instead -- CUBRIDQA-1497. file://, because a clone from
+          # a local path takes the mirror's whole history and ignores --depth: 111MB
+          # against 60MB, and every shard copies what this one publishes.
+          ctp_seed="$CI_ROOT/repos/cubrid-testtools"
+          if git clone -q --depth 1 --no-tags --single-branch \
+               "file://$ctp_seed" "$WORKDIR/cubrid-testtools" \
+             && git -C "$WORKDIR/cubrid-testtools" remote set-url origin "$CTP_REPO"; then
+            echo "ctp seed  : $ctp_seed @ $(git -C "$WORKDIR/cubrid-testtools" rev-parse --short HEAD)"
+          else
+            # A generation swap is two renames, so the seed is briefly not there.
+            echo "::warning::no usable CTP seed at $ctp_seed; the entrypoint will clone"
+            rm -rf "$WORKDIR/cubrid-testtools"
+          fi
 
           rx0=$(wan)
           # sql and medium are two suites of one repo. Mount and check it out once:
@@ -1241,8 +1254,11 @@ jobs:
             case "$probe_rc" in
               0) ;;
               2)
-                echo "::warning::$repo has no $TC_BRANCH, falling back to develop"
-                TC_BRANCH=develop ;;
+                echo "::error::$repo has no $TC_BRANCH"
+                echo "  TC Branch Sync creates tc/pr-<N> when the pull request opens, so check"
+                echo "  that run, or push the branch. Not falling back to develop: the verdict"
+                echo "  would be against cases the requester never asked for."
+                exit 1 ;;
               *)
                 echo "::error::could not reach $TC_REPO_URL after 5 attempts. Not falling back"
                 echo "  to develop: the run would report failures against the wrong cases."
@@ -1299,7 +1315,7 @@ jobs:
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
 
           rundir="$CI_ROOT/runs/${GITHUB_RUN_ID}"
@@ -1631,15 +1647,23 @@ jobs:
             # Ticket 56's machine, built here first: 17k cases on a GlusterFS seed
             # cannot be pruned per shard, so plan publishes the tree once and each
             # shard copies out the part it owns. shell keeps pruning until 56.
+            #
+            # One archive, not a tree: creating sql's 42,415 entries over FUSE was
+            # 128s of this step, and the shard reads its share by name either way
+            # -- CUBRIDQA-1501 ticket 73. Everything that is not a unit comes along
+            # whole, so tc.rest names those for the shard: reading them back out of
+            # the archive would mean decompressing it twice.
             if [ "$mode" = publish ]; then
-              dst="$rundir/tc/$suite"
+              dst="$rundir/tc/$suite.tar.gz"
               tmp="${dst}.tmp.${GITHUB_RUN_ID}"
-              rm -rf "$tmp" "$dst"
+              rm -f "$tmp"
               mkdir -p "$(dirname "$dst")"
-              cp -a "$root" "$tmp"
-              # One rename publishes it, so no shard sees a half-copied tree.
+              find "$root" -mindepth 1 -maxdepth 1 ! -name '_*' -printf './%f\n' \
+                | sort > "$out/plan/tc.rest"
+              tar -C "$root" -cf - . | gzip -1 > "$tmp"
+              # One rename publishes it, so no shard sees a half-written archive.
               mv -T "$tmp" "$dst"
-              echo "published testcases: $dst ($(du -sh "$dst" | cut -f1))"
+              echo "published testcases: $dst ($(du -sh "$dst" | cut -f1)), rest $(wc -l < "$out/plan/tc.rest")"
             fi
 
             # sabotage: check that the guards actually fire.
@@ -1671,9 +1695,9 @@ jobs:
 
       - name: Publish CTP for the shards
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # On GlusterFS so 50 shards copy it over the LAN and shard WAN stays 0.
-          # plan clones in full (~25MB): the nodes carry no testtools seed -- CUBRIDQA-1497.
+          # What plan seeded from repos/cubrid-testtools, moved to the branch tip.
           src="$WORKDIR/cubrid-testtools"
           [ -d "$src/.git" ] || { echo "::error::checkout did not fetch CTP: $src"; exit 1; }
           # Per-run path, not a shared one: publishing leaves the seed briefly absent,
@@ -1701,7 +1725,7 @@ jobs:
           SHA: ${{ needs.gate.outputs.sha }}
           BRID: ${{ steps.build.outputs.build_run_id }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           {
             echo "## Split"
             echo
@@ -1755,7 +1779,7 @@ jobs:
       - name: Resolve the suite
         id: suite
         run: |
-          set -eo pipefail
+          set -euo pipefail
           attr() { jq -r --arg s "$SUITE" --arg k "$1" '.[$s][$k] // ""' <<<"$SUITES"; }
           repo=$(attr tc_repo)
           # Every step below reads these and never the table, the way the entrypoint's
@@ -1782,7 +1806,7 @@ jobs:
 
       - name: Check the pod template assumptions
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # plan does not run again under "Re-run failed jobs", so nothing has made
           # this attempt's stamps directory.
           mkdir -p "$(dirname "$STAMP")"
@@ -1809,7 +1833,7 @@ jobs:
       - name: Take my share (guard 2 of 3)
         id: mine
         run: |
-          set -eo pipefail
+          set -euo pipefail
           f="$PLAN_DIR/shards/${IDX}.list"
 
           # Guard 2 of 3. plan split everything, so an empty share is a bug.
@@ -1839,7 +1863,7 @@ jobs:
           SHA: ${{ needs.plan.outputs.sha }}
           WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # Only a pruning suite mounts its testcases: it needs the whole tree here
           # and deletes what is not its share. A publishing suite copies its share
           # out of what plan published, so there is nothing to mount.
@@ -1898,7 +1922,7 @@ jobs:
 
       - name: Copy CTP from what plan published
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # Per-run path, so no other run can move it aside mid-read. One CTP serves
           # every suite of the run.
           seed="$RUNDIR/plan/testtools"
@@ -1945,7 +1969,7 @@ jobs:
           WANT_CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
           CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # CTP must be copied first: entrypoint needs .git to fetch instead of clone.
           [ -d "$WORKDIR/cubrid-testtools/.git" ] || {
             echo "::error::CTP is missing. The steps are in the wrong order"; exit 1; }
@@ -2010,7 +2034,7 @@ jobs:
           MINE_N: ${{ steps.mine.outputs.n }}
           MINE_UNITS: ${{ steps.mine.outputs.units }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           f="$PLAN_DIR/shards/${IDX}.list"
 
           # The same rule plan counted by, so "cases left" and "expected" are
@@ -2037,17 +2061,30 @@ jobs:
 
             left=$(count_cases)
           else
+            arc="$RUNDIR/tc/$SUITE.tar.gz"
             src="$RUNDIR/tc/$SUITE"
-            [ -d "$src" ] || { echo "::error::plan published no testcases: $src"; exit 1; }
             mkdir -p "$TC_DIR/$SUITE"
             # Everything that is not a unit comes along whole: medium's
             # files/mdb.tar.gz, and both suites' config/. CircleCI keeps them too --
             # its prune deletes *.sql files and nothing else (config.yml 259-261).
-            find "$src" -mindepth 1 -maxdepth 1 ! -name '_*' -exec cp -a {} "$TC_DIR/$SUITE/" \;
-            while read -r u; do
-              [ -n "$u" ] || continue
-              cp -a "$src/$(basename "$u")" "$TC_DIR/$SUITE/"
-            done < "$f"
+            # plan named those in tc.rest; a unit is the last component of a line of
+            # my share, and both sit one level under the archive's `.`.
+            if [ -f "$arc" ]; then
+              { awk -F/ 'NF {print "./" $NF}' "$f"; cat "$PLAN_DIR/tc.rest"; } > /tmp/members.list
+              # A name that is not in the archive is tar exit 2, and so a failed
+              # step: a shard that quietly ran fewer cases would be reported green.
+              tar -xzf "$arc" -C "$TC_DIR/$SUITE" --no-wildcards --files-from=/tmp/members.list
+            elif [ -d "$src" ]; then
+              # A tree: planned before ticket 73 and re-run from GitHub's button,
+              # which runs this shard again without running plan.
+              find "$src" -mindepth 1 -maxdepth 1 ! -name '_*' -exec cp -a {} "$TC_DIR/$SUITE/" \;
+              while read -r u; do
+                [ -n "$u" ] || continue
+                cp -a "$src/$(basename "$u")" "$TC_DIR/$SUITE/"
+              done < "$f"
+            else
+              echo "::error::plan published no testcases: $arc"; exit 1
+            fi
             echo "units copied: $MINE_UNITS"
 
             left=$(count_cases)
@@ -2068,7 +2105,7 @@ jobs:
           # The only CircleCI variable CTP reads. Without it every shard logs as `local`.
           CIRCLE_NODE_INDEX: ${{ matrix.i }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           ulimit -c 10485760
           set +e
           ( cd "$CTP_HOME" && HOME="$WORKDIR" ./bin/ctp.sh "$CTP_CMD" -c "$CTP_HOME/$CTP_CONF" )
@@ -2084,7 +2121,7 @@ jobs:
           MINE_N: ${{ steps.mine.outputs.n }}
           CTP_RC: ${{ steps.ctp.outputs.rc }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           out="$SHARD_DIR"
           # The verdict file stays at the shard root next to build.read and shard.done:
           # it is this shard's control record, not a result anyone else reads.
@@ -2107,8 +2144,11 @@ jobs:
                 # so that its absence is what tells collect this shard ran nothing.
                 find "$logs" -type f -name summary_info -exec cat {} + > /tmp/summary_info 2>/dev/null || :
                 [ -s /tmp/summary_info ] && cp -f /tmp/summary_info "$out/summary_info" || :
-                # The per-case queries, diffs and source links stay in the JUnit XML,
-                # which rides along in ctp_log.tgz when something failed.
+                # The per-case queries and diffs are in the JUnit XML, which collect
+                # reads for the summary. summary.xml is the old format, 725 KB of waste.
+                mkdir -p "$out/test-results"
+                find "$logs" -type f -name '*.xml' ! -name summary.xml \
+                  -exec cp -f {} "$out/test-results/" \; 2>/dev/null || :
                 ;;
             esac
           fi
@@ -2196,7 +2236,7 @@ jobs:
         env:
           MINE_N: ${{ steps.mine.outputs.n }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           out="$SHARD_DIR"
           st="$out/$VERDICT_SRC"
           [ -f "$st" ] || { echo "::error::no CTP result file ($VERDICT_SRC): the tests did not run"; exit 1; }
@@ -2268,7 +2308,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           PLAN_RESULT: ${{ needs.plan.result }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [ -z "$RUNDIR" ] || [ ! -d "$RUNDIR" ]; then
             # Say which stage broke, not just that something did.
             if [ "$BUILD_RESULT" != 'success' ]; then
@@ -2282,7 +2322,7 @@ jobs:
 
       - name: Update timings for the next split
         run: |
-          set -eo pipefail
+          set -euo pipefail
           # feedback.log format: [OK]:  <case path> <milliseconds> EnvId=...
           # Only the shell runner writes one, so this is a no-op for the others.
           : > /tmp/new_timings.tsv
@@ -2333,7 +2373,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           now=$(date -u +%s)
           mkdir -p "$STAMPS"
           printf 'start\t%s\n' "$now" > "$STAMPS/collect.tsv"
@@ -2426,7 +2466,7 @@ jobs:
           C_PLAN: ${{ steps.clock.outputs.plan }}
           C_TOTAL: ${{ steps.clock.outputs.total }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
           rc=0
           rm -rf /tmp/failed-logs; mkdir -p /tmp/failed-logs
@@ -2535,6 +2575,56 @@ jobs:
             # --- failed cases -------------------------------------------------
             : > /tmp/failed.list
             mkdir -p "/tmp/failed-logs/$suite"
+            logs_awk='
+              BEGIN {
+                while (idx != "" && (getline line < idx) > 0) {
+                  split(line, f, "\t"); want[f[1]] = f[2]
+                }
+              }
+              # First, so that a case log carrying the literal <testcase or
+              # <failure does not restart the scan while the body is being read.
+              body != "" {
+                if (/\]\]><\/failure>/) {
+                  sub(/\]\]><\/failure>.*$/, "")
+                  print > body
+                  close(body)
+                  body = ""
+                  next
+                }
+                print > body
+                next
+              }
+              /<testcase/ {
+                cur = ""
+                # The leading space is required: CTP writes classname before name,
+                # so /name="..."/ would match classname and extract a URL.
+                if (match($0, / name="[^"]*"/)) {
+                  cur = substr($0, RSTART + 7, RLENGTH - 8)
+                }
+              }
+              /<failure/ && cur != "" {
+                # No index: the XML is the list itself, numbered as met. With one:
+                # only its cases, keyed by name -- the two files are written by
+                # different passes and need not share an order.
+                if (idx == "") { printf "%s\t%s\n", shard, cur; n = off + ++k }
+                else if (cur in want) { n = want[cur] }
+                else { cur = ""; next }
+                body = dir "/" n ".log"
+                rest = $0
+                sub(/^.*<!\[CDATA\[/, "", rest)
+                if (rest ~ /\]\]><\/failure>/) {
+                  sub(/\]\]><\/failure>.*$/, "", rest)
+                  print rest > body
+                  close(body)
+                  body = ""
+                } else if (rest != "") {
+                  print rest > body
+                }
+                cur = ""
+                next
+              }
+              /<\/testcase>/ { cur = "" }
+            '
             case "$vsrc" in
               test_status.data)
                 for sdir in "$d"/shard/*/; do
@@ -2544,47 +2634,8 @@ jobs:
                   # Line k of failed.list is /tmp/failed-logs/<suite>/k.log. The offset
                   # carries that numbering across the shards.
                   off=$(wc -l < /tmp/failed.list)
-                  awk -v shard="$i" -v off="$off" -v dir="/tmp/failed-logs/$suite" '
-                    # First, so that a case log carrying the literal <testcase or
-                    # <failure does not restart the scan while the body is being read.
-                    body != "" {
-                      if (/\]\]><\/failure>/) {
-                        sub(/\]\]><\/failure>.*$/, "")
-                        print > body
-                        close(body)
-                        body = ""
-                        next
-                      }
-                      print > body
-                      next
-                    }
-                    /<testcase/ {
-                      cur = ""
-                      # The leading space is required: CTP writes classname before name,
-                      # so /name="..."/ would match classname and extract a URL.
-                      if (match($0, / name="[^"]*"/)) {
-                        cur = substr($0, RSTART + 7, RLENGTH - 8)
-                      }
-                      next
-                    }
-                    /<failure/ && cur != "" {
-                      printf "%s\t%s\n", shard, cur
-                      body = dir "/" (off + ++k) ".log"
-                      rest = $0
-                      sub(/^.*<!\[CDATA\[/, "", rest)
-                      if (rest ~ /\]\]><\/failure>/) {
-                        sub(/\]\]><\/failure>.*$/, "", rest)
-                        print rest > body
-                        close(body)
-                        body = ""
-                      } else if (rest != "") {
-                        print rest > body
-                      }
-                      cur = ""
-                      next
-                    }
-                    /<\/testcase>/ { cur = "" }
-                  ' "$x" >> /tmp/failed.list
+                  awk -v shard="$i" -v off="$off" -v idx= \
+                    -v dir="/tmp/failed-logs/$suite" "$logs_awk" "$x" >> /tmp/failed.list
                 done
                 ;;
               summary_info)
@@ -2597,6 +2648,12 @@ jobs:
                   { grep -E ':nok[[:space:]]+[0-9]+ms$' "$st" || :; } \
                     | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" \
                     | awk -v shard="$i" '{printf "%s\t%s\n", shard, $0}' >> /tmp/failed.list
+                done
+                # The names in failed.list are the keys; its line numbers are the logs.
+                awk -F'\t' '{printf "%s\t%d\n", $2, NR}' /tmp/failed.list > /tmp/failed.idx
+                for x in "$d"/shard/*/test-results/*.xml; do
+                  [ -f "$x" ] || continue
+                  awk -v dir="/tmp/failed-logs/$suite" -v idx=/tmp/failed.idx "$logs_awk" "$x"
                 done
                 ;;
             esac
@@ -2711,7 +2768,7 @@ jobs:
                 echo "| shard | case |"
                 echo "|---|---|"
                 head -50 /tmp/failed.list | awk -F'\t' '{printf "| %s | `%s` |\n", $1, $2}'
-                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is \`$d/collect/failed.list\`_"
+                [ "$failed_n" -gt 50 ] && echo && echo "_... and $((failed_n - 50)) more. The full list is [\`failed.list\`]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/collect/failed.list)._"
                 echo
               else
                 echo "### No failed cases"
@@ -2838,7 +2895,7 @@ jobs:
       - name: The log of each failed case
         if: always()
         run: |
-          set -eo pipefail
+          set -euo pipefail
           for suite in $SUITES_RUN; do
             list="/tmp/failed.$suite.list"
             [ -f "$list" ] || continue
@@ -2862,10 +2919,13 @@ jobs:
             esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
 
             base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/$suite"
+            # The suites name their JUnit XML differently, so take it from the shards.
+            xml_name=$(basename "$(ls "$RUNDIR/$suite"/shard/*/test-results/*.xml 2>/dev/null | head -1)" 2>/dev/null || :)
+            xml_name=${xml_name:-test-shell.xml}
             {
               echo "### $suite: the log of each failed case"
               echo
-              echo "What CTP wrote in the case's \`<failure>\`, trimmed to fit. Untrimmed, it is in the shard's \`test-shell.xml\`."
+              echo "What CTP wrote in the case's \`<failure>\`, trimmed to fit. Untrimmed, it is in the shard's \`$xml_name\`."
               echo
             } >> "$GITHUB_STEP_SUMMARY"
 
@@ -2876,7 +2936,7 @@ jobs:
               log="/tmp/failed-logs/$suite/$i.log"
               {
                 echo "<details>"
-                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/test-results/test-shell.xml\">full log</a></summary>"
+                echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/test-results/$xml_name\">full log</a></summary>"
                 echo
                 # <pre> opens its own line: a blank line inside the log would end the
                 # HTML block that <details> opened, and the rest would render as text.
@@ -2915,7 +2975,7 @@ jobs:
             done < "$list"
 
             if [ "$left" -gt 0 ]; then
-              echo "_$left more cases failed. Their logs are in each shard's \`test-shell.xml\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
+              echo "_$left more cases failed. Their logs are in each shard's \`$xml_name\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
             fi
             echo "wrote $((i - left)) of $i case logs, $used bytes"
           done
@@ -2930,7 +2990,7 @@ jobs:
       - name: Clean up the CTP seed
         if: always()
         run: |
-          set -eo pipefail
+          set -euo pipefail
           seed="$RUNDIR/plan/testtools"
           for suite in $SUITES_RUN; do
             [ "$(cat "$RUNDIR/$suite/collect/verdict" 2>/dev/null)" = pass ] || {
@@ -2970,7 +3030,7 @@ jobs:
           # the others' contexts. Empty means it never reached a verdict for this one.
           VERDICT: ${{ needs.collect.outputs[format('verdict_{0}', matrix.suite)] }}
         run: |
-          set -eo pipefail
+          set -euo pipefail
           if [[ ! "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::sha must be 40 lowercase hex characters, got: ${SHA}"; exit 1
           fi
