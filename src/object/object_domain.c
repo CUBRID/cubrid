@@ -37,6 +37,8 @@
 #include "area_alloc.h"
 #include "deduplicate_key.h"
 #include "object_domain.h"
+#include "object_domain_convert.h"
+#include <utility>
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "numeric_opfunc.h"
@@ -5735,6 +5737,350 @@ tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desire
   return tp_value_cast (src, dest, desired_domain, true);
 }
 
+/* Numeric cells share the legacy formulas; source, destination and mode are compile-time parameters. */
+template <DB_TYPE TYPE> struct tp_numeric_value;
+
+template <> struct tp_numeric_value<DB_TYPE_SHORT>
+{
+  static auto get (const DB_VALUE *value)
+  {
+    return db_get_short (value);
+  }
+  static void make (DB_VALUE *value, short number)
+  {
+    db_make_short (value, number);
+  }
+};
+template <> struct tp_numeric_value<DB_TYPE_INTEGER>
+{
+  static auto get (const DB_VALUE *value)
+  {
+    return db_get_int (value);
+  }
+  static void make (DB_VALUE *value, int number)
+  {
+    db_make_int (value, number);
+  }
+};
+template <> struct tp_numeric_value<DB_TYPE_BIGINT>
+{
+  static auto get (const DB_VALUE *value)
+  {
+    return db_get_bigint (value);
+  }
+  static void make (DB_VALUE *value, DB_BIGINT number)
+  {
+    db_make_bigint (value, number);
+  }
+};
+template <> struct tp_numeric_value<DB_TYPE_FLOAT>
+{
+  static auto get (const DB_VALUE *value)
+  {
+    return db_get_float (value);
+  }
+  static void make (DB_VALUE *value, float number)
+  {
+    db_make_float (value, number);
+  }
+};
+template <> struct tp_numeric_value<DB_TYPE_DOUBLE>
+{
+  static auto get (const DB_VALUE *value)
+  {
+    return db_get_double (value);
+  }
+  static void make (DB_VALUE *value, double number)
+  {
+    db_make_double (value, number);
+  }
+};
+template <> struct tp_numeric_value<DB_TYPE_MONETARY>
+{
+  static auto get (const DB_VALUE *value)
+  {
+    return db_get_monetary (value)->amount;
+  }
+  static void make (DB_VALUE *value, double number)
+  {
+    db_make_monetary (value, DB_CURRENCY_DEFAULT, number);
+  }
+};
+
+template <DB_TYPE DST, typename T>
+static bool
+tp_numeric_overflow (T number)
+{
+  if constexpr (DST == DB_TYPE_SHORT)
+    {
+      return OR_CHECK_SHORT_OVERFLOW (number);
+    }
+  else if constexpr (DST == DB_TYPE_INTEGER)
+    {
+      return OR_CHECK_INT_OVERFLOW (number);
+    }
+  else if constexpr (DST == DB_TYPE_BIGINT)
+    {
+      return OR_CHECK_BIGINT_OVERFLOW (number);
+    }
+  else if constexpr (DST == DB_TYPE_FLOAT)
+    {
+      return OR_CHECK_FLOAT_OVERFLOW (number);
+    }
+  else
+    {
+      static_assert (DST == DB_TYPE_DOUBLE || DST == DB_TYPE_MONETARY, "missing numeric range check");
+      return false;
+    }
+}
+
+template <DB_TYPE DST, bool STRICT>
+static int
+tp_numeric_from_num (const DB_VALUE *src, DB_VALUE *target)
+{
+  int scale = db_get_numeric_scale (src, NULL);
+  if constexpr (DST == DB_TYPE_SHORT)
+    {
+      if constexpr (STRICT) return numeric_coerce_num_to_short_strict (src, scale, target);
+      else return numeric_coerce_num_to_short (src, scale, target);
+    }
+  else if constexpr (DST == DB_TYPE_INTEGER)
+    {
+      if constexpr (STRICT) return numeric_coerce_num_to_int_strict (src, scale, target);
+      else return numeric_coerce_num_to_int (src, scale, target);
+    }
+  else if constexpr (DST == DB_TYPE_BIGINT)
+    {
+      if constexpr (STRICT) return numeric_coerce_num_to_bigint_strict (src, scale, target);
+      else return numeric_coerce_num_to_bigint (src, scale, target);
+    }
+  else if constexpr (DST == DB_TYPE_FLOAT)
+    {
+      if constexpr (STRICT) return numeric_coerce_num_to_float_strict (src, scale, target);
+      else return numeric_coerce_num_to_float (src, scale, target);
+    }
+  else if constexpr (DST == DB_TYPE_DOUBLE)
+    {
+      if constexpr (STRICT) return numeric_coerce_num_to_double_strict (src, scale, target);
+      else return numeric_coerce_num_to_double (src, scale, target);
+    }
+  else
+    {
+      static_assert (DST == DB_TYPE_MONETARY, "missing numeric target operation");
+      if constexpr (STRICT) return numeric_coerce_num_to_monetary_strict (src, scale, target);
+      else return numeric_coerce_num_to_monetary (src, scale, target);
+    }
+}
+
+template <DB_TYPE SRC, DB_TYPE DST, DOMAIN_CONVERT_MODE MODE>
+TP_DOMAIN_STATUS
+tp_value_convert_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain)
+{
+  static_assert (MODE == DOMAIN_CONVERT_ASSIGN || MODE == DOMAIN_CONVERT_COMPARE || MODE == DOMAIN_CONVERT_OPERAND,
+                 "missing numeric conversion mode");
+  static_assert (SRC == DB_TYPE_SHORT || SRC == DB_TYPE_INTEGER || SRC == DB_TYPE_BIGINT || SRC == DB_TYPE_FLOAT
+                 || SRC == DB_TYPE_DOUBLE || SRC == DB_TYPE_MONETARY || SRC == DB_TYPE_NUMERIC
+                 || SRC == DB_TYPE_CHAR || SRC == DB_TYPE_VARCHAR, "missing numeric source cell");
+  static_assert (DST == DB_TYPE_SHORT || DST == DB_TYPE_INTEGER || DST == DB_TYPE_BIGINT || DST == DB_TYPE_FLOAT
+                 || DST == DB_TYPE_DOUBLE || DST == DB_TYPE_MONETARY || DST == DB_TYPE_NUMERIC,
+                 "missing numeric destination cell");
+  constexpr bool integer_target = DST == DB_TYPE_SHORT || DST == DB_TYPE_INTEGER || DST == DB_TYPE_BIGINT;
+  constexpr bool integer_source = SRC == DB_TYPE_SHORT || SRC == DB_TYPE_INTEGER || SRC == DB_TYPE_BIGINT;
+  constexpr bool string_source = SRC == DB_TYPE_CHAR || SRC == DB_TYPE_VARCHAR;
+  constexpr bool strict = MODE != DOMAIN_CONVERT_ASSIGN;
+
+  if constexpr (DST == DB_TYPE_NUMERIC)
+    {
+      if constexpr (string_source)
+        {
+          DB_VALUE number;
+          const char *string = db_get_string (src);
+          if (string == NULL)
+            {
+              return DOMAIN_INCOMPATIBLE;
+            }
+          int error = numeric_coerce_string_to_num_status (string, db_get_string_size (src),
+                      db_get_string_codeset (src), &number);
+          if (error != NO_ERROR)
+            {
+              return error == ER_IT_DATA_OVERFLOW ? DOMAIN_OVERFLOW : DOMAIN_INCOMPATIBLE;
+            }
+          /* The legacy strict string path also rounds when fitting the parsed NUMERIC to the target. */
+          return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+                 (&number, target, desired_domain);
+        }
+      else if constexpr (MODE == DOMAIN_CONVERT_COMPARE
+                         && (SRC == DB_TYPE_FLOAT || SRC == DB_TYPE_DOUBLE || SRC == DB_TYPE_MONETARY))
+        {
+          return DOMAIN_INCOMPATIBLE;
+        }
+      else
+        {
+          if constexpr (SRC == DB_TYPE_NUMERIC && MODE != DOMAIN_CONVERT_COMPARE)
+            {
+              if (desired_domain->precision == DB_VALUE_PRECISION (src)
+                  && desired_domain->scale == DB_VALUE_SCALE (src))
+                {
+                  /* NUMERIC owns its inline buffer; no generic value/type dispatch is necessary. */
+                  *target = *src;
+                  return DOMAIN_COMPATIBLE;
+                }
+            }
+          DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+          int error = numeric_coerce_value_to_num<SRC> (src, target, &data_stat);
+          if (error == ER_IT_DATA_OVERFLOW || data_stat == DATA_STATUS_TRUNCATED)
+            {
+              return DOMAIN_OVERFLOW;
+            }
+          return error == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+        }
+    }
+  else if constexpr (SRC == DB_TYPE_NUMERIC)
+    {
+      int error = tp_numeric_from_num<DST, strict> (src, target);
+      return error == NO_ERROR ? DOMAIN_COMPATIBLE : (strict ? DOMAIN_INCOMPATIBLE : DOMAIN_OVERFLOW);
+    }
+  else if constexpr (string_source)
+    {
+      DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+      if constexpr (DST == DB_TYPE_BIGINT && !strict)
+        {
+          DB_BIGINT number = 0;
+          if (tp_atobi (src, &number, &data_stat) != NO_ERROR)
+            {
+              return er_errid () != NO_ERROR ? DOMAIN_ERROR : DOMAIN_INCOMPATIBLE;
+            }
+          if (data_stat == DATA_STATUS_TRUNCATED)
+            {
+              return DOMAIN_OVERFLOW;
+            }
+          db_make_bigint (target, number);
+          return DOMAIN_COMPATIBLE;
+        }
+      else
+        {
+          double number = 0.0;
+          if (tp_atof (src, &number, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
+            {
+              if constexpr (strict) return DOMAIN_INCOMPATIBLE;
+              else return er_errid () != NO_ERROR ? DOMAIN_ERROR : DOMAIN_INCOMPATIBLE;
+            }
+          if (data_stat == DATA_STATUS_TRUNCATED || tp_numeric_overflow<DST> (number))
+            {
+              return DOMAIN_OVERFLOW;
+            }
+          if constexpr (integer_target)
+            {
+              if constexpr (strict)
+                {
+                  double integral = 0.0;
+                  if (modf (number, &integral) != 0)
+                    {
+                      return DOMAIN_INCOMPATIBLE;
+                    }
+                  tp_numeric_value<DST>::make (target, integral);
+                }
+              else
+                {
+                  tp_numeric_value<DST>::make (target, ROUND (number));
+                }
+            }
+          else
+            {
+              tp_numeric_value<DST>::make (target, number);
+            }
+          return DOMAIN_COMPATIBLE;
+        }
+    }
+  else
+    {
+      const auto number = tp_numeric_value<SRC>::get (src);
+      if constexpr (SRC == DST)
+        {
+          /* Includes the currency field of a MONETARY identity. */
+          *target = *src;
+          return DOMAIN_COMPATIBLE;
+        }
+      else if constexpr (integer_target)
+        {
+          if (tp_numeric_overflow<DST> (number))
+            {
+              return DOMAIN_OVERFLOW;
+            }
+          if constexpr (integer_source)
+            {
+              tp_numeric_value<DST>::make (target, number);
+            }
+          else if constexpr (strict)
+            {
+              auto integral = number;
+              if constexpr (SRC == DB_TYPE_FLOAT)
+                {
+                  if (modff (number, &integral) != 0) return DOMAIN_INCOMPATIBLE;
+                }
+              else
+                {
+                  if (modf (number, &integral) != 0) return DOMAIN_INCOMPATIBLE;
+                }
+              tp_numeric_value<DST>::make (target, integral);
+            }
+          else
+            {
+              using target_type = decltype (tp_numeric_value<DST>::get (target));
+              target_type integral = static_cast<target_type> (ROUND (number));
+              /* Preserve the legacy assignment overflow checks, including AIX's saturating casts. */
+              if constexpr (DST == DB_TYPE_BIGINT || (DST == DB_TYPE_INTEGER && SRC == DB_TYPE_FLOAT))
+                {
+#if defined (AIX)
+                  if constexpr (SRC == DB_TYPE_FLOAT || SRC == DB_TYPE_DOUBLE)
+                    {
+                      if constexpr (DST == DB_TYPE_BIGINT)
+                        {
+                          if (number == static_cast<decltype (number)> (DB_BIGINT_MAX)) integral = DB_BIGINT_MIN;
+                        }
+                      else
+                        {
+                          if (number == static_cast<decltype (number)> (DB_INT32_MAX)) integral = DB_INT32_MIN;
+                        }
+                    }
+#endif
+                  if (OR_CHECK_ASSIGN_OVERFLOW (integral, number)) return DOMAIN_OVERFLOW;
+                }
+              tp_numeric_value<DST>::make (target, integral);
+            }
+        }
+      else if constexpr (DST == DB_TYPE_FLOAT && (SRC == DB_TYPE_DOUBLE || SRC == DB_TYPE_MONETARY))
+        {
+          /* These two source types are absent from the legacy strict FLOAT switch. */
+          if constexpr (strict) return DOMAIN_INCOMPATIBLE;
+          else
+            {
+              if (tp_numeric_overflow<DST> (number)) return DOMAIN_OVERFLOW;
+              tp_numeric_value<DST>::make (target, number);
+            }
+        }
+      else
+        {
+          tp_numeric_value<DST>::make (target, number);
+        }
+      return DOMAIN_COMPATIBLE;
+    }
+}
+
+template <std::size_t... I>
+static constexpr DOMAIN_NUMERIC_CONVERTERS
+tp_make_numeric_convert_table (std::index_sequence<I...>)
+{
+  return {{
+      &tp_value_convert_number<tp_numeric_convert_types[(I / 7) % 9],
+      tp_numeric_convert_types[I % 7],
+      static_cast<DOMAIN_CONVERT_MODE> (I / (9 * 7))>...
+    }};
+}
+
+const DOMAIN_NUMERIC_CONVERTERS tp_numeric_convert_table =
+  tp_make_numeric_convert_table (std::make_index_sequence<3 * 9 * 7> {});
+
 /*
  * tp_value_coerce_strict () - convert a value to desired domain without loss
  *			       of precision
@@ -5806,98 +6152,34 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_MONETARY:
-	  {
-	    double i = 0;
-	    const double val = db_get_monetary (src)->amount;
-	    if (OR_CHECK_SHORT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_short (target, (short) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_INTEGER:
-	  if (OR_CHECK_SHORT_OVERFLOW (db_get_int (src)))
-	    {
-	      err = ER_FAILED;
-	      break;
-	    }
-	  db_make_short (target, (short) db_get_int (src));
+	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  if (OR_CHECK_SHORT_OVERFLOW (db_get_bigint (src)))
-	    {
-	      err = ER_FAILED;
-	      break;
-	    }
-	  db_make_short (target, (short) db_get_bigint (src));
+	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  {
-	    float i = 0;
-	    const float val = db_get_float (src);
-	    if (OR_CHECK_SHORT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modff (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_short (target, (short) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_DOUBLE:
-	  {
-	    double i = 0;
-	    const double val = db_get_double (src);
-	    if (OR_CHECK_SHORT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_short (target, (short) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_NUMERIC:
-	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
+	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0, i = 0.0;
-	    DB_DATA_STATUS data_stat = DATA_STATUS_OK;
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (data_stat != DATA_STATUS_OK || OR_CHECK_SHORT_OVERFLOW (num_value))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (num_value, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_short (target, (short) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -5908,94 +6190,34 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_int (target, (int) db_get_short (src));
-	  err = NO_ERROR;
+	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_MONETARY:
-	  {
-	    double i = 0;
-	    const double val = db_get_monetary (src)->amount;
-	    if (OR_CHECK_INT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_int (target, (int) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_BIGINT:
-	  if (OR_CHECK_INT_OVERFLOW (db_get_bigint (src)))
-	    {
-	      err = ER_FAILED;
-	      break;
-	    }
-	  db_make_int (target, (int) db_get_bigint (src));
+	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  {
-	    float i = 0;
-	    const float val = db_get_float (src);
-	    if (OR_CHECK_INT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modff (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_int (target, (int) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_DOUBLE:
-	  {
-	    double i = 0;
-	    const double val = db_get_double (src);
-	    if (OR_CHECK_INT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_int (target, (int) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_NUMERIC:
-	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
+	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0, i = 0.0;
-	    DB_DATA_STATUS data_stat = DATA_STATUS_OK;
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (data_stat != DATA_STATUS_OK || OR_CHECK_INT_OVERFLOW (num_value))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (num_value, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_int (target, (int) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -6006,89 +6228,34 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_bigint (target, db_get_short (src));
+	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_bigint (target, db_get_int (src));
+	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_MONETARY:
-	  {
-	    double i = 0;
-	    const double val = db_get_monetary (src)->amount;
-	    if (OR_CHECK_BIGINT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_bigint (target, (DB_BIGINT) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  {
-	    float i = 0;
-	    const float val = db_get_float (src);
-	    if (OR_CHECK_BIGINT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modff (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_bigint (target, (DB_BIGINT) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_DOUBLE:
-	  {
-	    double i = 0;
-	    const double val = db_get_double (src);
-	    if (OR_CHECK_BIGINT_OVERFLOW (val))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (val, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_bigint (target, (DB_BIGINT) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_NUMERIC:
-	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
+	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0, i = 0.0;
-	    DB_DATA_STATUS data_stat = DATA_STATUS_OK;
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (data_stat != DATA_STATUS_OK || OR_CHECK_BIGINT_OVERFLOW (num_value))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (modf (num_value, &i) != 0)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_bigint (target, (DB_BIGINT) i);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -6099,37 +6266,26 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_float (target, (float) db_get_short (src));
+	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_float (target, (float) db_get_int (src));
+	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  db_make_float (target, (float) db_get_bigint (src));
+	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
+	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0;
-	    DB_DATA_STATUS data_stat = DATA_STATUS_OK;
-
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-
-	    if (data_stat != DATA_STATUS_OK || OR_CHECK_FLOAT_OVERFLOW (num_value))
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_float (target, (float) num_value);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -6140,41 +6296,34 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_double (target, (double) db_get_short (src));
+	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_double (target, (double) db_get_int (src));
+	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  db_make_double (target, (double) db_get_bigint (src));
+	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  db_make_double (target, (double) db_get_float (src));
+	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_MONETARY:
-	  db_make_double (target, db_get_monetary (src)->amount);
+	  err = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
+	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    DB_DATA_STATUS data_stat = DATA_STATUS_OK;
-	    double num_value = 0.0;
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (data_stat != DATA_STATUS_OK)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_double (target, num_value);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -6202,24 +6351,27 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	    else
 	      {
-		err = tp_value_coerce (&temp, target, desired_domain);
+		err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+		  (&temp, target, desired_domain);
 	      }
 	    break;
 	  }
 	case DB_TYPE_SHORT:
+	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_INTEGER:
+	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_BIGINT:
+	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_NUMERIC:
-	  {
-	    DB_DATA_STATUS data_stat = DATA_STATUS_OK;
-	    err = numeric_db_value_coerce_to_num ((DB_VALUE *) src, target, &data_stat);
-	    if (data_stat != DATA_STATUS_OK)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -6230,41 +6382,34 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) db_get_short (src));
+	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) db_get_int (src));
+	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) db_get_bigint (src));
+	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) db_get_float (src));
+	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_DOUBLE:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, db_get_double (src));
+	  err = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = numeric_db_value_coerce_from_num_strict ((DB_VALUE *) src, target);
+	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0;
-	    DB_DATA_STATUS data_stat = DATA_STATUS_OK;
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    if (data_stat == DATA_STATUS_TRUNCATED || data_stat == DATA_STATUS_NOT_CONSUMED)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_monetary (target, DB_CURRENCY_DEFAULT, num_value);
-	    break;
-	  }
+	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -7322,91 +7467,34 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_MONETARY:
-	  v_money = db_get_monetary (src);
-	  if (OR_CHECK_SHORT_OVERFLOW (v_money->amount))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_short (target, (short) ROUND (v_money->amount));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  if (OR_CHECK_SHORT_OVERFLOW (db_get_int (src)))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_short (target, db_get_int (src));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  if (OR_CHECK_SHORT_OVERFLOW (db_get_bigint (src)))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_short (target, (short) db_get_bigint (src));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  if (OR_CHECK_SHORT_OVERFLOW (db_get_float (src)))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_short (target, (short) ROUND (db_get_float (src)));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  if (OR_CHECK_SHORT_OVERFLOW (db_get_double (src)))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_short (target, (short) ROUND (db_get_double (src)));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
-	  if (status != NO_ERROR)
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
+	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0;
-
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
-	      {
-		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
-		  {
-		    status = DOMAIN_ERROR;
-		  }
-		else
-		  {
-		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
-		  }
-		break;
-	      }
-
-	    if (data_stat == DATA_STATUS_TRUNCATED || OR_CHECK_SHORT_OVERFLOW (num_value))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		db_make_short (target, (short) ROUND (num_value));
-	      }
-	    break;
-	  }
+	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
 	case DB_TYPE_ENUMERATION:
 	  db_make_short (target, db_get_enum_short (src));
 	  break;
@@ -7420,107 +7508,34 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_int (target, db_get_short (src));
+	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  if (OR_CHECK_INT_OVERFLOW (db_get_bigint (src)))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_int (target, (int) db_get_bigint (src));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  v_money = db_get_monetary (src);
-	  if (OR_CHECK_INT_OVERFLOW (v_money->amount))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_int (target, (int) ROUND (v_money->amount));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  {
-	    int tmp_int;
-	    float tmp_float;
-
-	    if (OR_CHECK_INT_OVERFLOW (db_get_float (src)))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		tmp_float = db_get_float (src);
-		tmp_int = (int) ROUND (tmp_float);
-
-#if defined(AIX)
-		/* in AIX, float/double to int will not overflow, make it the same as linux. */
-		if (tmp_float == (float) DB_INT32_MAX)
-		  {
-		    tmp_int = DB_INT32_MIN;
-		  }
-#endif
-
-		if (OR_CHECK_ASSIGN_OVERFLOW (tmp_int, tmp_float))
-		  {
-		    status = DOMAIN_OVERFLOW;
-		  }
-		else
-		  {
-		    db_make_int (target, tmp_int);
-		  }
-	      }
-	  }
+	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  if (OR_CHECK_INT_OVERFLOW (db_get_double (src)))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_int (target, (int) ROUND (db_get_double (src)));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
-	  if (status != NO_ERROR)
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
+	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0;
-
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
-	      {
-		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
-		  {
-		    status = DOMAIN_ERROR;
-		  }
-		else
-		  {
-		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
-		  }
-		break;
-	      }
-
-	    if (data_stat == DATA_STATUS_TRUNCATED || OR_CHECK_INT_OVERFLOW (num_value))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		db_make_int (target, (int) ROUND (num_value));
-	      }
-	    break;
-	  }
+	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
 	case DB_TYPE_ENUMERATION:
 	  db_make_int (target, db_get_enum_short (src));
 	  break;
@@ -7534,131 +7549,34 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_bigint (target, db_get_short (src));
+	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_bigint (target, db_get_int (src));
+	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  {
-	    DB_BIGINT tmp_bi;
-
-	    v_money = db_get_monetary (src);
-	    if (OR_CHECK_BIGINT_OVERFLOW (v_money->amount))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		tmp_bi = (DB_BIGINT) ROUND (v_money->amount);
-		if (OR_CHECK_ASSIGN_OVERFLOW (tmp_bi, v_money->amount))
-		  {
-		    status = DOMAIN_OVERFLOW;
-		  }
-		else
-		  {
-		    db_make_bigint (target, tmp_bi);
-		  }
-	      }
-	  }
+	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  {
-	    float tmp_float;
-	    DB_BIGINT tmp_bi;
-
-	    if (OR_CHECK_BIGINT_OVERFLOW (db_get_float (src)))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		tmp_float = db_get_float (src);
-		tmp_bi = (DB_BIGINT) ROUND (tmp_float);
-
-#if defined(AIX)
-		/* in AIX, float/double to int64 will not overflow, make it the same as linux. */
-		if (tmp_float == (float) DB_BIGINT_MAX)
-		  {
-		    tmp_bi = DB_BIGINT_MIN;
-		  }
-#endif
-		if (OR_CHECK_ASSIGN_OVERFLOW (tmp_bi, tmp_float))
-		  {
-		    status = DOMAIN_OVERFLOW;
-		  }
-		else
-		  {
-		    db_make_bigint (target, tmp_bi);
-		  }
-	      }
-	  }
+	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  {
-	    double tmp_double;
-	    DB_BIGINT tmp_bi;
-
-	    if (OR_CHECK_BIGINT_OVERFLOW (db_get_double (src)))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		tmp_double = db_get_double (src);
-		tmp_bi = (DB_BIGINT) ROUND (tmp_double);
-
-#if defined(AIX)
-		/* in AIX, float/double to int64 will not overflow, make it the same as linux. */
-		if (tmp_double == (double) DB_BIGINT_MAX)
-		  {
-		    tmp_bi = DB_BIGINT_MIN;
-		  }
-#endif
-		if (OR_CHECK_ASSIGN_OVERFLOW (tmp_bi, tmp_double))
-		  {
-		    status = DOMAIN_OVERFLOW;
-		  }
-		else
-		  {
-		    db_make_bigint (target, tmp_bi);
-		  }
-	      }
-	  }
+	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
-	  if (status != NO_ERROR)
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
+	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    DB_BIGINT num_value = 0;
-
-	    if (tp_atobi (src, &num_value, &data_stat) != NO_ERROR)
-	      {
-		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
-		  {
-		    status = DOMAIN_ERROR;
-		  }
-		else
-		  {
-		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
-		  }
-		break;
-	      }
-
-	    if (data_stat == DATA_STATUS_TRUNCATED)
-	      {
-		status = DOMAIN_OVERFLOW;
-		break;
-	      }
-	    db_make_bigint (target, num_value);
-	    break;
-	  }
+	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
 	case DB_TYPE_ENUMERATION:
 	  db_make_bigint (target, db_get_enum_short (src));
 	  break;
@@ -7672,70 +7590,34 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_float (target, (float) db_get_short (src));
+	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_float (target, (float) db_get_int (src));
+	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  db_make_float (target, (float) db_get_bigint (src));
+	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  if (OR_CHECK_FLOAT_OVERFLOW (db_get_double (src)))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_float (target, (float) db_get_double (src));
-	    }
+	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  v_money = db_get_monetary (src);
-	  if (OR_CHECK_FLOAT_OVERFLOW (v_money->amount))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      db_make_float (target, (float) v_money->amount);
-	    }
+	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
-	  if (status != NO_ERROR)
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
+	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0;
-
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
-	      {
-		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
-		  {
-		    status = DOMAIN_ERROR;
-		  }
-		else
-		  {
-		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
-		  }
-		break;
-	      }
-
-	    if (data_stat == DATA_STATUS_TRUNCATED || OR_CHECK_FLOAT_OVERFLOW (num_value))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		db_make_float (target, (float) num_value);
-	      }
-	    break;
-	  }
+	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
 	case DB_TYPE_ENUMERATION:
 	  db_make_float (target, (float) db_get_enum_short (src));
 	  break;
@@ -7749,57 +7631,34 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_double (target, (double) db_get_short (src));
+	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_double (target, (double) db_get_int (src));
+	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  db_make_double (target, (double) db_get_bigint (src));
+	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  db_make_double (target, (double) db_get_float (src));
+	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  v_money = db_get_monetary (src);
-	  db_make_double (target, (double) v_money->amount);
+	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
-	  if (status != NO_ERROR)
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
+	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0;
-
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
-	      {
-		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
-		  {
-		    status = DOMAIN_ERROR;
-		  }
-		else
-		  {
-		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
-		  }
-		break;
-	      }
-
-	    if (data_stat == DATA_STATUS_TRUNCATED)
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		db_make_double (target, num_value);
-	      }
-
-	    break;
-	  }
+	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
 	case DB_TYPE_ENUMERATION:
 	  db_make_double (target, (double) db_get_enum_short (src));
 	  break;
@@ -7835,10 +7694,39 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	    else
 	      {
-		status = tp_value_coerce (&temp, target, desired_domain);
+		status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+		  (&temp, target, desired_domain);
 	      }
 	    break;
 	  }
+	case DB_TYPE_SHORT:
+	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
+	case DB_TYPE_INTEGER:
+	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
+	case DB_TYPE_BIGINT:
+	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
+	case DB_TYPE_FLOAT:
+	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
+	case DB_TYPE_DOUBLE:
+	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
+	case DB_TYPE_MONETARY:
+	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
+	case DB_TYPE_NUMERIC:
+	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
 	default:
 	  {
 	    int error_code = numeric_db_value_coerce_to_num ((DB_VALUE *) src, target, &data_stat);
@@ -7864,55 +7752,34 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) db_get_short (src));
+	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) db_get_int (src));
+	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) db_get_bigint (src));
+	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, (double) db_get_float (src));
+	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, db_get_double (src));
+	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = (TP_DOMAIN_STATUS) numeric_db_value_coerce_from_num ((DB_VALUE *) src, target, &data_stat);
-	  if (status != NO_ERROR)
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
+	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    double num_value = 0.0;
-
-	    if (tp_atof (src, &num_value, &data_stat) != NO_ERROR || data_stat == DATA_STATUS_NOT_CONSUMED)
-	      {
-		if (er_errid () != NO_ERROR)	/* i.e, malloc failure */
-		  {
-		    status = DOMAIN_ERROR;
-		  }
-		else
-		  {
-		    status = DOMAIN_INCOMPATIBLE;	/* conversion error */
-		  }
-		break;
-	      }
-
-	    if (data_stat == DATA_STATUS_TRUNCATED)
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		db_make_monetary (target, DB_CURRENCY_DEFAULT, num_value);
-	      }
-	    break;
-	  }
+	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	    (src, target, desired_domain);
+	  break;
 	case DB_TYPE_ENUMERATION:
 	  db_make_monetary (target, DB_CURRENCY_DEFAULT, db_get_enum_short (src));
 	  break;

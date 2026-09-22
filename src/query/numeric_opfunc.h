@@ -166,6 +166,28 @@ extern int numeric_coerce_string_to_num (const char *astring, int astring_len, I
 extern int numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_scale, int dest_prec,
 				      int dest_scale, DB_C_NUMERIC dest_num, bool * dest_num_is_negative);
 
+#if defined (__cplusplus)
+/* Fixed-type operations shared by the legacy dispatchers and planned conversion cells. */
+template <DB_TYPE SRC>
+int numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status);
+
+extern int numeric_coerce_string_to_num_status (const char *astring, int astring_length, INTL_CODESET codeset,
+                                               DB_VALUE *result);
+extern int numeric_coerce_num_to_double (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_float (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_monetary (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_int (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_bigint (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_short (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_double_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_float_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_monetary_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_int_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_bigint_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
+extern int numeric_coerce_num_to_short_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
+
+#endif /* __cplusplus */
+
 extern int numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest);
