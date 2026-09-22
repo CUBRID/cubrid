@@ -463,7 +463,7 @@ static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 static bool pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE ** rewritten_order_by);
 static PT_NODE *pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared, PT_NODE * query,
-						     PT_NODE * name_source);
+						    PT_NODE * name_source);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -10180,7 +10180,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       if (parser->flag.is_parsing_static_sql)
 	{
 	  attr_list = pt_static_sql_align_declared_names (parser, attr_list, p->info.spec.derived_table,
-							   p->info.spec.as_attr_list);
+							  p->info.spec.as_attr_list);
 	}
 
       if (attr_list != NULL)
@@ -14895,40 +14895,32 @@ pt_init_select (PT_NODE * p)
 }
 
 /*
- * pt_static_sql_can_omit_hidden_columns () - can a query's hidden columns be left out of its
- *                                            static SQL text?
- *   return: true if they can
- *   parser(in):
- *   p(in): the query being printed
- *   rewritten_order_by(out): when not NULL, receives a newly built ORDER BY list that no longer
- *                            depends on where the hidden columns sit in the select list
+ * pt_static_sql_can_omit_hidden_columns() - Can hidden columns be omitted from
+ *                                           a query's static SQL text?
+ *   return: true if omission and rewrite succeed
+ *   parser(in): parser context
+ *   p(in): target query node
+ *   rewritten_order_by(out): new ORDER BY list independent of hidden column positions
  *
  * Note:
- *   rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and
- *   re-parsed from scratch at runtime, so every select list item printed for it comes back as a
- *   real, user-visible result column. Hidden columns are an internal artifact -- an ORDER BY carry
- *   column added while merging an inline view or an inlined CTE, the OID column of an updatable
- *   query -- and must not become part of the statement's result set; "FETCH cur INTO v1" would then
- *   report that the SELECT list and the INTO clause do not match.
+ *   1. Purpose:
+ *      Static SQL queries embedded in compiled PL/CSQL classes are re-parsed at
+ *      runtime. Hidden columns (e.g., internal ORDER BY carry columns or OID columns)
+ *      must be excluded so they don't leak into user result sets and trigger
+ *      "FETCH INTO" count mismatch errors.
  *
- *   Leaving them out shifts the positions an ORDER BY refers to (pt_check_order_by () has already
- *   turned every sort spec into a select list position), so this is only possible while every sort
- *   spec can be rewritten: one on a column that is still printed gets its new position, one on a
- *   hidden column gets that column's own expression back, which a fresh parse turns into a hidden
- *   column again. A hidden column holding a constant is the one that cannot be printed as it stands,
- *   and it is replaced by a cast constant instead -- see the sort spec loop below.
+ *   2. ORDER BY Rewriting:
+ *      Removing columns shifts select-list positional indices. Omission is only
+ *      valid if all sort specs can be rewritten:
+ *      - Visible columns receive updated positional indices.
+ *      - Hidden columns revert to their underlying expressions (or cast constants)
+ *        so they are re-evaluated as hidden columns upon re-parsing.
  *
- *   Every give_up below, this function's only way to signal "false", is reached identically whether
- *   the shape genuinely can't be rewritten or a node allocation failed along the way (parser_copy_tree (),
- *   pt_make_integer_value (), pt_wrap_with_cast_op () each already er_set () an out-of-memory error on
- *   failure, through parser_create_node_block ()) -- this function never calls er_clear (), so that error
- *   code is still the current one when it returns. That is deliberate, not an oversight: the only current
- *   caller of static-SQL printing, callback_handler::get_sql_semantics () in method_callback.cpp, checks
- *   er_errid () once after the whole statement is printed and turns a still-set error into a compile
- *   failure for that statement -- so an allocation failure here surfaces as a real error there instead of
- *   silently being treated as "nothing to omit". A future caller of pt_print_select ()/pt_print_cte ()/
- *   pt_print_spec () under is_parsing_static_sql that does not check er_errid () afterward would lose that
- *   guarantee.
+ *   3. Error Handling (give_up):
+ *      Reaching `give_up` (returns false) occurs both on invalid query shapes and
+ *      node allocation failures (OOM). This function intentionally does NOT call
+ *      `er_clear()`, preserving the error code so upper callers (e.g.,
+ *      `get_sql_semantics()`) can correctly catch OOM as a compilation failure.
  */
 static bool
 pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE ** rewritten_order_by)
@@ -15051,14 +15043,15 @@ pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_
 
       if (col->node_type == PT_VALUE)
 	{
-	  /* A constant sort key gives every row the same key, so it orders nothing -- and still it can
-	   * neither be dropped, while ORDERBY_NUM () needs an ORDER BY to remain there, nor be printed as
-	   * it stands, because a fresh parse reads a bare value as a select list position (an integer) or
-	   * rejects it outright (anything else); parentheses do not help, they only set flag.is_paren on
-	   * the same PT_VALUE. So print a cast constant: it parses as an expression that pt_check_order_by ()
-	   * resolves into a hidden column again, and it orders exactly as little as the original key did.
-	   * Which constant it is does not matter, and not depending on the original one keeps this clear of
-	   * the domains that cannot be named in a CAST at all -- "cast (null as null)" for one. */
+	  /* 
+	   * Constant sort keys provide no ordering, but cannot be removed if ORDERBY_NUM() 
+	   * requires an ORDER BY clause. They also cannot be printed as-is, as re-parsing 
+	   * interprets raw values as select-list positions or syntax errors. 
+	   * 
+	   * Solution: Print as a cast constant (e.g., `CAST(NULL AS NULL)` avoidance via 
+	   * generic cast). Re-parsing resolves it into a hidden column with identical 
+	   * ordering behavior without domain-naming restrictions.
+	   */
 	  PT_NODE *zero = pt_make_integer_value (parser, 0);
 
 	  copy->info.sort_spec.expr =
@@ -18472,37 +18465,29 @@ pt_name_list_has_name (PT_NODE * name_list, const char *name)
 }
 
 /*
- * pt_static_sql_align_declared_names () - keep a declared column-name list (a CTE's as_attr_list,
- *                                         or a plain derived table spec's) in lockstep with what
- *                                         pt_print_select () will really emit for query's select
- *                                         list, under static SQL
- *   return: a new list the caller owns (parser_free_tree ()s it eventually), or NULL
- *   parser(in):
- *   declared(in): the declared names, e.g. p->info.cte.as_attr_list or p->info.spec.as_attr_list --
- *                 borrowed, neither modified nor freed
- *   query(in): the query the declared names describe the exposed columns of
- *   name_source(in): declared's own, uncopied original list -- checked by pt_name_list_has_name ()
- *                     so a synthesized name can't collide with a real, user-declared one once this
- *                     text is re-parsed (an "ambiguous reference" at semantic check, not a crash,
- *                     but wrong)
+ * pt_static_sql_align_declared_names() - Align a declared column-name list (CTE's or
+ *                                        derived table's as_attr_list) with the
+ *                                        columns emitted by pt_print_select().
+ *   return: new caller-owned name list, or NULL
+ *   parser(in): parser context
+ *   declared(in): borrowed original declared names list
+ *   query(in): query whose exposed columns are described
+ *   name_source(in): original uncopied list to check for collision with synthesized names
  *
  * Note:
- *   declared and query's select list are built in lockstep everywhere either is constructed
- *   (view_transform.c, name_resolution.c): every select-list item -- hidden or not -- has a
- *   matching declared entry at the same position. A rewrite/optimization applied to query after
- *   declared was cached (e.g. adding a hidden order-by carry column while merging a
- *   ROWNUM-filtered outer query with an ORDER BY inner subquery) can append items past that
- *   cached length -- pad first, one synthesized name per new item, to restore the lockstep, since
- *   pt_print_select () prints every one of them when it is not leaving hidden columns out. Only
- *   then decide, per item and in the same left-to-right order, whether pt_print_select () will
- *   actually print it: where it can leave hidden columns out of the select list (see
- *   pt_static_sql_can_omit_hidden_columns ()), the declared names must leave out the very same
- *   entries, or a fresh parse of the embedded text would reject the pair as mismatched (declared
- *   column names vs. printed columns).
+ *   1. Length Alignment (Padding):
+ *      Post-parse optimizations (e.g., adding hidden ORDER BY carry columns) can lengthen
+ *      the query's select list beyond the cached `declared` list. If hidden columns cannot
+ *      be omitted, synthesized names are appended to pad the `declared` list so positions
+ *      match what `pt_print_select()` prints.
+ *
+ *   2. Content Alignment (Omission):
+ *      When static SQL can omit hidden columns (pt_static_sql_can_omit_hidden_columns()),
+ *      the corresponding entries must also be removed from `declared`. This prevents
+ *      column count mismatch errors during re-parsing.
  */
 static PT_NODE *
-pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared, PT_NODE * query,
-				     PT_NODE * name_source)
+pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared, PT_NODE * query, PT_NODE * name_source)
 {
   PT_NODE *aligned, *decl, *col;
   PT_NODE *select_list = pt_get_select_list (parser, query);
@@ -18577,19 +18562,20 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   if (parser->flag.is_parsing_static_sql)
     {
       as_attr_list = pt_static_sql_align_declared_names (parser, as_attr_list, p->info.cte.non_recursive_part,
-							  p->info.cte.as_attr_list);
+							 p->info.cte.as_attr_list);
     }
 
   /* name of cte */
   r1 = pt_print_bytes_l (parser, p->info.cte.name);
   q = pt_append_varchar (parser, q, r1);
 
-  /* attribute list -- as_attr_list is NULL only if pt_static_sql_align_declared_names () omitted every
-   * declared column, which pt_static_sql_can_omit_hidden_columns () already refuses to do (it returns
-   * false, leaving nothing to omit, whenever that would leave no visible column); skip the parens
-   * instead of printing an empty "()" if that invariant is ever wrong -- a CTE with no explicit column
-   * list still gets its columns' names from its own select list, so this stays valid CTE syntax either
-   * way, the same fallback pt_print_spec () already relies on for a plain derived table's alias list. */
+  /*
+   * Attribute list: `as_attr_list` is NULL only if all columns were omitted, which
+   * `pt_static_sql_can_omit_hidden_columns()` prevents by returning false when 0
+   * visible columns remain. If this invariant ever breaks, omit parentheses entirely
+   * instead of printing "()". The CTE will safely fall back to using column names from
+   * its select list, preserving valid syntax (matching `pt_print_spec()` behavior).
+   */
   if (as_attr_list != NULL)
     {
       q = pt_append_nulstring (parser, q, "(");
