@@ -13106,6 +13106,12 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
 
       if (QO_TERM_EQCLASS (tmp_term) == QO_TERM_EQCLASS (term))
 	{
+	  /* an outer join's ON equality is false on the rows it NULL-pads, so it cannot connect the eqclass */
+	  if (QO_ON_COND_TERM (tmp_term) && QO_NODE_IS_OUTER_JOIN (QO_ENV_NODE (env, QO_TERM_LOCATION (tmp_term))))
+	    {
+	      continue;
+	    }
+
 	  bitset_add (&remaining_terms, i);
 	  bitset_union (&eq_visited_segs, &(QO_TERM_SEGS (tmp_term)));
 	}
