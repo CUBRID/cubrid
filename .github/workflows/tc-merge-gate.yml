@@ -332,6 +332,12 @@ jobs:
             # Re-running the old run would replay the workflow pinned to that run,
             # which still holds whatever rules were in force when it started.
             echo "::notice::PR #${PR_NUMBER}: posted ${POSTED}, now ${EXPECTED} — judging again"
+            # Take it off first. Adding a label that is already on the PR changes
+            # nothing, and a label that changes nothing starts no run — a sweep
+            # that failed to take it off last time would otherwise go quiet here.
+            GH_TOKEN="${GITHUB_TOKEN}" gh api -X DELETE \
+              "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/labels/${RECHECK_LABEL}" > /dev/null 2>&1 || true
+
             if GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/labels" \
                  -f "labels[]=${RECHECK_LABEL}" > /dev/null 2>&1; then
               GH_TOKEN="${GITHUB_TOKEN}" gh api -X DELETE \
