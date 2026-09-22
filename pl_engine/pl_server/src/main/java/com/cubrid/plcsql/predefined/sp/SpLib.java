@@ -45,6 +45,7 @@ import com.cubrid.plcsql.compiler.annotation.Operator;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
+import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
@@ -726,15 +727,31 @@ public class SpLib {
     // --------------------------------------------------------
     // DBMS_OUTPUT procedures
 
-    public static void DBMS_OUTPUT$DISABLE() throws Exception {
-        DBMS_OUTPUT.disable();
+    public static void DBMS_OUTPUT$DISABLE() {
+        try {
+            DBMS_OUTPUT.disable();
+        } catch (IOException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        } catch (SQLException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        }
     }
 
-    public static void DBMS_OUTPUT$ENABLE(Integer size) throws Exception {
+    public static void DBMS_OUTPUT$ENABLE(Integer size) {
         if (size == null) {
             throw new VALUE_ERROR("size must be non-null");
         }
-        DBMS_OUTPUT.enable(size);
+        try {
+            DBMS_OUTPUT.enable(size);
+        } catch (IOException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        } catch (SQLException e) {
+            Server.log(e);
+            throw new SQL_ERROR(e.getMessage());
+        }
     }
 
     public static void DBMS_OUTPUT$GET_LINE(String[] line, Integer[] status) {
