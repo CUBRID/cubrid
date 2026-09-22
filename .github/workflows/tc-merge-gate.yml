@@ -12,16 +12,19 @@
 # deletes tc/pr-<N> when the engine PR merges. Whatever the branch still holds
 # is gone at that moment (CUBRID/cubrid#7964 lost a reviewed commit that way).
 #
-# The scheduled sweep re-runs this check for open PRs whose posted verdict no
-# longer matches reality: tc/pr-<N> changes after the engine PR's last event,
-# and GitHub does not re-evaluate required checks when the merge button is hit.
+# Every answer this gate cannot establish blocks. Losing a TC change costs more
+# than one re-run.
+#
+# The scheduled sweep judges open PRs again, because tc/pr-<N> changes after the
+# engine PR's last event and GitHub does not re-evaluate required checks when
+# the merge button is hit.
 #
 
 name: TC Merge Gate
 
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
     branches:
       - develop
   schedule:
@@ -56,7 +59,22 @@ env:
     # Paths carry '%' and spaces; they must be encoded before they enter a URL.
     url_path() { jq -rn --arg s "$1" '$s|@uri' | sed 's|%2F|/|g'; }
 
+    # Blob sha of a path on develop, '-' when develop does not have it, '?' when
+    # the answer did not arrive. '?' matches nothing, so it blocks.
+    dev_blob() {
+      local out
+      if out=$(gh api "repos/${OWNER}/${1}/contents/$(url_path "${2}")?ref=develop" --jq '.sha' 2>&1); then
+        printf '%s' "${out}"
+      elif [[ "${out}" == *"HTTP 404"* ]]; then
+        printf '%s' '-'
+      else
+        printf '%s' '?'
+      fi
+    }
+
     for TC_REPO in ${TC_REPOS}; do
+      # This call also stands in for an access check: a token that cannot see the
+      # repo fails here, before a 404 below could read as "no branch".
       if ! OPEN_PR=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${BRANCH}" \
                        --state open --limit 1 --json url,isDraft --jq '.[0] // empty'); then
         DETAIL+="- ⚠️ **${TC_REPO}**: could not read the TC PR list — re-run this check"$'\n'
@@ -72,16 +90,37 @@ env:
         continue
       fi
 
-      if ! gh api "repos/${OWNER}/${TC_REPO}/git/ref/heads/${BRANCH}" >/dev/null 2>&1; then
-        DETAIL+="- ✅ **${TC_REPO}**: no TC branch"$'\n'
+      if ! REF_ERR=$(gh api "repos/${OWNER}/${TC_REPO}/git/ref/heads/${BRANCH}" --silent 2>&1); then
+        if [[ "${REF_ERR}" == *"HTTP 404"* ]]; then
+          DETAIL+="- ✅ **${TC_REPO}**: no TC branch"$'\n'
+        else
+          DETAIL+="- ⚠️ **${TC_REPO}**: could not read \`${BRANCH}\` — re-run this check"$'\n'
+          VERDICT=BLOCK
+        fi
         continue
       fi
 
-      # Three-dot file list only says which paths the branch touched. A squash
+      # The three-dot file list only says which paths the branch touched. A squash
       # merge leaves them all listed, so the content decides, not the commits.
       if ! CHANGED=$(gh api "repos/${OWNER}/${TC_REPO}/compare/develop...${BRANCH}" \
-                       --jq '.files[]? | "\(if .status == "removed" then "-" else .sha end)\t\(.filename)"'); then
+                       --jq '.files[]? | "\(.status)\t\(if .status == "removed" then "-" else .sha end)\t\(.previous_filename // "-")\t\(.filename)"'); then
         DETAIL+="- ⚠️ **${TC_REPO}**: could not compare \`${BRANCH}\` with develop — re-run this check"$'\n'
+        VERDICT=BLOCK
+        continue
+      fi
+
+      FILE_COUNT=0
+      [ -n "${CHANGED}" ] && FILE_COUNT=$(grep -c '' <<< "${CHANGED}")
+
+      if [ "${FILE_COUNT}" -eq 0 ]; then
+        DETAIL+="- ✅ **${TC_REPO}**: \`${BRANCH}\` holds nothing develop lacks"$'\n'
+        continue
+      fi
+
+      # The compare API reports at most 300 files. Past that, silence is not proof.
+      if [ "${FILE_COUNT}" -ge 300 ]; then
+        DETAIL+="- ❌ **${TC_REPO}**: \`${BRANCH}\` touches ${FILE_COUNT} files or more,"
+        DETAIL+=" which is past what the compare API reports. Merge the TC PR."$'\n'
         VERDICT=BLOCK
         continue
       fi
@@ -89,13 +128,26 @@ env:
       UNLANDED=0
       CAPPED=''
       LIST=''
-      while IFS=$'\t' read -r BRANCH_BLOB FILE; do
-        [ -z "${FILE}" ] && continue
-        DEV_BLOB=$(gh api "repos/${OWNER}/${TC_REPO}/contents/$(url_path "${FILE}")?ref=develop" \
-                     --jq '.sha' 2>/dev/null) || DEV_BLOB=''
-        [ "${DEV_BLOB:--}" = "${BRANCH_BLOB}" ] && continue
+      while IFS=$'\t' read -r STATUS BRANCH_BLOB PREVIOUS FILE; do
+        HIT=''
+        # Never skip a line quietly: an entry we cannot read is an answer we do not have.
+        [ -z "${FILE}" ] && HIT='(an entry of the compare output could not be read)'
+        if [ -n "${HIT}" ]; then
+          :
+        elif [ "${STATUS}" = removed ]; then
+          [ "$(dev_blob "${TC_REPO}" "${FILE}")" != '-' ] && HIT="${FILE} (deleted on the branch)"
+        else
+          [ "$(dev_blob "${TC_REPO}" "${FILE}")" != "${BRANCH_BLOB}" ] && HIT="${FILE}"
+          # A rename also deletes its old path, and that deletion can be unlanded
+          # while the new path already matches.
+          if [ -z "${HIT}" ] && [ "${STATUS}" = renamed ] && [ "${PREVIOUS}" != '-' ]; then
+            [ "$(dev_blob "${TC_REPO}" "${PREVIOUS}")" != '-' ] && HIT="${PREVIOUS} (renamed on the branch)"
+          fi
+        fi
+
+        [ -z "${HIT}" ] && continue
         UNLANDED=$((UNLANDED + 1))
-        LIST+="  - \`${FILE}\`"$'\n'
+        LIST+="  - \`${HIT}\`"$'\n'
         if [ "${UNLANDED}" -ge 10 ]; then CAPPED=' or more'; break; fi
       done <<< "${CHANGED}"
 
@@ -203,9 +255,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
-      actions: write
       checks: read
-      pull-requests: read
+      issues: write
+      pull-requests: write
     steps:
       - name: Generate GitHub App Token
         id: app-token
@@ -222,16 +274,22 @@ jobs:
         shell: bash
         run: echo "::add-mask::${APP_TOKEN}"
 
-      - name: Re-run the gate where the posted verdict is stale
+      - name: Judge open PRs again, and start a fresh check where the posted one is stale
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ github.token }}
           ENGINE_REPO: ${{ github.repository }}
+          RECHECK_LABEL: tc-gate-recheck
         shell: bash
         run: |
           set -euo pipefail
 
           printf '%s' "${JUDGE}" > "${RUNNER_TEMP}/judge.sh"
+
+          GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/labels" \
+            -f name="${RECHECK_LABEL}" -f color=ededed \
+            -f description='Transient — makes TC Merge Gate judge this PR again' \
+            > /dev/null 2>&1 || true
 
           # An open TC PR blocks on its own, so one list per TC repo settles most
           # PRs without asking about them one by one.
@@ -248,16 +306,16 @@ jobs:
             --jq '.[] | . as $pr
                   | ([$pr.statusCheckRollup[]? | select(.name == "Check TC PRs")] | max_by(.completedAt // ""))
                   | select(. != null)
-                  | "\($pr.number)\t\(.conclusion // "")\t\(.completedAt // "")\t\(.detailsUrl // "")"' \
+                  | "\($pr.number)\t\(.conclusion // "")\t\(.completedAt // "")"' \
             > "${RUNNER_TEMP}/prs.tsv"
 
-          # A re-run replays the workflow file pinned to that run, so a run from
-          # before a rule change can disagree forever. One re-run per hour bounds it.
-          MIN_AGE_SEC=3600
+          # Leave a verdict younger than this alone: its run may still be settling,
+          # and a gate that keeps disagreeing would otherwise be started every sweep.
+          MIN_AGE_SEC=1800
           NOW=$(date -u +%s)
-          RERUN=0
+          STARTED=0
 
-          while IFS=$'\t' read -r PR_NUMBER POSTED COMPLETED DETAILS_URL; do
+          while IFS=$'\t' read -r PR_NUMBER POSTED COMPLETED; do
             [ -z "${PR_NUMBER}" ] && continue
             [ -z "${COMPLETED}" ] && continue
             [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && continue
@@ -270,16 +328,18 @@ jobs:
             fi
             [ "${POSTED}" = "${EXPECTED}" ] && continue
 
-            RUN_ID=$(sed -n 's|.*/actions/runs/\([0-9]*\)/.*|\1|p' <<< "${DETAILS_URL}")
-            if [ -z "${RUN_ID}" ]; then
-              echo "::warning::PR #${PR_NUMBER}: no run id in '${DETAILS_URL}'"
-              continue
+            # A labeled event starts a fresh run on develop's current workflow.
+            # Re-running the old run would replay the workflow pinned to that run,
+            # which still holds whatever rules were in force when it started.
+            echo "::notice::PR #${PR_NUMBER}: posted ${POSTED}, now ${EXPECTED} — judging again"
+            if GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/labels" \
+                 -f "labels[]=${RECHECK_LABEL}" > /dev/null 2>&1; then
+              GH_TOKEN="${GITHUB_TOKEN}" gh api -X DELETE \
+                "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/labels/${RECHECK_LABEL}" > /dev/null 2>&1 || true
+              STARTED=$((STARTED + 1))
+            else
+              echo "::warning::PR #${PR_NUMBER}: could not add ${RECHECK_LABEL}"
             fi
-
-            echo "::notice::PR #${PR_NUMBER}: posted ${POSTED}, now ${EXPECTED} — re-running ${RUN_ID}"
-            GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/actions/runs/${RUN_ID}/rerun" > /dev/null 2>&1 \
-              || echo "::warning::PR #${PR_NUMBER}: re-run of ${RUN_ID} was refused (older than 30 days?)"
-            RERUN=$((RERUN + 1))
           done < "${RUNNER_TEMP}/prs.tsv"
 
-          echo "Re-ran the gate on ${RERUN} PR(s)." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Started a fresh gate run on ${STARTED} PR(s)." >> "${GITHUB_STEP_SUMMARY}"
