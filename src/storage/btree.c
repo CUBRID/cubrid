@@ -1451,8 +1451,8 @@ static int btree_ovf_scan_locate_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * b
 static int btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR left_page,
 				   PAGE_PTR * right_page, int num_move, const VPID * dir_head_vpid);
 static int btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid,
-				    int fill_factor, int max_merges, int *pages_freed, int *pairs_skipped,
-				    bool * work_done, bool * more);
+				    int fill_factor, int max_merges, OID * resume_oid, int *pages_freed,
+				    int *pairs_skipped, bool * work_done, bool * more);
 static int btree_compact_fix_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				   PAGE_PTR * leaf_page, INT16 * slot, bool * found);
 
@@ -14468,8 +14468,11 @@ btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR l
  * first_ovf_vpid (in)	: VPID of the chain's first data page.
  * fill_factor (in)	: Target fill ratio in percent of the data page capacity.
  * max_merges (in)	: Stop after this many committed merges/redistributions and report more = true, so the
- *			  caller can yield the leaf latch and call again for the same key. Re-walking the chain
- *			  from its first page is idempotent: pages already at the target are skipped.
+ *			  caller can yield the leaf latch and call again for the same key.
+ * resume_oid (in/out)	: NULL OID to start at the chain's first page. When more = true it is set to the first OID
+ *			  of the page to continue from; passing it back routes the next call straight to that page by
+ *			  the OID directory instead of re-walking the pages already at the target (which would make a
+ *			  long chain quadratic). Reset to NULL on entry once consumed.
  * pages_freed (out)	: Number of data pages merged away (deallocated).
  * pairs_skipped (out)	: Number of page pairs left as they are because no OID boundary was found in the neighbor:
  *			  its whole movable prefix is one reusable OID's un-vacuumed run. Tells "nothing to do" from
@@ -14480,13 +14483,17 @@ btree_ovf_compact_pull (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR l
  */
 static int
 btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid, int fill_factor,
-			 int max_merges, int *pages_freed, int *pairs_skipped, bool * work_done, bool * more)
+			 int max_merges, OID * resume_oid, int *pages_freed, int *pairs_skipped, bool * work_done,
+			 bool * more)
 {
   PAGE_PTR cur_page = NULL;
   PAGE_PTR next_page = NULL;
+  PAGE_PTR dir_page = NULL;
+  PAGE_PTR resume_page;
   BTREE_OVF_DIR_HEADER *dir_hdr;
-  VPID dir_head_vpid, next_vpid;
-  RECDES next_record;
+  VPID dir_head_vpid, next_vpid, target_vpid;
+  RECDES next_record, dir_record, resume_record;
+  int idx;
   int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
   int target_size = (int) (((INT64) BTREE_MAX_OVERFLOW_RECORD_SIZE (btid_int) * fill_factor) / 100);
   int cur_len, next_len, next_count, room, num_move;
@@ -14497,7 +14504,7 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 
   assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
   assert (!BTREE_IS_UNIQUE (btid_int->unique_pk));
-  assert (pages_freed != NULL && pairs_skipped != NULL && work_done != NULL && more != NULL);
+  assert (resume_oid != NULL && pages_freed != NULL && pairs_skipped != NULL && work_done != NULL && more != NULL);
   assert (max_merges > 0);
 
   *pages_freed = 0;
@@ -14531,6 +14538,40 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
       return NO_ERROR;
     }
   VPID_COPY (&dir_head_vpid, &dir_hdr->dir_vpid);
+
+  if (!OID_ISNULL (resume_oid))
+    {
+      /* Re-entry after a latch yield: route to the page owning the OID we stopped at, the same way the range scan
+       * resumes (btree_ovf_scan_locate_resume ()). Everything left of it was brought to the target in earlier rounds
+       * under this statement; DML that happened during the yield is left to the next COMPACT. */
+      pgbuf_unfix_and_init (thread_p, cur_page);
+      error_code =
+	btree_ovf_dir_locate (thread_p, btid_int, &dir_head_vpid, resume_oid, PGBUF_LATCH_READ, &dir_page, &idx);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error_code;
+	}
+      if (spage_get_record (thread_p, dir_page, 1, &dir_record, PEEK) != S_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  return ER_FAILED;
+	}
+      VPID_COPY (&target_vpid, &((BTREE_OVF_DIR_ENTRY *) dir_record.data)[idx].vpid);
+      pgbuf_unfix_and_init (thread_p, dir_page);
+      OID_SET_NULL (resume_oid);
+
+      cur_page = pgbuf_fix (thread_p, &target_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (cur_page == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, cur_page, PAGE_BTREE);
+#endif /* !NDEBUG */
+    }
 
   while (true)
     {
@@ -14633,28 +14674,38 @@ btree_ovf_compact_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPI
 	}
       log_sysop_commit (thread_p);
       *work_done = true;
+      if (next_page == NULL)
+	{
+	  /* Merged away; cur_page now links to next's successor. Counted before the yield check below so that a round
+	   * ending on a merge does not lose it. */
+	  (*pages_freed)++;
+	}
 
       if (++merges >= max_merges)
 	{
-	  /* Yield the leaf latch to concurrent DML on this leaf. The caller re-fixes the leaf and calls again for the
-	   * same key; re-walking the chain from its first page is idempotent because pages already at the target are
-	   * skipped by the room check above. */
+	  /* Yield the leaf latch to concurrent DML on this leaf. Hand the caller the first OID of the page to continue
+	   * from -- cur_page if it may still take objects (its neighbor was merged away), else the shrunk neighbor --
+	   * so the next call routes straight back here. */
+	  resume_page = (next_page != NULL) ? next_page : cur_page;
+	  if (spage_get_record (thread_p, resume_page, 1, &resume_record, PEEK) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto exit;
+	    }
+	  BTREE_GET_OID (resume_record.data, resume_oid);
 	  *more = true;
 	  goto exit;
 	}
 
-      if (next_page == NULL)
-	{
-	  /* Merged away; cur_page now links to next's successor. Try to fill cur_page further. */
-	  (*pages_freed)++;
-	}
-      else
+      if (next_page != NULL)
 	{
 	  /* cur_page is filled to the target; continue with the (shrunk) next page. */
 	  pgbuf_unfix_and_init (thread_p, cur_page);
 	  cur_page = next_page;
 	  next_page = NULL;
 	}
+      /* else: try to fill cur_page further from its new neighbor. */
     }
 
 exit:
@@ -15027,6 +15078,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
   int freed;
   int skipped;
   int key_freed = 0;
+  OID resume_oid;
   bool work_done;
   bool more = false;
   bool found = false;
@@ -15038,6 +15090,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
   *keys_compacted = 0;
   *pages_freed = 0;
   *pairs_skipped = 0;
+  OID_SET_NULL (&resume_oid);
 
   if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
     {
@@ -15138,7 +15191,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       assert (!VPID_ISNULL (&ovf_vpid));
 
       error_code = btree_ovf_compact_chain (thread_p, &btid_int, &ovf_vpid, fill_factor, BTREE_COMPACT_MERGES_PER_LATCH,
-					    &freed, &skipped, &work_done, &more);
+					    &resume_oid, &freed, &skipped, &work_done, &more);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -15146,13 +15199,15 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	}
 
       key_freed += freed;
+      /* Rounds of one key continue from where the previous one stopped (resume_oid), so their skipped pairs are
+       * disjoint and add up. */
       *pairs_skipped += skipped;
 
       if (!work_done)
 	{
 	  /* The chain was only read: nothing was written under this leaf latch, so keep it and move on. A key whose
 	   * chain was finished in an earlier latch round also ends here, so account for the key at this point. */
-	  assert (!more);
+	  assert (!more && OID_ISNULL (&resume_oid));
 	  *pages_freed += key_freed;
 	  if (key_freed > 0)
 	    {
@@ -15185,8 +15240,8 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
       if (more && found)
 	{
 	  /* The chain was left unfinished to yield the latch. BTREE_KEY_FOUND returned the slot after this key: step
-	   * back and finish it. If the key vanished meanwhile, slot already points at the next greater key and nothing
-	   * of the chain is left, so the key is accounted below instead. */
+	   * back and finish it from resume_oid. If the key vanished meanwhile, slot already points at the next greater
+	   * key and nothing of the chain is left, so the key is accounted below instead. */
 	  slot--;
 	}
       else
@@ -15198,6 +15253,7 @@ xbtree_compact_overflow (THREAD_ENTRY * thread_p, BTID * btid, int fill_factor, 
 	      (*keys_compacted)++;
 	    }
 	  key_freed = 0;
+	  OID_SET_NULL (&resume_oid);
 	}
     }
 

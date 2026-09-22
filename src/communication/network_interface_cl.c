@@ -7075,7 +7075,8 @@ btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, IN
   int req_error, status = ER_NET_CLIENT_DATA_RECEIVE;
   OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE + OR_INT_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
+  /* status, alignment padding before the first INT64 (or_pack_int64 () aligns to MAX_ALIGNMENT), three INT64 */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
   char *reply;
   char *ptr;
 
