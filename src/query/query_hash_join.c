@@ -401,9 +401,10 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
 
   status = hjoin_check_empty_inputs (manager, context);
 
-  /* In outer joins, tuples with NULL in any join column are placed in the last partition.
+  /* In joins that NULL-fill the inner side,
+   * tuples with NULL in any join column are placed in the last partition.
    * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
-  if (IS_OUTER_JOIN_TYPE (manager->join_type) && context == &manager->contexts[manager->context_cnt - 1])
+  if (IS_NULL_FILL_JOIN_TYPE (manager->join_type) && context == &manager->contexts[manager->context_cnt - 1])
     {
       status = (status == HASHJOIN_STATUS_TRY) ? HASHJOIN_STATUS_FILL_NULL_VALUES : status;
     }
@@ -471,15 +472,12 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   switch (manager->join_type)
     {
     case JOIN_LEFT:
+    case JOIN_ANTI:
       context->build = inner;
       context->probe = outer;
       break;
 
     case JOIN_RIGHT:
-      context->build = outer;
-      context->probe = inner;
-      break;
-
     default:
       /* impossible case */
       assert_release_error (false);
@@ -1356,10 +1354,11 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   part_cnt = CEIL_PTVDIV (per_entry_size * min_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
     {
-      if (IS_OUTER_JOIN_TYPE (manager->join_type))
+      if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
 	{
-	  /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in this partition. */
+	  /* In joins that NULL-fill the inner side,
+	   * tuples with NULL in any join column are placed in the last partition.
+	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
 	  part_cnt += 1;
 	}
 
@@ -1648,7 +1647,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   unsigned int hash_key;
   UINT32 part_cnt, part_index, part_id;
 
-  bool is_outer_join = false;
+  bool has_null_fill_side = false;
   bool need_skip_next = false;
 
   int error = NO_ERROR;
@@ -1670,7 +1669,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   /* Prevent faults when qfile_close_scan is called */
   list_scan_id.status = S_CLOSED;
 
-  is_outer_join = IS_OUTER_JOIN_TYPE (manager->join_type);
+  has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (manager->join_type);
 
   error = qfile_open_list_scan (list_id, &list_scan_id);
   if (error != NO_ERROR)
@@ -1690,9 +1689,10 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	{
 	  need_skip_next = false;	/* init */
 
-	  if (is_outer_join)
+	  if (has_null_fill_side)
 	    {
-	      /* In outer joins, tuples with NULL in any join column are placed in the last partition.
+	      /* In joins that NULL-fill the inner side,
+	       * tuples with NULL in any join column are placed in the last partition.
 	       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
 	      part_id = part_cnt - 1;
 	    }
@@ -1705,7 +1705,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       else
 	{
 	  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-	  part_id = (is_outer_join) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
+	  part_id = (has_null_fill_side) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
 
 	  hjoin_update_tuple_hash_key (thread_p, &tuple_record, hash_key);
 	}
@@ -2469,7 +2469,13 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
 	}
       break;
 
+    case JOIN_SEMI:
+      context->build = inner;
+      context->probe = outer;
+      break;
+
     case JOIN_LEFT:
+    case JOIN_ANTI:
       outer->fill_record = &outer->tuple_record;
       inner->fill_record = NULL;
 
@@ -2478,13 +2484,6 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       break;
 
     case JOIN_RIGHT:
-      outer->fill_record = NULL;
-      inner->fill_record = &inner->tuple_record;
-
-      context->build = outer;
-      context->probe = inner;
-      break;
-
     default:
       /* impossible case */
       assert_release_error (false);
@@ -2857,21 +2856,18 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
   switch (manager->join_type)
     {
     case JOIN_INNER:
+    case JOIN_SEMI:
       status = (outer_tuple_cnt == 0 || inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : HASHJOIN_STATUS_TRY;
       break;
 
     case JOIN_LEFT:
+    case JOIN_ANTI:
       status =
 	(outer_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (inner_tuple_cnt ==
 							0) ? HASHJOIN_STATUS_FILL_NULL_VALUES : HASHJOIN_STATUS_TRY;
       break;
 
     case JOIN_RIGHT:
-      status =
-	(inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (outer_tuple_cnt ==
-							0) ? HASHJOIN_STATUS_FILL_NULL_VALUES : HASHJOIN_STATUS_TRY;
-      break;
-
     default:
       /* impossible case */
       assert_release_error (false);
@@ -3368,7 +3364,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 	  goto error_exit;
 	}
 
-      if (IS_OUTER_JOIN_TYPE (manager->join_type))
+      if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
 	{
 	  error = hjoin_outer_probe (thread_p, manager, context, list_id);
 	}
@@ -3622,6 +3618,13 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
+	    }
+
+	  if (manager->join_type == JOIN_SEMI)
+	    {
+	      /* semi join: one match is enough to emit this row, so stop scanning. */
+	      build->tuple_record.tpl = NULL;
+	      break;
 	    }
 	}
       while (true);
@@ -3926,6 +3929,15 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }			/* if (context->during_join_pred != NULL) */
 
 	  any_key_matched = true;
+
+	  if (manager->join_type == JOIN_ANTI)
+	    {
+	      /* anti join: one match is enough to suppress this row, so stop scanning.
+	       * The unnested subquery condition becomes the ON clause,
+	       * so after_join_pred does not decide the match. */
+	      build->tuple_record.tpl = NULL;
+	      break;
+	    }
 
 	  if (context->after_join_pred != NULL)
 	    {

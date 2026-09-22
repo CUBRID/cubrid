@@ -41,10 +41,16 @@ typedef enum
   JOIN_LEFT,
   JOIN_RIGHT,
   JOIN_OUTER,
-  JOIN_CSELECT
+  JOIN_CSELECT,
+  JOIN_SEMI,
+  JOIN_ANTI
 } JOIN_TYPE;
 
-#define IS_OUTER_JOIN_TYPE(t) ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+#define IS_OUTER_JOIN_TYPE(t) \
+  ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+
+#define IS_NULL_FILL_JOIN_TYPE(t) \
+  ((t) == JOIN_LEFT || (t) == JOIN_ANTI)
 
 /* PAGE CONSTANTS */
 

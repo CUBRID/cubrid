@@ -2760,6 +2760,41 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	    }
 	}
     }
+  /* Every node an ON-clause predicate reads must be joined before the node that owns the ON clause; otherwise the
+   * predicate cannot be evaluated where the outer join needs it. Covers every class the predicate may have been given
+   * above: QO_TC_SARG when it reads one node, QO_TC_OTHER when the QO_TC_JOIN handling above demoted it.
+   * Predicates folded to PT_VALUE never reach qo_analyze_term (), so they are not covered here.
+   */
+  if (QO_ON_COND_TERM (term))
+    {
+      int location = QO_TERM_LOCATION (term);
+      QO_NODE *on_node;
+
+      /* QO_ENV_NODE () indexes the node array without a bound check, so verify the location first. */
+      QO_ASSERT (env, location < env->nnodes);
+
+      on_node = QO_ENV_NODE (env, location);
+
+      /* qo_add_node () appends nodes in FROM order and pt_bind_names () numbers the spec locations the same way, so a
+       * term's location and its node's index must agree. A query rewrite that adds a spec without renumbering would
+       * break this and make the lookup above read the wrong node.
+       */
+      QO_ASSERT (env, QO_NODE_IDX (on_node) == location);
+      QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
+
+      if (QO_NODE_IS_OUTER_JOIN (on_node) || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+	{
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
+	    {
+	      if (t != QO_NODE_IDX (on_node))
+		{
+		  /* an ON clause only reads nodes that precede the join it belongs to */
+		  QO_ASSERT (env, t < QO_NODE_IDX (on_node));
+		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
+		}
+	    }
+	}
+    }
 
 wrapup:
 
@@ -6421,6 +6456,8 @@ qo_discover_edges (QO_ENV * env)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
  * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
+ * O5|ON   |TC_sarg(anti)        |!on_node  |-              |TC_dj
+ * O6|ON   |TC_other(n>0,anti)   |-         |-              |TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
  * W2|WHERE|TC_join              |!Outer    |!Right         |TC_join(ow TC_aj)
  * W3|WHERE|TC_other(n>0)        |!Outer    |!Right         |TC_other(ow TC_aj)
@@ -6447,11 +6484,19 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	{
 	  break;
 	}
+
+      /* An anti join is structurally JOIN_INNER, and its ON-clause term can be QO_TC_OTHER,
+       * so QO_OUTER_JOIN_TERM () never matches it; check the ON clause's node for now. */
+      if (QO_ON_COND_TERM (term) && QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, QO_TERM_LOCATION (term))) == PT_JOIN_ANTI)
+	{
+	  break;
+	}
     }
 
   if (i >= env->nterms)
     {
-      return;			/* not found outer join term; do nothing */
+      /* not found outer join term nor anti-join on-clause term; do nothing */
+      return;
     }
 
   bitset_init (&dep_set, env);
@@ -6474,13 +6519,19 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI)
 	    {
-	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
+	      continue;		/* inner / semi: structurally inner, no outer-join classification */
 	    }
-
-	  /* is explicit outer-joined ON cond */
-	  QO_ASSERT (env, QO_NODE_IS_OUTER_JOIN (on_node));
+	  else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+	    {
+	      /* anti: outer-only ON-clause term still needs promotion in STEP 1, so do not skip. */
+	    }
+	  else
+	    {
+	      /* is explicit outer-joined ON cond */
+	      QO_ASSERT (env, QO_NODE_IS_OUTER_JOIN (on_node));
+	    }
 	}
       else
 	{
@@ -6515,6 +6566,11 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    {
 	      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
 		  || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
+		{
+		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+		}
+	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI
+		       && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (on_node)))
 		{
 		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
 		}
@@ -6568,6 +6624,10 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 		    {
 		      QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
 		    }
+		}
+	      else if (QO_ON_COND_TERM (term) && QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+		{
+		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
 		}
 	    }
 	  else
