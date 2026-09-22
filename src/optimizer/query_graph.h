@@ -427,7 +427,10 @@ struct qo_node
   (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI       || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI)
 
-#define QO_NODE_IS_ANSI_JOIN(node) \
+/* The join syntax the spec was written with carries an ON clause of its own, so the join graph is entitled to a
+ * join edge for it. A cross join has no ON clause and so no edge to miss.
+ */
+#define QO_NODE_JOIN_HAS_ON_COND(node) \
   (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER  || \
@@ -435,6 +438,10 @@ struct qo_node
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI         || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI         || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_INNER)
+
+/* The spec was written with an explicit join syntax, so a later ON clause may read across it. */
+#define QO_NODE_IS_EXPLICIT_JOIN(node) \
+  (QO_NODE_JOIN_HAS_ON_COND(node) || QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_CROSS)
 
 #define QO_ADD_OUTER_DEP_SET(tail,head) \
    bitset_union (&(QO_NODE_OUTER_DEP_SET (tail)), &(QO_NODE_OUTER_DEP_SET (head))); \

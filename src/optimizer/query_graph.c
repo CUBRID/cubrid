@@ -169,6 +169,9 @@ static PT_NODE *qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, v
 static QO_TERM *qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env);
 static void qo_add_dep_term (QO_NODE * derived_node, BITSET * depend_nodes, BITSET * depend_segs, QO_ENV * env);
 static QO_TERM *qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node);
+static void qo_add_bridge_join_term (QO_ENV * env, QO_NODE * head, QO_NODE * tail);
+static void qo_close_reachable_nodes (QO_ENV * env, BITSET * reached, int avoid_idx);
+static void qo_connect_outer_dep_set (QO_ENV * env);
 static void qo_analyze_term (QO_TERM * term, int term_type);
 static PT_NODE *set_seg_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset);
@@ -556,7 +559,7 @@ qo_optimize_helper (QO_ENV * env)
     {
       node = QO_ENV_NODE (env, n);
       /* In case of ansi join without join-edge, a dummy join term is added to maintain the outer join. */
-      if (QO_NODE_IS_ANSI_JOIN (node) && !BITSET_MEMBER (nodeset, n))
+      if (QO_NODE_JOIN_HAS_ON_COND (node) && !BITSET_MEMBER (nodeset, n))
 	{
 	  p_node = QO_ENV_NODE (env, n - 1);
 	  (void) qo_add_dummy_join_term (env, p_node, node);
@@ -565,12 +568,13 @@ qo_optimize_helper (QO_ENV * env)
       /* set dep set for right outer join */
       if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER)
 	{
-	  /* In the case of right outer join, dependency is set on the entire preceding table connected by ANSI join. */
+	  /* In the case of right outer join, dependency is set on the entire preceding table connected by explicit
+	   * join. */
 	  k = n - 1;
 	  p_node = QO_ENV_NODE (env, k);
 	  QO_ADD_OUTER_DEP_SET (node, p_node);
 
-	  while (k > 0 && QO_NODE_IS_ANSI_JOIN (p_node))
+	  while (k > 0 && QO_NODE_IS_EXPLICIT_JOIN (p_node))
 	    {
 	      p_node = QO_ENV_NODE (env, --k);
 	      QO_ADD_OUTER_DEP_SET (node, p_node);
@@ -603,10 +607,13 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
-  /* Generate implied join terms from the union-find segment groups before
-   * qo_discover_edges() rearranges the term array.  New terms are appended at
-   * the end; qo_discover_edges() will fold them into the edge zone and sort.
+  /* Generate the join terms below after qo_classify_outerjoin_terms() has settled which terms are still join
+   * edges, and before qo_discover_edges() rearranges the term array.  New terms are appended at the end;
+   * qo_discover_edges() will fold them into the edge zone and sort.  A bridge keeps the answer correct while an
+   * implied join term only helps cost a plan, so it takes what env->Nterms has left first.
    */
+  qo_connect_outer_dep_set (env);
+
   qo_generate_implied_join_terms (env);
 
   /* finish the rest of the opt structures */
@@ -705,6 +712,10 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
    * practice).  Sufficient for typical queries; generation stops gracefully if exceeded.
    * This avoids realloc after setup, which would require rebinding inline bitset pointers. */
   extra_term_cap = env->nnodes * (env->nnodes - 1) / 2;
+  /* plus the join terms qo_connect_outer_dep_set () may have to bridge with. A bridge is itself a join edge, so
+   * the next outer join reaches through it and steps over that pair: no adjacent pair is bridged twice.
+   */
+  extra_term_cap += MAX (env->nnodes - 1, 0);
   env->terms = NULL;
   if (env->nterms + extra_term_cap > 0)
     {
@@ -2014,6 +2025,184 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
   QO_ASSERT (env, QO_TERM_CAN_USE_INDEX (term) == 0);
 
   return term;
+}
+
+/*
+ * qo_add_bridge_join_term () - Make and add an always-true join term between two adjacent nodes
+ *   return:
+ *   env(in):
+ *   head(in): the node just ahead of tail in the spec order
+ *   tail(in): the node to reach
+ */
+static void
+qo_add_bridge_join_term (QO_ENV * env, QO_NODE * head, QO_NODE * tail)
+{
+  QO_TERM *term;
+
+  QO_ASSERT (env, env->nterms < env->Nterms);
+  QO_ASSERT (env, QO_NODE_IDX (head) >= 0);
+  QO_ASSERT (env, QO_NODE_IDX (head) + 1 == QO_NODE_IDX (tail));
+
+  term = QO_ENV_TERM (env, env->nterms);
+
+  /* fill in term */
+  QO_TERM_CLASS (term) = QO_TC_DUMMY_JOIN;
+  bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (head));
+  bitset_add (&(QO_TERM_NODES (term)), QO_NODE_IDX (tail));
+  QO_TERM_HEAD (term) = head;
+  QO_TERM_TAIL (term) = tail;
+  QO_TERM_PT_EXPR (term) = NULL;
+  /* location 0 keeps QO_ON_COND_TERM () false: the term belongs to no ON clause, and one that claimed a node's
+   * location would be read as that node's ON clause condition wherever that macro is tested.
+   */
+  QO_TERM_LOCATION (term) = 0;
+  QO_TERM_SELECTIVITY (term) = 1.0;
+  QO_TERM_RANK (term) = 0;
+  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+  QO_TERM_FLAG (term) = 0;
+  QO_TERM_IDX (term) = env->nterms;
+
+  env->nterms++;
+
+  QO_ASSERT (env, QO_TERM_CAN_USE_INDEX (term) == 0);
+}
+
+/*
+ * qo_close_reachable_nodes () - Collect the nodes reachable from a set through the join edges found so far
+ *   return:
+ *   env(in):
+ *   reached(in/out): the nodes to grow
+ *   avoid_idx(in): index of a node no path may pass through
+ *
+ * Note: an outer join is the tail of every join term its own ON clause carries, so a path through it would tie
+ *      all the nodes that clause reads together and hide the ones the planner cannot actually visit first.
+ */
+static void
+qo_close_reachable_nodes (QO_ENV * env, BITSET * reached, int avoid_idx)
+{
+  QO_TERM *term;
+  int cardinality;
+  int i;
+
+  do
+    {
+      cardinality = bitset_cardinality (reached);
+      for (i = 0; i < env->nterms; i++)
+	{
+	  term = QO_ENV_TERM (env, i);
+	  if (QO_IS_EDGE_TERM (term) && !BITSET_MEMBER (QO_TERM_NODES (term), avoid_idx)
+	      && bitset_intersects (reached, &(QO_TERM_NODES (term))))
+	    {
+	      bitset_union (reached, &(QO_TERM_NODES (term)));
+	    }
+	}
+    }
+  while (cardinality != bitset_cardinality (reached));
+}
+
+/*
+ * qo_connect_outer_dep_set () - Join every node an ON clause reads into one connected component
+ *   return:
+ *   env(in):
+ *
+ * Note: An outer join must be performed after every node its ON clause reads, and QO_NODE_OUTER_DEP_SET ()
+ *      carries that order to the planner. Merging a view whose own FROM clause is a plain cartesian product
+ *      splices its tables in as PT_JOIN_NONE specs, which leaves those nodes with no join edge to the rest of
+ *      the graph. planner_visit_node () then drops every combination that cannot visit them first and the
+ *      statement ends with no plan at all. Add always-true join terms along the spec order so the nodes stay
+ *      reachable without going through the outer join.
+ *
+ *      The nodes are collected here rather than read out of QO_NODE_OUTER_DEP_SET (): add_hint () also puts
+ *      nodes into that set to carry an ORDERED or a LEADING hint, and bridging to one no outer join needs drags
+ *      it into that join, where it is NULL padded and its own predicates stop matching.
+ */
+static void
+qo_connect_outer_dep_set (QO_ENV * env)
+{
+  int n, t, k, i, first;
+  BITSET reached, dep_nodes;
+  QO_NODE *node;
+  QO_TERM *term;
+
+  bitset_init (&reached, env);
+  bitset_init (&dep_nodes, env);
+
+  for (n = 1; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+
+      if (!QO_NODE_IS_OUTER_JOIN (node))
+	{
+	  continue;
+	}
+
+      /* collect the nodes this outer join has to be performed after, ahead of it in the spec order */
+      BITSET_CLEAR (dep_nodes);
+      for (i = 0; i < env->nterms; i++)
+	{
+	  term = QO_ENV_TERM (env, i);
+	  if (QO_ON_COND_TERM (term) && QO_TERM_LOCATION (term) == QO_NODE_LOCATION (node))
+	    {
+	      bitset_union (&dep_nodes, &(QO_TERM_NODES (term)));
+	    }
+	}
+      /* qo_add_node () appends nodes in FROM order and pt_bind_names () numbers the spec locations the same way, so
+       * the terms picked by location above can be trimmed by node index here
+       */
+      for (t = n; t < env->nnodes; t++)
+	{
+	  bitset_remove (&dep_nodes, t);
+	}
+
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER)
+	{
+	  /* the same run over the explicit join chain qo_optimize_helper () already made its dependencies */
+	  for (t = n - 1; t >= 0; t--)
+	    {
+	      bitset_add (&dep_nodes, t);
+	      if (!QO_NODE_IS_EXPLICIT_JOIN (QO_ENV_NODE (env, t)))
+		{
+		  break;
+		}
+	    }
+	}
+
+      first = bitset_first_member (&dep_nodes);
+      if (first < 0)
+	{
+	  continue;		/* it depends on nothing that comes before it */
+	}
+
+      BITSET_CLEAR (reached);
+      bitset_add (&reached, first);
+
+      /* first is the lowest node it depends on, so nothing below it has to be reached. Every node from first
+       * up to k is reached, which is why the search below never has to start over.
+       */
+      k = first + 1;
+      for (;;)
+	{
+	  qo_close_reachable_nodes (env, &reached, n);
+
+	  if (bitset_subset (&reached, &dep_nodes))
+	    {
+	      break;		/* every node it depends on is reachable */
+	    }
+
+	  while (BITSET_MEMBER (reached, k))
+	    {
+	      k++;
+	    }
+	  /* a node it depends on is out of reach and they all come before n, so the gap does too */
+	  QO_ASSERT (env, k < n);
+
+	  qo_add_bridge_join_term (env, QO_ENV_NODE (env, k - 1), QO_ENV_NODE (env, k));
+	  bitset_add (&reached, k);	/* the loop makes progress here, whatever the pass above does with the term */
+	}
+    }
+
+  bitset_delset (&dep_nodes);
+  bitset_delset (&reached);
 }
 
 /*
