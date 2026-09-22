@@ -1918,7 +1918,9 @@ jobs:
           export BRANCH_TESTCASES="$tc_sha"
           # Without this the checkout below moves the mounted seed back to develop, and
           # a suite asked to run another CTP branch would run develop's in every shard.
-          export BRANCH_TESTTOOLS="$CTP_BRANCH"
+          # The commit for the same reason as above: a probe/* branch is deleted right
+          # after the run it was pushed for. It also names the CTP logs.
+          export BRANCH_TESTTOOLS="$WANT_CTP_SHA"
           /entrypoint.sh checkout "$SUITE"
 
           # Pin CTP the way the testcases are pinned below: the checkout took the branch
