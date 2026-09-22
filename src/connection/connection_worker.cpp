@@ -1664,6 +1664,29 @@ retry:
 	return true;
       }
 
+    /* Nested under a handler that pumps the IMMEDIATE queue with cmutex held
+     * (handle_message_queue_handoff_client ()). handle_reception () below takes
+     * rmutex, while a transaction thread in css_return_queued_request () holds
+     * rmutex and waits for cmutex in css_request_release_packet (): with cmutex
+     * still held here the two deadlock. Put the message back; the queue is served
+     * again once the outer handler has let go of cmutex. */
+    if (conn->cmutex.lock_cnt > 1)
+      {
+	message again;
+
+	again.type = message_type::RECV_RECHECK;
+	again.conn = conn;
+	again.ctx = ctx;
+	again.id = item.id;
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+	if (!this->enqueue_and_notify (queue_type::IMMEDIATE, std::move (again)))
+	  {
+	    assert_release (false);
+	  }
+	return true;
+      }
+
     /* not from_edge: this message is itself the handover, so a busy socket needs
      * no second one */
     if (!this->claim_reading (ctx, false))
