@@ -20098,9 +20098,10 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (driving_subq != NULL && driving_subq->info.query.flag.subquery_cached)
     {
-      xasl->aptr_list->sub_xasl_id = driving_subq->xasl_id;
-      xasl->aptr_list->sub_host_var_count = driving_subq->sub_host_var_count;
-      xasl->aptr_list->sub_host_var_index = driving_subq->sub_host_var_index;
+      if (pt_set_sub_xasl_id (xasl->aptr_list, driving_subq) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   chain_tail = xasl->aptr_list;
@@ -20161,9 +20162,10 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (ea.rhs->info.query.flag.subquery_cached)
 	    {
-	      set_aptr->sub_xasl_id = ea.rhs->xasl_id;
-	      set_aptr->sub_host_var_count = ea.rhs->sub_host_var_count;
-	      set_aptr->sub_host_var_index = ea.rhs->sub_host_var_index;
+	      if (pt_set_sub_xasl_id (set_aptr, ea.rhs) != NO_ERROR)
+		{
+		  return NULL;
+		}
 	    }
 
 	  set_aptr->next = NULL;
