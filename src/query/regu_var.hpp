@@ -23,6 +23,8 @@
 #ifndef _REGU_VAR_HPP_
 #define _REGU_VAR_HPP_
 
+struct domain_plan_item;
+
 #include "heap_attrinfo.h"
 #include "object_domain.h"
 #include "query_list.h"
@@ -129,6 +131,7 @@ struct arith_list_node
 {
   TP_DOMAIN *domain;		/* resultant domain */
   TP_DOMAIN *original_domain;	/* original resultant domain, used at execution in case of XASL clones  */
+  domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
@@ -174,6 +177,8 @@ const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery ca
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
+const int REGU_VARIABLE_GATE = 0x4000; /* compile-time gate marker; not emitted yet */
+
 class regu_variable_node
 {
   public:
@@ -182,6 +187,7 @@ class regu_variable_node
     int flags;			/* flags */
     TP_DOMAIN *domain;		/* domain of the value in this regu variable */
     TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
+    domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */
     union regu_data_value

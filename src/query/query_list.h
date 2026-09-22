@@ -24,6 +24,8 @@
 #ifndef _QUERY_LIST_H_
 #define _QUERY_LIST_H_
 
+struct domain_plan_item;
+
 #ident "$Id$"
 
 #ifdef __cplusplus
@@ -321,6 +323,7 @@ struct qfile_tuple_value_position
 {
   TP_DOMAIN *dom;		/* value domain */
   TP_DOMAIN *original_domain;	/* original domain */
+  struct domain_plan_item *domain_plan; /* load-derived, not serialized */
   int pos_no;			/* value position number */
 };
 

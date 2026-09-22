@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "stream_to_xasl.h"
+#include "domain_plan.h"
 
 #include "dbtype.h"
 #include "error_manager.h"
@@ -216,6 +217,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   char *p;
   int header_size;
   int offset;
+  int domain_plan_error;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
   XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
@@ -263,6 +265,14 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
   xasl->query_in_progress = false;
+  domain_plan_error = stx_build_domain_plan (thread_p, xasl, unpack_info_p, false);
+  if (domain_plan_error != NO_ERROR)
+    {
+      stx_set_xasl_errcode (thread_p, domain_plan_error);
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+      *xasl_tree = NULL;
+      *xasl_unpack_info_ptr = NULL;
+    }
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
@@ -1731,6 +1741,7 @@ stx_build_xasl_header (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE_HEADER * xa
 static char *
 stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
+  xasl->domain_plan = NULL;
   int offset;
   int tmp, i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
@@ -5618,6 +5629,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
   /* save the original domain */
   regu_var->original_domain = regu_var->domain;
+  regu_var->domain_plan = NULL;
 
   ptr = or_unpack_int (ptr, &tmp);
   regu_var->type = (REGU_DATATYPE) tmp;
@@ -5864,6 +5876,7 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
   ptr = or_unpack_int (ptr, &position_descr->pos_no);
   ptr = or_unpack_domain (ptr, &position_descr->dom, NULL);
   position_descr->original_domain = position_descr->dom;
+  position_descr->domain_plan = NULL;
 
   return ptr;
 }
@@ -5877,6 +5890,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
   /* save the original domain */
   arith_type->original_domain = arith_type->domain;
+  arith_type->domain_plan = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5985,6 +5999,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
   aggregate->original_domain = aggregate->domain;
+  aggregate->domain_plan = NULL;
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
@@ -6262,6 +6277,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
   /* domain */
   ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
   analytic->original_domain = analytic->domain;
+  analytic->domain_plan = NULL;
 
   /* value */
   ptr = or_unpack_int (ptr, &offset);
@@ -6910,6 +6926,7 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
 {
   assert (regu);
 
+  regu->domain_plan = NULL;
   regu->type = TYPE_POS_VALUE;
   regu->flags = 0;
   regu->value.val_pos = 0;

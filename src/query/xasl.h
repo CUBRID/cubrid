@@ -1120,8 +1120,11 @@ namespace memoize
   class storage;
 }
 // *INDENT-ON*
+struct domain_plan;
+
 struct xasl_node
 {
+  struct domain_plan *domain_plan; /* tree-wide unpack-arena plan, not serialized */
   XASL_NODE_HEADER header;	/* XASL header */
   XASL_NODE *next;		/* next XASL block */
   PROC_TYPE type;		/* XASL type */
