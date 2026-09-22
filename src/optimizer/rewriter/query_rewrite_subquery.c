@@ -27,7 +27,7 @@
 #include "dbi.h"
 
 static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where);
-static bool qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list);
+static bool qo_operand_is_non_null (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * spec_list, PT_NODE * where);
 static bool qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name);
 static bool qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec);
 static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
@@ -148,14 +148,17 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
 }
 
 /*
- * qo_operand_is_non_null () - true iff 'operand' is a base-table column the schema guarantees is never
- *      NULL (NOT NULL or PRIMARY KEY); anything unprovable is reported nullable
+ * qo_operand_is_non_null () - true iff 'operand' can never be NULL in this query: a WHERE conjunct
+ *      already rejects its NULLs, or the schema declares the column NOT NULL or PRIMARY KEY.  Anything
+ *      unprovable is reported nullable
  *   return: bool
+ *   parser(in):
  *   operand(in): one side of the synthesized join equality
  *   spec_list(in): the FROM list the operand's spec_id must resolve in
+ *   where(in): the WHERE of the query level the operand belongs to
  */
 static bool
-qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
+qo_operand_is_non_null (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * spec_list, PT_NODE * where)
 {
   PT_NODE *spec, *next_spec, *flat;
   DB_ATTRIBUTE *attr;
@@ -164,6 +167,14 @@ qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
       || operand->info.name.original == NULL)
     {
       return false;
+    }
+
+  /* asked before the schema checks below, which refuse an outer join's null-supplying side: a WHERE
+   * conjunct of location 0 runs after every join and needs no such refusal.  Conjuncts holding a
+   * subquery are skipped because this pass rewrites them away, its own included. */
+  if (pt_where_rejects_column_null (parser, where, operand, true))
+    {
+      return true;
     }
 
   for (spec = spec_list; spec != NULL; spec = spec->next)
@@ -319,9 +330,12 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 	  return false;
 	}
 
+      /* ANTI JOIN keeps a row whose key is NULL where NOT IN drops it.  The item side reads the
+       * subquery's own WHERE: the synthesized equality joins 'on_cond' below and would answer for itself. */
       if (info->is_anti
-	  && !(qo_operand_is_non_null (lhs, node->info.query.q.select.from)
-	       && qo_operand_is_non_null (item, inner_spec)))
+	  && !(qo_operand_is_non_null (parser, lhs, node->info.query.q.select.from,
+				       node->info.query.q.select.where)
+	       && qo_operand_is_non_null (parser, item, inner_spec, subq->info.query.q.select.where)))
 	{
 	  return false;
 	}
