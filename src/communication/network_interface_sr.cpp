@@ -5129,7 +5129,8 @@ sbtree_compact_overflow (THREAD_ENTRY *thread_p, unsigned int rid, char *request
   INT64 pages_freed = 0;
   INT64 pairs_skipped = 0;
   int error;
-  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
+  /* status, alignment padding before the first INT64 (or_pack_int64 () aligns to MAX_ALIGNMENT), three INT64 */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
