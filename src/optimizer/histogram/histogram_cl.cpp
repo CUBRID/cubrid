@@ -2872,7 +2872,10 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
       int band = 0;
 
       (void) std::frexp (sel, &band);
-      component = (std::uint64_t) (band + 1024);	/* offset keeps the band non-negative (e <= 1 for sel <= 1) */
+      /* the offset keeps the band non-negative: sel is floored at 1/N by the estimator and
+       * 1 - LIKE is 0 or a normal double, so e stays far above -1024 (a subnormal would need
+       * e < -1022); e <= 1 for sel <= 1. Even a negative sum would fold deterministically. */
+      component = (std::uint64_t) (band + 1024);
     }
   else
     {
