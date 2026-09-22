@@ -57,11 +57,16 @@
  *   HDR_OVERHEAD     - fixed statement prefix + trailing slack/NUL; covers the longer REPLACE one
  *   PER_COLUMN       - separator/parens budget per attribute name
  *   PER_PLACEHOLDER  - budget per "?," bind placeholder
- *   VALUES_OVERHEAD  - VALUES (...) wrapper + slack */
+ *   VALUES_OVERHEAD  - VALUES (...) wrapper + slack
+ *   ODKU_OVERHEAD    - ON DUPLICATE KEY UPDATE clause head + slack
+ *   PER_ASSIGN       - separator/equals budget per assignment; the column name and the printed value
+ *                      are counted at their own lengths, since both are caller text of no fixed size */
 #define DBLINK_INSERT_SQL_HDR_OVERHEAD      64
 #define DBLINK_INSERT_SQL_PER_COLUMN        4
 #define DBLINK_INSERT_SQL_PER_PLACEHOLDER   4
 #define DBLINK_INSERT_SQL_VALUES_OVERHEAD   16
+#define DBLINK_INSERT_SQL_ODKU_OVERHEAD     32
+#define DBLINK_INSERT_SQL_PER_ASSIGN        8
 
 /* Remote savepoint taken by each remote DML sink statement, so that a statement failure rolls back only
  * that statement's remote work. Re-set per statement under the same name: the most recently established
@@ -1334,8 +1339,9 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
 
 /*
  * dblink_dml_build_insert_sql () - Build "INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...)",
- *   or the same statement headed by REPLACE INTO. Only the prefix differs: the column list, the
- *   placeholders and the values the caller binds are what an INSERT sends.
+ *   optionally followed by "ON DUPLICATE KEY UPDATE c = <value>, ...". A REPLACE is the same statement
+ *   under a different prefix -- the column list, the placeholders and the values the caller binds are
+ *   what an INSERT sends -- and never carries the clause: the grammar makes the two exclusive.
  *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
  *           db_private_free), error code on failure.
  *   thread_p(in)   : thread entry
@@ -1344,11 +1350,12 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  *   num_attrs(in)  : length of attr_names (0 when positional)
  *   num_bind(in)   : number of ? placeholders (= SELECT column count)
  *   do_replace(in) : true to head the statement with REPLACE INTO instead of INSERT INTO
+ *   odku(in)       : ON DUPLICATE KEY UPDATE assignments, or NULL for a statement without the clause
  *   sql_out(out)   : set to the built SQL text on success
  */
 static int
 dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, char **attr_names, int num_attrs,
-			     int num_bind, bool do_replace, char **sql_out)
+			     int num_bind, bool do_replace, const DBLINK_ODKU_ASSIGNS * odku, char **sql_out)
 {
   int i, remaining;
   char *sql = NULL;
@@ -1357,6 +1364,7 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
   char *p;
   const char *errctx = do_replace ? "remote REPLACE SELECT" : "remote INSERT SELECT";
   char errmsg[128];
+  int num_odku = (odku != NULL) ? odku->num_assigns : 0;
 
   *sql_out = NULL;
 
@@ -1376,6 +1384,45 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
       return ER_DBLINK;
     }
 
+  /* guard: a negative count would drop the clause and send a plain INSERT instead of failing */
+  if (odku != NULL && odku->num_assigns < 0)
+    {
+      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment count is negative", errctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return ER_DBLINK;
+    }
+
+  /* guard: the grammar admits either REPLACE or the clause, never both -- carrying both means the
+   * plan was built wrong */
+  if (do_replace && num_odku > 0)
+    {
+      snprintf (errmsg, sizeof (errmsg), "%s: REPLACE cannot carry odku assignments", errctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return ER_DBLINK;
+    }
+
+  /* guard: this path can only carry text, so a slot with nothing to print would go out as " = 'x'"
+   * or "c = " -- a different statement, not an error */
+  if (num_odku > 0)
+    {
+      if (odku->cols == NULL || odku->exprs == NULL)
+	{
+	  snprintf (errmsg, sizeof (errmsg), "%s: odku assignment array is NULL", errctx);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+	  return ER_DBLINK;
+	}
+      for (i = 0; i < num_odku; i++)
+	{
+	  if (odku->cols[i] == NULL || odku->cols[i][0] == '\0' || odku->exprs[i] == NULL
+	      || odku->exprs[i][0] == '\0')
+	    {
+	      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment %d is NULL or empty", errctx, i);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+	      return ER_DBLINK;
+	    }
+	}
+    }
+
   table_name_len = strlen (table_name);
   sql_len = table_name_len + DBLINK_INSERT_SQL_HDR_OVERHEAD;
   if (num_attrs > 0)
@@ -1393,6 +1440,14 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	}
     }
   sql_len += (size_t) num_bind *DBLINK_INSERT_SQL_PER_PLACEHOLDER + DBLINK_INSERT_SQL_VALUES_OVERHEAD;
+  if (num_odku > 0)
+    {
+      sql_len += DBLINK_INSERT_SQL_ODKU_OVERHEAD;
+      for (i = 0; i < num_odku; i++)
+	{
+	  sql_len += strlen (odku->cols[i]) + strlen (odku->exprs[i]) + DBLINK_INSERT_SQL_PER_ASSIGN;
+	}
+    }
 
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
@@ -1409,11 +1464,11 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
   remaining = (int) sql_len;
 
   /* Bounds-checked buffer append: memcpy for known-length strings, direct byte-store for single
-   * chars. Every length here is already known (literal sizeof, table_name_len, or
-   * attr_name_lens[] computed above). Each write is checked against `remaining` before copying,
-   * so a length mismatch (never expected: sql_len is an over-allocated upper bound; see
-   * DBLINK_INSERT_SQL_* estimates) fails safely via sql_build_error instead of overrunning the
-   * buffer. */
+   * chars. Every length here is already known (literal sizeof, table_name_len, attr_name_lens[]
+   * computed above, or a strlen of the caller's assignment text). Each write is checked against
+   * `remaining` before copying, so a length mismatch (never expected: sql_len is an over-allocated
+   * upper bound; see DBLINK_INSERT_SQL_* estimates) fails safely via sql_build_error instead of
+   * overrunning the buffer. */
 // *INDENT-OFF*
 #define DBLINK_INSERT_SQL_APPEND_N(src, len) \
   do \
@@ -1483,6 +1538,22 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	}
     }
   DBLINK_INSERT_SQL_APPEND_CHAR (')');
+
+  /* Text, not binds: the values are constants, so no per-row value exists for a placeholder to carry */
+  if (num_odku > 0)
+    {
+      DBLINK_INSERT_SQL_APPEND_LIT (" ON DUPLICATE KEY UPDATE ");
+      for (i = 0; i < num_odku; i++)
+	{
+	  DBLINK_INSERT_SQL_APPEND_N (odku->cols[i], strlen (odku->cols[i]));
+	  DBLINK_INSERT_SQL_APPEND_LIT (" = ");
+	  DBLINK_INSERT_SQL_APPEND_N (odku->exprs[i], strlen (odku->exprs[i]));
+	  if (i < num_odku - 1)
+	    {
+	      DBLINK_INSERT_SQL_APPEND_LIT (", ");
+	    }
+	}
+    }
 
   if (remaining <= 0)
     {
@@ -1661,7 +1732,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
     case DBLINK_DML_INSERT:
     case DBLINK_DML_REPLACE:
       ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind,
-					 kind == DBLINK_DML_REPLACE, &sql);
+					 kind == DBLINK_DML_REPLACE, NULL, &sql);
       break;
     case DBLINK_DML_DELETE:
       ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, &sql);
