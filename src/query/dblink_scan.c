@@ -424,7 +424,8 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
  *   conn_handle(in): open connection
  *
  * Note: The handshake already stored the type, so this costs no round trip.  It gates both the codeset
- *   we declare and the values we convert to it, so the two always cover the same connections.
+ *   we declare and the values we refuse for not being in it, so the two always cover the same
+ *   connections.
  */
 static bool
 dblink_remote_is_cubrid (int conn_handle)
@@ -435,67 +436,35 @@ dblink_remote_is_cubrid (int conn_handle)
 }
 
 /*
- * dblink_coerce_to_declared_codeset () - restate a string value in the codeset declared to the remote
- *   return: NO_ERROR, or ER_DBLINK when the conversion fails
+ * dblink_refuse_undeclared_codeset () - refuse a value that is not in the codeset declared to the remote
+ *   return: ER_DBLINK
  *   dbval(in): value about to be bound
- *   conv_val(out): converted value; the caller clears it once the bind has copied it
  *
  * Note: A column may declare a codeset other than the database's, and the bind protocol carries no
  *   per-value codeset -- the remote reads every bound value in the one codeset we named when the
- *   connection opened.  So the value is matched to that name, not the name to the value: the name is
- *   per connection while the codeset is per value, and only one of the two can move.
+ *   connection opened.  The name is per connection while the codeset is per value, so a value in
+ *   any other codeset cannot be described to the remote, and it is refused rather than sent to be
+ *   read as something it is not.
  *
- *   The converters replace a character the target cannot encode with '?' and qstr_coerce () still
- *   returns DATA_STATUS_OK, so this function cannot trust that status.  It converts back and
- *   compares the bytes; a value that does not come back unchanged is refused, so the substitution
- *   is never bound.  A binary column uses the same check: well-formed sequences survive the round
- *   trip and the rest do not.
+ *   Recoding the value to the declared codeset was the alternative.  It is refused instead so that
+ *   what a connection carries is settled by the column declarations alone: recoding is lossless or
+ *   not depending on the characters a row happens to hold, which leaves a statement failing part
+ *   way through a table whose columns are all the same.
  */
 static int
-dblink_coerce_to_declared_codeset (DB_VALUE * dbval, DB_VALUE * conv_val)
+dblink_refuse_undeclared_codeset (DB_VALUE * dbval)
 {
-  DB_DATA_STATUS data_status = DATA_STATUS_OK;
-  DB_VALUE back_val;
-  bool restored;
+  char errmsg[128];
 
-  db_value_domain_init (conv_val, DB_VALUE_TYPE (dbval), DB_VALUE_PRECISION (dbval), 0);
-  db_string_put_cs_and_collation (conv_val, LANG_SYS_CODESET, LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET));
+  /* The second name is the database's, not the remote's -- the remote's codeset is never looked up.
+   * Saying it was declared to the remote reads as if it were the remote's, and ER_DBLINK already
+   * names dblink, so the message stays with the two codesets it is about. */
+  snprintf (errmsg, sizeof (errmsg), "a bound value is in %s, not the database codeset %s",
+	    lang_get_codeset_name ((int) db_get_string_codeset (dbval)),
+	    lang_get_codeset_name ((int) LANG_SYS_CODESET));
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
 
-  if (db_char_string_coerce (dbval, conv_val, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
-    {
-      pr_clear_value (conv_val);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "a bound value could not be converted to the codeset declared to the remote");
-      return ER_DBLINK;
-    }
-
-  db_value_domain_init (&back_val, DB_VALUE_TYPE (dbval), DB_VALUE_PRECISION (dbval), 0);
-  db_string_put_cs_and_collation (&back_val, db_get_string_codeset (dbval), db_get_string_collation (dbval));
-
-  if (db_char_string_coerce (conv_val, &back_val, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
-    {
-      restored = false;
-    }
-  else
-    {
-      const char *back_str = db_get_string (&back_val);
-      int size = db_get_string_size (dbval);
-
-      restored = (back_str != NULL && db_get_string_size (&back_val) == size
-		  && memcmp (back_str, db_get_string (dbval), size) == 0);
-    }
-
-  pr_clear_value (&back_val);
-
-  if (!restored)
-    {
-      pr_clear_value (conv_val);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "a bound value has a character the codeset declared to the remote cannot encode");
-      return ER_DBLINK;
-    }
-
-  return NO_ERROR;
+  return ER_DBLINK;
 }
 
 static int
@@ -518,8 +487,6 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
   char num_str[NUMERIC_MAX_STRING_SIZE];
   char *json_body = NULL;
   unsigned char type;
-  DB_VALUE conv_val;
-  bool conv_used = false;
 
   value = &dbval->data;
   /* A typed NULL (e.g. NUMERIC/DATE domain with the null flag set) must be bound as NULL,
@@ -580,12 +547,7 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
        * say. */
       if (db_get_string_codeset (dbval) != LANG_SYS_CODESET && dblink_remote_is_cubrid (conn_handle))
 	{
-	  if (dblink_coerce_to_declared_codeset (dbval, &conv_val) != NO_ERROR)
-	    {
-	      return ER_DBLINK;
-	    }
-	  conv_used = true;
-	  value = (void *) db_get_string (&conv_val);
+	  return dblink_refuse_undeclared_codeset (dbval);
 	}
       break;
     case DB_TYPE_DATE:
@@ -668,10 +630,6 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
   /* CCI copies the value unless the bind flag is CCI_BIND_PTR, so the JSON body can be released
    * as soon as it is bound. */
   db_private_free_and_init (NULL, json_body);
-  if (conv_used)
-    {
-      pr_clear_value (&conv_val);
-    }
   if (ret < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_BIND_PARAM, 0);
@@ -746,9 +704,10 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
  *   if it arrived in UTF-8 (cgw_utf8_to_unicode ()), so a non-UTF-8 local side is already broken
  *   before the text gets there and declaring a codeset would not change that.
  *
- *   Failing here fails the connection.  Bound values are converted to the codeset named here
- *   (dblink_coerce_to_declared_codeset ()), so a connection that did not take the name would be
- *   sent values recoded for a name it never agreed to -- worse than sending them untouched.
+ *   Failing here fails the connection.  Every value bound afterwards is in the codeset named here
+ *   and nothing else is let through (dblink_refuse_undeclared_codeset ()), so a connection that did
+ *   not take the name would read all of them in its own codeset -- the corruption this declaration
+ *   exists to stop.
  */
 static int
 dblink_declare_client_codeset (int conn_handle)
