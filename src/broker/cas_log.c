@@ -140,6 +140,7 @@ static void cas_log_crit_leave (void);
 static void cas_log_block_usr2 (void);
 static void cas_log_restore_usr2 (void);
 static int pwrite_all (int fd, const char *p, size_t len, INT64 off);
+static int ftruncate_all (int fd, INT64 len);
 static int cas_fflush_internal (CAS_LOG_FD * lfd, int end);
 static int cas_log_timer_bound (CAS_LOG_FD * lfd);
 
@@ -1539,6 +1540,21 @@ cas_log_timer_bound (CAS_LOG_FD * lfd)
   return (int) off;
 }
 
+/* ftruncate () may return EINTR; retry like pwrite_all () does.  Only ever shrinks the file:
+ * offset is below the physical end in both callers, so no sparse hole can be created. */
+static int
+ftruncate_all (int fd, INT64 len)
+{
+  int r;
+
+  do
+    {
+      r = ftruncate (fd, (off_t) len);
+    }
+  while (r < 0 && errno == EINTR);
+  return r;
+}
+
 /*
  * cas_fflush_internal () - pwrite [buf_flushed, end) and advance buf_flushed.
  *   Callers have already closed the SIGUSR2 window with cas_log_block_usr2 (), are the SIGUSR2
@@ -1750,7 +1766,7 @@ cas_fseek (FILE * stream, INT64 offset, int whence)
 	    {
 	      /* Discarded bytes are already in the file: truncate them, or readers would take the
 	       * abandoned unit for real log.  Failure is tolerated: later flushes overwrite the stale tail. */
-	      (void) ftruncate (lfd->fd, (off_t) offset);
+	      (void) ftruncate_all (lfd->fd, offset);
 	      lfd->buf_flushed = (int) new_len;
 	    }
 	}
@@ -1760,7 +1776,7 @@ cas_fseek (FILE * stream, INT64 offset, int whence)
     {
       lfd->buf_used = 0;	/* zero buf_used first so a terminating handler flushes nothing */
       lfd->buf_flushed = 0;
-      (void) ftruncate (lfd->fd, (off_t) offset);	/* failure tolerated as above */
+      (void) ftruncate_all (lfd->fd, offset);	/* failure tolerated as above */
       lfd->file_buf_base = offset;
     }
 
