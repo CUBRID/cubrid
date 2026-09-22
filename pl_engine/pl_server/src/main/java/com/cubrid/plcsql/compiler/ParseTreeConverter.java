@@ -252,9 +252,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 gpc.usesDefaultArg = (gpc.args.nodes.size() < paramList.nodes.size());
                 gpc.targetClass = ps.targetClass;
                 gpc.uniqueName = ps.uniqueName;
-                if (ps.targetClass != null && !gpc.usesDefaultArg) {
+                if (!Misc.isEmptyStr(ps.targetClass) && !gpc.usesDefaultArg) {
                     // PL/CSQL SP call without using default arguments
-                    assert !ps.targetClass.isEmpty();
                     referencedClasses.add(ps.targetClass);
                     referencedMethods.add(Misc.methodKey(ps.targetClass, ps.uniqueName));
                 } else {
@@ -324,9 +323,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 gfc.usesDefaultArg = (gfc.args.nodes.size() < paramList.nodes.size());
                 gfc.targetClass = fs.targetClass;
                 gfc.uniqueName = fs.uniqueName;
-                if (fs.targetClass != null && !gfc.usesDefaultArg) {
+                if (!Misc.isEmptyStr(fs.targetClass) && !gfc.usesDefaultArg) {
                     // PL/CSQL SP call without using default arguments
-                    assert !fs.targetClass.isEmpty();
                     referencedClasses.add(fs.targetClass);
                     referencedMethods.add(Misc.methodKey(fs.targetClass, fs.uniqueName));
                 } else {

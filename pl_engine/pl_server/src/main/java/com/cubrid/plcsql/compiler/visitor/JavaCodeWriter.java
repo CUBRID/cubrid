@@ -1135,12 +1135,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.decl != null;
 
-        if (node.targetClass != null && !node.usesDefaultArg) {
+        if (!Misc.isEmptyStr(node.targetClass) && !node.usesDefaultArg) {
             // PL/CSQL target call without using default arguments: call the method of its generated
             // Java class directly (same package,
             // so the simple class name is enough)
-
-            assert !node.targetClass.isEmpty();
 
             javaTypesUsed.add("java.lang.reflect.Method");
 
@@ -2806,12 +2804,10 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         assert node.decl != null;
 
-        if (node.targetClass != null && !node.usesDefaultArg) {
+        if (!Misc.isEmptyStr(node.targetClass) && !node.usesDefaultArg) {
             // PL/CSQL target call without using default arguments: call the method of its generated
             // Java class directly (same package,
             // so the simple class name is enough)
-
-            assert !node.targetClass.isEmpty();
 
             javaTypesUsed.add("java.lang.reflect.Method");
 
