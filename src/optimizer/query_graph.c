@@ -10724,7 +10724,7 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 			  sizeof (QO_SEGMENT *) * pk_idx->nsegs);
 		  free_and_init (fk_col_segs);
 		  free_and_init (col_eqclasses);
-		  continue;
+		  goto fk_join_info_fail;
 		}
 
 	      n_matched = qo_match_fk_prefix (env, fk_idx, pk_idx, fk_col_segs, col_eqclasses);
