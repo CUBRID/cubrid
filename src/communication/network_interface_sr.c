@@ -10727,6 +10727,46 @@ smethod_invoke_fold_constants (THREAD_ENTRY * thread_p, unsigned int rid, char *
 #endif
 
 /*
+ * CDC_FLASHBACK_CHECK_REQ_REMAINING () - reject a request with fewer than
+ *   'needed' bytes left to unpack. Used before each fixed-size field, so a
+ *   truncated or crafted request cannot be read past its own buffer.
+ *
+ * Expects the enclosing handler's 'error_code' and 'error' label, which every
+ * CDC and flashback request handler below already has.
+ */
+#define CDC_FLASHBACK_CHECK_REQ_REMAINING(ptr, request, reqlen, needed) \
+  do \
+    { \
+      if ((reqlen) - (int) ((ptr) - (request)) < (needed)) \
+	{ \
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, \
+		  ((reqlen) - (int) ((ptr) - (request))), (needed)); \
+	  error_code = ER_NET_DATASIZE_MISMATCH; \
+	  goto error; \
+	} \
+    } \
+  while (0)
+
+/*
+ * CDC_FLASHBACK_CHECK_REQ_COUNT () - reject a client-supplied element count the
+ *   rest of the request could not possibly hold. Each element needs at least
+ *   'elem_size' bytes, so the bytes left over cap the count. The comparison is
+ *   widened to INT64 so a huge count cannot overflow it.
+ */
+#define CDC_FLASHBACK_CHECK_REQ_COUNT(count, ptr, request, reqlen, elem_size) \
+  do \
+    { \
+      if ((count) < 0 || (INT64) (count) > (INT64) ((reqlen) - (int) ((ptr) - (request))) / (elem_size)) \
+	{ \
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, \
+		  (int) (((reqlen) - (int) ((ptr) - (request))) / (elem_size)), (count)); \
+	  error_code = ER_NET_DATASIZE_MISMATCH; \
+	  goto error; \
+	} \
+    } \
+  while (0)
+
+/*
  * cdc_flashback_unpack_bounded_string () - unpack a length-prefixed string,
  *   rejecting a length that would read past the request or misalign later unpacks.
  *   return: advanced pointer on success, NULL if the length is out of range.
@@ -10805,13 +10845,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   /* Bound the count against the remaining request length before the unpack
    * loop -- each user needs at least a length prefix. */
-  if (num_extraction_user < 0 || (INT64) num_extraction_user > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), num_extraction_user);
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_COUNT (num_extraction_user, ptr, request, reqlen, OR_INT_SIZE);
 
   if (num_extraction_user > 0)
     {
@@ -10850,26 +10884,13 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   /* Unpacked unconditionally right after a loop that may have already
    * consumed all remaining bytes -- check before reading it. */
-  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (reqlen - (int) (ptr - request)), OR_INT_SIZE);
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_REMAINING (ptr, request, reqlen, OR_INT_SIZE);
 
   ptr = or_unpack_int (ptr, &num_extraction_class);
 
   /* Bound the count against the remaining request length -- each class oid
    * is packed as an int64. */
-  if (num_extraction_class < 0
-      || (INT64) num_extraction_class > (INT64) (reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (int) ((reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE), num_extraction_class);
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_COUNT (num_extraction_class, ptr, request, reqlen, OR_BIGINT_SIZE);
 
   if (num_extraction_class > 0)
     {
@@ -11219,13 +11240,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   /* Bound the count against the remaining request length -- each class name
    * is packed as a string. */
-  if (context.num_class < 0 || (INT64) context.num_class > (INT64) (reqlen - (int) (ptr - request)) / OR_INT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (int) ((reqlen - (int) (ptr - request)) / OR_INT_SIZE), context.num_class);
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_COUNT (context.num_class, ptr, request, reqlen, OR_INT_SIZE);
 
   for (int i = 0; i < context.num_class; i++)
     {
@@ -11425,25 +11440,13 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   /* Unpacked unconditionally right after a variable-length string field --
    * a request crafted to exactly exhaust reqlen there would otherwise read
    * this past the buffer. */
-  if (reqlen - (int) (ptr - request) < OR_INT_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (reqlen - (int) (ptr - request)), OR_INT_SIZE);
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_REMAINING (ptr, request, reqlen, OR_INT_SIZE);
 
   ptr = or_unpack_int (ptr, &context.num_class);
 
   /* Bound the count against the remaining request length -- each class oid
    * is packed as an OID. */
-  if (context.num_class < 0 || (INT64) context.num_class > (INT64) (reqlen - (int) (ptr - request)) / OR_OID_SIZE)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (int) ((reqlen - (int) (ptr - request)) / OR_OID_SIZE), context.num_class);
-      error_code = ER_NET_DATASIZE_MISMATCH;
-      goto error;
-    }
+  CDC_FLASHBACK_CHECK_REQ_COUNT (context.num_class, ptr, request, reqlen, OR_OID_SIZE);
 
   for (int i = 0; i < context.num_class; i++)
     {
