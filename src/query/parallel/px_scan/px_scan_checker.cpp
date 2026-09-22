@@ -95,6 +95,19 @@ namespace parallel_scan
     return (flags & flag) != 0;
   }
 
+  static bool
+  has_nonlinked_dptr (const XASL_NODE *xasl)
+  {
+    for (const XASL_NODE *dptr = xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+      {
+	if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+
 
   using rv_list_node = struct regu_variable_list_node;
 
@@ -131,8 +144,10 @@ namespace parallel_scan
   template <bool is_outptr_list>
   possible_flags sibling_check (ACCESS_SPEC_TYPE *arg);
 
+  bool dptr_subtree_worker_safe (XASL_NODE *arg, bool is_scan_level);
+
   void process_xasl_node_recursive (XASL_NODE *arg);
-  void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg);
+  void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg, bool serialize_nested_parallel = false);
 
   template <bool is_outptr_list>
   possible_flags check (REGU_VARIABLE *arg)
@@ -529,6 +544,126 @@ namespace parallel_scan
     return result;
   }
 
+  using dptr_walk_cache_t = std::unordered_map<XASL_NODE *, bool>;
+
+  static bool
+  dptr_subtree_worker_safe_impl (XASL_NODE *arg, bool is_scan_level, dptr_walk_cache_t &cache)
+  {
+    if (!arg)
+      {
+	return true;
+      }
+    auto ins = cache.emplace (arg, true);
+    if (!ins.second)
+      {
+	return ins.first->second;
+      }
+
+    possible_flags flags = 0;
+    bool safe = true;
+
+    if (is_scan_level)
+      {
+	if (arg->selected_upd_list || arg->scan_op_type != S_SELECT || arg->upd_del_class_cnt > 0
+	    || XASL_IS_FLAGED (arg, XASL_MULTI_UPDATE_AGG) || arg->bptr_list || arg->fptr_list || arg->connect_by_ptr)
+	  {
+	    safe = false;
+	  }
+	flags |= check<false> (arg->after_join_pred);
+	flags |= check<false> (arg->if_pred);
+	for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
+	  {
+	    flags |= check<false> (specp);
+	  }
+	for (ACCESS_SPEC_TYPE *specp = arg->merge_spec; specp; specp = specp->next)
+	  {
+	    flags |= check<false> (specp);
+	  }
+      }
+    else
+      {
+	flags |= check<false> (arg);
+      }
+
+    if (arg->outptr_list)
+      {
+	flags |= check<false> (arg->outptr_list->valptrp);
+      }
+
+    flags |= check<false> (arg->instnum_pred);
+    flags |= check<false> (arg->ordbynum_pred);
+    flags |= check<false> (arg->limit_offset);
+    flags |= check<false> (arg->limit_row_count);
+
+    switch (arg->type)
+      {
+      case BUILDLIST_PROC:
+	if (arg->proc.buildlist.eptr_list || arg->proc.buildlist.a_eval_list)
+	  {
+	    safe = false;
+	  }
+	if (arg->proc.buildlist.g_outptr_list)
+	  {
+	    flags |= check<false> (arg->proc.buildlist.g_outptr_list->valptrp);
+	  }
+	flags |= check<false> (arg->proc.buildlist.g_regu_list);
+	flags |= check<false> (arg->proc.buildlist.g_having_pred);
+	flags |= check<false> (arg->proc.buildlist.g_grbynum_pred);
+	for (AGGREGATE_TYPE *aggp = arg->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
+	  {
+	    flags |= check<false> (aggp->operands);
+	  }
+	break;
+      case BUILDVALUE_PROC:
+	flags |= check<false> (arg->proc.buildvalue.having_pred);
+	flags |= check<false> (arg->proc.buildvalue.outarith_list);
+	for (AGGREGATE_TYPE *aggp = arg->proc.buildvalue.agg_list; aggp; aggp = aggp->next)
+	  {
+	    flags |= check<false> (aggp->operands);
+	  }
+	break;
+      case HASHJOIN_PROC:
+	flags |= check<false> (arg->proc.hashjoin.outer.regu_list_pred);
+	flags |= check<false> (arg->proc.hashjoin.inner.regu_list_pred);
+	safe = safe && dptr_subtree_worker_safe_impl (arg->proc.hashjoin.outer.xasl, false, cache)
+	       && dptr_subtree_worker_safe_impl (arg->proc.hashjoin.inner.xasl, false, cache);
+	break;
+      case UNION_PROC:
+      case DIFFERENCE_PROC:
+      case INTERSECTION_PROC:
+	safe = safe && dptr_subtree_worker_safe_impl (arg->proc.union_.left, false, cache)
+	       && dptr_subtree_worker_safe_impl (arg->proc.union_.right, false, cache);
+	break;
+      case CTE_PROC:
+	safe = safe && dptr_subtree_worker_safe_impl (arg->proc.cte.non_recursive_part, false, cache)
+	       && dptr_subtree_worker_safe_impl (arg->proc.cte.recursive_part, false, cache);
+	break;
+      default:
+	break;
+      }
+
+    for (XASL_NODE *xaslp = arg->aptr_list; safe && xaslp; xaslp = xaslp->next)
+      {
+	safe = dptr_subtree_worker_safe_impl (xaslp, false, cache);
+      }
+    for (XASL_NODE *xaslp = arg->dptr_list; safe && xaslp; xaslp = xaslp->next)
+      {
+	safe = dptr_subtree_worker_safe_impl (xaslp, false, cache);
+      }
+    safe = safe && dptr_subtree_worker_safe_impl (arg->scan_ptr, true, cache);
+
+    safe = safe && !is_flag_set (flags, CANNOT_PARALLEL_SCAN);
+    cache[arg] = safe;
+    return safe;
+  }
+
+  bool
+  dptr_subtree_worker_safe (XASL_NODE *arg, bool is_scan_level)
+  {
+    dptr_walk_cache_t cache;
+    return dptr_subtree_worker_safe_impl (arg, is_scan_level, cache);
+  }
+
   template <bool is_outptr_list>
   possible_flags check (XASL_NODE *arg)
   {
@@ -643,24 +778,15 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp : dptrs)
       {
-	temp = sibling_check<false> (xaslp);
-	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
 	  {
-	    set_flag (result, CANNOT_PARALLEL_SCAN);
-	  }
-      }
-
-    if (dptrs.size() > 0)
-      {
-	std::unordered_set<XASL_NODE *> dptrs2 (dptrs);
-	for (XASL_NODE *xaslp : dptrs2)
-	  {
-	    if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	    temp = sibling_check<false> (xaslp);
+	    if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	      {
-		dptrs.erase (xaslp);
+		set_flag (result, CANNOT_PARALLEL_SCAN);
 	      }
 	  }
-	if (dptrs.size() > 0)
+	else if (!dptr_subtree_worker_safe (xaslp, false))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
@@ -820,7 +946,7 @@ namespace parallel_scan
       }
     for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, true);
       }
     for (XASL_NODE *xaslp = arg->fptr_list; xaslp; xaslp = xaslp->next)
       {
@@ -890,11 +1016,13 @@ namespace parallel_scan
 	      }
 	    else
 	      {
+		const bool nonlinked_dptr = has_nonlinked_dptr (arg);
+
 		/* list merge blocked → row-by-row fallback. */
 		for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 		  {
 		    ACCESS_SPEC_UNSET_FLAG (specp, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
-		    if (specp->type == TARGET_LIST
+		    if (nonlinked_dptr || specp->type == TARGET_LIST
 			|| (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX))
 		      {
 			ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -906,7 +1034,7 @@ namespace parallel_scan
 
   }
 
-  void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg)
+  void process_xasl_node_recursive_force_cannot_parallel (XASL_NODE *arg, bool serialize_nested_parallel)
   {
     if (!arg)
       {
@@ -919,6 +1047,11 @@ namespace parallel_scan
       }
     xasl_processing_set.insert (arg);
 
+    if (serialize_nested_parallel)
+      {
+	arg->parallelism = 1;
+      }
+
     for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
       {
 	ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -926,27 +1059,27 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->bptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->dptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->fptr_list; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->scan_ptr; xaslp; xaslp = xaslp->scan_ptr)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
     for (XASL_NODE *xaslp = arg->connect_by_ptr; xaslp; xaslp = xaslp->next)
       {
-	process_xasl_node_recursive_force_cannot_parallel (xaslp);
+	process_xasl_node_recursive_force_cannot_parallel (xaslp, serialize_nested_parallel);
       }
 
     switch (arg->type)
@@ -954,21 +1087,21 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part);
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, serialize_nested_parallel);
 	  }
 	if (arg->proc.cte.non_recursive_part)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.non_recursive_part);
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.non_recursive_part, serialize_nested_parallel);
 	  }
 	break;
       case MERGE_PROC:
 	if (arg->proc.merge.insert_xasl)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.insert_xasl);
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.insert_xasl, serialize_nested_parallel);
 	  }
 	if (arg->proc.merge.update_xasl)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.update_xasl);
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.merge.update_xasl, serialize_nested_parallel);
 	  }
 	break;
       case MERGELIST_PROC:

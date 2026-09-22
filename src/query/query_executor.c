@@ -439,7 +439,6 @@ static int qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AG
 				 bool for_parallel_aptr);
 static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
-static void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_final_close_dblink_specs (XASL_NODE * xasl);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
@@ -3406,6 +3405,41 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
   return pg_cnt;
 }
 
+/*
+ * qexec_execute_dptr_list () - clear and run a node's correlated (dptr) subqueries for the current row
+ *   return: NO_ERROR or ER_FAILED
+ *   dptr_list(in): xasl->dptr_list
+ *   xasl_state(in):
+ *   truncate(in): clear the subquery list files with truncate
+ */
+int
+qexec_execute_dptr_list (THREAD_ENTRY * thread_p, XASL_NODE * dptr_list, XASL_STATE * xasl_state, bool truncate)
+{
+  XASL_NODE *xptr;
+
+  for (xptr = dptr_list; xptr != NULL; xptr = xptr->next)
+    {
+      if (truncate)
+	{
+	  qexec_clear_head_lists_with_truncate (thread_p, xptr);
+	}
+      else
+	{
+	  qexec_clear_head_lists (thread_p, xptr);
+	}
+      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+	{
+	  continue;
+	}
+      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  return NO_ERROR;
+}
+
 static void
 qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 {
@@ -3492,7 +3526,7 @@ qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
  *   return:
  *   xasl_list(in)      :
  */
-static void
+void
 qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list)
 {
   XASL_NODE *xasl;
@@ -8850,20 +8884,9 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       if (qualified)
 	{
 	  /* evaluate dptr list */
-	  for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
+	  if (qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
 	    {
-	      /* clear correlated subquery list files */
-	      qexec_clear_head_lists_with_truncate (thread_p, xptr);
-
-	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-		{
-		  /* skip if linked to regu var */
-		  continue;
-		}
-	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
-		{
-		  return S_ERROR;
-		}
+	      return S_ERROR;
 	    }
 	}			/* if (qualified) */
 
@@ -9790,19 +9813,9 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (qualified)
 	    {
 	      /* evaluate dptr list */
-	      for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
+	      if (qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
 		{
-		  /* clear correlated subquery list files */
-		  qexec_clear_head_lists_with_truncate (thread_p, xptr);
-		  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-		    {
-		      /* skip if linked to regu var */
-		      continue;
-		    }
-		  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
-		    {
-		      return S_ERROR;
-		    }
+		  return S_ERROR;
 		}
 
 	      /* evaluate after join predicate */
@@ -10181,19 +10194,9 @@ qexec_merge_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_st
 	  if (qualified)
 	    {
 	      /* evaluate dptr list */
-	      for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
+	      if (qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, false) != NO_ERROR)
 		{
-		  /* clear correlated subquery list files */
-		  qexec_clear_head_lists (thread_p, xptr);
-		  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-		    {
-		      /* skip if linked to regu var */
-		      continue;
-		    }
-		  if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
+		  GOTO_EXIT_ON_ERROR;
 		}
 
 	      /* evaluate if predicate */
@@ -14615,19 +14618,9 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	{
 
 	  /* evaluate dptr list */
-	  for (xptr = xasl->dptr_list; xptr != NULL; xptr = xptr->next)
+	  if (qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, false) != NO_ERROR)
 	    {
-	      /* clear correlated subquery list files */
-	      qexec_clear_head_lists (thread_p, xptr);
-	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-		{
-		  /* skip if linked to regu var */
-		  continue;
-		}
-	      if (qexec_execute_mainblock (thread_p, xptr, xasl_state, NULL) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
+	      GOTO_EXIT_ON_ERROR;
 	    }
 
 	  /* evaluate constant (if) predicate */
