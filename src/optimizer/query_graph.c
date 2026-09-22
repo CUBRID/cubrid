@@ -6356,7 +6356,7 @@ qo_discover_edges (QO_ENV * env)
 
       /* SEMI/ANTI describes its own ON scope; do not copy it to other edges between the same nodes. */
       if (QO_TERM_JOIN_TYPE (edge) != JOIN_INNER && !IS_SEMI_ANTI_JOIN_TYPE (QO_TERM_JOIN_TYPE (edge))
-          && QO_TERM_CLASS (edge) != QO_TC_JOIN)
+	  && QO_TERM_CLASS (edge) != QO_TC_JOIN)
 	{
 	  for (j = 0; j < n; j++)
 	    {
