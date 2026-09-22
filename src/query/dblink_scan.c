@@ -1716,7 +1716,6 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
 
   *cast_type_out = NULL;
 
-  memset (&err_buf, 0, sizeof (err_buf));
   num_param = cci_get_param_info (stmt_handle, &param_info, &err_buf);
   if (num_param < 1 || param_info == NULL)
     {
