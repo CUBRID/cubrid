@@ -6310,7 +6310,7 @@ qo_alloc_info (QO_PLANNER * planner, BITSET * nodes, BITSET * terms, BITSET * eq
   info->total_rows = total_rows;
   info->group_rows = cardinality;	/* it is recalculated in qo_sort_new() */
   info->hit_prob = 1.0;
-  info->reads_distinct = false;
+  info->is_distinct = false;
 
   qo_init_planvec (&info->best_no_order);
 
@@ -6906,7 +6906,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 	  continue;
 	}
 
-      distinct_info->reads_distinct = true;
+      distinct_info->is_distinct = true;
       planner->distinct_info[QO_NODE_IDX (node)] = distinct_info;
     }
 }
@@ -8586,7 +8586,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
    * A raw SEMI/ANTI tail still requires first-match execution even when the prefix contains DISTINCT.
    * Otherwise a SEMI/ANTI edge connects a DISTINCT input, possibly inside a multi-node prefix, and the
    * candidate is an ordinary join. Only this local type changes; graph terms and shared plans keep theirs. */
-  if (!IS_OUTER_JOIN_TYPE (join_type) && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->reads_distinct)
+  if (!IS_OUTER_JOIN_TYPE (join_type) && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct)
     {
       join_type = QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI ? JOIN_SEMI : JOIN_ANTI;
     }
@@ -8744,7 +8744,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* STEP 5-2: examine idx-join.  Not for a SEMI JOIN inner added ahead of the side it depends on:
 	 * qo_examine_correlated_index () builds index scans of the node itself, which read it with its
 	 * duplicates, and the only way to read the node in that position is the plan distinct_info holds. */
-	if (idx_join_cnt && !tail_info->reads_distinct)
+	if (idx_join_cnt && !tail_info->is_distinct)
 	  {
 	    idx_join_plan_n =
 	      qo_examine_idx_join (new_info, join_type, head_info, tail_info, &afj_terms, &sarged_terms,
@@ -8767,7 +8767,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	/* skip for a semi/anti inner: merge/hash inner gives wrong results, so never cost it (M3 prune).  Also skip
 	 * when the outer is a SEMI JOIN inner read once with the duplicates removed: feeding that file straight into
 	 * a merge or hash join is left for the merge/hash SEMI JOIN work, so for now it is joined by nl/idx only. */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_info->reads_distinct)
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_info->is_distinct)
 	  {
 	    kept +=
 	      qo_examine_merge_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
@@ -8777,7 +8777,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_info->reads_distinct)
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !head_info->is_distinct)
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
