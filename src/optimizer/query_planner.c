@@ -8362,6 +8362,10 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			  found = true;
 			}
 
+		      /* a column whose eqclass carries a constant (fk.a = 5 AND pk.a = 5) has no join term at all,
+		       * so it is never found here and the floor is skipped for this constraint -- conservative
+		       * (falls back to the per-term product). PostgreSQL counts such columns (nconst_ec) and
+		       * keeps applying the floor; left as a follow-up. */
 		      if (!found)
 			{
 			  all_cols_found = false;
