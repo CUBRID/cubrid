@@ -1913,20 +1913,12 @@ jobs:
           . "$PLAN_DIR/split.meta"       # tc_sha, tc_branch -- what plan pinned
 
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          # The commit, not the branch: tc/pr-<N> is deleted when its pull request
-          # closes, and the checkout takes whatever it is given -- ticket 46.
+          # Commits, not branches: tc/pr-<N> and probe/* are deleted when the work that
+          # made them ends, and the checkout takes whatever it is given.
           export BRANCH_TESTCASES="$tc_sha"
-          # Without this the checkout below moves the mounted seed back to develop, and
-          # a suite asked to run another CTP branch would run develop's in every shard.
-          # The commit for the same reason as above: a probe/* branch is deleted right
-          # after the run it was pushed for. It also names the CTP logs.
           export BRANCH_TESTTOOLS="$WANT_CTP_SHA"
           /entrypoint.sh checkout "$SUITE"
 
-          # Pin CTP the way the testcases are pinned below: the checkout took the branch
-          # tip, which moves under a suite whose CTP branch is still being pushed to.
-          # The seed carries this commit already, so the fetch is only for the case where
-          # the tip moved and the object arrived from somewhere else.
           ctp="$WORKDIR/cubrid-testtools"
           git -C "$ctp" cat-file -e "${WANT_CTP_SHA}^{commit}" 2>/dev/null \
             || git -C "$ctp" fetch -q --depth 1 --no-tags origin "$WANT_CTP_SHA"
@@ -1937,15 +1929,9 @@ jobs:
           [ "$got_ctp" = "$WANT_CTP_SHA" ] || {
             echo "::error::could not align CTP to the SHA plan saw($WANT_CTP_SHA); at $got_ctp"; exit 1; }
 
-          # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
           cd "$TC_DIR"
-          # The entrypoint drops its git credential on exit, so carry the token here.
-          # Through the environment, not `-c`: the seed is a partial clone, so `reset`
-          # to a commit the tip does not carry fetches the blobs from the promisor in a
-          # child process, which `-c` never reaches. Still not on disk.
-          #
-          # Only a private repo has a token. Setting the rewrite with an empty one
-          # turns an anonymous fetch into a failed authentication.
+          # The entrypoint drops its git credential on exit, so this carries its own.
+          # An empty one would turn an anonymous fetch into a failed authentication.
           if [ -n "$GHI_TOKEN" ]; then
             export GIT_CONFIG_COUNT=1
             export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
