@@ -10610,7 +10610,7 @@ qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_i
 static void
 qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 {
-  int i, j, k, n_matched;
+  int i, j, k, m, n_matched;
   size_t n_pairs, cap, fi;
   QO_NODE *node_i, *node_j, *fk_node, *pk_node;
   QO_NODE_INDEX *fk_node_indexp, *pk_node_indexp;
@@ -10640,25 +10640,8 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 	  fk_node = node_i;
 	  pk_node = node_j;
 
-	  /* find the primary key index on pk_node */
 	  pk_node_indexp = QO_NODE_INDEXES (pk_node);
 	  if (pk_node_indexp == NULL)
-	    {
-	      continue;
-	    }
-
-	  pk_idx = NULL;
-	  for (k = 0; k < QO_NI_N (pk_node_indexp); k++)
-	    {
-	      pk_idx = QO_NI_ENTRY (pk_node_indexp, k)->head;
-	      if (pk_idx->constraints->type == SM_CONSTRAINT_PRIMARY_KEY)
-		{
-		  break;
-		}
-	      pk_idx = NULL;
-	    }
-
-	  if (pk_idx == NULL || pk_idx->nsegs < 2 || QO_NODE_NCARD (pk_node) <= 0)
 	    {
 	      continue;
 	    }
@@ -10675,12 +10658,29 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 	  for (k = 0; k < QO_NI_N (fk_node_indexp); k++)
 	    {
 	      fk_idx = QO_NI_ENTRY (fk_node_indexp, k)->head;
-	      if (fk_idx->constraints->type != SM_CONSTRAINT_FOREIGN_KEY
-		  || !BTID_IS_EQUAL (&fk_idx->constraints->fk_info->ref_class_pk_btid,
-				     &pk_idx->constraints->index_btid))
+	      if (fk_idx->constraints->type != SM_CONSTRAINT_FOREIGN_KEY)
 		{
 		  continue;
 		}
+
+	      pk_idx = NULL;
+	      for (m = 0; m < QO_NI_N (pk_node_indexp); m++)
+		{
+		  if (BTID_IS_EQUAL (&QO_NI_ENTRY (pk_node_indexp, m)->head->constraints->index_btid,
+				     &fk_idx->constraints->fk_info->ref_class_pk_btid))
+		    {
+		      pk_idx = QO_NI_ENTRY (pk_node_indexp, m)->head;
+		      break;
+		    }
+		}
+
+	      if (pk_idx == NULL || pk_idx->nsegs < 2 || QO_NODE_NCARD (pk_node) <= 0)
+		{
+		  continue;
+		}
+	      /* Only PRIMARY KEY reaches here. UNIQUE is considered for future FK support,
+	       * while REVERSE_UNIQUE does not reach this path. */
+	      assert (SM_IS_CONSTRAINT_UNIQUE_FAMILY (pk_idx->constraints->type));
 
 	      /* Secure room for one more entry before any per-candidate allocation below, so that a capacity
 	       * failure here never has to unwind a not-yet-owned temporary allocation - only already-registered
