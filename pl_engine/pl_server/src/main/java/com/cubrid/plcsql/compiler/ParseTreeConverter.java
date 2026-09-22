@@ -465,15 +465,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
 
                 if (ofTopLevel) {
-                    switch (dp.typeSpec.type.idx) {
-                        case Type.IDX_RECORD:
-                        case Type.IDX_BOOLEAN:
-                        case Type.IDX_SYS_REFCURSOR:
-                            throw new SemanticError(
-                                    Misc.getLineColumnOf(pc), // s064
-                                    "type "
-                                            + dp.typeSpec.type.plcName
-                                            + " cannot be used as a paramter type of stored procedures");
+                    if (dp.typeSpec.type == Type.BOOLEAN
+                            || dp.typeSpec.type == Type.SYS_REFCURSOR) {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(pc), // s064
+                                "type "
+                                        + dp.typeSpec.type.plcName
+                                        + " cannot be used as a paramter type of stored procedures");
                     }
                 } else {
                     if (dp.comment != null) {
@@ -3446,15 +3444,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 Type retType = retTypeSpec.type;
                 if (scopeLevel == DECL_TOP_LEVEL) { // at top level
-                    switch (retType.idx) {
-                        case Type.IDX_RECORD:
-                        case Type.IDX_BOOLEAN:
-                        case Type.IDX_SYS_REFCURSOR:
-                            throw new SemanticError(
-                                    Misc.getLineColumnOf(ctx.type_spec()), // s065
-                                    "type "
-                                            + retType.plcName
-                                            + " cannot be used as a return type of stored functions");
+                    if (retType == Type.BOOLEAN) {
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(ctx.type_spec()), // s065
+                                "type "
+                                        + retType.plcName
+                                        + " cannot be used as a return type of stored functions");
                     }
                 }
                 DeclFunc ret =
