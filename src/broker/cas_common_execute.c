@@ -322,6 +322,9 @@ ux_end_tran_cleanup (int tran_type)
 	  hm_srv_handle_qresult_end_all (true);
 	}
     }
+
+  /* whatever survived the cleanup now belongs to the previous transaction */
+  hm_srv_handle_end_transaction_all ();
 }
 
 void

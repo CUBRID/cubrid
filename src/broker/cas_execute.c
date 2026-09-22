@@ -297,7 +297,7 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
-static bool stmt_result_set_holds_cursor (char stmt_type);
+static bool call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type);
 static bool call_returns_cursor (const T_PREPARE_CALL_INFO * call_info);
 static bool call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
@@ -1248,7 +1248,10 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
     {
-      srv_handle->has_result_set = stmt_result_set_holds_cursor (srv_handle->q_result->stmt_type);
+      /* the client has a result set to read, so the auto-commit waits for it.  CUBRID_STMT_CALL is the
+       * one exception, and only while the handle is holdable: its value then outlives the commit, so the
+       * commit need not wait.  every other type here keeps the previous behaviour of blocking it. */
+      srv_handle->has_result_set = !call_value_survives_commit (srv_handle, srv_handle->q_result->stmt_type);
 
       if (srv_handle->is_holdable == true)
 	{
@@ -1575,7 +1578,10 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
       if (has_stmt_result_set (q_result->stmt_type) == true)
 	{
-	  if (stmt_result_set_holds_cursor (q_result->stmt_type))
+	  /* as in ux_execute (), only a holdable CUBRID_STMT_CALL lets the auto-commit go ahead.  the
+	   * flag is raised, never cleared: one statement of the batch still holding the client back is
+	   * enough to make the whole handle wait. */
+	  if (!call_value_survives_commit (srv_handle, q_result->stmt_type))
 	    {
 	      srv_handle->has_result_set = true;
 	    }
@@ -1733,6 +1739,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   call_info = srv_handle->prepare_call_info;
   srv_handle->query_info_flag = FALSE;
   hm_qresult_end (srv_handle, FALSE);
+  srv_handle->is_from_current_transaction = true;
   session = (DB_SESSION *) srv_handle->session;
   num_bind = srv_handle->num_markers;
 
@@ -9272,8 +9279,11 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
 
   /* the return value and the out arguments are in net_buf now and fetch_end_flag says nothing is left,
    * so the auto-commit ux_execute_call () had to skip can be done here.  a cursor is the exception: it
-   * is a server side query that a commit would close, and the client reads it through its own handle. */
-  if (srv_handle->auto_commit_mode == TRUE && !call_returns_cursor (call_info))
+   * is a server side query that a commit would close, and the client reads it through its own handle.
+   * is_from_current_transaction keeps a late fetch from committing a transaction this call never ran in
+   * (see check_auto_commit_after_getting_result ()). */
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->is_from_current_transaction
+      && !call_returns_cursor (call_info))
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
@@ -10479,39 +10489,28 @@ do_commit_after_execute (const t_srv_handle & server_handle)
     }
 }
 
-//
-// stmt_result_set_holds_cursor () - check whether a statement's result set keeps a cursor that an
-//                                   auto-commit right after execute would invalidate.
-//
-// return         : true to leave the commit to the client, false otherwise
-// stmt_type (in) : statement type
-//
-// Note: has_stmt_result_set () answers a different question -- whether the handle can be fetched from --
-//       and is also the gate of ux_fetch (), so it must keep reporting true for CUBRID_STMT_CALL.
-//       A CALL cannot return a cursor here: jsp_cl rejects a RESULTSET return with
-//       ER_SP_CANNOT_RETURN_RESULTSET outside the CCI_PREPARE_CALL path, so the result is a single
-//       materialized DB_VALUE and committing right after execute cannot invalidate it.
-//
+/*
+ * call_value_survives_commit () - check whether a CALL's result would still be readable after an
+ *                                 auto-commit done right at the end of execute.
+ *   return          : true if the value outlives the commit, false otherwise
+ *   srv_handle (in) : server handle
+ *   stmt_type (in)  : statement type of the result
+ *
+ */
 static bool
-stmt_result_set_holds_cursor (char stmt_type)
+call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type)
 {
-  if (stmt_type == CUBRID_STMT_CALL)
-    {
-      return false;
-    }
-
-  return has_stmt_result_set (stmt_type);
+  return stmt_type == CUBRID_STMT_CALL && srv_handle->is_holdable;
 }
 
-//
-// call_returns_cursor () - check whether a CALL executed through ux_execute_call () returned a cursor.
-//
-// return         : true if the return value or an out argument holds a RESULTSET, false otherwise
-// call_info (in) : call info holding the return value and the out arguments
-//
-// Note: only the CCI_PREPARE_CALL path may return a cursor (see jsp_is_prepare_call ()). Such a cursor is
-//       a server side query that a commit would close, so the transaction must stay open for it.
-//
+/*
+ * call_returns_cursor () - Check whether a CALL executed through ux_execute_call () returns a cursor.
+ *   return         : true if the return value or an OUT argument contains a RESULTSET; false otherwise
+ *   call_info (in) : Call info holding the return value and OUT arguments
+ *
+ * Note: Only the CCI_PREPARE_CALL path can return a cursor (see jsp_is_prepare_call ()).
+ *       Such a cursor is a server-side query that a commit will close, so the transaction must stay open for it.
+ */
 static bool
 call_returns_cursor (const T_PREPARE_CALL_INFO * call_info)
 {
@@ -10541,17 +10540,17 @@ call_returns_cursor (const T_PREPARE_CALL_INFO * call_info)
   return false;
 }
 
-//
-// call_has_fetchable_output () - check whether the client asked for values it has yet to fetch.
-//
-// return         : true if the call has a return value or an out argument to hand over
-// call_info (in) : call info holding the return value and the out arguments
-//
-// Note: this reads what the driver declared in the execute request -- "?= CALL" sets is_first_out and
-//       every registered out parameter is marked in param_mode -- so it tells whether fetch_call () is
-//       still expected.  Until then the values live only in prepare_call_info, and an auto-commit that
-//       frees the handle would lose them.
-//
+/*
+ * call_has_fetchable_output () - Check whether there are output values that the client has not yet fetched.
+ *   return         : true if there is a return value or an OUT parameter to pass to the client, false otherwise
+ *   call_info (in) : Call info structure holding the return value and OUT parameter information
+ *
+ * Note: This function inspects the information declared by the driver during the execution request.
+ *       (The "?= CALL" syntax sets is_first_out, and every registered OUT parameter is recorded in param_mode.)
+ *       This determines whether a fetch_call () call is still required.
+ *       Until fetched, these values reside temporarily only in prepare_call_info, so an auto-commit 
+ *       that frees the handle may result in data loss.
+ */
 static bool
 call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info)
 {
