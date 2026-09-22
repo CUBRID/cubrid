@@ -10844,11 +10844,38 @@ scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, i
     }
   str_to_hex_prealloced (nonce_bytes, sizeof (nonce_bytes), nonce, sizeof (nonce), HEX_UPPERCASE);
 
-  /* an account that does not exist still gets a challenge; it simply has no
-   * stored password to answer it with */
-  (void) cdc_get_user_info (thread_p, user_name, stored_password, sizeof (stored_password), &is_dba);
+  /* An account that does not exist -- or one whose password could not be read --
+   * still gets a same-shaped challenge, but one it cannot answer: the expected
+   * value is derived from a random secret the client can never know, and the
+   * connection is not a DBA. This keeps a missing account indistinguishable from
+   * a passwordless one, and stops a failed password read from being treated as an
+   * empty password that a hash of the public nonce alone would satisfy. */
+  if (!cdc_get_user_info (thread_p, user_name, stored_password, sizeof (stored_password), &is_dba))
+    {
+      char secret_bytes[CSS_CDC_AUTH_NONCE_SIZE / 2];
+      char secret[CSS_CDC_AUTH_NONCE_SIZE];
 
-  if (cdc_auth_make_response (thread_p, nonce, stored_password, thread_p->conn_entry->cdc_auth_expected) != NO_ERROR)
+      is_dba = false;
+      stored_password[0] = '\0';	/* report scheme 0, as a passwordless account would */
+
+      if (crypt_generate_random_bytes (secret_bytes, sizeof (secret_bytes)) != NO_ERROR)
+	{
+	  return_error_to_client (thread_p, rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  return;
+	}
+      str_to_hex_prealloced (secret_bytes, sizeof (secret_bytes), secret, sizeof (secret), HEX_UPPERCASE);
+
+      if (cdc_auth_make_response (thread_p, nonce, secret, thread_p->conn_entry->cdc_auth_expected) != NO_ERROR)
+	{
+	  thread_p->conn_entry->cdc_auth_expected[0] = '\0';
+	  return_error_to_client (thread_p, rid);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  return;
+	}
+    }
+  else if (cdc_auth_make_response (thread_p, nonce, stored_password, thread_p->conn_entry->cdc_auth_expected) !=
+	   NO_ERROR)
     {
       thread_p->conn_entry->cdc_auth_expected[0] = '\0';
       return_error_to_client (thread_p, rid);

@@ -14541,13 +14541,19 @@ cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oi
 /*
  * cdc_read_password_string () - read the stored password out of a db_password
  *   instance.
- *   return: void; the buffer is left empty when the account has no password.
+ *   return: true if the password object was read; false on any read failure.
  *   thread_p (in):
- *   password_oid (in)  : oid held by db_user.password
+ *   password_oid (in)  : oid held by db_user.password (a real password object)
  *   password (out)     : the stored string, which is already encrypted
  *   password_size (in) : size of the output buffer
+ *
+ * The caller only reaches here when db_user.password holds an object, so a
+ * failure to read that object is a genuine error, not a passwordless account:
+ * it must be reported (false) rather than left as an empty password, or a read
+ * failure would make the account look passwordless and let a caller answer the
+ * challenge with a hash of the public nonce alone.
  */
-static void
+static bool
 cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, char *password, int password_size)
 {
   HEAP_SCANCACHE scan;
@@ -14556,21 +14562,22 @@ cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, cha
   OID class_oid;
   DB_VALUE *value;
   const char *stored;
+  bool ok = false;
   bool scan_started = false, attrinfo_started = false;
 
   if (OID_ISNULL (password_oid))
     {
-      return;
+      return false;
     }
 
   if (heap_get_class_oid (thread_p, password_oid, &class_oid) != S_SUCCESS)
     {
-      return;
+      return false;
     }
 
   if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, &class_oid) != NO_ERROR)
     {
-      return;
+      return false;
     }
   scan_started = true;
 
@@ -14589,6 +14596,11 @@ cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, cha
     {
       goto end;
     }
+
+  /* The password object was read; that alone is success. An empty or NULL stored
+   * string is a legitimately passwordless account (password left empty), not a
+   * read failure -- only the heap failures above return false. */
+  ok = true;
 
   /* db_password holds a single attribute, the encrypted password */
   value = heap_attrinfo_access (0, &attr_info);
@@ -14611,6 +14623,8 @@ end:
     {
       (void) heap_scancache_end (thread_p, &scan);
     }
+
+  return ok;
 }
 
 /*
@@ -14724,11 +14738,19 @@ cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwor
       goto end;
     }
 
-  /* "password" references a db_password instance, it is not the string itself */
+  /* "password" references a db_password instance, it is not the string itself. A
+   * NULL/absent reference is a genuinely passwordless account (empty password is
+   * fine); an object we cannot read is a failure and must not pass as empty. */
   value = heap_attrinfo_access (cdc_User_attr_password, &attr_info);
   if (value != NULL && !DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_OID)
     {
-      cdc_read_password_string (thread_p, db_get_oid (value), password, password_size);
+      if (!cdc_read_password_string (thread_p, db_get_oid (value), password, password_size))
+	{
+	  /* the account has a password but it could not be read -- fail closed */
+	  *is_dba_group = false;
+	  found = false;
+	  goto end;
+	}
     }
 
   if (!*is_dba_group && dba_found)

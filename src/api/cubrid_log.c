@@ -1019,6 +1019,28 @@ cubrid_log_authenticate (char *password)
     }
 
   ptr = or_unpack_int (ptr, &scheme);
+
+  /* The nonce is a length-prefixed string; validate its length lies within
+   * recv_data_size before or_unpack_string_nocopy () trusts the prefix, so a
+   * short, corrupt, or malicious server reply cannot cause an out-of-bounds
+   * read here or in the strlen () below. */
+  {
+    int declared_len;
+    char *after_len;
+
+    if (recv_data_size - (int) (ptr - recv_data) < OR_INT_SIZE)
+      {
+	CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a truncated authentication challenge\n");
+      }
+
+    after_len = or_unpack_int (ptr, &declared_len);
+    if (declared_len < 0 || declared_len > (recv_data_size - (int) (after_len - recv_data))
+	|| memchr (after_len, '\0', declared_len) == NULL)
+      {
+	CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, "Server sent a malformed authentication challenge\n");
+      }
+  }
+
   ptr = or_unpack_string_nocopy (ptr, &nonce);
   if (nonce == NULL || strlen (nonce) != CSS_CDC_AUTH_NONCE_SIZE - 1)
     {
