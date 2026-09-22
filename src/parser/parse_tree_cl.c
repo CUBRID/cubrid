@@ -462,6 +462,8 @@ static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE *
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 static bool pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE ** rewritten_order_by);
+static PT_NODE *pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared, PT_NODE * query,
+						     PT_NODE * name_source);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -10171,28 +10173,14 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       PT_NODE *attr_list = p->info.spec.as_attr_list;
 
       /* as_attr_list mirrors the derived table's own select list one-for-one, hidden columns
-       * included -- but for static SQL (is_parsing_static_sql), pt_print_select () may leave
-       * those very hidden columns out of the select list it prints for this same derived table
-       * (see pt_static_sql_can_omit_hidden_columns () and its use in pt_print_select ()). Left
-       * unmatched here, this alias list would declare more column names than the printed select
-       * list actually has, and a fresh parse of the embedded text would reject the pair as
-       * mismatched -- the same hazard pt_print_cte () guards against for a CTE's own header. */
-      if (parser->flag.is_parsing_static_sql
-	  && pt_static_sql_can_omit_hidden_columns (parser, p->info.spec.derived_table, NULL))
+       * included -- printed as-is here it would drift out of sync with what pt_print_select ()
+       * actually emits for that same select list under static SQL (is_parsing_static_sql), the
+       * same hazard pt_print_cte () guards against for a CTE's own header; see
+       * pt_static_sql_align_declared_names (). */
+      if (parser->flag.is_parsing_static_sql)
 	{
-	  PT_NODE *select_list = pt_get_select_list (parser, p->info.spec.derived_table);
-	  PT_NODE *decl, *col, *filtered = NULL;
-
-	  for (decl = attr_list, col = select_list; decl != NULL && col != NULL; decl = decl->next, col = col->next)
-	    {
-	      if (col->flag.is_hidden_column)
-		{
-		  continue;
-		}
-	      filtered = parser_append_node (parser_copy_tree (parser, decl), filtered);
-	    }
-
-	  attr_list = filtered;
+	  attr_list = pt_static_sql_align_declared_names (parser, attr_list, p->info.spec.derived_table,
+							   p->info.spec.as_attr_list);
 	}
 
       if (attr_list != NULL)
@@ -18472,6 +18460,87 @@ pt_name_list_has_name (PT_NODE * name_list, const char *name)
 }
 
 /*
+ * pt_static_sql_align_declared_names () - keep a declared column-name list (a CTE's as_attr_list,
+ *                                         or a plain derived table spec's) in lockstep with what
+ *                                         pt_print_select () will really emit for query's select
+ *                                         list, under static SQL
+ *   return: a new list the caller owns (parser_free_tree ()s it eventually), or NULL
+ *   parser(in):
+ *   declared(in): the declared names, e.g. p->info.cte.as_attr_list or p->info.spec.as_attr_list --
+ *                 borrowed, neither modified nor freed
+ *   query(in): the query the declared names describe the exposed columns of
+ *   name_source(in): declared's own, uncopied original list -- checked by pt_name_list_has_name ()
+ *                     so a synthesized name can't collide with a real, user-declared one once this
+ *                     text is re-parsed (an "ambiguous reference" at semantic check, not a crash,
+ *                     but wrong)
+ *
+ * Note:
+ *   declared and query's select list are built in lockstep everywhere either is constructed
+ *   (view_transform.c, name_resolution.c): every select-list item -- hidden or not -- has a
+ *   matching declared entry at the same position. A rewrite/optimization applied to query after
+ *   declared was cached (e.g. adding a hidden order-by carry column while merging a
+ *   ROWNUM-filtered outer query with an ORDER BY inner subquery) can append items past that
+ *   cached length -- pad first, one synthesized name per new item, to restore the lockstep, since
+ *   pt_print_select () prints every one of them when it is not leaving hidden columns out. Only
+ *   then decide, per item and in the same left-to-right order, whether pt_print_select () will
+ *   actually print it: where it can leave hidden columns out of the select list (see
+ *   pt_static_sql_can_omit_hidden_columns ()), the declared names must leave out the very same
+ *   entries, or a fresh parse of the embedded text would reject the pair as mismatched (declared
+ *   column names vs. printed columns).
+ */
+static PT_NODE *
+pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared, PT_NODE * query,
+				     PT_NODE * name_source)
+{
+  PT_NODE *aligned, *decl, *col;
+  PT_NODE *select_list = pt_get_select_list (parser, query);
+  int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+  int declared_cnt = pt_length_of_list (declared);
+
+  aligned = parser_copy_tree_list (parser, declared);
+  if (actual_cnt > declared_cnt)
+    {
+      PT_NODE *extra = NULL;
+      int version = declared_cnt;
+      int i;
+
+      for (i = declared_cnt; i < actual_cnt; i++)
+	{
+	  const char *generated_name;
+
+	  do
+	    {
+	      generated_name = mq_generate_name (parser, "hidden_col", &version);
+	    }
+	  while (pt_name_list_has_name (name_source, generated_name));
+
+	  extra = parser_append_node (pt_name (parser, generated_name), extra);
+	}
+
+      aligned = parser_append_node (extra, aligned);
+    }
+
+  if (pt_static_sql_can_omit_hidden_columns (parser, query, NULL))
+    {
+      PT_NODE *filtered = NULL;
+
+      for (decl = aligned, col = select_list; decl != NULL && col != NULL; decl = decl->next, col = col->next)
+	{
+	  if (col->flag.is_hidden_column)
+	    {
+	      continue;
+	    }
+	  filtered = parser_append_node (parser_copy_tree (parser, decl), filtered);
+	}
+
+      parser_free_tree (parser, aligned);
+      aligned = filtered;
+    }
+
+  return aligned;
+}
+
+/*
  * pt_print_with_cte ()
  * return :
  * parser (in) :
@@ -18485,66 +18554,12 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
    * from scratch at runtime; that re-parse derives the CTE's exposed column count directly from how many
-   * items the header below prints. select_list and as_attr_list are otherwise always kept in lockstep
-   * wherever either is built (view_transform.c, name_resolution.c): every select-list item -- hidden or
-   * not -- has a matching as_attr_list entry at the same position. A rewrite/optimization applied to
-   * non_recursive_part after as_attr_list was cached (e.g. adding a hidden order-by carry column while
-   * merging a ROWNUM-filtered outer query with an ORDER BY inner subquery) can append items past that
-   * cached length, so first extend a local copy of the header to match, one synthesized name per new
-   * item -- restoring the lockstep pt_print_select () assumes below. Only then decide, per item and in
-   * the same left-to-right order, whether pt_print_select () will actually print it: omit_hidden_columns
-   * can leave hidden ones out of the body, and the header must leave out the very same entries or a fresh
-   * parse would reject the header/body pair as mismatched (declared column names vs. printed columns). */
+   * items the header below prints -- see pt_static_sql_align_declared_names () for why as_attr_list can't
+   * just be printed as-is here. */
   if (parser->flag.is_parsing_static_sql)
     {
-      PT_NODE *non_recursive_part = p->info.cte.non_recursive_part;
-      PT_NODE *select_list = pt_get_select_list (parser, non_recursive_part);
-      bool omit_hidden_columns = pt_static_sql_can_omit_hidden_columns (parser, non_recursive_part, NULL);
-      int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
-      int declared_cnt = pt_length_of_list (as_attr_list);
-      PT_NODE *decl, *col;
-
-      as_attr_list = parser_copy_tree_list (parser, as_attr_list);
-      if (actual_cnt > declared_cnt)
-	{
-	  PT_NODE *extra = NULL;
-	  int version = declared_cnt;
-	  int i;
-
-	  for (i = declared_cnt; i < actual_cnt; i++)
-	    {
-	      const char *generated_name;
-
-	      /* keep clear of any user-declared name so the header printed below can't collide with it once
-	       * this text is re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
-	      do
-		{
-		  generated_name = mq_generate_name (parser, "hidden_col", &version);
-		}
-	      while (pt_name_list_has_name (p->info.cte.as_attr_list, generated_name));
-
-	      extra = parser_append_node (pt_name (parser, generated_name), extra);
-	    }
-
-	  as_attr_list = parser_append_node (extra, as_attr_list);
-	}
-
-      if (omit_hidden_columns)
-	{
-	  PT_NODE *filtered = NULL;
-
-	  for (decl = as_attr_list, col = select_list; decl != NULL && col != NULL; decl = decl->next, col = col->next)
-	    {
-	      if (col->flag.is_hidden_column)
-		{
-		  continue;
-		}
-	      filtered = parser_append_node (parser_copy_tree (parser, decl), filtered);
-	    }
-
-	  parser_free_tree (parser, as_attr_list);
-	  as_attr_list = filtered;
-	}
+      as_attr_list = pt_static_sql_align_declared_names (parser, as_attr_list, p->info.cte.non_recursive_part,
+							  p->info.cte.as_attr_list);
     }
 
   /* name of cte */
