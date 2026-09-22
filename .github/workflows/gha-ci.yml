@@ -1913,34 +1913,8 @@ jobs:
           . "$PLAN_DIR/split.meta"       # tc_sha, tc_branch -- what plan pinned
 
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-
-          # The entrypoint drops its git credential on exit, so this step carries its
-          # own -- through the environment, not `-c`, which never reaches the git the
-          # entrypoint runs. Only a private repo has a token, and setting the rewrite
-          # with an empty one turns an anonymous fetch into a failed authentication.
-          if [ -n "$GHI_TOKEN" ]; then
-            export GIT_CONFIG_COUNT=1
-            export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
-            export GIT_CONFIG_VALUE_0="https://github.com/"
-          fi
-
-          # Take the commit before the checkout needs it, so a run whose testcases are
-          # no longer upstream says so here. Left to the entrypoint it is five tries
-          # and 150s of sleeps ending in git's own two lines -- ticket 46.
-          cd "$TC_DIR"
-          git cat-file -e "${tc_sha}^{commit}" 2>/dev/null \
-            || git fetch -q --depth 1 --no-tags origin "$tc_sha" \
-            || { echo "::error::$TC_REPO cannot give the commit plan pinned ($tc_sha)"
-                 echo "  Nothing ran: this is an infrastructure failure, not a test failure."
-                 echo "  tc/pr-<N> is deleted when its pull request closes and the commit is"
-                 echo "  pruned some time after, so an old run cannot be re-run. Start a new"
-                 echo "  one instead -- /run $SUITE."
-                 exit 1; }
-
-          # The commit, not $tc_branch: the checkout moves the tree to what it is given,
-          # and tc/pr-<N> is deleted when its pull request closes, which is what made a
-          # re-run of an older run die here. The entrypoint takes a SHA wherever it
-          # takes a branch -- plan's nightly pin arrives the same way.
+          # The commit, not the branch: tc/pr-<N> is deleted when its pull request
+          # closes, and the checkout takes whatever it is given -- ticket 46.
           export BRANCH_TESTCASES="$tc_sha"
           # Without this the checkout below moves the mounted seed back to develop, and
           # a suite asked to run another CTP branch would run develop's in every shard.
@@ -1961,8 +1935,21 @@ jobs:
           [ "$got_ctp" = "$WANT_CTP_SHA" ] || {
             echo "::error::could not align CTP to the SHA plan saw($WANT_CTP_SHA); at $got_ctp"; exit 1; }
 
-          # The checkout aligned to the commit above, so this only holds the line.
+          # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
           cd "$TC_DIR"
+          # The entrypoint drops its git credential on exit, so carry the token here.
+          # Through the environment, not `-c`: the seed is a partial clone, so `reset`
+          # to a commit the tip does not carry fetches the blobs from the promisor in a
+          # child process, which `-c` never reaches. Still not on disk.
+          #
+          # Only a private repo has a token. Setting the rewrite with an empty one
+          # turns an anonymous fetch into a failed authentication.
+          if [ -n "$GHI_TOKEN" ]; then
+            export GIT_CONFIG_COUNT=1
+            export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
+            export GIT_CONFIG_VALUE_0="https://github.com/"
+          fi
+          git fetch -q --depth 1 --no-tags origin "$tc_sha"
           git reset -q --hard "$tc_sha"
           got=$(git rev-parse HEAD)
           [ "$got" = "$tc_sha" ] || {
