@@ -247,7 +247,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " must be updatable because it is to an OUT parameter");
                 }
 
-                gpc.decl = new DeclProc(null, ps.name, null, null, paramList, ps.directive);
+                gpc.decl = new DeclProc(null, ps.name, null, null, true, paramList, ps.directive);
 
                 gpc.usesDefaultArg = (gpc.args.nodes.size() < paramList.nodes.size());
                 gpc.targetClass = ps.targetClass;
@@ -316,6 +316,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 fs.name,
                                 null,
                                 null,
+                                true,
                                 paramList,
                                 fs.directive,
                                 TypeSpec.getBogus(iStore, retType));
@@ -464,16 +465,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     }
                 }
 
-                if (ofTopLevel) {
-                    if (dp.typeSpec.type == Type.BOOLEAN
-                            || dp.typeSpec.type == Type.SYS_REFCURSOR) {
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(pc), // s064
-                                "type "
-                                        + dp.typeSpec.type.plcName
-                                        + " cannot be used as a paramter type of stored procedures");
-                    }
-                } else {
+                if (!ofTopLevel) {
                     if (dp.comment != null) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(pc), // s108
@@ -2076,6 +2068,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     name,
                                     null, // comment
                                     null, // loopOptimizables
+                                    true,
                                     EMPTY_PARAMS,
                                     0, // directive
                                     TypeSpec.getBogus(iStore, retType));
@@ -3366,6 +3359,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             String name = Misc.getNormalizedText(ctx.uniq_name().name);
 
+            boolean isPublic = false;
             if (scopeLevel > DECL_TOP_LEVEL) {
 
                 // local procedure/function
@@ -3392,8 +3386,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
             } else {
 
-                // SP being defined
-
                 assert scopeLevel == DECL_TOP_LEVEL;
                 if (ctx.uniq_name().owner != null) {
                     String owner = Misc.getNormalizedText(ctx.uniq_name().owner);
@@ -3401,6 +3393,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
                 spName = name;
                 isSpFunc = (ctx.PROCEDURE() == null);
+
+                isPublic = (topLevelStmt == CREATE_SP || topLevelStmt == CREATE_PKG_SPEC);
             }
 
             // push a temporary symbol table, in order not to corrupt the current symbol table with
@@ -3442,22 +3436,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     typeVisitMode = TYPE_VISIT_NORMAL;
                 }
 
-                Type retType = retTypeSpec.type;
-                if (scopeLevel == DECL_TOP_LEVEL) { // at top level
-                    if (retType == Type.BOOLEAN) {
-                        throw new SemanticError(
-                                Misc.getLineColumnOf(ctx.type_spec()), // s065
-                                "type "
-                                        + retType.plcName
-                                        + " cannot be used as a return type of stored functions");
-                    }
-                }
                 DeclFunc ret =
                         new DeclFunc(
                                 ctx,
                                 name,
                                 comment,
                                 routineLoopOptimizables,
+                                isPublic,
                                 paramList,
                                 directive,
                                 retTypeSpec);
@@ -3474,7 +3459,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
                 DeclProc ret =
                         new DeclProc(
-                                ctx, name, comment, routineLoopOptimizables, paramList, directive);
+                                ctx,
+                                name,
+                                comment,
+                                routineLoopOptimizables,
+                                isPublic,
+                                paramList,
+                                directive);
                 symbolStack.putDecl(name, ret);
                 if (store != null) {
                     store.put(name, ret);

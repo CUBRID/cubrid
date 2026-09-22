@@ -138,6 +138,7 @@ public abstract class DeclRoutine extends Decl {
     }
 
     public StmtLoop.LoopOptimizables loopOptimizables;
+    public final boolean isPublic;
     public final NodeList<DeclParam> paramList;
     public final int directive;
     public final TypeSpec retTypeSpec;
@@ -150,6 +151,7 @@ public abstract class DeclRoutine extends Decl {
             String name,
             String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive,
             TypeSpec retTypeSpec,
@@ -158,6 +160,7 @@ public abstract class DeclRoutine extends Decl {
         super(ctx, name, comment);
 
         this.loopOptimizables = loopOptimizables;
+        this.isPublic = isPublic;
         this.paramList = paramList;
         this.directive = directive;
         this.retTypeSpec = retTypeSpec;

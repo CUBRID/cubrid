@@ -1425,8 +1425,34 @@ public class TypeChecker extends AstVisitor<Type> {
         routineDefNestLevel++;
 
         visitNodeList(node.paramList);
+        if (node.isPublic) {
+            for (DeclParam dp : node.paramList.nodes) {
+                switch (dp.typeSpec.type.idx) {
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                    case Type.IDX_SYS_REFCURSOR:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(dp.ctx), // s243
+                                "type "
+                                        + dp.typeSpec.type.plcName
+                                        + " cannot be used as a paramter type of stored procedures");
+                }
+            }
+        }
+
         if (node.retTypeSpec != null) {
-            visit(node.retTypeSpec);
+            Type retType = visit(node.retTypeSpec);
+            if (node.isPublic) {
+                switch (retType.idx) {
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(node.retTypeSpec.ctx), // s244
+                                "type "
+                                        + retType.plcName
+                                        + " cannot be used as a return type of stored functions");
+                }
+            }
         }
         if (node.decls != null) {
             visitNodeList(node.decls);
