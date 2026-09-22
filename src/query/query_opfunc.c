@@ -33,11 +33,6 @@
 #include "query_opfunc.h"
 #include "qfile_tuple_layout.h"
 
-/* value pointer staging for the private-buffer tuple writers: stack for the usual column counts */
-#define QDATA_TUPLE_VALS_STACK 64
-static int qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n,
-				       qfile_tuple_value_type_list * type_list, qfile_tuple_record * tuple_record_p);
-
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "fetch.h"
@@ -82,7 +77,13 @@ static int qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals
 
 #define	SYS_CONNECT_BY_PATH_MEM_STEP	256
 
+/* value pointer staging for the private-buffer tuple writers: stack for the usual column counts */
+#define QDATA_TUPLE_VALS_STACK 64
+
 static bool qdata_is_zero_value_date (DB_VALUE * dbval_p);
+
+static int qdata_copy_values_to_tuple (THREAD_ENTRY * thread_p, DB_VALUE ** vals, int n,
+				       qfile_tuple_value_type_list * type_list, qfile_tuple_record * tuple_record_p);
 
 static int qdata_add_short (short s, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_add_int (int i1, int i2, DB_VALUE * result_p);
