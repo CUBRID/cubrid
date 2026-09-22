@@ -188,7 +188,8 @@ typedef enum tp_domain_status
   DOMAIN_COMPATIBLE = 0,	/* success */
   DOMAIN_INCOMPATIBLE,		/* can't be coerced */
   DOMAIN_OVERFLOW,		/* value out of range */
-  DOMAIN_ERROR			/* an error has been set */
+  DOMAIN_ERROR,			/* an error has been set */
+  DOMAIN_TRUNCATED		/* converted value retained; caller decides acceptance */
 } TP_DOMAIN_STATUS;
 
 /*

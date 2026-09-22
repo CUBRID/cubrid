@@ -49,6 +49,7 @@
 #include "thread_manager.hpp"
 #endif // SERVER_MODE
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "db_date_status.h"
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -218,6 +219,29 @@ static int tz_get_iana_zone_id_by_windows_zone (const char *windows_zone_name);
  * lib_file(in)  : path to library
  * handle(out)   : handle to the loaded library
  */
+
+/* Status cores share error provenance across nested conversions. */
+static int
+get_closest_ds_rule_core (const int src_julian_date, const int src_time_sec, const TZ_DS_RULESET * ds_ruleset,
+		     const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction, date_conversion_error *date_error);
+static int
+get_date_diff_from_ds_rule_core (const int src_julian_date, const int src_time_sec, const TZ_DS_RULE * ds_rule,
+			    const DS_SEARCH_DIRECTION direction, full_date_t * date_diff, date_conversion_error *date_error);
+static int
+get_saving_time_from_offset_rule_core (const TZ_OFFSET_RULE * offset_rule, const TZ_DATA * tzd, int *save_time, date_conversion_error *date_error);
+static int
+tz_conv_tz_datetime_w_zone_info_core (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
+				 const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
+				 TZ_DECODE_INFO * src_zone_info_out, TZ_DECODE_INFO * dest_zone_info_out, date_conversion_error *date_error);
+static int
+tz_datetime_utc_conv_core (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool src_is_utc, bool only_tz_adjust,
+		      DB_DATETIME * dest_dt, date_conversion_error *date_error);
+static int
+tz_fast_find_ds_rule_core (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, const int src_julian_date,
+		      const int src_year, const int src_month, int *ds_rule_id, date_conversion_error *date_error);
+static int
+tz_str_timezone_decode_core (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info, const char **tz_end, date_conversion_error *date_error);
+
 static int
 tz_load_library (const char *lib_file, void **handle)
 {
@@ -1036,7 +1060,8 @@ tz_get_timezone_offset (const char *tz_str, int tz_size, char *result, DB_DATETI
  * tz_id(out): result TZ_ID
  */
 int
-tz_create_session_tzid_for_datetime (const DB_DATETIME * src_dt, bool src_is_utc, TZ_ID * tz_id)
+tz_create_session_tzid_for_datetime_core (const DB_DATETIME * src_dt, bool src_is_utc, TZ_ID * tz_id,
+					  date_conversion_error * date_error)
 {
   TZ_DECODE_INFO tz_info;
   int er_status = NO_ERROR;
@@ -1047,7 +1072,7 @@ tz_create_session_tzid_for_datetime (const DB_DATETIME * src_dt, bool src_is_utc
   tz_decode_tz_region (&session_tz_region, &tz_info);
 
   /* we use tz_info which only has zone_id valid to establish correct offset and dst_id according to dt value */
-  er_status = tz_datetime_utc_conv (src_dt, &tz_info, src_is_utc, true, &dummy_dt);
+  er_status = tz_datetime_utc_conv_core (src_dt, &tz_info, src_is_utc, true, &dummy_dt, date_error);
   if (er_status != NO_ERROR)
     {
       return er_status;
@@ -1056,6 +1081,15 @@ tz_create_session_tzid_for_datetime (const DB_DATETIME * src_dt, bool src_is_utc
   tz_encode_tz_id (&tz_info, tz_id);
 
   return er_status;
+}
+
+int
+tz_create_session_tzid_for_datetime (const DB_DATETIME * src_dt, bool src_is_utc, TZ_ID * tz_id)
+{
+  date_conversion_error error;
+  int status = tz_create_session_tzid_for_datetime_core (src_dt, src_is_utc, tz_id, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -1067,7 +1101,7 @@ tz_create_session_tzid_for_datetime (const DB_DATETIME * src_dt, bool src_is_utc
  *
  */
 int
-tz_create_session_tzid_for_timestamp (const DB_UTIME * src_ts, TZ_ID * tz_id)
+tz_create_session_tzid_for_timestamp_core (const DB_UTIME * src_ts, TZ_ID * tz_id, date_conversion_error * date_error)
 {
   DB_DATE date;
   DB_TIME time;
@@ -1077,7 +1111,16 @@ tz_create_session_tzid_for_timestamp (const DB_UTIME * src_ts, TZ_ID * tz_id)
   dt.date = date;
   dt.time = time * 1000;
 
-  return tz_create_session_tzid_for_datetime (&dt, true, tz_id);
+  return tz_create_session_tzid_for_datetime_core (&dt, true, tz_id, date_error);
+}
+
+int
+tz_create_session_tzid_for_timestamp (const DB_UTIME * src_ts, TZ_ID * tz_id)
+{
+  date_conversion_error error;
+  int status = tz_create_session_tzid_for_timestamp_core (src_ts, tz_id, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -1169,7 +1212,8 @@ tz_get_zone_id_by_name (const char *name, const int name_size)
  *    - " Europe/Berlin +08:00 "
  */
 static int
-tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info, const char **tz_end)
+tz_str_timezone_decode_core (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info, const char **tz_end,
+			     date_conversion_error * date_error)
 {
   const char *zone_str, *tz_str_end;
   const char *zone_str_end;
@@ -1185,7 +1229,7 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INF
 
   if (zone_str >= tz_str_end)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
       return ER_TZ_INVALID_TIMEZONE;
     }
 
@@ -1193,7 +1237,7 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INF
     {
       if (tz_str_to_seconds (zone_str, tz_str_end, &(tz_info->offset), &zone_str_end, true) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
 	  return ER_TZ_INVALID_TIMEZONE;
 	}
       tz_info->type = TZ_REGION_OFFSET;
@@ -1232,7 +1276,7 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INF
       zone_id = tz_get_zone_id_by_name (zone_str, CAST_BUFLEN (reg_str_end - zone_str));
       if (zone_id == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_TIMEZONE, 0);
 	  return ER_TZ_INVALID_TIMEZONE;
 	}
 
@@ -1245,7 +1289,7 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INF
 	{
 	  if (dst_str_end - dst_str > (int) sizeof (tz_info->zone.dst_str))
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_DST, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INVALID_DST, 0);
 	      return ER_TZ_INVALID_TIMEZONE;
 	    }
 
@@ -1269,6 +1313,15 @@ tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INF
     }
 
   return NO_ERROR;
+}
+
+static int
+tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info, const char **tz_end)
+{
+  date_conversion_error error;
+  int status = tz_str_timezone_decode_core (tz_str, tz_str_size, tz_info, tz_end, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -1382,8 +1435,9 @@ tz_str_to_region (const char *tz_str, const int tz_str_size, TZ_REGION * tz_regi
  *    - " Europe/Berlin +08:00 "
  */
 int
-tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str, const int tz_size,
-		      const TZ_REGION * default_tz_region, DB_DATETIMETZ * dt_tz, const char **end_tz_str)
+tz_create_datetimetz_core (const DB_DATETIME * dt, const char *tz_str, const int tz_size,
+			   const TZ_REGION * default_tz_region, DB_DATETIMETZ * dt_tz, const char **end_tz_str,
+			   date_conversion_error * date_error)
 {
   int err_status = NO_ERROR;
   DB_DATETIME utc_dt;
@@ -1396,7 +1450,7 @@ tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str, const int tz_s
 
   if (tz_str != NULL)
     {
-      err_status = tz_str_timezone_decode (tz_str, tz_size, &tz_info, end_tz_str);
+      err_status = tz_str_timezone_decode_core (tz_str, tz_size, &tz_info, end_tz_str, date_error);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -1407,7 +1461,7 @@ tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str, const int tz_s
       tz_decode_tz_region (default_tz_region, &tz_info);
     }
 
-  err_status = tz_datetime_utc_conv (dt, &tz_info, false, false, &utc_dt);
+  err_status = tz_datetime_utc_conv_core (dt, &tz_info, false, false, &utc_dt, date_error);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -1417,6 +1471,16 @@ tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str, const int tz_s
 
 exit:
   return err_status;
+}
+
+int
+tz_create_datetimetz (const DB_DATETIME * dt, const char *tz_str, const int tz_size,
+		      const TZ_REGION * default_tz_region, DB_DATETIMETZ * dt_tz, const char **end_tz_str)
+{
+  date_conversion_error error;
+  int status = tz_create_datetimetz_core (dt, tz_str, tz_size, default_tz_region, dt_tz, end_tz_str, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -1434,8 +1498,9 @@ exit:
  *
  */
 int
-tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time, const char *tz_str, const int tz_size,
-		       const TZ_REGION * default_tz_region, DB_TIMESTAMPTZ * ts_tz, const char **end_tz_str)
+tz_create_timestamptz_core (const DB_DATE * date, const DB_TIME * time, const char *tz_str, const int tz_size,
+			    const TZ_REGION * default_tz_region, DB_TIMESTAMPTZ * ts_tz, const char **end_tz_str,
+			    date_conversion_error * date_error)
 {
   int err_status = NO_ERROR;
   DB_DATETIME utc_dt, dt;
@@ -1450,7 +1515,7 @@ tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time, const char *t
 
   if (tz_str != NULL)
     {
-      err_status = tz_str_timezone_decode (tz_str, tz_size, &tz_info, end_tz_str);
+      err_status = tz_str_timezone_decode_core (tz_str, tz_size, &tz_info, end_tz_str, date_error);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -1464,7 +1529,7 @@ tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time, const char *t
   dt.date = *date;
   dt.time = (*time) * 1000;
 
-  err_status = tz_datetime_utc_conv (&dt, &tz_info, false, false, &utc_dt);
+  err_status = tz_datetime_utc_conv_core (&dt, &tz_info, false, false, &utc_dt, date_error);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -1472,7 +1537,7 @@ tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time, const char *t
   date_utc = utc_dt.date;
   time_utc = utc_dt.time / 1000;
 
-  err_status = db_timestamp_encode_utc (&date_utc, &time_utc, &ts_tz->timestamp);
+  err_status = db_timestamp_encode_utc_core (&date_utc, &time_utc, &ts_tz->timestamp, date_error);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -1481,6 +1546,16 @@ tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time, const char *t
 
 exit:
   return err_status;
+}
+
+int
+tz_create_timestamptz (const DB_DATE * date, const DB_TIME * time, const char *tz_str, const int tz_size,
+		       const TZ_REGION * default_tz_region, DB_TIMESTAMPTZ * ts_tz, const char **end_tz_str)
+{
+  date_conversion_error error;
+  int status = tz_create_timestamptz_core (date, time, tz_str, tz_size, default_tz_region, ts_tz, end_tz_str, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -1492,7 +1567,7 @@ exit:
  *
  */
 int
-tz_create_datetimetz_from_ses (const DB_DATETIME * dt, DB_DATETIMETZ * dt_tz)
+tz_create_datetimetz_from_ses_core (const DB_DATETIME * dt, DB_DATETIMETZ * dt_tz, date_conversion_error * date_error)
 {
   int err_status = NO_ERROR;
   DB_DATETIME utc_dt;
@@ -1502,7 +1577,7 @@ tz_create_datetimetz_from_ses (const DB_DATETIME * dt, DB_DATETIMETZ * dt_tz)
   tz_get_session_tz_region (&session_tz_region);
   tz_decode_tz_region (&session_tz_region, &tz_info);
 
-  err_status = tz_datetime_utc_conv (dt, &tz_info, false, false, &utc_dt);
+  err_status = tz_datetime_utc_conv_core (dt, &tz_info, false, false, &utc_dt, date_error);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -1512,6 +1587,15 @@ tz_create_datetimetz_from_ses (const DB_DATETIME * dt, DB_DATETIMETZ * dt_tz)
 
 exit:
   return err_status;
+}
+
+int
+tz_create_datetimetz_from_ses (const DB_DATETIME * dt, DB_DATETIMETZ * dt_tz)
+{
+  date_conversion_error error;
+  int status = tz_create_datetimetz_from_ses_core (dt, dt_tz, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -1570,7 +1654,8 @@ tz_conv_tz_time_w_zone_name (const DB_TIME * time_source, const char *source_zon
  *
  */
 int
-tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_DATETIME * dt_local)
+tz_utc_datetimetz_to_local_core (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_DATETIME * dt_local,
+				 date_conversion_error * date_error)
 {
   int total_offset;
   int err_status = NO_ERROR;
@@ -1587,7 +1672,7 @@ tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_
 	  assert (BO_IS_SERVER_RESTARTED ());
 #endif
 	  err_status = ER_TZ_INTERNAL_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	}
     }
   else
@@ -1612,10 +1697,19 @@ tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_
     }
   else
     {
-      err_status = db_add_int_to_datetime ((DB_DATETIME *) dt_utc, total_offset * 1000, dt_local);
+      err_status = db_add_int_to_datetime_core ((DB_DATETIME *) dt_utc, total_offset * 1000, dt_local, date_error);
     }
 
   return err_status;
+}
+
+int
+tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_DATETIME * dt_local)
+{
+  date_conversion_error error;
+  int status = tz_utc_datetimetz_to_local_core (dt_utc, tz_id, dt_local, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -1627,18 +1721,27 @@ tz_utc_datetimetz_to_local (const DB_DATETIME * dt_utc, const TZ_ID * tz_id, DB_
  *
  */
 int
-tz_datetimeltz_to_local (const DB_DATETIME * dt_ltz, DB_DATETIME * dt_local)
+tz_datetimeltz_to_local_core (const DB_DATETIME * dt_ltz, DB_DATETIME * dt_local, date_conversion_error * date_error)
 {
   int error = NO_ERROR;
   TZ_ID ses_tz_id;
 
-  error = tz_create_session_tzid_for_datetime (dt_ltz, true, &ses_tz_id);
+  error = tz_create_session_tzid_for_datetime_core (dt_ltz, true, &ses_tz_id, date_error);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  return tz_utc_datetimetz_to_local (dt_ltz, &ses_tz_id, dt_local);
+  return tz_utc_datetimetz_to_local_core (dt_ltz, &ses_tz_id, dt_local, date_error);
+}
+
+int
+tz_datetimeltz_to_local (const DB_DATETIME * dt_ltz, DB_DATETIME * dt_local)
+{
+  date_conversion_error error;
+  int status = tz_datetimeltz_to_local_core (dt_ltz, dt_local, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -2332,8 +2435,9 @@ tz_str_to_seconds (const char *str, const char *str_end, int *seconds, const cha
  * date_diff(out): date difference between the two dates
  */
 int
-tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE * ds_rule, const int year,
-				   int *ds_rule_julian_date, full_date_t * date_diff)
+tz_get_ds_change_julian_date_diff_core (const int src_julian_date, const TZ_DS_RULE * ds_rule, const int year,
+					int *ds_rule_julian_date, full_date_t * date_diff,
+					date_conversion_error * date_error)
 {
   int ds_rule_day;
   int ds_rule_month = ds_rule->in_month;
@@ -2360,7 +2464,7 @@ tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE *
 
       if (ds_rule_day == -1)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INTERNAL_ERROR, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TZ_INTERNAL_ERROR, 0);
 	  return ER_TZ_INTERNAL_ERROR;
 	}
     }
@@ -2375,6 +2479,17 @@ tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE *
   return NO_ERROR;
 }
 
+int
+tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE * ds_rule, const int year,
+				   int *ds_rule_julian_date, full_date_t * date_diff)
+{
+  date_conversion_error error;
+  int status =
+    tz_get_ds_change_julian_date_diff_core (src_julian_date, ds_rule, year, ds_rule_julian_date, date_diff, &error);
+  error.publish ();
+  return status;
+}
+
 /*
  * tz_fast_find_ds_rule () - Performs a search to find the daylight saving rule for which a certain date applies to
  *
@@ -2387,8 +2502,8 @@ tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE *
  * ds_rule_id(out): found rule
  */
 static int
-tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, const int src_julian_date,
-		      const int src_year, const int src_month, int *ds_rule_id)
+tz_fast_find_ds_rule_core (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, const int src_julian_date,
+			   const int src_year, const int src_month, int *ds_rule_id, date_conversion_error * date_error)
 {
   int curr_ds_id;
   int er_status = NO_ERROR;
@@ -2427,7 +2542,8 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, con
 
 	  /* We don't need here the date difference so we use only rule date */
 	  er_status =
-	    tz_get_ds_change_julian_date_diff (0, curr_ds_rule, curr_ds_rule->to_year, &ds_rule_julian_date, NULL);
+	    tz_get_ds_change_julian_date_diff_core (0, curr_ds_rule, curr_ds_rule->to_year, &ds_rule_julian_date, NULL,
+						    date_error);
 	  if (er_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -2452,8 +2568,8 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, con
 
       year_to_apply_rule = get_year_to_apply_rule (src_year, curr_ds_rule);
       er_status =
-	tz_get_ds_change_julian_date_diff (src_julian_date, curr_ds_rule, year_to_apply_rule, &ds_rule_julian_date,
-					   &date_diff);
+	tz_get_ds_change_julian_date_diff_core (src_julian_date, curr_ds_rule, year_to_apply_rule, &ds_rule_julian_date,
+						&date_diff, date_error);
       if (er_status != NO_ERROR)
 	{
 	  goto exit;
@@ -2463,8 +2579,8 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, con
 	{
 	  /* if DS rule does not apply to current year try previous year */
 	  er_status =
-	    tz_get_ds_change_julian_date_diff (src_julian_date, curr_ds_rule, year_to_apply_rule - 1,
-					       &ds_rule_julian_date, &date_diff);
+	    tz_get_ds_change_julian_date_diff_core (src_julian_date, curr_ds_rule, year_to_apply_rule - 1,
+						    &ds_rule_julian_date, &date_diff, date_error);
 	  if (er_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -2486,6 +2602,16 @@ tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, con
 
 exit:
   return er_status;
+}
+
+static int
+tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, const int src_julian_date,
+		      const int src_year, const int src_month, int *ds_rule_id)
+{
+  date_conversion_error error;
+  int status = tz_fast_find_ds_rule_core (tzd, ds_ruleset, src_julian_date, src_year, src_month, ds_rule_id, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -2600,8 +2726,9 @@ tz_offset (const bool src_is_utc, const TZ_TIME_TYPE until_time_type, const int 
  * date_diff(out): date difference
  */
 static int
-get_date_diff_from_ds_rule (const int src_julian_date, const int src_time_sec, const TZ_DS_RULE * ds_rule,
-			    const DS_SEARCH_DIRECTION direction, full_date_t * date_diff)
+get_date_diff_from_ds_rule_core (const int src_julian_date, const int src_time_sec, const TZ_DS_RULE * ds_rule,
+				 const DS_SEARCH_DIRECTION direction, full_date_t * date_diff,
+				 date_conversion_error * date_error)
 {
   int ds_rule_julian_date;
   int year, err_status = NO_ERROR;
@@ -2617,7 +2744,7 @@ get_date_diff_from_ds_rule (const int src_julian_date, const int src_time_sec, c
     }
 
   /* We don't need here the date difference so we use only rule date */
-  err_status = tz_get_ds_change_julian_date_diff (0, ds_rule, year, &ds_rule_julian_date, NULL);
+  err_status = tz_get_ds_change_julian_date_diff_core (0, ds_rule, year, &ds_rule_julian_date, NULL, date_error);
   if (err_status != NO_ERROR)
     {
       goto exit;
@@ -2635,6 +2762,16 @@ exit:
   return err_status;
 }
 
+static int
+get_date_diff_from_ds_rule (const int src_julian_date, const int src_time_sec, const TZ_DS_RULE * ds_rule,
+			    const DS_SEARCH_DIRECTION direction, full_date_t * date_diff)
+{
+  date_conversion_error error;
+  int status = get_date_diff_from_ds_rule_core (src_julian_date, src_time_sec, ds_rule, direction, date_diff, &error);
+  error.publish ();
+  return status;
+}
+
 /*
  * get_closest_ds_rule() - Returns the id of the closest daylight saving rule in the ds_ruleset relative to to_year
  *			   or from_year
@@ -2647,8 +2784,8 @@ exit:
  * direction(in): input flag that tells us in which direction to search
  */
 static int
-get_closest_ds_rule (const int src_julian_date, const int src_time_sec, const TZ_DS_RULESET * ds_ruleset,
-		     const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction)
+get_closest_ds_rule_core (const int src_julian_date, const int src_time_sec, const TZ_DS_RULESET * ds_ruleset,
+			  const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction, date_conversion_error * date_error)
 {
   int curr_ds_id = 0;
   int closest_ds_rule_id = 0;
@@ -2661,7 +2798,8 @@ get_closest_ds_rule (const int src_julian_date, const int src_time_sec, const TZ
     {
       ds_rule = &(tzd->ds_rules[curr_ds_id + ds_ruleset->index_start]);
 
-      err_status = get_date_diff_from_ds_rule (src_julian_date, src_time_sec, ds_rule, direction, &date_diff);
+      err_status =
+	get_date_diff_from_ds_rule_core (src_julian_date, src_time_sec, ds_rule, direction, &date_diff, date_error);
       if (err_status != NO_ERROR)
 	{
 	  return -1;
@@ -2680,6 +2818,16 @@ get_closest_ds_rule (const int src_julian_date, const int src_time_sec, const TZ
   return closest_ds_rule_id;
 }
 
+static int
+get_closest_ds_rule (const int src_julian_date, const int src_time_sec, const TZ_DS_RULESET * ds_ruleset,
+		     const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction)
+{
+  date_conversion_error error;
+  int status = get_closest_ds_rule_core (src_julian_date, src_time_sec, ds_ruleset, tzd, direction, &error);
+  error.publish ();
+  return status;
+}
+
 /*
  * get_saving_time_from_offset_rule() - Computes the daylight saving time for the last day when the input offset
  *					rule applies
@@ -2691,7 +2839,8 @@ get_closest_ds_rule (const int src_julian_date, const int src_time_sec, const TZ
  *
  */
 static int
-get_saving_time_from_offset_rule (const TZ_OFFSET_RULE * offset_rule, const TZ_DATA * tzd, int *save_time)
+get_saving_time_from_offset_rule_core (const TZ_OFFSET_RULE * offset_rule, const TZ_DATA * tzd, int *save_time,
+				       date_conversion_error * date_error)
 {
   int err_status = NO_ERROR;
 
@@ -2707,8 +2856,8 @@ get_saving_time_from_offset_rule (const TZ_OFFSET_RULE * offset_rule, const TZ_D
       ds_ruleset_off_rule = &(tzd->ds_rulesets[offset_rule->ds_ruleset]);
 
       err_status =
-	tz_fast_find_ds_rule (tzd, ds_ruleset_off_rule, offset_rule->julian_date, offset_rule_src_year,
-			      offset_rule_src_month, &ds_rule_id);
+	tz_fast_find_ds_rule_core (tzd, ds_ruleset_off_rule, offset_rule->julian_date, offset_rule_src_year,
+				   offset_rule_src_month, &ds_rule_id, date_error);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -2730,6 +2879,15 @@ get_saving_time_from_offset_rule (const TZ_OFFSET_RULE * offset_rule, const TZ_D
     }
 exit:
   return err_status;
+}
+
+static int
+get_saving_time_from_offset_rule (const TZ_OFFSET_RULE * offset_rule, const TZ_DATA * tzd, int *save_time)
+{
+  date_conversion_error error;
+  int status = get_saving_time_from_offset_rule_core (offset_rule, tzd, save_time, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -2814,8 +2972,8 @@ get_year_to_apply_rule (const int src_year, const TZ_DS_RULE * ds_rule)
  *
  */
 static int
-tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool src_is_utc, bool only_tz_adjust,
-		      DB_DATETIME * dest_dt)
+tz_datetime_utc_conv_core (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool src_is_utc, bool only_tz_adjust,
+			   DB_DATETIME * dest_dt, date_conversion_error * date_error)
 {
   int src_julian_date, rule_julian_date;
   int src_time_sec, rule_time_sec;
@@ -2857,7 +3015,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool
 	  assert (BO_IS_SERVER_RESTARTED ());
 #endif
 	  err_status = ER_TZ_INTERNAL_ERROR;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	}
       goto exit;
     }
@@ -2869,14 +3027,14 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool
   if (tzd == NULL)
     {
       err_status = ER_TZ_INTERNAL_ERROR;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
       goto exit;
     }
 
   if ((src_dt->time > MILLIS_IN_A_DAY))
     {
       err_status = ER_TIME_CONVERSION;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
       goto exit;
     }
   /* start decoding zone , GMT offset id, DST id */
@@ -2986,7 +3144,8 @@ detect_dst:
 		  add_ds_save_time_diff = curr_off_rule->ds_ruleset;
 		  if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
 		    {
-		      err_status = get_saving_time_from_offset_rule (prev_off_rule, tzd, &prev_rule_save_time);
+		      err_status =
+			get_saving_time_from_offset_rule_core (prev_off_rule, tzd, &prev_rule_save_time, date_error);
 		      if (err_status != NO_ERROR)
 			{
 			  goto exit;
@@ -3005,7 +3164,7 @@ detect_dst:
 	    {
 	      /* invalid time, abort */
 	      err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	      goto exit;
 	    }
 
@@ -3018,7 +3177,7 @@ detect_dst:
 	      if (next_off_rule == NULL || try_offset_rule_overlap == true)
 		{
 		  err_status = ER_TZ_INVALID_COMBINATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
 	      else
@@ -3037,7 +3196,8 @@ detect_dst:
 		  int prev_rule_save_time = 0;
 		  int save_time_diff = 0;
 
-		  err_status = get_saving_time_from_offset_rule (prev_off_rule, tzd, &prev_rule_save_time);
+		  err_status =
+		    get_saving_time_from_offset_rule_core (prev_off_rule, tzd, &prev_rule_save_time, date_error);
 		  if (err_status != NO_ERROR)
 		    {
 		      goto exit;
@@ -3053,7 +3213,7 @@ detect_dst:
 		{
 		  /* invalid time, abort */
 		  err_status = ER_TZ_INVALID_COMBINATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
 	    }
@@ -3067,7 +3227,7 @@ detect_dst:
       if (next_off_rule == NULL)
 	{
 	  err_status = ER_TZ_INVALID_COMBINATION;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	  goto exit;
 	}
       APPLY_NEXT_OFF_RULE ();
@@ -3122,7 +3282,8 @@ detect_dst:
 
 	  /* We don't need here the date difference so we use only rule date */
 	  err_status =
-	    tz_get_ds_change_julian_date_diff (0, curr_ds_rule, curr_ds_rule->to_year, &ds_rule_julian_date, NULL);
+	    tz_get_ds_change_julian_date_diff_core (0, curr_ds_rule, curr_ds_rule->to_year, &ds_rule_julian_date, NULL,
+						    date_error);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -3148,8 +3309,8 @@ detect_dst:
 
       year_to_apply_rule = get_year_to_apply_rule (src_year, curr_ds_rule);
       err_status =
-	tz_get_ds_change_julian_date_diff (src_julian_date, curr_ds_rule, year_to_apply_rule, &ds_rule_julian_date,
-					   &date_diff);
+	tz_get_ds_change_julian_date_diff_core (src_julian_date, curr_ds_rule, year_to_apply_rule, &ds_rule_julian_date,
+						&date_diff, date_error);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -3179,7 +3340,8 @@ detect_dst:
 	  wall_safe_julian_date = src_julian_date - 2 * DATE_DIFF_MATCH_SAFE_THRESHOLD_DAYS;
 
 	  err_status =
-	    tz_fast_find_ds_rule (tzd, ds_ruleset, wall_safe_julian_date, src_year, src_month, &wall_ds_rule_id);
+	    tz_fast_find_ds_rule_core (tzd, ds_ruleset, wall_safe_julian_date, src_year, src_month, &wall_ds_rule_id,
+				       date_error);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -3193,7 +3355,7 @@ detect_dst:
 	    }
 	  else if (prev_off_rule != NULL)
 	    {
-	      err_status = get_saving_time_from_offset_rule (prev_off_rule, tzd, &save_time);
+	      err_status = get_saving_time_from_offset_rule_core (prev_off_rule, tzd, &save_time, date_error);
 	      if (err_status != NO_ERROR)
 		{
 		  goto exit;
@@ -3217,8 +3379,8 @@ detect_dst:
 
 	      year_to_apply_rule = get_year_to_apply_rule (src_year, wall_ds_rule);
 	      err_status =
-		tz_get_ds_change_julian_date_diff (wall_safe_julian_date, wall_ds_rule, year_to_apply_rule,
-						   &wall_rule_julian_date, &date_diff);
+		tz_get_ds_change_julian_date_diff_core (wall_safe_julian_date, wall_ds_rule, year_to_apply_rule,
+							&wall_rule_julian_date, &date_diff, date_error);
 	      if (err_status != NO_ERROR)
 		{
 		  goto exit;
@@ -3227,8 +3389,8 @@ detect_dst:
 		{
 		  year_to_apply_rule = year_to_apply_rule - 1;
 		  err_status =
-		    tz_get_ds_change_julian_date_diff (0, wall_ds_rule, year_to_apply_rule, &wall_rule_julian_date,
-						       NULL);
+		    tz_get_ds_change_julian_date_diff_core (0, wall_ds_rule, year_to_apply_rule, &wall_rule_julian_date,
+							    NULL, date_error);
 		  if (err_status != NO_ERROR)
 		    {
 		      goto exit;
@@ -3250,7 +3412,8 @@ detect_dst:
 		{
 		  int prev_rule_save_time;
 
-		  err_status = get_saving_time_from_offset_rule (prev_off_rule, tzd, &prev_rule_save_time);
+		  err_status =
+		    get_saving_time_from_offset_rule_core (prev_off_rule, tzd, &prev_rule_save_time, date_error);
 		  if (err_status != NO_ERROR)
 		    {
 		      goto exit;
@@ -3357,7 +3520,7 @@ detect_dst:
 		    {
 		      /* invalid time, abort */
 		      err_status = ER_TZ_DURING_DS_LEAP;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		      goto exit;
 		    }
 		  else
@@ -3424,8 +3587,8 @@ detect_dst:
       else if (curr_ds_rule->from_year < src_year && check_prev_year == true && date_diff < 0)
 	{
 	  err_status =
-	    tz_get_ds_change_julian_date_diff (src_julian_date, curr_ds_rule, src_year - 1, &ds_rule_julian_date,
-					       &date_diff);
+	    tz_get_ds_change_julian_date_diff_core (src_julian_date, curr_ds_rule, src_year - 1, &ds_rule_julian_date,
+						    &date_diff, date_error);
 	  if (err_status != NO_ERROR)
 	    {
 	      goto exit;
@@ -3481,7 +3644,8 @@ detect_dst:
 	      add_ds_save_time = save_time;
 	      if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
 		{
-		  err_status = get_saving_time_from_offset_rule (prev_off_rule, tzd, &prev_rule_save_time);
+		  err_status =
+		    get_saving_time_from_offset_rule_core (prev_off_rule, tzd, &prev_rule_save_time, date_error);
 		  if (err_status != NO_ERROR)
 		    {
 		      goto exit;
@@ -3500,7 +3664,7 @@ detect_dst:
 	{
 	  /* invalid time, abort */
 	  err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	  goto exit;
 	}
 
@@ -3512,7 +3676,7 @@ detect_dst:
 	      if (next_off_rule == NULL || try_offset_rule_overlap == true)
 		{
 		  err_status = ER_TZ_INVALID_COMBINATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
 	      /* try the next offset rule to see if we have an ambiguous time */
@@ -3533,7 +3697,8 @@ detect_dst:
 		  int prev_rule_save_time = 0;
 		  int save_time_diff = 0;
 
-		  err_status = get_saving_time_from_offset_rule (prev_off_rule, tzd, &prev_rule_save_time);
+		  err_status =
+		    get_saving_time_from_offset_rule_core (prev_off_rule, tzd, &prev_rule_save_time, date_error);
 		  if (err_status != NO_ERROR)
 		    {
 		      goto exit;
@@ -3549,7 +3714,7 @@ detect_dst:
 		{
 		  /* invalid time, abort */
 		  err_status = ER_TZ_INVALID_COMBINATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
 	    }
@@ -3579,7 +3744,8 @@ detect_dst:
 		  add_ds_save_time = save_time;
 		  if (offset_rule_diff <= 2 * SECONDS_IN_A_DAY)
 		    {
-		      err_status = get_saving_time_from_offset_rule (prev_off_rule, tzd, &prev_rule_save_time);
+		      err_status =
+			get_saving_time_from_offset_rule_core (prev_off_rule, tzd, &prev_rule_save_time, date_error);
 		      if (err_status != NO_ERROR)
 			{
 			  goto exit;
@@ -3598,17 +3764,19 @@ detect_dst:
 	    {
 	      /* invalid time, abort */
 	      err_status = ER_TZ_DURING_OFFSET_RULE_LEAP;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 	      goto exit;
 	    }
 
 	  if (curr_ds_id == ds_ruleset->count)
 	    {
-	      applying_ds_id = get_closest_ds_rule (src_julian_date, src_time_sec, ds_ruleset, tzd, BACKWARD);
+	      applying_ds_id =
+		get_closest_ds_rule_core (src_julian_date, src_time_sec, ds_ruleset, tzd, BACKWARD, date_error);
 	    }
 	  else
 	    {
-	      applying_ds_id = get_closest_ds_rule (src_julian_date, src_time_sec, ds_ruleset, tzd, FORWARD);
+	      applying_ds_id =
+		get_closest_ds_rule_core (src_julian_date, src_time_sec, ds_ruleset, tzd, FORWARD, date_error);
 	    }
 
 	  assert (applying_ds_id + ds_ruleset->index_start < tzd->ds_rule_count);
@@ -3622,7 +3790,7 @@ detect_dst:
 	      if (next_off_rule == NULL || try_offset_rule_overlap == true)
 		{
 		  err_status = ER_TZ_INVALID_DST;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
 	      else
@@ -3643,7 +3811,8 @@ detect_dst:
 		  int prev_rule_save_time = 0;
 		  int save_time_diff = 0;
 
-		  err_status = get_saving_time_from_offset_rule (prev_off_rule, tzd, &prev_rule_save_time);
+		  err_status =
+		    get_saving_time_from_offset_rule_core (prev_off_rule, tzd, &prev_rule_save_time, date_error);
 		  if (err_status != NO_ERROR)
 		    {
 		      goto exit;
@@ -3658,7 +3827,7 @@ detect_dst:
 		{
 		  /* invalid time, abort */
 		  err_status = ER_TZ_INVALID_COMBINATION;
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_status, 0);
 		  goto exit;
 		}
 	    }
@@ -3708,13 +3877,23 @@ exit:
 	  else
 	    {
 	      err_status =
-		db_add_int_to_datetime ((DB_DATETIME *) src_dt, -1000 * TIME_OFFSET (src_is_utc, total_offset_sec),
-					dest_dt);
+		db_add_int_to_datetime_core ((DB_DATETIME *) src_dt, -1000 * TIME_OFFSET (src_is_utc, total_offset_sec),
+					     dest_dt, date_error);
 	    }
 	}
     }
 
   return err_status;
+}
+
+static int
+tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool src_is_utc, bool only_tz_adjust,
+		      DB_DATETIME * dest_dt)
+{
+  date_conversion_error error;
+  int status = tz_datetime_utc_conv_core (src_dt, tz_info, src_is_utc, only_tz_adjust, dest_dt, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -3729,9 +3908,10 @@ exit:
  * dest_zone_info_out(out): complete timezone information for destination
  */
 static int
-tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
-				 const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
-				 TZ_DECODE_INFO * src_zone_info_out, TZ_DECODE_INFO * dest_zone_info_out)
+tz_conv_tz_datetime_w_zone_info_core (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
+				      const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
+				      TZ_DECODE_INFO * src_zone_info_out, TZ_DECODE_INFO * dest_zone_info_out,
+				      date_conversion_error * date_error)
 {
   int err_status = NO_ERROR;
   DB_DATETIME dt_utc;
@@ -3751,7 +3931,7 @@ tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt, const TZ_DECODE_INF
   else
     {
       /* convert to UTC */
-      err_status = tz_datetime_utc_conv (src_dt, &tmp_zone_info, false, false, &dt_utc);
+      err_status = tz_datetime_utc_conv_core (src_dt, &tmp_zone_info, false, false, &dt_utc, date_error);
       if (err_status != NO_ERROR)
 	{
 	  goto exit;
@@ -3787,7 +3967,7 @@ tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt, const TZ_DECODE_INF
     }
   else
     {
-      err_status = tz_datetime_utc_conv (&dt_utc, &tmp_zone_info, true, false, dest_dt);
+      err_status = tz_datetime_utc_conv_core (&dt_utc, &tmp_zone_info, true, false, dest_dt, date_error);
     }
 
   if (dest_zone_info_out != NULL)
@@ -3797,6 +3977,19 @@ tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt, const TZ_DECODE_INF
 
 exit:
   return err_status;
+}
+
+static int
+tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
+				 const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
+				 TZ_DECODE_INFO * src_zone_info_out, TZ_DECODE_INFO * dest_zone_info_out)
+{
+  date_conversion_error error;
+  int status =
+    tz_conv_tz_datetime_w_zone_info_core (src_dt, src_zone_info_in, dest_zone_info_in, dest_dt, src_zone_info_out,
+					  dest_zone_info_out, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -3811,9 +4004,9 @@ exit:
  * dest_tz_id_out(out): compressed timezone identifier of the destination
  */
 int
-tz_conv_tz_datetime_w_region (const DB_DATETIME * src_dt, const TZ_REGION * src_tz_region,
-			      const TZ_REGION * dest_tz_region, DB_DATETIME * dest_dt, TZ_ID * src_tz_id_out,
-			      TZ_ID * dest_tz_id_out)
+tz_conv_tz_datetime_w_region_core (const DB_DATETIME * src_dt, const TZ_REGION * src_tz_region,
+				   const TZ_REGION * dest_tz_region, DB_DATETIME * dest_dt, TZ_ID * src_tz_id_out,
+				   TZ_ID * dest_tz_id_out, date_conversion_error * date_error)
 {
   int err_status = NO_ERROR;
   TZ_DECODE_INFO src_zone_info;
@@ -3830,8 +4023,8 @@ tz_conv_tz_datetime_w_region (const DB_DATETIME * src_dt, const TZ_REGION * src_
   tz_decode_tz_region (dest_tz_region, &dest_zone_info_in);
 
   err_status =
-    tz_conv_tz_datetime_w_zone_info (src_dt, &src_zone_info, &dest_zone_info_in, dest_dt, &src_zone_info_out,
-				     &dest_zone_info_out);
+    tz_conv_tz_datetime_w_zone_info_core (src_dt, &src_zone_info, &dest_zone_info_in, dest_dt, &src_zone_info_out,
+					  &dest_zone_info_out, date_error);
   if (src_tz_id_out != NULL)
     {
       tz_encode_tz_id (&src_zone_info_out, src_tz_id_out);
@@ -3843,6 +4036,19 @@ tz_conv_tz_datetime_w_region (const DB_DATETIME * src_dt, const TZ_REGION * src_
     }
 
   return err_status;
+}
+
+int
+tz_conv_tz_datetime_w_region (const DB_DATETIME * src_dt, const TZ_REGION * src_tz_region,
+			      const TZ_REGION * dest_tz_region, DB_DATETIME * dest_dt, TZ_ID * src_tz_id_out,
+			      TZ_ID * dest_tz_id_out)
+{
+  date_conversion_error error;
+  int status =
+    tz_conv_tz_datetime_w_region_core (src_dt, src_tz_region, dest_tz_region, dest_dt, src_tz_id_out, dest_tz_id_out,
+				       &error);
+  error.publish ();
+  return status;
 }
 
 /*

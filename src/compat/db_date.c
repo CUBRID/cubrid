@@ -41,6 +41,7 @@
 #include "dbtype.h"
 #include "string_opfunc.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "db_date_status.h"
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -112,6 +113,12 @@ static int db_timestamp_encode_w_reg (const DB_DATE * date, const DB_TIME * time
  * d(in): day(1 - 31)
  * y(in): year
  */
+
+/* Status cores share error provenance across nested conversions. */
+static int
+db_timestamp_encode_w_reg_core (const DB_DATE * date, const DB_TIME * timeval, const TZ_REGION * tz_region,
+			   DB_TIMESTAMP * utime, TZ_ID * dest_tz_id, date_conversion_error *date_error);
+
 int
 julian_encode (int m, int d, int y)
 {
@@ -275,21 +282,21 @@ julian_decode (int jul, int *monthp, int *dayp, int *yearp, int *weekp)
  * year(in):
  */
 int
-db_date_encode (DB_DATE * date, int month, int day, int year)
+db_date_encode_core (DB_DATE * date, int month, int day, int year, date_conversion_error * date_error)
 {
   DB_DATE tmp;
   int tmp_month, tmp_day, tmp_year;
 
   if (date == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
     }
 
   *date = 0;
   if (year < 0 || year > 9999 || month < 0 || month > 12 || day < 0 || day > 31)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
     }
   else
@@ -307,12 +314,21 @@ db_date_encode (DB_DATE * date, int month, int day, int year)
 	}
       else
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
 	  return ER_DATE_CONVERSION;
 	}
     }
 
   return NO_ERROR;
+}
+
+int
+db_date_encode (DB_DATE * date, int month, int day, int year)
+{
+  date_conversion_error error;
+  int status = db_date_encode_core (date, month, day, year, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -370,11 +386,11 @@ encode_time (int hour, int minute, int second)
  * second(in): second
  */
 int
-db_time_encode (DB_TIME * timeval, int hour, int minute, int second)
+db_time_encode_core (DB_TIME * timeval, int hour, int minute, int second, date_conversion_error * date_error)
 {
   if (timeval == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
       return ER_TIME_CONVERSION;
     }
 
@@ -385,11 +401,20 @@ db_time_encode (DB_TIME * timeval, int hour, int minute, int second)
   else
     {
       *timeval = -1;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
       return ER_TIME_CONVERSION;
     }
 
   return NO_ERROR;
+}
+
+int
+db_time_encode (DB_TIME * timeval, int hour, int minute, int second)
+{
+  date_conversion_error error;
+  int status = db_time_encode_core (timeval, hour, minute, second, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -597,12 +622,22 @@ db_timestamp_encode (DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
  *		    (can be NULL, in which case no identifier is provided)
  */
 int
-db_timestamp_encode_ses (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime, TZ_ID * dest_tz_id)
+db_timestamp_encode_ses_core (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime, TZ_ID * dest_tz_id,
+			      date_conversion_error * date_error)
 {
   TZ_REGION ses_tz_region;
   tz_get_session_tz_region (&ses_tz_region);
 
-  return db_timestamp_encode_w_reg (date, timeval, &ses_tz_region, utime, dest_tz_id);
+  return db_timestamp_encode_w_reg_core (date, timeval, &ses_tz_region, utime, dest_tz_id, date_error);
+}
+
+int
+db_timestamp_encode_ses (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime, TZ_ID * dest_tz_id)
+{
+  date_conversion_error error;
+  int status = db_timestamp_encode_ses_core (date, timeval, utime, dest_tz_id, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -635,7 +670,8 @@ db_timestamp_encode_sys (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
  * utime(out): pointer to universal time value
  */
 int
-db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime)
+db_timestamp_encode_utc_core (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime,
+			      date_conversion_error * date_error)
 {
   DB_BIGINT t = 0;
   int mon, day, year, hour, min, sec;
@@ -658,7 +694,7 @@ db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
   year -= year_century;
   if (year < 70 || year > year_max_epoch - year_century)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      date_error->set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
     }
 
@@ -689,7 +725,7 @@ db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
 
   if (t < 0 || OR_CHECK_INT_OVERFLOW (t))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      date_error->set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
     }
   else
@@ -697,6 +733,15 @@ db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
       *utime = (DB_TIMESTAMP) t;
     }
   return NO_ERROR;
+}
+
+int
+db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMESTAMP * utime)
+{
+  date_conversion_error error;
+  int status = db_timestamp_encode_utc_core (date, timeval, utime, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -712,8 +757,8 @@ db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
 *		    (can be NULL, in which case no identifier is provided)
  */
 static int
-db_timestamp_encode_w_reg (const DB_DATE * date, const DB_TIME * timeval, const TZ_REGION * tz_region,
-			   DB_TIMESTAMP * utime, TZ_ID * dest_tz_id)
+db_timestamp_encode_w_reg_core (const DB_DATE * date, const DB_TIME * timeval, const TZ_REGION * tz_region,
+				DB_TIMESTAMP * utime, TZ_ID * dest_tz_id, date_conversion_error * date_error)
 {
   int err = NO_ERROR;
   DB_DATETIME datetime, utc_datetime;
@@ -733,7 +778,8 @@ db_timestamp_encode_w_reg (const DB_DATE * date, const DB_TIME * timeval, const 
     {
       /* convert datetime from source timezone to UTC */
       err =
-	tz_conv_tz_datetime_w_region (&datetime, tz_region, tz_get_utc_tz_region (), &utc_datetime, dest_tz_id, NULL);
+	tz_conv_tz_datetime_w_region_core (&datetime, tz_region, tz_get_utc_tz_region (), &utc_datetime, dest_tz_id,
+					   NULL, date_error);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -751,7 +797,17 @@ db_timestamp_encode_w_reg (const DB_DATE * date, const DB_TIME * timeval, const 
   utc_date = utc_datetime.date;
   utc_time = utc_datetime.time / 1000;
 
-  return db_timestamp_encode_utc (&utc_date, &utc_time, utime);
+  return db_timestamp_encode_utc_core (&utc_date, &utc_time, utime, date_error);
+}
+
+static int
+db_timestamp_encode_w_reg (const DB_DATE * date, const DB_TIME * timeval, const TZ_REGION * tz_region,
+			   DB_TIMESTAMP * utime, TZ_ID * dest_tz_id)
+{
+  date_conversion_error error;
+  int status = db_timestamp_encode_w_reg_core (date, timeval, tz_region, utime, dest_tz_id, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -764,12 +820,22 @@ db_timestamp_encode_w_reg (const DB_DATE * date, const DB_TIME * timeval, const 
  * time(out): return relative time
  */
 int
-db_timestamp_decode_ses (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
+db_timestamp_decode_ses_core (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval,
+			      date_conversion_error * date_error)
 {
   TZ_REGION ses_tz_region;
 
   tz_get_session_tz_region (&ses_tz_region);
-  return db_timestamp_decode_w_reg (utime, &ses_tz_region, date, timeval);
+  return db_timestamp_decode_w_reg_core (utime, &ses_tz_region, date, timeval, date_error);
+}
+
+int
+db_timestamp_decode_ses (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * timeval)
+{
+  date_conversion_error error;
+  int status = db_timestamp_decode_ses_core (utime, date, timeval, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -828,7 +894,8 @@ db_timestamp_decode_utc (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * t
  * time(out): return relative time
  */
 int
-db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime, const TZ_REGION * tz_region, DB_DATE * date, DB_TIME * timeval)
+db_timestamp_decode_w_reg_core (const DB_TIMESTAMP * utime, const TZ_REGION * tz_region, DB_DATE * date,
+				DB_TIME * timeval, date_conversion_error * date_error)
 {
   int err = NO_ERROR;
   DB_DATETIME datetime, utc_datetime;
@@ -856,7 +923,9 @@ db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime, const TZ_REGION * tz_regi
   if (!TZ_IS_UTC_TZ_REGION (tz_region))
     {
       /* convert datetime from UTC to destination timezone */
-      err = tz_conv_tz_datetime_w_region (&utc_datetime, tz_get_utc_tz_region (), tz_region, &datetime, NULL, NULL);
+      err =
+	tz_conv_tz_datetime_w_region_core (&utc_datetime, tz_get_utc_tz_region (), tz_region, &datetime, NULL, NULL,
+					   date_error);
     }
   else
     {
@@ -891,6 +960,15 @@ db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime, const TZ_REGION * tz_regi
   return err;
 }
 
+int
+db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime, const TZ_REGION * tz_region, DB_DATE * date, DB_TIME * timeval)
+{
+  date_conversion_error error;
+  int status = db_timestamp_decode_w_reg_core (utime, tz_region, date, timeval, &error);
+  error.publish ();
+  return status;
+}
+
 /*
  * db_timestamp_decode_w_tz_id() - This function converts a DB_TIMESTAMP into
  *    a DB_DATE and DB_TIME pair, directly into a time zone specified by
@@ -902,7 +980,8 @@ db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime, const TZ_REGION * tz_regi
  * time(out): return relative time
  */
 int
-db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime, const TZ_ID * tz_id, DB_DATE * date, DB_TIME * timeval)
+db_timestamp_decode_w_tz_id_core (const DB_TIMESTAMP * utime, const TZ_ID * tz_id, DB_DATE * date, DB_TIME * timeval,
+				  date_conversion_error * date_error)
 {
   int err = NO_ERROR;
   DB_DATETIME datetime, utc_datetime;
@@ -927,7 +1006,7 @@ db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime, const TZ_ID * tz_id, DB
   utc_datetime.date = v_date;
   utc_datetime.time = v_time * 1000;
 
-  err = tz_utc_datetimetz_to_local (&utc_datetime, tz_id, &datetime);
+  err = tz_utc_datetimetz_to_local_core (&utc_datetime, tz_id, &datetime, date_error);
 
   if (err != NO_ERROR)
     {
@@ -955,6 +1034,15 @@ db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime, const TZ_ID * tz_id, DB
     }
 
   return err;
+}
+
+int
+db_timestamp_decode_w_tz_id (const DB_TIMESTAMP * utime, const TZ_ID * tz_id, DB_DATE * date, DB_TIME * timeval)
+{
+  date_conversion_error error;
+  int status = db_timestamp_decode_w_tz_id_core (utime, tz_id, date, timeval, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -2933,7 +3021,8 @@ parse_timedate_separated (char const *str, char const *strend, DB_DATE * date, u
  * millisecond(out):   the milliseconds part of the converted time
  */
 int
-db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *millisecond)
+db_date_parse_time_core (char const *str, int str_len, DB_TIME * time, int *millisecond,
+			 date_conversion_error * date_error)
 {
   char const *syntax_check = NULL;
   int year_digits = 0;
@@ -2955,7 +3044,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
     {
       if (syntax_check)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 	  return ER_TIME_CONVERSION;
 	}
       else
@@ -3014,7 +3103,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 		  /* if there is one non-space character in remaining characters */
 		  if (p != strend)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+		      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 		      return ER_TIME_CONVERSION;
 		    }
 
@@ -3030,7 +3119,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 		  if (syntax_check)
 		    {
 		      /* date-time string with an invalid time */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+		      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 		      return ER_TIME_CONVERSION;
 		    }
 		  else
@@ -3039,7 +3128,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 		       * suffix for example,"2012-8-15 " */
 		      if (has_explicit_date_part)
 			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+			  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 			  return ER_TIME_CONVERSION;
 			}
 		    }
@@ -3056,14 +3145,14 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 	      if (p || syntax_check)
 		{
 		  /* date-time string with an invalid date and/or time */
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 		  return ER_TIME_CONVERSION;
 		}
 	      else
 		{
 		  if (has_explicit_date_part)
 		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+		      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 		      return ER_TIME_CONVERSION;
 		    }
 		}
@@ -3074,7 +3163,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 	  if (p && has_explicit_date_part)
 	    {
 	      /* only explicit Date type, should return an error. */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 	      return ER_TIME_CONVERSION;
 	    }
 	}
@@ -3098,7 +3187,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 	  /* if there is one non-space character in remaining characters */
 	  if (p != strend)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 	      return ER_TIME_CONVERSION;
 	    }
 	}
@@ -3112,7 +3201,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
       if (syntax_check)
 	{
 	  /* Time could be parsed as [[HH : ]MM] : SS[.sss], but is an invalid time value */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 	  return ER_TIME_CONVERSION;
 	}
       else
@@ -3130,7 +3219,7 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 	      /* if remaining characters includes one non-space character */
 	      if (p != strend)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 		  return ER_TIME_CONVERSION;
 		}
 
@@ -3140,11 +3229,20 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIME_CONVERSION, 0);
 	      return ER_TIME_CONVERSION;
 	    }
 	}
     }
+}
+
+int
+db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *millisecond)
+{
+  date_conversion_error error;
+  int status = db_date_parse_time_core (str, str_len, time, millisecond, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -3176,8 +3274,9 @@ db_date_parse_time (char const *str, int str_len, DB_TIME * time, int *milliseco
  *		to the function
  */
 int
-db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * datetime, bool * has_explicit_time,
-			      bool * has_explicit_msec, bool * fits_as_timestamp, char const **endp)
+db_date_parse_datetime_parts_core (char const *str, int str_len, DB_DATETIME * datetime, bool * has_explicit_time,
+				   bool * has_explicit_msec, bool * fits_as_timestamp, char const **endp,
+				   date_conversion_error * date_error)
 {
   DB_DATE date = 0;
   unsigned int mtime = 0;
@@ -3199,10 +3298,10 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 	  DB_TIMESTAMP timestamp;
 	  DB_TIME time = mtime / 1000;
 
-	  *fits_as_timestamp = db_timestamp_encode_utc (&date, &time, &timestamp);
+	  *fits_as_timestamp = db_timestamp_encode_utc_core (&date, &time, &timestamp, date_error);
 	  if (*fits_as_timestamp != NO_ERROR)
 	    {
-	      er_clear ();
+	      date_error->clear ();
 	    }
 	}
 
@@ -3215,7 +3314,7 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
     {
       if (syntax_check)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
 	  return ER_TIMESTAMP_CONVERSION;
 	}
     }
@@ -3253,7 +3352,7 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 		}
 	      if ((r < strend) && (!char_isspace (*r)))
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+		  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
 		  return ER_TIMESTAMP_CONVERSION;
 		}
 	      *has_explicit_time = true;
@@ -3264,10 +3363,10 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 	      DB_TIMESTAMP timestamp;
 	      DB_TIME time = datetime->time / 1000;
 
-	      *fits_as_timestamp = db_timestamp_encode_utc (&datetime->date, &time, &timestamp);
+	      *fits_as_timestamp = db_timestamp_encode_utc_core (&datetime->date, &time, &timestamp, date_error);
 	      if (*fits_as_timestamp != NO_ERROR)
 		{
-		  er_clear ();
+		  date_error->clear ();
 		}
 	    }
 
@@ -3278,7 +3377,7 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 	  if (syntax_check)
 	    {
 	      /* Invalid time value present in the string */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
 	      return ER_TIMESTAMP_CONVERSION;
 	    }
 	  else
@@ -3299,10 +3398,10 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 		  DB_TIMESTAMP timestamp;
 		  DB_TIME time = 0;
 
-		  *fits_as_timestamp = db_timestamp_encode_utc (&datetime->date, &time, &timestamp);
+		  *fits_as_timestamp = db_timestamp_encode_utc_core (&datetime->date, &time, &timestamp, date_error);
 		  if (*fits_as_timestamp != NO_ERROR)
 		    {
-		      er_clear ();
+		      date_error->clear ();
 		    }
 		}
 
@@ -3338,10 +3437,10 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 		  DB_TIMESTAMP timestamp;
 		  DB_TIME time = cdatetime.time / 1000;
 
-		  *fits_as_timestamp = db_timestamp_encode_utc (&cdatetime.date, &time, &timestamp);
+		  *fits_as_timestamp = db_timestamp_encode_utc_core (&cdatetime.date, &time, &timestamp, date_error);
 		  if (*fits_as_timestamp != NO_ERROR)
 		    {
-		      er_clear ();
+		      date_error->clear ();
 		    }
 		}
 
@@ -3356,7 +3455,7 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 	  else
 	    {
 	      /* invalid date value present in the string */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
 	      return ER_TIMESTAMP_CONVERSION;
 	    }
 	}
@@ -3374,10 +3473,10 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 		  DB_TIMESTAMP timestamp;
 		  DB_TIME time = datetime->time / 1000;
 
-		  *fits_as_timestamp = db_timestamp_encode_utc (&datetime->date, &time, &timestamp);
+		  *fits_as_timestamp = db_timestamp_encode_utc_core (&datetime->date, &time, &timestamp, date_error);
 		  if (*fits_as_timestamp != NO_ERROR)
 		    {
-		      er_clear ();
+		      date_error->clear ();
 		    }
 		}
 
@@ -3390,13 +3489,13 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+	      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
 	      return ER_TIMESTAMP_CONVERSION;
 	    }
 	}
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
   return ER_TIMESTAMP_CONVERSION;
 
 finalcheck:
@@ -3404,12 +3503,24 @@ finalcheck:
     {
       if (datetime->time != 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
 	  return ER_TIMESTAMP_CONVERSION;
 	}
     }
 
   return NO_ERROR;
+}
+
+int
+db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * datetime, bool * has_explicit_time,
+			      bool * has_explicit_msec, bool * fits_as_timestamp, char const **endp)
+{
+  date_conversion_error error;
+  int status =
+    db_date_parse_datetime_parts_core (str, str_len, datetime, has_explicit_time, has_explicit_msec, fits_as_timestamp,
+				       endp, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -3423,9 +3534,18 @@ finalcheck:
  *		the read and converted datetime
  */
 int
+db_date_parse_datetime_core (char const *str, int str_len, DB_DATETIME * datetime, date_conversion_error * date_error)
+{
+  return db_date_parse_datetime_parts_core (str, str_len, datetime, NULL, NULL, NULL, NULL, date_error);
+}
+
+int
 db_date_parse_datetime (char const *str, int str_len, DB_DATETIME * datetime)
 {
-  return db_date_parse_datetime_parts (str, str_len, datetime, NULL, NULL, NULL, NULL);
+  date_conversion_error error;
+  int status = db_date_parse_datetime_core (str, str_len, datetime, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -3438,13 +3558,13 @@ db_date_parse_datetime (char const *str, int str_len, DB_DATETIME * datetime)
  * utime(out):	the converted timestamp read from string
  */
 int
-db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
+db_date_parse_timestamp_core (char const *str, int str_len, DB_TIMESTAMP * utime, date_conversion_error * date_error)
 {
   DB_DATETIME datetime;
   DB_TIME time;
   int err;
 
-  err = db_date_parse_datetime (str, str_len, &datetime);
+  err = db_date_parse_datetime_core (str, str_len, &datetime, date_error);
   if (err == NO_ERROR)
     {
       if (datetime.date == IGREG_SPECIAL && datetime.time == 0)
@@ -3454,21 +3574,30 @@ db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
 	}
 
       time = datetime.time / 1000;
-      if (db_timestamp_encode_ses (&datetime.date, &time, utime, NULL) == NO_ERROR)
+      if (db_timestamp_encode_ses_core (&datetime.date, &time, utime, NULL, date_error) == NO_ERROR)
 	{
 	  return NO_ERROR;
 	}
       else
 	{
-	  er_clear ();
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+	  date_error->clear ();
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
 	  return ER_TIMESTAMP_CONVERSION;
 	}
     }
 
-  er_clear ();
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
+  date_error->clear ();
+  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TIMESTAMP_CONVERSION, 0);
   return ER_TIMESTAMP_CONVERSION;
+}
+
+int
+db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
+{
+  date_conversion_error error;
+  int status = db_date_parse_timestamp_core (str, str_len, utime, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -3481,24 +3610,33 @@ db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
  * date(out):	the read and converted date
  */
 int
-db_date_parse_date (char const *str, int str_len, DB_DATE * date)
+db_date_parse_date_core (char const *str, int str_len, DB_DATE * date, date_conversion_error * date_error)
 {
   DB_DATETIME datetime = { 0, 0 };
   int err;
 
-  err = db_date_parse_datetime (str, str_len, &datetime);
+  err = db_date_parse_datetime_core (str, str_len, &datetime, date_error);
   if (err == NO_ERROR)
     {
       *date = datetime.date;
     }
   else
     {
-      er_clear ();
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      date_error->clear ();
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       err = ER_DATE_CONVERSION;
     }
 
   return err;
+}
+
+int
+db_date_parse_date (char const *str, int str_len, DB_DATE * date)
+{
+  date_conversion_error error;
+  int status = db_date_parse_date_core (str, str_len, date, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -3820,7 +3958,8 @@ db_string_to_timestamp (const char *str, DB_TIMESTAMP * utime)
  * is_cast(in): true if the function is called in a casting context
  */
 int
-db_string_to_timestamptz_ex (const char *str, int str_len, DB_TIMESTAMPTZ * ts_tz, bool * has_zone, bool is_cast)
+db_string_to_timestamptz_ex_core (const char *str, int str_len, DB_TIMESTAMPTZ * ts_tz, bool * has_zone, bool is_cast,
+				  date_conversion_error * date_error)
 {
   DB_DATE date;
   DB_TIME time;
@@ -3856,7 +3995,7 @@ db_string_to_timestamptz_ex (const char *str, int str_len, DB_TIMESTAMPTZ * ts_t
       str_zone_size = CAST_BUFLEN (p_end - str_zone);
     }
 
-  err = tz_create_timestamptz (&date, &time, str_zone, str_zone_size, &session_tz_region, ts_tz, &p);
+  err = tz_create_timestamptz_core (&date, &time, str_zone, str_zone_size, &session_tz_region, ts_tz, &p, date_error);
   if (err != NO_ERROR || str_zone == NULL)
     {
       /* error or no timezone in user string (no trailing chars to check) */
@@ -3879,8 +4018,17 @@ db_string_to_timestamptz_ex (const char *str, int str_len, DB_TIMESTAMPTZ * ts_t
   return err;
 
 error_exit:
-  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+  date_error->set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
   return ER_DATE_CONVERSION;
+}
+
+int
+db_string_to_timestamptz_ex (const char *str, int str_len, DB_TIMESTAMPTZ * ts_tz, bool * has_zone, bool is_cast)
+{
+  date_conversion_error error;
+  int status = db_string_to_timestamptz_ex_core (str, str_len, ts_tz, has_zone, is_cast, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -4054,13 +4202,13 @@ db_time_to_string (char *buf, int bufsize, DB_TIME * time)
  * utime(in): a pointer to a DB_TIMESTAMP to be printed
  */
 int
-db_timestamp_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime)
+db_timestamp_to_string_core (char *buf, int bufsize, DB_TIMESTAMP * utime, date_conversion_error * date_error)
 {
   DB_DATE date;
   DB_TIME time;
   int m, n;
 
-  (void) db_timestamp_decode_ses (utime, &date, &time);
+  (void) db_timestamp_decode_ses_core (utime, &date, &time, date_error);
   m = db_time_to_string (buf, bufsize, &time);
   if (m == 0)
     {
@@ -4080,6 +4228,15 @@ db_timestamp_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime)
   return m + n;
 }
 
+int
+db_timestamp_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime)
+{
+  date_conversion_error error;
+  int status = db_timestamp_to_string_core (buf, bufsize, utime, &error);
+  error.publish ();
+  return status;
+}
+
 /*
  * db_timestamptz_to_string() - Print a DB_TIMESTAMP and a time zone into a
  *				 char buffer
@@ -4090,14 +4247,15 @@ db_timestamp_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime)
  * tz_id(in): reference timezone
  */
 int
-db_timestamptz_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime, const TZ_ID * tz_id)
+db_timestamptz_to_string_core (char *buf, int bufsize, DB_TIMESTAMP * utime, const TZ_ID * tz_id,
+			       date_conversion_error * date_error)
 {
   int n, res;
   DB_DATE date;
   DB_TIME time;
   int err = NO_ERROR;
 
-  err = db_timestamp_decode_w_tz_id (utime, tz_id, &date, &time);
+  err = db_timestamp_decode_w_tz_id_core (utime, tz_id, &date, &time, date_error);
   if (err != NO_ERROR)
     {
       return 0;
@@ -4135,6 +4293,15 @@ db_timestamptz_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime, const TZ
 
   n += res;
   return n;
+}
+
+int
+db_timestamptz_to_string (char *buf, int bufsize, DB_TIMESTAMP * utime, const TZ_ID * tz_id)
+{
+  date_conversion_error error;
+  int status = db_timestamptz_to_string_core (buf, bufsize, utime, tz_id, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -4258,17 +4425,18 @@ db_datetime_to_string (char *buf, int bufsize, DB_DATETIME * datetime)
  * tz_id(in): zone identifier
  */
 int
-db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt, const TZ_ID * tz_id)
+db_datetimetz_to_string_core (char *buf, int bufsize, DB_DATETIME * dt, const TZ_ID * tz_id,
+			      date_conversion_error * date_error)
 {
   int retval, n;
   DB_DATETIME dt_local;
 
-  retval = tz_utc_datetimetz_to_local (dt, tz_id, &dt_local);
+  retval = tz_utc_datetimetz_to_local_core (dt, tz_id, &dt_local, date_error);
   if (retval == ER_QPROC_TIME_UNDERFLOW)
     {
-      db_datetime_encode (&dt_local, 0, 0, 0, 0, 0, 0, 0);
+      db_datetime_encode_core (&dt_local, 0, 0, 0, 0, 0, 0, 0, date_error);
       retval = NO_ERROR;
-      er_clear ();
+      date_error->clear ();
     }
 
   if (retval != NO_ERROR)
@@ -4295,6 +4463,15 @@ db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt, const TZ_ID *
 
   n += retval;
   return n;
+}
+
+int
+db_datetimetz_to_string (char *buf, int bufsize, DB_DATETIME * dt, const TZ_ID * tz_id)
+{
+  date_conversion_error error;
+  int status = db_datetimetz_to_string_core (buf, bufsize, dt, tz_id, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -4411,7 +4588,8 @@ db_string_to_datetime (const char *str, DB_DATETIME * datetime)
  * has_zone(out): true if string has valid zone information, false otherwise
  */
 int
-db_string_to_datetimetz_ex (const char *str, int str_len, DB_DATETIMETZ * dt_tz, bool * has_zone)
+db_string_to_datetimetz_ex_core (const char *str, int str_len, DB_DATETIMETZ * dt_tz, bool * has_zone,
+				 date_conversion_error * date_error)
 {
   int er_status = NO_ERROR;
   int str_zone_size = 0;
@@ -4428,7 +4606,7 @@ db_string_to_datetimetz_ex (const char *str, int str_len, DB_DATETIMETZ * dt_tz,
   p = parse_datetime (str, str_len, &dt_tz->datetime);
   if (p == NULL)
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      date_error->set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
     }
 
@@ -4444,7 +4622,8 @@ db_string_to_datetimetz_ex (const char *str, int str_len, DB_DATETIMETZ * dt_tz,
       str_zone_size = CAST_BUFLEN (p_end - str_zone);
     }
 
-  er_status = tz_create_datetimetz (&dt_tz->datetime, str_zone, str_zone_size, &session_tz_region, dt_tz, &p);
+  er_status =
+    tz_create_datetimetz_core (&dt_tz->datetime, str_zone, str_zone_size, &session_tz_region, dt_tz, &p, date_error);
   if (er_status != NO_ERROR || str_zone == NULL)
     {
       /* error or no timezone in user string (no trailing chars to check) */
@@ -4461,11 +4640,20 @@ db_string_to_datetimetz_ex (const char *str, int str_len, DB_DATETIMETZ * dt_tz,
 
   if (p == NULL || (p < p_end && p[0] != '\0'))
     {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      date_error->set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
       return ER_DATE_CONVERSION;
     }
 
   return er_status;
+}
+
+int
+db_string_to_datetimetz_ex (const char *str, int str_len, DB_DATETIMETZ * dt_tz, bool * has_zone)
+{
+  date_conversion_error error;
+  int status = db_string_to_datetimetz_ex_core (str, str_len, dt_tz, has_zone, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -4553,11 +4741,21 @@ db_datetime_decode (const DB_DATETIME * datetime, int *month, int *day, int *yea
  * millisecond(out): millisecond
  */
 int
+db_datetime_encode_core (DB_DATETIME * datetime, int month, int day, int year, int hour, int minute, int second,
+			 int millisecond, date_conversion_error * date_error)
+{
+  datetime->time = encode_mtime (hour, minute, second, millisecond);
+  return db_date_encode_core (&datetime->date, month, day, year, date_error);
+}
+
+int
 db_datetime_encode (DB_DATETIME * datetime, int month, int day, int year, int hour, int minute, int second,
 		    int millisecond)
 {
-  datetime->time = encode_mtime (hour, minute, second, millisecond);
-  return db_date_encode (&datetime->date, month, day, year);
+  date_conversion_error error;
+  int status = db_datetime_encode_core (datetime, month, day, year, hour, minute, second, millisecond, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -4568,7 +4766,8 @@ db_datetime_encode (DB_DATETIME * datetime, int month, int day, int year, int ho
  * result_datetime(out):
  */
 int
-db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2, DB_DATETIME * result_datetime)
+db_subtract_int_from_datetime_core (DB_DATETIME * dt1, DB_BIGINT bi2, DB_DATETIME * result_datetime,
+				    date_conversion_error * date_error)
 {
   DB_BIGINT bi1, result_bi, tmp_bi;
 
@@ -4576,11 +4775,11 @@ db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2, DB_DATETIME * r
     {
       if (bi2 == DB_BIGINT_MIN)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
 	  return ER_QPROC_TIME_UNDERFLOW;
 	}
 
-      return db_add_int_to_datetime (dt1, -bi2, result_datetime);
+      return db_add_int_to_datetime_core (dt1, -bi2, result_datetime, date_error);
     }
 
   bi1 = ((DB_BIGINT) dt1->date) * MILLISECONDS_OF_ONE_DAY + dt1->time;
@@ -4588,20 +4787,29 @@ db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2, DB_DATETIME * r
   result_bi = bi1 - bi2;
   if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_QPROC_TIME_UNDERFLOW;
     }
 
   tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
   if (OR_CHECK_INT_OVERFLOW (tmp_bi) || tmp_bi > DB_DATE_MAX || tmp_bi < DB_DATE_MIN)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_QPROC_TIME_UNDERFLOW;
     }
   result_datetime->date = (int) tmp_bi;
   result_datetime->time = (int) (result_bi % MILLISECONDS_OF_ONE_DAY);
 
   return NO_ERROR;
+}
+
+int
+db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2, DB_DATETIME * result_datetime)
+{
+  date_conversion_error error;
+  int status = db_subtract_int_from_datetime_core (dt1, bi2, result_datetime, &error);
+  error.publish ();
+  return status;
 }
 
 /*
@@ -4612,7 +4820,8 @@ db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2, DB_DATETIME * r
  * result_datetime(out):
  */
 int
-db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2, DB_DATETIME * result_datetime)
+db_add_int_to_datetime_core (DB_DATETIME * datetime, DB_BIGINT bi2, DB_DATETIME * result_datetime,
+			     date_conversion_error * date_error)
 {
   DB_BIGINT bi1, result_bi, tmp_bi;
 
@@ -4620,11 +4829,11 @@ db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2, DB_DATETIME * res
     {
       if (bi2 == DB_BIGINT_MIN)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+	  date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
 	  return ER_QPROC_TIME_UNDERFLOW;
 	}
 
-      return db_subtract_int_from_datetime (datetime, -bi2, result_datetime);
+      return db_subtract_int_from_datetime_core (datetime, -bi2, result_datetime, date_error);
     }
 
   bi1 = ((DB_BIGINT) datetime->date) * MILLISECONDS_OF_ONE_DAY + datetime->time;
@@ -4632,14 +4841,14 @@ db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2, DB_DATETIME * res
   result_bi = bi1 + bi2;
   if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result_bi))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_QPROC_TIME_UNDERFLOW;
     }
 
   tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
   if (OR_CHECK_INT_OVERFLOW (tmp_bi) || tmp_bi > DB_DATE_MAX || tmp_bi < DB_DATE_MIN)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
+      date_error->set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_QPROC_TIME_UNDERFLOW;
     }
 
@@ -4647,6 +4856,15 @@ db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2, DB_DATETIME * res
   result_datetime->time = (int) (result_bi % MILLISECONDS_OF_ONE_DAY);
 
   return NO_ERROR;
+}
+
+int
+db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2, DB_DATETIME * result_datetime)
+{
+  date_conversion_error error;
+  int status = db_add_int_to_datetime_core (datetime, bi2, result_datetime, &error);
+  error.publish ();
+  return status;
 }
 
 /*

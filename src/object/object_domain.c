@@ -38,6 +38,7 @@
 #include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_domain_convert.h"
+#include "db_date_status.h"
 #include <utility>
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -622,6 +623,14 @@ static void format_floating_point (char *new_string, char *rve, int ndigits, int
 static void tp_ftoa (DB_VALUE const *src, DB_VALUE * result);
 static void tp_dtoa (DB_VALUE const *src, DB_VALUE * result);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
+static char *tp_ftoa_buffer (const DB_VALUE *, DB_VALUE *);
+static char *tp_dtoa_buffer (const DB_VALUE *, DB_VALUE *);
+
+static void tp_ftoa_char (const DB_VALUE *, DB_VALUE *);
+static void tp_ftoa_varchar (const DB_VALUE *, DB_VALUE *);
+static void tp_dtoa_char (const DB_VALUE *, DB_VALUE *);
+static void tp_dtoa_varchar (const DB_VALUE *, DB_VALUE *);
+
 static TP_DOMAIN_STATUS tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 						TP_COERCION_MODE coercion_mode, bool do_domain_select,
 						bool preserve_domain);
@@ -5410,50 +5419,25 @@ format_floating_point (char *new_string, char *rve, int ndigits, int decpt, int 
 void
 tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
 {
-  /* dtoa() appears to ignore the requested number of digits... */
-  const int ndigits = TP_FLOAT_MANTISA_DECIMAL_PRECISION;
-  char *str_float, *rve;
-  int decpt, sign;
-
-  assert (DB_VALUE_TYPE (src) == DB_TYPE_FLOAT);
-  assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
-
-  rve = str_float = (char *) db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
-  if (str_float == NULL)
-    {
-      db_make_null (result);
-      return;
-    }
-
-  /* _dtoa just returns the digits sequence and the exponent as for a number in the form 0.4321344e+14 */
-  _dtoa (db_get_float (src), 0, ndigits, &decpt, &sign, &rve, str_float, 1);
-
-  /* rounding should also be performed here */
-  str_float[ndigits] = '\0';	/* _dtoa() disregards ndigits */
-
-  format_floating_point (str_float, str_float + strlen (str_float), ndigits, decpt, sign);
-
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float), db_get_string_codeset (result),
-		    db_get_string_collation (result));
-      result->need_clear = true;
-      break;
-
+      tp_ftoa_char (src, result);
+      return;
     case DB_TYPE_VARCHAR:
-      db_make_varchar (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float),
-		       db_get_string_codeset (result), db_get_string_collation (result));
-      result->need_clear = true;
-      break;
-
+      tp_ftoa_varchar (src, result);
+      return;
     default:
-      db_private_free_and_init (NULL, str_float);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
-      db_make_null (result);
       break;
     }
+  char *str_float = tp_ftoa_buffer (src, result);
+  if (str_float == nullptr)
+    return;
+  db_private_free_and_init (NULL, str_float);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
+	  pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
+  db_make_null (result);
+
 }
 
 /*
@@ -5469,48 +5453,25 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
 void
 tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
 {
-  /* dtoa() appears to ignore the requested number of digits... */
-  const int ndigits = TP_DOUBLE_MANTISA_DECIMAL_PRECISION;
-  char *str_double, *rve;
-  int decpt, sign;
-
-  assert (DB_VALUE_TYPE (src) == DB_TYPE_DOUBLE);
-  assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
-
-  rve = str_double = (char *) db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
-  if (str_double == NULL)
-    {
-      db_make_null (result);
-      return;
-    }
-
-  _dtoa (db_get_double (src), 0, ndigits, &decpt, &sign, &rve, str_double, 0);
-  /* rounding should also be performed here */
-  str_double[ndigits] = '\0';	/* _dtoa() disregards ndigits */
-
-  format_floating_point (str_double, str_double + strlen (str_double), ndigits, decpt, sign);
-
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
-		    db_get_string_codeset (result), db_get_string_collation (result));
-      result->need_clear = true;
-      break;
-
+      tp_dtoa_char (src, result);
+      return;
     case DB_TYPE_VARCHAR:
-      db_make_varchar (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
-		       db_get_string_codeset (result), db_get_string_collation (result));
-      result->need_clear = true;
-      break;
-
+      tp_dtoa_varchar (src, result);
+      return;
     default:
-      db_private_free_and_init (NULL, str_double);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
-      db_make_null (result);
       break;
     }
+  char *str_double = tp_dtoa_buffer (src, result);
+  if (str_double == nullptr)
+    return;
+  db_private_free_and_init (NULL, str_double);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
+	  pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
+  db_make_null (result);
+
 }
 
 /*
@@ -5686,43 +5647,7 @@ tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result)
   return ret;
 }
 
-static void
-make_desired_string_db_value (DB_TYPE desired_type, const TP_DOMAIN * desired_domain, const char *new_string,
-			      DB_VALUE * target, TP_DOMAIN_STATUS * status, DB_DATA_STATUS * data_stat)
-{
-  DB_VALUE temp;
 
-  assert (desired_domain->collation_flag == TP_DOMAIN_COLL_NORMAL
-	  || desired_domain->collation_flag == TP_DOMAIN_COLL_LEAVE);
-
-  *status = DOMAIN_COMPATIBLE;
-  switch (desired_type)
-    {
-    case DB_TYPE_CHAR:
-      db_make_char (&temp, desired_domain->precision, new_string, strlen (new_string),
-		    TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
-      break;
-
-    case DB_TYPE_VARCHAR:
-      db_make_varchar (&temp, desired_domain->precision, new_string, strlen (new_string),
-		       TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
-      break;
-
-    default:			/* Can't get here.  This just quiets the compiler */
-      break;
-    }
-
-  temp.need_clear = true;
-  if (db_char_string_coerce (&temp, target, data_stat) != NO_ERROR)
-    {
-      *status = DOMAIN_INCOMPATIBLE;
-    }
-  else
-    {
-      *status = DOMAIN_COMPATIBLE;
-    }
-  pr_clear_value (&temp);
-}
 
 /*
  * tp_value_coerce - Coerce a value into one of another domain.
@@ -6081,6 +6006,22033 @@ tp_make_numeric_convert_table (std::index_sequence<I...>)
 const DOMAIN_NUMERIC_CONVERTERS tp_numeric_convert_table =
   tp_make_numeric_convert_table (std::make_index_sequence<3 * 9 * 7> {});
 
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *, date_conversion_error *)
+{
+  return DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS tp_value_convert_short_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_integer_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bigint_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_float_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_double_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_monetary_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_numeric_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestampltz_to_timestamp_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_timestamp_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_short_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_integer_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bigint_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_float_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_double_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_monetary_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_numeric_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_timestamptz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_timestamptz_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_timestamptz_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_timestamptz_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_short_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_integer_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bigint_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_float_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_double_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_monetary_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_numeric_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_timestampltz_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_timestampltz_core (const DB_VALUE *, DB_VALUE *,
+									   const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_timestampltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_timestampltz_core (const DB_VALUE *, DB_VALUE *,
+									   const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_timestampltz_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_timestampltz_core (const DB_VALUE *, DB_VALUE *,
+									   const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_datetime_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_datetime_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_datetime_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_datetime_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_datetime_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_datetime_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_datetime_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_datetimeltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_datetimeltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_datetimeltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_datetimeltz_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_datetimeltz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_datetimeltz_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_datetimeltz_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_datetimetz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_datetimetz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_datetimetz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_datetimetz_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_datetimetz_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_datetimetz_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_datetimetz_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_date_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_date_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_date_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_date_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_date_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_date_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_date_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_short_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_integer_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bigint_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_float_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_double_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_monetary_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_time_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_object_to_object_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_oid_to_object_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_pointer_to_object_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_vobj_to_object_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_set_to_set_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_set_to_multiset_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_set_to_sequence_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_object_to_vobj_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_oid_to_vobj_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_vobj_to_vobj_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_bit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_bit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bit_to_bit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_varbit_to_bit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_blob_to_bit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_varbit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_blob_to_varbit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_short_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_integer_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bigint_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_float_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_double_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_monetary_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_numeric_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_varchar_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_time_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestampltz_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bit_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_clob_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_json_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_short_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_integer_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bigint_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_float_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_double_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_monetary_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_numeric_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_time_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestampltz_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bit_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_clob_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_json_to_char_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_blob_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_blob_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bit_to_blob_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_blob_to_blob_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_clob_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_clob_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_short_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_integer_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bigint_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_float_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_double_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_monetary_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_numeric_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_varchar_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_time_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestampltz_to_enumeration_core (const DB_VALUE *, DB_VALUE *,
+									   const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_enumeration_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_enumeration_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_enumeration_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_enumeration_to_enumeration_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bit_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_varbit_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_blob_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_clob_to_enumeration_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_short_to_json_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_integer_to_json_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_bigint_to_json_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_float_to_json_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_double_to_json_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_numeric_to_json_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_json_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+							    date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_time_strict_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_date_strict_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_date_strict_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_date_strict_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_date_strict_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_date_strict_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_date_strict_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_datetime_strict_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_datetime_strict_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_datetime_strict_core (const DB_VALUE *, DB_VALUE *,
+									    const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_datetime_strict_core (const DB_VALUE *, DB_VALUE *,
+									      const TP_DOMAIN *,
+									      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_datetime_strict_core (const DB_VALUE *, DB_VALUE *,
+									      const TP_DOMAIN *,
+									      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_datetime_strict_core (const DB_VALUE *, DB_VALUE *,
+									     const TP_DOMAIN *,
+									     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_datetimetz_strict_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_datetimetz_strict_core (const DB_VALUE *, DB_VALUE *,
+									 const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_datetimetz_strict_core (const DB_VALUE *, DB_VALUE *,
+									      const TP_DOMAIN *,
+									      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_datetimetz_strict_core (const DB_VALUE *, DB_VALUE *,
+										const TP_DOMAIN *,
+										date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_datetimetz_strict_core (const DB_VALUE *, DB_VALUE *,
+									     const TP_DOMAIN *,
+									     date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_datetimetz_strict_core (const DB_VALUE *, DB_VALUE *,
+										const TP_DOMAIN *,
+										date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_datetimeltz_strict_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_datetimeltz_strict_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_datetimeltz_strict_core (const DB_VALUE *, DB_VALUE *,
+									       const TP_DOMAIN *,
+									       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_datetimeltz_strict_core (const DB_VALUE *, DB_VALUE *,
+										 const TP_DOMAIN *,
+										 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_datetimeltz_strict_core (const DB_VALUE *, DB_VALUE *,
+									      const TP_DOMAIN *,
+									      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_datetimeltz_strict_core (const DB_VALUE *, DB_VALUE *,
+										const TP_DOMAIN *,
+										date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_timestamp_strict_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_timestamp_strict_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestampltz_to_timestamp_strict_core (const DB_VALUE *, DB_VALUE *,
+										const TP_DOMAIN *,
+										date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_timestamp_strict_core (const DB_VALUE *, DB_VALUE *,
+									       const TP_DOMAIN *,
+									       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_timestamp_strict_core (const DB_VALUE *, DB_VALUE *,
+									    const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_timestamp_strict_core (const DB_VALUE *, DB_VALUE *,
+									       const TP_DOMAIN *,
+									       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_timestamp_strict_core (const DB_VALUE *, DB_VALUE *,
+									      const TP_DOMAIN *,
+									      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_timestampltz_strict_core (const DB_VALUE *, DB_VALUE *,
+									   const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_timestampltz_strict_core (const DB_VALUE *, DB_VALUE *,
+									   const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_timestampltz_strict_core (const DB_VALUE *, DB_VALUE *,
+										const TP_DOMAIN *,
+										date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamptz_to_timestampltz_strict_core (const DB_VALUE *, DB_VALUE *,
+										  const TP_DOMAIN *,
+										  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_timestampltz_strict_core (const DB_VALUE *, DB_VALUE *,
+									       const TP_DOMAIN *,
+									       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_timestampltz_strict_core (const DB_VALUE *, DB_VALUE *,
+										  const TP_DOMAIN *,
+										  date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_timestampltz_strict_core (const DB_VALUE *, DB_VALUE *,
+										 const TP_DOMAIN *,
+										 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_char_to_timestamptz_strict_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_date_to_timestamptz_strict_core (const DB_VALUE *, DB_VALUE *,
+									  const TP_DOMAIN *, date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_timestamp_to_timestamptz_strict_core (const DB_VALUE *, DB_VALUE *,
+									       const TP_DOMAIN *,
+									       date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetime_to_timestamptz_strict_core (const DB_VALUE *, DB_VALUE *,
+									      const TP_DOMAIN *,
+									      date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimeltz_to_timestamptz_strict_core (const DB_VALUE *, DB_VALUE *,
+										 const TP_DOMAIN *,
+										 date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_datetimetz_to_timestamptz_strict_core (const DB_VALUE *, DB_VALUE *,
+										const TP_DOMAIN *,
+										date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_set_to_set_implicit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+								   date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_set_to_multiset_implicit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+static TP_DOMAIN_STATUS tp_value_convert_set_to_sequence_implicit_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+									date_conversion_error *);
+
+static int
+tp_atotime_core (const DB_VALUE * src, DB_TIME * temp, date_conversion_error * error)
+{
+  int milisec;
+  const char *strp = db_get_string (src);
+  int str_len = db_get_string_size (src);
+  int status = NO_ERROR;
+
+  if (db_date_parse_time_core (strp, str_len, temp, &milisec, error) != NO_ERROR)
+    {
+      status = ER_FAILED;
+    }
+
+  return status;
+}
+
+static int
+tp_atodate_core (const DB_VALUE * src, DB_DATE * temp, date_conversion_error * error)
+{
+  const char *strp = db_get_string (src);
+  int str_len = db_get_string_size (src);
+  int status = NO_ERROR;
+
+  if (db_date_parse_date_core (strp, str_len, temp, error) != NO_ERROR)
+    {
+      status = ER_FAILED;
+    }
+
+  return status;
+}
+
+static int
+tp_atoutime_core (const DB_VALUE * src, DB_UTIME * temp, date_conversion_error * error)
+{
+  const char *strp = db_get_string (src);
+  int str_len = db_get_string_size (src);
+  int status = NO_ERROR;
+
+  if (db_date_parse_timestamp_core (strp, str_len, temp, error) != NO_ERROR)
+    {
+      status = ER_FAILED;
+    }
+
+  return status;
+}
+
+static int
+tp_atotimestamptz_core (const DB_VALUE * src, DB_TIMESTAMPTZ * temp, date_conversion_error * error)
+{
+  const char *strp = db_get_string (src);
+  int str_len = db_get_string_size (src);
+  int status = NO_ERROR;
+  bool dummy_has_zone;
+
+  if (db_string_to_timestamptz_ex_core (strp, str_len, temp, &dummy_has_zone, true, error) != NO_ERROR)
+    {
+      status = ER_FAILED;
+    }
+
+  return status;
+}
+
+static int
+tp_atoudatetime_core (const DB_VALUE * src, DB_DATETIME * temp, date_conversion_error * error)
+{
+  const char *strp = db_get_string (src);
+  int str_len = db_get_string_size (src);
+  int status = NO_ERROR;
+
+  if (db_date_parse_datetime_core (strp, str_len, temp, error) != NO_ERROR)
+    {
+      status = ER_FAILED;
+    }
+
+  return status;
+}
+
+static int
+tp_atodatetimetz_core (const DB_VALUE * src, DB_DATETIMETZ * temp, date_conversion_error * error)
+{
+  const char *strp = db_get_string (src);
+  int str_len = db_get_string_size (src);
+  int status = NO_ERROR;
+  bool dummy_has_zone;
+
+  if (db_string_to_datetimetz_ex_core (strp, str_len, temp, &dummy_has_zone, error) != NO_ERROR)
+    {
+      status = ER_FAILED;
+    }
+
+  return status;
+}
+
+static void
+tp_make_char_conversion (const TP_DOMAIN * desired_domain, const char *new_string, DB_VALUE * target,
+			 TP_DOMAIN_STATUS * status, DB_DATA_STATUS * data_stat)
+{
+  DB_VALUE temp;
+
+  assert (desired_domain->collation_flag == TP_DOMAIN_COLL_NORMAL
+	  || desired_domain->collation_flag == TP_DOMAIN_COLL_LEAVE);
+
+  *status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      db_make_char (&temp, desired_domain->precision, new_string, strlen (new_string),
+		    TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
+      break;
+
+
+    }
+  while (false);
+
+  temp.need_clear = true;
+  if (db_char_string_coerce (&temp, target, data_stat) != NO_ERROR)
+    {
+      *status = DOMAIN_INCOMPATIBLE;
+    }
+  else
+    {
+      *status = DOMAIN_COMPATIBLE;
+    }
+  pr_clear_value (&temp);
+}
+
+static void
+tp_make_varchar_conversion (const TP_DOMAIN * desired_domain, const char *new_string, DB_VALUE * target,
+			    TP_DOMAIN_STATUS * status, DB_DATA_STATUS * data_stat)
+{
+  DB_VALUE temp;
+
+  assert (desired_domain->collation_flag == TP_DOMAIN_COLL_NORMAL
+	  || desired_domain->collation_flag == TP_DOMAIN_COLL_LEAVE);
+
+  *status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      db_make_varchar (&temp, desired_domain->precision, new_string, strlen (new_string),
+		       TP_DOMAIN_CODESET (desired_domain), TP_DOMAIN_COLLATION (desired_domain));
+      break;
+
+
+    }
+  while (false);
+
+  temp.need_clear = true;
+  if (db_char_string_coerce (&temp, target, data_stat) != NO_ERROR)
+    {
+      *status = DOMAIN_INCOMPATIBLE;
+    }
+  else
+    {
+      *status = DOMAIN_COMPATIBLE;
+    }
+  pr_clear_value (&temp);
+}
+
+static char *
+tp_ftoa_buffer (const DB_VALUE * src, DB_VALUE * result)
+{
+  /* dtoa() appears to ignore the requested number of digits... */
+  const int ndigits = TP_FLOAT_MANTISA_DECIMAL_PRECISION;
+  char *str_float, *rve;
+  int decpt, sign;
+
+  assert (DB_VALUE_TYPE (src) == DB_TYPE_FLOAT);
+  assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
+
+  rve = str_float = (char *) db_private_alloc (NULL, TP_FLOAT_AS_CHAR_LENGTH + 1);
+  if (str_float == NULL)
+    {
+      db_make_null (result);
+      return nullptr;
+    }
+
+  /* _dtoa just returns the digits sequence and the exponent as for a number in the form 0.4321344e+14 */
+  _dtoa (db_get_float (src), 0, ndigits, &decpt, &sign, &rve, str_float, 1);
+
+  /* rounding should also be performed here */
+  str_float[ndigits] = '\0';	/* _dtoa() disregards ndigits */
+
+  format_floating_point (str_float, str_float + strlen (str_float), ndigits, decpt, sign);
+
+  return str_float;
+}
+
+static void
+tp_ftoa_char (const DB_VALUE * src, DB_VALUE * result)
+{
+  char *str_float = tp_ftoa_buffer (src, result);
+  if (str_float == nullptr)
+    return;
+  do
+    {
+
+      db_make_char (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float), db_get_string_codeset (result),
+		    db_get_string_collation (result));
+      result->need_clear = true;
+      break;
+
+
+    }
+  while (false);
+}
+
+static void
+tp_ftoa_varchar (const DB_VALUE * src, DB_VALUE * result)
+{
+  char *str_float = tp_ftoa_buffer (src, result);
+  if (str_float == nullptr)
+    return;
+  do
+    {
+
+      db_make_varchar (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float),
+		       db_get_string_codeset (result), db_get_string_collation (result));
+      result->need_clear = true;
+      break;
+
+
+    }
+  while (false);
+}
+
+static char *
+tp_dtoa_buffer (const DB_VALUE * src, DB_VALUE * result)
+{
+  /* dtoa() appears to ignore the requested number of digits... */
+  const int ndigits = TP_DOUBLE_MANTISA_DECIMAL_PRECISION;
+  char *str_double, *rve;
+  int decpt, sign;
+
+  assert (DB_VALUE_TYPE (src) == DB_TYPE_DOUBLE);
+  assert (DB_VALUE_TYPE (result) == DB_TYPE_NULL);
+
+  rve = str_double = (char *) db_private_alloc (NULL, TP_DOUBLE_AS_CHAR_LENGTH + 1);
+  if (str_double == NULL)
+    {
+      db_make_null (result);
+      return nullptr;
+    }
+
+  _dtoa (db_get_double (src), 0, ndigits, &decpt, &sign, &rve, str_double, 0);
+  /* rounding should also be performed here */
+  str_double[ndigits] = '\0';	/* _dtoa() disregards ndigits */
+
+  format_floating_point (str_double, str_double + strlen (str_double), ndigits, decpt, sign);
+
+  return str_double;
+}
+
+static void
+tp_dtoa_char (const DB_VALUE * src, DB_VALUE * result)
+{
+  char *str_double = tp_dtoa_buffer (src, result);
+  if (str_double == nullptr)
+    return;
+  do
+    {
+
+      db_make_char (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
+		    db_get_string_codeset (result), db_get_string_collation (result));
+      result->need_clear = true;
+      break;
+
+
+    }
+  while (false);
+}
+
+static void
+tp_dtoa_varchar (const DB_VALUE * src, DB_VALUE * result)
+{
+  char *str_double = tp_dtoa_buffer (src, result);
+  if (str_double == nullptr)
+    return;
+  do
+    {
+
+      db_make_varchar (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
+		       db_get_string_codeset (result), db_get_string_collation (result));
+      result->need_clear = true;
+      break;
+
+
+    }
+  while (false);
+}
+
+static int
+tp_make_date_conversion (DB_VALUE * value, int month, int day, int year, date_conversion_error * error)
+{
+  value->domain.general_info.type = DB_TYPE_DATE;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+  return db_date_encode_core (&value->data.date, month, day, year, error);
+}
+
+static int
+tp_make_time_conversion (DB_VALUE * value, int hour, int minute, int second, date_conversion_error * error)
+{
+  value->domain.general_info.type = DB_TYPE_TIME;
+  value->domain.general_info.is_null = 0;
+  value->need_clear = false;
+  return db_time_encode_core (&value->data.time, hour, minute, second, error);
+}
+
+/* Keep the legacy first-conversion snapshot shared by both call paths. */
+static bool
+tp_conversion_ignore_trailing_space ()
+{
+  static bool value = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  return value;
+}
+
+static TP_DOMAIN_STATUS
+tp_finish_enumeration_conversion (DB_VALUE * target, const TP_DOMAIN * desired_domain, DB_VALUE & conv_val,
+				  unsigned short val_idx, const char *val_str, int val_str_size,
+				  TP_DOMAIN_STATUS status, bool exit)
+{
+  bool alloc_string = true, ti = true;
+  bool ignore_trailing_space = tp_conversion_ignore_trailing_space ();
+  do
+    {
+
+
+      if (exit)
+	{
+	  break;
+	}
+
+      if (status == DOMAIN_COMPATIBLE)
+	{
+	  if (val_str != NULL)
+	    {
+	      /* We have to search through the elements of the desired domain to find the index for val_str. */
+	      int i, size;
+	      DB_ENUM_ELEMENT *db_enum = NULL;
+	      int elem_count = DOM_GET_ENUM_ELEMS_COUNT (desired_domain);
+
+	      for (i = 1; i <= elem_count; i++)
+		{
+		  db_enum = &DOM_GET_ENUM_ELEM (desired_domain, i);
+		  size = DB_GET_ENUM_ELEM_STRING_SIZE (db_enum);
+
+		  if (!ignore_trailing_space)
+		    {
+		      ti = false;
+		    }
+
+		  /* use collation from the PT_TYPE_ENUMERATION */
+		  if (QSTR_COMPARE (desired_domain->collation_id, (const unsigned char *) val_str, val_str_size,
+				    (const unsigned char *) DB_GET_ENUM_ELEM_STRING (db_enum), size, ti) == 0)
+		    {
+		      break;
+		    }
+		}
+
+	      val_idx = i;
+	      if (i > elem_count)
+		{
+		  if (val_str[0] == 0)
+		    {
+		      /* The source value is string with length 0 and can be matched with enum "special error value"
+		       * if it's not a valid ENUM value */
+		      db_make_enumeration (target, 0, NULL, 0, TP_DOMAIN_CODESET (desired_domain),
+					   TP_DOMAIN_COLLATION (desired_domain));
+		      break;
+		    }
+		  else
+		    {
+		      status = DOMAIN_INCOMPATIBLE;
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* We have the index, we need to get the actual string value from the desired domain */
+	      if (val_idx > DOM_GET_ENUM_ELEMS_COUNT (desired_domain))
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	      else if (val_idx == 0)
+		{
+		  /* ENUM Special error value */
+		  db_make_enumeration (target, 0, NULL, 0, TP_DOMAIN_CODESET (desired_domain),
+				       TP_DOMAIN_COLLATION (desired_domain));
+		  break;
+		}
+	      else
+		{
+		  val_str_size = DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (desired_domain, val_idx));
+		  val_str = DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (desired_domain, val_idx));
+		}
+	    }
+
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      const char *enum_str;
+
+	      assert (val_str != NULL);
+
+	      if (!DB_IS_NULL (&conv_val))
+		{
+		  /* if charset conversion, than use the converted value buffer to avoid an additional copy */
+		  alloc_string = false;
+		  conv_val.need_clear = false;
+		}
+
+	      if (alloc_string)
+		{
+		  char *enum_str_tmp = (char *) db_private_alloc (NULL, val_str_size + 1);
+		  if (enum_str_tmp == NULL)
+		    {
+		      status = DOMAIN_ERROR;
+		      pr_clear_value (&conv_val);
+		      break;
+		    }
+		  else
+		    {
+		      memcpy (enum_str_tmp, val_str, val_str_size);
+		      enum_str_tmp[val_str_size] = 0;
+		    }
+
+		  enum_str = enum_str_tmp;
+		}
+	      else
+		{
+		  enum_str = val_str;
+		}
+
+	      db_make_enumeration (target, val_idx, enum_str, val_str_size, TP_DOMAIN_CODESET (desired_domain),
+				   TP_DOMAIN_COLLATION (desired_domain));
+	      target->need_clear = true;
+	    }
+	}
+      pr_clear_value (&conv_val);
+
+    }
+  while (false);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_numeric_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  int result = numeric_coerce_value_to_num < DB_TYPE_ENUMERATION > (src, target, &data_stat);
+  if (result == ER_IT_DATA_OVERFLOW || data_stat == DATA_STATUS_TRUNCATED)
+    {
+      return DOMAIN_OVERFLOW;
+    }
+  return result == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_short (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN *)
+{
+  do
+    {
+
+      do
+	{
+
+	  db_make_short (target, db_get_enum_short (src));
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return DOMAIN_COMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_integer (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN *)
+{
+  do
+    {
+
+      do
+	{
+
+	  db_make_int (target, db_get_enum_short (src));
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return DOMAIN_COMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_bigint (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN *)
+{
+  do
+    {
+
+      do
+	{
+
+	  db_make_bigint (target, db_get_enum_short (src));
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return DOMAIN_COMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_float (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN *)
+{
+  do
+    {
+
+      do
+	{
+
+	  db_make_float (target, (float) db_get_enum_short (src));
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return DOMAIN_COMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_double (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN *)
+{
+  do
+    {
+
+      do
+	{
+
+	  db_make_double (target, (double) db_get_enum_short (src));
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return DOMAIN_COMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_monetary (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN *)
+{
+  do
+    {
+
+      do
+	{
+
+	  db_make_monetary (target, DB_CURRENCY_DEFAULT, db_get_enum_short (src));
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return DOMAIN_COMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+											       &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestamp (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_short_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												 &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestamp (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_integer_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												&tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestamp (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bigint_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+											       &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestamp (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_float_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												&tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestamp (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_double_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												  &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestamp (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_monetary_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												 &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestamp (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_numeric_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  do
+    {
+
+      do
+	{
+
+	  if (tp_atoutime_core (src, &v_utime, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  else
+	    {
+	      db_make_timestamp (target, v_utime);
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    {
+	      v_date = *db_get_date (src);
+	      db_time_encode_core (&v_time, 0, 0, 0, error);
+	    }
+
+	    if (db_timestamp_encode_ses_core (&v_date, &v_time, &v_utime, NULL, error) == NO_ERROR)
+	      {
+		db_make_timestamp (target, v_utime);
+	      }
+	    else
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  /* copy timestamp (UTC) */
+	  db_make_timestamp (target, *db_get_timestamp (src));
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestampltz_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  v_timestamptz = *db_get_timestamptz (src);
+	  /* copy timestamp (UTC) */
+	  db_make_timestamp (target, v_timestamptz.timestamp);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    {
+	      v_datetime = *db_get_datetime (src);
+	      v_date = v_datetime.date;
+	      v_time = v_datetime.time / 1000;
+	    }
+
+	    if (db_timestamp_encode_ses_core (&v_date, &v_time, &v_utime, NULL, error) == NO_ERROR)
+	      {
+		db_make_timestamp (target, v_utime);
+	      }
+	    else
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_datetime = *db_get_datetime (src);
+	  v_date = v_datetime.date;
+	  v_time = v_datetime.time / 1000;
+
+	  if (db_timestamp_encode_utc_core (&v_date, &v_time, &v_utime, error) == NO_ERROR)
+	    {
+	      db_make_timestamp (target, v_utime);
+	    }
+	  else
+	    {
+	      status = DOMAIN_OVERFLOW;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIMETZ v_datetimetz;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_datetimetz = *db_get_datetimetz (src);
+	  v_date = v_datetimetz.datetime.date;
+	  v_time = v_datetimetz.datetime.time / 1000;
+
+	  if (db_timestamp_encode_utc_core (&v_date, &v_time, &v_utime, error) == NO_ERROR)
+	    {
+	      db_make_timestamp (target, v_utime);
+	    }
+	  else
+	    {
+	      status = DOMAIN_OVERFLOW;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_timestamp_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+											       &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+
+	      tmpint = db_get_int (target);
+	      if (tmpint < 0)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
+
+	      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+		  NO_ERROR)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_short_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												 &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+
+	      tmpint = db_get_int (target);
+	      if (tmpint < 0)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
+
+	      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+		  NO_ERROR)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_integer_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												&tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+
+	      tmpint = db_get_int (target);
+	      if (tmpint < 0)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
+
+	      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+		  NO_ERROR)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bigint_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+											       &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+
+	      tmpint = db_get_int (target);
+	      if (tmpint < 0)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
+
+	      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+		  NO_ERROR)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_float_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												&tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+
+	      tmpint = db_get_int (target);
+	      if (tmpint < 0)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
+
+	      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+		  NO_ERROR)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_double_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												  &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+
+	      tmpint = db_get_int (target);
+	      if (tmpint < 0)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
+
+	      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+		  NO_ERROR)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_monetary_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												 &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+
+	      tmpint = db_get_int (target);
+	      if (tmpint < 0)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
+
+	      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+		  NO_ERROR)
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		  break;
+		}
+
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_numeric_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  if (tp_atotimestamptz_core (src, &v_timestamptz, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  else
+	    {
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  /* convert from session to UTC */
+	  {
+	    assert (DB_TYPE_DATE == DB_TYPE_DATE);
+	    v_date = *db_get_date (src);
+	    v_time = 0;
+	  }
+
+	  if (db_timestamp_encode_ses_core (&v_date, &v_time, &v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+	      NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  else
+	    {
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  /* copy TS value and create TZ_ID for system TZ */
+	  v_timestamptz.timestamp = *db_get_timestamp (src);
+
+	  if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &(v_timestamptz.tz_id), error) !=
+	      NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+
+	  db_make_timestamptz (target, &v_timestamptz);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  /* convert from session to UTC */
+	  {
+	    v_datetime = *db_get_datetime (src);
+	    v_date = v_datetime.date;
+	    v_time = v_datetime.time / 1000;
+	  }
+
+	  if (db_timestamp_encode_ses_core (&v_date, &v_time, &v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+	      NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  else
+	    {
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_datetime = *db_get_datetime (src);
+	  v_date = v_datetime.date;
+	  v_time = v_datetime.time / 1000;
+
+	  /* encode DT as UTC and the TZ of session */
+	  if (db_timestamp_encode_utc_core (&v_date, &v_time, &v_timestamptz.timestamp, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  if (tz_create_session_tzid_for_datetime_core (&v_datetime, true, &(v_timestamptz.tz_id), error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  else
+	    {
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATETIMETZ v_datetimetz;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_datetimetz = *db_get_datetimetz (src);
+	  v_date = v_datetimetz.datetime.date;
+	  v_time = v_datetimetz.datetime.time / 1000;
+
+	  /* encode TS to DT (UTC) and copy TZ from DT_TZ */
+	  if (db_timestamp_encode_utc_core (&v_date, &v_time, &v_timestamptz.timestamp, error) == NO_ERROR)
+	    {
+	      v_timestamptz.tz_id = v_datetimetz.tz_id;
+	      db_make_timestamptz (target, &v_timestamptz);
+	    }
+	  else
+	    {
+	      status = DOMAIN_OVERFLOW;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_timestamptz_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+											       &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestampltz (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_short_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												 &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestampltz (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_integer_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												&tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestampltz (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bigint_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+											       &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestampltz (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_float_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												&tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestampltz (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_double_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												  &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestampltz (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_monetary_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  status =
+	    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target,
+												 &tp_Integer_domain);
+	  if (status == DOMAIN_COMPATIBLE)
+	    {
+	      int tmpint;
+	      tmpint = db_get_int (target);
+	      if (tmpint >= 0)
+		{
+		  db_make_timestampltz (target, (DB_UTIME) tmpint);
+		}
+	      else
+		{
+		  status = DOMAIN_INCOMPATIBLE;
+		}
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_numeric_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  /* read as DATETIMETZ */
+	  if (tp_atotimestamptz_core (src, &v_timestamptz, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  else
+	    {
+	      db_make_timestampltz (target, v_timestamptz.timestamp);
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    {
+	      assert (DB_TYPE_DATE == DB_TYPE_DATE);
+	      v_date = *db_get_date (src);
+	      v_time = 0;
+	    }
+
+	    if (db_timestamp_encode_ses_core (&v_date, &v_time, &v_utime, NULL, error) != NO_ERROR)
+	      {
+		status = DOMAIN_OVERFLOW;
+		break;
+	      }
+
+	    db_make_timestampltz (target, v_utime);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  /* original value stored in UTC, copy it */
+	  db_make_timestampltz (target, *db_get_timestamp (src));
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  do
+    {
+
+      do
+	{
+
+	  v_timestamptz = *db_get_timestamptz (src);
+	  /* original value stored in UTC, copy it */
+	  db_make_timestampltz (target, v_timestamptz.timestamp);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    {
+	      v_datetime = *db_get_datetime (src);
+	      v_date = v_datetime.date;
+	      v_time = v_datetime.time / 1000;
+	    }
+
+	    if (db_timestamp_encode_ses_core (&v_date, &v_time, &v_utime, NULL, error) != NO_ERROR)
+	      {
+		status = DOMAIN_OVERFLOW;
+		break;
+	      }
+
+	    db_make_timestampltz (target, v_utime);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    v_datetime = *db_get_datetime (src);
+	    v_date = v_datetime.date;
+	    v_time = v_datetime.time / 1000;
+	  }
+
+	  /* both values are in UTC */
+	  if (db_timestamp_encode_utc_core (&v_date, &v_time, &v_utime, error) == NO_ERROR)
+	    {
+	      db_make_timestampltz (target, v_utime);
+	    }
+	  else
+	    {
+	      status = DOMAIN_OVERFLOW;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIMETZ v_datetimetz;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    assert (DB_TYPE_DATETIMETZ == DB_TYPE_DATETIMETZ);
+	    v_datetimetz = *db_get_datetimetz (src);
+	    v_date = v_datetimetz.datetime.date;
+	    v_time = v_datetimetz.datetime.time / 1000;
+	  }
+
+	  /* both values are in UTC */
+	  if (db_timestamp_encode_utc_core (&v_date, &v_time, &v_utime, error) == NO_ERROR)
+	    {
+	      db_make_timestampltz (target, v_utime);
+	    }
+	  else
+	    {
+	      status = DOMAIN_OVERFLOW;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_timestampltz_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetime_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  do
+    {
+
+      do
+	{
+
+	  if (tp_atoudatetime_core (src, &v_datetime, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  else
+	    {
+	      db_make_datetime (target, &v_datetime);
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetime_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  do
+    {
+
+      do
+	{
+
+	  v_datetime.date = *db_get_date (src);
+	  v_datetime.time = 0;
+	  db_make_datetime (target, &v_datetime);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetime_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_utime = *db_get_timestamp (src);
+	  if (db_timestamp_decode_ses_core (&v_utime, &v_date, &v_time, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  v_datetime.date = v_date;
+	  v_datetime.time = v_time * 1000;
+	  db_make_datetime (target, &v_datetime);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetime_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_timestamptz = *db_get_timestamptz (src);
+	  if (db_timestamp_decode_w_tz_id_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, &v_date, &v_time, error)
+	      != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  v_datetime.date = v_date;
+	  v_datetime.time = v_time * 1000;
+	  db_make_datetime (target, &v_datetime);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_datetime_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME utc_dt;
+
+	    /* DATETIMELTZ store in UTC, DATETIME in session TZ */
+	    utc_dt = *db_get_datetime (src);
+	    if (tz_datetimeltz_to_local_core (&utc_dt, &v_datetime, error) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    db_make_datetime (target, &v_datetime);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_datetime_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  /* DATETIMETZ store in UTC, DATETIME in session TZ */
+	  v_datetimetz = *db_get_datetimetz (src);
+	  if (tz_utc_datetimetz_to_local_core (&v_datetimetz.datetime, &v_datetimetz.tz_id, &v_datetime, error) ==
+	      NO_ERROR)
+	    {
+	      db_make_datetime (target, &v_datetime);
+	    }
+	  else
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_datetime_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_datetime_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetimeltz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  if (tp_atodatetimetz_core (src, &v_datetimetz, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  else
+	    {
+	      db_make_datetimeltz (target, &v_datetimetz.datetime);
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetimeltz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    v_datetime.date = *db_get_date (src);
+	    v_datetime.time = 0;
+	  }
+
+	  if (tz_create_datetimetz_from_ses_core (&v_datetime, &v_datetimetz, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  db_make_datetimeltz (target, &v_datetimetz.datetime);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetimeltz_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_utime = *db_get_timestamp (src);
+
+	  (void) db_timestamp_decode_utc (&v_utime, &v_date, &v_time);
+	  v_datetime.time = v_time * 1000;
+	  v_datetime.date = v_date;
+	  db_make_datetimeltz (target, &v_datetime);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetimeltz_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATETIME v_datetime;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_timestamptz = *db_get_timestamptz (src);
+	  (void) db_timestamp_decode_utc (&v_timestamptz.timestamp, &v_date, &v_time);
+	  v_datetime.time = v_time * 1000;
+	  v_datetime.date = v_date;
+	  db_make_datetimeltz (target, &v_datetime);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_datetimeltz_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    v_datetime = *db_get_datetime (src);
+	  }
+
+	  if (tz_create_datetimetz_from_ses_core (&v_datetime, &v_datetimetz, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  db_make_datetimeltz (target, &v_datetimetz.datetime);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_datetimeltz_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  /* copy (UTC) */
+	  v_datetimetz = *db_get_datetimetz (src);
+	  db_make_datetimeltz (target, &v_datetimetz.datetime);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_datetimeltz_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_datetimeltz_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetimetz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    if (tp_atodatetimetz_core (src, &v_datetimetz, error) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    db_make_datetimetz (target, &v_datetimetz);
+	  }
+
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetimetz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  v_datetime.date = *db_get_date (src);
+	  v_datetime.time = 0;
+
+	  if (tz_create_datetimetz_from_ses_core (&v_datetime, &v_datetimetz, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  db_make_datetimetz (target, &v_datetimetz);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetimetz_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATETIMETZ v_datetimetz;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    v_utime = *db_get_timestamp (src);
+	    db_timestamp_decode_utc (&v_utime, &v_date, &v_time);
+	    v_datetimetz.datetime.time = v_time * 1000;
+	    v_datetimetz.datetime.date = v_date;
+
+	    if (tz_create_session_tzid_for_datetime_core (&v_datetimetz.datetime, true, &v_datetimetz.tz_id, error) !=
+		NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    db_make_datetimetz (target, &v_datetimetz);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetimetz_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATETIMETZ v_datetimetz;
+  DB_TIME v_time;
+  DB_DATE v_date;
+  do
+    {
+
+      do
+	{
+
+	  v_timestamptz = *db_get_timestamptz (src);
+	  (void) db_timestamp_decode_utc (&v_timestamptz.timestamp, &v_date, &v_time);
+	  v_datetimetz.datetime.time = v_time * 1000;
+	  v_datetimetz.datetime.date = v_date;
+	  v_datetimetz.tz_id = v_timestamptz.tz_id;
+	  db_make_datetimetz (target, &v_datetimetz);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_datetimetz_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  if (tz_create_datetimetz_from_ses_core (db_get_datetime (src), &v_datetimetz, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  db_make_datetimetz (target, &v_datetimetz);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_datetimetz_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIMETZ v_datetimetz;
+  do
+    {
+
+      do
+	{
+
+	  v_datetimetz.datetime = *db_get_datetime (src);
+	  if (tz_create_session_tzid_for_datetime_core (&v_datetimetz.datetime, true, &v_datetimetz.tz_id, error) !=
+	      NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  db_make_datetimetz (target, &v_datetimetz);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_datetimetz_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_datetimetz_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_date_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATE v_date;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  if (tp_atodate_core (src, &v_date, error) == NO_ERROR)
+	    {
+	      db_date_decode (&v_date, &month, &day, &year);
+	    }
+	  else
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+
+	  if (tp_make_date_conversion (target, month, day, year, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_date_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATE v_date;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  (void) db_timestamp_decode_ses_core (db_get_timestamp (src), &v_date, NULL, error);
+	  db_date_decode (&v_date, &month, &day, &year);
+	  tp_make_date_conversion (target, month, day, year, error);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_date_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATE v_date;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  v_timestamptz = *db_get_timestamptz (src);
+	  if (db_timestamp_decode_w_tz_id_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, &v_date, NULL, error) !=
+	      NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  db_date_decode (&v_date, &month, &day, &year);
+	  tp_make_date_conversion (target, month, day, year, error);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_date_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  db_datetime_decode ((DB_DATETIME *) db_get_datetime (src), &month, &day, &year, &hour, &minute, &second,
+			      &millisecond);
+	  tp_make_date_conversion (target, month, day, year, error);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_date_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME *utc_dt_p;
+	    DB_DATETIMETZ *dt_tz_p;
+	    TZ_ID tz_id;
+
+	    /* DATETIMELTZ and DATETIMETZ store in UTC, convert to session */
+	    {
+	      utc_dt_p = db_get_datetime (src);
+	      if (tz_create_session_tzid_for_datetime_core (utc_dt_p, true, &tz_id, error) != NO_ERROR)
+		{
+		  status = DOMAIN_ERROR;
+		  break;
+		}
+	    }
+
+	    if (tz_utc_datetimetz_to_local_core (utc_dt_p, &tz_id, &v_datetime, error) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    db_datetime_decode (&v_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
+
+	    tp_make_date_conversion (target, month, day, year, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_date_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME *utc_dt_p;
+	    DB_DATETIMETZ *dt_tz_p;
+	    TZ_ID tz_id;
+
+	    /* DATETIMELTZ and DATETIMETZ store in UTC, convert to session */
+	    {
+	      dt_tz_p = db_get_datetimetz (src);
+	      utc_dt_p = &dt_tz_p->datetime;
+	      tz_id = dt_tz_p->tz_id;
+	    }
+
+	    if (tz_utc_datetimetz_to_local_core (utc_dt_p, &tz_id, &v_datetime, error) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    db_datetime_decode (&v_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
+
+	    tp_make_date_conversion (target, month, day, year, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_date_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_date_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIME v_time;
+  int hour;
+  int minute;
+  int second;
+  do
+    {
+
+      do
+	{
+
+	  v_time = db_get_short (src) % SECONDS_IN_A_DAY;
+	  db_time_decode (&v_time, &hour, &minute, &second);
+	  tp_make_time_conversion (target, hour, minute, second, error);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_short_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIME v_time;
+  int hour;
+  int minute;
+  int second;
+  do
+    {
+
+      do
+	{
+
+	  v_time = db_get_int (src) % SECONDS_IN_A_DAY;
+	  db_time_decode (&v_time, &hour, &minute, &second);
+	  tp_make_time_conversion (target, hour, minute, second, error);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_integer_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIME v_time;
+  int hour;
+  int minute;
+  int second;
+  do
+    {
+
+      do
+	{
+
+	  v_time = db_get_bigint (src) % SECONDS_IN_A_DAY;
+	  db_time_decode (&v_time, &hour, &minute, &second);
+	  tp_make_time_conversion (target, hour, minute, second, error);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bigint_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIME v_time;
+  int hour;
+  int minute;
+  int second;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    float ftmp = db_get_float (src);
+	    if (OR_CHECK_INT_OVERFLOW (ftmp))
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    else
+	      {
+		v_time = ((int) ROUND (ftmp)) % SECONDS_IN_A_DAY;
+		db_time_decode (&v_time, &hour, &minute, &second);
+		tp_make_time_conversion (target, hour, minute, second, error);
+	      }
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_float_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIME v_time;
+  int hour;
+  int minute;
+  int second;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    double dtmp = db_get_double (src);
+	    if (OR_CHECK_INT_OVERFLOW (dtmp))
+	      {
+		status = DOMAIN_OVERFLOW;
+	      }
+	    else
+	      {
+		v_time = ((int) ROUND (dtmp)) % SECONDS_IN_A_DAY;
+		db_time_decode (&v_time, &hour, &minute, &second);
+		tp_make_time_conversion (target, hour, minute, second, error);
+	      }
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_double_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  const DB_MONETARY *v_money;
+  DB_TIME v_time;
+  int hour;
+  int minute;
+  int second;
+  do
+    {
+
+      do
+	{
+
+	  v_money = db_get_monetary (src);
+	  if (OR_CHECK_INT_OVERFLOW (v_money->amount))
+	    {
+	      status = DOMAIN_OVERFLOW;
+	    }
+	  else
+	    {
+	      v_time = (int) ROUND (v_money->amount) % SECONDS_IN_A_DAY;
+	      db_time_decode (&v_time, &hour, &minute, &second);
+	      tp_make_time_conversion (target, hour, minute, second, error);
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_monetary_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIME v_time;
+  int hour;
+  int minute;
+  int second;
+  do
+    {
+
+      do
+	{
+
+	  if (tp_atotime_core (src, &v_time, error) == NO_ERROR)
+	    {
+	      db_time_decode (&v_time, &hour, &minute, &second);
+	    }
+	  else
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+
+	  if (tp_make_time_conversion (target, hour, minute, second, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIME v_time;
+  do
+    {
+
+      do
+	{
+
+	  if (db_timestamp_decode_ses_core (db_get_timestamp (src), NULL, &v_time, error) != NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  db_value_put_encoded_time (target, &v_time);
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_TIME v_time;
+  do
+    {
+
+      do
+	{
+
+	  /* convert TS from UTC to value TZ */
+	  v_timestamptz = *db_get_timestamptz (src);
+	  if (db_timestamp_decode_w_tz_id_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, NULL, &v_time, error) !=
+	      NO_ERROR)
+	    {
+	      status = DOMAIN_ERROR;
+	      break;
+	    }
+	  db_value_put_encoded_time (target, &v_time);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  db_datetime_decode ((DB_DATETIME *) db_get_datetime (src), &month, &day, &year, &hour, &minute, &second,
+			      &millisecond);
+	  tp_make_time_conversion (target, hour, minute, second, error);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME dt_local;
+
+	    v_datetime = *db_get_datetime (src);
+
+	    if (tz_datetimeltz_to_local_core (&v_datetime, &dt_local, error) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
+	    tp_make_time_conversion (target, hour, minute, second, error);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIMETZ v_datetimetz;
+  int hour;
+  int minute;
+  int second;
+  int millisecond;
+  int year;
+  int month;
+  int day;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME dt_local;
+
+	    v_datetimetz = *db_get_datetimetz (src);
+	    if (tz_utc_datetimetz_to_local_core (&v_datetimetz.datetime, &v_datetimetz.tz_id, &dt_local, error) !=
+		NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
+	    tp_make_time_conversion (target, hour, minute, second, error);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_time_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+#if !defined (SERVER_MODE)
+static TP_DOMAIN_STATUS
+tp_value_convert_object_to_object_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	DB_OBJECT *v_obj = NULL;
+	int is_vclass = 0;
+
+	/* Make sure the domains are compatible.  Coerce view objects to real objects. */
+	do
+	  {
+
+	    if (!sm_coerce_object_domain ((TP_DOMAIN *) desired_domain, db_get_object (src), &v_obj))
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	    break;
+
+	  }
+	while (false);
+	{
+	  /* check we got an object in a proper class */
+	  if (v_obj && desired_domain->class_mop)
+	    {
+	      DB_OBJECT *obj_class;
+
+	      obj_class = db_get_class (v_obj);
+	      if (obj_class == desired_domain->class_mop)
+		{
+		  /* everything is fine */
+		}
+	      else if (db_is_subclass (obj_class, desired_domain->class_mop) > 0)
+		{
+		  /* everything is also ok */
+		}
+	      else
+		{
+		  is_vclass = db_is_vclass (desired_domain->class_mop);
+		  if (is_vclass < 0)
+		    {
+		      status = DOMAIN_ERROR;
+		      break;
+		    }
+		  if (is_vclass)
+		    {
+		      /*
+		       * This should still be an error, and the above
+		       * code should have constructed a virtual mop.
+		       * I'm not sure the rest of the code is consistent
+		       * in this regard.
+		       */
+		    }
+		  else
+		    {
+		      status = DOMAIN_INCOMPATIBLE;
+		    }
+		}
+	    }
+	  db_make_object (target, v_obj);
+	}
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_object_to_object (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_object_to_object_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+#endif
+#if !defined (SERVER_MODE)
+static TP_DOMAIN_STATUS
+tp_value_convert_oid_to_object_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	DB_OBJECT *v_obj = NULL;
+	int is_vclass = 0;
+
+	/* Make sure the domains are compatible.  Coerce view objects to real objects. */
+	do
+	  {
+
+	    vid_oid_to_object (src, &v_obj);
+	    break;
+
+
+	  }
+	while (false);
+	{
+	  /* check we got an object in a proper class */
+	  if (v_obj && desired_domain->class_mop)
+	    {
+	      DB_OBJECT *obj_class;
+
+	      obj_class = db_get_class (v_obj);
+	      if (obj_class == desired_domain->class_mop)
+		{
+		  /* everything is fine */
+		}
+	      else if (db_is_subclass (obj_class, desired_domain->class_mop) > 0)
+		{
+		  /* everything is also ok */
+		}
+	      else
+		{
+		  is_vclass = db_is_vclass (desired_domain->class_mop);
+		  if (is_vclass < 0)
+		    {
+		      status = DOMAIN_ERROR;
+		      break;
+		    }
+		  if (is_vclass)
+		    {
+		      /*
+		       * This should still be an error, and the above
+		       * code should have constructed a virtual mop.
+		       * I'm not sure the rest of the code is consistent
+		       * in this regard.
+		       */
+		    }
+		  else
+		    {
+		      status = DOMAIN_INCOMPATIBLE;
+		    }
+		}
+	    }
+	  db_make_object (target, v_obj);
+	}
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_oid_to_object (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_oid_to_object_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+#endif
+#if !defined (SERVER_MODE)
+static TP_DOMAIN_STATUS
+tp_value_convert_pointer_to_object_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	DB_OBJECT *v_obj = NULL;
+	int is_vclass = 0;
+
+	/* Make sure the domains are compatible.  Coerce view objects to real objects. */
+	do
+	  {
+
+	    if (!sm_check_class_domain ((TP_DOMAIN *) desired_domain, ((DB_OTMPL *) db_get_pointer (src))->classobj))
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+		break;
+	      }
+	    db_make_pointer (target, db_get_pointer (src));
+	    break;
+
+	  }
+	while (false);
+
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_pointer_to_object (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_pointer_to_object_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+#endif
+#if !defined (SERVER_MODE)
+static TP_DOMAIN_STATUS
+tp_value_convert_vobj_to_object_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	DB_OBJECT *v_obj = NULL;
+	int is_vclass = 0;
+
+	/* Make sure the domains are compatible.  Coerce view objects to real objects. */
+	do
+	  {
+
+	    vid_vobj_to_object (src, &v_obj);
+	    is_vclass = db_is_vclass (desired_domain->class_mop);
+	    if (is_vclass < 0)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    if (!is_vclass)
+	      {
+		v_obj = db_real_instance (v_obj);
+	      }
+	    break;
+
+
+	  }
+	while (false);
+	{
+	  /* check we got an object in a proper class */
+	  if (v_obj && desired_domain->class_mop)
+	    {
+	      DB_OBJECT *obj_class;
+
+	      obj_class = db_get_class (v_obj);
+	      if (obj_class == desired_domain->class_mop)
+		{
+		  /* everything is fine */
+		}
+	      else if (db_is_subclass (obj_class, desired_domain->class_mop) > 0)
+		{
+		  /* everything is also ok */
+		}
+	      else
+		{
+		  is_vclass = db_is_vclass (desired_domain->class_mop);
+		  if (is_vclass < 0)
+		    {
+		      status = DOMAIN_ERROR;
+		      break;
+		    }
+		  if (is_vclass)
+		    {
+		      /*
+		       * This should still be an error, and the above
+		       * code should have constructed a virtual mop.
+		       * I'm not sure the rest of the code is consistent
+		       * in this regard.
+		       */
+		    }
+		  else
+		    {
+		      status = DOMAIN_INCOMPATIBLE;
+		    }
+		}
+	    }
+	  db_make_object (target, v_obj);
+	}
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_vobj_to_object (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_vobj_to_object_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+#endif
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_set_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	SETREF *setref;
+
+	setref = db_get_set (src);
+	if (setref)
+	  {
+	    TP_DOMAIN *set_domain;
+
+	    set_domain = setobj_domain (setref->set);
+	    {
+	      if (tp_domain_compatible (set_domain, desired_domain))
+		{
+		  /*
+		   * Well, we can't use the exact same set, but we don't
+		   * have to do the whole hairy coerce thing either: we
+		   * can just make a copy and then take the more general
+		   * domain.  setobj_put_domain() guards against null
+		   * pointers, there's no need to check first.
+		   */
+		  setref = set_copy (setref);
+		  if (setref)
+		    {
+		      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
+		    }
+		}
+	      else
+		{
+		  /*
+		   * Well, now we have to use the whole hairy coercion
+		   * thing.  Too bad...
+		   *
+		   * This case will crop up when someone tries to cast a
+		   * "set of int" as a "set of float", for example.
+		   */
+		  setref =
+		    set_coerce (setref, (TP_DOMAIN *) desired_domain, (TP_EXPLICIT_COERCION == TP_IMPLICIT_COERCION));
+		}
+
+	      if (setref == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  err = er_errid ();
+		}
+	      else
+		{
+		  err = db_make_set (target, setref);
+		}
+	    }
+	    if (!setref || err < 0)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	  }
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_set (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_set_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_multiset_to_set (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_set_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_sequence_to_set (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_set_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_multiset_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	SETREF *setref;
+
+	setref = db_get_set (src);
+	if (setref)
+	  {
+	    TP_DOMAIN *set_domain;
+
+	    set_domain = setobj_domain (setref->set);
+	    {
+	      if (tp_domain_compatible (set_domain, desired_domain))
+		{
+		  /*
+		   * Well, we can't use the exact same set, but we don't
+		   * have to do the whole hairy coerce thing either: we
+		   * can just make a copy and then take the more general
+		   * domain.  setobj_put_domain() guards against null
+		   * pointers, there's no need to check first.
+		   */
+		  setref = set_copy (setref);
+		  if (setref)
+		    {
+		      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
+		    }
+		}
+	      else
+		{
+		  /*
+		   * Well, now we have to use the whole hairy coercion
+		   * thing.  Too bad...
+		   *
+		   * This case will crop up when someone tries to cast a
+		   * "set of int" as a "set of float", for example.
+		   */
+		  setref =
+		    set_coerce (setref, (TP_DOMAIN *) desired_domain, (TP_EXPLICIT_COERCION == TP_IMPLICIT_COERCION));
+		}
+
+	      if (setref == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  err = er_errid ();
+		}
+	      else
+		{
+		  err = db_make_multiset (target, setref);
+		}
+	    }
+	    if (!setref || err < 0)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	  }
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_multiset (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_multiset_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_multiset_to_multiset (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_multiset_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_sequence_to_multiset (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_multiset_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_sequence_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	SETREF *setref;
+
+	setref = db_get_set (src);
+	if (setref)
+	  {
+	    TP_DOMAIN *set_domain;
+
+	    set_domain = setobj_domain (setref->set);
+	    {
+	      if (tp_domain_compatible (set_domain, desired_domain))
+		{
+		  /*
+		   * Well, we can't use the exact same set, but we don't
+		   * have to do the whole hairy coerce thing either: we
+		   * can just make a copy and then take the more general
+		   * domain.  setobj_put_domain() guards against null
+		   * pointers, there's no need to check first.
+		   */
+		  setref = set_copy (setref);
+		  if (setref)
+		    {
+		      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
+		    }
+		}
+	      else
+		{
+		  /*
+		   * Well, now we have to use the whole hairy coercion
+		   * thing.  Too bad...
+		   *
+		   * This case will crop up when someone tries to cast a
+		   * "set of int" as a "set of float", for example.
+		   */
+		  setref =
+		    set_coerce (setref, (TP_DOMAIN *) desired_domain, (TP_EXPLICIT_COERCION == TP_IMPLICIT_COERCION));
+		}
+
+	      if (setref == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  err = er_errid ();
+		}
+	      else
+		{
+		  err = db_make_sequence (target, setref);
+		}
+	    }
+	    if (!setref || err < 0)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	  }
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_sequence (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_sequence_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_multiset_to_sequence (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_sequence_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_sequence_to_sequence (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_sequence_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+#if !defined (SERVER_MODE)
+static TP_DOMAIN_STATUS
+tp_value_convert_object_to_vobj_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	if (vid_object_to_vobj (db_get_object (src), target) < 0)
+	  {
+	    status = DOMAIN_INCOMPATIBLE;
+	  }
+	else
+	  {
+	    status = DOMAIN_COMPATIBLE;
+	  }
+	break;
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_object_to_vobj (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_object_to_vobj_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+#endif
+static TP_DOMAIN_STATUS
+tp_value_convert_oid_to_vobj_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	DB_VALUE view_oid;
+	DB_VALUE class_oid;
+	DB_VALUE keys;
+	OID nulloid;
+	DB_SEQ *seq;
+
+	OID_SET_NULL (&nulloid);
+	db_make_oid (&class_oid, &nulloid);
+	db_make_oid (&view_oid, &nulloid);
+	seq = db_seq_create (NULL, NULL, 3);
+	keys = *src;
+
+	/*
+	 * if we are on the server, and get a DB_TYPE_OBJECT,
+	 * then its only possible representation is a DB_TYPE_OID,
+	 * and it may be treated that way. However, this should
+	 * not really be a case that can happen. It may still
+	 * for historical reasons, so is not falgged as an error.
+	 * On the client, a worskapce based scheme must be used,
+	 * which is just above in a conditional compiled section.
+	 */
+
+	if ((db_seq_put (seq, 0, &view_oid) != NO_ERROR) || (db_seq_put (seq, 1, &class_oid) != NO_ERROR)
+	    || (db_seq_put (seq, 2, &keys) != NO_ERROR))
+	  {
+	    status = DOMAIN_INCOMPATIBLE;
+	  }
+	else
+	  {
+	    db_make_sequence (target, seq);
+	    db_value_alter_type (target, DB_TYPE_VOBJ);
+	    status = DOMAIN_COMPATIBLE;
+	  }
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_oid_to_vobj (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_oid_to_vobj_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_vobj_to_vobj_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	SETREF *setref;
+	/*
+	 * We should try and convert the view of the src to match
+	 * the view of the desired_domain. However, the desired
+	 * domain generally does not contain this information.
+	 * We will detect domain incompatibly later on assignment,
+	 * so we treat casting any DB_TYPE_VOBJ to DB_TYPE_VOBJ
+	 * as success.
+	 */
+	status = DOMAIN_COMPATIBLE;
+	setref = db_get_set (src);
+	{
+	  pr_clone_value ((DB_VALUE *) src, target);
+	}
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_vobj_to_vobj (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_vobj_to_vobj_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_bit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE temp;
+	    char *bit_char_string;
+	    int src_size = db_get_string_size (src);
+	    int dst_size = (src_size + 1) / 2;
+
+	    bit_char_string = (char *) db_private_alloc (NULL, dst_size + 1);
+	    if (bit_char_string)
+	      {
+		if (qstr_hex_to_bin (bit_char_string, dst_size, db_get_string (src), src_size) != src_size)
+		  {
+		    status = DOMAIN_ERROR;
+		    db_private_free_and_init (NULL, bit_char_string);
+		  }
+		else
+		  {
+		    db_make_bit (&temp, TP_FLOATING_PRECISION_VALUE, bit_char_string, src_size * 4);
+		    temp.need_clear = true;
+		    if (db_bit_string_coerce (&temp, target, &data_stat) != NO_ERROR)
+		      {
+			status = DOMAIN_INCOMPATIBLE;
+		      }
+		    else if (data_stat == DATA_STATUS_TRUNCATED)
+		      {
+			status = DOMAIN_TRUNCATED;
+		      }
+		    else
+		      {
+			status = DOMAIN_COMPATIBLE;
+		      }
+		    pr_clear_value (&temp);
+		  }
+	      }
+	    else
+	      {
+		/* Couldn't allocate space for bit_char_string */
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_bit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_bit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_bit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_bit_core (&varchar_val, target, desired_domain, error);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_bit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_bit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+
+  if (DB_VALUE_PRECISION (src) == desired_domain->precision)
+    {
+      pr_clone_value (src, target);
+      return DOMAIN_COMPATIBLE;
+    }
+  do
+    {
+
+      do
+	{
+
+	  if (db_bit_string_coerce (src, target, &data_stat) != NO_ERROR)
+	    {
+	      status = DOMAIN_INCOMPATIBLE;
+	    }
+	  else if (data_stat == DATA_STATUS_TRUNCATED)
+	    {
+	      status = DOMAIN_TRUNCATED;
+	    }
+	  else
+	    {
+	      status = DOMAIN_COMPATIBLE;
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_bit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varbit_to_bit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  if (db_bit_string_coerce (src, target, &data_stat) != NO_ERROR)
+	    {
+	      status = DOMAIN_INCOMPATIBLE;
+	    }
+	  else if (data_stat == DATA_STATUS_TRUNCATED)
+	    {
+	      status = DOMAIN_TRUNCATED;
+	    }
+	  else
+	    {
+	      status = DOMAIN_COMPATIBLE;
+	    }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varbit_to_bit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_varbit_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_bit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE tmpval;
+
+	    db_make_null (&tmpval);
+
+	    err = db_blob_to_bit (src, NULL, &tmpval);
+	    if (err == NO_ERROR)
+	      {
+		TP_DOMAIN_STATUS nested_status =
+		  tp_value_convert_varbit_to_bit_core (&tmpval, target, desired_domain, error);
+		if (nested_status == DOMAIN_COMPATIBLE || nested_status == DOMAIN_TRUNCATED)
+		  {
+		    status = nested_status;
+		  }
+		else
+		  {
+		    /* The old outer LOB cast returned success with a NULL result. */
+		    pr_clear_value (target);
+		    db_make_null (target);
+		  }
+	      }
+	    (void) pr_clear_value (&tmpval);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_bit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_blob_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_varbit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_varbit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_varbit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_bit_core (&varchar_val, target, desired_domain, error);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_varbit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_varbit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_varbit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_varbit_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varbit_to_varbit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_varbit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE tmpval;
+
+	    db_make_null (&tmpval);
+
+	    err = db_blob_to_bit (src, NULL, &tmpval);
+	    if (err == NO_ERROR)
+	      {
+		TP_DOMAIN_STATUS nested_status =
+		  tp_value_convert_bit_to_bit_core (&tmpval, target, desired_domain, error);
+		if (nested_status == DOMAIN_COMPATIBLE || nested_status == DOMAIN_TRUNCATED)
+		  {
+		    status = nested_status;
+		  }
+		else
+		  {
+		    /* The old outer LOB cast returned success with a NULL result. */
+		    pr_clear_value (target);
+		    db_make_null (target);
+		  }
+	      }
+	    (void) pr_clear_value (&tmpval);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_varbit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_blob_to_varbit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = TP_BIGINT_PRECISION + 2 + 1;
+	    char *new_string;
+	    DB_BIGINT num;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    {
+	      num = (DB_BIGINT) db_get_short (src);
+	    }
+
+	    if (tp_ltoa (num, new_string, 10))
+	      {
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) < (int) strlen (new_string))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+		  }
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_short_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = TP_BIGINT_PRECISION + 2 + 1;
+	    char *new_string;
+	    DB_BIGINT num;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    {
+	      num = (DB_BIGINT) db_get_int (src);
+	    }
+
+	    if (tp_ltoa (num, new_string, 10))
+	      {
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) < (int) strlen (new_string))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+		  }
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_integer_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = TP_BIGINT_PRECISION + 2 + 1;
+	    char *new_string;
+	    DB_BIGINT num;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    {
+	      num = db_get_bigint (src);
+	    }
+
+	    if (tp_ltoa (num, new_string, 10))
+	      {
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) < (int) strlen (new_string))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+		  }
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bigint_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    {
+	      tp_ftoa_varchar (src, target);
+	    }
+
+	    if (DB_IS_NULL (target))
+	      {
+		if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+		  {
+		    /* no way to report "out of memory" from tp_value_cast_internal() ?? */
+		    status = DOMAIN_ERROR;
+		  }
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;
+		  }
+	      }
+	    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
+		     && (db_get_string_length (target) > DB_VALUE_PRECISION (target)))
+	      {
+		status = DOMAIN_OVERFLOW;
+		pr_clear_value (target);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_float_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    {
+	      tp_dtoa_varchar (src, target);
+	    }
+
+	    if (DB_IS_NULL (target))
+	      {
+		if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+		  {
+		    /* no way to report "out of memory" from tp_value_cast_internal() ?? */
+		    status = DOMAIN_ERROR;
+		  }
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;
+		  }
+	      }
+	    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
+		     && (db_get_string_length (target) > DB_VALUE_PRECISION (target)))
+	      {
+		status = DOMAIN_OVERFLOW;
+		pr_clear_value (target);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_double_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    /* monetary symbol = 3 sign = 1 dot = 1 fraction digits = 2 NUL terminator = 1 */
+	    int max_size = DBL_MAX_DIGITS + 3 + 1 + 1 + 2 + 1;
+	    char *new_string;
+	    char *p;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    snprintf (new_string, max_size - 1, "%s%.*f", lang_currency_symbol (db_get_monetary (src)->type), 2,
+		      db_get_monetary (src)->amount);
+	    new_string[max_size - 1] = '\0';
+
+	    p = new_string + strlen (new_string);
+	    for (--p; p >= new_string && *p == '0'; p--)
+	      {			/* remove trailing zeros */
+		*p = '\0';
+	      }
+	    if (*p == '.')	/* remove point */
+	      {
+		*p = '\0';
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_monetary_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    char str_buf[NUMERIC_MAX_STRING_SIZE];
+	    char *new_string;
+	    int max_size;
+
+	    numeric_db_value_print (src, str_buf);
+
+	    max_size = strlen (str_buf) + 1;
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (new_string == NULL)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    strcpy (new_string, str_buf);
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < max_size - 1)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_numeric_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  if (db_char_string_coerce (src, target, &data_stat) != NO_ERROR)
+	    {
+	      status = DOMAIN_INCOMPATIBLE;
+	    }
+	  else if (data_stat == DATA_STATUS_TRUNCATED)
+	    {
+	      status = DOMAIN_TRUNCATED;
+	    }
+	  else if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
+	    {
+	      db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
+					      TP_DOMAIN_COLLATION (desired_domain));
+	      status = DOMAIN_COMPATIBLE;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+
+  if (DB_VALUE_PRECISION (src) == desired_domain->precision
+      && (desired_domain->collation_flag == TP_DOMAIN_COLL_LEAVE
+	  || db_get_string_codeset (src) == TP_DOMAIN_CODESET (desired_domain)))
+    {
+      pr_clone_value (src, target);
+      if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
+	db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
+					TP_DOMAIN_COLLATION (desired_domain));
+      return DOMAIN_COMPATIBLE;
+    }
+  do
+    {
+
+      do
+	{
+
+	  if (db_char_string_coerce (src, target, &data_stat) != NO_ERROR)
+	    {
+	      status = DOMAIN_INCOMPATIBLE;
+	    }
+	  else if (data_stat == DATA_STATUS_TRUNCATED)
+	    {
+	      status = DOMAIN_TRUNCATED;
+	    }
+	  else if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
+	    {
+	      db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
+					      TP_DOMAIN_COLLATION (desired_domain));
+	      status = DOMAIN_COMPATIBLE;
+	    }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_varchar_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		db_date_to_string (new_string, max_size, (DB_DATE *) db_get_date (src));
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_time_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		db_time_to_string (new_string, max_size, (DB_TIME *) db_get_time (src));
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_time_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_time_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		db_timestamp_to_string_core (new_string, max_size, (DB_TIMESTAMP *) db_get_timestamp (src), error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_varchar_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  TZ_ID ses_tz_id;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		v_utime = *db_get_timestamp (src);
+		err = tz_create_session_tzid_for_timestamp_core (&v_utime, &ses_tz_id, error);
+		if (err != NO_ERROR)
+		  {
+		    break;
+		  }
+		db_timestamptz_to_string_core (new_string, max_size, &v_utime, &ses_tz_id, error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestampltz_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		v_timestamptz = *db_get_timestamptz (src);
+		db_timestamptz_to_string_core (new_string, max_size, &v_timestamptz.timestamp, &v_timestamptz.tz_id,
+					       error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		db_datetime_to_string (new_string, max_size, (DB_DATETIME *) db_get_datetime (src));
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  TZ_ID ses_tz_id;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		v_datetime = *db_get_datetime (src);
+		err = tz_create_session_tzid_for_datetime_core (&v_datetime, true, &ses_tz_id, error);
+		if (err != NO_ERROR)
+		  {
+		    break;
+		  }
+		db_datetimetz_to_string_core (new_string, max_size, &v_datetime, &ses_tz_id, error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIMETZ v_datetimetz;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		v_datetimetz = *db_get_datetimetz (src);
+		db_datetimetz_to_string_core (new_string, max_size, &v_datetimetz.datetime, &v_datetimetz.tz_id, error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+	      }
+	    else
+	      {
+		status = tp_value_convert_varchar_to_varchar_core (&varchar_val, target, desired_domain, error);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size;
+	    char *new_string;
+	    int convert_error;
+
+	    max_size = ((db_get_string_length (src) + 3) / 4) + 1;
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    convert_error = bfmt_print (1 /* BIT_STRING_HEX */ , src,
+					new_string, max_size);
+
+	    if (convert_error == NO_ERROR)
+	      {
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && (db_value_precision (target) < (int) strlen (new_string)))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    tp_make_varchar_conversion (desired_domain, new_string, target, &status, &data_stat);
+		  }
+	      }
+	    else if (convert_error == -1)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varbit_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_clob_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE tmpval;
+	    DB_VALUE cs;
+
+	    db_make_null (&tmpval);
+	    /* convert directly from CLOB into charset of desired domain string */
+	    db_make_int (&cs, desired_domain->codeset);
+	    err = db_clob_to_char (src, &cs, &tmpval);
+	    if (err == NO_ERROR)
+	      {
+		TP_DOMAIN_STATUS nested_status =
+		  tp_value_convert_varchar_to_varchar_core (&tmpval, target, desired_domain, error);
+		if (nested_status == DOMAIN_COMPATIBLE || nested_status == DOMAIN_TRUNCATED)
+		  {
+		    status = nested_status;
+		  }
+		else
+		  {
+		    /* The old outer LOB cast returned success with a NULL result. */
+		    pr_clear_value (target);
+		    db_make_null (target);
+		  }
+	      }
+
+	    pr_clear_value (&tmpval);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_clob_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_clob_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    char *json_str;
+	    int len;
+
+	    json_str = db_json_get_raw_json_body_from_document (db_get_json_document (src));
+	    len = strlen (json_str);
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE && db_value_precision (target) < len)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, json_str);
+	      }
+	    else
+	      {
+		tp_make_varchar_conversion (desired_domain, json_str, target, &status, &data_stat);
+		target->need_clear = true;
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = TP_BIGINT_PRECISION + 2 + 1;
+	    char *new_string;
+	    DB_BIGINT num;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    {
+	      num = (DB_BIGINT) db_get_short (src);
+	    }
+
+	    if (tp_ltoa (num, new_string, 10))
+	      {
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) < (int) strlen (new_string))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+		  }
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_short_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = TP_BIGINT_PRECISION + 2 + 1;
+	    char *new_string;
+	    DB_BIGINT num;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    {
+	      num = (DB_BIGINT) db_get_int (src);
+	    }
+
+	    if (tp_ltoa (num, new_string, 10))
+	      {
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) < (int) strlen (new_string))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+		  }
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_integer_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = TP_BIGINT_PRECISION + 2 + 1;
+	    char *new_string;
+	    DB_BIGINT num;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    {
+	      num = db_get_bigint (src);
+	    }
+
+	    if (tp_ltoa (num, new_string, 10))
+	      {
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && db_value_precision (target) < (int) strlen (new_string))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+		  }
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bigint_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    {
+	      tp_ftoa_char (src, target);
+	    }
+
+	    if (DB_IS_NULL (target))
+	      {
+		if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+		  {
+		    /* no way to report "out of memory" from tp_value_cast_internal() ?? */
+		    status = DOMAIN_ERROR;
+		  }
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;
+		  }
+	      }
+	    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
+		     && (db_get_string_length (target) > DB_VALUE_PRECISION (target)))
+	      {
+		status = DOMAIN_OVERFLOW;
+		pr_clear_value (target);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_float_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    {
+	      tp_dtoa_char (src, target);
+	    }
+
+	    if (DB_IS_NULL (target))
+	      {
+		if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
+		  {
+		    /* no way to report "out of memory" from tp_value_cast_internal() ?? */
+		    status = DOMAIN_ERROR;
+		  }
+		else
+		  {
+		    status = DOMAIN_INCOMPATIBLE;
+		  }
+	      }
+	    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
+		     && (db_get_string_length (target) > DB_VALUE_PRECISION (target)))
+	      {
+		status = DOMAIN_OVERFLOW;
+		pr_clear_value (target);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_double_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    /* monetary symbol = 3 sign = 1 dot = 1 fraction digits = 2 NUL terminator = 1 */
+	    int max_size = DBL_MAX_DIGITS + 3 + 1 + 1 + 2 + 1;
+	    char *new_string;
+	    char *p;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    snprintf (new_string, max_size - 1, "%s%.*f", lang_currency_symbol (db_get_monetary (src)->type), 2,
+		      db_get_monetary (src)->amount);
+	    new_string[max_size - 1] = '\0';
+
+	    p = new_string + strlen (new_string);
+	    for (--p; p >= new_string && *p == '0'; p--)
+	      {			/* remove trailing zeros */
+		*p = '\0';
+	      }
+	    if (*p == '.')	/* remove point */
+	      {
+		*p = '\0';
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_monetary_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    char str_buf[NUMERIC_MAX_STRING_SIZE];
+	    char *new_string;
+	    int max_size;
+
+	    numeric_db_value_print (src, str_buf);
+
+	    max_size = strlen (str_buf) + 1;
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (new_string == NULL)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    strcpy (new_string, str_buf);
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < max_size - 1)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_numeric_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_varchar_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		db_date_to_string (new_string, max_size, (DB_DATE *) db_get_date (src));
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_time_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		db_time_to_string (new_string, max_size, (DB_TIME *) db_get_time (src));
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_time_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_time_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		db_timestamp_to_string_core (new_string, max_size, (DB_TIMESTAMP *) db_get_timestamp (src), error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_UTIME v_utime;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  TZ_ID ses_tz_id;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		v_utime = *db_get_timestamp (src);
+		err = tz_create_session_tzid_for_timestamp_core (&v_utime, &ses_tz_id, error);
+		if (err != NO_ERROR)
+		  {
+		    break;
+		  }
+		db_timestamptz_to_string_core (new_string, max_size, &v_utime, &ses_tz_id, error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestampltz_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_TIMESTAMPTZ v_timestamptz;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		v_timestamptz = *db_get_timestamptz (src);
+		db_timestamptz_to_string_core (new_string, max_size, &v_timestamptz.timestamp, &v_timestamptz.tz_id,
+					       error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		db_datetime_to_string (new_string, max_size, (DB_DATETIME *) db_get_datetime (src));
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIME v_datetime;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  TZ_ID ses_tz_id;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		v_datetime = *db_get_datetime (src);
+		err = tz_create_session_tzid_for_datetime_core (&v_datetime, true, &ses_tz_id, error);
+		if (err != NO_ERROR)
+		  {
+		    break;
+		  }
+		db_datetimetz_to_string_core (new_string, max_size, &v_datetime, &ses_tz_id, error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATETIMETZ v_datetimetz;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size = DATETIMETZ_BUF_SIZE;
+	    char *new_string;
+
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    err = NO_ERROR;
+
+	    do
+	      {
+
+		v_datetimetz = *db_get_datetimetz (src);
+		db_datetimetz_to_string_core (new_string, max_size, &v_datetimetz.datetime, &v_datetimetz.tz_id, error);
+		break;
+
+	      }
+	    while (false);
+
+	    if (err != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		&& db_value_precision (target) < (int) strlen (new_string))
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+	      }
+	    else
+	      {
+		status = tp_value_convert_char_to_varchar_core (&varchar_val, target, desired_domain, error);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    int max_size;
+	    char *new_string;
+	    int convert_error;
+
+	    max_size = ((db_get_string_length (src) + 3) / 4) + 1;
+	    new_string = (char *) db_private_alloc (NULL, max_size);
+	    if (!new_string)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+
+	    convert_error = bfmt_print (1 /* BIT_STRING_HEX */ , src,
+					new_string, max_size);
+
+	    if (convert_error == NO_ERROR)
+	      {
+		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
+		    && (db_value_precision (target) < (int) strlen (new_string)))
+		  {
+		    status = DOMAIN_OVERFLOW;
+		    db_private_free_and_init (NULL, new_string);
+		  }
+		else
+		  {
+		    tp_make_char_conversion (desired_domain, new_string, target, &status, &data_stat);
+		  }
+	      }
+	    else if (convert_error == -1)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	    else
+	      {
+		status = DOMAIN_ERROR;
+		db_private_free_and_init (NULL, new_string);
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varbit_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_clob_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE tmpval;
+	    DB_VALUE cs;
+
+	    db_make_null (&tmpval);
+	    /* convert directly from CLOB into charset of desired domain string */
+	    db_make_int (&cs, desired_domain->codeset);
+	    err = db_clob_to_char (src, &cs, &tmpval);
+	    if (err == NO_ERROR)
+	      {
+		TP_DOMAIN_STATUS nested_status =
+		  tp_value_convert_char_to_varchar_core (&tmpval, target, desired_domain, error);
+		if (nested_status == DOMAIN_COMPATIBLE || nested_status == DOMAIN_TRUNCATED)
+		  {
+		    status = nested_status;
+		  }
+		else
+		  {
+		    /* The old outer LOB cast returned success with a NULL result. */
+		    pr_clear_value (target);
+		    db_make_null (target);
+		  }
+	      }
+
+	    pr_clear_value (&tmpval);
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_clob_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_clob_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  DB_DATA_STATUS data_stat = DATA_STATUS_OK;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    char *json_str;
+	    int len;
+
+	    json_str = db_json_get_raw_json_body_from_document (db_get_json_document (src));
+	    len = strlen (json_str);
+
+	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE && db_value_precision (target) < len)
+	      {
+		status = DOMAIN_OVERFLOW;
+		db_private_free_and_init (NULL, json_str);
+	      }
+	    else
+	      {
+		tp_make_char_conversion (desired_domain, json_str, target, &status, &data_stat);
+		target->need_clear = true;
+	      }
+	  }
+	  break;
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_blob_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  err = db_char_to_blob (src, target);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_blob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_blob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_blob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_blob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_blob_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_blob_core (&varchar_val, target, desired_domain, error);
+	  }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_blob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_blob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_blob_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  err = db_bit_to_blob (src, target);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_blob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_blob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varbit_to_blob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_blob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_blob_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  err = db_value_clone ((DB_VALUE *) src, target);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_blob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_blob_to_blob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_clob_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  err = db_char_to_clob (src, target);
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_clob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_clob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_clob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_clob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_clob_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_VALUE varchar_val;
+	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
+	      {
+		status = DOMAIN_ERROR;
+		break;
+	      }
+	    status = tp_value_convert_char_to_clob_core (&varchar_val, target, desired_domain, error);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_clob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_clob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_clob_to_clob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_blob_to_blob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    val_idx = (unsigned short) db_get_short (src);
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_short_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    if (OR_CHECK_USHRT_OVERFLOW (db_get_int (src)))
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) db_get_int (src);
+	      }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_integer_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    if (OR_CHECK_USHRT_OVERFLOW (db_get_bigint (src)))
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) db_get_bigint (src);
+	      }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bigint_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    if (OR_CHECK_USHRT_OVERFLOW (floor (db_get_float (src))))
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) floor (db_get_float (src));
+	      }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_float_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    if (OR_CHECK_USHRT_OVERFLOW (floor (db_get_double (src))))
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) floor (db_get_double (src));
+	      }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_double_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  const DB_MONETARY *v_money;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    v_money = db_get_monetary (src);
+	    if (OR_CHECK_USHRT_OVERFLOW (floor (v_money->amount)))
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	    else
+	      {
+		val_idx = (unsigned short) floor (v_money->amount);
+	      }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_monetary_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_monetary_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      DB_VALUE val;
+	      DB_DATA_STATUS stat = DATA_STATUS_OK;
+
+	      db_make_double (&val, 0);
+	      err = numeric_coerce_num_to_double (src, db_get_numeric_scale (src, NULL), &val);
+	      if (err != NO_ERROR)
+		{
+		  status = DOMAIN_ERROR;
+		}
+	      else
+		{
+		  if (OR_CHECK_USHRT_OVERFLOW (floor (db_get_double (&val))))
+		    {
+		      status = DOMAIN_INCOMPATIBLE;
+		    }
+		  else
+		    {
+		      val_idx = (unsigned short) floor (db_get_double (&val));
+		    }
+		}
+	      break;
+	    }
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_numeric_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    if (db_get_string_codeset (src) != TP_DOMAIN_CODESET (desired_domain))
+	      {
+		DB_DATA_STATUS data_status = DATA_STATUS_OK;
+
+		if (TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_RAW_BYTES)
+		  {
+		    /* avoid data truncation when converting to binary charset */
+		    db_value_domain_init (&conv_val, DB_TYPE_CHAR, db_get_string_size (src), 0);
+		  }
+		else
+		  {
+		    db_value_domain_init (&conv_val, DB_TYPE_CHAR, DB_VALUE_PRECISION (src), 0);
+		  }
+
+		db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (desired_domain),
+						TP_DOMAIN_COLLATION (desired_domain));
+
+		if (db_char_string_coerce (src, &conv_val, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
+		  {
+		    status = DOMAIN_ERROR;
+		    pr_clear_value (&conv_val);
+		  }
+		else
+		  {
+		    val_str = db_get_string (&conv_val);
+		    val_str_size = db_get_string_size (&conv_val);
+		  }
+	      }
+	    else
+	      {
+		val_str = db_get_string (src);
+		val_str_size = db_get_string_size (src);
+	      }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    if (db_get_string_codeset (src) != TP_DOMAIN_CODESET (desired_domain))
+	      {
+		DB_DATA_STATUS data_status = DATA_STATUS_OK;
+
+		if (TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_RAW_BYTES)
+		  {
+		    /* avoid data truncation when converting to binary charset */
+		    db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, db_get_string_size (src), 0);
+		  }
+		else
+		  {
+		    db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, DB_VALUE_PRECISION (src), 0);
+		  }
+
+		db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (desired_domain),
+						TP_DOMAIN_COLLATION (desired_domain));
+
+		if (db_char_string_coerce (src, &conv_val, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
+		  {
+		    status = DOMAIN_ERROR;
+		    pr_clear_value (&conv_val);
+		  }
+		else
+		  {
+		    val_str = db_get_string (&conv_val);
+		    val_str_size = db_get_string_size (&conv_val);
+		  }
+	      }
+	    else
+	      {
+		val_str = db_get_string (src);
+		val_str_size = db_get_string_size (src);
+	      }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_varchar_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_date_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+						       error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_time_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_time_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+						       error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_time_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_time_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_timestamp_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+							    error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_timestampltz_to_varchar_core (src, &conv_val,
+							       tp_domain_resolve_default (DB_TYPE_STRING), error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestampltz_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_timestamptz_to_varchar_core (src, &conv_val,
+							      tp_domain_resolve_default (DB_TYPE_STRING), error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_datetime_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+							   error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_datetimeltz_to_varchar_core (src, &conv_val,
+							      tp_domain_resolve_default (DB_TYPE_STRING), error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_datetimetz_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+							     error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    if (DOM_GET_ENUM_ELEMS_COUNT (desired_domain) == 0)
+	      {
+		pr_clone_value (src, target);
+		exit = true;
+		break;
+	      }
+	    val_str = db_get_enum_string (src);
+	    val_str_size = db_get_enum_string_size (src);
+	    if (val_str == NULL)
+	      {
+		/* src has a short value or a string value or both. We prefer to use the string value when matching
+		 * against the desired domain but, if this is not set, we will use the value index */
+		val_idx = db_get_enum_short (src);
+	      }
+	    else
+	      {
+		if (db_get_enum_codeset (src) != TP_DOMAIN_CODESET (desired_domain))
+		  {
+		    /* first convert charset of the original value to charset of destination domain */
+		    DB_VALUE tmp;
+		    DB_DATA_STATUS data_status = DATA_STATUS_OK;
+
+		    /* charset conversion can handle only CHAR/VARCHAR DB_VALUEs, create a STRING value with max
+		     * precision (so that no truncation occurs) from the ENUM source string */
+		    db_make_varchar (&tmp, DB_MAX_STRING_LENGTH, val_str, val_str_size, db_get_enum_codeset (src),
+				     db_get_enum_collation (src));
+
+		    /* initialize destination value of conversion */
+		    db_value_domain_init (&conv_val, DB_TYPE_STRING, DB_MAX_STRING_LENGTH, 0);
+		    db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (desired_domain),
+						    TP_DOMAIN_COLLATION (desired_domain));
+
+		    if (db_char_string_coerce (&tmp, &conv_val, &data_status) != NO_ERROR
+			|| data_status != DATA_STATUS_OK)
+		      {
+			status = DOMAIN_ERROR;
+			pr_clear_value (&conv_val);
+			val_str = NULL;
+			val_idx = 0;
+		      }
+		    else
+		      {
+			val_str = db_get_string (&conv_val);
+			val_str_size = db_get_string_size (&conv_val);
+		      }
+		    pr_clear_value (&tmp);
+		  }
+	      }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_bit_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+						      error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bit_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bit_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varbit_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_bit_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+						      error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varbit_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_varbit_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_blob_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+						       error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_blob_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_blob_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_clob_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	unsigned short val_idx = 0;
+	int val_str_size = 0;
+	const char *val_str = NULL;
+	bool exit = false;
+	DB_VALUE conv_val;
+
+	db_make_null (&conv_val);
+
+	if (src->domain.general_info.is_null)
+	  {
+	    db_make_null (target);
+	    break;
+	  }
+
+	do
+	  {
+
+	    {
+	      const TP_DOMAIN *string_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	      db_value_domain_init (&conv_val, DB_TYPE_VARCHAR, string_domain->precision, string_domain->scale);
+	      db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (string_domain),
+					      TP_DOMAIN_COLLATION (string_domain));
+	      status =
+		tp_value_convert_clob_to_varchar_core (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING),
+						       error);
+	      if (status == DOMAIN_COMPATIBLE)
+		{
+		  val_str = db_get_string (&conv_val);
+		  val_str_size = db_get_string_size (&conv_val);
+		}
+	    }
+	    break;
+
+	  }
+	while (false);
+	return tp_finish_enumeration_conversion (target, desired_domain, conv_val, val_idx, val_str, val_str_size,
+						 status, exit);
+      }
+      break;
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_clob_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_clob_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_json_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	JSON_DOC *doc = NULL;
+
+	do
+	  {
+
+	    doc = db_json_allocate_doc ();
+	    db_json_set_int_to_doc (doc, db_get_short (src));
+	    break;
+
+	  }
+	while (false);
+
+	if (status == DOMAIN_COMPATIBLE)
+	  {
+	    db_make_json (target, doc, true);
+	  }
+	else
+	  {
+	    if (doc != NULL)
+	      {
+		db_json_delete_doc (doc);
+	      }
+	  }
+      }
+      break;
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_short_to_json (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_short_to_json_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_json_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	JSON_DOC *doc = NULL;
+
+	do
+	  {
+
+	    doc = db_json_allocate_doc ();
+	    db_json_set_int_to_doc (doc, db_get_int (src));
+	    break;
+
+	  }
+	while (false);
+
+	if (status == DOMAIN_COMPATIBLE)
+	  {
+	    db_make_json (target, doc, true);
+	  }
+	else
+	  {
+	    if (doc != NULL)
+	      {
+		db_json_delete_doc (doc);
+	      }
+	  }
+      }
+      break;
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_integer_to_json (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_integer_to_json_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_json_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	JSON_DOC *doc = NULL;
+
+	do
+	  {
+
+	    doc = db_json_allocate_doc ();
+	    db_json_set_bigint_to_doc (doc, db_get_bigint (src));
+	    break;
+
+	  }
+	while (false);
+
+	if (status == DOMAIN_COMPATIBLE)
+	  {
+	    db_make_json (target, doc, true);
+	  }
+	else
+	  {
+	    if (doc != NULL)
+	      {
+		db_json_delete_doc (doc);
+	      }
+	  }
+      }
+      break;
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_bigint_to_json (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_bigint_to_json_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_json_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				     date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	JSON_DOC *doc = NULL;
+
+	do
+	  {
+
+	    {
+	      DB_VALUE double_value;
+
+	      doc = db_json_allocate_doc ();
+	      db_make_double (&double_value, 0);
+	      tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (src, &double_value,
+												&tp_Double_domain);
+	      db_json_set_double_to_doc (doc, db_get_double (&double_value));
+	      pr_clear_value (&double_value);
+	    }
+	    break;
+
+	  }
+	while (false);
+
+	if (status == DOMAIN_COMPATIBLE)
+	  {
+	    db_make_json (target, doc, true);
+	  }
+	else
+	  {
+	    if (doc != NULL)
+	      {
+		db_json_delete_doc (doc);
+	      }
+	  }
+      }
+      break;
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_float_to_json (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_float_to_json_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_json_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				      date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	JSON_DOC *doc = NULL;
+
+	do
+	  {
+
+	    doc = db_json_allocate_doc ();
+	    db_json_set_double_to_doc (doc, db_get_double (src));
+	    break;
+
+	  }
+	while (false);
+
+	if (status == DOMAIN_COMPATIBLE)
+	  {
+	    db_make_json (target, doc, true);
+	  }
+	else
+	  {
+	    if (doc != NULL)
+	      {
+		db_json_delete_doc (doc);
+	      }
+	  }
+      }
+      break;
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_double_to_json (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_double_to_json_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_json_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				       date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	JSON_DOC *doc = NULL;
+
+	do
+	  {
+
+	    {
+	      DB_VALUE double_value;
+
+	      doc = db_json_allocate_doc ();
+	      db_make_double (&double_value, 0);
+	      tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (src, &double_value,
+												  &tp_Double_domain);
+	      db_json_set_double_to_doc (doc, db_get_double (&double_value));
+	      pr_clear_value (&double_value);
+	    }
+	    break;
+
+	  }
+	while (false);
+
+	if (status == DOMAIN_COMPATIBLE)
+	  {
+	    db_make_json (target, doc, true);
+	  }
+	else
+	  {
+	    if (doc != NULL)
+	      {
+		db_json_delete_doc (doc);
+	      }
+	  }
+      }
+      break;
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_numeric_to_json (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_numeric_to_json_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_json_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+				    date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	JSON_DOC *doc = NULL;
+
+	do
+	  {
+
+	    {
+	      DB_VALUE utf8_str;
+	      const DB_VALUE *json_str_val = &utf8_str;
+	      int error_code = db_json_copy_and_convert_to_utf8 (src, &utf8_str, &json_str_val);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  status = DOMAIN_ERROR;
+		  break;
+		}
+
+	      unsigned int str_size = db_get_string_size (json_str_val);
+	      const char *original_str = db_get_string (json_str_val);
+
+	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
+	      if (error_code != NO_ERROR)
+		{
+		  pr_clear_value (&utf8_str);
+		  assert (doc == NULL);
+		  status = DOMAIN_ERROR;
+		  break;
+		}
+
+	      if (desired_domain->json_validator
+		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  pr_clear_value (&utf8_str);
+		  db_json_delete_doc (doc);
+		  status = DOMAIN_ERROR;
+		  break;
+		}
+	      pr_clear_value (&utf8_str);
+	    }
+	    break;
+
+	  }
+	while (false);
+
+	if (status == DOMAIN_COMPATIBLE)
+	  {
+	    db_make_json (target, doc, true);
+	  }
+	else
+	  {
+	    if (doc != NULL)
+	      {
+		db_json_delete_doc (doc);
+	      }
+	  }
+      }
+      break;
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_json (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_json_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_json (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_json_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_time_strict_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIME time = 0;
+	    if (tp_atotime_core (src, &time, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_value_put_encoded_time (target, &time);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_time_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_time_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_time_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_time_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_date_strict_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATE date = 0;
+
+	    if (tp_atodate_core (src, &date, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_value_put_encoded_date (target, &date);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_date_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_date_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_date_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_date_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_date_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATE date = 0;
+	    DB_TIME time = 0;
+	    DB_TIMESTAMP *ts = NULL;
+
+	    ts = db_get_timestamp (src);
+	    (void) db_timestamp_decode_ses_core (ts, &date, &time, error);
+	    if (time != 0)
+	      {
+		/* only "downcast" if time is 0 */
+		err = ER_FAILED;
+		break;
+	      }
+	    db_value_put_encoded_date (target, &date);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_date_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_date_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_date_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_date_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_date_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATE date = 0;
+	    DB_TIME time = 0;
+	    DB_TIMESTAMPTZ *ts_tz = NULL;
+
+	    ts_tz = db_get_timestamptz (src);
+	    err = db_timestamp_decode_w_tz_id_core (&ts_tz->timestamp, &ts_tz->tz_id, &date, &time, error);
+	    if (err != NO_ERROR || time != 0)
+	      {
+		/* only "downcast" if time is 0 */
+		err = ER_FAILED;
+		break;
+	      }
+	    db_value_put_encoded_date (target, &date);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_date_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_date_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_date_strict_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME *src_dt = NULL;
+
+	    src_dt = db_get_datetime (src);
+	    if (src_dt->time != 0)
+	      {
+		/* only "downcast" if time is 0 */
+		err = ER_FAILED;
+		break;
+	      }
+	    db_value_put_encoded_date (target, (DB_DATE *) (&src_dt->date));
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_date_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_date_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_date_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME *utc_dt_p;
+	    DB_DATETIMETZ *dt_tz_p;
+	    DB_DATETIME local_dt;
+	    TZ_ID tz_id;
+
+	    /* DATETIMELTZ and DATETIMETZ store in UTC, convert to session */
+	    {
+	      utc_dt_p = db_get_datetime (src);
+	      if (tz_create_session_tzid_for_datetime_core (utc_dt_p, true, &tz_id, error) != NO_ERROR)
+		{
+		  err = ER_FAILED;
+		  break;
+		}
+	    }
+
+	    if (tz_utc_datetimetz_to_local_core (utc_dt_p, &tz_id, &local_dt, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+
+	    if (local_dt.time != 0)
+	      {
+		/* only "downcast" if time is 0 */
+		err = ER_FAILED;
+		break;
+	      }
+
+	    db_value_put_encoded_date (target, (DB_DATE *) (&local_dt.date));
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_date_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_date_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_date_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME *utc_dt_p;
+	    DB_DATETIMETZ *dt_tz_p;
+	    DB_DATETIME local_dt;
+	    TZ_ID tz_id;
+
+	    /* DATETIMELTZ and DATETIMETZ store in UTC, convert to session */
+	    {
+	      dt_tz_p = db_get_datetimetz (src);
+	      utc_dt_p = &dt_tz_p->datetime;
+	      tz_id = dt_tz_p->tz_id;
+	    }
+
+	    if (tz_utc_datetimetz_to_local_core (utc_dt_p, &tz_id, &local_dt, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+
+	    if (local_dt.time != 0)
+	      {
+		/* only "downcast" if time is 0 */
+		err = ER_FAILED;
+		break;
+	      }
+
+	    db_value_put_encoded_date (target, (DB_DATE *) (&local_dt.date));
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_date_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_date_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetime_strict_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME datetime = { 0, 0 };
+	    if (tp_atoudatetime_core (src, &datetime, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_datetime (target, &datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetime_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetime_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_datetime_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetime_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetime_strict_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME datetime = { 0, 0 };
+	    datetime.date = *db_get_date (src);
+	    datetime.time = 0;
+	    db_make_datetime (target, &datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetime_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_datetime_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetime_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						    const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME datetime = { 0, 0 };
+	    DB_TIMESTAMP *utime = db_get_timestamp (src);
+	    DB_DATE date;
+	    DB_TIME time;
+
+	    if (db_timestamp_decode_ses_core (utime, &date, &time, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    datetime.time = time * 1000;
+	    datetime.date = date;
+	    db_make_datetime (target, &datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetime_strict (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetime_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_datetime_strict (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetime_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetime_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						      const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME datetime = { 0, 0 };
+	    DB_DATE date;
+	    DB_TIME time;
+	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
+
+	    if (db_timestamp_decode_w_tz_id_core (&ts_tz->timestamp, &ts_tz->tz_id, &date, &time, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+
+	    datetime.time = time * 1000;
+	    datetime.date = date;
+	    db_make_datetime (target, &datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetime_strict (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_datetime_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_datetime_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						      const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME *dt = db_get_datetime (src);
+	    db_make_datetime (target, dt);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_datetime_strict (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_datetime_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_datetime_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						     const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
+	    db_make_datetime (target, &dt_tz->datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_datetime_strict (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_datetime_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetimetz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
+
+	    if (tp_atodatetimetz_core (src, &dt_tz, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+
+	    db_make_datetimetz (target, &dt_tz);
+	  }
+	  break;
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetimetz_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetimetz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_datetimetz_strict (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetimetz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetimetz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
+
+	    {
+	      dt_tz.datetime.date = *db_get_date (src);
+	      dt_tz.datetime.time = 0;
+	    }
+
+	    err = tz_create_datetimetz_from_ses_core (&(dt_tz.datetime), &dt_tz, error);
+	    if (err == NO_ERROR)
+	      {
+		db_make_datetimetz (target, &dt_tz);
+	      }
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetimetz_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_datetimetz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetimetz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						      const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
+	    DB_TIMESTAMP *utime = db_get_timestamp (src);
+	    DB_DATE date;
+	    DB_TIME time;
+
+	    /* convert DT to TS in UTC reference */
+	    db_timestamp_decode_utc (utime, &date, &time);
+	    dt_tz.datetime.date = date;
+	    dt_tz.datetime.time = time * 1000;
+	    err = tz_create_session_tzid_for_datetime_core (&dt_tz.datetime, true, &(dt_tz.tz_id), error);
+	    if (err == NO_ERROR)
+	      {
+		db_make_datetimetz (target, &dt_tz);
+	      }
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetimetz_strict (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetimetz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_datetimetz_strict (const DB_VALUE * src, DB_VALUE * target,
+						    const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetimetz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetimetz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
+	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
+	    DB_DATE date;
+	    DB_TIME time;
+
+	    (void) db_timestamp_decode_utc (&ts_tz->timestamp, &date, &time);
+	    dt_tz.datetime.time = time * 1000;
+	    dt_tz.datetime.date = date;
+	    dt_tz.tz_id = ts_tz->tz_id;
+	    db_make_datetimetz (target, &dt_tz);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetimetz_strict (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_timestamptz_to_datetimetz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_datetimetz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						     const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
+
+	    {
+	      dt_tz.datetime = *db_get_datetime (src);
+	    }
+
+	    err = tz_create_datetimetz_from_ses_core (&(dt_tz.datetime), &dt_tz, error);
+	    if (err == NO_ERROR)
+	      {
+		db_make_datetimetz (target, &dt_tz);
+	      }
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_datetimetz_strict (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_datetimetz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_datetimetz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
+	    DB_DATETIME *dt = db_get_datetime (src);
+
+	    dt_tz.datetime = *dt;
+	    err = tz_create_session_tzid_for_datetime_core (dt, false, &dt_tz.tz_id, error);
+	    if (err == NO_ERROR)
+	      {
+		db_make_datetimetz (target, &dt_tz);
+	      }
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_datetimetz_strict (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_datetimeltz_to_datetimetz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetimeltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
+
+	    if (tp_atodatetimetz_core (src, &dt_tz, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_datetimeltz (target, &dt_tz.datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_datetimeltz_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetimeltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_datetimeltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_datetimeltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetimeltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME datetime;
+	    DB_DATETIMETZ dt_tz;
+
+	    {
+	      datetime.date = *db_get_date (src);
+	      datetime.time = 0;
+	    }
+
+	    err = tz_create_datetimetz_from_ses_core (&datetime, &dt_tz, error);
+	    if (err != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+
+	    db_make_datetimeltz (target, &dt_tz.datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_datetimeltz_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_datetimeltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetimeltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME datetime = { 0, 0 };
+	    DB_TIMESTAMP *utime = db_get_timestamp (src);
+	    DB_DATE date;
+	    DB_TIME time;
+
+	    (void) db_timestamp_decode_utc (utime, &date, &time);
+	    datetime.time = time * 1000;
+	    datetime.date = date;
+	    db_make_datetimeltz (target, &datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_datetimeltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetimeltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_datetimeltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						     const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_datetimeltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetimeltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							 const TP_DOMAIN * desired_domain,
+							 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME datetime = { 0, 0 };
+	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
+	    DB_DATE date;
+	    DB_TIME time;
+
+	    (void) db_timestamp_decode_utc (&ts_tz->timestamp, &date, &time);
+	    datetime.time = time * 1000;
+	    datetime.date = date;
+	    db_make_datetimeltz (target, &datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_datetimeltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						    const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_timestamptz_to_datetimeltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_datetimeltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						      const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME datetime;
+	    DB_DATETIMETZ dt_tz;
+
+	    {
+	      datetime = *db_get_datetime (src);
+	    }
+
+	    err = tz_create_datetimetz_from_ses_core (&datetime, &dt_tz, error);
+	    if (err != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+
+	    db_make_datetimeltz (target, &dt_tz.datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_datetimeltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_datetimeltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_datetimeltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
+
+	    /* copy datetime (UTC) */
+	    db_make_datetimeltz (target, &dt_tz->datetime);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_datetimeltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_datetimetz_to_datetimeltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestamp_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMP ts = 0;
+
+	    if (tp_atoutime_core (src, &ts, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamp (target, ts);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestamp_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestamp_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_timestamp_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestamp_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestamp_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIME tm = 0;
+	    DB_DATE date = *db_get_date (src);
+	    DB_TIMESTAMP ts = 0;
+
+	    db_time_encode_core (&tm, 0, 0, 0, error);
+	    if (db_timestamp_encode_ses_core (&date, &tm, &ts, NULL, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamp (target, ts);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestamp_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_timestamp_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_timestamp_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMP *ts = db_get_timestamp (src);
+
+	    /* copy timestamp value (UTC) */
+	    db_make_timestamp (target, *ts);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_timestamp_strict (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_timestampltz_to_timestamp_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_timestamp_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
+
+	    /* copy timestamp value (UTC) */
+	    db_make_timestamp (target, ts_tz->timestamp);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_timestamp_strict (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamptz_to_timestamp_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestamp_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						    const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME dt = *db_get_datetime (src);
+	    DB_DATE date = dt.date;
+	    DB_TIME time = dt.time / 1000;
+	    DB_TIMESTAMP ts = 0;
+
+	    if (db_timestamp_encode_ses_core (&date, &time, &ts, NULL, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamp (target, ts);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestamp_strict (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_timestamp_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestamp_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME dt = *db_get_datetime (src);
+	    DB_DATE date = dt.date;
+	    DB_TIME time = dt.time / 1000;
+	    DB_TIMESTAMP ts = 0;
+
+	    if (db_timestamp_encode_utc_core (&date, &time, &ts, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamp (target, ts);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestamp_strict (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimeltz_to_timestamp_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestamp_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						      const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
+	    DB_DATE date = dt_tz->datetime.date;
+	    DB_TIME time = dt_tz->datetime.time / 1000;
+	    DB_TIMESTAMP ts = 0;
+
+	    if (db_timestamp_encode_utc_core (&date, &time, &ts, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamp (target, ts);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestamp_strict (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetimetz_to_timestamp_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestampltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+
+	    if (tp_atotimestamptz_core (src, &ts_tz, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestampltz (target, ts_tz.timestamp);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestampltz_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestampltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_timestampltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestampltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestampltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIME tm = 0;
+	    DB_DATE date = *db_get_date (src);
+	    DB_TIMESTAMP ts = 0;
+
+	    db_time_encode_core (&tm, 0, 0, 0, error);
+	    if (db_timestamp_encode_ses_core (&date, &tm, &ts, NULL, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestampltz (target, ts);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestampltz_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_timestampltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_timestampltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMP *ts = db_get_timestamp (src);
+
+	    /* copy val timestamp value (UTC) */
+	    db_make_timestampltz (target, *ts);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_timestampltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_timestamp_to_timestampltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_timestampltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							  const TP_DOMAIN * desired_domain,
+							  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
+
+	    /* copy val timestamp value (UTC) */
+	    db_make_timestampltz (target, ts_tz->timestamp);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamptz_to_timestampltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						     const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_timestamptz_to_timestampltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestampltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME dt = *db_get_datetime (src);
+	    DB_DATE date = dt.date;
+	    DB_TIME time = dt.time / 1000;
+	    DB_TIMESTAMP ts = 0;
+
+	    if (db_timestamp_encode_ses_core (&date, &time, &ts, NULL, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestampltz (target, ts);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestampltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_timestampltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestampltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							  const TP_DOMAIN * desired_domain,
+							  date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIME dt = *db_get_datetime (src);
+	    DB_DATE date = dt.date;
+	    DB_TIME time = dt.time / 1000;
+	    DB_TIMESTAMP ts = 0;
+
+	    if (db_timestamp_encode_utc_core (&date, &time, &ts, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestampltz (target, ts);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestampltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						     const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_datetimeltz_to_timestampltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestampltz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							 const TP_DOMAIN * desired_domain,
+							 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
+	    DB_DATE date = dt_tz->datetime.date;
+	    DB_TIME time = dt_tz->datetime.time / 1000;
+	    DB_TIMESTAMP ts = 0;
+
+	    if (db_timestamp_encode_utc_core (&date, &time, &ts, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestampltz (target, ts);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestampltz_strict (const DB_VALUE * src, DB_VALUE * target,
+						    const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_datetimetz_to_timestampltz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestamptz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+
+	    if (tp_atotimestamptz_core (src, &ts_tz, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamptz (target, &ts_tz);
+	    break;
+	  }
+
+	}
+      while (false);
+      break;
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_char_to_timestamptz_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestamptz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_varchar_to_timestamptz_strict (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_char_to_timestamptz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestamptz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+	    DB_TIME tm = 0;
+	    DB_DATE date = *db_get_date (src);
+
+	    db_time_encode_core (&tm, 0, 0, 0, error);
+	    if (db_timestamp_encode_ses_core (&date, &tm, &ts_tz.timestamp, &ts_tz.tz_id, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamptz (target, &ts_tz);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_date_to_timestamptz_strict (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_date_to_timestamptz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_timestamptz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+
+	    ts_tz.timestamp = *db_get_timestamp (src);
+
+	    err = tz_create_session_tzid_for_timestamp_core (&(ts_tz.timestamp), &(ts_tz.tz_id), error);
+
+	    if (err != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamptz (target, &ts_tz);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestamp_to_timestamptz_strict (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_timestamptz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_timestampltz_to_timestamptz_strict (const DB_VALUE * src, DB_VALUE * target,
+						     const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_timestamp_to_timestamptz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestamptz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+						      const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+	    DB_DATETIME dt = *db_get_datetime (src);
+	    DB_DATE date = dt.date;
+	    DB_TIME time = dt.time / 1000;
+
+	    if (db_timestamp_encode_ses_core (&date, &time, &ts_tz.timestamp, &ts_tz.tz_id, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    db_make_timestamptz (target, &ts_tz);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetime_to_timestamptz_strict (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_datetime_to_timestamptz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestamptz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							 const TP_DOMAIN * desired_domain,
+							 date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+	    DB_DATETIME dt = *db_get_datetime (src);
+	    DB_DATE date = dt.date;
+	    DB_TIME time = dt.time / 1000;
+
+	    if (db_timestamp_encode_utc_core (&date, &time, &ts_tz.timestamp, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    ts_tz.tz_id = *tz_get_utc_tz_id ();
+	    db_make_timestamptz (target, &ts_tz);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimeltz_to_timestamptz_strict (const DB_VALUE * src, DB_VALUE * target,
+						    const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_datetimeltz_to_timestamptz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestamptz_strict_core (const DB_VALUE * src, DB_VALUE * target,
+							const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      do
+	{
+
+	  {
+	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
+	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
+	    DB_DATE date = dt_tz->datetime.date;
+	    DB_TIME time = dt_tz->datetime.time / 1000;
+
+	    if (db_timestamp_encode_utc_core (&date, &time, &ts_tz.timestamp, error) != NO_ERROR)
+	      {
+		err = ER_FAILED;
+		break;
+	      }
+	    ts_tz.tz_id = dt_tz->tz_id;
+	    db_make_timestamptz (target, &ts_tz);
+	    break;
+	  }
+
+
+	}
+      while (false);
+      break;
+
+    }
+  while (false);
+  return err == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_datetimetz_to_timestamptz_strict (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status =
+    tp_value_convert_datetimetz_to_timestamptz_strict_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_set_implicit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	SETREF *setref;
+
+	setref = db_get_set (src);
+	if (setref)
+	  {
+	    TP_DOMAIN *set_domain;
+
+	    set_domain = setobj_domain (setref->set);
+	    {
+	      if (tp_domain_compatible (set_domain, desired_domain))
+		{
+		  /*
+		   * Well, we can't use the exact same set, but we don't
+		   * have to do the whole hairy coerce thing either: we
+		   * can just make a copy and then take the more general
+		   * domain.  setobj_put_domain() guards against null
+		   * pointers, there's no need to check first.
+		   */
+		  setref = set_copy (setref);
+		  if (setref)
+		    {
+		      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
+		    }
+		}
+	      else
+		{
+		  /*
+		   * Well, now we have to use the whole hairy coercion
+		   * thing.  Too bad...
+		   *
+		   * This case will crop up when someone tries to cast a
+		   * "set of int" as a "set of float", for example.
+		   */
+		  setref =
+		    set_coerce (setref, (TP_DOMAIN *) desired_domain, (TP_IMPLICIT_COERCION == TP_IMPLICIT_COERCION));
+		}
+
+	      if (setref == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  err = er_errid ();
+		}
+	      else
+		{
+		  err = db_make_set (target, setref);
+		}
+	    }
+	    if (!setref || err < 0)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	  }
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_set_implicit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_set_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_multiset_to_set_implicit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_set_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_sequence_to_set_implicit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_set_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_multiset_implicit_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	SETREF *setref;
+
+	setref = db_get_set (src);
+	if (setref)
+	  {
+	    TP_DOMAIN *set_domain;
+
+	    set_domain = setobj_domain (setref->set);
+	    {
+	      if (tp_domain_compatible (set_domain, desired_domain))
+		{
+		  /*
+		   * Well, we can't use the exact same set, but we don't
+		   * have to do the whole hairy coerce thing either: we
+		   * can just make a copy and then take the more general
+		   * domain.  setobj_put_domain() guards against null
+		   * pointers, there's no need to check first.
+		   */
+		  setref = set_copy (setref);
+		  if (setref)
+		    {
+		      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
+		    }
+		}
+	      else
+		{
+		  /*
+		   * Well, now we have to use the whole hairy coercion
+		   * thing.  Too bad...
+		   *
+		   * This case will crop up when someone tries to cast a
+		   * "set of int" as a "set of float", for example.
+		   */
+		  setref =
+		    set_coerce (setref, (TP_DOMAIN *) desired_domain, (TP_IMPLICIT_COERCION == TP_IMPLICIT_COERCION));
+		}
+
+	      if (setref == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  err = er_errid ();
+		}
+	      else
+		{
+		  err = db_make_multiset (target, setref);
+		}
+	    }
+	    if (!setref || err < 0)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	  }
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_multiset_implicit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_multiset_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_multiset_to_multiset_implicit (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_multiset_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_sequence_to_multiset_implicit (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_multiset_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_sequence_implicit_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  int err = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  do
+    {
+
+      {
+	SETREF *setref;
+
+	setref = db_get_set (src);
+	if (setref)
+	  {
+	    TP_DOMAIN *set_domain;
+
+	    set_domain = setobj_domain (setref->set);
+	    {
+	      if (tp_domain_compatible (set_domain, desired_domain))
+		{
+		  /*
+		   * Well, we can't use the exact same set, but we don't
+		   * have to do the whole hairy coerce thing either: we
+		   * can just make a copy and then take the more general
+		   * domain.  setobj_put_domain() guards against null
+		   * pointers, there's no need to check first.
+		   */
+		  setref = set_copy (setref);
+		  if (setref)
+		    {
+		      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
+		    }
+		}
+	      else
+		{
+		  /*
+		   * Well, now we have to use the whole hairy coercion
+		   * thing.  Too bad...
+		   *
+		   * This case will crop up when someone tries to cast a
+		   * "set of int" as a "set of float", for example.
+		   */
+		  setref =
+		    set_coerce (setref, (TP_DOMAIN *) desired_domain, (TP_IMPLICIT_COERCION == TP_IMPLICIT_COERCION));
+		}
+
+	      if (setref == NULL)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  err = er_errid ();
+		}
+	      else
+		{
+		  err = db_make_sequence (target, setref);
+		}
+	    }
+	    if (!setref || err < 0)
+	      {
+		status = DOMAIN_INCOMPATIBLE;
+	      }
+	  }
+      }
+      break;
+
+
+    }
+  while (false);
+  return err < 0 ? DOMAIN_ERROR : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_set_to_sequence_implicit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_sequence_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_multiset_to_sequence_implicit (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_sequence_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_sequence_to_sequence_implicit (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_set_to_sequence_implicit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_to_numeric (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  return tp_value_convert_enumeration_to_numeric_core (src, target, desired_domain, &error);
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_incompatible (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *)
+{
+  return DOMAIN_INCOMPATIBLE;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_validate (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  if (desired_domain->json_validator != nullptr
+      && db_json_validate_doc (desired_domain->json_validator, src->data.json.document) != NO_ERROR)
+    {
+      return DOMAIN_ERROR;
+    }
+  if (src != target)
+    pr_clone_value (src, target);
+  return DOMAIN_COMPATIBLE;
+}
+
+static bool
+tp_json_unwrap_scalar (const DB_VALUE * src, bool bool_as_string, DB_VALUE * scalar)
+{
+  DB_JSON_TYPE json_type = db_json_get_type (db_get_json_document (src));
+  JSON_DOC *src_doc = db_get_json_document (src);
+  bool use_replacement = true;
+
+  switch (json_type)
+    {
+    case DB_JSON_DOUBLE:
+      db_make_double (scalar, db_json_get_double_from_document (src_doc));
+      break;
+    case DB_JSON_INT:
+      db_make_int (scalar, db_json_get_int_from_document (src_doc));
+      break;
+    case DB_JSON_BIGINT:
+      db_make_bigint (scalar, db_json_get_bigint_from_document (src_doc));
+      break;
+    case DB_JSON_BOOL:
+      if (bool_as_string)
+	{
+	  db_make_string (scalar, db_json_get_bool_as_str_from_document (src_doc));
+	  scalar->need_clear = true;
+
+	}
+      else
+	{
+
+	  db_make_int (scalar, db_json_get_bool_from_document (src_doc) ? 1 : 0);
+
+	}
+      break;
+    case DB_JSON_STRING:
+      db_make_string_copy (scalar, db_json_get_string_from_document (src_doc));
+      break;
+    default:
+      use_replacement = false;
+      /* do nothing */
+      break;
+    }
+
+  return use_replacement;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_short_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status =
+	tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											  desired_domain);
+      break;
+    case DB_JSON_INT:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    case DB_JSON_BIGINT:
+      status =
+	tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											  desired_domain);
+      break;
+    case DB_JSON_BOOL:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    case DB_JSON_STRING:
+      status =
+	tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_short (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_short_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_integer_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status =
+	tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    case DB_JSON_INT:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											     desired_domain);
+      break;
+    case DB_JSON_BIGINT:
+      status =
+	tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    case DB_JSON_BOOL:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											     desired_domain);
+      break;
+    case DB_JSON_STRING:
+      status =
+	tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											     desired_domain);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_integer (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_integer_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_bigint_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status =
+	tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    case DB_JSON_INT:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    case DB_JSON_BIGINT:
+      status =
+	tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    case DB_JSON_BOOL:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    case DB_JSON_STRING:
+      status =
+	tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_bigint (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_bigint_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_float_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					    date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status =
+	tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											  desired_domain);
+      break;
+    case DB_JSON_INT:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    case DB_JSON_BIGINT:
+      status =
+	tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											  desired_domain);
+      break;
+    case DB_JSON_BOOL:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    case DB_JSON_STRING:
+      status =
+	tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_float (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_float_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_double_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status =
+	tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    case DB_JSON_INT:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    case DB_JSON_BIGINT:
+      status =
+	tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											   desired_domain);
+      break;
+    case DB_JSON_BOOL:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    case DB_JSON_STRING:
+      status =
+	tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_double (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_double_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_monetary_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status =
+	tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											     desired_domain);
+      break;
+    case DB_JSON_INT:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											      desired_domain);
+      break;
+    case DB_JSON_BIGINT:
+      status =
+	tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											     desired_domain);
+      break;
+    case DB_JSON_BOOL:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											      desired_domain);
+      break;
+    case DB_JSON_STRING:
+      status =
+	tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											      desired_domain);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_monetary (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_monetary_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_numeric_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status =
+	tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    case DB_JSON_INT:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											     desired_domain);
+      break;
+    case DB_JSON_BIGINT:
+      status =
+	tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											    desired_domain);
+      break;
+    case DB_JSON_BOOL:
+      status =
+	tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											     desired_domain);
+      break;
+    case DB_JSON_STRING:
+      status =
+	tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (&scalar, target,
+											     desired_domain);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_numeric (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_numeric_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_char_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, true, &scalar))
+    {
+      return tp_value_convert_json_to_char_core (src, target, desired_domain, error);
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status = tp_value_convert_double_to_char_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_INT:
+      status = tp_value_convert_integer_to_char_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BIGINT:
+      status = tp_value_convert_bigint_to_char_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BOOL:
+      status = tp_value_convert_char_to_varchar_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_varchar_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_char (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_char_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_varchar_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					      date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, true, &scalar))
+    {
+      return tp_value_convert_json_to_varchar_core (src, target, desired_domain, error);
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status = tp_value_convert_double_to_varchar_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_INT:
+      status = tp_value_convert_integer_to_varchar_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BIGINT:
+      status = tp_value_convert_bigint_to_varchar_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BOOL:
+      status = tp_value_convert_varchar_to_varchar_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_varchar_to_varchar_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_varchar (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_varchar_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_date_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      break;
+    case DB_JSON_INT:
+      break;
+    case DB_JSON_BIGINT:
+      break;
+    case DB_JSON_BOOL:
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_date_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_date (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_date_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_time_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status = tp_value_convert_double_to_time_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_INT:
+      status = tp_value_convert_integer_to_time_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BIGINT:
+      status = tp_value_convert_bigint_to_time_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BOOL:
+      status = tp_value_convert_integer_to_time_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_time_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_time (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_time_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_timestamp_core (const DB_VALUE * src, DB_VALUE * target,
+						const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status = tp_value_convert_double_to_timestamp_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_INT:
+      status = tp_value_convert_integer_to_timestamp_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BIGINT:
+      status = tp_value_convert_bigint_to_timestamp_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BOOL:
+      status = tp_value_convert_integer_to_timestamp_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_timestamp_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_timestamp (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_timestamp_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_timestampltz_core (const DB_VALUE * src, DB_VALUE * target,
+						   const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status = tp_value_convert_double_to_timestampltz_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_INT:
+      status = tp_value_convert_integer_to_timestampltz_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BIGINT:
+      status = tp_value_convert_bigint_to_timestampltz_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BOOL:
+      status = tp_value_convert_integer_to_timestampltz_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_timestampltz_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_timestampltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_timestampltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_timestamptz_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status = tp_value_convert_double_to_timestamptz_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_INT:
+      status = tp_value_convert_integer_to_timestamptz_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BIGINT:
+      status = tp_value_convert_bigint_to_timestamptz_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BOOL:
+      status = tp_value_convert_integer_to_timestamptz_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_timestamptz_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_timestamptz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_timestamptz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_datetime_core (const DB_VALUE * src, DB_VALUE * target,
+					       const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      break;
+    case DB_JSON_INT:
+      break;
+    case DB_JSON_BIGINT:
+      break;
+    case DB_JSON_BOOL:
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_datetime_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_datetime (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_datetime_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_datetimeltz_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      break;
+    case DB_JSON_INT:
+      break;
+    case DB_JSON_BIGINT:
+      break;
+    case DB_JSON_BOOL:
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_datetimeltz_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_datetimeltz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_datetimeltz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_datetimetz_core (const DB_VALUE * src, DB_VALUE * target,
+						 const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      break;
+    case DB_JSON_INT:
+      break;
+    case DB_JSON_BIGINT:
+      break;
+    case DB_JSON_BOOL:
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_datetimetz_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_datetimetz (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_datetimetz_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_enumeration_core (const DB_VALUE * src, DB_VALUE * target,
+						  const TP_DOMAIN * desired_domain, date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      status = tp_value_convert_double_to_enumeration_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_INT:
+      status = tp_value_convert_integer_to_enumeration_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BIGINT:
+      status = tp_value_convert_bigint_to_enumeration_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_BOOL:
+      status = tp_value_convert_integer_to_enumeration_core (&scalar, target, desired_domain, error);
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_varchar_to_enumeration_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_enumeration (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_enumeration_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_bit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					  date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      break;
+    case DB_JSON_INT:
+      break;
+    case DB_JSON_BIGINT:
+      break;
+    case DB_JSON_BOOL:
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_bit_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_bit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_bit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_varbit_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					     date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      break;
+    case DB_JSON_INT:
+      break;
+    case DB_JSON_BIGINT:
+      break;
+    case DB_JSON_BOOL:
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_bit_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_varbit (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_varbit_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_blob_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      break;
+    case DB_JSON_INT:
+      break;
+    case DB_JSON_BIGINT:
+      break;
+    case DB_JSON_BOOL:
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_blob_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_blob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_blob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_clob_core (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain,
+					   date_conversion_error * error)
+{
+  DB_VALUE scalar;
+  db_make_null (&scalar);
+  if (!tp_json_unwrap_scalar (src, false, &scalar))
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
+  switch (db_json_get_type (db_get_json_document (src)))
+    {
+    case DB_JSON_DOUBLE:
+      break;
+    case DB_JSON_INT:
+      break;
+    case DB_JSON_BIGINT:
+      break;
+    case DB_JSON_BOOL:
+      break;
+    case DB_JSON_STRING:
+      status = tp_value_convert_char_to_clob_core (&scalar, target, desired_domain, error);
+      break;
+    default:
+      break;
+    }
+  pr_clear_value (&scalar);
+  return status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_json_scalar_to_clob (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  date_conversion_error error;
+  TP_DOMAIN_STATUS status = tp_value_convert_json_scalar_to_clob_core (src, target, desired_domain, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
+static TP_DOMAIN_STATUS
+tp_value_convert_oid_to_oid (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN *)
+{
+  pr_clone_value (src, target);
+  return DOMAIN_COMPATIBLE;
+}
+
+/* C++17 does not support C array designated initializers. These aggregate
+ * initializers still build the entire 3-D table at compile time; no startup fill. */
+static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_LAST + 1] = {
+  {				/* ASSIGN */
+   {				/* NULL */
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* INTEGER */
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_integer_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_time,
+    tp_value_convert_integer_to_timestamp,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_enumeration,
+    tp_value_convert_integer_to_timestamptz,
+    tp_value_convert_integer_to_timestampltz,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_json,
+    },
+   {				/* FLOAT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+    nullptr,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_float_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_time,
+    tp_value_convert_float_to_timestamp,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_enumeration,
+    tp_value_convert_float_to_timestamptz,
+    tp_value_convert_float_to_timestampltz,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_json,
+    },
+   {				/* DOUBLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+    nullptr,
+    tp_value_convert_double_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_time,
+    tp_value_convert_double_to_timestamp,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_enumeration,
+    tp_value_convert_double_to_timestamptz,
+    tp_value_convert_double_to_timestampltz,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_json,
+    },
+   {				/* VARCHAR */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_varchar_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varchar_to_time,
+    tp_value_convert_varchar_to_timestamp,
+    tp_value_convert_varchar_to_date,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_varchar_to_bit,
+    tp_value_convert_varchar_to_varbit,
+    tp_value_convert_varchar_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_varchar_to_datetime,
+    tp_value_convert_varchar_to_blob,
+    tp_value_convert_varchar_to_clob,
+    tp_value_convert_varchar_to_enumeration,
+    tp_value_convert_varchar_to_timestamptz,
+    tp_value_convert_varchar_to_timestampltz,
+    tp_value_convert_varchar_to_datetimetz,
+    tp_value_convert_varchar_to_datetimeltz,
+    tp_value_convert_varchar_to_json,
+    },
+   {				/* OBJECT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_object_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_object_to_vobj,
+#else
+    tp_value_convert_incompatible,
+#endif
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_set_to_set,
+    tp_value_convert_set_to_multiset,
+    tp_value_convert_set_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* MULTISET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_multiset_to_set,
+    tp_value_convert_multiset_to_multiset,
+    tp_value_convert_multiset_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SEQUENCE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_sequence_to_set,
+    tp_value_convert_sequence_to_multiset,
+    tp_value_convert_sequence_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ELO */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIME */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMP */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_time,
+    nullptr,
+    tp_value_convert_timestamp_to_date,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_datetime,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_enumeration,
+    tp_value_convert_timestamp_to_timestamptz,
+    tp_value_convert_timestamp_to_timestampltz,
+    tp_value_convert_timestamp_to_datetimetz,
+    tp_value_convert_timestamp_to_datetimeltz,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_timestamp,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_datetime,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_enumeration,
+    tp_value_convert_date_to_timestamptz,
+    tp_value_convert_date_to_timestampltz,
+    tp_value_convert_date_to_datetimetz,
+    tp_value_convert_date_to_datetimeltz,
+    tp_value_convert_incompatible,
+    },
+   {				/* MONETARY */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_monetary_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_monetary_to_time,
+    tp_value_convert_monetary_to_timestamp,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_monetary_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_monetary_to_enumeration,
+    tp_value_convert_monetary_to_timestamptz,
+    tp_value_convert_monetary_to_timestampltz,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARIABLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SUB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* POINTER */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_pointer_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ERROR */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SHORT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_short_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_time,
+    tp_value_convert_short_to_timestamp,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_enumeration,
+    tp_value_convert_short_to_timestamptz,
+    tp_value_convert_short_to_timestampltz,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_json,
+    },
+   {				/* VOBJ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_vobj_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_vobj_to_vobj,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* OID */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_oid_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_oid_to_vobj,
+#if !defined (SERVER_MODE)
+    tp_value_convert_oid_to_oid,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* DB_VALUE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* NUMERIC */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_numeric_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_timestamp,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_enumeration,
+    tp_value_convert_numeric_to_timestamptz,
+    tp_value_convert_numeric_to_timestampltz,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_json,
+    },
+   {				/* BIT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_bit,
+    tp_value_convert_bit_to_varbit,
+    tp_value_convert_bit_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_blob,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARBIT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_bit,
+    tp_value_convert_varbit_to_varbit,
+    tp_value_convert_varbit_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_blob,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* CHAR */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_char_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_char_to_time,
+    tp_value_convert_char_to_timestamp,
+    tp_value_convert_char_to_date,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_char_to_bit,
+    tp_value_convert_char_to_varbit,
+    tp_value_convert_char_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_char_to_datetime,
+    tp_value_convert_char_to_blob,
+    tp_value_convert_char_to_clob,
+    tp_value_convert_char_to_enumeration,
+    tp_value_convert_char_to_timestamptz,
+    tp_value_convert_char_to_timestampltz,
+    tp_value_convert_char_to_datetimetz,
+    tp_value_convert_char_to_datetimeltz,
+    tp_value_convert_char_to_json,
+    },
+   {				/* NCHAR_DEPRECATED */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARNCHAR_DEPRECATED */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* RESULTSET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* MIDXKEY */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TABLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* BIGINT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_bigint_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_time,
+    tp_value_convert_bigint_to_timestamp,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_enumeration,
+    tp_value_convert_bigint_to_timestamptz,
+    tp_value_convert_bigint_to_timestampltz,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_json,
+    },
+   {				/* DATETIME */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_time,
+    tp_value_convert_datetime_to_timestamp,
+    tp_value_convert_datetime_to_date,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_enumeration,
+    tp_value_convert_datetime_to_timestamptz,
+    tp_value_convert_datetime_to_timestampltz,
+    tp_value_convert_datetime_to_datetimetz,
+    tp_value_convert_datetime_to_datetimeltz,
+    tp_value_convert_incompatible,
+    },
+   {				/* BLOB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_blob_to_bit,
+    tp_value_convert_blob_to_varbit,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_blob_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* CLOB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_clob_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_clob_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_clob_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ENUMERATION */
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_integer,
+    tp_value_convert_enumeration_to_float,
+    tp_value_convert_enumeration_to_double,
+    tp_value_convert_enumeration_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_time,
+    tp_value_convert_enumeration_to_timestamp,
+    tp_value_convert_enumeration_to_date,
+    tp_value_convert_enumeration_to_monetary,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_short,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_numeric,
+    tp_value_convert_enumeration_to_bit,
+    tp_value_convert_enumeration_to_varbit,
+    tp_value_convert_enumeration_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_bigint,
+    tp_value_convert_enumeration_to_datetime,
+    tp_value_convert_enumeration_to_blob,
+    tp_value_convert_enumeration_to_clob,
+    tp_value_convert_enumeration_to_enumeration,
+    tp_value_convert_enumeration_to_timestamptz,
+    tp_value_convert_enumeration_to_timestampltz,
+    tp_value_convert_enumeration_to_datetimetz,
+    tp_value_convert_enumeration_to_datetimeltz,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMPTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_time,
+    tp_value_convert_timestamptz_to_timestamp,
+    tp_value_convert_timestamptz_to_date,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_datetime,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_enumeration,
+    nullptr,
+    tp_value_convert_timestamptz_to_timestampltz,
+    tp_value_convert_timestamptz_to_datetimetz,
+    tp_value_convert_timestamptz_to_datetimeltz,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMPLTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_time,
+    tp_value_convert_timestampltz_to_timestamp,
+    tp_value_convert_timestampltz_to_date,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_datetime,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_enumeration,
+    tp_value_convert_timestampltz_to_timestamptz,
+    nullptr,
+    tp_value_convert_timestampltz_to_datetimetz,
+    tp_value_convert_timestampltz_to_datetimeltz,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATETIMETZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_time,
+    tp_value_convert_datetimetz_to_timestamp,
+    tp_value_convert_datetimetz_to_date,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_datetime,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_enumeration,
+    tp_value_convert_datetimetz_to_timestamptz,
+    tp_value_convert_datetimetz_to_timestampltz,
+    nullptr,
+    tp_value_convert_datetimetz_to_datetimeltz,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATETIMELTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_time,
+    tp_value_convert_datetimeltz_to_timestamp,
+    tp_value_convert_datetimeltz_to_date,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_datetime,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_enumeration,
+    tp_value_convert_datetimeltz_to_timestamptz,
+    tp_value_convert_datetimeltz_to_timestampltz,
+    tp_value_convert_datetimeltz_to_datetimetz,
+    nullptr,
+    tp_value_convert_incompatible,
+    },
+   {				/* JSON */
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_integer,
+    tp_value_convert_json_scalar_to_float,
+    tp_value_convert_json_scalar_to_double,
+    tp_value_convert_json_scalar_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_time,
+    tp_value_convert_json_scalar_to_timestamp,
+    tp_value_convert_json_scalar_to_date,
+    tp_value_convert_json_scalar_to_monetary,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_short,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_numeric,
+    tp_value_convert_json_scalar_to_bit,
+    tp_value_convert_json_scalar_to_varbit,
+    tp_value_convert_json_scalar_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_bigint,
+    tp_value_convert_json_scalar_to_datetime,
+    tp_value_convert_json_scalar_to_blob,
+    tp_value_convert_json_scalar_to_clob,
+    tp_value_convert_json_scalar_to_enumeration,
+    tp_value_convert_json_scalar_to_timestamptz,
+    tp_value_convert_json_scalar_to_timestampltz,
+    tp_value_convert_json_scalar_to_datetimetz,
+    tp_value_convert_json_scalar_to_datetimeltz,
+    tp_value_convert_json_validate,
+    },
+   },
+  {				/* COMPARE */
+   {				/* NULL */
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* INTEGER */
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_integer_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_json,
+    },
+   {				/* FLOAT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+    nullptr,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_float_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_json,
+    },
+   {				/* DOUBLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+    nullptr,
+    tp_value_convert_double_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_json,
+    },
+   {				/* VARCHAR */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_varchar_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varchar_to_time_strict,
+    tp_value_convert_varchar_to_timestamp_strict,
+    tp_value_convert_varchar_to_date_strict,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_varchar_to_bit,
+    tp_value_convert_varchar_to_varbit,
+    tp_value_convert_varchar_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_varchar_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varchar_to_enumeration,
+    tp_value_convert_varchar_to_timestamptz_strict,
+    tp_value_convert_varchar_to_timestampltz_strict,
+    tp_value_convert_varchar_to_datetimetz_strict,
+    tp_value_convert_varchar_to_datetimeltz_strict,
+    tp_value_convert_varchar_to_json,
+    },
+   {				/* OBJECT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_object_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_object_to_vobj,
+#else
+    tp_value_convert_incompatible,
+#endif
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_set_to_set,
+    tp_value_convert_set_to_multiset,
+    tp_value_convert_set_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* MULTISET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_multiset_to_set,
+    tp_value_convert_multiset_to_multiset,
+    tp_value_convert_multiset_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SEQUENCE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_sequence_to_set,
+    tp_value_convert_sequence_to_multiset,
+    tp_value_convert_sequence_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ELO */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIME */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMP */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_timestamp_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_enumeration,
+    tp_value_convert_timestamp_to_timestamptz_strict,
+    tp_value_convert_timestamp_to_timestampltz_strict,
+    tp_value_convert_timestamp_to_datetimetz_strict,
+    tp_value_convert_timestamp_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_timestamp_strict,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_enumeration,
+    tp_value_convert_date_to_timestamptz_strict,
+    tp_value_convert_date_to_timestampltz_strict,
+    tp_value_convert_date_to_datetimetz_strict,
+    tp_value_convert_date_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* MONETARY */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_monetary_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_monetary_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_monetary_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARIABLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SUB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* POINTER */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_pointer_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ERROR */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SHORT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_short_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_json,
+    },
+   {				/* VOBJ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_vobj_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_vobj_to_vobj,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* OID */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_oid_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_oid_to_vobj,
+#if !defined (SERVER_MODE)
+    tp_value_convert_oid_to_oid,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* DB_VALUE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* NUMERIC */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_numeric_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_json,
+    },
+   {				/* BIT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_bit,
+    tp_value_convert_bit_to_varbit,
+    tp_value_convert_bit_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARBIT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_bit,
+    tp_value_convert_varbit_to_varbit,
+    tp_value_convert_varbit_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* CHAR */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_char_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_char_to_time_strict,
+    tp_value_convert_char_to_timestamp_strict,
+    tp_value_convert_char_to_date_strict,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_char_to_bit,
+    tp_value_convert_char_to_varbit,
+    tp_value_convert_char_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_char_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_char_to_enumeration,
+    tp_value_convert_char_to_timestamptz_strict,
+    tp_value_convert_char_to_timestampltz_strict,
+    tp_value_convert_char_to_datetimetz_strict,
+    tp_value_convert_char_to_datetimeltz_strict,
+    tp_value_convert_char_to_json,
+    },
+   {				/* NCHAR_DEPRECATED */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARNCHAR_DEPRECATED */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* RESULTSET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* MIDXKEY */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TABLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* BIGINT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_bigint_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_json,
+    },
+   {				/* DATETIME */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_timestamp_strict,
+    tp_value_convert_datetime_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_enumeration,
+    tp_value_convert_datetime_to_timestamptz_strict,
+    tp_value_convert_datetime_to_timestampltz_strict,
+    tp_value_convert_datetime_to_datetimetz_strict,
+    tp_value_convert_datetime_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* BLOB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* CLOB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ENUMERATION */
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_integer,
+    tp_value_convert_enumeration_to_float,
+    tp_value_convert_enumeration_to_double,
+    tp_value_convert_enumeration_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_monetary,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_short,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_numeric,
+    tp_value_convert_enumeration_to_bit,
+    tp_value_convert_enumeration_to_varbit,
+    tp_value_convert_enumeration_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_bigint,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMPTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_timestamp_strict,
+    tp_value_convert_timestamptz_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_enumeration,
+    nullptr,
+    tp_value_convert_timestamptz_to_timestampltz_strict,
+    tp_value_convert_timestamptz_to_datetimetz_strict,
+    tp_value_convert_timestamptz_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMPLTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_timestamp_strict,
+    tp_value_convert_timestampltz_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_enumeration,
+    tp_value_convert_timestampltz_to_timestamptz_strict,
+    nullptr,
+    tp_value_convert_timestampltz_to_datetimetz_strict,
+    tp_value_convert_timestampltz_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATETIMETZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_timestamp_strict,
+    tp_value_convert_datetimetz_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_enumeration,
+    tp_value_convert_datetimetz_to_timestamptz_strict,
+    tp_value_convert_datetimetz_to_timestampltz_strict,
+    nullptr,
+    tp_value_convert_datetimetz_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATETIMELTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_timestamp_strict,
+    tp_value_convert_datetimeltz_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_enumeration,
+    tp_value_convert_datetimeltz_to_timestamptz_strict,
+    tp_value_convert_datetimeltz_to_timestampltz_strict,
+    tp_value_convert_datetimeltz_to_datetimetz_strict,
+    nullptr,
+    tp_value_convert_incompatible,
+    },
+   {				/* JSON */
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_integer,
+    tp_value_convert_json_scalar_to_float,
+    tp_value_convert_json_scalar_to_double,
+    tp_value_convert_json_scalar_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_time,
+    tp_value_convert_json_scalar_to_timestamp,
+    tp_value_convert_json_scalar_to_date,
+    tp_value_convert_json_scalar_to_monetary,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_short,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_numeric,
+    tp_value_convert_json_scalar_to_bit,
+    tp_value_convert_json_scalar_to_varbit,
+    tp_value_convert_json_scalar_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_bigint,
+    tp_value_convert_json_scalar_to_datetime,
+    tp_value_convert_json_scalar_to_blob,
+    tp_value_convert_json_scalar_to_clob,
+    tp_value_convert_json_scalar_to_enumeration,
+    tp_value_convert_json_scalar_to_timestamptz,
+    tp_value_convert_json_scalar_to_timestampltz,
+    tp_value_convert_json_scalar_to_datetimetz,
+    tp_value_convert_json_scalar_to_datetimeltz,
+    tp_value_convert_json_validate,
+    },
+   },
+  {				/* OPERAND */
+   {				/* NULL */
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* INTEGER */
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_integer_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_integer_to_json,
+    },
+   {				/* FLOAT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+    nullptr,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_float_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_float_to_json,
+    },
+   {				/* DOUBLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+    nullptr,
+    tp_value_convert_double_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_double_to_json,
+    },
+   {				/* VARCHAR */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_varchar_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varchar_to_time_strict,
+    tp_value_convert_varchar_to_timestamp_strict,
+    tp_value_convert_varchar_to_date_strict,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_varchar_to_bit,
+    tp_value_convert_varchar_to_varbit,
+    tp_value_convert_varchar_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_varchar_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varchar_to_enumeration,
+    tp_value_convert_varchar_to_timestamptz_strict,
+    tp_value_convert_varchar_to_timestampltz_strict,
+    tp_value_convert_varchar_to_datetimetz_strict,
+    tp_value_convert_varchar_to_datetimeltz_strict,
+    tp_value_convert_varchar_to_json,
+    },
+   {				/* OBJECT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_object_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_object_to_vobj,
+#else
+    tp_value_convert_incompatible,
+#endif
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_set_to_set,
+    tp_value_convert_set_to_multiset,
+    tp_value_convert_set_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* MULTISET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_multiset_to_set,
+    tp_value_convert_multiset_to_multiset,
+    tp_value_convert_multiset_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SEQUENCE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_sequence_to_set,
+    tp_value_convert_sequence_to_multiset,
+    tp_value_convert_sequence_to_sequence,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ELO */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIME */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_time_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMP */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_timestamp_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamp_to_enumeration,
+    tp_value_convert_timestamp_to_timestamptz_strict,
+    tp_value_convert_timestamp_to_timestampltz_strict,
+    tp_value_convert_timestamp_to_datetimetz_strict,
+    tp_value_convert_timestamp_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_timestamp_strict,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_date_to_enumeration,
+    tp_value_convert_date_to_timestamptz_strict,
+    tp_value_convert_date_to_timestampltz_strict,
+    tp_value_convert_date_to_datetimetz_strict,
+    tp_value_convert_date_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* MONETARY */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_monetary_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_monetary_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_monetary_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARIABLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SUB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* POINTER */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_pointer_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ERROR */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* SHORT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_short_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_short_to_json,
+    },
+   {				/* VOBJ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_vobj_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_vobj_to_vobj,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* OID */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_oid_to_object,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_oid_to_vobj,
+#if !defined (SERVER_MODE)
+    tp_value_convert_oid_to_oid,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* DB_VALUE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* NUMERIC */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_numeric_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_numeric_to_json,
+    },
+   {				/* BIT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_bit,
+    tp_value_convert_bit_to_varbit,
+    tp_value_convert_bit_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bit_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARBIT */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_bit,
+    tp_value_convert_varbit_to_varbit,
+    tp_value_convert_varbit_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_varbit_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* CHAR */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_char_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_char_to_time_strict,
+    tp_value_convert_char_to_timestamp_strict,
+    tp_value_convert_char_to_date_strict,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_char_to_bit,
+    tp_value_convert_char_to_varbit,
+    tp_value_convert_char_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_char_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_char_to_enumeration,
+    tp_value_convert_char_to_timestamptz_strict,
+    tp_value_convert_char_to_timestampltz_strict,
+    tp_value_convert_char_to_datetimetz_strict,
+    tp_value_convert_char_to_datetimeltz_strict,
+    tp_value_convert_char_to_json,
+    },
+   {				/* NCHAR_DEPRECATED */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* VARNCHAR_DEPRECATED */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* RESULTSET */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* MIDXKEY */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TABLE */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* BIGINT */
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_bigint_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_bigint_to_json,
+    },
+   {				/* DATETIME */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_timestamp_strict,
+    tp_value_convert_datetime_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetime_to_enumeration,
+    tp_value_convert_datetime_to_timestamptz_strict,
+    tp_value_convert_datetime_to_timestampltz_strict,
+    tp_value_convert_datetime_to_datetimetz_strict,
+    tp_value_convert_datetime_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* BLOB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* CLOB */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    nullptr,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* ENUMERATION */
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_integer,
+    tp_value_convert_enumeration_to_float,
+    tp_value_convert_enumeration_to_double,
+    tp_value_convert_enumeration_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_monetary,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_short,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_numeric,
+    tp_value_convert_enumeration_to_bit,
+    tp_value_convert_enumeration_to_varbit,
+    tp_value_convert_enumeration_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_bigint,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_enumeration_to_enumeration,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMPTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_timestamp_strict,
+    tp_value_convert_timestamptz_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestamptz_to_enumeration,
+    nullptr,
+    tp_value_convert_timestamptz_to_timestampltz_strict,
+    tp_value_convert_timestamptz_to_datetimetz_strict,
+    tp_value_convert_timestamptz_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* TIMESTAMPLTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_timestamp_strict,
+    tp_value_convert_timestampltz_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_timestampltz_to_enumeration,
+    tp_value_convert_timestampltz_to_timestamptz_strict,
+    nullptr,
+    tp_value_convert_timestampltz_to_datetimetz_strict,
+    tp_value_convert_timestampltz_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATETIMETZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_timestamp_strict,
+    tp_value_convert_datetimetz_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimetz_to_enumeration,
+    tp_value_convert_datetimetz_to_timestamptz_strict,
+    tp_value_convert_datetimetz_to_timestampltz_strict,
+    nullptr,
+    tp_value_convert_datetimetz_to_datetimeltz_strict,
+    tp_value_convert_incompatible,
+    },
+   {				/* DATETIMELTZ */
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_timestamp_strict,
+    tp_value_convert_datetimeltz_to_date_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_datetime_strict,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_datetimeltz_to_enumeration,
+    tp_value_convert_datetimeltz_to_timestamptz_strict,
+    tp_value_convert_datetimeltz_to_timestampltz_strict,
+    tp_value_convert_datetimeltz_to_datetimetz_strict,
+    nullptr,
+    tp_value_convert_incompatible,
+    },
+   {				/* JSON */
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_integer,
+    tp_value_convert_json_scalar_to_float,
+    tp_value_convert_json_scalar_to_double,
+    tp_value_convert_json_scalar_to_varchar,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_time,
+    tp_value_convert_json_scalar_to_timestamp,
+    tp_value_convert_json_scalar_to_date,
+    tp_value_convert_json_scalar_to_monetary,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_short,
+    tp_value_convert_incompatible,
+#if !defined (SERVER_MODE)
+    tp_value_convert_incompatible,
+#else
+    tp_value_convert_incompatible,
+#endif
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_numeric,
+    tp_value_convert_json_scalar_to_bit,
+    tp_value_convert_json_scalar_to_varbit,
+    tp_value_convert_json_scalar_to_char,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_incompatible,
+    tp_value_convert_json_scalar_to_bigint,
+    tp_value_convert_json_scalar_to_datetime,
+    tp_value_convert_json_scalar_to_blob,
+    tp_value_convert_json_scalar_to_clob,
+    tp_value_convert_json_scalar_to_enumeration,
+    tp_value_convert_json_scalar_to_timestamptz,
+    tp_value_convert_json_scalar_to_timestampltz,
+    tp_value_convert_json_scalar_to_datetimetz,
+    tp_value_convert_json_scalar_to_datetimeltz,
+    tp_value_convert_json_validate,
+    },
+   },
+};
+
+DOMAIN_CONVERTER
+domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain, DOMAIN_CONVERT_MODE mode)
+{
+  if (desired_domain == nullptr || src_type < DB_TYPE_NULL || src_type > DB_TYPE_LAST
+      || mode < DOMAIN_CONVERT_ASSIGN || mode > DOMAIN_CONVERT_OPERAND)
+    {
+      return tp_value_convert_incompatible;
+    }
+  DB_TYPE dst_type = TP_DOMAIN_TYPE (desired_domain);
+  if (dst_type < DB_TYPE_NULL || dst_type > DB_TYPE_LAST)
+    {
+      return tp_value_convert_incompatible;
+    }
+  return domain_convert_table[mode][src_type][dst_type];
+}
+
+const char *
+domain_converter_name (DOMAIN_CONVERTER converter)
+{
+  if (converter == nullptr)
+    {
+      return "identity";
+    }
+  static const struct
+  {
+    DOMAIN_CONVERTER function;
+    const char *name;
+  } names[] =
+  {
+    {
+    tp_value_convert_bigint_to_char, "bigint_to_char"},
+    {
+    tp_value_convert_bigint_to_enumeration, "bigint_to_enumeration"},
+    {
+    tp_value_convert_bigint_to_json, "bigint_to_json"},
+    {
+    tp_value_convert_bigint_to_time, "bigint_to_time"},
+    {
+    tp_value_convert_bigint_to_timestamp, "bigint_to_timestamp"},
+    {
+    tp_value_convert_bigint_to_timestampltz, "bigint_to_timestampltz"},
+    {
+    tp_value_convert_bigint_to_timestamptz, "bigint_to_timestamptz"},
+    {
+    tp_value_convert_bigint_to_varchar, "bigint_to_varchar"},
+    {
+    tp_value_convert_bit_to_bit, "bit_to_bit"},
+    {
+    tp_value_convert_bit_to_blob, "bit_to_blob"},
+    {
+    tp_value_convert_bit_to_char, "bit_to_char"},
+    {
+    tp_value_convert_bit_to_enumeration, "bit_to_enumeration"},
+    {
+    tp_value_convert_bit_to_varbit, "bit_to_varbit"},
+    {
+    tp_value_convert_bit_to_varchar, "bit_to_varchar"},
+    {
+    tp_value_convert_blob_to_bit, "blob_to_bit"},
+    {
+    tp_value_convert_blob_to_enumeration, "blob_to_enumeration"},
+    {
+    tp_value_convert_blob_to_varbit, "blob_to_varbit"},
+    {
+    tp_value_convert_char_to_bit, "char_to_bit"},
+    {
+    tp_value_convert_char_to_blob, "char_to_blob"},
+    {
+    tp_value_convert_char_to_char, "char_to_char"},
+    {
+    tp_value_convert_char_to_clob, "char_to_clob"},
+    {
+    tp_value_convert_char_to_date, "char_to_date"},
+    {
+    tp_value_convert_char_to_date_strict, "char_to_date_strict"},
+    {
+    tp_value_convert_char_to_datetime, "char_to_datetime"},
+    {
+    tp_value_convert_char_to_datetime_strict, "char_to_datetime_strict"},
+    {
+    tp_value_convert_char_to_datetimeltz, "char_to_datetimeltz"},
+    {
+    tp_value_convert_char_to_datetimeltz_strict, "char_to_datetimeltz_strict"},
+    {
+    tp_value_convert_char_to_datetimetz, "char_to_datetimetz"},
+    {
+    tp_value_convert_char_to_datetimetz_strict, "char_to_datetimetz_strict"},
+    {
+    tp_value_convert_char_to_enumeration, "char_to_enumeration"},
+    {
+    tp_value_convert_char_to_json, "char_to_json"},
+    {
+    tp_value_convert_char_to_time, "char_to_time"},
+    {
+    tp_value_convert_char_to_time_strict, "char_to_time_strict"},
+    {
+    tp_value_convert_char_to_timestamp, "char_to_timestamp"},
+    {
+    tp_value_convert_char_to_timestamp_strict, "char_to_timestamp_strict"},
+    {
+    tp_value_convert_char_to_timestampltz, "char_to_timestampltz"},
+    {
+    tp_value_convert_char_to_timestampltz_strict, "char_to_timestampltz_strict"},
+    {
+    tp_value_convert_char_to_timestamptz, "char_to_timestamptz"},
+    {
+    tp_value_convert_char_to_timestamptz_strict, "char_to_timestamptz_strict"},
+    {
+    tp_value_convert_char_to_varbit, "char_to_varbit"},
+    {
+    tp_value_convert_char_to_varchar, "char_to_varchar"},
+    {
+    tp_value_convert_clob_to_char, "clob_to_char"},
+    {
+    tp_value_convert_clob_to_enumeration, "clob_to_enumeration"},
+    {
+    tp_value_convert_clob_to_varchar, "clob_to_varchar"},
+    {
+    tp_value_convert_date_to_char, "date_to_char"},
+    {
+    tp_value_convert_date_to_datetime, "date_to_datetime"},
+    {
+    tp_value_convert_date_to_datetime_strict, "date_to_datetime_strict"},
+    {
+    tp_value_convert_date_to_datetimeltz, "date_to_datetimeltz"},
+    {
+    tp_value_convert_date_to_datetimeltz_strict, "date_to_datetimeltz_strict"},
+    {
+    tp_value_convert_date_to_datetimetz, "date_to_datetimetz"},
+    {
+    tp_value_convert_date_to_datetimetz_strict, "date_to_datetimetz_strict"},
+    {
+    tp_value_convert_date_to_enumeration, "date_to_enumeration"},
+    {
+    tp_value_convert_date_to_timestamp, "date_to_timestamp"},
+    {
+    tp_value_convert_date_to_timestamp_strict, "date_to_timestamp_strict"},
+    {
+    tp_value_convert_date_to_timestampltz, "date_to_timestampltz"},
+    {
+    tp_value_convert_date_to_timestampltz_strict, "date_to_timestampltz_strict"},
+    {
+    tp_value_convert_date_to_timestamptz, "date_to_timestamptz"},
+    {
+    tp_value_convert_date_to_timestamptz_strict, "date_to_timestamptz_strict"},
+    {
+    tp_value_convert_date_to_varchar, "date_to_varchar"},
+    {
+    tp_value_convert_datetime_to_char, "datetime_to_char"},
+    {
+    tp_value_convert_datetime_to_date, "datetime_to_date"},
+    {
+    tp_value_convert_datetime_to_date_strict, "datetime_to_date_strict"},
+    {
+    tp_value_convert_datetime_to_datetimeltz, "datetime_to_datetimeltz"},
+    {
+    tp_value_convert_datetime_to_datetimeltz_strict, "datetime_to_datetimeltz_strict"},
+    {
+    tp_value_convert_datetime_to_datetimetz, "datetime_to_datetimetz"},
+    {
+    tp_value_convert_datetime_to_datetimetz_strict, "datetime_to_datetimetz_strict"},
+    {
+    tp_value_convert_datetime_to_enumeration, "datetime_to_enumeration"},
+    {
+    tp_value_convert_datetime_to_time, "datetime_to_time"},
+    {
+    tp_value_convert_datetime_to_timestamp, "datetime_to_timestamp"},
+    {
+    tp_value_convert_datetime_to_timestamp_strict, "datetime_to_timestamp_strict"},
+    {
+    tp_value_convert_datetime_to_timestampltz, "datetime_to_timestampltz"},
+    {
+    tp_value_convert_datetime_to_timestampltz_strict, "datetime_to_timestampltz_strict"},
+    {
+    tp_value_convert_datetime_to_timestamptz, "datetime_to_timestamptz"},
+    {
+    tp_value_convert_datetime_to_timestamptz_strict, "datetime_to_timestamptz_strict"},
+    {
+    tp_value_convert_datetime_to_varchar, "datetime_to_varchar"},
+    {
+    tp_value_convert_datetimeltz_to_char, "datetimeltz_to_char"},
+    {
+    tp_value_convert_datetimeltz_to_date, "datetimeltz_to_date"},
+    {
+    tp_value_convert_datetimeltz_to_date_strict, "datetimeltz_to_date_strict"},
+    {
+    tp_value_convert_datetimeltz_to_datetime, "datetimeltz_to_datetime"},
+    {
+    tp_value_convert_datetimeltz_to_datetime_strict, "datetimeltz_to_datetime_strict"},
+    {
+    tp_value_convert_datetimeltz_to_datetimetz, "datetimeltz_to_datetimetz"},
+    {
+    tp_value_convert_datetimeltz_to_datetimetz_strict, "datetimeltz_to_datetimetz_strict"},
+    {
+    tp_value_convert_datetimeltz_to_enumeration, "datetimeltz_to_enumeration"},
+    {
+    tp_value_convert_datetimeltz_to_time, "datetimeltz_to_time"},
+    {
+    tp_value_convert_datetimeltz_to_timestamp, "datetimeltz_to_timestamp"},
+    {
+    tp_value_convert_datetimeltz_to_timestamp_strict, "datetimeltz_to_timestamp_strict"},
+    {
+    tp_value_convert_datetimeltz_to_timestampltz, "datetimeltz_to_timestampltz"},
+    {
+    tp_value_convert_datetimeltz_to_timestampltz_strict, "datetimeltz_to_timestampltz_strict"},
+    {
+    tp_value_convert_datetimeltz_to_timestamptz, "datetimeltz_to_timestamptz"},
+    {
+    tp_value_convert_datetimeltz_to_timestamptz_strict, "datetimeltz_to_timestamptz_strict"},
+    {
+    tp_value_convert_datetimeltz_to_varchar, "datetimeltz_to_varchar"},
+    {
+    tp_value_convert_datetimetz_to_char, "datetimetz_to_char"},
+    {
+    tp_value_convert_datetimetz_to_date, "datetimetz_to_date"},
+    {
+    tp_value_convert_datetimetz_to_date_strict, "datetimetz_to_date_strict"},
+    {
+    tp_value_convert_datetimetz_to_datetime, "datetimetz_to_datetime"},
+    {
+    tp_value_convert_datetimetz_to_datetime_strict, "datetimetz_to_datetime_strict"},
+    {
+    tp_value_convert_datetimetz_to_datetimeltz, "datetimetz_to_datetimeltz"},
+    {
+    tp_value_convert_datetimetz_to_datetimeltz_strict, "datetimetz_to_datetimeltz_strict"},
+    {
+    tp_value_convert_datetimetz_to_enumeration, "datetimetz_to_enumeration"},
+    {
+    tp_value_convert_datetimetz_to_time, "datetimetz_to_time"},
+    {
+    tp_value_convert_datetimetz_to_timestamp, "datetimetz_to_timestamp"},
+    {
+    tp_value_convert_datetimetz_to_timestamp_strict, "datetimetz_to_timestamp_strict"},
+    {
+    tp_value_convert_datetimetz_to_timestampltz, "datetimetz_to_timestampltz"},
+    {
+    tp_value_convert_datetimetz_to_timestampltz_strict, "datetimetz_to_timestampltz_strict"},
+    {
+    tp_value_convert_datetimetz_to_timestamptz, "datetimetz_to_timestamptz"},
+    {
+    tp_value_convert_datetimetz_to_timestamptz_strict, "datetimetz_to_timestamptz_strict"},
+    {
+    tp_value_convert_datetimetz_to_varchar, "datetimetz_to_varchar"},
+    {
+    tp_value_convert_double_to_char, "double_to_char"},
+    {
+    tp_value_convert_double_to_enumeration, "double_to_enumeration"},
+    {
+    tp_value_convert_double_to_json, "double_to_json"},
+    {
+    tp_value_convert_double_to_time, "double_to_time"},
+    {
+    tp_value_convert_double_to_timestamp, "double_to_timestamp"},
+    {
+    tp_value_convert_double_to_timestampltz, "double_to_timestampltz"},
+    {
+    tp_value_convert_double_to_timestamptz, "double_to_timestamptz"},
+    {
+    tp_value_convert_double_to_varchar, "double_to_varchar"},
+    {
+    tp_value_convert_enumeration_to_bigint, "enumeration_to_bigint"},
+    {
+    tp_value_convert_enumeration_to_bit, "enumeration_to_bit"},
+    {
+    tp_value_convert_enumeration_to_blob, "enumeration_to_blob"},
+    {
+    tp_value_convert_enumeration_to_char, "enumeration_to_char"},
+    {
+    tp_value_convert_enumeration_to_clob, "enumeration_to_clob"},
+    {
+    tp_value_convert_enumeration_to_date, "enumeration_to_date"},
+    {
+    tp_value_convert_enumeration_to_datetime, "enumeration_to_datetime"},
+    {
+    tp_value_convert_enumeration_to_datetimeltz, "enumeration_to_datetimeltz"},
+    {
+    tp_value_convert_enumeration_to_datetimetz, "enumeration_to_datetimetz"},
+    {
+    tp_value_convert_enumeration_to_double, "enumeration_to_double"},
+    {
+    tp_value_convert_enumeration_to_enumeration, "enumeration_to_enumeration"},
+    {
+    tp_value_convert_enumeration_to_float, "enumeration_to_float"},
+    {
+    tp_value_convert_enumeration_to_integer, "enumeration_to_integer"},
+    {
+    tp_value_convert_enumeration_to_monetary, "enumeration_to_monetary"},
+    {
+    tp_value_convert_enumeration_to_numeric, "enumeration_to_numeric"},
+    {
+    tp_value_convert_enumeration_to_short, "enumeration_to_short"},
+    {
+    tp_value_convert_enumeration_to_time, "enumeration_to_time"},
+    {
+    tp_value_convert_enumeration_to_timestamp, "enumeration_to_timestamp"},
+    {
+    tp_value_convert_enumeration_to_timestampltz, "enumeration_to_timestampltz"},
+    {
+    tp_value_convert_enumeration_to_timestamptz, "enumeration_to_timestamptz"},
+    {
+    tp_value_convert_enumeration_to_varbit, "enumeration_to_varbit"},
+    {
+    tp_value_convert_enumeration_to_varchar, "enumeration_to_varchar"},
+    {
+    tp_value_convert_float_to_char, "float_to_char"},
+    {
+    tp_value_convert_float_to_enumeration, "float_to_enumeration"},
+    {
+    tp_value_convert_float_to_json, "float_to_json"},
+    {
+    tp_value_convert_float_to_time, "float_to_time"},
+    {
+    tp_value_convert_float_to_timestamp, "float_to_timestamp"},
+    {
+    tp_value_convert_float_to_timestampltz, "float_to_timestampltz"},
+    {
+    tp_value_convert_float_to_timestamptz, "float_to_timestamptz"},
+    {
+    tp_value_convert_float_to_varchar, "float_to_varchar"},
+    {
+    tp_value_convert_incompatible, "incompatible"},
+    {
+    tp_value_convert_integer_to_char, "integer_to_char"},
+    {
+    tp_value_convert_integer_to_enumeration, "integer_to_enumeration"},
+    {
+    tp_value_convert_integer_to_json, "integer_to_json"},
+    {
+    tp_value_convert_integer_to_time, "integer_to_time"},
+    {
+    tp_value_convert_integer_to_timestamp, "integer_to_timestamp"},
+    {
+    tp_value_convert_integer_to_timestampltz, "integer_to_timestampltz"},
+    {
+    tp_value_convert_integer_to_timestamptz, "integer_to_timestamptz"},
+    {
+    tp_value_convert_integer_to_varchar, "integer_to_varchar"},
+    {
+    tp_value_convert_json_scalar_to_bigint, "json_scalar_to_bigint"},
+    {
+    tp_value_convert_json_scalar_to_bit, "json_scalar_to_bit"},
+    {
+    tp_value_convert_json_scalar_to_blob, "json_scalar_to_blob"},
+    {
+    tp_value_convert_json_scalar_to_char, "json_scalar_to_char"},
+    {
+    tp_value_convert_json_scalar_to_clob, "json_scalar_to_clob"},
+    {
+    tp_value_convert_json_scalar_to_date, "json_scalar_to_date"},
+    {
+    tp_value_convert_json_scalar_to_datetime, "json_scalar_to_datetime"},
+    {
+    tp_value_convert_json_scalar_to_datetimeltz, "json_scalar_to_datetimeltz"},
+    {
+    tp_value_convert_json_scalar_to_datetimetz, "json_scalar_to_datetimetz"},
+    {
+    tp_value_convert_json_scalar_to_double, "json_scalar_to_double"},
+    {
+    tp_value_convert_json_scalar_to_enumeration, "json_scalar_to_enumeration"},
+    {
+    tp_value_convert_json_scalar_to_float, "json_scalar_to_float"},
+    {
+    tp_value_convert_json_scalar_to_integer, "json_scalar_to_integer"},
+    {
+    tp_value_convert_json_scalar_to_monetary, "json_scalar_to_monetary"},
+    {
+    tp_value_convert_json_scalar_to_numeric, "json_scalar_to_numeric"},
+    {
+    tp_value_convert_json_scalar_to_short, "json_scalar_to_short"},
+    {
+    tp_value_convert_json_scalar_to_time, "json_scalar_to_time"},
+    {
+    tp_value_convert_json_scalar_to_timestamp, "json_scalar_to_timestamp"},
+    {
+    tp_value_convert_json_scalar_to_timestampltz, "json_scalar_to_timestampltz"},
+    {
+    tp_value_convert_json_scalar_to_timestamptz, "json_scalar_to_timestamptz"},
+    {
+    tp_value_convert_json_scalar_to_varbit, "json_scalar_to_varbit"},
+    {
+    tp_value_convert_json_scalar_to_varchar, "json_scalar_to_varchar"},
+    {
+    tp_value_convert_json_validate, "json_validate"},
+    {
+    tp_value_convert_monetary_to_char, "monetary_to_char"},
+    {
+    tp_value_convert_monetary_to_enumeration, "monetary_to_enumeration"},
+    {
+    tp_value_convert_monetary_to_time, "monetary_to_time"},
+    {
+    tp_value_convert_monetary_to_timestamp, "monetary_to_timestamp"},
+    {
+    tp_value_convert_monetary_to_timestampltz, "monetary_to_timestampltz"},
+    {
+    tp_value_convert_monetary_to_timestamptz, "monetary_to_timestamptz"},
+    {
+    tp_value_convert_monetary_to_varchar, "monetary_to_varchar"},
+    {
+    tp_value_convert_multiset_to_multiset, "multiset_to_multiset"},
+    {
+    tp_value_convert_multiset_to_sequence, "multiset_to_sequence"},
+    {
+    tp_value_convert_multiset_to_set, "multiset_to_set"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_CHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_CHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_CHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>"},
+    {
+    tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
+	"number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND>"},
+    {
+    tp_value_convert_numeric_to_char, "numeric_to_char"},
+    {
+    tp_value_convert_numeric_to_enumeration, "numeric_to_enumeration"},
+    {
+    tp_value_convert_numeric_to_json, "numeric_to_json"},
+    {
+    tp_value_convert_numeric_to_timestamp, "numeric_to_timestamp"},
+    {
+    tp_value_convert_numeric_to_timestampltz, "numeric_to_timestampltz"},
+    {
+    tp_value_convert_numeric_to_timestamptz, "numeric_to_timestamptz"},
+    {
+    tp_value_convert_numeric_to_varchar, "numeric_to_varchar"},
+#if !defined (SERVER_MODE)
+    {
+    tp_value_convert_object_to_object, "object_to_object"},
+#endif
+#if !defined (SERVER_MODE)
+    {
+    tp_value_convert_object_to_vobj, "object_to_vobj"},
+#endif
+#if !defined (SERVER_MODE)
+    {
+    tp_value_convert_oid_to_object, "oid_to_object"},
+#endif
+    {
+    tp_value_convert_oid_to_oid, "oid_to_oid"},
+    {
+    tp_value_convert_oid_to_vobj, "oid_to_vobj"},
+#if !defined (SERVER_MODE)
+    {
+    tp_value_convert_pointer_to_object, "pointer_to_object"},
+#endif
+    {
+    tp_value_convert_sequence_to_multiset, "sequence_to_multiset"},
+    {
+    tp_value_convert_sequence_to_sequence, "sequence_to_sequence"},
+    {
+    tp_value_convert_sequence_to_set, "sequence_to_set"},
+    {
+    tp_value_convert_set_to_multiset, "set_to_multiset"},
+    {
+    tp_value_convert_set_to_sequence, "set_to_sequence"},
+    {
+    tp_value_convert_set_to_set, "set_to_set"},
+    {
+    tp_value_convert_short_to_char, "short_to_char"},
+    {
+    tp_value_convert_short_to_enumeration, "short_to_enumeration"},
+    {
+    tp_value_convert_short_to_json, "short_to_json"},
+    {
+    tp_value_convert_short_to_time, "short_to_time"},
+    {
+    tp_value_convert_short_to_timestamp, "short_to_timestamp"},
+    {
+    tp_value_convert_short_to_timestampltz, "short_to_timestampltz"},
+    {
+    tp_value_convert_short_to_timestamptz, "short_to_timestamptz"},
+    {
+    tp_value_convert_short_to_varchar, "short_to_varchar"},
+    {
+    tp_value_convert_time_to_char, "time_to_char"},
+    {
+    tp_value_convert_time_to_enumeration, "time_to_enumeration"},
+    {
+    tp_value_convert_time_to_varchar, "time_to_varchar"},
+    {
+    tp_value_convert_timestamp_to_char, "timestamp_to_char"},
+    {
+    tp_value_convert_timestamp_to_date, "timestamp_to_date"},
+    {
+    tp_value_convert_timestamp_to_date_strict, "timestamp_to_date_strict"},
+    {
+    tp_value_convert_timestamp_to_datetime, "timestamp_to_datetime"},
+    {
+    tp_value_convert_timestamp_to_datetime_strict, "timestamp_to_datetime_strict"},
+    {
+    tp_value_convert_timestamp_to_datetimeltz, "timestamp_to_datetimeltz"},
+    {
+    tp_value_convert_timestamp_to_datetimeltz_strict, "timestamp_to_datetimeltz_strict"},
+    {
+    tp_value_convert_timestamp_to_datetimetz, "timestamp_to_datetimetz"},
+    {
+    tp_value_convert_timestamp_to_datetimetz_strict, "timestamp_to_datetimetz_strict"},
+    {
+    tp_value_convert_timestamp_to_enumeration, "timestamp_to_enumeration"},
+    {
+    tp_value_convert_timestamp_to_time, "timestamp_to_time"},
+    {
+    tp_value_convert_timestamp_to_timestampltz, "timestamp_to_timestampltz"},
+    {
+    tp_value_convert_timestamp_to_timestampltz_strict, "timestamp_to_timestampltz_strict"},
+    {
+    tp_value_convert_timestamp_to_timestamptz, "timestamp_to_timestamptz"},
+    {
+    tp_value_convert_timestamp_to_timestamptz_strict, "timestamp_to_timestamptz_strict"},
+    {
+    tp_value_convert_timestamp_to_varchar, "timestamp_to_varchar"},
+    {
+    tp_value_convert_timestampltz_to_char, "timestampltz_to_char"},
+    {
+    tp_value_convert_timestampltz_to_date, "timestampltz_to_date"},
+    {
+    tp_value_convert_timestampltz_to_date_strict, "timestampltz_to_date_strict"},
+    {
+    tp_value_convert_timestampltz_to_datetime, "timestampltz_to_datetime"},
+    {
+    tp_value_convert_timestampltz_to_datetime_strict, "timestampltz_to_datetime_strict"},
+    {
+    tp_value_convert_timestampltz_to_datetimeltz, "timestampltz_to_datetimeltz"},
+    {
+    tp_value_convert_timestampltz_to_datetimeltz_strict, "timestampltz_to_datetimeltz_strict"},
+    {
+    tp_value_convert_timestampltz_to_datetimetz, "timestampltz_to_datetimetz"},
+    {
+    tp_value_convert_timestampltz_to_datetimetz_strict, "timestampltz_to_datetimetz_strict"},
+    {
+    tp_value_convert_timestampltz_to_enumeration, "timestampltz_to_enumeration"},
+    {
+    tp_value_convert_timestampltz_to_time, "timestampltz_to_time"},
+    {
+    tp_value_convert_timestampltz_to_timestamp, "timestampltz_to_timestamp"},
+    {
+    tp_value_convert_timestampltz_to_timestamp_strict, "timestampltz_to_timestamp_strict"},
+    {
+    tp_value_convert_timestampltz_to_timestamptz, "timestampltz_to_timestamptz"},
+    {
+    tp_value_convert_timestampltz_to_timestamptz_strict, "timestampltz_to_timestamptz_strict"},
+    {
+    tp_value_convert_timestampltz_to_varchar, "timestampltz_to_varchar"},
+    {
+    tp_value_convert_timestamptz_to_char, "timestamptz_to_char"},
+    {
+    tp_value_convert_timestamptz_to_date, "timestamptz_to_date"},
+    {
+    tp_value_convert_timestamptz_to_date_strict, "timestamptz_to_date_strict"},
+    {
+    tp_value_convert_timestamptz_to_datetime, "timestamptz_to_datetime"},
+    {
+    tp_value_convert_timestamptz_to_datetime_strict, "timestamptz_to_datetime_strict"},
+    {
+    tp_value_convert_timestamptz_to_datetimeltz, "timestamptz_to_datetimeltz"},
+    {
+    tp_value_convert_timestamptz_to_datetimeltz_strict, "timestamptz_to_datetimeltz_strict"},
+    {
+    tp_value_convert_timestamptz_to_datetimetz, "timestamptz_to_datetimetz"},
+    {
+    tp_value_convert_timestamptz_to_datetimetz_strict, "timestamptz_to_datetimetz_strict"},
+    {
+    tp_value_convert_timestamptz_to_enumeration, "timestamptz_to_enumeration"},
+    {
+    tp_value_convert_timestamptz_to_time, "timestamptz_to_time"},
+    {
+    tp_value_convert_timestamptz_to_timestamp, "timestamptz_to_timestamp"},
+    {
+    tp_value_convert_timestamptz_to_timestamp_strict, "timestamptz_to_timestamp_strict"},
+    {
+    tp_value_convert_timestamptz_to_timestampltz, "timestamptz_to_timestampltz"},
+    {
+    tp_value_convert_timestamptz_to_timestampltz_strict, "timestamptz_to_timestampltz_strict"},
+    {
+    tp_value_convert_timestamptz_to_varchar, "timestamptz_to_varchar"},
+    {
+    tp_value_convert_varbit_to_bit, "varbit_to_bit"},
+    {
+    tp_value_convert_varbit_to_blob, "varbit_to_blob"},
+    {
+    tp_value_convert_varbit_to_char, "varbit_to_char"},
+    {
+    tp_value_convert_varbit_to_enumeration, "varbit_to_enumeration"},
+    {
+    tp_value_convert_varbit_to_varbit, "varbit_to_varbit"},
+    {
+    tp_value_convert_varbit_to_varchar, "varbit_to_varchar"},
+    {
+    tp_value_convert_varchar_to_bit, "varchar_to_bit"},
+    {
+    tp_value_convert_varchar_to_blob, "varchar_to_blob"},
+    {
+    tp_value_convert_varchar_to_char, "varchar_to_char"},
+    {
+    tp_value_convert_varchar_to_clob, "varchar_to_clob"},
+    {
+    tp_value_convert_varchar_to_date, "varchar_to_date"},
+    {
+    tp_value_convert_varchar_to_date_strict, "varchar_to_date_strict"},
+    {
+    tp_value_convert_varchar_to_datetime, "varchar_to_datetime"},
+    {
+    tp_value_convert_varchar_to_datetime_strict, "varchar_to_datetime_strict"},
+    {
+    tp_value_convert_varchar_to_datetimeltz, "varchar_to_datetimeltz"},
+    {
+    tp_value_convert_varchar_to_datetimeltz_strict, "varchar_to_datetimeltz_strict"},
+    {
+    tp_value_convert_varchar_to_datetimetz, "varchar_to_datetimetz"},
+    {
+    tp_value_convert_varchar_to_datetimetz_strict, "varchar_to_datetimetz_strict"},
+    {
+    tp_value_convert_varchar_to_enumeration, "varchar_to_enumeration"},
+    {
+    tp_value_convert_varchar_to_json, "varchar_to_json"},
+    {
+    tp_value_convert_varchar_to_time, "varchar_to_time"},
+    {
+    tp_value_convert_varchar_to_time_strict, "varchar_to_time_strict"},
+    {
+    tp_value_convert_varchar_to_timestamp, "varchar_to_timestamp"},
+    {
+    tp_value_convert_varchar_to_timestamp_strict, "varchar_to_timestamp_strict"},
+    {
+    tp_value_convert_varchar_to_timestampltz, "varchar_to_timestampltz"},
+    {
+    tp_value_convert_varchar_to_timestampltz_strict, "varchar_to_timestampltz_strict"},
+    {
+    tp_value_convert_varchar_to_timestamptz, "varchar_to_timestamptz"},
+    {
+    tp_value_convert_varchar_to_timestamptz_strict, "varchar_to_timestamptz_strict"},
+    {
+    tp_value_convert_varchar_to_varbit, "varchar_to_varbit"},
+    {
+    tp_value_convert_varchar_to_varchar, "varchar_to_varchar"},
+#if !defined (SERVER_MODE)
+    {
+    tp_value_convert_vobj_to_object, "vobj_to_object"},
+#endif
+    {
+  tp_value_convert_vobj_to_vobj, "vobj_to_vobj"},};
+for (const auto & entry:names)
+    {
+      if (entry.function == converter)
+	{
+	  return entry.name;
+	}
+    }
+  return "unknown";
+}
 /*
  * tp_value_coerce_strict () - convert a value to desired domain without loss
  *			       of precision
@@ -6092,6 +28044,7 @@ const DOMAIN_NUMERIC_CONVERTERS tp_numeric_convert_table =
 int
 tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
+  date_conversion_error conversion_error;
   DB_TYPE desired_type, original_type;
   int err = NO_ERROR;
   DB_VALUE temp, *target;
@@ -6152,32 +28105,32 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_MONETARY:
-	  err = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_DOUBLE:
-	  err = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	default:
@@ -6190,32 +28143,32 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_MONETARY:
-	  err = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_DOUBLE:
-	  err = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	default:
@@ -6228,32 +28181,32 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_MONETARY:
-	  err = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_DOUBLE:
-	  err = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	default:
@@ -6266,24 +28219,24 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	default:
@@ -6296,32 +28249,32 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_MONETARY:
-	  err = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	default:
@@ -6335,41 +28288,23 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  {
-	    DB_VALUE temp;
-
-	    if (tp_atonumeric (src, &temp) != NO_ERROR)
-	      {
-		if (er_errid () != NO_ERROR)
-		  {
-		    err = DOMAIN_ERROR;
-		  }
-		else
-		  {
-		    err = DOMAIN_INCOMPATIBLE;
-		  }
-	      }
-	    else
-	      {
-		err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
-		  (&temp, target, desired_domain);
-	      }
-	    break;
-	  }
+	  err = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >
+	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_SHORT:
-	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	default:
@@ -6382,32 +28317,32 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  err = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_INTEGER:
-	  err = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_BIGINT:
-	  err = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_FLOAT:
-	  err = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_DOUBLE:
-	  err = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_NUMERIC:
-	  err = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  err = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE>
+	  err = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_COMPARE >
 	    (src, target, desired_domain) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	default:
@@ -6420,693 +28355,405 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_CHAR:
+	  err =
+	    tp_value_convert_char_to_time_strict_core (src, target, desired_domain,
+						       &conversion_error) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_VARCHAR:
-	  {
-	    DB_TIME time = 0;
-	    if (tp_atotime (src, &time) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_value_put_encoded_time (target, &time);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_char_to_time_strict_core (src, target, desired_domain,
+						       &conversion_error) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
 	}
       break;
-
     case DB_TYPE_DATE:
       switch (original_type)
 	{
 	case DB_TYPE_CHAR:
+	  err =
+	    tp_value_convert_char_to_date_strict_core (src, target, desired_domain,
+						       &conversion_error) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_VARCHAR:
-	  {
-	    DB_DATE date = 0;
-
-	    if (tp_atodate (src, &date) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_value_put_encoded_date (target, &date);
-	    break;
-	  }
-	case DB_TYPE_DATETIME:
-	  {
-	    DB_DATETIME *src_dt = NULL;
-
-	    src_dt = db_get_datetime (src);
-	    if (src_dt->time != 0)
-	      {
-		/* only "downcast" if time is 0 */
-		err = ER_FAILED;
-		break;
-	      }
-	    db_value_put_encoded_date (target, (DB_DATE *) (&src_dt->date));
-	    break;
-	  }
-	case DB_TYPE_DATETIMELTZ:
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_DATETIME *utc_dt_p;
-	    DB_DATETIMETZ *dt_tz_p;
-	    DB_DATETIME local_dt;
-	    TZ_ID tz_id;
-
-	    /* DATETIMELTZ and DATETIMETZ store in UTC, convert to session */
-	    if (original_type == DB_TYPE_DATETIMELTZ)
-	      {
-		utc_dt_p = db_get_datetime (src);
-		if (tz_create_session_tzid_for_datetime (utc_dt_p, true, &tz_id) != NO_ERROR)
-		  {
-		    err = ER_FAILED;
-		    break;
-		  }
-	      }
-	    else
-	      {
-		dt_tz_p = db_get_datetimetz (src);
-		utc_dt_p = &dt_tz_p->datetime;
-		tz_id = dt_tz_p->tz_id;
-	      }
-
-	    if (tz_utc_datetimetz_to_local (utc_dt_p, &tz_id, &local_dt) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-
-	    if (local_dt.time != 0)
-	      {
-		/* only "downcast" if time is 0 */
-		err = ER_FAILED;
-		break;
-	      }
-
-	    db_value_put_encoded_date (target, (DB_DATE *) (&local_dt.date));
-	    break;
-	  }
+	  err =
+	    tp_value_convert_char_to_date_strict_core (src, target, desired_domain,
+						       &conversion_error) == DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMP:
+	  err =
+	    tp_value_convert_timestamp_to_date_strict_core (src, target, desired_domain,
+							    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    DB_DATE date = 0;
-	    DB_TIME time = 0;
-	    DB_TIMESTAMP *ts = NULL;
-
-	    ts = db_get_timestamp (src);
-	    (void) db_timestamp_decode_ses (ts, &date, &time);
-	    if (time != 0)
-	      {
-		/* only "downcast" if time is 0 */
-		err = ER_FAILED;
-		break;
-	      }
-	    db_value_put_encoded_date (target, &date);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_timestamp_to_date_strict_core (src, target, desired_domain,
+							    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPTZ:
-	  {
-	    DB_DATE date = 0;
-	    DB_TIME time = 0;
-	    DB_TIMESTAMPTZ *ts_tz = NULL;
-
-	    ts_tz = db_get_timestamptz (src);
-	    err = db_timestamp_decode_w_tz_id (&ts_tz->timestamp, &ts_tz->tz_id, &date, &time);
-	    if (err != NO_ERROR || time != 0)
-	      {
-		/* only "downcast" if time is 0 */
-		err = ER_FAILED;
-		break;
-	      }
-	    db_value_put_encoded_date (target, &date);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_timestamptz_to_date_strict_core (src, target, desired_domain,
+							      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIME:
+	  err =
+	    tp_value_convert_datetime_to_date_strict_core (src, target, desired_domain,
+							   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  err =
+	    tp_value_convert_datetimeltz_to_date_strict_core (src, target, desired_domain,
+							      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  err =
+	    tp_value_convert_datetimetz_to_date_strict_core (src, target, desired_domain,
+							     &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
 	}
       break;
-
     case DB_TYPE_DATETIME:
       switch (original_type)
 	{
-	case DB_TYPE_DATE:
-	  {
-	    DB_DATETIME datetime = { 0, 0 };
-	    datetime.date = *db_get_date (src);
-	    datetime.time = 0;
-	    db_make_datetime (target, &datetime);
-	    break;
-	  }
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
-	    db_make_datetime (target, &dt_tz->datetime);
-	    break;
-	  }
-	case DB_TYPE_DATETIMELTZ:
-	  {
-	    DB_DATETIME *dt = db_get_datetime (src);
-	    db_make_datetime (target, dt);
-	    break;
-	  }
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  {
-	    DB_DATETIME datetime = { 0, 0 };
-	    if (tp_atoudatetime (src, &datetime) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_datetime (target, &datetime);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_char_to_datetime_strict_core (src, target, desired_domain,
+							   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_VARCHAR:
+	  err =
+	    tp_value_convert_char_to_datetime_strict_core (src, target, desired_domain,
+							   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATE:
+	  err =
+	    tp_value_convert_date_to_datetime_strict_core (src, target, desired_domain,
+							   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMP:
+	  err =
+	    tp_value_convert_timestamp_to_datetime_strict_core (src, target, desired_domain,
+								&conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    DB_DATETIME datetime = { 0, 0 };
-	    DB_TIMESTAMP *utime = db_get_timestamp (src);
-	    DB_DATE date;
-	    DB_TIME time;
-
-	    if (db_timestamp_decode_ses (utime, &date, &time) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    datetime.time = time * 1000;
-	    datetime.date = date;
-	    db_make_datetime (target, &datetime);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_timestamp_to_datetime_strict_core (src, target, desired_domain,
+								&conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPTZ:
-	  {
-	    DB_DATETIME datetime = { 0, 0 };
-	    DB_DATE date;
-	    DB_TIME time;
-	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
-
-	    if (db_timestamp_decode_w_tz_id (&ts_tz->timestamp, &ts_tz->tz_id, &date, &time) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-
-	    datetime.time = time * 1000;
-	    datetime.date = date;
-	    db_make_datetime (target, &datetime);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_timestamptz_to_datetime_strict_core (src, target, desired_domain,
+								  &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  err =
+	    tp_value_convert_datetimeltz_to_datetime_strict_core (src, target, desired_domain,
+								  &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  err =
+	    tp_value_convert_datetimetz_to_datetime_strict_core (src, target, desired_domain,
+								 &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
 	}
       break;
-
     case DB_TYPE_DATETIMETZ:
       switch (original_type)
 	{
-	case DB_TYPE_DATE:
-	case DB_TYPE_DATETIME:
-	  {
-	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
-
-	    if (original_type == DB_TYPE_DATE)
-	      {
-		dt_tz.datetime.date = *db_get_date (src);
-		dt_tz.datetime.time = 0;
-	      }
-	    else
-	      {
-		dt_tz.datetime = *db_get_datetime (src);
-	      }
-
-	    err = tz_create_datetimetz_from_ses (&(dt_tz.datetime), &dt_tz);
-	    if (err == NO_ERROR)
-	      {
-		db_make_datetimetz (target, &dt_tz);
-	      }
-	    break;
-	  }
-
-	case DB_TYPE_DATETIMELTZ:
-	  {
-	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
-	    DB_DATETIME *dt = db_get_datetime (src);
-
-	    dt_tz.datetime = *dt;
-	    err = tz_create_session_tzid_for_datetime (dt, false, &dt_tz.tz_id);
-	    if (err == NO_ERROR)
-	      {
-		db_make_datetimetz (target, &dt_tz);
-	      }
-	    break;
-	  }
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  {
-	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
-
-	    if (tp_atodatetimetz (src, &dt_tz) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-
-	    db_make_datetimetz (target, &dt_tz);
-	  }
+	  err =
+	    tp_value_convert_char_to_datetimetz_strict_core (src, target, desired_domain,
+							     &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_VARCHAR:
+	  err =
+	    tp_value_convert_char_to_datetimetz_strict_core (src, target, desired_domain,
+							     &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATE:
+	  err =
+	    tp_value_convert_date_to_datetimetz_strict_core (src, target, desired_domain,
+							     &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
 	  break;
 	case DB_TYPE_TIMESTAMP:
+	  err =
+	    tp_value_convert_timestamp_to_datetimetz_strict_core (src, target, desired_domain,
+								  &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
-	    DB_TIMESTAMP *utime = db_get_timestamp (src);
-	    DB_DATE date;
-	    DB_TIME time;
-
-	    /* convert DT to TS in UTC reference */
-	    db_timestamp_decode_utc (utime, &date, &time);
-	    dt_tz.datetime.date = date;
-	    dt_tz.datetime.time = time * 1000;
-	    err = tz_create_session_tzid_for_datetime (&dt_tz.datetime, true, &(dt_tz.tz_id));
-	    if (err == NO_ERROR)
-	      {
-		db_make_datetimetz (target, &dt_tz);
-	      }
-	    break;
-	  }
+	  err =
+	    tp_value_convert_timestamp_to_datetimetz_strict_core (src, target, desired_domain,
+								  &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPTZ:
-	  {
-	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
-	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
-	    DB_DATE date;
-	    DB_TIME time;
-
-	    (void) db_timestamp_decode_utc (&ts_tz->timestamp, &date, &time);
-	    dt_tz.datetime.time = time * 1000;
-	    dt_tz.datetime.date = date;
-	    dt_tz.tz_id = ts_tz->tz_id;
-	    db_make_datetimetz (target, &dt_tz);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_timestamptz_to_datetimetz_strict_core (src, target, desired_domain,
+								    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIME:
+	  err =
+	    tp_value_convert_datetime_to_datetimetz_strict_core (src, target, desired_domain,
+								 &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  err =
+	    tp_value_convert_datetimeltz_to_datetimetz_strict_core (src, target, desired_domain,
+								    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
 	}
       break;
-
     case DB_TYPE_DATETIMELTZ:
       switch (original_type)
 	{
-	case DB_TYPE_DATE:
-	case DB_TYPE_DATETIME:
-	  {
-	    DB_DATETIME datetime;
-	    DB_DATETIMETZ dt_tz;
-
-	    if (original_type == DB_TYPE_DATE)
-	      {
-		datetime.date = *db_get_date (src);
-		datetime.time = 0;
-	      }
-	    else
-	      {
-		datetime = *db_get_datetime (src);
-	      }
-
-	    err = tz_create_datetimetz_from_ses (&datetime, &dt_tz);
-	    if (err != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-
-	    db_make_datetimeltz (target, &dt_tz.datetime);
-	    break;
-	  }
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
-
-	    /* copy datetime (UTC) */
-	    db_make_datetimeltz (target, &dt_tz->datetime);
-	    break;
-	  }
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  {
-	    DB_DATETIMETZ dt_tz = DB_DATETIMETZ_INITIALIZER;
-
-	    if (tp_atodatetimetz (src, &dt_tz) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_datetimeltz (target, &dt_tz.datetime);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_char_to_datetimeltz_strict_core (src, target, desired_domain,
+							      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_VARCHAR:
+	  err =
+	    tp_value_convert_char_to_datetimeltz_strict_core (src, target, desired_domain,
+							      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATE:
+	  err =
+	    tp_value_convert_date_to_datetimeltz_strict_core (src, target, desired_domain,
+							      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMP:
+	  err =
+	    tp_value_convert_timestamp_to_datetimeltz_strict_core (src, target, desired_domain,
+								   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    DB_DATETIME datetime = { 0, 0 };
-	    DB_TIMESTAMP *utime = db_get_timestamp (src);
-	    DB_DATE date;
-	    DB_TIME time;
-
-	    (void) db_timestamp_decode_utc (utime, &date, &time);
-	    datetime.time = time * 1000;
-	    datetime.date = date;
-	    db_make_datetimeltz (target, &datetime);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_timestamp_to_datetimeltz_strict_core (src, target, desired_domain,
+								   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPTZ:
-	  {
-	    DB_DATETIME datetime = { 0, 0 };
-	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
-	    DB_DATE date;
-	    DB_TIME time;
-
-	    (void) db_timestamp_decode_utc (&ts_tz->timestamp, &date, &time);
-	    datetime.time = time * 1000;
-	    datetime.date = date;
-	    db_make_datetimeltz (target, &datetime);
-	    break;
-	  }
+	  err =
+	    tp_value_convert_timestamptz_to_datetimeltz_strict_core (src, target, desired_domain,
+								     &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIME:
+	  err =
+	    tp_value_convert_datetime_to_datetimeltz_strict_core (src, target, desired_domain,
+								  &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  err =
+	    tp_value_convert_datetimetz_to_datetimeltz_strict_core (src, target, desired_domain,
+								    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
 	}
       break;
-
     case DB_TYPE_TIMESTAMP:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  {
-	    DB_TIMESTAMP ts = 0;
-
-	    if (tp_atoutime (src, &ts) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamp (target, ts);
-	    break;
-	  }
-	case DB_TYPE_DATETIME:
-	  {
-	    DB_DATETIME dt = *db_get_datetime (src);
-	    DB_DATE date = dt.date;
-	    DB_TIME time = dt.time / 1000;
-	    DB_TIMESTAMP ts = 0;
-
-	    if (db_timestamp_encode_ses (&date, &time, &ts, NULL) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamp (target, ts);
-	    break;
-	  }
-	case DB_TYPE_DATETIMELTZ:
-	  {
-	    DB_DATETIME dt = *db_get_datetime (src);
-	    DB_DATE date = dt.date;
-	    DB_TIME time = dt.time / 1000;
-	    DB_TIMESTAMP ts = 0;
-
-	    if (db_timestamp_encode_utc (&date, &time, &ts) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamp (target, ts);
-	    break;
-	  }
-
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
-	    DB_DATE date = dt_tz->datetime.date;
-	    DB_TIME time = dt_tz->datetime.time / 1000;
-	    DB_TIMESTAMP ts = 0;
-
-	    if (db_timestamp_encode_utc (&date, &time, &ts) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamp (target, ts);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_char_to_timestamp_strict_core (src, target, desired_domain,
+							    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_VARCHAR:
+	  err =
+	    tp_value_convert_char_to_timestamp_strict_core (src, target, desired_domain,
+							    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_DATE:
-	  {
-	    DB_TIME tm = 0;
-	    DB_DATE date = *db_get_date (src);
-	    DB_TIMESTAMP ts = 0;
-
-	    db_time_encode (&tm, 0, 0, 0);
-	    if (db_timestamp_encode_ses (&date, &tm, &ts, NULL) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamp (target, ts);
-	    break;
-	  }
-
-	case DB_TYPE_TIMESTAMPTZ:
-	  {
-	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
-
-	    /* copy timestamp value (UTC) */
-	    db_make_timestamp (target, ts_tz->timestamp);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_date_to_timestamp_strict_core (src, target, desired_domain,
+							    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    DB_TIMESTAMP *ts = db_get_timestamp (src);
-
-	    /* copy timestamp value (UTC) */
-	    db_make_timestamp (target, *ts);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_timestampltz_to_timestamp_strict_core (src, target, desired_domain,
+								    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  err =
+	    tp_value_convert_timestamptz_to_timestamp_strict_core (src, target, desired_domain,
+								   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIME:
+	  err =
+	    tp_value_convert_datetime_to_timestamp_strict_core (src, target, desired_domain,
+								&conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  err =
+	    tp_value_convert_datetimeltz_to_timestamp_strict_core (src, target, desired_domain,
+								   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  err =
+	    tp_value_convert_datetimetz_to_timestamp_strict_core (src, target, desired_domain,
+								  &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
 	}
       break;
-
     case DB_TYPE_TIMESTAMPLTZ:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  {
-	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
-
-	    if (tp_atotimestamptz (src, &ts_tz) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestampltz (target, ts_tz.timestamp);
-	    break;
-	  }
-	case DB_TYPE_DATETIME:
-	  {
-	    DB_DATETIME dt = *db_get_datetime (src);
-	    DB_DATE date = dt.date;
-	    DB_TIME time = dt.time / 1000;
-	    DB_TIMESTAMP ts = 0;
-
-	    if (db_timestamp_encode_ses (&date, &time, &ts, NULL) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestampltz (target, ts);
-	    break;
-	  }
-	case DB_TYPE_DATETIMELTZ:
-	  {
-	    DB_DATETIME dt = *db_get_datetime (src);
-	    DB_DATE date = dt.date;
-	    DB_TIME time = dt.time / 1000;
-	    DB_TIMESTAMP ts = 0;
-
-	    if (db_timestamp_encode_utc (&date, &time, &ts) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestampltz (target, ts);
-	    break;
-	  }
-
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
-	    DB_DATE date = dt_tz->datetime.date;
-	    DB_TIME time = dt_tz->datetime.time / 1000;
-	    DB_TIMESTAMP ts = 0;
-
-	    if (db_timestamp_encode_utc (&date, &time, &ts) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestampltz (target, ts);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_char_to_timestampltz_strict_core (src, target, desired_domain,
+							       &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_VARCHAR:
+	  err =
+	    tp_value_convert_char_to_timestampltz_strict_core (src, target, desired_domain,
+							       &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_DATE:
-	  {
-	    DB_TIME tm = 0;
-	    DB_DATE date = *db_get_date (src);
-	    DB_TIMESTAMP ts = 0;
-
-	    db_time_encode (&tm, 0, 0, 0);
-	    if (db_timestamp_encode_ses (&date, &tm, &ts, NULL) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestampltz (target, ts);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_date_to_timestampltz_strict_core (src, target, desired_domain,
+							       &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMP:
-	  {
-	    DB_TIMESTAMP *ts = db_get_timestamp (src);
-
-	    /* copy val timestamp value (UTC) */
-	    db_make_timestampltz (target, *ts);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_timestamp_to_timestampltz_strict_core (src, target, desired_domain,
+								    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPTZ:
-	  {
-	    DB_TIMESTAMPTZ *ts_tz = db_get_timestamptz (src);
-
-	    /* copy val timestamp value (UTC) */
-	    db_make_timestampltz (target, ts_tz->timestamp);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_timestamptz_to_timestampltz_strict_core (src, target, desired_domain,
+								      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIME:
+	  err =
+	    tp_value_convert_datetime_to_timestampltz_strict_core (src, target, desired_domain,
+								   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  err =
+	    tp_value_convert_datetimeltz_to_timestampltz_strict_core (src, target, desired_domain,
+								      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  err =
+	    tp_value_convert_datetimetz_to_timestampltz_strict_core (src, target, desired_domain,
+								     &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
 	}
       break;
-
     case DB_TYPE_TIMESTAMPTZ:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  {
-	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
-
-	    if (tp_atotimestamptz (src, &ts_tz) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamptz (target, &ts_tz);
-	    break;
-	  }
-	case DB_TYPE_DATETIME:
-	  {
-	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
-	    DB_DATETIME dt = *db_get_datetime (src);
-	    DB_DATE date = dt.date;
-	    DB_TIME time = dt.time / 1000;
-
-	    if (db_timestamp_encode_ses (&date, &time, &ts_tz.timestamp, &ts_tz.tz_id) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamptz (target, &ts_tz);
-	    break;
-	  }
-
-	case DB_TYPE_DATETIMELTZ:
-	  {
-	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
-	    DB_DATETIME dt = *db_get_datetime (src);
-	    DB_DATE date = dt.date;
-	    DB_TIME time = dt.time / 1000;
-
-	    if (db_timestamp_encode_utc (&date, &time, &ts_tz.timestamp) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    ts_tz.tz_id = *tz_get_utc_tz_id ();
-	    db_make_timestamptz (target, &ts_tz);
-	    break;
-	  }
-
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
-	    DB_DATETIMETZ *dt_tz = db_get_datetimetz (src);
-	    DB_DATE date = dt_tz->datetime.date;
-	    DB_TIME time = dt_tz->datetime.time / 1000;
-
-	    if (db_timestamp_encode_utc (&date, &time, &ts_tz.timestamp) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    ts_tz.tz_id = dt_tz->tz_id;
-	    db_make_timestamptz (target, &ts_tz);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_char_to_timestamptz_strict_core (src, target, desired_domain,
+							      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_VARCHAR:
+	  err =
+	    tp_value_convert_char_to_timestamptz_strict_core (src, target, desired_domain,
+							      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_DATE:
-	  {
-	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
-	    DB_TIME tm = 0;
-	    DB_DATE date = *db_get_date (src);
-
-	    db_time_encode (&tm, 0, 0, 0);
-	    if (db_timestamp_encode_ses (&date, &tm, &ts_tz.timestamp, &ts_tz.tz_id) != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamptz (target, &ts_tz);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_date_to_timestamptz_strict_core (src, target, desired_domain,
+							      &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMP:
+	  err =
+	    tp_value_convert_timestamp_to_timestamptz_strict_core (src, target, desired_domain,
+								   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    DB_TIMESTAMPTZ ts_tz = { 0, 0 };
-
-	    ts_tz.timestamp = *db_get_timestamp (src);
-
-	    err = tz_create_session_tzid_for_timestamp (&(ts_tz.timestamp), &(ts_tz.tz_id));
-
-	    if (err != NO_ERROR)
-	      {
-		err = ER_FAILED;
-		break;
-	      }
-	    db_make_timestamptz (target, &ts_tz);
-	    break;
-	  }
-
+	  err =
+	    tp_value_convert_timestamp_to_timestamptz_strict_core (src, target, desired_domain,
+								   &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIME:
+	  err =
+	    tp_value_convert_datetime_to_timestamptz_strict_core (src, target, desired_domain,
+								  &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  err =
+	    tp_value_convert_datetimeltz_to_timestamptz_strict_core (src, target, desired_domain,
+								     &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  err =
+	    tp_value_convert_datetimetz_to_timestamptz_strict_core (src, target, desired_domain,
+								    &conversion_error) ==
+	    DOMAIN_COMPATIBLE ? NO_ERROR : ER_FAILED;
+	  break;
 	default:
 	  err = ER_FAILED;
 	  break;
@@ -7117,11 +28764,6 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       break;
     }
 
-  if (err == ER_FAILED)
-    {
-      /* the above code might have set an error message but we don't want to propagate it in this context */
-      er_clear ();
-    }
 
   return err;
 }
@@ -7141,6 +28783,7 @@ static TP_DOMAIN_STATUS
 tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 			const TP_COERCION_MODE coercion_mode, bool do_domain_select, bool preserve_domain)
 {
+  date_conversion_error conversion_error;
   DB_TYPE desired_type, original_type;
   int err;
   TP_DOMAIN_STATUS status;
@@ -7160,7 +28803,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
   TZ_ID ses_tz_id;
 
   bool ti = true;
-  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  /* Preserve the original first-conversion parameter snapshot. */
+  (void) tp_conversion_ignore_trailing_space ();
 
   DB_VALUE src_replacement;
 
@@ -7209,41 +28853,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       /* TODO this is very hackish,
        * we really need to split this function up
        */
-      DB_JSON_TYPE json_type = db_json_get_type (db_get_json_document (src));
-      JSON_DOC *src_doc = db_get_json_document (src);
-      bool use_replacement = true;
-
-      switch (json_type)
-	{
-	case DB_JSON_DOUBLE:
-	  db_make_double (&src_replacement, db_json_get_double_from_document (src_doc));
-	  break;
-	case DB_JSON_INT:
-	  db_make_int (&src_replacement, db_json_get_int_from_document (src_doc));
-	  break;
-	case DB_JSON_BIGINT:
-	  db_make_bigint (&src_replacement, db_json_get_bigint_from_document (src_doc));
-	  break;
-	case DB_JSON_BOOL:
-	  switch (desired_type)
-	    {
-	    case DB_TYPE_CHAR:
-	    case DB_TYPE_VARCHAR:
-	      db_make_string (&src_replacement, db_json_get_bool_as_str_from_document (src_doc));
-	      src_replacement.need_clear = true;
-	      break;
-	    default:
-	      db_make_int (&src_replacement, db_json_get_bool_from_document (src_doc) ? 1 : 0);
-	    }
-	  break;
-	case DB_JSON_STRING:
-	  db_make_string_copy (&src_replacement, db_json_get_string_from_document (src_doc));
-	  break;
-	default:
-	  use_replacement = false;
-	  /* do nothing */
-	  break;
-	}
+      bool use_replacement = tp_json_unwrap_scalar (src,
+						    desired_type == DB_TYPE_CHAR
+						    || desired_type == DB_TYPE_VARCHAR, &src_replacement);
 
       if (use_replacement)
 	{
@@ -7314,19 +28926,9 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      return (status);
 	    case DB_TYPE_JSON:
-	      if (desired_domain->json_validator != NULL
-		  && db_json_validate_doc (desired_domain->json_validator, src->data.json.document) != NO_ERROR)
-		{
-		  pr_clear_value (&src_replacement);
-		  ASSERT_ERROR ();
-		  return DOMAIN_ERROR;
-		}
-	      if (src != dest)
-		{
-		  pr_clone_value (src, dest);
-		}
+	      status = tp_value_convert_json_validate (src, dest, desired_domain);
 	      pr_clear_value (&src_replacement);
-	      return (status);
+	      return status;
 	    default:
 	      /* pr_is_string_type(desired_type) - NEED MORE CONSIDERATION */
 	      break;
@@ -7461,42 +29063,77 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
     }
 
+
+  if (src == dest)
+    {
+      bool string_path = (TP_IS_CHAR_TYPE (original_type) && TP_IS_CHAR_TYPE (desired_type));
+      bool bit_path = ((desired_type == DB_TYPE_BIT || desired_type == DB_TYPE_VARBIT)
+		       && original_type != DB_TYPE_CHAR && original_type != DB_TYPE_VARCHAR
+		       && original_type != DB_TYPE_ENUMERATION && original_type != DB_TYPE_BLOB);
+      if ((string_path || bit_path) && tp_can_steal_string (src, desired_domain))
+	{
+	  tp_value_slam_domain (dest, desired_domain);
+	  pr_clear_value (&src_replacement);
+	  return DOMAIN_COMPATIBLE;
+	}
+      if (TP_IS_SET_TYPE (original_type) && TP_IS_SET_TYPE (desired_type))
+	{
+	  SETREF *setref = db_get_set (src);
+	  if (setref && tp_domain_compatible (setobj_domain (setref->set), desired_domain))
+	    {
+	      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
+	      pr_clear_value (&src_replacement);
+	      return DOMAIN_COMPATIBLE;
+	    }
+	}
+      if (original_type == DB_TYPE_VOBJ && desired_type == DB_TYPE_VOBJ)
+	{
+	  SETREF *setref = db_get_set (src);
+	  if (setref)
+	    {
+	      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
+	      pr_clear_value (&src_replacement);
+	      return DOMAIN_COMPATIBLE;
+	    }
+	}
+    }
+
   switch (desired_type)
     {
     case DB_TYPE_SHORT:
       switch (original_type)
 	{
 	case DB_TYPE_MONETARY:
-	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  db_make_short (target, db_get_enum_short (src));
+	  status = tp_value_convert_enumeration_to_short (src, target, desired_domain);
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
@@ -7508,36 +29145,36 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  db_make_int (target, db_get_enum_short (src));
+	  status = tp_value_convert_enumeration_to_integer (src, target, desired_domain);
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
@@ -7549,36 +29186,36 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  db_make_bigint (target, db_get_enum_short (src));
+	  status = tp_value_convert_enumeration_to_bigint (src, target, desired_domain);
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
@@ -7590,36 +29227,36 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  db_make_float (target, (float) db_get_enum_short (src));
+	  status = tp_value_convert_enumeration_to_float (src, target, desired_domain);
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
@@ -7631,36 +29268,36 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  db_make_double (target, (double) db_get_enum_short (src));
+	  status = tp_value_convert_enumeration_to_double (src, target, desired_domain);
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
@@ -7694,38 +29331,41 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	      }
 	    else
 	      {
-		status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+		status = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >
 		  (&temp, target, desired_domain);
 	      }
 	    break;
 	  }
 	case DB_TYPE_SHORT:
-	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_MONETARY:
-	  status = tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_numeric (src, target, desired_domain);
 	  break;
 	default:
 	  {
@@ -7752,36 +29392,36 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       switch (original_type)
 	{
 	case DB_TYPE_SHORT:
-	  status = tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_INTEGER:
-	  status = tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_BIGINT:
-	  status = tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_FLOAT:
-	  status = tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_DOUBLE:
-	  status = tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  status = tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  status = tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN>
+	  status = tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN >
 	    (src, target, desired_domain);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  db_make_monetary (target, DB_CURRENCY_DEFAULT, db_get_enum_short (src));
+	  status = tp_value_convert_enumeration_to_monetary (src, target, desired_domain);
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
@@ -7792,2113 +29432,904 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     case DB_TYPE_TIMESTAMP:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
+	case DB_TYPE_SHORT:
+	  status = tp_value_convert_short_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_INTEGER:
+	  status = tp_value_convert_integer_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIGINT:
+	  status = tp_value_convert_bigint_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_FLOAT:
+	  status = tp_value_convert_float_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DOUBLE:
+	  status = tp_value_convert_double_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_MONETARY:
+	  status = tp_value_convert_monetary_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_NUMERIC:
+	  status = tp_value_convert_numeric_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_CHAR:
-	  if (tp_atoutime (src, &v_utime) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	    }
-	  else
-	    {
-	      db_make_timestamp (target, v_utime);
-	    }
+	  status = tp_value_convert_char_to_timestamp_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-
-	case DB_TYPE_DATETIME:
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATE:
-	  {
-	    if (original_type == DB_TYPE_DATE)
-	      {
-		v_date = *db_get_date (src);
-		db_time_encode (&v_time, 0, 0, 0);
-	      }
-	    else
-	      {
-		v_datetime = *db_get_datetime (src);
-		v_date = v_datetime.date;
-		v_time = v_datetime.time / 1000;
-	      }
-
-	    if (db_timestamp_encode_ses (&v_date, &v_time, &v_utime, NULL) == NO_ERROR)
-	      {
-		db_make_timestamp (target, v_utime);
-	      }
-	    else
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    break;
-	  }
-
-	case DB_TYPE_DATETIMELTZ:
-	  v_datetime = *db_get_datetime (src);
-	  v_date = v_datetime.date;
-	  v_time = v_datetime.time / 1000;
-
-	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) == NO_ERROR)
-	    {
-	      db_make_timestamp (target, v_utime);
-	    }
-	  else
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
+	  status = tp_value_convert_date_to_timestamp_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_DATETIMETZ:
-	  v_datetimetz = *db_get_datetimetz (src);
-	  v_date = v_datetimetz.datetime.date;
-	  v_time = v_datetimetz.datetime.time / 1000;
-
-	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) == NO_ERROR)
-	    {
-	      db_make_timestamp (target, v_utime);
-	    }
-	  else
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  break;
-
 	case DB_TYPE_TIMESTAMPLTZ:
-	  /* copy timestamp (UTC) */
-	  db_make_timestamp (target, *db_get_timestamp (src));
+	  status = tp_value_convert_timestampltz_to_timestamp_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_TIMESTAMPTZ:
-	  v_timestamptz = *db_get_timestamptz (src);
-	  /* copy timestamp (UTC) */
-	  db_make_timestamp (target, v_timestamptz.timestamp);
+	  status = tp_value_convert_timestamptz_to_timestamp_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_DATETIME:
+	  status = tp_value_convert_datetime_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  status = tp_value_convert_datetimeltz_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  status = tp_value_convert_datetimetz_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_timestamp_core (src, target, desired_domain, &conversion_error);
+	  break;
 	default:
-	  status = tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
-	  if (status == DOMAIN_COMPATIBLE)
-	    {
-	      int tmpint;
-	      tmpint = db_get_int (target);
-	      if (tmpint >= 0)
-		{
-		  db_make_timestamp (target, (DB_UTIME) tmpint);
-		}
-	      else
-		{
-		  status = DOMAIN_INCOMPATIBLE;
-		}
-	    }
+	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_TIMESTAMPTZ:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
+	case DB_TYPE_SHORT:
+	  status = tp_value_convert_short_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_INTEGER:
+	  status = tp_value_convert_integer_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIGINT:
+	  status = tp_value_convert_bigint_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_FLOAT:
+	  status = tp_value_convert_float_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DOUBLE:
+	  status = tp_value_convert_double_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_MONETARY:
+	  status = tp_value_convert_monetary_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_NUMERIC:
+	  status = tp_value_convert_numeric_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_CHAR:
-	  if (tp_atotimestamptz (src, &v_timestamptz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	    }
-	  else
-	    {
-	      db_make_timestamptz (target, &v_timestamptz);
-	    }
+	  status = tp_value_convert_char_to_timestamptz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-
-	case DB_TYPE_DATETIME:
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATE:
-	  /* convert from session to UTC */
-	  if (original_type == DB_TYPE_DATETIME)
-	    {
-	      v_datetime = *db_get_datetime (src);
-	      v_date = v_datetime.date;
-	      v_time = v_datetime.time / 1000;
-	    }
-	  else
-	    {
-	      assert (original_type == DB_TYPE_DATE);
-	      v_date = *db_get_date (src);
-	      v_time = 0;
-	    }
-
-	  if (db_timestamp_encode_ses (&v_date, &v_time, &v_timestamptz.timestamp, &v_timestamptz.tz_id) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	    }
-	  else
-	    {
-	      db_make_timestamptz (target, &v_timestamptz);
-	    }
+	  status = tp_value_convert_date_to_timestamptz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_DATETIMELTZ:
-	  v_datetime = *db_get_datetime (src);
-	  v_date = v_datetime.date;
-	  v_time = v_datetime.time / 1000;
-
-	  /* encode DT as UTC and the TZ of session */
-	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_timestamptz.timestamp) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  if (tz_create_session_tzid_for_datetime (&v_datetime, true, &(v_timestamptz.tz_id)) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	    }
-	  else
-	    {
-	      db_make_timestamptz (target, &v_timestamptz);
-	    }
-	  break;
-
-	case DB_TYPE_DATETIMETZ:
-	  v_datetimetz = *db_get_datetimetz (src);
-	  v_date = v_datetimetz.datetime.date;
-	  v_time = v_datetimetz.datetime.time / 1000;
-
-	  /* encode TS to DT (UTC) and copy TZ from DT_TZ */
-	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_timestamptz.timestamp) == NO_ERROR)
-	    {
-	      v_timestamptz.tz_id = v_datetimetz.tz_id;
-	      db_make_timestamptz (target, &v_timestamptz);
-	    }
-	  else
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  break;
-
 	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  /* copy TS value and create TZ_ID for system TZ */
-	  v_timestamptz.timestamp = *db_get_timestamp (src);
-
-	  if (tz_create_session_tzid_for_timestamp (&v_timestamptz.timestamp, &(v_timestamptz.tz_id)) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-
-	  db_make_timestamptz (target, &v_timestamptz);
+	  status = tp_value_convert_timestamp_to_timestamptz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_TIMESTAMPLTZ:
+	  status = tp_value_convert_timestamp_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIME:
+	  status = tp_value_convert_datetime_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  status = tp_value_convert_datetimeltz_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  status = tp_value_convert_datetimetz_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_timestamptz_core (src, target, desired_domain, &conversion_error);
+	  break;
 	default:
-	  status = tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
-	  if (status == DOMAIN_COMPATIBLE)
-	    {
-	      int tmpint;
-
-	      tmpint = db_get_int (target);
-	      if (tmpint < 0)
-		{
-		  status = DOMAIN_INCOMPATIBLE;
-		  break;
-		}
-	      v_timestamptz.timestamp = (DB_UTIME) tmpint;
-
-	      if (tz_create_session_tzid_for_timestamp (&v_timestamptz.timestamp, &v_timestamptz.tz_id) != NO_ERROR)
-		{
-		  status = DOMAIN_INCOMPATIBLE;
-		  break;
-		}
-
-	      db_make_timestamptz (target, &v_timestamptz);
-	    }
+	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_TIMESTAMPLTZ:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
+	case DB_TYPE_SHORT:
+	  status = tp_value_convert_short_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_INTEGER:
+	  status = tp_value_convert_integer_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIGINT:
+	  status = tp_value_convert_bigint_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_FLOAT:
+	  status = tp_value_convert_float_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DOUBLE:
+	  status = tp_value_convert_double_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_MONETARY:
+	  status = tp_value_convert_monetary_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_NUMERIC:
+	  status = tp_value_convert_numeric_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_CHAR:
-	  /* read as DATETIMETZ */
-	  if (tp_atotimestamptz (src, &v_timestamptz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  else
-	    {
-	      db_make_timestampltz (target, v_timestamptz.timestamp);
-	    }
+	  status = tp_value_convert_char_to_timestampltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-
-	case DB_TYPE_DATETIME:
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATE:
-	  {
-	    if (original_type == DB_TYPE_DATETIME)
-	      {
-		v_datetime = *db_get_datetime (src);
-		v_date = v_datetime.date;
-		v_time = v_datetime.time / 1000;
-	      }
-	    else
-	      {
-		assert (original_type == DB_TYPE_DATE);
-		v_date = *db_get_date (src);
-		v_time = 0;
-	      }
-
-	    if (db_timestamp_encode_ses (&v_date, &v_time, &v_utime, NULL) != NO_ERROR)
-	      {
-		status = DOMAIN_OVERFLOW;
-		break;
-	      }
-
-	    db_make_timestampltz (target, v_utime);
-	  }
+	  status = tp_value_convert_date_to_timestampltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_DATETIMELTZ:
-	case DB_TYPE_DATETIMETZ:
-	  if (original_type == DB_TYPE_DATETIMELTZ)
-	    {
-	      v_datetime = *db_get_datetime (src);
-	      v_date = v_datetime.date;
-	      v_time = v_datetime.time / 1000;
-	    }
-	  else
-	    {
-	      assert (original_type == DB_TYPE_DATETIMETZ);
-	      v_datetimetz = *db_get_datetimetz (src);
-	      v_date = v_datetimetz.datetime.date;
-	      v_time = v_datetimetz.datetime.time / 1000;
-	    }
-
-	  /* both values are in UTC */
-	  if (db_timestamp_encode_utc (&v_date, &v_time, &v_utime) == NO_ERROR)
-	    {
-	      db_make_timestampltz (target, v_utime);
-	    }
-	  else
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  break;
-
 	case DB_TYPE_TIMESTAMP:
-	  /* original value stored in UTC, copy it */
-	  db_make_timestampltz (target, *db_get_timestamp (src));
+	  status = tp_value_convert_timestamp_to_timestampltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_TIMESTAMPTZ:
-	  v_timestamptz = *db_get_timestamptz (src);
-	  /* original value stored in UTC, copy it */
-	  db_make_timestampltz (target, v_timestamptz.timestamp);
+	  status = tp_value_convert_timestamptz_to_timestampltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_DATETIME:
+	  status = tp_value_convert_datetime_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  status = tp_value_convert_datetimeltz_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  status = tp_value_convert_datetimetz_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_timestampltz_core (src, target, desired_domain, &conversion_error);
+	  break;
 	default:
-	  status = tp_value_coerce ((DB_VALUE *) src, target, &tp_Integer_domain);
-	  if (status == DOMAIN_COMPATIBLE)
-	    {
-	      int tmpint;
-	      tmpint = db_get_int (target);
-	      if (tmpint >= 0)
-		{
-		  db_make_timestampltz (target, (DB_UTIME) tmpint);
-		}
-	      else
-		{
-		  status = DOMAIN_INCOMPATIBLE;
-		}
-	    }
+	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_DATETIME:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  if (tp_atoudatetime (src, &v_datetime) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	    }
-	  else
-	    {
-	      db_make_datetime (target, &v_datetime);
-	    }
+	  status = tp_value_convert_char_to_datetime_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  v_utime = *db_get_timestamp (src);
-	  if (db_timestamp_decode_ses (&v_utime, &v_date, &v_time) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  v_datetime.date = v_date;
-	  v_datetime.time = v_time * 1000;
-	  db_make_datetime (target, &v_datetime);
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_datetime_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_TIMESTAMPTZ:
-	  v_timestamptz = *db_get_timestamptz (src);
-	  if (db_timestamp_decode_w_tz_id (&v_timestamptz.timestamp, &v_timestamptz.tz_id, &v_date, &v_time) !=
-	      NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  v_datetime.date = v_date;
-	  v_datetime.time = v_time * 1000;
-	  db_make_datetime (target, &v_datetime);
-	  break;
-
 	case DB_TYPE_DATE:
-	  v_datetime.date = *db_get_date (src);
-	  v_datetime.time = 0;
-	  db_make_datetime (target, &v_datetime);
+	  status = tp_value_convert_date_to_datetime_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_TIMESTAMP:
+	  status = tp_value_convert_timestamp_to_datetime_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  status = tp_value_convert_timestamp_to_datetime_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  status = tp_value_convert_timestamptz_to_datetime_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATETIMELTZ:
-	  {
-	    DB_DATETIME utc_dt;
-
-	    /* DATETIMELTZ store in UTC, DATETIME in session TZ */
-	    utc_dt = *db_get_datetime (src);
-	    if (tz_datetimeltz_to_local (&utc_dt, &v_datetime) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    db_make_datetime (target, &v_datetime);
-	  }
+	  status = tp_value_convert_datetimeltz_to_datetime_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_DATETIMETZ:
-	  /* DATETIMETZ store in UTC, DATETIME in session TZ */
-	  v_datetimetz = *db_get_datetimetz (src);
-	  if (tz_utc_datetimetz_to_local (&v_datetimetz.datetime, &v_datetimetz.tz_id, &v_datetime) == NO_ERROR)
-	    {
-	      db_make_datetime (target, &v_datetime);
-	    }
-	  else
-	    {
-	      status = DOMAIN_ERROR;
-	    }
+	  status = tp_value_convert_datetimetz_to_datetime_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_datetime_core (src, target, desired_domain, &conversion_error);
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_DATETIMELTZ:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  if (tp_atodatetimetz (src, &v_datetimetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	    }
-	  else
-	    {
-	      db_make_datetimeltz (target, &v_datetimetz.datetime);
-	    }
+	  status = tp_value_convert_char_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  v_utime = *db_get_timestamp (src);
-
-	  (void) db_timestamp_decode_utc (&v_utime, &v_date, &v_time);
-	  v_datetime.time = v_time * 1000;
-	  v_datetime.date = v_date;
-	  db_make_datetimeltz (target, &v_datetime);
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_TIMESTAMPTZ:
-	  v_timestamptz = *db_get_timestamptz (src);
-	  (void) db_timestamp_decode_utc (&v_timestamptz.timestamp, &v_date, &v_time);
-	  v_datetime.time = v_time * 1000;
-	  v_datetime.date = v_date;
-	  db_make_datetimeltz (target, &v_datetime);
-	  break;
-
 	case DB_TYPE_DATE:
+	  status = tp_value_convert_date_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMP:
+	  status = tp_value_convert_timestamp_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  status = tp_value_convert_timestamp_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  status = tp_value_convert_timestamptz_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATETIME:
-	  if (original_type == DB_TYPE_DATE)
-	    {
-	      v_datetime.date = *db_get_date (src);
-	      v_datetime.time = 0;
-	    }
-	  else
-	    {
-	      v_datetime = *db_get_datetime (src);
-	    }
-
-	  if (tz_create_datetimetz_from_ses (&v_datetime, &v_datetimetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_make_datetimeltz (target, &v_datetimetz.datetime);
+	  status = tp_value_convert_datetime_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_DATETIMETZ:
-	  /* copy (UTC) */
-	  v_datetimetz = *db_get_datetimetz (src);
-	  db_make_datetimeltz (target, &v_datetimetz.datetime);
+	  status = tp_value_convert_datetimetz_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_TIME:
-	  status = DOMAIN_INCOMPATIBLE;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_datetimeltz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_DATETIMETZ:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  {
-	    if (tp_atodatetimetz (src, &v_datetimetz) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    db_make_datetimetz (target, &v_datetimetz);
-	  }
-
+	  status = tp_value_convert_char_to_datetimetz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  {
-	    v_utime = *db_get_timestamp (src);
-	    db_timestamp_decode_utc (&v_utime, &v_date, &v_time);
-	    v_datetimetz.datetime.time = v_time * 1000;
-	    v_datetimetz.datetime.date = v_date;
-
-	    if (tz_create_session_tzid_for_datetime (&v_datetimetz.datetime, true, &v_datetimetz.tz_id) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    db_make_datetimetz (target, &v_datetimetz);
-	  }
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_datetimetz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_TIMESTAMPTZ:
-	  v_timestamptz = *db_get_timestamptz (src);
-	  (void) db_timestamp_decode_utc (&v_timestamptz.timestamp, &v_date, &v_time);
-	  v_datetimetz.datetime.time = v_time * 1000;
-	  v_datetimetz.datetime.date = v_date;
-	  v_datetimetz.tz_id = v_timestamptz.tz_id;
-	  db_make_datetimetz (target, &v_datetimetz);
-	  break;
-
 	case DB_TYPE_DATE:
-	  v_datetime.date = *db_get_date (src);
-	  v_datetime.time = 0;
-
-	  if (tz_create_datetimetz_from_ses (&v_datetime, &v_datetimetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_make_datetimetz (target, &v_datetimetz);
+	  status = tp_value_convert_date_to_datetimetz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_TIMESTAMP:
+	  status = tp_value_convert_timestamp_to_datetimetz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  status = tp_value_convert_timestamp_to_datetimetz_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  status = tp_value_convert_timestamptz_to_datetimetz_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATETIME:
-	  if (tz_create_datetimetz_from_ses (db_get_datetime (src), &v_datetimetz) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_make_datetimetz (target, &v_datetimetz);
+	  status = tp_value_convert_datetime_to_datetimetz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_DATETIMELTZ:
-	  v_datetimetz.datetime = *db_get_datetime (src);
-	  if (tz_create_session_tzid_for_datetime (&v_datetimetz.datetime, true, &v_datetimetz.tz_id) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_make_datetimetz (target, &v_datetimetz);
+	  status = tp_value_convert_datetimeltz_to_datetimetz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_TIME:
-	  status = DOMAIN_INCOMPATIBLE;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_datetimetz_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_DATE:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  if (tp_atodate (src, &v_date) == NO_ERROR)
-	    {
-	      db_date_decode (&v_date, &month, &day, &year);
-	    }
-	  else
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-
-	  if (db_make_date (target, month, day, year) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	    }
+	  status = tp_value_convert_char_to_date_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
-
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_date_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_TIMESTAMP:
+	  status = tp_value_convert_timestamp_to_date_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
-	  (void) db_timestamp_decode_ses (db_get_timestamp (src), &v_date, NULL);
-	  db_date_decode (&v_date, &month, &day, &year);
-	  db_make_date (target, month, day, year);
+	  status = tp_value_convert_timestamp_to_date_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_TIMESTAMPTZ:
-	  v_timestamptz = *db_get_timestamptz (src);
-	  if (db_timestamp_decode_w_tz_id (&v_timestamptz.timestamp, &v_timestamptz.tz_id, &v_date, NULL) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_date_decode (&v_date, &month, &day, &year);
-	  db_make_date (target, month, day, year);
+	  status = tp_value_convert_timestamptz_to_date_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_DATETIME:
-	  db_datetime_decode ((DB_DATETIME *) db_get_datetime (src), &month, &day, &year, &hour, &minute, &second,
-			      &millisecond);
-	  db_make_date (target, month, day, year);
+	  status = tp_value_convert_datetime_to_date_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_DATETIMELTZ:
+	  status = tp_value_convert_datetimeltz_to_date_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_DATETIME *utc_dt_p;
-	    DB_DATETIMETZ *dt_tz_p;
-	    TZ_ID tz_id;
-
-	    /* DATETIMELTZ and DATETIMETZ store in UTC, convert to session */
-	    if (original_type == DB_TYPE_DATETIMELTZ)
-	      {
-		utc_dt_p = db_get_datetime (src);
-		if (tz_create_session_tzid_for_datetime (utc_dt_p, true, &tz_id) != NO_ERROR)
-		  {
-		    status = DOMAIN_ERROR;
-		    break;
-		  }
-	      }
-	    else
-	      {
-		dt_tz_p = db_get_datetimetz (src);
-		utc_dt_p = &dt_tz_p->datetime;
-		tz_id = dt_tz_p->tz_id;
-	      }
-
-	    if (tz_utc_datetimetz_to_local (utc_dt_p, &tz_id, &v_datetime) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    db_datetime_decode (&v_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-
-	    db_make_date (target, month, day, year);
-	    break;
-	  }
-
+	  status = tp_value_convert_datetimetz_to_date_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_date_core (src, target, desired_domain, &conversion_error);
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_TIME:
       switch (original_type)
 	{
-	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPLTZ:
-	  if (db_timestamp_decode_ses (db_get_timestamp (src), NULL, &v_time) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_value_put_encoded_time (target, &v_time);
-	  break;
-
-	case DB_TYPE_TIMESTAMPTZ:
-	  /* convert TS from UTC to value TZ */
-	  v_timestamptz = *db_get_timestamptz (src);
-	  if (db_timestamp_decode_w_tz_id (&v_timestamptz.timestamp, &v_timestamptz.tz_id, NULL, &v_time) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-	  db_value_put_encoded_time (target, &v_time);
-	  break;
-	case DB_TYPE_DATETIME:
-	  db_datetime_decode ((DB_DATETIME *) db_get_datetime (src), &month, &day, &year, &hour, &minute, &second,
-			      &millisecond);
-	  db_make_time (target, hour, minute, second);
-	  break;
-	case DB_TYPE_DATETIMELTZ:
-	  {
-	    DB_DATETIME dt_local;
-
-	    v_datetime = *db_get_datetime (src);
-
-	    if (tz_datetimeltz_to_local (&v_datetime, &dt_local) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	    db_make_time (target, hour, minute, second);
-	    break;
-	  }
-	case DB_TYPE_DATETIMETZ:
-	  {
-	    DB_DATETIME dt_local;
-
-	    v_datetimetz = *db_get_datetimetz (src);
-	    if (tz_utc_datetimetz_to_local (&v_datetimetz.datetime, &v_datetimetz.tz_id, &dt_local) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    db_datetime_decode (&dt_local, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	    db_make_time (target, hour, minute, second);
-	    break;
-	  }
 	case DB_TYPE_SHORT:
-	  v_time = db_get_short (src) % SECONDS_IN_A_DAY;
-	  db_time_decode (&v_time, &hour, &minute, &second);
-	  db_make_time (target, hour, minute, second);
+	  status = tp_value_convert_short_to_time_core (src, target, desired_domain, &conversion_error);
 	  break;
 	case DB_TYPE_INTEGER:
-	  v_time = db_get_int (src) % SECONDS_IN_A_DAY;
-	  db_time_decode (&v_time, &hour, &minute, &second);
-	  db_make_time (target, hour, minute, second);
+	  status = tp_value_convert_integer_to_time_core (src, target, desired_domain, &conversion_error);
 	  break;
 	case DB_TYPE_BIGINT:
-	  v_time = db_get_bigint (src) % SECONDS_IN_A_DAY;
-	  db_time_decode (&v_time, &hour, &minute, &second);
-	  db_make_time (target, hour, minute, second);
-	  break;
-	case DB_TYPE_MONETARY:
-	  v_money = db_get_monetary (src);
-	  if (OR_CHECK_INT_OVERFLOW (v_money->amount))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	    }
-	  else
-	    {
-	      v_time = (int) ROUND (v_money->amount) % SECONDS_IN_A_DAY;
-	      db_time_decode (&v_time, &hour, &minute, &second);
-	      db_make_time (target, hour, minute, second);
-	    }
+	  status = tp_value_convert_bigint_to_time_core (src, target, desired_domain, &conversion_error);
 	  break;
 	case DB_TYPE_FLOAT:
-	  {
-	    float ftmp = db_get_float (src);
-	    if (OR_CHECK_INT_OVERFLOW (ftmp))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		v_time = ((int) ROUND (ftmp)) % SECONDS_IN_A_DAY;
-		db_time_decode (&v_time, &hour, &minute, &second);
-		db_make_time (target, hour, minute, second);
-	      }
-	    break;
-	  }
+	  status = tp_value_convert_float_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DOUBLE:
-	  {
-	    double dtmp = db_get_double (src);
-	    if (OR_CHECK_INT_OVERFLOW (dtmp))
-	      {
-		status = DOMAIN_OVERFLOW;
-	      }
-	    else
-	      {
-		v_time = ((int) ROUND (dtmp)) % SECONDS_IN_A_DAY;
-		db_time_decode (&v_time, &hour, &minute, &second);
-		db_make_time (target, hour, minute, second);
-	      }
-	    break;
-	  }
-	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_double_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_MONETARY:
+	  status = tp_value_convert_monetary_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_CHAR:
-	  if (tp_atotime (src, &v_time) == NO_ERROR)
-	    {
-	      db_time_decode (&v_time, &hour, &minute, &second);
-	    }
-	  else
-	    {
-	      status = DOMAIN_ERROR;
-	      break;
-	    }
-
-	  if (db_make_time (target, hour, minute, second) != NO_ERROR)
-	    {
-	      status = DOMAIN_ERROR;
-	    }
+	  status = tp_value_convert_char_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMP:
+	  status = tp_value_convert_timestamp_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  status = tp_value_convert_timestamp_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  status = tp_value_convert_timestamptz_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIME:
+	  status = tp_value_convert_datetime_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  status = tp_value_convert_datetimeltz_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  status = tp_value_convert_datetimetz_to_time_core (src, target, desired_domain, &conversion_error);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
+	  status = tp_value_convert_enumeration_to_time_core (src, target, desired_domain, &conversion_error);
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
 #if !defined (SERVER_MODE)
     case DB_TYPE_OBJECT:
-      {
-	DB_OBJECT *v_obj = NULL;
-	int is_vclass = 0;
-
-	/* Make sure the domains are compatible.  Coerce view objects to real objects. */
-	switch (original_type)
-	  {
-	  case DB_TYPE_OBJECT:
-	    if (!sm_coerce_object_domain ((TP_DOMAIN *) desired_domain, db_get_object (src), &v_obj))
-	      {
-		status = DOMAIN_INCOMPATIBLE;
-	      }
-	    break;
-	  case DB_TYPE_POINTER:
-	    if (!sm_check_class_domain ((TP_DOMAIN *) desired_domain, ((DB_OTMPL *) db_get_pointer (src))->classobj))
-	      {
-		status = DOMAIN_INCOMPATIBLE;
-		break;
-	      }
-	    db_make_pointer (target, db_get_pointer (src));
-	    break;
-	  case DB_TYPE_OID:
-	    vid_oid_to_object (src, &v_obj);
-	    break;
-
-	  case DB_TYPE_VOBJ:
-	    vid_vobj_to_object (src, &v_obj);
-	    is_vclass = db_is_vclass (desired_domain->class_mop);
-	    if (is_vclass < 0)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    if (!is_vclass)
-	      {
-		v_obj = db_real_instance (v_obj);
-	      }
-	    break;
-
-	  default:
-	    status = DOMAIN_INCOMPATIBLE;
-	  }
-	if (original_type != DB_TYPE_POINTER)
-	  {
-	    /* check we got an object in a proper class */
-	    if (v_obj && desired_domain->class_mop)
-	      {
-		DB_OBJECT *obj_class;
-
-		obj_class = db_get_class (v_obj);
-		if (obj_class == desired_domain->class_mop)
-		  {
-		    /* everything is fine */
-		  }
-		else if (db_is_subclass (obj_class, desired_domain->class_mop) > 0)
-		  {
-		    /* everything is also ok */
-		  }
-		else
-		  {
-		    is_vclass = db_is_vclass (desired_domain->class_mop);
-		    if (is_vclass < 0)
-		      {
-			status = DOMAIN_ERROR;
-			break;
-		      }
-		    if (is_vclass)
-		      {
-			/*
-			 * This should still be an error, and the above
-			 * code should have constructed a virtual mop.
-			 * I'm not sure the rest of the code is consistent
-			 * in this regard.
-			 */
-		      }
-		    else
-		      {
-			status = DOMAIN_INCOMPATIBLE;
-		      }
-		  }
-	      }
-	    db_make_object (target, v_obj);
-	  }
-      }
-      break;
-#endif /* !SERVER_MODE */
-
-    case DB_TYPE_SET:
-    case DB_TYPE_MULTISET:
-    case DB_TYPE_SEQUENCE:
-      if (!TP_IS_SET_TYPE (original_type))
+      switch (original_type)
 	{
+	case DB_TYPE_OBJECT:
+	  status = tp_value_convert_object_to_object_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_OID:
+	  status = tp_value_convert_oid_to_object_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_POINTER:
+	  status = tp_value_convert_pointer_to_object_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VOBJ:
+	  status = tp_value_convert_vobj_to_object_core (src, target, desired_domain, &conversion_error);
+	  break;
+	default:
 	  status = DOMAIN_INCOMPATIBLE;
-	}
-      else
-	{
-	  SETREF *setref;
-
-	  setref = db_get_set (src);
-	  if (setref)
-	    {
-	      TP_DOMAIN *set_domain;
-
-	      set_domain = setobj_domain (setref->set);
-	      if (src == dest && tp_domain_compatible (set_domain, desired_domain))
-		{
-		  /*
-		   * We know that this is a "coerce-in-place" operation, and
-		   * we know that no coercion is necessary, so do nothing: we
-		   * can use the exact same set without any conversion.
-		   * Setting "src" to NULL prevents the wrapup code from
-		   * clearing the set; that's important since we haven't made
-		   * a copy.
-		   */
-		  setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
-		  src = NULL;
-		}
-	      else
-		{
-		  if (tp_domain_compatible (set_domain, desired_domain))
-		    {
-		      /*
-		       * Well, we can't use the exact same set, but we don't
-		       * have to do the whole hairy coerce thing either: we
-		       * can just make a copy and then take the more general
-		       * domain.  setobj_put_domain() guards against null
-		       * pointers, there's no need to check first.
-		       */
-		      setref = set_copy (setref);
-		      if (setref)
-			{
-			  setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
-			}
-		    }
-		  else
-		    {
-		      /*
-		       * Well, now we have to use the whole hairy coercion
-		       * thing.  Too bad...
-		       *
-		       * This case will crop up when someone tries to cast a
-		       * "set of int" as a "set of float", for example.
-		       */
-		      setref =
-			set_coerce (setref, (TP_DOMAIN *) desired_domain, (coercion_mode == TP_IMPLICIT_COERCION));
-		    }
-
-		  if (setref == NULL)
-		    {
-		      assert (er_errid () != NO_ERROR);
-		      err = er_errid ();
-		    }
-		  else if (desired_type == DB_TYPE_SET)
-		    {
-		      err = db_make_set (target, setref);
-		    }
-		  else if (desired_type == DB_TYPE_MULTISET)
-		    {
-		      err = db_make_multiset (target, setref);
-		    }
-		  else
-		    {
-		      err = db_make_sequence (target, setref);
-		    }
-		}
-	      if (!setref || err < 0)
-		{
-		  status = DOMAIN_INCOMPATIBLE;
-		}
-	    }
-	}
-      break;
-
-    case DB_TYPE_VOBJ:
-      if (original_type == DB_TYPE_VOBJ)
-	{
-	  SETREF *setref;
-	  /*
-	   * We should try and convert the view of the src to match
-	   * the view of the desired_domain. However, the desired
-	   * domain generally does not contain this information.
-	   * We will detect domain incompatibly later on assignment,
-	   * so we treat casting any DB_TYPE_VOBJ to DB_TYPE_VOBJ
-	   * as success.
-	   */
-	  status = DOMAIN_COMPATIBLE;
-	  setref = db_get_set (src);
-	  if (src != dest || !setref)
-	    {
-	      pr_clone_value ((DB_VALUE *) src, target);
-	    }
-	  else
-	    {
-	      /*
-	       * this is a "coerce-in-place", and no coercion is necessary,
-	       * so do nothing: use the same vobj without any conversion. set
-	       * "src" to NULL to prevent the wrapup code from clearing dest.
-	       */
-	      setobj_put_domain (setref->set, (TP_DOMAIN *) desired_domain);
-	      src = NULL;
-	    }
-	}
-      else
-#if !defined (SERVER_MODE)
-      if (original_type == DB_TYPE_OBJECT)
-	{
-	  if (vid_object_to_vobj (db_get_object (src), target) < 0)
-	    {
-	      status = DOMAIN_INCOMPATIBLE;
-	    }
-	  else
-	    {
-	      status = DOMAIN_COMPATIBLE;
-	    }
 	  break;
 	}
-      else
+      break;
 #endif /* !SERVER_MODE */
-      if (original_type == DB_TYPE_OID || original_type == DB_TYPE_OBJECT)
+    case DB_TYPE_SET:
+      switch (original_type)
 	{
-	  DB_VALUE view_oid;
-	  DB_VALUE class_oid;
-	  DB_VALUE keys;
-	  OID nulloid;
-	  DB_SEQ *seq;
-
-	  OID_SET_NULL (&nulloid);
-	  db_make_oid (&class_oid, &nulloid);
-	  db_make_oid (&view_oid, &nulloid);
-	  seq = db_seq_create (NULL, NULL, 3);
-	  keys = *src;
-
-	  /*
-	   * if we are on the server, and get a DB_TYPE_OBJECT,
-	   * then its only possible representation is a DB_TYPE_OID,
-	   * and it may be treated that way. However, this should
-	   * not really be a case that can happen. It may still
-	   * for historical reasons, so is not falgged as an error.
-	   * On the client, a worskapce based scheme must be used,
-	   * which is just above in a conditional compiled section.
-	   */
-
-	  if ((db_seq_put (seq, 0, &view_oid) != NO_ERROR) || (db_seq_put (seq, 1, &class_oid) != NO_ERROR)
-	      || (db_seq_put (seq, 2, &keys) != NO_ERROR))
-	    {
-	      status = DOMAIN_INCOMPATIBLE;
-	    }
-	  else
-	    {
-	      db_make_sequence (target, seq);
-	      db_value_alter_type (target, DB_TYPE_VOBJ);
-	      status = DOMAIN_COMPATIBLE;
-	    }
-	}
-      else
-	{
+	case DB_TYPE_SET:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_set_implicit_core (src, target, desired_domain,
+									       &conversion_error) :
+	     tp_value_convert_set_to_set_core (src, target, desired_domain, &conversion_error));
+	  break;
+	case DB_TYPE_MULTISET:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_set_implicit_core (src, target, desired_domain,
+									       &conversion_error) :
+	     tp_value_convert_set_to_set_core (src, target, desired_domain, &conversion_error));
+	  break;
+	case DB_TYPE_SEQUENCE:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_set_implicit_core (src, target, desired_domain,
+									       &conversion_error) :
+	     tp_value_convert_set_to_set_core (src, target, desired_domain, &conversion_error));
+	  break;
+	default:
 	  status = DOMAIN_INCOMPATIBLE;
+	  break;
 	}
       break;
-
+    case DB_TYPE_MULTISET:
+      switch (original_type)
+	{
+	case DB_TYPE_SET:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_multiset_implicit_core (src, target, desired_domain,
+										    &conversion_error) :
+	     tp_value_convert_set_to_multiset_core (src, target, desired_domain, &conversion_error));
+	  break;
+	case DB_TYPE_MULTISET:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_multiset_implicit_core (src, target, desired_domain,
+										    &conversion_error) :
+	     tp_value_convert_set_to_multiset_core (src, target, desired_domain, &conversion_error));
+	  break;
+	case DB_TYPE_SEQUENCE:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_multiset_implicit_core (src, target, desired_domain,
+										    &conversion_error) :
+	     tp_value_convert_set_to_multiset_core (src, target, desired_domain, &conversion_error));
+	  break;
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
+    case DB_TYPE_SEQUENCE:
+      switch (original_type)
+	{
+	case DB_TYPE_SET:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_sequence_implicit_core (src, target, desired_domain,
+										    &conversion_error) :
+	     tp_value_convert_set_to_sequence_core (src, target, desired_domain, &conversion_error));
+	  break;
+	case DB_TYPE_MULTISET:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_sequence_implicit_core (src, target, desired_domain,
+										    &conversion_error) :
+	     tp_value_convert_set_to_sequence_core (src, target, desired_domain, &conversion_error));
+	  break;
+	case DB_TYPE_SEQUENCE:
+	  status =
+	    (coercion_mode ==
+	     TP_IMPLICIT_COERCION ? tp_value_convert_set_to_sequence_implicit_core (src, target, desired_domain,
+										    &conversion_error) :
+	     tp_value_convert_set_to_sequence_core (src, target, desired_domain, &conversion_error));
+	  break;
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
+    case DB_TYPE_VOBJ:
+      switch (original_type)
+	{
+#if !defined (SERVER_MODE)
+	case DB_TYPE_OBJECT:
+	  status = tp_value_convert_object_to_vobj_core (src, target, desired_domain, &conversion_error);
+	  break;
+#endif
+	case DB_TYPE_OID:
+	  status = tp_value_convert_oid_to_vobj_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VOBJ:
+	  status = tp_value_convert_vobj_to_vobj_core (src, target, desired_domain, &conversion_error);
+	  break;
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
+#if !defined (SERVER_MODE)
+#endif /* !SERVER_MODE */
     case DB_TYPE_BIT:
+      switch (original_type)
+	{
+	case DB_TYPE_CHAR:
+	  status = tp_value_convert_char_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIT:
+	  status = tp_value_convert_bit_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARBIT:
+	  status = tp_value_convert_varbit_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BLOB:
+	  status = tp_value_convert_blob_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
+	default:
+	  (void) db_bit_string_coerce (src, target, &data_stat);
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
     case DB_TYPE_VARBIT:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
 	case DB_TYPE_CHAR:
-	  {
-	    DB_VALUE temp;
-	    char *bit_char_string;
-	    int src_size = db_get_string_size (src);
-	    int dst_size = (src_size + 1) / 2;
-
-	    bit_char_string = (char *) db_private_alloc (NULL, dst_size + 1);
-	    if (bit_char_string)
-	      {
-		if (qstr_hex_to_bin (bit_char_string, dst_size, db_get_string (src), src_size) != src_size)
-		  {
-		    status = DOMAIN_ERROR;
-		    db_private_free_and_init (NULL, bit_char_string);
-		  }
-		else
-		  {
-		    db_make_bit (&temp, TP_FLOATING_PRECISION_VALUE, bit_char_string, src_size * 4);
-		    temp.need_clear = true;
-		    if (db_bit_string_coerce (&temp, target, &data_stat) != NO_ERROR)
-		      {
-			status = DOMAIN_INCOMPATIBLE;
-		      }
-		    else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
-			     (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
-			      || coercion_mode == TP_IMPLICIT_COERCION))
-		      {
-			status = DOMAIN_OVERFLOW;
-			pr_clear_value (target);
-		      }
-		    else
-		      {
-			status = DOMAIN_COMPATIBLE;
-		      }
-		    pr_clear_value (&temp);
-		  }
-	      }
-	    else
-	      {
-		/* Couldn't allocate space for bit_char_string */
-		status = DOMAIN_INCOMPATIBLE;
-	      }
-	  }
+	  status = tp_value_convert_char_to_bit_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	  }
+	  status = tp_value_convert_enumeration_to_varbit_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_BIT:
+	  status = tp_value_convert_varbit_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARBIT:
+	  status = tp_value_convert_bit_to_bit_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_BLOB:
-	  {
-	    DB_VALUE tmpval;
-
-	    db_make_null (&tmpval);
-
-	    err = db_blob_to_bit (src, NULL, &tmpval);
-	    if (err == NO_ERROR)
-	      {
-		err = tp_value_cast_internal (&tmpval, target, desired_domain, coercion_mode, do_domain_select, false);
-	      }
-	    (void) pr_clear_value (&tmpval);
-	  }
+	  status = tp_value_convert_blob_to_varbit_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	default:
-	  if (src == dest && tp_can_steal_string (src, desired_domain))
+	  (void) db_bit_string_coerce (src, target, &data_stat);
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
+      break;
+    case DB_TYPE_VARCHAR:
+      switch (original_type)
+	{
+	case DB_TYPE_SHORT:
+	  status = tp_value_convert_short_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_INTEGER:
+	  status = tp_value_convert_integer_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIGINT:
+	  status = tp_value_convert_bigint_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_FLOAT:
+	  status = tp_value_convert_float_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DOUBLE:
+	  status = tp_value_convert_double_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_MONETARY:
+	  status = tp_value_convert_monetary_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_NUMERIC:
+	  status = tp_value_convert_numeric_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_CHAR:
+	  status = tp_value_convert_char_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_varchar_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATE:
+	  status = tp_value_convert_date_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIME:
+	  status = tp_value_convert_time_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMP:
+	  status = tp_value_convert_timestamp_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  status = tp_value_convert_timestampltz_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  status = tp_value_convert_timestamptz_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIME:
+	  status = tp_value_convert_datetime_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  status = tp_value_convert_datetimeltz_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  status = tp_value_convert_datetimetz_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIT:
+	  status = tp_value_convert_bit_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARBIT:
+	  status = tp_value_convert_bit_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_CLOB:
+	  if (src == dest)
 	    {
-	      tp_value_slam_domain (dest, desired_domain);
-	      /*
-	       * Set "src" to NULL to prevent the wrapup code from undoing
-	       * our work; since we haven't actually made a copy, we don't
-	       * want to clear the original.
-	       */
-	      src = NULL;
-	    }
-	  else if (db_bit_string_coerce (src, target, &data_stat) != NO_ERROR)
-	    {
-	      status = DOMAIN_INCOMPATIBLE;
-	    }
-	  else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
-		   (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
-		    || coercion_mode == TP_IMPLICIT_COERCION))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	      pr_clear_value (target);
+	      /* The legacy nested CLOB cast wrote dest, then its outer alias
+	       * handling replaced it with the untouched typed NULL temporary. */
+	      DB_VALUE target_domain = *target;
+	      status = tp_value_convert_clob_to_varchar_core (src, target, desired_domain, &conversion_error);
+	      if (status == DOMAIN_COMPATIBLE || status == DOMAIN_TRUNCATED)
+		{
+		  pr_clear_value (target);
+		  *target = target_domain;
+		  status = DOMAIN_COMPATIBLE;
+		}
 	    }
 	  else
 	    {
-	      status = DOMAIN_COMPATIBLE;
+	      status = tp_value_convert_clob_to_varchar_core (src, target, desired_domain, &conversion_error);
 	    }
+	  break;
+	case DB_TYPE_JSON:
+	  status = tp_value_convert_json_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
-    case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       switch (original_type)
 	{
-	case DB_TYPE_VARCHAR:
-	case DB_TYPE_CHAR:
-	  if (src == dest && tp_can_steal_string (src, desired_domain))
-	    {
-	      tp_value_slam_domain (dest, desired_domain);
-	      /*
-	       * Set "src" to NULL to prevent the wrapup code from undoing
-	       * our work; since we haven't actually made a copy, we don't
-	       * want to clear the original.
-	       */
-	      src = NULL;
-	    }
-	  else if (db_char_string_coerce (src, target, &data_stat) != NO_ERROR)
-	    {
-	      status = DOMAIN_INCOMPATIBLE;
-	    }
-	  else if (data_stat == DATA_STATUS_TRUNCATED && coercion_mode != TP_FORCE_COERCION &&
-		   (prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING) == false
-		    || coercion_mode == TP_IMPLICIT_COERCION))
-	    {
-	      status = DOMAIN_OVERFLOW;
-	      pr_clear_value (target);
-	    }
-	  else if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
-	    {
-	      db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
-					      TP_DOMAIN_COLLATION (desired_domain));
-	      status = DOMAIN_COMPATIBLE;
-	    }
+	case DB_TYPE_SHORT:
+	  status = tp_value_convert_short_to_char_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-	      }
-	    else
-	      {
-		status =
-		  tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	      }
-	  }
-	  break;
-
-	case DB_TYPE_BIGINT:
 	case DB_TYPE_INTEGER:
-	case DB_TYPE_SMALLINT:
-	  {
-	    int max_size = TP_BIGINT_PRECISION + 2 + 1;
-	    char *new_string;
-	    DB_BIGINT num;
-
-	    new_string = (char *) db_private_alloc (NULL, max_size);
-	    if (!new_string)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    if (original_type == DB_TYPE_BIGINT)
-	      {
-		num = db_get_bigint (src);
-	      }
-	    else if (original_type == DB_TYPE_INTEGER)
-	      {
-		num = (DB_BIGINT) db_get_int (src);
-	      }
-	    else		/* DB_TYPE_SHORT */
-	      {
-		num = (DB_BIGINT) db_get_short (src);
-	      }
-
-	    if (tp_ltoa (num, new_string, 10))
-	      {
-		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		    && db_value_precision (target) < (int) strlen (new_string))
-		  {
-		    status = DOMAIN_OVERFLOW;
-		    db_private_free_and_init (NULL, new_string);
-		  }
-		else
-		  {
-		    make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status,
-						  &data_stat);
-		  }
-	      }
-	    else
-	      {
-		status = DOMAIN_ERROR;
-		db_private_free_and_init (NULL, new_string);
-	      }
-	  }
+	  status = tp_value_convert_integer_to_char_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_DOUBLE:
+	case DB_TYPE_BIGINT:
+	  status = tp_value_convert_bigint_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_FLOAT:
-	  {
-	    if (original_type == DB_TYPE_FLOAT)
-	      {
-		tp_ftoa (src, target);
-	      }
-	    else
-	      {
-		tp_dtoa (src, target);
-	      }
-
-	    if (DB_IS_NULL (target))
-	      {
-		if (er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
-		  {
-		    /* no way to report "out of memory" from tp_value_cast_internal() ?? */
-		    status = DOMAIN_ERROR;
-		  }
-		else
-		  {
-		    status = DOMAIN_INCOMPATIBLE;
-		  }
-	      }
-	    else if (DB_VALUE_PRECISION (target) != TP_FLOATING_PRECISION_VALUE
-		     && (db_get_string_length (target) > DB_VALUE_PRECISION (target)))
-	      {
-		status = DOMAIN_OVERFLOW;
-		pr_clear_value (target);
-	      }
-	  }
+	  status = tp_value_convert_float_to_char_core (src, target, desired_domain, &conversion_error);
 	  break;
-
-	case DB_TYPE_NUMERIC:
-	  {
-	    char str_buf[NUMERIC_MAX_STRING_SIZE];
-	    char *new_string;
-	    int max_size;
-
-	    numeric_db_value_print (src, str_buf);
-
-	    max_size = strlen (str_buf) + 1;
-	    new_string = (char *) db_private_alloc (NULL, max_size);
-	    if (new_string == NULL)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    strcpy (new_string, str_buf);
-
-	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		&& db_value_precision (target) < max_size - 1)
-	      {
-		status = DOMAIN_OVERFLOW;
-		db_private_free_and_init (NULL, new_string);
-	      }
-	    else
-	      {
-		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
-	      }
-	  }
+	case DB_TYPE_DOUBLE:
+	  status = tp_value_convert_double_to_char_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_MONETARY:
-	  {
-	    /* monetary symbol = 3 sign = 1 dot = 1 fraction digits = 2 NUL terminator = 1 */
-	    int max_size = DBL_MAX_DIGITS + 3 + 1 + 1 + 2 + 1;
-	    char *new_string;
-	    char *p;
-
-	    new_string = (char *) db_private_alloc (NULL, max_size);
-	    if (!new_string)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    snprintf (new_string, max_size - 1, "%s%.*f", lang_currency_symbol (db_get_monetary (src)->type), 2,
-		      db_get_monetary (src)->amount);
-	    new_string[max_size - 1] = '\0';
-
-	    p = new_string + strlen (new_string);
-	    for (--p; p >= new_string && *p == '0'; p--)
-	      {			/* remove trailing zeros */
-		*p = '\0';
-	      }
-	    if (*p == '.')	/* remove point */
-	      {
-		*p = '\0';
-	      }
-
-	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		&& db_value_precision (target) < (int) strlen (new_string))
-	      {
-		status = DOMAIN_OVERFLOW;
-		db_private_free_and_init (NULL, new_string);
-	      }
-	    else
-	      {
-		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
-	      }
-	  }
+	  status = tp_value_convert_monetary_to_char_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_NUMERIC:
+	  status = tp_value_convert_numeric_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_CHAR:
+	  status = tp_value_convert_varchar_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_varchar_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATE:
+	  status = tp_value_convert_date_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_TIME:
+	  status = tp_value_convert_time_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_TIMESTAMP:
-	case DB_TYPE_TIMESTAMPTZ:
+	  status = tp_value_convert_timestamp_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_TIMESTAMPLTZ:
+	  status = tp_value_convert_timestampltz_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  status = tp_value_convert_timestamptz_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATETIME:
-	case DB_TYPE_DATETIMETZ:
+	  status = tp_value_convert_datetime_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_DATETIMELTZ:
-	  {
-	    int max_size = DATETIMETZ_BUF_SIZE;
-	    char *new_string;
-
-	    new_string = (char *) db_private_alloc (NULL, max_size);
-	    if (!new_string)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    err = NO_ERROR;
-
-	    switch (original_type)
-	      {
-	      case DB_TYPE_DATE:
-		db_date_to_string (new_string, max_size, (DB_DATE *) db_get_date (src));
-		break;
-	      case DB_TYPE_TIME:
-		db_time_to_string (new_string, max_size, (DB_TIME *) db_get_time (src));
-		break;
-	      case DB_TYPE_TIMESTAMP:
-		db_timestamp_to_string (new_string, max_size, (DB_TIMESTAMP *) db_get_timestamp (src));
-		break;
-	      case DB_TYPE_TIMESTAMPLTZ:
-		v_utime = *db_get_timestamp (src);
-		err = tz_create_session_tzid_for_timestamp (&v_utime, &ses_tz_id);
-		if (err != NO_ERROR)
-		  {
-		    break;
-		  }
-		db_timestamptz_to_string (new_string, max_size, &v_utime, &ses_tz_id);
-		break;
-	      case DB_TYPE_TIMESTAMPTZ:
-		v_timestamptz = *db_get_timestamptz (src);
-		db_timestamptz_to_string (new_string, max_size, &v_timestamptz.timestamp, &v_timestamptz.tz_id);
-		break;
-	      case DB_TYPE_DATETIMELTZ:
-		v_datetime = *db_get_datetime (src);
-		err = tz_create_session_tzid_for_datetime (&v_datetime, true, &ses_tz_id);
-		if (err != NO_ERROR)
-		  {
-		    break;
-		  }
-		db_datetimetz_to_string (new_string, max_size, &v_datetime, &ses_tz_id);
-		break;
-	      case DB_TYPE_DATETIMETZ:
-		v_datetimetz = *db_get_datetimetz (src);
-		db_datetimetz_to_string (new_string, max_size, &v_datetimetz.datetime, &v_datetimetz.tz_id);
-		break;
-	      case DB_TYPE_DATETIME:
-	      default:
-		db_datetime_to_string (new_string, max_size, (DB_DATETIME *) db_get_datetime (src));
-		break;
-	      }
-
-	    if (err != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		&& db_value_precision (target) < (int) strlen (new_string))
-	      {
-		status = DOMAIN_OVERFLOW;
-		db_private_free_and_init (NULL, new_string);
-	      }
-	    else
-	      {
-		make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status, &data_stat);
-	      }
-	  }
+	  status = tp_value_convert_datetimeltz_to_char_core (src, target, desired_domain, &conversion_error);
 	  break;
-
+	case DB_TYPE_DATETIMETZ:
+	  status = tp_value_convert_datetimetz_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_BIT:
+	  status = tp_value_convert_bit_to_char_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_VARBIT:
-	  {
-	    int max_size;
-	    char *new_string;
-	    int convert_error;
-
-	    max_size = ((db_get_string_length (src) + 3) / 4) + 1;
-	    new_string = (char *) db_private_alloc (NULL, max_size);
-	    if (!new_string)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-
-	    convert_error = bfmt_print (1 /* BIT_STRING_HEX */ , src,
-					new_string, max_size);
-
-	    if (convert_error == NO_ERROR)
-	      {
-		if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE
-		    && (db_value_precision (target) < (int) strlen (new_string)))
-		  {
-		    status = DOMAIN_OVERFLOW;
-		    db_private_free_and_init (NULL, new_string);
-		  }
-		else
-		  {
-		    make_desired_string_db_value (desired_type, desired_domain, new_string, target, &status,
-						  &data_stat);
-		  }
-	      }
-	    else if (convert_error == -1)
-	      {
-		status = DOMAIN_OVERFLOW;
-		db_private_free_and_init (NULL, new_string);
-	      }
-	    else
-	      {
-		status = DOMAIN_ERROR;
-		db_private_free_and_init (NULL, new_string);
-	      }
-	  }
+	  status = tp_value_convert_bit_to_char_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	case DB_TYPE_CLOB:
-	  {
-	    DB_VALUE tmpval;
-	    DB_VALUE cs;
-
-	    db_make_null (&tmpval);
-	    /* convert directly from CLOB into charset of desired domain string */
-	    db_make_int (&cs, desired_domain->codeset);
-	    err = db_clob_to_char (src, &cs, &tmpval);
-	    if (err == NO_ERROR)
-	      {
-		err = tp_value_cast_internal (&tmpval, dest, desired_domain, coercion_mode, do_domain_select, false);
-	      }
-
-	    pr_clear_value (&tmpval);
-	  }
+	  if (src == dest)
+	    {
+	      /* The legacy nested CLOB cast wrote dest, then its outer alias
+	       * handling replaced it with the untouched typed NULL temporary. */
+	      DB_VALUE target_domain = *target;
+	      status = tp_value_convert_clob_to_char_core (src, target, desired_domain, &conversion_error);
+	      if (status == DOMAIN_COMPATIBLE || status == DOMAIN_TRUNCATED)
+		{
+		  pr_clear_value (target);
+		  *target = target_domain;
+		  status = DOMAIN_COMPATIBLE;
+		}
+	    }
+	  else
+	    {
+	      status = tp_value_convert_clob_to_char_core (src, target, desired_domain, &conversion_error);
+	    }
 	  break;
-
 	case DB_TYPE_JSON:
-	  {
-	    char *json_str;
-	    int len;
-
-	    json_str = db_json_get_raw_json_body_from_document (db_get_json_document (src));
-	    len = strlen (json_str);
-
-	    if (db_value_precision (target) != TP_FLOATING_PRECISION_VALUE && db_value_precision (target) < len)
-	      {
-		status = DOMAIN_OVERFLOW;
-		db_private_free_and_init (NULL, json_str);
-	      }
-	    else
-	      {
-		make_desired_string_db_value (desired_type, desired_domain, json_str, target, &status, &data_stat);
-		target->need_clear = true;
-	      }
-	  }
+	  status = tp_value_convert_json_to_char_core (src, target, desired_domain, &conversion_error);
 	  break;
-
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_BLOB:
       switch (original_type)
 	{
-	case DB_TYPE_BLOB:
-	  err = db_value_clone ((DB_VALUE *) src, target);
-	  break;
-	case DB_TYPE_BIT:
-	case DB_TYPE_VARBIT:
-	  err = db_bit_to_blob (src, target);
-	  break;
 	case DB_TYPE_CHAR:
+	  status = tp_value_convert_char_to_blob_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_VARCHAR:
-	  err = db_char_to_blob (src, target);
+	  status = tp_value_convert_char_to_blob_core (src, target, desired_domain, &conversion_error);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	  }
+	  status = tp_value_convert_enumeration_to_blob_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIT:
+	  status = tp_value_convert_bit_to_blob_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARBIT:
+	  status = tp_value_convert_bit_to_blob_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BLOB:
+	  status = tp_value_convert_blob_to_blob_core (src, target, desired_domain, &conversion_error);
 	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_CLOB:
       switch (original_type)
 	{
-	case DB_TYPE_CLOB:
-	  err = db_value_clone ((DB_VALUE *) src, target);
-	  break;
 	case DB_TYPE_CHAR:
+	  status = tp_value_convert_char_to_clob_core (src, target, desired_domain, &conversion_error);
+	  break;
 	case DB_TYPE_VARCHAR:
-	  err = db_char_to_clob (src, target);
+	  status = tp_value_convert_char_to_clob_core (src, target, desired_domain, &conversion_error);
 	  break;
 	case DB_TYPE_ENUMERATION:
-	  {
-	    DB_VALUE varchar_val;
-	    if (tp_enumeration_to_varchar (src, &varchar_val) != NO_ERROR)
-	      {
-		status = DOMAIN_ERROR;
-		break;
-	      }
-	    status =
-	      tp_value_cast_internal (&varchar_val, target, desired_domain, coercion_mode, do_domain_select, false);
-	    break;
-	  }
+	  status = tp_value_convert_enumeration_to_clob_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_CLOB:
+	  status = tp_value_convert_blob_to_blob_core (src, target, desired_domain, &conversion_error);
+	  break;
 	default:
 	  status = DOMAIN_INCOMPATIBLE;
 	  break;
 	}
       break;
-
     case DB_TYPE_ENUMERATION:
-      {
-	unsigned short val_idx = 0;
-	int val_str_size = 0;
-	const char *val_str = NULL;
-	bool exit = false, alloc_string = true;
-	DB_VALUE conv_val;
-
-	db_make_null (&conv_val);
-
-	if (src->domain.general_info.is_null)
-	  {
-	    db_make_null (target);
-	    break;
-	  }
-
-	switch (original_type)
-	  {
-	  case DB_TYPE_SHORT:
-	    val_idx = (unsigned short) db_get_short (src);
-	    break;
-	  case DB_TYPE_INTEGER:
-	    if (OR_CHECK_USHRT_OVERFLOW (db_get_int (src)))
-	      {
-		status = DOMAIN_INCOMPATIBLE;
-	      }
-	    else
-	      {
-		val_idx = (unsigned short) db_get_int (src);
-	      }
-	    break;
-	  case DB_TYPE_BIGINT:
-	    if (OR_CHECK_USHRT_OVERFLOW (db_get_bigint (src)))
-	      {
-		status = DOMAIN_INCOMPATIBLE;
-	      }
-	    else
-	      {
-		val_idx = (unsigned short) db_get_bigint (src);
-	      }
-	    break;
-	  case DB_TYPE_FLOAT:
-	    if (OR_CHECK_USHRT_OVERFLOW (floor (db_get_float (src))))
-	      {
-		status = DOMAIN_INCOMPATIBLE;
-	      }
-	    else
-	      {
-		val_idx = (unsigned short) floor (db_get_float (src));
-	      }
-	    break;
-	  case DB_TYPE_DOUBLE:
-	    if (OR_CHECK_USHRT_OVERFLOW (floor (db_get_double (src))))
-	      {
-		status = DOMAIN_INCOMPATIBLE;
-	      }
-	    else
-	      {
-		val_idx = (unsigned short) floor (db_get_double (src));
-	      }
-	    break;
-	  case DB_TYPE_NUMERIC:
-	    {
-	      DB_VALUE val;
-	      DB_DATA_STATUS stat = DATA_STATUS_OK;
-
-	      db_make_double (&val, 0);
-	      err = numeric_db_value_coerce_from_num ((DB_VALUE *) src, &val, &stat);
-	      if (err != NO_ERROR)
-		{
-		  status = DOMAIN_ERROR;
-		}
-	      else
-		{
-		  if (OR_CHECK_USHRT_OVERFLOW (floor (db_get_double (&val))))
-		    {
-		      status = DOMAIN_INCOMPATIBLE;
-		    }
-		  else
-		    {
-		      val_idx = (unsigned short) floor (db_get_double (&val));
-		    }
-		}
-	      break;
-	    }
-	  case DB_TYPE_MONETARY:
-	    v_money = db_get_monetary (src);
-	    if (OR_CHECK_USHRT_OVERFLOW (floor (v_money->amount)))
-	      {
-		status = DOMAIN_INCOMPATIBLE;
-	      }
-	    else
-	      {
-		val_idx = (unsigned short) floor (v_money->amount);
-	      }
-	    break;
-	  case DB_TYPE_TIMESTAMP:
-	  case DB_TYPE_TIMESTAMPLTZ:
-	  case DB_TYPE_TIMESTAMPTZ:
-	  case DB_TYPE_DATETIME:
-	  case DB_TYPE_DATETIMETZ:
-	  case DB_TYPE_DATETIMELTZ:
-	  case DB_TYPE_DATE:
-	  case DB_TYPE_TIME:
-	  case DB_TYPE_BIT:
-	  case DB_TYPE_VARBIT:
-	  case DB_TYPE_BLOB:
-	  case DB_TYPE_CLOB:
-	    {
-	      status =
-		tp_value_cast_internal (src, &conv_val, tp_domain_resolve_default (DB_TYPE_STRING), coercion_mode,
-					do_domain_select, false);
-	      if (status == DOMAIN_COMPATIBLE)
-		{
-		  val_str = db_get_string (&conv_val);
-		  val_str_size = db_get_string_size (&conv_val);
-		}
-	    }
-	    break;
-	  case DB_TYPE_CHAR:
-	  case DB_TYPE_VARCHAR:
-	    if (db_get_string_codeset (src) != TP_DOMAIN_CODESET (desired_domain))
-	      {
-		DB_DATA_STATUS data_status = DATA_STATUS_OK;
-
-		if (TP_DOMAIN_CODESET (desired_domain) == INTL_CODESET_RAW_BYTES)
-		  {
-		    /* avoid data truncation when converting to binary charset */
-		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src), db_get_string_size (src), 0);
-		  }
-		else
-		  {
-		    db_value_domain_init (&conv_val, DB_VALUE_TYPE (src), DB_VALUE_PRECISION (src), 0);
-		  }
-
-		db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (desired_domain),
-						TP_DOMAIN_COLLATION (desired_domain));
-
-		if (db_char_string_coerce (src, &conv_val, &data_status) != NO_ERROR || data_status != DATA_STATUS_OK)
-		  {
-		    status = DOMAIN_ERROR;
-		    pr_clear_value (&conv_val);
-		  }
-		else
-		  {
-		    val_str = db_get_string (&conv_val);
-		    val_str_size = db_get_string_size (&conv_val);
-		  }
-	      }
-	    else
-	      {
-		val_str = db_get_string (src);
-		val_str_size = db_get_string_size (src);
-	      }
-	    break;
-	  case DB_TYPE_ENUMERATION:
-	    if (DOM_GET_ENUM_ELEMS_COUNT (desired_domain) == 0)
-	      {
-		pr_clone_value (src, target);
-		exit = true;
-		break;
-	      }
-	    val_str = db_get_enum_string (src);
-	    val_str_size = db_get_enum_string_size (src);
-	    if (val_str == NULL)
-	      {
-		/* src has a short value or a string value or both. We prefer to use the string value when matching
-		 * against the desired domain but, if this is not set, we will use the value index */
-		val_idx = db_get_enum_short (src);
-	      }
-	    else
-	      {
-		if (db_get_enum_codeset (src) != TP_DOMAIN_CODESET (desired_domain))
-		  {
-		    /* first convert charset of the original value to charset of destination domain */
-		    DB_VALUE tmp;
-		    DB_DATA_STATUS data_status = DATA_STATUS_OK;
-
-		    /* charset conversion can handle only CHAR/VARCHAR DB_VALUEs, create a STRING value with max
-		     * precision (so that no truncation occurs) from the ENUM source string */
-		    db_make_varchar (&tmp, DB_MAX_STRING_LENGTH, val_str, val_str_size, db_get_enum_codeset (src),
-				     db_get_enum_collation (src));
-
-		    /* initialize destination value of conversion */
-		    db_value_domain_init (&conv_val, DB_TYPE_STRING, DB_MAX_STRING_LENGTH, 0);
-		    db_string_put_cs_and_collation (&conv_val, TP_DOMAIN_CODESET (desired_domain),
-						    TP_DOMAIN_COLLATION (desired_domain));
-
-		    if (db_char_string_coerce (&tmp, &conv_val, &data_status) != NO_ERROR
-			|| data_status != DATA_STATUS_OK)
-		      {
-			status = DOMAIN_ERROR;
-			pr_clear_value (&conv_val);
-			val_str = NULL;
-			val_idx = 0;
-		      }
-		    else
-		      {
-			val_str = db_get_string (&conv_val);
-			val_str_size = db_get_string_size (&conv_val);
-		      }
-		    pr_clear_value (&tmp);
-		  }
-	      }
-	    break;
-	  default:
-	    status = DOMAIN_INCOMPATIBLE;
-	    break;
-	  }
-
-	if (exit)
-	  {
-	    break;
-	  }
-
-	if (status == DOMAIN_COMPATIBLE)
-	  {
-	    if (val_str != NULL)
-	      {
-		/* We have to search through the elements of the desired domain to find the index for val_str. */
-		int i, size;
-		DB_ENUM_ELEMENT *db_enum = NULL;
-		int elem_count = DOM_GET_ENUM_ELEMS_COUNT (desired_domain);
-
-		for (i = 1; i <= elem_count; i++)
-		  {
-		    db_enum = &DOM_GET_ENUM_ELEM (desired_domain, i);
-		    size = DB_GET_ENUM_ELEM_STRING_SIZE (db_enum);
-
-		    if (!ignore_trailing_space)
-		      {
-			ti = (desired_domain->type->id == DB_TYPE_CHAR);
-		      }
-
-		    /* use collation from the PT_TYPE_ENUMERATION */
-		    if (QSTR_COMPARE (desired_domain->collation_id, (const unsigned char *) val_str, val_str_size,
-				      (const unsigned char *) DB_GET_ENUM_ELEM_STRING (db_enum), size, ti) == 0)
-		      {
-			break;
-		      }
-		  }
-
-		val_idx = i;
-		if (i > elem_count)
-		  {
-		    if (val_str[0] == 0)
-		      {
-			/* The source value is string with length 0 and can be matched with enum "special error value"
-			 * if it's not a valid ENUM value */
-			db_make_enumeration (target, 0, NULL, 0, TP_DOMAIN_CODESET (desired_domain),
-					     TP_DOMAIN_COLLATION (desired_domain));
-			break;
-		      }
-		    else
-		      {
-			status = DOMAIN_INCOMPATIBLE;
-		      }
-		  }
-	      }
-	    else
-	      {
-		/* We have the index, we need to get the actual string value from the desired domain */
-		if (val_idx > DOM_GET_ENUM_ELEMS_COUNT (desired_domain))
-		  {
-		    status = DOMAIN_INCOMPATIBLE;
-		  }
-		else if (val_idx == 0)
-		  {
-		    /* ENUM Special error value */
-		    db_make_enumeration (target, 0, NULL, 0, TP_DOMAIN_CODESET (desired_domain),
-					 TP_DOMAIN_COLLATION (desired_domain));
-		    break;
-		  }
-		else
-		  {
-		    val_str_size = DB_GET_ENUM_ELEM_STRING_SIZE (&DOM_GET_ENUM_ELEM (desired_domain, val_idx));
-		    val_str = DB_GET_ENUM_ELEM_STRING (&DOM_GET_ENUM_ELEM (desired_domain, val_idx));
-		  }
-	      }
-
-	    if (status == DOMAIN_COMPATIBLE)
-	      {
-		const char *enum_str;
-
-		assert (val_str != NULL);
-
-		if (!DB_IS_NULL (&conv_val))
-		  {
-		    /* if charset conversion, than use the converted value buffer to avoid an additional copy */
-		    alloc_string = false;
-		    conv_val.need_clear = false;
-		  }
-
-		if (alloc_string)
-		  {
-		    char *enum_str_tmp = (char *) db_private_alloc (NULL, val_str_size + 1);
-		    if (enum_str_tmp == NULL)
-		      {
-			status = DOMAIN_ERROR;
-			pr_clear_value (&conv_val);
-			break;
-		      }
-		    else
-		      {
-			memcpy (enum_str_tmp, val_str, val_str_size);
-			enum_str_tmp[val_str_size] = 0;
-		      }
-
-		    enum_str = enum_str_tmp;
-		  }
-		else
-		  {
-		    enum_str = val_str;
-		  }
-
-		db_make_enumeration (target, val_idx, enum_str, val_str_size, TP_DOMAIN_CODESET (desired_domain),
-				     TP_DOMAIN_COLLATION (desired_domain));
-		target->need_clear = true;
-	      }
-	  }
-	pr_clear_value (&conv_val);
-      }
+      switch (original_type)
+	{
+	case DB_TYPE_SHORT:
+	  status = tp_value_convert_short_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_INTEGER:
+	  status = tp_value_convert_integer_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIGINT:
+	  status = tp_value_convert_bigint_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_FLOAT:
+	  status = tp_value_convert_float_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DOUBLE:
+	  status = tp_value_convert_double_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_MONETARY:
+	  status = tp_value_convert_monetary_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_NUMERIC:
+	  status = tp_value_convert_numeric_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_CHAR:
+	  status = tp_value_convert_char_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_varchar_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATE:
+	  status = tp_value_convert_date_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIME:
+	  status = tp_value_convert_time_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMP:
+	  status = tp_value_convert_timestamp_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPLTZ:
+	  status = tp_value_convert_timestampltz_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_TIMESTAMPTZ:
+	  status = tp_value_convert_timestamptz_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIME:
+	  status = tp_value_convert_datetime_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	  status = tp_value_convert_datetimeltz_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	  status = tp_value_convert_datetimetz_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_ENUMERATION:
+	  status = tp_value_convert_enumeration_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIT:
+	  status = tp_value_convert_bit_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARBIT:
+	  status = tp_value_convert_varbit_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BLOB:
+	  status = tp_value_convert_blob_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_CLOB:
+	  status = tp_value_convert_clob_to_enumeration_core (src, target, desired_domain, &conversion_error);
+	  break;
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
       break;
     case DB_TYPE_JSON:
-      {
-	JSON_DOC *doc = NULL;
-
-	switch (original_type)
-	  {
-	  case DB_TYPE_CHAR:
-	  case DB_TYPE_VARCHAR:
-	    {
-	      DB_VALUE utf8_str;
-	      const DB_VALUE *json_str_val = &utf8_str;
-	      int error_code = db_json_copy_and_convert_to_utf8 (src, &utf8_str, &json_str_val);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  status = DOMAIN_ERROR;
-		  break;
-		}
-
-	      unsigned int str_size = db_get_string_size (json_str_val);
-	      const char *original_str = db_get_string (json_str_val);
-
-	      error_code = db_json_get_json_from_str (original_str, doc, str_size);
-	      if (error_code != NO_ERROR)
-		{
-		  pr_clear_value (&utf8_str);
-		  assert (doc == NULL);
-		  status = DOMAIN_ERROR;
-		  break;
-		}
-
-	      if (desired_domain->json_validator
-		  && db_json_validate_doc (desired_domain->json_validator, doc) != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  pr_clear_value (&utf8_str);
-		  db_json_delete_doc (doc);
-		  status = DOMAIN_ERROR;
-		  break;
-		}
-	      pr_clear_value (&utf8_str);
-	    }
-	    break;
-	  case DB_TYPE_SHORT:
-	    doc = db_json_allocate_doc ();
-	    db_json_set_int_to_doc (doc, db_get_short (src));
-	    break;
-	  case DB_TYPE_INTEGER:
-	    doc = db_json_allocate_doc ();
-	    db_json_set_int_to_doc (doc, db_get_int (src));
-	    break;
-	  case DB_TYPE_BIGINT:
-	    doc = db_json_allocate_doc ();
-	    db_json_set_bigint_to_doc (doc, db_get_bigint (src));
-	    break;
-	  case DB_TYPE_DOUBLE:
-	    doc = db_json_allocate_doc ();
-	    db_json_set_double_to_doc (doc, db_get_double (src));
-	    break;
-	  case DB_TYPE_FLOAT:
-	  case DB_TYPE_NUMERIC:
-	    {
-	      DB_VALUE double_value;
-
-	      doc = db_json_allocate_doc ();
-	      db_value_coerce (src, &double_value, db_type_to_db_domain (DB_TYPE_DOUBLE));
-	      db_json_set_double_to_doc (doc, db_get_double (&double_value));
-	      pr_clear_value (&double_value);
-	    }
-	    break;
-	  default:
-	    status = DOMAIN_INCOMPATIBLE;
-	    break;
-	  }
-
-	if (status == DOMAIN_COMPATIBLE)
-	  {
-	    db_make_json (target, doc, true);
-	  }
-	else
-	  {
-	    if (doc != NULL)
-	      {
-		db_json_delete_doc (doc);
-	      }
-	  }
-      }
+      switch (original_type)
+	{
+	case DB_TYPE_SHORT:
+	  status = tp_value_convert_short_to_json_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_INTEGER:
+	  status = tp_value_convert_integer_to_json_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_BIGINT:
+	  status = tp_value_convert_bigint_to_json_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_FLOAT:
+	  status = tp_value_convert_float_to_json_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_DOUBLE:
+	  status = tp_value_convert_double_to_json_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_NUMERIC:
+	  status = tp_value_convert_numeric_to_json_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_CHAR:
+	  status = tp_value_convert_char_to_json_core (src, target, desired_domain, &conversion_error);
+	  break;
+	case DB_TYPE_VARCHAR:
+	  status = tp_value_convert_char_to_json_core (src, target, desired_domain, &conversion_error);
+	  break;
+	default:
+	  status = DOMAIN_INCOMPATIBLE;
+	  break;
+	}
       break;
     default:
       status = DOMAIN_INCOMPATIBLE;
       break;
+    }
+
+  conversion_error.publish ();
+  if (status == DOMAIN_TRUNCATED)
+    {
+      if (coercion_mode == TP_FORCE_COERCION
+	  || (coercion_mode != TP_IMPLICIT_COERCION && prm_get_bool_value (PRM_ID_ALLOW_TRUNCATED_STRING)))
+	{
+	  status = DOMAIN_COMPATIBLE;
+	}
+      else
+	{
+	  /* Legacy LOB casts discarded the inner rejection status after
+	   * clearing the result. Keep that observable NULL-success behavior. */
+	  bool lob_nested = ((original_type == DB_TYPE_CLOB
+			      && (desired_type == DB_TYPE_CHAR || desired_type == DB_TYPE_VARCHAR))
+			     || (original_type == DB_TYPE_BLOB
+				 && (desired_type == DB_TYPE_BIT || desired_type == DB_TYPE_VARBIT)));
+	  status = lob_nested ? DOMAIN_COMPATIBLE : DOMAIN_OVERFLOW;
+	  pr_clear_value (target);
+	}
     }
 
   if (err < 0)
@@ -11476,6 +31907,7 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
     }
 
   assert (status != DOMAIN_ERROR);
+  assert (status != DOMAIN_TRUNCATED);
 
   switch (status)
     {

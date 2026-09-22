@@ -44,4 +44,7 @@ constexpr DB_TYPE tp_numeric_convert_types[] = {
 using DOMAIN_NUMERIC_CONVERTERS = std::array<DOMAIN_CONVERTER, 3 * 9 * 7>;
 extern const DOMAIN_NUMERIC_CONVERTERS tp_numeric_convert_table;
 
+DOMAIN_CONVERTER domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMAIN_CONVERT_MODE mode);
+const char *domain_converter_name (DOMAIN_CONVERTER converter);
+
 #endif /* _OBJECT_DOMAIN_CONVERT_H_ */
