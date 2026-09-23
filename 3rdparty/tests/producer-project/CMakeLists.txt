@@ -42,7 +42,7 @@ set(CUBRID_3RDPARTY_LZ4_INPUT_HEADERS
   "${FIXTURE_ROOT}/include/fixture/shared.h;${FIXTURE_ROOT}/include/fixture/shared.h;${FIXTURE_ROOT}/include/fixture/shared.h")
 set(CUBRID_3RDPARTY_OPENSSL_INPUT_HEADERS "${FIXTURE_ROOT}/include/fixture")
 set(CUBRID_3RDPARTY_UNIXODBC_INPUT_HEADERS
-  "${FIXTURE_ROOT}/include/fixture/shared.h;${FIXTURE_ROOT}/include/fixture/shared.h;${FIXTURE_ROOT}/include/fixture/shared.h")
+  "${FIXTURE_ROOT}/include/fixture/shared.h;${FIXTURE_ROOT}/include/fixture/shared.h;${FIXTURE_ROOT}/include/fixture/shared.h;${FIXTURE_ROOT}/include/fixture/shared.h;${FIXTURE_ROOT}/include/fixture/shared.h")
 set(CUBRID_3RDPARTY_RAPIDJSON_INPUT_HEADERS "${FIXTURE_ROOT}/include/fixture")
 set(CUBRID_3RDPARTY_RE2_INPUT_HEADERS "${FIXTURE_ROOT}/include/fixture")
 set(CUBRID_3RDPARTY_ONETBB_INPUT_HEADERS

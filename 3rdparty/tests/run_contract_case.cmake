@@ -112,8 +112,8 @@ elseif(CASE STREQUAL "unknown_key")
   set(expected_diagnostic "unknown or missing keys at manifest root")
 elseif(CASE STREQUAL "missing_field")
   string(REPLACE
-    "  \"recipe_revision\": 2,\n  \"schema\": \"cubrid-thirdparty-manifest-v1\"\n"
-    "  \"recipe_revision\": 2\n" manifest_contents "${manifest_contents}")
+    "  \"recipe_revision\": 3,\n  \"schema\": \"cubrid-thirdparty-manifest-v1\"\n"
+    "  \"recipe_revision\": 3\n" manifest_contents "${manifest_contents}")
   set(expect_success FALSE)
   set(expected_diagnostic "unknown or missing keys at manifest root")
 elseif(CASE STREQUAL "duplicate_dependency")
@@ -148,7 +148,7 @@ elseif(CASE STREQUAL "malformed_sha256")
   set(expect_success FALSE)
   set(expected_diagnostic "lowercase hexadecimal characters")
 elseif(CASE STREQUAL "noninteger_recipe_revision")
-  string(REPLACE "\"recipe_revision\": 2" "\"recipe_revision\": 2.5" manifest_contents "${manifest_contents}")
+  string(REPLACE "\"recipe_revision\": 3" "\"recipe_revision\": 3.5" manifest_contents "${manifest_contents}")
   set(expect_success FALSE)
   set(expected_diagnostic "recipe_revision must be an integer")
 elseif(CASE STREQUAL "malformed_json")
@@ -341,7 +341,7 @@ if(CASE MATCHES "^producer_")
       include/expat.h include/expat_config.h include/expat_external.h
       include/editline include/histedit.h
       include/lz4.h include/lz4frame.h include/lz4hc.h
-      include/openssl include/sql.h include/sqlext.h include/sqltypes.h
+      include/openssl include/sql.h include/sqlext.h include/sqltypes.h include/sqlucode.h include/unixodbc.h
       include/rapidjson include/re2 include/oneapi include/tbb
       lib/libexpat.a lib/libedit.a lib/liblz4.a lib/libssl.a lib/libcrypto.a
       lib/libodbc.so lib/libre2.a lib/libtbb.a

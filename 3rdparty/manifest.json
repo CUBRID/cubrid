@@ -255,7 +255,9 @@
         "headers": [
           "include/sql.h",
           "include/sqlext.h",
-          "include/sqltypes.h"
+          "include/sqltypes.h",
+          "include/sqlucode.h",
+          "include/unixodbc.h"
         ],
         "libraries": [
           {
@@ -393,6 +395,6 @@
     "os": "linux",
     "variant": "build_rl8.10-default"
   },
-  "recipe_revision": 2,
+  "recipe_revision": 3,
   "schema": "cubrid-thirdparty-manifest-v1"
 }

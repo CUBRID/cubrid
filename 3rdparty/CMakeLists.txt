@@ -152,7 +152,7 @@ cubrid_thirdparty_require_outputs(openssl
   HEADERS include/openssl
   LIBRARIES lib/libssl.a lib/libcrypto.a LINKAGES static static SONAMES - -)
 cubrid_thirdparty_require_outputs(unixodbc
-  HEADERS include/sql.h include/sqlext.h include/sqltypes.h
+  HEADERS include/sql.h include/sqlext.h include/sqltypes.h include/sqlucode.h include/unixodbc.h
   LIBRARIES lib/libodbc.so LINKAGES shared SONAMES libodbc.so.2)
 cubrid_thirdparty_require_outputs(rapidjson HEADERS include/rapidjson)
 cubrid_thirdparty_require_outputs(re2
@@ -646,7 +646,9 @@ if(UNIX)
     set(CUBRID_3RDPARTY_UNIXODBC_INPUT_HEADERS
       "${3RDPARTY_LIBS_DIR}/include/sql.h"
       "${3RDPARTY_LIBS_DIR}/include/sqlext.h"
-      "${3RDPARTY_LIBS_DIR}/include/sqltypes.h")
+      "${3RDPARTY_LIBS_DIR}/include/sqltypes.h"
+      "${3RDPARTY_LIBS_DIR}/include/sqlucode.h"
+      "${3RDPARTY_LIBS_DIR}/include/unixodbc.h")
     set(CUBRID_3RDPARTY_UNIXODBC_INPUT_LIBRARIES "${3RDPARTY_LIBS_DIR}/lib/libodbc.so")
     set(CUBRID_3RDPARTY_RAPIDJSON_INPUT_HEADERS
       "${3RDPARTY_LIBS_DIR}/Source/rapidjson/include/rapidjson")
