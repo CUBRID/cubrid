@@ -570,6 +570,7 @@ static int qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_st
 static int qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					  DBLINK_DML_KIND kind);
 static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
 					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state);
@@ -10678,6 +10679,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  /* remote UPDATE + local subquery sink: evaluate the local subqueries here and push the remote UPDATE via
+   * CCI; this has no local class (num_classes == 0) so it must not enter the local update path below. */
+  if (update->sink.is_remote)
+    {
+      return qexec_execute_remote_update_subquery (thread_p, xasl, xasl_state);
+    }
+
   thread_p->no_logging = (bool) update->no_logging;
 
   thread_p->no_supplemental_log = (bool) update->no_supplemental_log;
@@ -12817,8 +12825,8 @@ qexec_collect_remote_insert_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, INSER
 }
 
 /*
- * qexec_collect_remote_delete_key () - Collect the single WHERE-key value for the scan's current row,
- *   for one row of the remote DELETE local-subquery sink.
+ * qexec_collect_remote_delete_key () - Collect the single WHERE-key value for the scan's current row.
+ *   The remote DELETE sink binds it alone; the remote UPDATE sink binds it after its SET values.
  *   return: NO_ERROR on success (bindv[0] set, or skip_row set for a no-op row), ER_FAILED if the scan
  *           row is malformed (asserted, should not happen)
  *   s_id(in)      : scan id positioned at the current row
@@ -12856,20 +12864,59 @@ qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VAL
 }
 
 /*
- * qexec_execute_remote_dml_sink () - Push local rows to a remote table via CCI: either streaming a local
- *   SELECT into a remote INSERT, or pushing one remote DELETE per value from a local WHERE subquery.
- *   return: NO_ERROR or ER_FAILED
- *   xasl(in)       : XASL Tree block (INSERT_PROC or DELETE_PROC with sink.is_remote set, per kind)
- *   xasl_state(in) : XASL state
- *   kind(in)       : DBLINK_DML_INSERT or DBLINK_DML_DELETE
+ * qexec_collect_remote_update_set_vals () - Point vals[] at the values the SET placeholders take, one per
+ *   bound SET value, in the order the builder chained their aptrs.
+ *   return: NO_ERROR, or ER_FAILED when the chain does not hold what the plan says it does
+ *   xasl(in)   : UPDATE_PROC XASL with sink.is_remote set
+ *   vals(out)  : filled with num_set pointers
+ *   num_set(in): remote_num_set_binds
  *
- * Note: The aptr producing xasl->val_list has already been executed and xasl->list_id set up by the
- *       caller (qexec_execute_insert directly; qexec_execute_remote_delete_subquery for DELETE, since
- *       the local subquery there is not the generic local-DELETE aptr path). This function opens the
- *       remote connection, opens the local scan, streams rows to the remote table via CCI bind/execute,
- *       and accumulates affected rows in list_id->tuple_cnt. Only the per-row value collection differs
- *       by kind: INSERT collects the leading num_vals (visible) columns positionally; DELETE collects a
- *       single WHERE-key value and skips (no-op) a NULL key rather than binding it.
+ * Note: the driving subquery, when the statement has a WHERE, is the chain's head and feeds the WHERE
+ *   placeholder instead, so the SET aptrs start one later. Each of them is single-tuple, so its value is
+ *   the one its execution left in single_tuple.
+ */
+static int
+qexec_collect_remote_update_set_vals (XASL_NODE * xasl, DB_VALUE ** vals, int num_set)
+{
+  XASL_NODE *aptr = xasl->aptr_list;
+  int i;
+
+  if (xasl->proc.update.sink.remote_key_col != NULL)
+    {
+      aptr = (aptr != NULL ? aptr->next : NULL);
+    }
+
+  for (i = 0; i < num_set; i++, aptr = aptr->next)
+    {
+      if (aptr == NULL || aptr->single_tuple == NULL || aptr->single_tuple->valp == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		  "remote UPDATE sink: the aptr chain does not carry the SET values the plan declares");
+	  return ER_FAILED;
+	}
+      vals[i] = aptr->single_tuple->valp->val;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_execute_remote_dml_sink () - Push local values to a remote table via CCI: streaming a local SELECT
+ *   into a remote INSERT, or sending one remote DELETE or UPDATE per value from a local subquery.
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in)       : XASL Tree block (INSERT_PROC, DELETE_PROC or UPDATE_PROC with sink.is_remote set)
+ *   xasl_state(in) : XASL state
+ *   kind(in)       : which of the three the proc is
+ *
+ * Note: The aptrs producing xasl->val_list have already been executed and xasl->list_id set up by the
+ *       caller (qexec_execute_insert directly; the DELETE and UPDATE wrappers for theirs, since the local
+ *       subqueries there are not the generic local-DML aptr path). This function opens the remote
+ *       connection, opens the local scan, sends rows to the remote table via CCI bind/execute, and
+ *       accumulates affected rows in list_id->tuple_cnt. What differs by kind is what each row binds:
+ *       INSERT takes the leading num_vals (visible) columns positionally; DELETE takes a single WHERE-key
+ *       value and skips (no-op) a NULL key rather than binding it; UPDATE takes the SET values the plan's
+ *       aptrs left, and then that same key value. An UPDATE that sends no WHERE has no scan at all -- it
+ *       sends its one statement and returns.
  */
 static int
 qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, DBLINK_DML_KIND kind)
@@ -12879,16 +12926,18 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   SCAN_CODE xb_scan, ls_scan;
   SCAN_ID *s_id = NULL;
   DB_VALUE *bindv[1];
+  DB_VALUE **upd_bindv = NULL;
   int val_no = 0, row_affected;
   char **attr_names = NULL;
-  int num_attrs = 0;
-  const char *key_col = NULL, *op = NULL;
+  int num_attrs = 0, num_set = 0;
+  const char *set_text = NULL;
   DBLINK_DML_STATE dblink_state = { -1, -1, false, false };
 
-  assert (specp != NULL);
+  /* only an UPDATE that sends no WHERE has nothing to scan: its statement goes once, with the SET values */
+  assert (specp != NULL || kind == DBLINK_DML_UPDATE);
 
-  /* switch (not if/kind==INSERT-else) + default so a future DBLINK_DML_UPDATE that forgets to add a
-   * case here fails with a clear error instead of silently taking the wrong branch. */
+  /* switch (not if/kind==INSERT-else) + default so a kind added later that forgets a case here fails with
+   * a clear error instead of silently taking the wrong branch. */
   switch (kind)
     {
     case DBLINK_DML_INSERT:
@@ -12910,8 +12959,29 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	DELETE_PROC_NODE *del = &xasl->proc.delete_;
 
 	sink = &del->sink;
-	key_col = del->remote_key_col;
-	op = del->remote_op;
+	break;
+      }
+    case DBLINK_DML_UPDATE:
+      {
+	UPDATE_PROC_NODE *upd = &xasl->proc.update;
+
+	sink = &upd->sink;
+	set_text = upd->remote_set_text;
+	num_set = upd->remote_num_set_binds;
+
+	/* one slot per SET placeholder, plus the WHERE value when the statement sends one */
+	upd_bindv = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * (num_set + 1));
+	if (upd_bindv == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *) * (num_set + 1));
+	    qexec_failure_line (__LINE__, xasl_state);
+	    goto exit_on_error;
+	  }
+	if (qexec_collect_remote_update_set_vals (xasl, upd_bindv, num_set) != NO_ERROR)
+	  {
+	    qexec_failure_line (__LINE__, xasl_state);
+	    goto exit_on_error;
+	  }
 	break;
       }
     default:
@@ -12922,12 +12992,39 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 
   assert (sink->is_remote);
 
-  /* open remote connection and prepare the INSERT/DELETE statement */
-  if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
-		       val_no, key_col, op, &dblink_state) != NO_ERROR)
+  /* a statement that sends a WHERE needs the driving scan whose rows fill its placeholder. Only an UPDATE
+   * arrives without a scan, and only when it sends no WHERE; the other way round would bind the SET values
+   * against a statement that still has a key placeholder. */
+  if (specp == NULL && sink->remote_key_col != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DML sink: the statement's WHERE and the plan's driving scan disagree");
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  /* open remote connection and prepare the statement this kind sends */
+  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, set_text, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
+    }
+
+  if (specp == NULL)
+    {
+      /* an UPDATE that sends no WHERE: one statement, carrying the SET values and nothing per row */
+      if (dblink_dml_execute_row (thread_p, &dblink_state, upd_bindv, num_set, &row_affected) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  goto exit_on_error;
+	}
+      xasl->list_id->tuple_cnt += row_affected;
+
+      dblink_dml_stmt_done (thread_p, &dblink_state);
+      dblink_dml_close (&dblink_state);
+      db_private_free_and_init (thread_p, upd_bindv);
+
+      return NO_ERROR;
     }
 
   /* open local scan on the SELECT / WHERE-subquery result */
@@ -12994,6 +13091,31 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 		xasl->list_id->tuple_cnt += row_affected;
 		break;
 	      }
+	    case DBLINK_DML_UPDATE:
+	      {
+		bool skip_row;
+
+		/* the WHERE value rides in the slot after the SET ones, the order the statement binds in */
+		if (qexec_collect_remote_delete_key (s_id, xasl_state, &upd_bindv[num_set], &skip_row) != NO_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
+		if (skip_row)
+		  {
+		    continue;
+		  }
+
+		/* like DELETE, the remote's own count: a key with no match reports 0, a non-unique one more
+		 * than 1, and neither equals "one local subquery row" */
+		if (dblink_dml_execute_row (thread_p, &dblink_state, upd_bindv, num_set + 1, &row_affected) != NO_ERROR)
+		  {
+		    qexec_failure_line (__LINE__, xasl_state);
+		    goto exit_on_error;
+		  }
+
+		xasl->list_id->tuple_cnt += row_affected;
+		break;
+	      }
 	    default:
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
 	      qexec_failure_line (__LINE__, xasl_state);
@@ -13020,6 +13142,10 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 
   dblink_dml_close (&dblink_state);
   qexec_close_scan (thread_p, specp);
+  if (upd_bindv != NULL)
+    {
+      db_private_free_and_init (thread_p, upd_bindv);
+    }
 
   return NO_ERROR;
 
@@ -13029,6 +13155,10 @@ exit_on_error:
   dblink_dml_stmt_abort (thread_p, &dblink_state);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
+  if (upd_bindv != NULL)
+    {
+      db_private_free_and_init (thread_p, upd_bindv);
+    }
 
   return ER_FAILED;
 }
@@ -13269,6 +13399,51 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
     }
 
   return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state, DBLINK_DML_DELETE);
+}
+
+/*
+ * qexec_execute_remote_update_subquery () - Evaluate the local subqueries the plan carries, then hand off
+ *   to qexec_execute_remote_dml_sink() to push the remote UPDATE via CCI.
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in)       : UPDATE_PROC XASL with sink.is_remote set; aptr_list = the local subqueries
+ *   xasl_state(in) : XASL state
+ *
+ * Note: every aptr runs here, not just the head. The chain holds the driving subquery when the statement
+ *   has a WHERE, and one single-tuple subquery per bound SET value; the sink reads the latter's values
+ *   once and scans the former per row.
+ */
+static int
+qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  XASL_NODE *aptr;
+
+  assert (xasl->proc.update.sink.is_remote);
+  assert (xasl->aptr_list != NULL);	/* the sink XASL always carries at least one local subquery */
+
+  for (aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
+    {
+      if (QEXEC_IS_SUBQUERY_CACHE (aptr))
+	{
+	  if (qexec_execute_subquery_for_result_cache (thread_p, aptr, xasl_state) != NO_ERROR)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      return ER_FAILED;
+	    }
+	}
+      else if (qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+    }
+
+  if (qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      return ER_FAILED;
+    }
+
+  return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state, DBLINK_DML_UPDATE);
 }
 
 /*
