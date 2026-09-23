@@ -53,15 +53,21 @@
 #define MAX_LEN_CONNECTION_URL    512
 
 /* SQL buffer size estimates for building the remote INSERT statement
- * ("INSERT INTO <table> [(cols)] VALUES (?, ...)") in dblink_dml_build_insert_sql():
- *   HDR_OVERHEAD     - fixed INSERT prefix + trailing slack/NUL
+ * ("INSERT INTO <table> [(cols)] VALUES (?, ...)", or REPLACE INTO for the REPLACE kind)
+ * in dblink_dml_build_insert_sql():
+ *   HDR_OVERHEAD     - fixed statement prefix + trailing slack/NUL; covers the longer REPLACE one
  *   PER_COLUMN       - separator/parens budget per attribute name
  *   PER_PLACEHOLDER  - budget per "?," bind placeholder
- *   VALUES_OVERHEAD  - VALUES (...) wrapper + slack */
+ *   VALUES_OVERHEAD  - VALUES (...) wrapper + slack
+ *   ODKU_OVERHEAD    - ON DUPLICATE KEY UPDATE clause head + slack
+ *   PER_ASSIGN       - separator/equals budget per assignment; the column name and the printed value
+ *                      are counted at their own lengths, since both are caller text of no fixed size */
 #define DBLINK_INSERT_SQL_HDR_OVERHEAD      64
 #define DBLINK_INSERT_SQL_PER_COLUMN        4
 #define DBLINK_INSERT_SQL_PER_PLACEHOLDER   4
 #define DBLINK_INSERT_SQL_VALUES_OVERHEAD   16
+#define DBLINK_INSERT_SQL_ODKU_OVERHEAD     32
+#define DBLINK_INSERT_SQL_PER_ASSIGN        8
 
 /* Remote savepoint taken by each remote DML sink statement, so that a statement failure rolls back only
  * that statement's remote work. Re-set per statement under the same name: the most recently established
@@ -1449,7 +1455,10 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
 }
 
 /*
- * dblink_dml_build_insert_sql () - Build "INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...)".
+ * dblink_dml_build_insert_sql () - Build "INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...)",
+ *   optionally followed by "ON DUPLICATE KEY UPDATE c = <value>, ...". A REPLACE is the same statement
+ *   under a different prefix -- the column list, the placeholders and the values the caller binds are
+ *   what an INSERT sends -- and never carries the clause: the grammar makes the two exclusive.
  *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
  *           db_private_free), error code on failure.
  *   thread_p(in)   : thread entry
@@ -1457,32 +1466,78 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  *   attr_names(in) : explicit column names (NULL for positional INSERT)
  *   num_attrs(in)  : length of attr_names (0 when positional)
  *   num_bind(in)   : number of ? placeholders (= SELECT column count)
+ *   do_replace(in) : true to head the statement with REPLACE INTO instead of INSERT INTO
+ *   odku(in)       : ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means no clause
  *   sql_out(out)   : set to the built SQL text on success
  */
 static int
 dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, char **attr_names, int num_attrs,
-			     int num_bind, char **sql_out)
+			     int num_bind, bool do_replace, const DBLINK_ODKU_ASSIGNS * odku, char **sql_out)
 {
   int i, remaining;
   char *sql = NULL;
   size_t sql_len, table_name_len;
   int *attr_name_lens = NULL;
   char *p;
+  const char *errctx = do_replace ? "remote REPLACE SELECT" : "remote INSERT SELECT";
+  char errmsg[128];
+  int num_odku = (odku != NULL) ? odku->num_assigns : 0;
 
   *sql_out = NULL;
 
   /* guard: must have at least one column to insert */
   if (num_bind <= 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: no columns to insert");
+      snprintf (errmsg, sizeof (errmsg), "%s: no columns to insert", errctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
       return ER_DBLINK;
     }
 
   /* guard: attr_names must be valid if num_attrs > 0 */
   if (num_attrs > 0 && attr_names == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: attr_names is NULL");
+      snprintf (errmsg, sizeof (errmsg), "%s: attr_names is NULL", errctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
       return ER_DBLINK;
+    }
+
+  /* guard: a negative count would drop the clause and send a plain INSERT instead of failing */
+  if (odku != NULL && odku->num_assigns < 0)
+    {
+      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment count is negative", errctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return ER_DBLINK;
+    }
+
+  /* guard: the grammar admits either REPLACE or the clause, never both -- carrying both means the
+   * plan was built wrong */
+  if (do_replace && num_odku > 0)
+    {
+      snprintf (errmsg, sizeof (errmsg), "%s: REPLACE cannot carry odku assignments", errctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return ER_DBLINK;
+    }
+
+  /* guard: this path can only carry text, so a slot with nothing to print would go out as " = 'x'"
+   * or "c = " -- a different statement, not an error */
+  if (num_odku > 0)
+    {
+      if (odku->cols == NULL || odku->exprs == NULL)
+	{
+	  snprintf (errmsg, sizeof (errmsg), "%s: odku assignment array is NULL", errctx);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+	  return ER_DBLINK;
+	}
+      for (i = 0; i < num_odku; i++)
+	{
+	  if (odku->cols[i] == NULL || odku->cols[i][0] == '\0' || odku->exprs[i] == NULL
+	      || odku->exprs[i][0] == '\0')
+	    {
+	      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment %d is NULL or empty", errctx, i);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+	      return ER_DBLINK;
+	    }
+	}
     }
 
   table_name_len = strlen (table_name);
@@ -1502,6 +1557,14 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	}
     }
   sql_len += (size_t) num_bind *DBLINK_INSERT_SQL_PER_PLACEHOLDER + DBLINK_INSERT_SQL_VALUES_OVERHEAD;
+  if (num_odku > 0)
+    {
+      sql_len += DBLINK_INSERT_SQL_ODKU_OVERHEAD;
+      for (i = 0; i < num_odku; i++)
+	{
+	  sql_len += strlen (odku->cols[i]) + strlen (odku->exprs[i]) + DBLINK_INSERT_SQL_PER_ASSIGN;
+	}
+    }
 
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
@@ -1518,11 +1581,11 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
   remaining = (int) sql_len;
 
   /* Bounds-checked buffer append: memcpy for known-length strings, direct byte-store for single
-   * chars. Every length here is already known (literal sizeof, table_name_len, or
-   * attr_name_lens[] computed above). Each write is checked against `remaining` before copying,
-   * so a length mismatch (never expected: sql_len is an over-allocated upper bound; see
-   * DBLINK_INSERT_SQL_* estimates) fails safely via sql_build_error instead of overrunning the
-   * buffer. */
+   * chars. Every length here is already known (literal sizeof, table_name_len, attr_name_lens[]
+   * computed above, or a strlen of the caller's assignment text). Each write is checked against
+   * `remaining` before copying, so a length mismatch (never expected: sql_len is an over-allocated
+   * upper bound; see DBLINK_INSERT_SQL_* estimates) fails safely via sql_build_error instead of
+   * overrunning the buffer. */
 // *INDENT-OFF*
 #define DBLINK_INSERT_SQL_APPEND_N(src, len) \
   do \
@@ -1551,7 +1614,19 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
   while (0)
 // *INDENT-ON*
 
-  DBLINK_INSERT_SQL_APPEND_LIT ("/* DBLINK INSERT */ INSERT INTO ");
+  /* The leading comment is not a label: a CUBRID gateway reads the word after DBLINK and maps it to a
+   * statement type (get_stmt_type ()), refusing the statement when the word is not one it knows. That
+   * vocabulary has no REPLACE -- CUBRID parses a REPLACE into the same node an INSERT gets -- so both
+   * kinds carry INSERT here and the statement itself says which one it is. */
+  DBLINK_INSERT_SQL_APPEND_LIT ("/* DBLINK INSERT */ ");
+  if (do_replace)
+    {
+      DBLINK_INSERT_SQL_APPEND_LIT ("REPLACE INTO ");
+    }
+  else
+    {
+      DBLINK_INSERT_SQL_APPEND_LIT ("INSERT INTO ");
+    }
   DBLINK_INSERT_SQL_APPEND_N (table_name, table_name_len);
 
   if (num_attrs > 0)
@@ -1581,6 +1656,22 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
     }
   DBLINK_INSERT_SQL_APPEND_CHAR (')');
 
+  /* Text, not binds: the values are constants, so no per-row value exists for a placeholder to carry */
+  if (num_odku > 0)
+    {
+      DBLINK_INSERT_SQL_APPEND_LIT (" ON DUPLICATE KEY UPDATE ");
+      for (i = 0; i < num_odku; i++)
+	{
+	  DBLINK_INSERT_SQL_APPEND_N (odku->cols[i], strlen (odku->cols[i]));
+	  DBLINK_INSERT_SQL_APPEND_LIT (" = ");
+	  DBLINK_INSERT_SQL_APPEND_N (odku->exprs[i], strlen (odku->exprs[i]));
+	  if (i < num_odku - 1)
+	    {
+	      DBLINK_INSERT_SQL_APPEND_LIT (", ");
+	    }
+	}
+    }
+
   if (remaining <= 0)
     {
       goto sql_build_error;
@@ -1595,7 +1686,8 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
   return NO_ERROR;
 
 sql_build_error:
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: SQL assembly truncated");
+  snprintf (errmsg, sizeof (errmsg), "%s: SQL assembly truncated", errctx);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
   if (attr_name_lens != NULL)
     {
       db_private_free_and_init (thread_p, attr_name_lens);
@@ -1660,20 +1752,22 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 }
 
 /*
- * dblink_dml_open () - Connect to remote server and prepare the INSERT or DELETE statement for the
- *   DBLink remote push-sink (INSERT SELECT ... FROM local, DELETE + local subquery).
+ * dblink_dml_open () - Connect to remote server and prepare the statement the DBLink remote push-sink
+ *   sends (INSERT or REPLACE ... SELECT ... FROM local, DELETE + local subquery).
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)    : thread entry
- *   kind(in)        : DBLINK_DML_INSERT or DBLINK_DML_DELETE
+ *   kind(in)        : DBLINK_DML_INSERT, DBLINK_DML_REPLACE or DBLINK_DML_DELETE
  *   url(in)         : CCI connection URL
  *   user(in)        : remote user name
  *   pwd(in)         : remote password
  *   table_name(in)  : remote table name
- *   attr_names(in)  : INSERT only -- explicit column names (NULL for positional INSERT)
- *   num_attrs(in)   : INSERT only -- length of attr_names (0 when positional)
- *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
+ *   attr_names(in)  : INSERT and REPLACE only -- explicit column names (NULL for positional INSERT)
+ *   num_attrs(in)   : INSERT and REPLACE only -- length of attr_names (0 when positional)
+ *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders (= SELECT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
+ *   odku(in)        : INSERT only -- ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means
+ *                     no clause. REPLACE is refused when it carries any
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:
@@ -1701,7 +1795,7 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user, const char *pwd,
 		 const char *table_name, char **attr_names, int num_attrs, int num_bind, const char *key_col,
-		 const char *op, DBLINK_DML_STATE * state)
+		 const char *op, const DBLINK_ODKU_ASSIGNS * odku, DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
@@ -1731,6 +1825,9 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
     case DBLINK_DML_INSERT:
       errctx = "remote INSERT SELECT";
       break;
+    case DBLINK_DML_REPLACE:
+      errctx = "remote REPLACE SELECT";
+      break;
     case DBLINK_DML_DELETE:
       errctx = "remote DELETE";
       break;
@@ -1752,7 +1849,9 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
   switch (kind)
     {
     case DBLINK_DML_INSERT:
-      ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind, &sql);
+    case DBLINK_DML_REPLACE:
+      ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind,
+					 kind == DBLINK_DML_REPLACE, odku, &sql);
       break;
     case DBLINK_DML_DELETE:
       ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, &sql);
@@ -1796,15 +1895,14 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
 }
 
 /*
- * dblink_dml_execute_row () - Bind values and execute one remote INSERT or DELETE row.
+ * dblink_dml_execute_row () - Bind values and execute one remote INSERT, REPLACE or DELETE row.
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)      : thread entry
  *   state(in)         : open DML sink state (conn_handle, stmt_handle)
  *   vals(in)          : array of DB_VALUE* (one per SELECT output column)
  *   num_vals(in)      : length of vals
  *   affected_rows(out): remote-reported affected row count for this execute (cci_execute's return
- *                        value); NULL if the caller does not need it (e.g. a positional INSERT row
- *                        always affects exactly one row, so the INSERT SELECT caller ignores this).
+ *                        value); NULL when the caller does not use the count.
  *
  * Remote transaction behavior (distinct from local session AUTOCOMMIT and DBLINK_AUTO_COMMIT):
  *   dblink_dml_open always sets CCI_AUTOCOMMIT_FALSE on the remote connection.
@@ -1839,7 +1937,6 @@ dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VA
 	}
     }
 
-  /* execute INSERT/DELETE */
   result = cci_execute (state->stmt_handle, 0, 0, &err_buf);
   if (result < 0)
     {
