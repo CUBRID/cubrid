@@ -47,6 +47,7 @@ namespace lockfree
   {
     class system;
     class descriptor;
+    class reclaimable_owner;
   }
 }
 
@@ -57,16 +58,26 @@ namespace lockfree
     class table
     {
       public:
-	table (system &sys);
+	table (system &sys, reclaimable_owner &owner);
 	~table ();
 
 	descriptor &get_descriptor (const index &tran_index);
+
+	// The freelist that owns every node retired into this table's descriptors. Taken at construction and
+	// never changed: a table with no owner has no way to reclaim, and a table whose owner changes hands
+	// nodes of one freelist to another, which then serves them as its own entries.
+	reclaimable_owner &get_reclaimable_owner () const;
 
 	void start_tran (const index &tran_index);
 	void end_tran (const index &tran_index);
 
 	id get_current_global_tranid () const;
 	id get_new_global_tranid ();
+	// Only from a caller that has already published the id it was given. The scan counts a descriptor idle
+	// until its id is stored, so refreshing first can compute INVALID_TRANID - "nothing active" - while the
+	// refreshing thread is about to be, and every later reclaim pass reads that cached value as
+	// "everything is reclaimable".
+	void refresh_min_active_tranid_if_due (id assigned_tranid);
 	id get_min_active_tranid () const;
 	/* Recompute the cached minimum and return it. get_min_active_tranid () alone is only refreshed once
 	 * every MATI_REFRESH_INTERVAL global ids, so a caller that would act on the value has to ask for a
@@ -87,6 +98,7 @@ namespace lockfree
 	descriptor *m_all;
 	std::atomic<id> m_global_tranid;      /* global delete ID for all delete operations */
 	std::atomic<id> m_min_active_tranid;  /* minimum curr_delete_id of all used LF_DTRAN_ENTRY entries */
+	reclaimable_owner &m_owner;           /* who reclaims the nodes retired here */
     };
   } // namespace tran
 } // namespace lockfree
