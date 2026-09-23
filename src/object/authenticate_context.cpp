@@ -40,6 +40,20 @@
 // static functions
 static int au_add_method_check_authorization (void);
 
+/*
+ * the order matters: init_dba_user () makes DBA the current user that creates the others,
+ * and au_add_user () puts every user created after PUBLIC into PUBLIC
+ */
+const authenticate_context::system_user authenticate_context::system_users[] =
+{
+  {AU_DBA_USER_NAME, &authenticate_context::dba_user, true, &authenticate_context::init_dba_user},
+  {AU_PUBLIC_USER_NAME, &authenticate_context::public_user, true, &authenticate_context::init_public_user},
+  {
+    AU_INFORMATION_SCHEMA_USER_NAME, &authenticate_context::information_schema_user, false,
+    &authenticate_context::init_information_schema_user
+  },
+};
+
 void
 authenticate_context::reset (void)
 {
@@ -49,9 +63,10 @@ authenticate_context::reset (void)
   user_class = nullptr;
   password_class = nullptr;
   current_user = nullptr;
-  public_user = nullptr;
-  dba_user = nullptr;
-  information_schema_user = nullptr;
+  for (const system_user &sys : system_users)
+    {
+      this->*sys.user = nullptr;
+    }
   disable_auth_check = true;
   ignore_passwords = false;
 }
@@ -170,19 +185,8 @@ authenticate_context::start (void)
       root = mops->op;
       db_objlist_free (mops);
 
-      public_user = au_find_user (AU_PUBLIC_USER_NAME);
-      dba_user = au_find_user (AU_DBA_USER_NAME);
-      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
-	{
-	  error = er_errid ();
-	  if (error != ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      error = ER_AU_INCOMPLETE_AUTH;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	}
-      else
+      error = find_system_users ();
+      if (error == NO_ERROR)
 	{
 	  /*
 	   * If you try to start the authorization system and
@@ -288,8 +292,7 @@ authenticate_context::install (void)
 {
   MOP root_cls = NULL, user_cls = NULL, pass_cls = NULL, auth_cls = NULL;
   SM_TEMPLATE *def;
-  AU_USER_CACHE *user_cache;
-  int exists, save, index;
+  int save;
 
   AU_SAVE_AND_DISABLE (save);
 
@@ -454,46 +457,7 @@ authenticate_context::install (void)
       goto exit_on_error;
     }
 
-  /* create the DBA user and assign ownership of the system classes */
-  dba_user = au_add_user (AU_DBA_USER_NAME, &exists);
-  if (dba_user == NULL)
-    {
-      goto exit_on_error;
-    }
-
-  /* establish the DBA as the current user */
-  user_cache = caches.find_user_cache_by_mop (dba_user);
-  if (user_cache == NULL)
-    {
-      user_cache = caches.make_user_cache (AU_DBA_USER_NAME, dba_user, false);
-    }
-
-  if (caches.get_user_cache_index (user_cache, &index) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  current_user = dba_user;
-  Au_cache.set_cache_index (index);
-
-  set_user (dba_user);
-
-  au_change_class_owner_including_partitions (root_cls, current_user);
-  au_change_class_owner_including_partitions (user_cls, current_user);
-  au_change_class_owner_including_partitions (pass_cls, current_user);
-  au_change_class_owner_including_partitions (auth_cls, current_user);
-
-  if (create_public_user (root_cls) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  if (create_information_schema_user (root_cls, user_cls, auth_cls) != NO_ERROR)
-    {
-      goto exit_on_error;
-    }
-
-  if (set_system_users_as_created () != NO_ERROR)
+  if (create_system_users (root_cls, user_cls, pass_cls, auth_cls) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -505,20 +469,9 @@ authenticate_context::install (void)
   return NO_ERROR;
 
 exit_on_error:
-  if (public_user != NULL)
+  for (const system_user &sys : system_users)
     {
-      au_drop_user (public_user);
-      public_user = NULL;
-    }
-  if (dba_user != NULL)
-    {
-      au_drop_user (dba_user);
-      dba_user = NULL;
-    }
-  if (information_schema_user != NULL)
-    {
-      au_drop_user (information_schema_user);
-      information_schema_user = NULL;
+      this->*sys.user = NULL;
     }
   if (root != NULL)
     {
@@ -577,18 +530,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
     }
   else
     {
-      public_user = au_find_user (AU_PUBLIC_USER_NAME);
-      dba_user = au_find_user (AU_DBA_USER_NAME);
-      information_schema_user = au_find_user (AU_INFORMATION_SCHEMA_USER_NAME);
-      if (public_user == NULL || dba_user == NULL || information_schema_user == NULL)
-	{
-	  error = er_errid ();
-	  if (error != ER_LK_UNILATERALLY_ABORTED)
-	    {
-	      error = ER_AU_INCOMPLETE_AUTH;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	    }
-	}
+      error = find_system_users ();
       user = au_find_user (dbuser);
       if (user == NULL)
 	{
@@ -956,63 +898,36 @@ authenticate_context::pop_user (void)
 }
 
 int
-authenticate_context::create_public_user (MOP root_cls)
-{
-  int exists = 0;
-
-  public_user = au_add_user (AU_PUBLIC_USER_NAME, &exists);
-  assert (exists == 0);
-  if (public_user == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /*
-   * grant browser access to the authorization objects
-   * note that the password class cannot be read by anyone except the DBA
-   */
-  au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
-
-  return NO_ERROR;
-}
-
-int
-authenticate_context::create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls)
-{
-  int exists = 0;
-
-  information_schema_user = au_add_user (AU_INFORMATION_SCHEMA_USER_NAME, &exists);
-  assert (exists == 0);
-  if (information_schema_user == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /*
-   * grant browser access to the authorization objects
-   * note that the password class cannot be read by anyone except the DBA
-   */
-  au_grant (DB_OBJECT_CLASS, information_schema_user, root_cls, AU_SELECT, false);
-  au_grant (DB_OBJECT_CLASS, information_schema_user, user_cls, AU_SELECT, false);
-  au_grant (DB_OBJECT_CLASS, information_schema_user, auth_cls, AU_SELECT, false);
-
-  if (set_loginable (information_schema_user, false) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-int
-authenticate_context::set_system_users_as_created (void)
+authenticate_context::create_system_users (MOP root_cls, MOP user_cls, MOP pass_cls, MOP auth_cls)
 {
   DB_VALUE value;
-  int error = NO_ERROR;
+  int error;
 
   db_make_int (&value, true);
-  for (MOP user : get_system_users ())
+
+  for (const system_user &sys : system_users)
     {
+      MOP &user = this->*sys.user;
+      int exists = 0;
+
+      user = au_add_user (sys.name, &exists);
+      assert (exists == 0);
+      if (user == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      error = (this->*sys.init) (root_cls, user_cls, pass_cls, auth_cls);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (!sys.is_loginable && set_loginable (user, false) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
       error = obj_set (user, AU_USER_ATTR_IS_SYSTEM_CREATED, &value);
       if (error != NO_ERROR)
 	{
@@ -1023,6 +938,100 @@ authenticate_context::set_system_users_as_created (void)
   return NO_ERROR;
 }
 
+int
+authenticate_context::init_dba_user (MOP root_cls, MOP user_cls, MOP pass_cls, MOP auth_cls)
+{
+  AU_USER_CACHE *user_cache;
+  int index;
+
+  /* establish the DBA as the current user */
+  user_cache = caches.find_user_cache_by_mop (dba_user);
+  if (user_cache == NULL)
+    {
+      user_cache = caches.make_user_cache (AU_DBA_USER_NAME, dba_user, false);
+    }
+
+  if (caches.get_user_cache_index (user_cache, &index) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  current_user = dba_user;
+  Au_cache.set_cache_index (index);
+
+  set_user (dba_user);
+
+  au_change_class_owner_including_partitions (root_cls, current_user);
+  au_change_class_owner_including_partitions (user_cls, current_user);
+  au_change_class_owner_including_partitions (pass_cls, current_user);
+  au_change_class_owner_including_partitions (auth_cls, current_user);
+
+  return NO_ERROR;
+}
+
+int
+authenticate_context::init_public_user (MOP root_cls, MOP, MOP, MOP)
+{
+  /*
+   * grant browser access to the authorization objects
+   * note that the password class cannot be read by anyone except the DBA
+   */
+  au_grant (DB_OBJECT_CLASS, public_user, root_cls, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false);
+
+  return NO_ERROR;
+}
+
+int
+authenticate_context::init_information_schema_user (MOP root_cls, MOP user_cls, MOP, MOP auth_cls)
+{
+  /*
+   * grant browser access to the authorization objects
+   * note that the password class cannot be read by anyone except the DBA
+   */
+  au_grant (DB_OBJECT_CLASS, information_schema_user, root_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, information_schema_user, user_cls, AU_SELECT, false);
+  au_grant (DB_OBJECT_CLASS, information_schema_user, auth_cls, AU_SELECT, false);
+
+  return NO_ERROR;
+}
+
+int
+authenticate_context::find_system_users (void)
+{
+  int error;
+
+  for (const system_user &sys : system_users)
+    {
+      this->*sys.user = au_find_user (sys.name);
+      if (this->*sys.user == NULL)
+	{
+	  error = er_errid ();
+	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      error = ER_AU_INCOMPLETE_AUTH;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+bool
+authenticate_context::is_nologin_system_user (MOP user)
+{
+  for (const system_user &sys : system_users)
+    {
+      if (!sys.is_loginable && ws_is_same_object (user, this->*sys.user))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 bool
 authenticate_context::is_system_user (MOP user)
 {
@@ -1031,9 +1040,9 @@ authenticate_context::is_system_user (MOP user)
       return false;
     }
 
-  for (MOP sys_user : get_system_users ())
+  for (const system_user &sys : system_users)
     {
-      if (ws_is_same_object (user, sys_user))
+      if (ws_is_same_object (user, this->*sys.user))
 	{
 	  return true;
 	}

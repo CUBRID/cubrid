@@ -24,7 +24,6 @@
 #ifndef _AUTHENTICATE_CONTEXT_HPP_
 #define _AUTHENTICATE_CONTEXT_HPP_
 
-#include <array>
 #include <stack>
 
 #include "porting.h"
@@ -186,6 +185,7 @@ class EXPORT_IMPORT authenticate_context
     int check_user (void);
     bool has_user_name (void);
     bool is_system_user (MOP user);
+    bool is_nologin_system_user (MOP user);
 
     // execution rights
     int push_user (MOP user);
@@ -205,15 +205,22 @@ class EXPORT_IMPORT authenticate_context
 
     void reset (void);
 
-    int create_public_user (MOP root_cls);
-    int create_information_schema_user (MOP root_cls, MOP user_cls, MOP auth_cls);
-
-    int set_system_users_as_created (void);
-
-    auto get_system_users (void) const
+    struct system_user
     {
-      return std::array { dba_user, public_user, information_schema_user };
-    }
+      const char *name;
+      MOP authenticate_context::*user;
+      bool is_loginable;
+      int (authenticate_context::*init) (MOP root_cls, MOP user_cls, MOP pass_cls, MOP auth_cls);
+    };
+
+    static const system_user system_users[];
+
+    int create_system_users (MOP root_cls, MOP user_cls, MOP pass_cls, MOP auth_cls);
+    int init_dba_user (MOP root_cls, MOP user_cls, MOP pass_cls, MOP auth_cls);
+    int init_public_user (MOP root_cls, MOP user_cls, MOP pass_cls, MOP auth_cls);
+    int init_information_schema_user (MOP root_cls, MOP user_cls, MOP pass_cls, MOP auth_cls);
+
+    int find_system_users (void);
 };
 
 #endif // _AUTHENTICATE_CONTEXT_HPP_
