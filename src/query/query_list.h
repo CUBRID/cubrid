@@ -658,8 +658,12 @@ enum
   EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
   TRAN_AUTO_COMMIT = 0x1 << 16,
   LIKE_RECOMPILE_CANDIDATE = 0x1 << 17,
-  HV_PRED_PLAN_UNPEEKED = 0x1 << 18	/* plan built with unbound host-var predicate markers; the
+  HV_PRED_PLAN_UNPEEKED = 0x1 << 18,	/* plan built with unbound host-var predicate markers; the
 					 * first execution replans under the actual bind values */
+  BIND_WATCH_CANDIDATE = 0x1 << 19	/* the statement passed bind-value watch target selection
+					 * (joined nodes, a skewed host-var predicate, cost above the
+					 * threshold), so its first executions compare the node
+					 * cardinalities the bound values imply against the plan's */
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
