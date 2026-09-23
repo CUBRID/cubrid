@@ -91,7 +91,8 @@ typedef enum
   MSGCAT_UTIL_SET_TDE = 57,
   MSGCAT_UTIL_SET_FLASHBACK = 58,
   MSGCAT_UTIL_SET_MEMMON = 59,
-  MSGCAT_UTIL_SET_CLEANFILEDB = 60
+  MSGCAT_UTIL_SET_CLEANFILEDB = 60,
+  MSGCAT_UTIL_SET_UPGRADEDB = 61
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -133,7 +134,8 @@ typedef enum
   MSGCAT_UTIL_GENERIC_CLASSNAME_INVALID_FORMAT = 47,
   MSGCAT_UTIL_GENERIC_INVALID_HOSTNAME = 48,
   MSGCAT_UTIL_GENERIC_EMPTY_HOSTS_CONF = 49,
-  MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND = 50
+  MSGCAT_UTIL_GENERIC_FILE_NOT_FOUND = 50,
+  MSGCAT_UTIL_GENERIC_CLASS_IS_VCLASS = 51
 } MSGCAT_UTIL_GENERIC_MSG;
 
 /* Message id in the set MSGCAT_UTIL_SET_DELETEDB */
@@ -772,6 +774,22 @@ typedef enum
   CLEANFILEDB_MSG_USAGE = 60
 } MSGCAT_CLEANFILEDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_UPGRADEDB */
+typedef enum
+{
+  UPGRADEDB_MSG_NOT_UPGRADABLE = 1,
+  UPGRADEDB_MSG_DOWNGRADE_NOT_SUPPORTED = 2,
+  UPGRADEDB_MSG_PROMPT_CONTINUE = 3,
+  UPGRADEDB_MSG_MUTUALLY_EXCLUSIVE_OPTIONS = 4,
+  UPGRADEDB_MSG_DECODE_FAILED = 5,
+  UPGRADEDB_MSG_VALIDATION_FAILED = 6,
+  UPGRADEDB_MSG_SCRIPT_READ_FAILED = 7,
+  UPGRADEDB_MSG_NO_SCRIPT_LISTED = 8,
+  UPGRADEDB_MSG_CHECK_UP_TO_DATE = 9,
+  UPGRADEDB_MSG_CHECK_NEED_UPGRADE = 10,
+  UPGRADEDB_MSG_USAGE = 60
+} MSGCAT_UPGRADEDB_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -821,6 +839,7 @@ typedef enum
   TDE,
   FLASHBACK,
   MEMMON,
+  UPGRADEDB,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -1017,6 +1036,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_ESTIMATE_INDEX              "estimate_index"
 #define UTIL_OPTION_LOADDB                      "loaddb"
 #define UTIL_OPTION_UNLOADDB                    "unloaddb"
+#define UTIL_OPTION_UPGRADEDB                   "upgradedb"
 #define UTIL_OPTION_COMPACTDB                   "compactdb"
 #define UTIL_OPTION_PARAMDUMP                   "paramdump"
 #define UTIL_OPTION_STATDUMP                    "statdump"
@@ -1450,8 +1470,6 @@ typedef struct _ha_config
 #define UNLOAD_ENHANCED_ESTIMATES_S             11927
 #define UNLOAD_ENHANCED_ESTIMATES_L             "enhanced-estimates"
 
-
-
 /* compactdb option list */
 #define COMPACT_VERBOSE_S                       'v'
 #define COMPACT_VERBOSE_L                       "verbose"
@@ -1523,8 +1541,7 @@ typedef struct _ha_config
 #define CSQL_QUERY_COLUMN_ENCLOSURE_L		"enclosure"
 #define CSQL_LOADDB_OUTPUT_S			'd'
 #define CSQL_LOADDB_OUTPUT_L			"loaddb-output"
-#define CSQL_SYSADM_REBUILD_CATALOG_S           12020
-#define CSQL_SYSADM_REBUILD_CATALOG_L           "sysadm-rebuild-catalog"
+/* 12020: CSQL_SYSADM_REBUILD_CATALOG_S (obsolete) */
 #define CSQL_NOPRINT_TITLE_S			12021
 #define CSQL_NOPRINT_TITLE_L			"skip-title"
 
@@ -1795,6 +1812,19 @@ typedef struct _ha_config
 #define MEMMON_DISABLE_FORCE_S      14103
 #define MEMMON_DISABLE_FORCE_L      "disable-force"
 
+/* upgradedb option list */
+#define UPGRADE_CHECK_S                         14200
+#define UPGRADE_CHECK_L                         "check"
+#define UPGRADE_FORCE_S                         'f'
+#define UPGRADE_FORCE_L                         "force"
+#define UPGRADE_VERBOSE_S                       'v'
+#define UPGRADE_VERBOSE_L                       "verbose"
+#if !defined(NDEBUG)
+/* long-only option: _S is not a short flag but the getopt val/arg_map key; > 255 so no short form is generated */
+#define UPGRADE_APPLY_SCRIPT_LIST_S             14201
+#define UPGRADE_APPLY_SCRIPT_LIST_L             "apply-script-list"
+#endif
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1833,6 +1863,7 @@ extern "C"
   extern INT64 utility_get_option_bigint_value (UTIL_ARG_MAP * arg_map, int arg_ch);
   extern int utility_get_option_string_table_size (UTIL_ARG_MAP * arg_map);
   extern int utility_check_class_name (const char *class_name);
+  extern int utility_check_class_is_vclass (const char *class_name);
 
   extern FILE *fopen_ex (const char *filename, const char *type);
 
@@ -1883,6 +1914,7 @@ extern "C"
 #endif
   extern int loaddb_user (UTIL_FUNCTION_ARG * arg_map);
   extern int unloaddb (UTIL_FUNCTION_ARG * arg_map);
+  extern int upgradedb (UTIL_FUNCTION_ARG * arg_map);
   extern int backupdb (UTIL_FUNCTION_ARG * arg_map);
   extern int addvoldb (UTIL_FUNCTION_ARG * arg_map);
 #if 0

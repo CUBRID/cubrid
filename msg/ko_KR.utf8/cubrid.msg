@@ -1486,9 +1486,11 @@ $ LOADDB
 
 1380 PARALLEL_ENABLE로 선언된 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
 
-1381 HA repl info: 시리얼 "%1$s"의 복제된 _db_serial 이미지를 이 active 노드에 적용하지 않고 이 노드의 행을 유지합니다: current_val %2$s, 이미지 %3$s.
+1381 시스템 메타데이터가 현재 CUBRID 버전과 호환되지 않습니다. 'cubrid upgradedb'를 실행하세요.
+1382 시스템 메타데이터 버전이 현재 CUBRID 버전이 지원하는 것보다 최신입니다. 다운그레이드는 지원되지 않습니다.
+1383 HA repl info: 시리얼 "%1$s"의 복제된 _db_serial 이미지를 이 active 노드에 적용하지 않고 이 노드의 행을 유지합니다: current_val %2$s, 이미지 %3$s.
 
-1382 마지막 에러
+1384 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
