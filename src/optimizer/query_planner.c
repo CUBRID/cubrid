@@ -8384,12 +8384,18 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     {
 
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
+      double fk_floor_product;
       BITSET eqclasses;
+      BITSET fk_excluded_terms;
+      BITSET fk_col_terms;
 
       bitset_init (&eqclasses, planner->env);
+      bitset_init (&fk_excluded_terms, planner->env);
+      bitset_init (&fk_col_terms, planner->env);
 
 
       selectivity = 1.0;	/* init */
+      fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
 
       cardinality = head_info->cardinality * tail_info->cardinality;
       total_rows = head_info->total_rows * tail_info->total_rows;
@@ -8411,6 +8417,124 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       if (cardinality != 0)
 	{			/* not empty */
 	  cardinality = MAX (1.0, cardinality);
+
+	  /* Identify composite PK-FK relationships that this step connects for the first time (fk_node
+	   * and pk_node were not already both in head_info or both in tail_info), and find which sarged
+	   * terms currently stand for each of their key columns' equivalence classes. qo_check_skip_term()
+	   * may judge the literal fk_node-pk_node edge for a column redundant and leave an eqclass-
+	   * equivalent term on some other node pair standing in for it (e.g. supplier-lineitem instead of
+	   * partsupp-lineitem); matching by eqclass rather than a fixed term set finds it either way. A
+	   * relationship is applied only when every one of its columns has a standing term in this step's
+	   * sarged_terms - otherwise it is left to the ordinary per-term product below, never worse than
+	   * the pre-fix independent-product estimate. */
+	  if (planner->env->n_fk_join_info > 0)
+	    {
+	      int ei;
+
+	      for (ei = 0; ei < planner->env->n_fk_join_info; ei++)
+		{
+		  QO_FK_JOIN_INFO *fkinfo = &planner->env->fk_join_info[ei];
+		  bool fk_in_head, pk_in_head, fk_in_tail, pk_in_tail, all_cols_found;
+		  int col;
+
+		  fk_in_head = BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (fkinfo->fk_node));
+		  pk_in_head = BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (fkinfo->pk_node));
+		  fk_in_tail = BITSET_MEMBER (tail_info->nodes, QO_NODE_IDX (fkinfo->fk_node));
+		  pk_in_tail = BITSET_MEMBER (tail_info->nodes, QO_NODE_IDX (fkinfo->pk_node));
+
+		  if ((fk_in_head && pk_in_head) || (fk_in_tail && pk_in_tail))
+		    {
+		      continue;	/* already connected before this step */
+		    }
+		  if (!((fk_in_head || fk_in_tail) && (pk_in_head || pk_in_tail)))
+		    {
+		      continue;	/* fk_node, pk_node not both present after this step either */
+		    }
+
+		  BITSET_CLEAR (fk_col_terms);
+		  all_cols_found = true;
+
+		  for (col = 0; col < fkinfo->n_cols; col++)
+		    {
+		      bool found = false;
+
+		      for (i = bitset_iterate (&sarged_terms, &bi); i != -1; i = bitset_next_member (&bi))
+			{
+			  term = &planner->term[i];
+
+			  /*
+			   * Do not reuse terms already claimed by another FK entry in this join step.
+			   */
+			  if (BITSET_MEMBER (fk_excluded_terms, i))
+			    {
+			      continue;
+			    }
+
+			  if (QO_TERM_CLASS (term) != QO_TC_JOIN
+			      || QO_TERM_EQCLASS (term) != fkinfo->col_eqclasses[col])
+			    {
+			      continue;
+			    }
+
+			  if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (fkinfo->fk_node)))
+			    {
+			      /* The term touches fk_node itself, so require it to be built on this
+			       * constraint's own column, not just any column that happens to share the
+			       * (possibly merged) equivalence class - two different FK constraints on
+			       * fk_node referencing the same parent PK can have their columns merged into
+			       * one eqclass by qo_assign_eq_classes(), and each constraint's terms must
+			       * stay attributed to its own QO_FK_JOIN_INFO entry.
+			       *
+			       * This relies on qo_discover_indexes() retaining FK-column segments in
+			       * index_seg[], since FK columns have indexes and are not filtered out.
+			       * If that behavior changes, this lookup may silently fail and the FK join
+			       * selectivity floor will not be applied. */
+			      if (QO_TERM_INDEX_SEG (term, 0) != fkinfo->fk_col_segs[col]
+				  && QO_TERM_INDEX_SEG (term, 1) != fkinfo->fk_col_segs[col])
+				{
+				  continue;
+				}
+			    }
+			  else if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (fkinfo->pk_node)))
+			    {
+			      continue;
+			    }
+			  /* else: the term touches only pk_node, not fk_node - e.g. if part+lineitem are
+			   * already head and partsupp is the new tail, the term connecting the partkey
+			   * eqclass into the group is part-partsupp, not lineitem-partsupp, so it never
+			   * touches fk_node at all. Exact-segment identity isn't meaningful here, so eqclass
+			   * membership alone is accepted. */
+
+			  bitset_add (&fk_col_terms, i);
+			  found = true;
+			}
+
+		      /* a column whose eqclass carries a constant (fk.a = 5 AND pk.a = 5) has no join term at all,
+		       * so it is never found here and the floor is skipped for this constraint -- conservative
+		       * (falls back to the per-term product). PostgreSQL counts such columns (nconst_ec) and
+		       * keeps applying the floor; left as a follow-up. */
+		      if (!found)
+			{
+			  all_cols_found = false;
+			  break;
+			}
+		    }
+
+		  if (all_cols_found)
+		    {
+		      /* A later FK entry's terms may already be claimed by an earlier entry at
+		       * this same step (see the fk_excluded_terms check above); which entry claims
+		       * first depends on FK registration order (node index order). Entries
+		       * referencing the same parent all use the same floor_selectivity
+		       * (1 / parent cardinality), so it does not matter which one applies it.
+		       * Relationships among child nodes already joined in the head are represented
+		       * by their implied join terms. */
+		      bitset_union (&fk_excluded_terms, &fk_col_terms);
+		      fk_floor_product *= fkinfo->floor_selectivity;
+		    }
+		}
+	    }
+
 	  for (i = bitset_iterate (&sarged_terms, &bi); i != -1; i = bitset_next_member (&bi))
 	    {
 	      term = &planner->term[i];
@@ -8433,8 +8557,16 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		    {
 		      double head_factor, tail_factor;
 
-		      selectivity *= QO_TERM_SELECTIVITY (term);
-		      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+		      if (!BITSET_MEMBER (fk_excluded_terms, i))
+			{
+			  /* Terms identified above as standing for a composite PK-FK relationship's
+			   * columns are excluded here: their independent product ignores the
+			   * correlation the constraint guarantees and underestimates the join. Their
+			   * combined effect is folded in once below as a floor instead (cf.
+			   * PostgreSQL's get_foreign_key_join_selectivity()). */
+			  selectivity *= QO_TERM_SELECTIVITY (term);
+			  selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+			}
 
 		      qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
 		      head_hit_prob *= head_factor;
@@ -8442,6 +8574,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		    }
 		}
 	    }
+
+	  if (fk_floor_product < 1.0)
+	    {
+	      selectivity *= fk_floor_product;
+	      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+	    }
+
 	  cardinality *= selectivity;
 	  cardinality = MAX (1.0, cardinality);
 	  total_rows *= selectivity;
@@ -8483,6 +8622,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);
 
       bitset_delset (&eqclasses);
+      bitset_delset (&fk_excluded_terms);
+      bitset_delset (&fk_col_terms);
     }
 
   /* STEP 5: do EXAMINE follow, join */
