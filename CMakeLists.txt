@@ -826,7 +826,20 @@ endif(WIN32)
 
 # for cmserver
 if(WITH_CCI AND WITH_CMSERVER AND UNIX AND EXISTS ${CMAKE_SOURCE_DIR}/cubridmanager/server/CMakeLists.txt)
+  # The pinned cubridmanager submodule unconditionally passes
+  # LIBOPENSSL_TARGET to add_dependencies().  A prebuilt prefix is already
+  # complete, so provide a command-free compatibility target while configuring
+  # that submodule and then restore the public third-party contract variable.
+  set(_cubrid_cmserver_libopenssl_target "${LIBOPENSSL_TARGET}")
+  if(CUBRID_3RDPARTY_MODE STREQUAL "CI_PREBUILT")
+    add_custom_target(cubrid_prebuilt_thirdparty_ready)
+    set(LIBOPENSSL_TARGET cubrid_prebuilt_thirdparty_ready)
+  endif()
   add_subdirectory(cubridmanager/server)
+  if(CUBRID_3RDPARTY_MODE STREQUAL "CI_PREBUILT")
+    set(LIBOPENSSL_TARGET "${_cubrid_cmserver_libopenssl_target}")
+  endif()
+  unset(_cubrid_cmserver_libopenssl_target)
 endif()
 # create empty directories
 install(DIRECTORY DESTINATION ${CUBRID_3RDPARYDIR})
