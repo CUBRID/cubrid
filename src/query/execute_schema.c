@@ -13999,11 +13999,12 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
 
 /*
  * get_att_default_from_data_default () - the DDL-time DEFAULT value of an attribute from its PT_DATA_DEFAULT
- *	node, coerced to the attribute type.  A literal is coerced as written.  A residual (STABLE or VOLATILE)
- *	is evaluated once and its result coerced, so an incompatible expression is rejected here rather than at
- *	the first INSERT; INSERTs re-evaluate the stored residual.  The value of a STABLE residual is the
- *	snapshot that rows predating the DEFAULT read back; a VOLATILE residual has no DDL-time value and leaves
- *	it NULL.  Shared by CREATE TABLE, ALTER ADD / CHANGE / MODIFY and ALTER ... SET DEFAULT.
+ *	node, coerced to the attribute type.  A literal is coerced as written.  An expression must have a type
+ *	that casts to the attribute type.  A residual (STABLE or VOLATILE) is evaluated once and its result
+ *	coerced, so an incompatible expression is rejected here rather than at the first INSERT; INSERTs
+ *	re-evaluate the stored residual.  The value of a STABLE residual is the snapshot that rows predating the
+ *	DEFAULT read back; a VOLATILE residual has no DDL-time value and leaves it NULL.  Shared by CREATE TABLE,
+ *	ALTER ADD / CHANGE / MODIFY and ALTER ... SET DEFAULT.
  *  return : NO_ERROR, if success; error code otherwise
  *  parser(in): parser context
  *  data_default(in): PT_DATA_DEFAULT node of the attribute
@@ -14022,7 +14023,9 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
   PT_NODE *def_val = NULL, *initial_def_val = NULL;
   bool has_self_ref = false;
   bool is_residual;
+  PT_TYPE_ENUM expr_type;
   const char *data_type_print;
+  const char *def_val_print;
 
   assert (data_default != NULL && data_default->node_type == PT_DATA_DEFAULT);
 
@@ -14108,6 +14111,21 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
     }
   else
     {
+      /* an expression DEFAULT is checked by its type first: its DDL-time value is a single evaluation, and a
+       * NULL result coerces to any type, which would let a DATE expression into an INT column here only to
+       * fail as DEFAULT (col) later.  The type is the one recorded before folding (a folded NULL has none);
+       * a copy of a stored DEFAULT arrives without it and is typed as it stands. */
+      expr_type = data_default->info.data_default.expr_type;
+      if (expr_type == PT_TYPE_NONE)
+	{
+	  expr_type = def_val->type_enum;
+	}
+      if (PT_HAS_DEFAULT_EXPR (data_default) && !pt_is_cast_valid (expr_type, desired_type))
+	{
+	  error = ER_IT_INCOMPATIBLE_DATATYPE;
+	  goto exit_on_coerce_error;
+	}
+
       /* try to coerce the default value into the attribute type */
       if (!is_residual)
 	{
@@ -14193,15 +14211,18 @@ exit_on_coerce_error:
       data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
     }
 
+  /* name the expression as written: what it folded to may be a bare NULL */
+  def_val_print = (PT_HAS_DEFAULT_EXPR (data_default) ? data_default->info.data_default.expr_text
+		   : pt_short_print (parser, initial_def_val));
   if (error == ER_IT_DATA_OVERFLOW)
     {
-      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-		   pt_short_print (parser, initial_def_val), data_type_print);
+      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO, def_val_print,
+		   data_type_print);
     }
   else
     {
-      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		   pt_short_print (parser, initial_def_val), data_type_print);
+      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, def_val_print,
+		   data_type_print);
     }
 
   if (initial_def_val != NULL)

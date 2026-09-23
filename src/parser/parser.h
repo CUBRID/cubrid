@@ -155,6 +155,7 @@ extern "C"
   extern PT_NODE *pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement);
 
   extern PT_NODE *pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info);
+  extern PT_NODE *pt_fold_const_node (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO * sc_info);
 
   extern PT_VOLATILITY pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node);
   extern bool pt_op_reads_statement_clock (PT_OP_TYPE op, const PT_NODE * arg1);

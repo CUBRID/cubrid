@@ -245,6 +245,7 @@ static DB_OBJECT *pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_r
 static int pt_collection_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_col, const PT_NODE * s_col);
 static int pt_assignment_class_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs);
 static PT_NODE *pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs);
+static PT_CAST_VAL pt_get_cast_validity (PT_TYPE_ENUM arg_type, PT_TYPE_ENUM cast_type);
 static int pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrds);
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
@@ -1052,6 +1053,41 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       arg_type = arg1->type_enum;
     }
 
+  cast_is_valid = pt_get_cast_validity (arg_type, cast_type);
+  if (arg_type == PT_TYPE_OBJECT && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_SHOULD_FOLD))
+    {
+      /* some functions like DECODE, CASE perform wrap with CAST, allow it */
+      cast_is_valid = PT_CAST_VALID;
+    }
+
+  switch (cast_is_valid)
+    {
+    case PT_CAST_VALID:
+      break;
+    case PT_CAST_INVALID:
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		   pt_short_print (parser, node->info.expr.arg1), pt_show_type_enum (cast_type));
+      break;
+    case PT_CAST_UNSUPPORTED:
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COERCE_UNSUPPORTED,
+		   pt_short_print (parser, node->info.expr.arg1), pt_show_type_enum (cast_type));
+      break;
+    }
+
+  return (cast_is_valid == PT_CAST_VALID) ? true : false;
+}
+
+/*
+ * pt_get_cast_validity () - the verdict of CAST (arg_type AS cast_type) from the two types alone
+ *   return: PT_CAST_VALID, PT_CAST_INVALID or PT_CAST_UNSUPPORTED
+ *   arg_type(in): type of the value being cast
+ *   cast_type(in): type it is cast to
+ */
+static PT_CAST_VAL
+pt_get_cast_validity (PT_TYPE_ENUM arg_type, PT_TYPE_ENUM cast_type)
+{
+  PT_CAST_VAL cast_is_valid = PT_CAST_VALID;
+
   switch (arg_type)
     {
     case PT_TYPE_INTEGER:
@@ -1240,11 +1276,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
     case PT_TYPE_OBJECT:
-      /* some functions like DECODE, CASE perform wrap with CAST, allow it */
-      if (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_SHOULD_FOLD))
-	{
-	  cast_is_valid = PT_CAST_UNSUPPORTED;
-	}
+      cast_is_valid = PT_CAST_UNSUPPORTED;
       break;
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
@@ -1317,21 +1349,20 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  switch (cast_is_valid)
-    {
-    case PT_CAST_VALID:
-      break;
-    case PT_CAST_INVALID:
-      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		   pt_short_print (parser, node->info.expr.arg1), pt_show_type_enum (cast_type));
-      break;
-    case PT_CAST_UNSUPPORTED:
-      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COERCE_UNSUPPORTED,
-		   pt_short_print (parser, node->info.expr.arg1), pt_show_type_enum (cast_type));
-      break;
-    }
+  return cast_is_valid;
+}
 
-  return (cast_is_valid == PT_CAST_VALID) ? true : false;
+/*
+ * pt_is_cast_valid () - whether a value of arg_type can be cast to cast_type; the same table that
+ *	validates a CAST operator
+ *   return: true if the cast is valid
+ *   arg_type(in):
+ *   cast_type(in):
+ */
+bool
+pt_is_cast_valid (PT_TYPE_ENUM arg_type, PT_TYPE_ENUM cast_type)
+{
+  return pt_get_cast_validity (arg_type, cast_type) == PT_CAST_VALID;
 }
 
 /*
@@ -4222,6 +4253,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
   char *edl_text;
   PT_NODE *unclassified_node;
   bool column_rules;
+  int held_do_not_fold;
 
   if (pt_has_error (parser))
     {
@@ -4242,6 +4274,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
       save_next = data_default->next;
       data_default->next = NULL;
       unclassified_node = NULL;
+      held_do_not_fold = -1;
 
       default_value = data_default->info.data_default.default_value;
 
@@ -4301,6 +4334,12 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 			      MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG, DB_MAX_DEFAULT_EXPR_LENGTH);
 		  goto end;
 		}
+
+	      /* the DDL checks the type of the expression against the column, and a folded NULL carries none: hold
+	       * the root back from the folding pass, record its type once typed, then fold it below (a root the
+	       * grammar already keeps from folding, a clock pseudo-column, stays so) */
+	      held_do_not_fold = default_value->flag.do_not_fold;
+	      default_value->flag.do_not_fold = 1;
 	    }
 	  else if (vol == PT_VOLATILITY_UNSET)
 	    {
@@ -4335,6 +4374,20 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  data_default = result;
 
 	  default_value = data_default->info.data_default.default_value;
+	  if (held_do_not_fold >= 0)
+	    {
+	      data_default->info.data_default.expr_type = default_value->type_enum;
+	      default_value->flag.do_not_fold = held_do_not_fold;
+	      if (held_do_not_fold == 0)
+		{
+		  default_value = pt_fold_const_node (parser, default_value, NULL);
+		  data_default->info.data_default.default_value = default_value;
+		  if (default_value == NULL || pt_has_error (parser))
+		    {
+		      goto end;
+		    }
+		}
+	    }
 	  if (expr_vol != PT_VOLATILITY_UNSET)
 	    {
 	      /* what survived folding decides: a STABLE operator over constant arguments (TO_CHAR (123)) folds to

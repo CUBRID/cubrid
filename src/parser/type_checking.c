@@ -8051,26 +8051,14 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       return node;
     }
 
-  switch (node->node_type)
+  if (node->node_type == PT_FUNCTION && node->info.function.function_type == F_BENCHMARK)
     {
-    case PT_EXPR:
-      node = pt_fold_const_expr (parser, node, arg);
-      break;
-    case PT_FUNCTION:
-      if (node->info.function.function_type == F_BENCHMARK)
-	{
-	  // restore walking; I hope this was continue_walk!
-	  *continue_walk = PT_CONTINUE_WALK;
-	}
-      else
-	{
-	  node = pt_fold_const_function (parser, node);
-	}
-      break;
-    default:
-      break;
+      // restore walking; I hope this was continue_walk!
+      *continue_walk = PT_CONTINUE_WALK;
+      return node;
     }
 
+  node = pt_fold_const_node (parser, node, sc_info);
   if (node == NULL)
     {
       PT_INTERNAL_ERROR (parser, "pt_fold_constants_post");
@@ -8078,6 +8066,28 @@ pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     }
 
   return node;
+}
+
+/*
+ * pt_fold_const_node () - fold one expression or function node whose operands are already folded: the step
+ *	of the folding pass for one node, also for a root held back from that pass with do_not_fold
+ *   return: the folded node, or the node itself where it does not fold
+ *   parser(in):
+ *   node(in):
+ *   sc_info(in): the SEMANTIC_CHK_INFO of the pass, or NULL
+ */
+PT_NODE *
+pt_fold_const_node (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO * sc_info)
+{
+  switch (node->node_type)
+    {
+    case PT_EXPR:
+      return pt_fold_const_expr (parser, node, sc_info);
+    case PT_FUNCTION:
+      return pt_fold_const_function (parser, node);
+    default:
+      return node;
+    }
 }
 
 /*

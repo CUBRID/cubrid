@@ -2133,6 +2133,8 @@ struct pt_data_default_info
   PT_VOLATILITY expr_volatility;	/* effective volatility of a DEFAULT expression on the new path:
 					 * IMMUTABLE for an Expression-Derived Literal, STABLE or VOLATILE for a
 					 * residual expression that survives folding; UNSET otherwise */
+  PT_TYPE_ENUM expr_type;	/* type of a column DEFAULT expression before folding, what the DDL checks against
+				 * the column (a folded NULL carries no type); PT_TYPE_NONE otherwise */
 };
 
 /* Info for the AUTO_INCREMENT node */
