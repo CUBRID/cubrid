@@ -120,10 +120,6 @@
  * is hard-coded. Therefore, when a general object domain is added to or
  * removed from any system class, this value MUST be reviewed.
  *
- * CBRD-27382 took it to 10 by storing a referential class in _db_index, and
- * this change takes one back off: db_histogram.class_name stopped being an
- * OBJECT column and became VARCHAR (CBRD-27043).
- *
  * If the number changes, CNT_CATCLS_OBJECTS MUST be updated accordingly.
  *
  * A QA test case has been added to verify that system classes contain exactly
