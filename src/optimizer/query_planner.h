@@ -242,7 +242,8 @@ struct qo_plan
   bool use_iscan_descending;
   bool need_final_sort;
 
-  /* Guessed result cardinality for NL join when LIMIT is present (3+ tables); used for cost and dump */
+  /* Rows this NL join is expected to emit under LIMIT: the LIMIT itself, or fewer when the outer runs out
+   * first. Used as the next join level's driving row count and for the plan dump. */
   double limit_nljoin_guessed_card;
   double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
 				   qo_iscan_cost, consumed by qo_nljoin_cost for the repeated-probe N */
@@ -474,5 +475,7 @@ extern PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group
 extern PRED_CLASS qo_classify (PT_NODE * node);
 
 extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
+
+extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
 
 #endif /* _QUERY_PLANNER_H_ */
