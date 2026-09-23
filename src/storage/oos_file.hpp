@@ -27,7 +27,7 @@
 
 struct oos_record_header
 {
-  int total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
+  INT64 total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
   int chunk_index;		/* 0-based index of this chunk in the chain */
   OID next_chunk_oid;		/* OID of next chunk, or NULL OID if this is the last */
 };
@@ -43,6 +43,8 @@ using OOS_RECDES = RECDES;
  * oos_insert only reads from it, oos_read only writes. Named alias because the
  * .c-file formatter mangles `cubbase::span<char>(...)`'s angle brackets. */
 using oos_buffer = cubbase::span<char>;
+
+typedef struct log_rcv LOG_RCV;
 
 struct oos_insert_request
 {
@@ -96,6 +98,10 @@ struct oos_hdr_stats
 };
 
 extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid, VFID &oos_vfid);
+/* Internal LOB storage reuses the OOS file layout under its own file type; the owner descriptor is required so
+ * FILE_INTERNAL_LOB stays traversable and lock-protectable exactly like FILE_OOS. */
+extern int oos_create_file_with_type (THREAD_ENTRY *thread_p, int file_type, const HFID &heap_hfid,
+				      const OID &class_oid, VFID &oos_vfid);
 #if defined (CUBRID_UNIT_TEST_ENABLED)
 /* Low-level OOS tests use a synthetic, non-null owner descriptor while exercising storage in isolation. */
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
@@ -113,6 +119,52 @@ extern int oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
 /* Inserts requests in logical order; each request receives its head OOS OID. */
 extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos_insert_request> requests);
+
+/* ---- Incremental chain writer ----------------------------------------------------------------
+ *
+ * oos_insert () needs the whole value contiguous in memory, so a value larger than memory cannot
+ * go through it.  This writer builds the SAME chunk chain incrementally: the caller supplies the
+ * chunks TAIL-FIRST (the value's last chunk first), and each chunk's header is stamped with the
+ * OID of the chunk that follows it - which is known precisely because it was written already.
+ * The final chunk inserted is the chain head (chunk_index 0) and its OID addresses the value.
+ *
+ * Each chunk is inserted and published for replication exactly like a standalone single-chunk
+ * record: no boundary markers, so the applier never reassembles the whole value in memory.
+ *
+ * The chunk count must be known up front so chunk_index can be stamped; the caller derives it
+ * from the value's total length (see oos_chain_max_chunk_payload).
+ */
+struct oos_chain_writer
+{
+  VFID oos_vfid;
+  INT64 total_data_length;	/* stamped into every chunk header */
+  int next_index;		/* chunk_index of the next chunk to insert; counts down to 0 (head) */
+  OID next_chunk_oid;		/* the already-written following chunk; NULL while writing the tail */
+};
+using OOS_CHAIN_WRITER = struct oos_chain_writer;
+
+/* Usable payload bytes in one chunk (the chain header is already excluded). */
+extern int oos_chain_max_chunk_payload (void);
+/* total_chunks: how many chunks the value will be split into (>= 1). */
+extern void oos_chain_insert_begin (const VFID &oos_vfid, INT64 total_data_length, int total_chunks,
+				    OOS_CHAIN_WRITER &writer);
+/* Inserts the next chunk (tail-first order) and returns its OID. */
+extern int oos_chain_insert_next (THREAD_ENTRY *thread_p, OOS_CHAIN_WRITER &writer, oos_buffer chunk, OID &oid);
+/* Inserts one chunk with a caller-supplied chain position.  Used where the position is dictated from
+ * outside instead of a local countdown - notably HA apply, which re-inserts a replicated chunk keeping
+ * the master's chunk_index but relinking next_chunk_oid to the slave's own preceding chunk. */
+extern int oos_chain_insert_chunk (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer chunk,
+				   INT64 total_data_length, int chunk_index, const OID &next_chunk_oid, OID &oid);
+/* Reads one chunk addressed directly by OID (the chain walk is the caller's), returning its chain
+ * header and payload.  dest may be empty to fetch only the header, which is how a chain is walked
+ * without copying payload.  Complements oos_read_open/oos_read_pull, which stream a whole chain from
+ * its head and give the caller no access to individual chunk positions. */
+extern int oos_chain_read_chunk (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest, int &payload_len,
+				 OOS_RECORD_HEADER &header);
+/* True when the next chunk to insert is the chain head (chunk_index 0). */
+extern bool oos_chain_insert_is_head_next (const OOS_CHAIN_WRITER &writer);
+/* True once every chunk has been inserted (the last returned OID is the head). */
+extern bool oos_chain_insert_done (const OOS_CHAIN_WRITER &writer);
 /* Reads exactly dest.size() bytes; the caller obtains the length from the
  * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
@@ -124,7 +176,23 @@ extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &
 /* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page
  * or a removed slot both report "gone" with NO_ERROR; any other failure is propagated. */
 extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);
-extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
+extern INT64 oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
+
+/* Forward-only streaming reader over an OOS chunk chain. Lets a caller pull an
+ * arbitrarily large payload in bounded pieces without materializing the whole
+ * value: open with oos_read_open on the head OID, then call oos_read_pull
+ * repeatedly until it reports nread == 0 (chain exhausted). Sequential pulls walk
+ * the chain once (O(total)), unlike repeated oos_read calls from the head. */
+struct oos_reader
+{
+  OID current;			/* chunk currently being read; NULL OID once exhausted */
+  int chunk_consumed;		/* bytes already returned from current chunk's payload */
+  int next_index;		/* expected chunk_index of `current` (0 at head) */
+};
+using OOS_READER = struct oos_reader;
+
+extern int oos_read_open (THREAD_ENTRY *thread_p, const OID &head_oid, OOS_READER &reader);
+extern int oos_read_pull (THREAD_ENTRY *thread_p, OOS_READER &reader, oos_buffer dest, int &nread);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);

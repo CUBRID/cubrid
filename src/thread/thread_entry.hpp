@@ -320,6 +320,14 @@ namespace cubthread
       bool m_skip_end_resource_tracks_in_recycle;
 
       std::vector<OID> oos_oids;
+      std::vector<int> oos_attrids;
+      std::vector<bool> oos_is_internal_lob;
+
+      /* Standalone loaddb streams an Internal LOB payload into storage itself and then assigns the
+       * resolved locator through the workspace, whose memory representation drops the value's
+       * transport marker. While this is set, locator force re-reads such records and lets the heap
+       * sink turn the locator back into a stub (see locator_resolve_internal_lob_records ()). */
+      bool internal_lob_adopts_locators;
 
 
       bool m_is_private_lru_enabled;

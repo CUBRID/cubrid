@@ -89,6 +89,7 @@ namespace cubload
     private:
       int process_constant (constant_type *cons, const attribute &attr);
       int process_generic_constant (constant_type *cons, const attribute &attr);
+      int process_internal_lob_constant (constant_type *cons, const attribute &attr);
       int process_monetary_constant (constant_type *cons, const attribute &attr);
       int process_collection_constant (constant_type *cons, const attribute &attr);
 

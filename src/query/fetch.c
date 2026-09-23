@@ -57,6 +57,7 @@
 #include "pl_executor.hpp"
 
 #include "dbtype.h"
+#include "internal_lob_marker.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -81,12 +82,32 @@ static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VAL
  *   tpl(in): Tuple
  *   peek_dbval(out): Set to the value resulting from the fetch operation
  */
+/*
+ * fetch_reject_scalar_stream_operand () - Error out if an operand carries a scalar stream marker.
+ *   return: NO_ERROR, or ER_QPROC_STRING_SIZE_TOO_BIG
+ *   value(in): operand value, may be NULL
+ */
+static int
+fetch_reject_scalar_stream_operand (const DB_VALUE * value)
+{
+  DB_BIGINT length = 0;
+
+  if (value == NULL || !db_value_has_internal_lob_marker (value, DB_VALUE_INTERNAL_LOB_MARKER_STREAM))
+    {
+      return NO_ERROR;
+    }
+  (void) internal_lob_marker_parse_scalar_stream (db_get_string (value), db_get_string_size (value), NULL, &length);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2,
+	  (int) ((length > INT_MAX) ? INT_MAX : length), (int) DB_MAX_LOB_PRECISION);
+  return ER_QPROC_STRING_SIZE_TOO_BIG;
+}
+
 static int
 fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
 		  DB_VALUE ** peek_dbval)
 {
   ARITH_TYPE *arithptr;
-  DB_VALUE *peek_left, *peek_right, *peek_third, *peek_fourth;
+  DB_VALUE *peek_left = NULL, *peek_right = NULL, *peek_third = NULL, *peek_fourth = NULL;
   DB_VALUE tmp_value;
   TP_DOMAIN *original_domain = NULL;
   TP_DOMAIN_STATUS dom_status;
@@ -675,6 +696,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      goto error;
+    }
+
+  /* A scalar stream marker (CLOB_TO_CHAR () of a value too large for VARCHAR, csql only) is a transport
+   * envelope for csql's final projection, not a value.  As an operand of another expression it would be
+   * measured, concatenated or compared as a 70-byte string.  Refuse it with the same error every other
+   * client gets for that size. */
+  if (fetch_reject_scalar_stream_operand (peek_left) != NO_ERROR
+      || fetch_reject_scalar_stream_operand (peek_right) != NO_ERROR
+      || fetch_reject_scalar_stream_operand (peek_third) != NO_ERROR)
+    {
       goto error;
     }
 

@@ -32,16 +32,23 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdio>
 #include <memory>
 #include <mutex>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
+
+class stream_session;
+struct internal_lob_locator;
 
 namespace cubload
 {
 
   class driver;
+  class internal_lob_load_ring;
+  struct internal_lob_load_slot_table;
 
   /*
    * cubload::session
@@ -126,6 +133,26 @@ namespace cubload
       void set_client_type (int client_type);
       int get_client_type ();
 
+      /*
+       * Internal LOB payloads of a batch (STREAM_KIND_INTERNAL_LOB_LOAD, see load_internal_lob.hpp)
+       *
+       *    The first value of a batch starts the batch's worker, which writes every value into the class'
+       *    Internal LOB file inside the batch transaction while the client is still sending; the batch text
+       *    then reaches that same worker through load_batch.  A row refers to a value by its slot number
+       *    (internal_lob_payload_make_value); while the row is inserted, the heap sink takes the chain and its
+       *    replication bookkeeping over through internal_lob_consume_slot.
+       */
+      int internal_lob_stream_open (cubthread::entry &thread_ref, class_id clsid, batch_id id, DB_TYPE type,
+				    DB_BIGINT data_length, DB_BIGINT logical_length, stream_session *&stream_out);
+      int internal_lob_consume_slot (cubthread::entry &thread_ref, INT64 slot, const OID *class_oid,
+				     DB_TYPE expected_type, internal_lob_locator &locator);
+      void internal_lob_register_slot_table (int tran_index, internal_lob_load_slot_table *table);
+      void internal_lob_unregister_slot_table (int tran_index);
+
+      int internal_lob_payload_make_value (cubthread::entry &thread_ref, class_id clsid, const char *token_data,
+					   size_t token_len, DB_TYPE expected_type, DB_BIGINT max_length,
+					   DB_VALUE *value);
+
       template<typename... Args>
       void append_log_msg (MSGCAT_LOADDB_MSG msg_id, Args &&... args);
 
@@ -133,6 +160,7 @@ namespace cubload
       void notify_waiting_threads ();
       bool is_completed ();
       void collect_stats ();
+      internal_lob_load_slot_table *internal_lob_find_slot_table (int tran_index);
 
       template<typename T>
       void update_atomic_value_with_max (std::atomic<T> &atomic_val, T new_max);
@@ -157,6 +185,12 @@ namespace cubload
       driver *m_driver;
 
       cubthread::entry_task *m_temp_task;
+
+      std::shared_ptr<internal_lob_load_ring> m_lob_ring;	// ring of the batch whose Internal LOB payloads are arriving
+      batch_id m_lob_batch_id;
+      INT64 m_lob_slot_count;
+      std::unordered_map<int, internal_lob_load_slot_table *> m_lob_slot_tables;	// worker tran index -> payloads it wrote
+
   };
 
 } // namespace cubload
