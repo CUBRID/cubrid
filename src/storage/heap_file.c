@@ -726,8 +726,8 @@ static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid
 
 /* *INDENT-OFF* */
 static int64_t heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size);
-static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int64_t payload_size, bool is_mvcc_class,
-						 size_t * offset_size_ptr);
+static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int64_t payload_size,
+						 bool is_mvcc_class, size_t * offset_size_ptr);
 struct heap_oos_column_plan
 {
   bool selected = false;
@@ -12801,7 +12801,8 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int64_t p
 static int
 heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr,
 					     std::vector<heap_oos_column_plan> * oos_plan, bool * has_oos,
-					     size_t * inline_size_after_oos_ptr, const std::vector<int> * serialized_sizes)
+					     size_t * inline_size_after_oos_ptr,
+					     const std::vector<int> * serialized_sizes)
 /* *INDENT-ON* */
 {
 /* *INDENT-OFF* */
@@ -12816,7 +12817,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
   /* calcuate the entire size of columns */
   /* *INDENT-OFF* */
-  if (serialized_sizes != nullptr)
+  if (serialized_sizes != NULL)
     {
       column_size = *serialized_sizes;
       /* The fixed area includes alignment padding (for example a lone SMALLINT).
@@ -13894,10 +13895,11 @@ heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation bounda
 #endif
 
 static bool
-heap_prepared_row_allocation_failed (int boundary)
+heap_prepared_row_allocation_failed (heap_prepared_row_allocation boundary)
 {
 #if defined(CUBRID_UNIT_TEST_ENABLED)
-  if (heap_Prepared_row_fail_allocation.compare_exchange_strong (boundary, 0))
+  int expected = static_cast<int> (boundary);
+  if (heap_Prepared_row_fail_allocation.compare_exchange_strong (expected, 0))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (heap_prepared_row));
       return true;
@@ -14026,7 +14028,7 @@ heap_prepared_row::prepare_internal (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO
     }
   try
     {
-      if (heap_prepared_row_allocation_failed (1))
+      if (heap_prepared_row_allocation_failed (heap_prepared_row_allocation::owner))
         {
           return ER_OUT_OF_VIRTUAL_MEMORY;
         }
@@ -14174,7 +14176,7 @@ heap_prepared_row::prepare_internal (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO
           er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, capacity);
           return ER_OUT_OF_VIRTUAL_MEMORY;
         }
-      if (heap_prepared_row_allocation_failed (2))
+      if (heap_prepared_row_allocation_failed (heap_prepared_row_allocation::record))
         {
           return ER_OUT_OF_VIRTUAL_MEMORY;
         }
@@ -14197,7 +14199,7 @@ heap_prepared_row::prepare_internal (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO
       const int n_variable = attr_info->last_classrepr->n_variable;
       char *bound = OR_GET_BOUND_BITS (buf.buffer, n_variable, attr_info->last_classrepr->fixed_length);
       char *cursor = bound + OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - n_variable);
-      if (heap_prepared_row_allocation_failed (3))
+      if (heap_prepared_row_allocation_failed (heap_prepared_row_allocation::requests))
         {
           return ER_OUT_OF_VIRTUAL_MEMORY;
         }

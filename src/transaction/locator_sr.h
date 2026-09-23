@@ -136,7 +136,7 @@ extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 int pruning_type, PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
 				 bool dont_check_fk, bool use_bulk_logging = false,
-                                 heap_prepared_row *prepared = nullptr);
+				 heap_prepared_row *prepared = nullptr);
 /* *INDENT-ON* */
 
 extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes);

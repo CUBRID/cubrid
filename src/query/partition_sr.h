@@ -116,7 +116,7 @@ class heap_prepared_row;
 extern int partition_prune_insert (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes,
 				   HEAP_SCANCACHE * scan_cache, PRUNING_CONTEXT * pcontext, int op_type,
 				   OID * pruned_class_oid, HFID * pruned_hfid, OID * superclass_oid,
-                                   heap_prepared_row *prepared = nullptr);
+				   heap_prepared_row *prepared = nullptr);
 /* *INDENT-ON* */
 
 /* *INDENT-OFF* */

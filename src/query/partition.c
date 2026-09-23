@@ -159,7 +159,8 @@ static MATCH_STATUS partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALU
 
 /* *INDENT-OFF* */
 static int partition_find_partition_for_record (PRUNING_CONTEXT * pinfo, const OID * class_oid, RECDES * recdes,
-						OID * partition_oid, HFID * partition_hfid, heap_prepared_row *prepared = nullptr);
+						OID * partition_oid, HFID * partition_hfid,
+						heap_prepared_row *prepared = nullptr);
 /* *INDENT-ON* */
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int partition_prune_heap_scan (PRUNING_CONTEXT * pinfo);

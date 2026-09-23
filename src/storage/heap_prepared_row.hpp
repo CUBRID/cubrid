@@ -21,6 +21,8 @@
 
 #include "heap_file.h"
 
+#include <cstddef>
+
 /* Owns canonical attribute bytes until destination routing and storage finish.
  * Destruction releases memory only; the caller owns transaction rollback. */
 class heap_prepared_row
@@ -53,13 +55,15 @@ class heap_prepared_row
     storage *m_storage;
 };
 
-#if defined(CUBRID_UNIT_TEST_ENABLED)
+/* Allocation points inside preparation; unit tests can fail each one once. */
 enum class heap_prepared_row_allocation
 {
   owner = 1,
   record = 2,
   requests = 3
 };
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
 void heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation boundary);
 #endif
 

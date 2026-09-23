@@ -23,8 +23,8 @@
 #include "load_server_loader.hpp"
 
 #include "btree.h"
-#include "heap_oos.hpp"
 #include "dbtype.h"
+#include "heap_oos.hpp"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
@@ -752,9 +752,10 @@ namespace cubload
 	    // One oversized row is allowed and flushed on its own.
 	    constexpr std::size_t retained_limit = 8 * 1024 * 1024;
 	    const std::size_t row_bytes = row.retained_bytes ();
+	    const std::size_t queue_bytes =
+		    m_retained_bytes + m_recdes_collected.capacity () * sizeof (heap_prepared_row);
 	    if (!m_recdes_collected.empty ()
-		&& (row_bytes >= retained_limit || m_retained_bytes + m_recdes_collected.capacity () * sizeof (heap_prepared_row)
-		    > retained_limit - row_bytes))
+		&& (row_bytes >= retained_limit || queue_bytes > retained_limit - row_bytes))
 	      {
 		flush_records ();
 		if (m_session.is_failed ())
@@ -829,6 +830,9 @@ namespace cubload
     if (insert_errors_filtered || !HA_DISABLED () || pruning_type != DB_NOT_PARTITIONED_CLASS)
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
+	// A routed row uses a partition scan cache whose multi-row unique stats are discarded with the pruning
+	// context, so partitioned classes report unique stats per row instead.
+	const int row_op_type = pruning_type == DB_NOT_PARTITIONED_CLASS ? op_type : SINGLE_ROW_INSERT;
 	for (size_t i = 0; i < m_recdes_collected.size (); i++)
 	  {
 	    log_sysop_start (m_thread_ref);
@@ -838,7 +842,7 @@ namespace cubload
 	    PRUNING_CONTEXT pruning;
 	    partition_init_pruning_context (&pruning);
 	    int error_code = locator_insert_force (m_thread_ref, &destination_heap, &destination,
-						   &dummy_oid, local_record, true, SINGLE_ROW_INSERT,
+						   &dummy_oid, local_record, true, row_op_type,
 						   &m_scancache,
 						   &force_count,
 						   pruning_type,

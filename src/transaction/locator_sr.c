@@ -161,7 +161,7 @@ static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * 
 				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
 				PRUNING_CONTEXT * context, MVCC_REEV_DATA * mvcc_reev_data, bool need_locking,
-                                heap_prepared_row *prepared = nullptr);
+				heap_prepared_row *prepared = nullptr);
 /* *INDENT-ON* */
 
 static int locator_delete_force_for_moving (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, int has_index, int op_type,
@@ -6813,23 +6813,23 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	      goto error;
 	    }
 
-          /* *INDENT-OFF* */
-          heap_prepared_row prepared;
-          error_code = locator_prepare_client_row (thread_p, &obj->class_oid, &recdes, prepared);
-          if (error_code == NO_ERROR)
-            {
-              RECDES *write_record = prepared.record () != nullptr ? prepared.record () : &recdes;
-              heap_prepared_row *pending = prepared.record () != nullptr ? &prepared : nullptr;
-              error_code = locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, nullptr,
-                              write_record, has_index, nullptr, 0, MULTI_ROW_UPDATE, &scan_cache, &force_count,
-                              false, repl_info, DB_NOT_PARTITIONED_CLASS, nullptr, nullptr, UPDATE_INPLACE_NONE,
-                              true, pending);
-            }
-          if (error_code != NO_ERROR)
-            {
-              (void) heap_oos_begin_insert_publication (thread_p);
-            }
-          /* *INDENT-ON* */
+	  /* *INDENT-OFF* */
+	  heap_prepared_row prepared;
+	  error_code = locator_prepare_client_row (thread_p, &obj->class_oid, &recdes, prepared);
+	  if (error_code == NO_ERROR)
+	    {
+	      RECDES *write_record = prepared.record () != nullptr ? prepared.record () : &recdes;
+	      heap_prepared_row *pending = prepared.record () != nullptr ? &prepared : nullptr;
+	      error_code = locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, nullptr,
+						 write_record, has_index, nullptr, 0, MULTI_ROW_UPDATE, &scan_cache,
+						 &force_count, false, repl_info, DB_NOT_PARTITIONED_CLASS, nullptr,
+						 nullptr, UPDATE_INPLACE_NONE, true, pending);
+	    }
+	  if (error_code != NO_ERROR)
+	    {
+	      (void) heap_oos_begin_insert_publication (thread_p);
+	    }
+	  /* *INDENT-ON* */
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -7433,9 +7433,9 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
       /* *INDENT-OFF* */
       heap_prepared_row prepared;
       if (LC_IS_FLUSH_INSERT (obj->operation) || LC_IS_FLUSH_UPDATE (obj->operation))
-        {
-          error_code = locator_prepare_client_row (thread_p, &obj->class_oid, &recdes, prepared);
-        }
+	{
+	  error_code = locator_prepare_client_row (thread_p, &obj->class_oid, &recdes, prepared);
+	}
       RECDES *write_record = prepared.record () != nullptr ? prepared.record () : &recdes;
       heap_prepared_row *pending = prepared.record () != nullptr ? &prepared : nullptr;
       /* *INDENT-ON* */
@@ -13199,20 +13199,20 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 		  goto exit;
 		}
 
-              /* *INDENT-OFF* */
-              heap_prepared_row prepared;
-              if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
-                {
-                  error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
-                  goto exit;
-                }
-              error = prepared.prepare_serialized (thread_p, &oid_list[i], &recdes);
-              if (error != NO_ERROR)
-                {
-                  goto exit;
-                }
-              RECDES *write_record = prepared.record ();
-              /* *INDENT-ON* */
+	      /* *INDENT-OFF* */
+	      heap_prepared_row prepared;
+	      if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+		{
+		  error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+		  goto exit;
+		}
+	      error = prepared.prepare_serialized (thread_p, &oid_list[i], &recdes);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+	      RECDES *write_record = prepared.record ();
+	      /* *INDENT-ON* */
 
 	      /* No supplemental log for insert is appended due to DDL statement */
 	      thread_p->no_supplemental_log = true;
@@ -13833,7 +13833,6 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 {
   DB_LOGICAL ev_res = V_TRUE;
   UPDDEL_MVCC_COND_REEVAL *mvcc_cond_reeval = NULL;
-  int idx;
 
   /* reevaluate condition for each class involved into */
   for (mvcc_cond_reeval = mvcc_reev_data->mvcc_cond_reev_list; mvcc_cond_reeval != NULL;
@@ -13854,75 +13853,11 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
       goto end;
     }
 
-  /* reload data from classes involved only in right side of assignments (not in condition) */
-  if (mvcc_reev_data->curr_extra_assign_reev != NULL)
-    {
-      for (idx = 0; idx < mvcc_reev_data->curr_extra_assign_cnt; idx++)
-	{
-	  mvcc_cond_reeval = mvcc_reev_data->curr_extra_assign_reev[idx];
-	  ev_res = locator_mvcc_reeval_scan_filters (thread_p, oid, scan_cache, recdes, mvcc_cond_reeval, false);
-	  if (ev_res != V_TRUE)
-	    {
-	      goto end;
-	    }
-	}
-    }
-
-  /* after reevaluation perform assignments */
-  if (mvcc_reev_data->curr_assigns != NULL)
-    {
-      UPDATE_MVCC_REEV_ASSIGNMENT *assign = mvcc_reev_data->curr_assigns;
-      int rc;
-      DB_VALUE *dbval = NULL;
-
-      if (heap_attrinfo_clear_dbvalues (mvcc_reev_data->curr_attrinfo) != NO_ERROR)
-	{
-	  ev_res = V_ERROR;
-	  goto end;
-	}
-      for (; assign != NULL; assign = assign->next)
-	{
-	  if (assign->constant != NULL)
-	    {
-	      rc = heap_attrinfo_set (oid, assign->att_id, assign->constant, mvcc_reev_data->curr_attrinfo);
-	    }
-	  else
-	    {
-	      if (fetch_peek_dbval (thread_p, assign->regu_right, mvcc_reev_data->vd, (OID *) class_oid, (OID *) oid,
-				    NULL, &dbval) != NO_ERROR)
-		{
-		  ev_res = V_ERROR;
-		  goto end;
-		}
-	      rc = heap_attrinfo_set (oid, assign->att_id, dbval, mvcc_reev_data->curr_attrinfo);
-	      if (dbval->need_clear)
-		{
-		  pr_clear_value (dbval);
-		}
-	    }
-	  if (rc != NO_ERROR)
-	    {
-	      ev_res = V_ERROR;
-	      goto end;
-	    }
-	}
-
-      /* TO DO - reuse already allocated area */
-      if (mvcc_reev_data->copyarea != NULL)
-	{
-	  locator_free_copy_area (mvcc_reev_data->copyarea);
-	  mvcc_reev_data->new_recdes->data = NULL;
-	  mvcc_reev_data->new_recdes->area_size = 0;
-	}
-      mvcc_reev_data->copyarea =
-	locator_allocate_copy_area_by_attr_info (thread_p, mvcc_reev_data->curr_attrinfo, recdes,
-						 mvcc_reev_data->new_recdes, -1);
-      if (mvcc_reev_data->copyarea == NULL)
-	{
-	  ev_res = V_ERROR;
-	  goto end;
-	}
-    }
+  /* Reevaluating assignments rebuilt the record with heap_attrinfo_transform_to_disk (), which writes OOS chains
+   * before the destination heap is known. No UPDATE path requests it; fail rather than misplace a chain. */
+  assert_release (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+  ev_res = V_ERROR;
 
 end:
 
