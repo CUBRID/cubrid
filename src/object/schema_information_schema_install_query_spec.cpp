@@ -426,7 +426,7 @@ const char *sm_define_view_parameters_spec (void)
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp_args].[sp_of].[owner].[name] AS [specific_schema], "
-      "IF ([sp_args].[sp_of].[pkg_name] IS NOT NULL, CONCAT ([sp_args].[sp_of].[pkg_name], '.', [sp_args].[sp_of].[sp_name]), [sp_args].[sp_of].[sp_name]) AS [specific_name], "
+      "IF ([sp_args].[sp_of].[pkg_of] IS NOT NULL, CONCAT ([sp_args].[sp_of].[pkg_of].[pkg_name], '.', [sp_args].[sp_of].[sp_name]), [sp_args].[sp_of].[sp_name]) AS [specific_name], "
       "([sp_args].[index_of] + 1) AS [ordinal_position], "
       /* SP_MODE_IN, SP_MODE_OUT, SP_MODE_INOUT */
       "DECODE ([sp_args].[mode], %d, 'IN', %d, 'OUT', %d, 'INOUT') AS [parameter_mode], "
@@ -575,7 +575,7 @@ const char *sm_define_view_routine_privileges_spec (void)
       "[auth].[grantee].[name] AS [grantee], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [specific_schema], "
-      "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
+      "IF ([sp].[pkg_of] IS NOT NULL, CONCAT ([sp].[pkg_of].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
@@ -607,7 +607,7 @@ const char *sm_define_view_routines_spec (void)
     "SELECT "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [specific_schema], "
-      "IF ([sp].[pkg_name] IS NOT NULL, CONCAT ([sp].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
+      "IF ([sp].[pkg_of] IS NOT NULL, CONCAT ([sp].[pkg_of].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
@@ -663,7 +663,7 @@ const char *sm_define_view_routines_spec (void)
       /* CT_DATATYPE_NAME */
       "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp].[return_type] "
       /* CT_STORED_PROC_CODE_NAME */
-      "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp_code].[name] = [sp].[target_class], "
+      "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp_code] = [sp].[code], "
       /* CT_ROOT_NAME */
       "[%s] AS [root], "
       /* CT_CHARSET_NAME */
