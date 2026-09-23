@@ -214,7 +214,7 @@ static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter,
 
 static void reorder_schema_caches (TR_TRIGGER * trigger);
 static int trigger_table_add (const char *name, DB_OBJECT * trigger);
-static int trigger_table_find (const char *name, DB_OBJECT ** trigger_p);
+static int find_trigger_by_name (const char *name, DB_OBJECT ** trigger_p);
 static int trigger_table_rename (DB_OBJECT * trigger_object, const char *newname);
 static int trigger_table_drop (const char *name);
 static bool check_authorization (TR_TRIGGER * trigger, bool alter_flag);
@@ -3137,87 +3137,46 @@ end:
 }
 
 /*
- * trigger_table_find() - This finds a trigger object by name
+ * find_trigger_by_name() - This finds a trigger object by its user-specified name
  *    return: error code
- *    name(in): trigger name
- *    trigger_ptr(out):  trigger object (returned)
+ *    name(in): trigger name, already qualified and downcased
+ *    trigger_p(out): trigger object (returned)
  *
  * Note:
- *    All triggers must have a globally unique name.
- *    Should be modified to use an actual persistent table rather than the temporary in-memory table.
+ *    A missing trigger is not an error, *trigger_p is simply left NULL.
  */
 static int
-trigger_table_find (const char *name, DB_OBJECT ** trigger_p)
+find_trigger_by_name (const char *name, DB_OBJECT ** trigger_p)
 {
-  int error = NO_ERROR;
-  DB_SET *table;
+  DB_OBJECT *class_p;
   DB_VALUE value;
-  int max, i, found;
+  int error = NO_ERROR;
+  int save;
 
   *trigger_p = NULL;
-  if (Au_root == NULL)
-    {
-      return NO_ERROR;
-    }
 
-  error = obj_get (Au_root, "triggers", &value);
-  if (error != NO_ERROR)
+  class_p = db_find_class (TR_CLASS_NAME);
+  if (class_p == NULL)
     {
+      ASSERT_ERROR_AND_SET (error);
       return error;
     }
 
-  if (DB_IS_NULL (&value))
-    {
-      table = NULL;
-    }
-  else
-    {
-      table = db_get_set (&value);
-    }
+  db_make_string (&value, name);
 
-  if (table == NULL)
-    {
-      return NO_ERROR;
-    }
+  AU_SAVE_AND_DISABLE (save);
+  *trigger_p = db_find_unique (class_p, TR_ATT_UNIQUE_NAME, &value);
+  AU_RESTORE (save);
 
-  error = set_filter (table);
-  max = set_size (table);
-
-  /* see if the name is already used */
-  for (i = 0, found = -1; i < max && error == NO_ERROR && found == -1; i += 2)
+  if (*trigger_p == NULL)
     {
-      error = set_get_element (table, i, &value);
-      if (error == NO_ERROR)
+      error = er_errid ();
+      if (error == ER_OBJ_OBJECT_NOT_FOUND)
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_STRING && !DB_IS_NULL (&value) && db_get_string (&value) != NULL
-	      && COMPARE_TRIGGER_NAMES (db_get_string (&value), name) == 0)
-	    {
-	      found = i;
-	    }
-	  pr_clear_value (&value);
+	  er_clear ();
+	  error = NO_ERROR;
 	}
     }
-
-  if (found != -1)
-    {
-      error = set_get_element (table, found + 1, &value);
-      if (error == NO_ERROR)
-	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT)
-	    {
-	      if (DB_IS_NULL (&value))
-		{
-		  *trigger_p = NULL;
-		}
-	      else
-		{
-		  *trigger_p = db_get_object (&value);
-		}
-	    }
-	  pr_clear_value (&value);
-	}
-    }
-  set_free (table);
 
   return error;
 }
@@ -3243,7 +3202,7 @@ trigger_table_rename (DB_OBJECT * trigger_object, const char *newname)
   DB_OBJECT *exists;
 
   /* make sure we don't already have one */
-  if (trigger_table_find (newname, &exists))
+  if (find_trigger_by_name (newname, &exists))
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -3871,7 +3830,7 @@ check_semantics (TR_TRIGGER * trigger)
   const char *c_time, *a_time;
 
   /* See if the trigger already exists. */
-  error = trigger_table_find (trigger->name, &object);
+  error = find_trigger_by_name (trigger->name, &object);
   if (error != NO_ERROR)
     {
       return error;
@@ -4360,7 +4319,7 @@ tr_find_trigger (const char *name)
 
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
 
-  if (trigger_table_find (realname, &object) == NO_ERROR)
+  if (find_trigger_by_name (realname, &object) == NO_ERROR)
     {
       if (object == NULL)
 	{
@@ -4381,7 +4340,7 @@ tr_find_trigger (const char *name)
 		      goto end;
 		    }
 
-		  if (trigger_table_find (other_trigger_name, &object) != NO_ERROR)
+		  if (find_trigger_by_name (other_trigger_name, &object) != NO_ERROR)
 		    {
 		      goto end;
 		    }
