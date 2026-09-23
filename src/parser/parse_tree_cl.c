@@ -18570,13 +18570,15 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   q = pt_append_varchar (parser, q, r1);
 
   /*
-   * Attribute list: `as_attr_list` is NULL only if all columns were omitted, which
-   * `pt_static_sql_can_omit_hidden_columns()` prevents by returning false when 0
-   * visible columns remain. If this invariant ever breaks, omit parentheses entirely
-   * instead of printing "()". The CTE will safely fall back to using column names from
-   * its select list, preserving valid syntax (matching `pt_print_spec()` behavior).
+   * Attribute list: `as_attr_list` can only be NULL here under is_parsing_static_sql, where
+   * `pt_static_sql_align_declared_names ()` produced it -- and even there,
+   * `pt_static_sql_can_omit_hidden_columns ()` already refuses to omit every column (it returns
+   * false once 0 visible columns would remain), so this is unreachable in practice; the assert
+   * in that helper documents and enforces the invariant. Guard only the static-SQL path: outside
+   * it, `as_attr_list` is simply `p->info.cte.as_attr_list` as bound, unconditionally printed the
+   * same way this function always has.
    */
-  if (as_attr_list != NULL)
+  if (!parser->flag.is_parsing_static_sql || as_attr_list != NULL)
     {
       q = pt_append_nulstring (parser, q, "(");
       r1 = pt_print_bytes_l (parser, as_attr_list);
