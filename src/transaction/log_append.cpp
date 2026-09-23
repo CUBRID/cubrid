@@ -144,8 +144,8 @@ log_prior_lsa_info::log_prior_lsa_info ()
 void
 LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
 {
-  // todo - concurrency safe-guard
-  log_Gl.hdr.append_lsa = *lsa;
+  // todo - prior_info.prior_lsa is set without prior_lsa_mutex
+  log_Gl.hdr.append_lsa.store (*lsa);
   log_Gl.prior_info.prior_lsa = *lsa;
   /* The prior list is empty at *lsa now. Publishing here is what keeps copied_lsa <= append_lsa across
    * every reset. */
@@ -155,16 +155,15 @@ LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
 void
 LOG_RESET_PREV_LSA (const LOG_LSA *lsa)
 {
-  // todo - concurrency safe-guard
-  log_Gl.append.prev_lsa = *lsa;
+  // todo - prior_info.prev_lsa is set without prior_lsa_mutex
+  log_Gl.append.prev_lsa.store (*lsa);
   log_Gl.prior_info.prev_lsa = *lsa;
 }
 
 char *
 LOG_APPEND_PTR ()
 {
-  // todo - concurrency safe-guard
-  return log_Gl.append.log_pgptr->area + log_Gl.hdr.append_lsa.offset;
+  return log_Gl.append.log_pgptr->area + log_Gl.hdr.append_lsa.load ().offset;
 }
 
 bool

@@ -126,7 +126,6 @@ static void pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv);
 static void pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec);
 static void pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg);
 static FUNC_CODE pt_find_function_type (const char *name);
-static PT_NODE *pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_Oracle_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_clear_Oracle_outerjoin_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -1419,7 +1418,7 @@ pt_find_function_type (const char *name)
  *   arg(in):
  *   continue_walk(in):
  */
-static PT_NODE *
+PT_NODE *
 pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   short *location = (short *) arg;
@@ -1441,6 +1440,26 @@ pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
   return node;
 }				/* pt_mark_location() */
+
+/*
+ * pt_mark_anti_join_on () - mark each expr of an ANTI JOIN ON condition so that
+ *			     qo_reduce_equality_terms() leaves it as a join predicate
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_mark_anti_join_on (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_EXPR)
+    {
+      PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_ANTI_JOIN_ON);
+    }
+
+  return node;
+}				/* pt_mark_anti_join_on() */
 
 /*
  * pt_set_is_view_spec () -
@@ -3675,8 +3694,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    case PT_JOIN_INNER:
 	    case PT_JOIN_LEFT_OUTER:
 	    case PT_JOIN_RIGHT_OUTER:
+	    case PT_JOIN_SEMI:	/* ON predicate is a join predicate at the inner's level */
 	      parser_walk_tree (parser, node->info.spec.on_cond, pt_mark_location, &(node->info.spec.location), NULL,
 				NULL);
+	      break;
+	    case PT_JOIN_ANTI:
+	      parser_walk_tree (parser, node->info.spec.on_cond, pt_mark_location, &(node->info.spec.location), NULL,
+				NULL);
+	      /* flag ANTI ON terms so qo_reduce_equality_terms() keeps them as join predicates */
+	      parser_walk_tree (parser, node->info.spec.on_cond, pt_mark_anti_join_on, NULL, NULL, NULL);
 	      break;
 	      /* case PT_JOIN_FULL_OUTER: *//* not supported */
 
@@ -7442,6 +7468,12 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 	      spec = spec->next;	/* skip to next spec */
 	      continue;
 	    }
+	}
+      else if (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
+	{
+	  /* SELECT * : SEMI / ANTI inner columns are not part of the output (right columns are not referenceable) */
+	  spec = spec->next;
+	  continue;
 	}
 
       /* spec_att := all attributes of this entity spec */
@@ -12090,6 +12122,16 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      lkcol.col_list = table->info.dblink_table.sel_list;
 
 	      lkcol.tbl_name_node = spec->info.spec.range_var;
+
+	      /* pt_resolve_natural_join () runs after this and derives the join columns from
+	       * the spec's column list, so a natural-join participant needs every visible
+	       * column (star), not only the ones the statement references.  The flag is on
+	       * the right-hand spec; the preceding spec is the left-hand side. */
+	      if (spec->info.spec.natural || (spec->next && spec->next->info.spec.natural))
+		{
+		  check_for_already_exists (parser, &lkcol, lkcol.tbl_name_node->info.name.original, NULL);
+		}
+
 	      pt_get_cols_for_dblink (parser, &lkcol, query, spec->info.spec.on_cond);
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;

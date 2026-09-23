@@ -2178,7 +2178,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
       null_freqs[i] = 0.0;
     }
 
-  if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+  if (heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL) != NO_ERROR)
     {
       status = ER_FAILED;
       (void) return_error_to_client (thread_p, rid);
@@ -8135,7 +8135,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
 {
   BTREE_STATS stat_info;
   int success;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
@@ -8156,7 +8156,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   ptr = or_pack_int (ptr, stat_info.leafs);
   ptr = or_pack_int (ptr, stat_info.pages);
   ptr = or_pack_int (ptr, stat_info.height);
-  ptr = or_pack_int (ptr, stat_info.keys);
+  ptr = or_pack_int64 (ptr, stat_info.keys);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -8695,12 +8695,12 @@ srepl_log_get_append_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 {
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  LOG_LSA *lsa;
+  LOG_LSA lsa;
 
   lsa = xrepl_log_get_append_lsa ();
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  (void) or_pack_log_lsa (reply, lsa);
+  (void) or_pack_log_lsa (reply, &lsa);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
