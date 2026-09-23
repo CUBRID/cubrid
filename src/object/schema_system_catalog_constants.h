@@ -116,7 +116,7 @@
  * and if the SELECT result exceeds this number, we assume that at least one
  * general object domain exists in a user class.
  *
- * The number of general object domains in system classes is currently 8 and
+ * The number of general object domains in system classes is currently 6 and
  * is hard-coded. Therefore, when a general object domain is added to or
  * removed from any system class, this value MUST be reviewed.
  *
@@ -131,6 +131,6 @@
  * See CBRD-23983 and CBRD-25697 for details.
  */
 
-#define CNT_CATCLS_OBJECTS              (8)	/* number of general object domains in system classes */
+#define CNT_CATCLS_OBJECTS              (6)	/* number of general object domains in system classes */
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */
