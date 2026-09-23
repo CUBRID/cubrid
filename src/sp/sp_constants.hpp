@@ -107,7 +107,7 @@ enum index_pkg_code_attr
 };
 
 #define PKG_VAR_ATTR_LIST    \
-    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(PKG_OF) \
     MAP_LIST_ITEM(NAME) \
     MAP_LIST_ITEM(DATA_TYPE) \
     MAP_LIST_ITEM(PREC) \
@@ -115,7 +115,7 @@ enum index_pkg_code_attr
     MAP_LIST_ITEM(FLAGS) \
     MAP_LIST_ITEM(COMMENT)
 
-#define PKG_VAR_ATTR_PKG_UNIQUE_NAME                "pkg_unique_name"
+#define PKG_VAR_ATTR_PKG_OF                         "pkg_of"
 #define PKG_VAR_ATTR_NAME                           "name"
 #define PKG_VAR_ATTR_DATA_TYPE                      "data_type"
 #define PKG_VAR_ATTR_PREC                           "prec"
@@ -132,11 +132,11 @@ enum index_pkg_var_attr
 };
 
 #define PKG_EXCEPTION_ATTR_LIST    \
-    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(PKG_OF) \
     MAP_LIST_ITEM(NAME) \
     MAP_LIST_ITEM(COMMENT)
 
-#define PKG_EXCEPTION_ATTR_PKG_UNIQUE_NAME          "pkg_unique_name"
+#define PKG_EXCEPTION_ATTR_PKG_OF                   "pkg_of"
 #define PKG_EXCEPTION_ATTR_NAME                     "name"
 #define PKG_EXCEPTION_ATTR_COMMENT                  "comment"
 
@@ -149,13 +149,13 @@ enum index_pkg_exception_attr
 };
 
 #define PKG_CURSOR_ATTR_LIST    \
-    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(PKG_OF) \
     MAP_LIST_ITEM(NAME) \
     MAP_LIST_ITEM(RECORD_TYPE) \
     MAP_LIST_ITEM(PARAMETERS) \
     MAP_LIST_ITEM(COMMENT)
 
-#define PKG_CURSOR_ATTR_PKG_UNIQUE_NAME             "pkg_unique_name"
+#define PKG_CURSOR_ATTR_PKG_OF                      "pkg_of"
 #define PKG_CURSOR_ATTR_NAME                        "name"
 #define PKG_CURSOR_ATTR_RECORD_TYPE                 "record_type"
 #define PKG_CURSOR_ATTR_PARAMETERS                  "parameters"
@@ -170,12 +170,12 @@ enum index_pkg_cursor_attr
 };
 
 #define PKG_RECORD_TYPE_ATTR_LIST    \
-    MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
+    MAP_LIST_ITEM(PKG_OF) \
     MAP_LIST_ITEM(NAME) \
     MAP_LIST_ITEM(FIELDS) \
     MAP_LIST_ITEM(COMMENT)
 
-#define PKG_RECORD_TYPE_ATTR_PKG_UNIQUE_NAME        "pkg_unique_name"
+#define PKG_RECORD_TYPE_ATTR_PKG_OF                 "pkg_of"
 #define PKG_RECORD_TYPE_ATTR_NAME                   "name"
 #define PKG_RECORD_TYPE_ATTR_FIELDS                 "fields"
 #define PKG_RECORD_TYPE_ATTR_COMMENT                "comment"
