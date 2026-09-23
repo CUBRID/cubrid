@@ -35,17 +35,20 @@
 #define ENCODE_PREFIX_DES               (char)1
 #define ENCODE_PREFIX_SHA1              (char)2
 #define ENCODE_PREFIX_SHA2_512          (char)3
+#define ENCODE_PREFIX_SHA2_512_SALT     (char)4
 #define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
 #define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
 #define IS_ENCODED_SHA2_512(string)     (string[0] == ENCODE_PREFIX_SHA2_512)
+#define IS_ENCODED_SHA2_512_SALT(string) (string[0] == ENCODE_PREFIX_SHA2_512_SALT)
 #define IS_ENCODED_ANY(string) \
-  (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
+  (IS_ENCODED_SHA2_512_SALT(string) || IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
 
 void encrypt_password (const char *pass, int add_prefix, char *dest);
 void encrypt_password_sha1 (const char *pass, int add_prefix, char *dest);
 void encrypt_password_sha2_512 (const char *pass, char *dest);
+void encrypt_password_sha2_512_salt (const char *salt, const char *pass, char *dest);
 
-bool match_password (const char *user, const char *database);
+bool match_password (const char *name, const char *user, const char *database);
 int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
 
 #endif

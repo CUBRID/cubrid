@@ -144,6 +144,37 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
 }
 
+void
+encrypt_password_sha2_512_salt (const char *salt, const char *pass, char *dest)
+{
+  char sha512[AU_MAX_PASSWORD_BUF + 4];
+  char *ptr = sha512;
+
+  assert (salt != NULL && strlen (salt) > 0);
+
+  if (pass == NULL)
+    {
+      strcpy (dest, "");
+    }
+  else
+    {
+      if (IS_ENCODED_ANY (pass))
+	{
+	  assert (IS_ENCODED_SHA2_512 (pass));
+	  strcpy (sha512, Au_user_password_sha2_512);
+	}
+      else
+	{
+	  encrypt_password_sha2_512 (pass, sha512);
+	}
+
+      ptr++; // skip prefix
+      memcpy (ptr + strlen (ptr), salt, strlen (salt) + 1); // append salt to password
+
+      encrypt_password_sha2_512 (ptr, dest); // encrypt password + salt
+      dest[0] = ENCODE_PREFIX_SHA2_512_SALT;
+    }
+}
 
 /*
  * match_password -  This compares two passwords to see if they match.
@@ -157,7 +188,7 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
  *       in to an active session.
  */
 bool
-match_password (const char *user, const char *database)
+match_password (const char *name, const char *user, const char *database)
 {
   char buf1[AU_MAX_PASSWORD_BUF + 4];
   char buf2[AU_MAX_PASSWORD_BUF + 4];
@@ -214,19 +245,24 @@ match_password (const char *user, const char *database)
 	  encrypt_password_sha2_512 (user, buf1);
 	}
     }
+  else if (IS_ENCODED_SHA2_512_SALT (database))
+    {
+      strcpy (buf2, database);
+      encrypt_password_sha2_512_salt (name, user, buf1); //ctshim
+    }
   else
     {
       /* DB:PLAINTEXT -> SHA2 */
       encrypt_password_sha2_512 (database, buf2);
       if (IS_ENCODED_ANY (user))
 	{
-	  /* USER : SHA1 */
-	  strcpy (buf1, Au_user_password_sha1);
+	  /* USER : SHA2 */
+	  strcpy (buf1, Au_user_password_sha2_512);
 	}
       else
 	{
-	  /* USER : PLAINTEXT -> SHA1 */
-	  encrypt_password_sha1 (user, 1, buf1);
+	  /* USER : PLAINTEXT -> SHA2 */
+	  encrypt_password_sha2_512 (user, buf1);
 	}
     }
 
@@ -325,7 +361,43 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
     }
   else if (encode)
     {
-      encrypt_password_sha2_512 (password, pbuf);
+      DB_VALUE nm_value;
+      error = obj_get (user, "name", &nm_value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value) && db_get_string (&nm_value) != NULL)
+	{
+#ifndef NDEBUG
+	  const char *user_nm = db_get_string (&nm_value);
+	  if ( strncmp (user_nm, "##USER_DES", strlen ("##USER_DES")) == 0)
+	    {
+	      encrypt_password (password, 1, pbuf);
+	    }
+	  else if ( strncmp (user_nm, "##USER_SHA1", strlen ("##USER_SHA1")) == 0)
+	    {
+	      encrypt_password_sha1 (password, 1, pbuf);
+	    }
+	  else if ( strncmp (user_nm, "##USER_SHA2", strlen ("##USER_SHA2")) == 0)
+	    {
+	      encrypt_password_sha2_512 (password, pbuf);
+	    }
+	  else
+#endif
+	    {
+	      encrypt_password_sha2_512_salt (db_get_string (&nm_value), password, pbuf);  //ctshim
+	    }
+	}
+      else
+	{
+	  assert_release (false);
+	  error = ER_AU_INVALID_USER_NAME;
+	  goto end;
+	}
+
+      db_value_clear (&nm_value);
       db_make_string (&value, pbuf);
     }
   else
