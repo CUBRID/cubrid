@@ -498,126 +498,125 @@ domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND 
 }
 
 /*
- * domain_resolve_aggregate - accumulator domains of qexec_resolve_domains_for_aggregation (qx:21504~21630, 21716~21730)
- *   compiled(in): the aggregate's compiled function domain (agg_p->domain, xasl_generation.c:4072)
- *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain when it is a gate slot
- *		  (is_gate_slot: VARIABLE when compiled); val_type = value type, classified at the gate (D-328-06)
+ * domain_resolve_aggregate - domains of qexec_resolve_domains_for_aggregation (qx:21504~21630, 21716~21730)
+ *   compiled(in): consumer = the aggregate's compiled domain (agg_p->domain, xasl_generation.c:4072)
+ *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain when the gate decides it
+ *		  (is_gate_slot: opr_dbtype is VARIABLE today); val_type = value type, classified at the gate (D-328-06)
+ *   result(out): domain = the function domain (agg_p->domain after the late-binding update, which the result is cast
+ *		  to); operand_domain[0] / conv[0] = the accumulator domain (value_dom) the argument values are coerced
+ *		  to (qa:645, 713). value2_dom is a per-function constant the load puts in domain_plan_acc (#333).
  */
 static int
 domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
 			  RESOLVED_DOMAIN * result)
 {
   DB_TYPE val_type = domain_operand_type (operand);
-  const TP_DOMAIN *argument = compiled;
+  const TP_DOMAIN *function_domain = compiled;
   DB_TYPE operand_type = operand->domain != NULL ? TP_DOMAIN_TYPE (operand->domain) : val_type;
-  const TP_DOMAIN *value_dom = NULL;
-  const TP_DOMAIN *value2_dom = &tp_Null_domain;
+  const TP_DOMAIN *accumulator = NULL;
 
   if (function == PT_COUNT || function == PT_COUNT_STAR || function == PT_JSON_ARRAYAGG
       || function == PT_JSON_OBJECTAGG)
     {
-      /* fixed signatures; the argument is taken as it is */
-      value_dom = (function == PT_COUNT || function == PT_COUNT_STAR) ? &tp_Bigint_domain : &tp_Json_domain;
-      argument = domain_operand_domain (operand);
+      /* fixed signatures; the argument is counted or wrapped as it is */
+      if (function_domain == NULL)
+	{
+	  function_domain = (function == PT_COUNT || function == PT_COUNT_STAR) ? &tp_Bigint_domain : &tp_Json_domain;
+	}
+      result->domain = function_domain;
+      result->operand_domain[0] = domain_operand_domain (operand);
+      result->conv[0] = NULL;
+      return NO_ERROR;
     }
-  else
+
+  if (domain_function_is_late_bound (compiled, operand))
     {
-      if (domain_function_is_late_bound (compiled, operand))
+      if (TP_IS_CHAR_TYPE (val_type) && (function == PT_SUM || function == PT_AVG))
 	{
-	  if (TP_IS_CHAR_TYPE (val_type) && (function == PT_SUM || function == PT_AVG))
-	    {
-	      argument = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	    }
-	  else if (!TP_IS_CHAR_TYPE (val_type) && function == PT_GROUP_CONCAT)
-	    {
-	      argument = tp_domain_resolve_default (DB_TYPE_VARCHAR);
-	    }
-	  else
-	    {
-	      argument = domain_operand_domain (operand);
-	    }
-	  operand_type = TP_DOMAIN_TYPE (argument);
+	  function_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	}
-
-      switch (function)
+      else if (!TP_IS_CHAR_TYPE (val_type) && function == PT_GROUP_CONCAT)
 	{
-	case PT_AGG_BIT_AND:
-	case PT_AGG_BIT_OR:
-	case PT_AGG_BIT_XOR:
-	case PT_MIN:
-	case PT_MAX:
-	case PT_GROUP_CONCAT:
-	  value_dom = argument;
-	  break;
-
-	case PT_AVG:
-	case PT_SUM:
-	  if (!TP_IS_NUMERIC_TYPE (val_type))
-	    {
-	      value_dom = argument;
-	    }
-	  else if (TP_DOMAIN_TYPE (argument) == DB_TYPE_NUMERIC || val_type == DB_TYPE_NUMERIC)
-	    {
-	      value_dom = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_DEFAULT_NUMERIC_PRECISION,
-					     DB_DEFAULT_NUMERIC_SCALE, NULL, 0);
-	    }
-	  else if (val_type == DB_TYPE_FLOAT)
-	    {
-	      value_dom = tp_domain_resolve (DB_TYPE_DOUBLE, NULL, DB_DOUBLE_DECIMAL_PRECISION, 0, NULL, 0);
-	    }
-	  else
-	    {
-	      value_dom = tp_domain_resolve_default (val_type);
-	    }
-	  break;
-
-	case PT_STDDEV:
-	case PT_STDDEV_POP:
-	case PT_STDDEV_SAMP:
-	case PT_VARIANCE:
-	case PT_VAR_POP:
-	case PT_VAR_SAMP:
-	  value_dom = value2_dom = &tp_Double_domain;
-	  break;
-
-	case PT_GROUPBY_NUM:
-	  value_dom = &tp_Null_domain;
-	  break;
-
-	case PT_MEDIAN:
-	case PT_PERCENTILE_CONT:
-	case PT_PERCENTILE_DISC:
-	  /* keyed on the operand type (opr_dbtype), as today */
-	  if (!domain_is_interpolation_type (operand_type))
-	    {
-	      /* the gate classified the value as DOUBLE, DATETIME or TIME */
-	      if (!domain_is_interpolation_type (val_type))
-		{
-		  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-		}
-	      argument = tp_domain_resolve_default (val_type);
-	    }
-	  value_dom = argument;
-	  break;
-
-	default:
-	  value_dom = argument;
-	  break;
+	  function_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 	}
+      else
+	{
+	  function_domain = domain_operand_domain (operand);
+	}
+      operand_type = TP_DOMAIN_TYPE (function_domain);
     }
 
-  if (value_dom == NULL || argument == NULL)
+  switch (function)
+    {
+    case PT_AVG:
+    case PT_SUM:
+      if (!TP_IS_NUMERIC_TYPE (val_type))
+	{
+	  accumulator = function_domain;
+	}
+      else if (TP_DOMAIN_TYPE (function_domain) == DB_TYPE_NUMERIC || val_type == DB_TYPE_NUMERIC)
+	{
+	  accumulator = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_DEFAULT_NUMERIC_PRECISION,
+					   DB_DEFAULT_NUMERIC_SCALE, NULL, 0);
+	}
+      else if (val_type == DB_TYPE_FLOAT)
+	{
+	  accumulator = tp_domain_resolve (DB_TYPE_DOUBLE, NULL, DB_DOUBLE_DECIMAL_PRECISION, 0, NULL, 0);
+	}
+      else
+	{
+	  accumulator = tp_domain_resolve_default (val_type);
+	}
+      break;
+
+    case PT_STDDEV:
+    case PT_STDDEV_POP:
+    case PT_STDDEV_SAMP:
+    case PT_VARIANCE:
+    case PT_VAR_POP:
+    case PT_VAR_SAMP:
+      accumulator = &tp_Double_domain;
+      break;
+
+    case PT_GROUPBY_NUM:
+      accumulator = &tp_Null_domain;
+      break;
+
+    case PT_MEDIAN:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
+      /* keyed on the operand type (opr_dbtype), as today; a number or date operand leaves value_dom unset today
+       * (F-333-06), so the accumulator here is the function domain */
+      if (!domain_is_interpolation_type (operand_type))
+	{
+	  /* the gate classified the value as DOUBLE, DATETIME or TIME */
+	  if (!domain_is_interpolation_type (val_type))
+	    {
+	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	    }
+	  function_domain = tp_domain_resolve_default (val_type);
+	}
+      accumulator = function_domain;
+      break;
+
+    default:
+      /* BIT_AND/OR/XOR, MIN, MAX, GROUP_CONCAT and the rest accumulate in the function domain */
+      accumulator = function_domain;
+      break;
+    }
+
+  if (accumulator == NULL || function_domain == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  result->domain = value_dom;
-  result->operand_domain[0] = argument;
-  result->operand_domain[1] = value2_dom;
-  result->conv[0] = domain_lookup_converter (val_type, argument, DOMAIN_CONVERT_OPERAND);
+  result->domain = function_domain;
+  result->operand_domain[0] = accumulator;
+  result->conv[0] = domain_lookup_converter (val_type, accumulator, DOMAIN_CONVERT_OPERAND);
   return NO_ERROR;
 }
 
-/* Late-bound analytic operand domain (qn:197~259): its own rules, not the aggregate ones. */
+/* Late-bound analytic function domain (qn:197~259): its own rules, not the aggregate ones. Same inputs as the
+ * aggregate; domain = operand_domain[0] = the function domain the operand value is coerced to (qn:252). */
 static int
 domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
 			 RESOLVED_DOMAIN * result)

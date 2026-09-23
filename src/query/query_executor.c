@@ -22008,13 +22008,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    int shadow_error = domain_resolve (DOMAIN_CTX_AGG, agg_p->function, &operand, 1, shadow_compiled, &resolved,
 					       &needs_gate);
 	    assert (shadow_error == NO_ERROR && !needs_gate);
-	    assert (shadow_error != NO_ERROR
-		    || TP_DOMAIN_TYPE (resolved.operand_domain[0]) == TP_DOMAIN_TYPE (agg_p->domain));
+	    assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == TP_DOMAIN_TYPE (agg_p->domain));
 	    assert (shadow_error != NO_ERROR || agg_p->accumulator_domain.value_dom == NULL
-		    || TP_DOMAIN_TYPE (resolved.domain) == TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom));
-	    assert (shadow_error != NO_ERROR || agg_p->accumulator_domain.value2_dom == NULL
-		    || TP_DOMAIN_TYPE (resolved.operand_domain[1]) ==
-		    TP_DOMAIN_TYPE (agg_p->accumulator_domain.value2_dom));
+		    || TP_DOMAIN_TYPE (resolved.operand_domain[0]) ==
+		    TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom));
 	  }
 #endif
 

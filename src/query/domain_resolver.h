@@ -60,9 +60,10 @@ DOMAIN_CONV_FUNC domain_lookup_converter (DB_TYPE source, const TP_DOMAIN *targe
  * (P0). Result domains are cache domains (no caller-owned allocation, no er_set; #333). An operand with
  * val_type == DB_TYPE_NULL whose domain is not fixed sets *needs_gate and leaves result untouched.
  * opcode is OPERATOR_TYPE for ARITH/COMPARE/COMMON_VALUE/FUNC_ARG and FUNC_CODE for AGG/ANALYTIC.
- * AGG/ANALYTIC: consumer_domain = the function's compiled domain, operands[0].is_gate_slot = its operand was VARIABLE.
- * result: domain = result (COMPARE: comparison domain; AGG: accumulator value domain), operand_domain[i] = target of
- * operand i (AGG: argument domain, [1] = second accumulator domain), conv[i] = operand converter in the grid's mode.
+ * AGG/ANALYTIC: consumer_domain = the function's compiled domain; operands[0] = the argument (is_gate_slot = the gate
+ * decides it, opr_dbtype VARIABLE today); result domain = the function domain, operand_domain[0] = accumulator domain.
+ * result: domain = result (COMPARE: comparison domain), operand_domain[i] = target of operand i, conv[i] = operand
+ * converter in the grid's mode (D-328-03: always looked up against operand_domain[i]).
  */
 int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 		    const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_gate);

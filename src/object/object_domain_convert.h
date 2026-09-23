@@ -44,6 +44,23 @@ constexpr DB_TYPE tp_numeric_convert_types[] = {
 using DOMAIN_NUMERIC_CONVERTERS = std::array<DOMAIN_CONVERTER, 3 * 9 * 7>;
 extern const DOMAIN_NUMERIC_CONVERTERS tp_numeric_convert_table;
 
+/*
+ * TP_COMPARE_COERCION
+ *    Which operand tp_value_compare_with_error coerces before comparing two values of different types.
+ *    The rule is shared with the server domain resolver so that one copy of it exists (dpin-07, P6).
+ */
+typedef enum tp_compare_coercion
+{
+  TP_COMPARE_COERCE_NONE,	/* comparable as they are */
+  TP_COMPARE_COERCE_TO_DOUBLE,	/* character vs number: the character operand first, then the other, to DOUBLE */
+  TP_COMPARE_COERCE_FIRST_TO_DATE,	/* character first operand to the date/time type of the second */
+  TP_COMPARE_COERCE_SECOND_TO_DATE,	/* character second operand to the date/time type of the first */
+  TP_COMPARE_COERCE_SECOND_TO_FIRST,	/* second operand to the more general type of the first */
+  TP_COMPARE_COERCE_FIRST_TO_SECOND	/* first operand to the type of the second */
+} TP_COMPARE_COERCION;
+
+TP_COMPARE_COERCION tp_value_compare_common_domain (DB_TYPE type1, DB_TYPE type2);
+
 DOMAIN_CONVERTER domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMAIN_CONVERT_MODE mode);
 const char *domain_converter_name (DOMAIN_CONVERTER converter);
 
