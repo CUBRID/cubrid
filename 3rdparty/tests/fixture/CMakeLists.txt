@@ -23,7 +23,7 @@ set_target_properties(fixture_static PROPERTIES OUTPUT_NAME fixture)
 target_include_directories(fixture_static PRIVATE "${CMAKE_CURRENT_LIST_DIR}/include")
 
 add_library(fixture_shared SHARED src/fixture.c)
-set_target_properties(fixture_shared PROPERTIES OUTPUT_NAME fixture SOVERSION 2 VERSION 2.0.0)
+set_target_properties(fixture_shared PROPERTIES OUTPUT_NAME odbc SOVERSION 2 VERSION 2.0.0)
 target_include_directories(fixture_shared PRIVATE "${CMAKE_CURRENT_LIST_DIR}/include")
 
 install(TARGETS fixture_static fixture_shared

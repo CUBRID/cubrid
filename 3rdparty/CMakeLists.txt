@@ -161,6 +161,7 @@ cubrid_thirdparty_expand_arguments(openssl INSTALL "${3RDPARTY_LIBS_DIR}" LIBOPE
 cubrid_thirdparty_expand_arguments(unixodbc CONFIGURE "${3RDPARTY_LIBS_DIR}" LIBUNIXODBC_CONFIGURE_ARGUMENTS)
 cubrid_thirdparty_expand_arguments(unixodbc BUILD "${3RDPARTY_LIBS_DIR}" LIBUNIXODBC_BUILD_ARGUMENTS)
 cubrid_thirdparty_expand_arguments(unixodbc INSTALL "${3RDPARTY_LIBS_DIR}" LIBUNIXODBC_INSTALL_ARGUMENTS)
+cubrid_thirdparty_expand_environment(unixodbc CFLAGS "${3RDPARTY_LIBS_DIR}" LIBUNIXODBC_CFLAGS)
 cubrid_thirdparty_expand_arguments(rapidjson CONFIGURE "${3RDPARTY_LIBS_DIR}" RAPIDJSON_CONFIGURE_ARGUMENTS)
 cubrid_thirdparty_expand_arguments(re2 BUILD "${3RDPARTY_LIBS_DIR}" RE2_BUILD_ARGUMENTS)
 cubrid_thirdparty_expand_environment(re2 CXXFLAGS "${3RDPARTY_LIBS_DIR}" RE2_CXXFLAGS)
@@ -498,7 +499,7 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${LIBUNIXODBC_CONFIGURE_ARGUMENTS}
+      CONFIGURE_COMMAND    ${LIBUNIXODBC_CONFIGURE_ARGUMENTS} "CFLAGS=${LIBUNIXODBC_CFLAGS}"
       BUILD_COMMAND        make ${LIBUNIXODBC_BUILD_ARGUMENTS}
       INSTALL_COMMAND      make ${LIBUNIXODBC_INSTALL_ARGUMENTS}
       "${LIBUNIXODBC_BYPRODUCTS}"
@@ -602,6 +603,60 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
     list(APPEND TBB_INCLUDES ${LIBTBB_INCLUDES})
     list(APPEND TBB_LIBS ${LIBTBB_LIBS})
   endif(UNIX)
+endif()
+
+if(UNIX)
+  if(DEFINED CUBRID_3RDPARTY_PREFIX_OUTPUT AND NOT CUBRID_3RDPARTY_PREFIX_OUTPUT STREQUAL "")
+    set(CUBRID_3RDPARTY_EXPAT_INPUT_HEADERS
+      "${3RDPARTY_LIBS_DIR}/include/expat.h"
+      "${3RDPARTY_LIBS_DIR}/include/expat_config.h"
+      "${3RDPARTY_LIBS_DIR}/include/expat_external.h")
+    set(CUBRID_3RDPARTY_EXPAT_INPUT_LIBRARIES "${3RDPARTY_LIBS_DIR}/lib/libexpat.a")
+    set(CUBRID_3RDPARTY_LIBEDIT_INPUT_HEADERS
+      "${3RDPARTY_LIBS_DIR}/include/editline"
+      "${3RDPARTY_LIBS_DIR}/include/histedit.h")
+    set(CUBRID_3RDPARTY_LIBEDIT_INPUT_LIBRARIES "${3RDPARTY_LIBS_DIR}/lib/libedit.a")
+    set(CUBRID_3RDPARTY_LZ4_INPUT_HEADERS
+      "${3RDPARTY_LIBS_DIR}/Source/lz4/lib/lz4.h"
+      "${3RDPARTY_LIBS_DIR}/Source/lz4/lib/lz4frame.h"
+      "${3RDPARTY_LIBS_DIR}/Source/lz4/lib/lz4hc.h")
+    set(CUBRID_3RDPARTY_LZ4_INPUT_LIBRARIES "${3RDPARTY_LIBS_DIR}/Source/lz4/lib/liblz4.a")
+    set(CUBRID_3RDPARTY_OPENSSL_INPUT_HEADERS "${3RDPARTY_LIBS_DIR}/include/openssl")
+    set(CUBRID_3RDPARTY_OPENSSL_INPUT_LIBRARIES
+      "${3RDPARTY_LIBS_DIR}/lib/libssl.a"
+      "${3RDPARTY_LIBS_DIR}/lib/libcrypto.a")
+    set(CUBRID_3RDPARTY_UNIXODBC_INPUT_HEADERS
+      "${3RDPARTY_LIBS_DIR}/include/sql.h"
+      "${3RDPARTY_LIBS_DIR}/include/sqlext.h"
+      "${3RDPARTY_LIBS_DIR}/include/sqltypes.h")
+    set(CUBRID_3RDPARTY_UNIXODBC_INPUT_LIBRARIES "${3RDPARTY_LIBS_DIR}/lib/libodbc.so")
+    set(CUBRID_3RDPARTY_RAPIDJSON_INPUT_HEADERS
+      "${3RDPARTY_LIBS_DIR}/Source/rapidjson/include/rapidjson")
+    set(CUBRID_3RDPARTY_RE2_INPUT_HEADERS "${3RDPARTY_LIBS_DIR}/Source/re2/re2")
+    set(CUBRID_3RDPARTY_RE2_INPUT_LIBRARIES "${3RDPARTY_LIBS_DIR}/Source/re2/obj/libre2.a")
+    set(CUBRID_3RDPARTY_ONETBB_INPUT_HEADERS
+      "${3RDPARTY_LIBS_DIR}/Source/libtbb/include/oneapi"
+      "${3RDPARTY_LIBS_DIR}/Source/libtbb/include/tbb")
+    set(CUBRID_3RDPARTY_ONETBB_INPUT_LIBRARIES "${3RDPARTY_LIBS_DIR}/lib/libtbb.a")
+    cubrid_thirdparty_add_prefix_target(
+      SOURCE_ROOT "${CMAKE_SOURCE_DIR}"
+      BINARY_ROOT "${CMAKE_BINARY_DIR}"
+      DEPENDENCY_TARGETS
+        "${LIBEXPAT_TARGET}"
+        "${LIBEDIT_TARGET}"
+        "${LZ4_TARGET}"
+        "${LIBOPENSSL_TARGET}"
+        "${LIBUNIXODBC_TARGET}"
+        "${RAPIDJSON_TARGET}"
+        "${RE2_TARGET}"
+        "${LIBTBB_TARGET}")
+  else()
+    add_custom_target(cubrid_thirdparty_prefix
+      COMMAND "${CMAKE_COMMAND}" -E echo
+        "CUBRID third-party producer: CUBRID_3RDPARTY_PREFIX_OUTPUT is required"
+      COMMAND "${CMAKE_COMMAND}" -E false
+      VERBATIM)
+  endif()
 endif()
 
 # [FIXME!] Expose variables for other CMakeLists

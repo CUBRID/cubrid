@@ -23,7 +23,7 @@ enable_testing()
 set(CONTRACT_MODULE "${CMAKE_CURRENT_LIST_DIR}/../cmake/CubridThirdPartyContract.cmake")
 set(CONTRACT_MANIFEST "${CMAKE_CURRENT_LIST_DIR}/../manifest.json")
 set(CONTRACT_TEST_DRIVER "${CMAKE_CURRENT_LIST_DIR}/run_contract_case.cmake")
-set(CONTRACT_EXPECTED_FINGERPRINT "4c19d1957a6a4df946ab6020a6e18a8bc4688a195221ca5e6c6abac27520c126")
+set(CONTRACT_EXPECTED_FINGERPRINT "58a2f6e3383ab366c60efd66996e11ac421836c227b702ed32bb705e72dd185e")
 
 set(CONTRACT_CASES
   valid_manifest
@@ -46,6 +46,16 @@ set(CONTRACT_CASES
   malformed_json
   unset_mode_uses_external
   external_mode_uses_external
+  producer_success
+  producer_missing_input_atomic
+  producer_output_unset
+  producer_output_relative
+  producer_output_filesystem_root
+  producer_output_source_root
+  producer_output_binary_root
+  producer_output_source_ancestor
+  producer_output_binary_ancestor
+  producer_output_source_descendant
   )
 
 foreach(test_case IN LISTS CONTRACT_CASES)
@@ -62,4 +72,19 @@ foreach(test_case IN LISTS CONTRACT_CASES)
       "-DTEST_SOURCE_ROOT=${CMAKE_CURRENT_LIST_DIR}"
       -P "${CONTRACT_TEST_DRIVER}"
     )
+  set_tests_properties("thirdparty-contract.${test_case}" PROPERTIES LABELS thirdparty-contract)
 endforeach()
+
+set_tests_properties(
+  thirdparty-contract.producer_success
+  thirdparty-contract.producer_missing_input_atomic
+  thirdparty-contract.producer_output_unset
+  thirdparty-contract.producer_output_relative
+  thirdparty-contract.producer_output_filesystem_root
+  thirdparty-contract.producer_output_source_root
+  thirdparty-contract.producer_output_binary_root
+  thirdparty-contract.producer_output_source_ancestor
+  thirdparty-contract.producer_output_binary_ancestor
+  thirdparty-contract.producer_output_source_descendant
+  PROPERTIES
+  LABELS "thirdparty-contract;thirdparty-contract-producer")

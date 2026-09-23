@@ -19,7 +19,7 @@
           "--with-dev-urandom"
         ],
         "environment": {
-          "CFLAGS": "-O2 -fPIC -w"
+          "CFLAGS": "-O2 -fPIC -w -ffile-prefix-map=<PREFIX>=."
         },
         "install_arguments": [
           "install",
@@ -75,7 +75,7 @@
           "--with-pic"
         ],
         "environment": {
-          "CFLAGS": "-O2 -fPIC -w",
+          "CFLAGS": "-O2 -fPIC -w -ffile-prefix-map=<PREFIX>=.",
           "LDFLAGS": "-L<PREFIX>",
           "LIBS": "-ldl"
         },
@@ -124,7 +124,7 @@
         ],
         "configure_arguments": [],
         "environment": {
-          "USERCFLAGS": "-O3 -fPIC -w"
+          "USERCFLAGS": "-O3 -fPIC -w -ffile-prefix-map=<PREFIX>=."
         },
         "install_arguments": [],
         "recipe": "make"
@@ -168,7 +168,8 @@
         ],
         "configure_arguments": [
           "<SOURCE_DIR>/config",
-          "--prefix=<PREFIX>",
+          "--prefix=/",
+          "--openssldir=/etc/ssl",
           "--libdir=lib",
           "no-shared",
           "no-module",
@@ -178,6 +179,7 @@
         "environment": {},
         "install_arguments": [
           "install_sw",
+          "DESTDIR=<PREFIX>",
           "AUTOCONF=:",
           "AUTOHEADER=:",
           "AUTOMAKE=:",
@@ -226,11 +228,14 @@
         ],
         "configure_arguments": [
           "<SOURCE_DIR>/configure",
-          "--prefix=<PREFIX>"
+          "--prefix=/"
         ],
-        "environment": {},
+        "environment": {
+          "CFLAGS": "-O2 -fPIC -w -ffile-prefix-map=<PREFIX>=."
+        },
         "install_arguments": [
           "install",
+          "DESTDIR=<PREFIX>",
           "AUTOCONF=:",
           "AUTOHEADER=:",
           "AUTOMAKE=:",
@@ -303,7 +308,7 @@
         "build_arguments": [],
         "configure_arguments": [],
         "environment": {
-          "CXXFLAGS": "-O3 -fPIC -w"
+          "CXXFLAGS": "-O3 -fPIC -w -ffile-prefix-map=<PREFIX>=."
         },
         "install_arguments": [],
         "recipe": "make"
@@ -340,7 +345,7 @@
         "configure_arguments": [
           "-DBUILD_SHARED_LIBS=OFF",
           "-DCMAKE_BUILD_TYPE=Release",
-          "-DCMAKE_CXX_FLAGS=-DTBB_ALLOCATOR_TRAITS_BROKEN",
+          "-DCMAKE_CXX_FLAGS=-DTBB_ALLOCATOR_TRAITS_BROKEN -ffile-prefix-map=<PREFIX>=.",
           "-DCMAKE_INSTALL_LIBDIR=lib",
           "-DCMAKE_INSTALL_PREFIX=<PREFIX>",
           "-DTBBMALLOC_BUILD=OFF",
@@ -388,6 +393,6 @@
     "os": "linux",
     "variant": "build_rl8.10-default"
   },
-  "recipe_revision": 1,
+  "recipe_revision": 2,
   "schema": "cubrid-thirdparty-manifest-v1"
 }

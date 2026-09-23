@@ -35,7 +35,7 @@ This is a blocker-ordered linear chain. Work only the frontier: the first
 | ID | Ticket | Blocked by | Status |
 |----|--------|------------|--------|
 | 01 | [Canonical manifest, contract module, and standalone seam](issues/01-canonical-manifest-contract.md) | None | resolved |
-| 02 | [Complete relocatable prefix producer](issues/02-relocatable-prefix-producer.md) | 01 | ready-for-agent |
+| 02 | [Complete relocatable prefix producer](issues/02-relocatable-prefix-producer.md) | 01 | resolved |
 | 03 | [Matching CI_PREBUILT consumer](issues/03-ci-prebuilt-consumer.md) | 02 | ready-for-agent |
 | 04 | [Fail-closed validation and diagnostics](issues/04-fail-closed-validation.md) | 03 | ready-for-agent |
 | 05 | [Release/OptDebug linkage qualification](issues/05-release-optdebug-qualification.md) | 04 | ready-for-agent |
@@ -45,8 +45,8 @@ This is a blocker-ordered linear chain. Work only the frontier: the first
 
 ## Frontier
 
-- `02` can start immediately.
-- `03` through `08` remain blocked until the preceding ticket is resolved.
+- `03` can start immediately.
+- `04` through `08` remain blocked until the preceding ticket is resolved.
 
 ## Decisions so far
 
@@ -64,6 +64,11 @@ This is a blocker-ordered linear chain. Work only the frontier: the first
   manifest/contract seam with raw fingerprint
   `4c19d1957a6a4df946ab6020a6e18a8bc4688a195221ca5e6c6abac27520c126`;
   ticket 02 can build the relocatable producer against these exported values.
+- [Ticket 02](issues/02-relocatable-prefix-producer.md) resolved the atomic,
+  relocatable eight-dependency producer with recipe revision 2 and raw
+  fingerprint
+  `58a2f6e3383ab366c60efd66996e11ac421836c227b702ed32bb705e72dd185e`;
+  ticket 03 can consume and validate this exact prefix contract.
 
 ## Comments
 
