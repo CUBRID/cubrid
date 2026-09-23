@@ -45,11 +45,22 @@ public class DeclProc extends DeclRoutine {
             String name,
             String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx, name, comment, loopOptimizables, paramList, directive, null, decls, body);
+        super(
+                ctx,
+                name,
+                comment,
+                loopOptimizables,
+                isPublic,
+                paramList,
+                directive,
+                null,
+                decls,
+                body);
     }
 
     public DeclProc(
@@ -57,9 +68,20 @@ public class DeclProc extends DeclRoutine {
             String name,
             String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive) {
-        super(ctx, name, comment, loopOptimizables, paramList, directive, null, null, new Body());
+        super(
+                ctx,
+                name,
+                comment,
+                loopOptimizables,
+                isPublic,
+                paramList,
+                directive,
+                null,
+                null,
+                new Body());
     }
 
     @Override

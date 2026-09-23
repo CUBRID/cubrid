@@ -566,7 +566,6 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitExprGlobalFuncCall(ExprGlobalFuncCall node) {
         assert node.decl != null;
         checkRoutineCall(node.decl, node.args.nodes);
-        setCoercionOfOmittedDefaults(node.decl, node.args.nodes.size());
         dependencies.add(new Dependency(Dependency.OBJ_TYPE_FUNCTION, node.name, spOwner));
         return node.decl.retTypeSpec.type;
     }
@@ -1245,7 +1244,6 @@ public class TypeChecker extends AstVisitor<Type> {
     public Type visitStmtGlobalProcCall(StmtGlobalProcCall node) {
         assert node.decl != null;
         checkRoutineCall(node.decl, node.args.nodes);
-        setCoercionOfOmittedDefaults(node.decl, node.args.nodes.size());
         dependencies.add(new Dependency(Dependency.OBJ_TYPE_PROCEDURE, node.name, spOwner));
         return null;
     }
@@ -1427,8 +1425,34 @@ public class TypeChecker extends AstVisitor<Type> {
         routineDefNestLevel++;
 
         visitNodeList(node.paramList);
+        if (node.isPublic) {
+            for (DeclParam dp : node.paramList.nodes) {
+                switch (dp.typeSpec.type.idx) {
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                    case Type.IDX_SYS_REFCURSOR:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(dp.ctx), // s243
+                                "type "
+                                        + dp.typeSpec.type.plcName
+                                        + " cannot be used as a paramter type of stored procedures");
+                }
+            }
+        }
+
         if (node.retTypeSpec != null) {
-            visit(node.retTypeSpec);
+            Type retType = visit(node.retTypeSpec);
+            if (node.isPublic) {
+                switch (retType.idx) {
+                    case Type.IDX_RECORD:
+                    case Type.IDX_BOOLEAN:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(node.retTypeSpec.ctx), // s244
+                                "type "
+                                        + retType.plcName
+                                        + " cannot be used as a return type of stored functions");
+                }
+            }
         }
         if (node.decls != null) {
             visitNodeList(node.decls);
@@ -1498,21 +1522,6 @@ public class TypeChecker extends AstVisitor<Type> {
 
         sb.append(")");
         return sb.toString();
-    }
-
-    // A global call's parameter list is built from the server's answer and its defaults
-    // are parsed lazily, so their coercions must be set here
-    private void setCoercionOfOmittedDefaults(DeclRoutine decl, int argCnt) {
-        int paramCnt = decl.paramList.nodes.size();
-        for (int i = argCnt; i < paramCnt; i++) {
-            DeclParam dp = decl.paramList.nodes.get(i);
-            if (dp instanceof DeclParamIn && ((DeclParamIn) dp).hasDefault()) {
-                // typechecking has already been done when the callee was created.
-                // this is only to set a proper coercions to the default values which was
-                // created later than the main AST
-                visitDeclParamIn((DeclParamIn) dp);
-            }
-        }
     }
 
     private void checkRoutineCall(DeclRoutine decl, List<Expr> args) {

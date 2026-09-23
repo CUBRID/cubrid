@@ -16,6 +16,7 @@ public class RequestCode {
     public static final int REQUEST_CODE_ATTR = 0xC9;
     public static final int REQUEST_CODE_BY_NAME = 0xCA;
     public static final int REQUEST_CHECK_EXECUTE_AUTH = 0xCB;
+    public static final int REQUEST_CHANGE_EXEC_RIGHTS = 0xCC;
 
     public static final int UTIL_BOOTSTRAP = 0xDD;
     public static final int UTIL_PING = 0xDE;

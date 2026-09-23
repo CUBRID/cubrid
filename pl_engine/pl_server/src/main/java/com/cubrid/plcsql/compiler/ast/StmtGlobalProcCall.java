@@ -76,6 +76,7 @@ public class StmtGlobalProcCall extends Stmt implements SqlUse {
     public final String name;
     public final NodeList<Expr> args;
     public int sqlSerialNo;
+    public boolean usesDefaultArg;
 
     public DeclProc decl;
     // generated Java class name of the target when it is a PL/CSQL routine/package (empty for a

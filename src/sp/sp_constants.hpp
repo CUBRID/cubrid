@@ -424,14 +424,27 @@ enum METHOD_CALLBACK_RESPONSE
   METHOD_CALLBACK_GET_GLOBAL_SEMANTICS = 101,
 
   // AUTH
-  METHOD_CALLBACK_CHANGE_RIGHTS = 200,
+  // METHOD_CALLBACK_CHANGE_RIGHTS = 200,
+  // it is retired and replaced with METHOD_CALLBACK_CHANGE_EXEC_RIGHTS because
+  // the CAS answered it with nothing, so a refused switch went unnoticed
 
   // CLASS ACCESS
   METHOD_CALLBACK_GET_CODE_ATTR = 201,
   METHOD_CALLBACK_GET_CODE_BY_NAME = 202,
 
   // runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member
-  METHOD_CALLBACK_CHECK_EXECUTE_AUTH = 203
+  METHOD_CALLBACK_CHECK_EXECUTE_AUTH = 203,
+
+  // push/pop the execution rights around a call of a PL/CSQL routine, so that the
+  // callee's body runs with its own owner's rights rather than the caller's
+  METHOD_CALLBACK_CHANGE_EXEC_RIGHTS = 204
+};
+
+// command of METHOD_CALLBACK_CHANGE_EXEC_RIGHTS
+enum EXEC_RIGHTS_COMMAND
+{
+  EXEC_RIGHTS_PUSH = 0,		// switch to the given user
+  EXEC_RIGHTS_POP = 1		// restore the user switched from
 };
 
 // result of looking up object code by (generated) class name (shared by the CAS handler that

@@ -118,7 +118,10 @@ public class ClassAccess {
     }
 
     // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
-    public static int checkExecuteAuth(String uniqueName) {
+    // On success ownerRef[0] is set to the target's owner, which the caller switches the execution
+    // rights to before the call. On failure errMsgRef[0] is set to the reason the server gave,
+    // which is the only thing that tells a dropped routine from a revoked grant.
+    public static int checkExecuteAuth(String uniqueName, String[] ownerRef, String[] errMsgRef) {
         try {
             CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
             // the executor's callback loop reads the request code from the payload
@@ -133,11 +136,36 @@ public class ClassAccess {
             ByteBuffer payload = unpacker.unpackBuffer();
             unpacker.setBuffer(payload);
 
-            return unpacker.unpackInt();
+            int authError = unpacker.unpackInt();
+            String ownerName = unpacker.unpackCString(); // empty unless the check passed
+            String errMsg = unpacker.unpackCString(); // empty unless it failed
+            if (authError == 0) {
+                ownerRef[0] = ownerName;
+            } else if (!errMsg.isEmpty()) {
+                errMsgRef[0] = errMsg;
+            }
+            return authError;
         } catch (Exception e) {
             Server.log(e);
             return -1; // treat a transport failure as "not authorized"
         }
+    }
+
+    // Push/pop the execution rights around a direct call of an external PL/CSQL routine.
+    //
+    // A routine called through the server runs with its own owner's rights; a routine called
+    // directly would otherwise inherit the caller's. The server relays this to the CAS, which keeps
+    // a stack of users, so a push and its matching pop nest correctly.
+    public static void pushExecRights(String ownerName) throws Exception {
+        if (ownerName == null || ownerName.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "owner name is required to change the execution rights");
+        }
+        changeExecRights(EXEC_RIGHTS_PUSH, ownerName);
+    }
+
+    public static void popExecRights() throws Exception {
+        changeExecRights(EXEC_RIGHTS_POP, null);
     }
 
     // ======================
@@ -145,6 +173,35 @@ public class ClassAccess {
     // ======================
 
     private static byte[] EMPTY_BYTES = new byte[0];
+
+    // command of REQUEST_CHANGE_EXEC_RIGHTS (see EXEC_RIGHTS_COMMAND in sp_constants.hpp)
+    private static final int EXEC_RIGHTS_PUSH = 0;
+    private static final int EXEC_RIGHTS_POP = 1;
+
+    private static void changeExecRights(int command, String ownerName) throws Exception {
+        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+        // the executor's callback loop reads the request code from the payload
+        packer.packInt(RequestCode.REQUEST_CHANGE_EXEC_RIGHTS);
+        packer.packInt(command);
+        if (command == EXEC_RIGHTS_PUSH) {
+            packer.packString(ownerName);
+        }
+        Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+        Header header = new Header(unpacker);
+        ByteBuffer payload = unpacker.unpackBuffer();
+        unpacker.setBuffer(payload);
+
+        // the CAS answers with the error code of the switch (0 on success)
+        int errorCode = unpacker.unpackInt();
+        if (errorCode != 0) {
+            throw new RuntimeException(
+                    "changing the execution rights failed with error " + errorCode);
+        }
+    }
 
     // status codes shared with the server (see SP_CODE_FETCH_STATUS in sp_code.hpp)
     private static final int STATUS_NOT_FOUND = 0;

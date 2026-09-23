@@ -43,6 +43,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -128,6 +129,7 @@ public class SymbolStack {
                                         name,
                                         null,
                                         null,
+                                        true,
                                         params,
                                         0,
                                         TypeSpec.getBogus(null, retType));
@@ -143,7 +145,15 @@ public class SymbolStack {
         DeclProc dp;
 
         // disable
-        dp = new DeclProc(null, "DBMS_OUTPUT$DISABLE", null, null, new NodeList<DeclParam>(), 0);
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$DISABLE",
+                        null,
+                        null,
+                        true,
+                        new NodeList<DeclParam>(),
+                        0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$DISABLE", dp);
 
         // enable
@@ -153,6 +163,7 @@ public class SymbolStack {
                         "DBMS_OUTPUT$ENABLE",
                         null,
                         null,
+                        true,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
@@ -171,6 +182,7 @@ public class SymbolStack {
                         "DBMS_OUTPUT$GET_LINE",
                         null,
                         null,
+                        true,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamOut(
@@ -190,7 +202,15 @@ public class SymbolStack {
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$GET_LINE", dp);
 
         // new_line
-        dp = new DeclProc(null, "DBMS_OUTPUT$NEW_LINE", null, null, new NodeList<DeclParam>(), 0);
+        dp =
+                new DeclProc(
+                        null,
+                        "DBMS_OUTPUT$NEW_LINE",
+                        null,
+                        null,
+                        true,
+                        new NodeList<DeclParam>(),
+                        0);
         putDeclTo(predefinedSymbols, "DBMS_OUTPUT$NEW_LINE", dp);
 
         // put_line
@@ -200,6 +220,7 @@ public class SymbolStack {
                         "DBMS_OUTPUT$PUT_LINE",
                         null,
                         null,
+                        true,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
@@ -218,6 +239,7 @@ public class SymbolStack {
                         "DBMS_OUTPUT$PUT",
                         null,
                         null,
+                        true,
                         new NodeList<DeclParam>()
                                 .addNode(
                                         new DeclParamIn(
@@ -531,7 +553,7 @@ public class SymbolStack {
         for (String s : funcNames) {
             DeclFunc df =
                     new DeclFunc(
-                            null, s, null, null, null, 0,
+                            null, s, null, null, true, null, 0,
                             null); // only name is used for builtin functions
             putDeclTo(predefinedSymbols, df.name, df);
         }
@@ -590,7 +612,8 @@ public class SymbolStack {
     int pushSymbolTable(String name, Misc.RoutineType routineType) {
 
         int level = symbolTableStack.size();
-        name = name.toLowerCase();
+        // this name came from Misc.getNormalizedText (), so it is case-converted the same way
+        name = name.toLowerCase(Locale.ROOT);
 
         String routine;
         if (routineType == null) {
@@ -603,7 +626,7 @@ public class SymbolStack {
                 routine = currSymbolTable.scope.routine;
             }
         } else {
-            routine = name.toUpperCase();
+            routine = name.toUpperCase(Locale.ROOT);
         }
 
         String block = name + "_" + level;

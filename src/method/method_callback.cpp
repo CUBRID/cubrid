@@ -42,6 +42,7 @@
 #include "execute_statement.h"
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
+#include "intl_support.h"
 #include "schema_system_catalog_constants.h"
 #include "sp_catalog.hpp"
 #include "sp_constants.hpp"
@@ -136,11 +137,11 @@ namespace cubmethod
       case METHOD_CALLBACK_GET_CODE_BY_NAME:
 	error = get_code_by_name (unpacker);
 	break;
-      case METHOD_CALLBACK_CHANGE_RIGHTS:
-	error = change_rights (unpacker);
-	break;
       case METHOD_CALLBACK_CHECK_EXECUTE_AUTH:
 	error = check_execute_auth (unpacker);
+	break;
+      case METHOD_CALLBACK_CHANGE_EXEC_RIGHTS:
+	error = change_exec_rights (unpacker);
 	break;
       default:
 	assert (false);
@@ -801,19 +802,52 @@ namespace cubmethod
       }
   }
 
-  static void
+  /*
+   * identifier_fits () - can this name be held by an identifier buffer?
+   *   return: true if it fits
+   *   name(in): a name the PL server sent, or one built from it here
+   *
+   * Note: The PL server sends a qualified name that it joined from parts. Each part passed the
+   *       parser's length check (see pt_check_identifier ()), but their join did not, so
+   *       <user>.<package>.<routine> can be longer than any identifier buffer here holds.
+   *       sm_downcase_name () and sm_user_specified_name () only assert on that, which means a
+   *       release build writes past the buffer, so such a name has to be refused before it
+   *       reaches them. Nothing is lost by refusing: a unique name that long cannot be created
+   *       in the first place (see ER_PKG_PROC_UNIQ_NAME_TOO_LONG in jsp_cl.cpp).
+   *
+   *       The bound is the one the parser applies to a single identifier, and it is one less than
+   *       the smallest buffer below, so no call can overflow. The size is measured after case
+   *       conversion because that is what gets written, and in UTF-8 it may grow.
+   */
+  static bool
+  identifier_fits (const std::string &name)
+  {
+    return intl_identifier_lower_string_size (name.c_str ()) < DB_MAX_IDENTIFIER_LENGTH;
+  }
+
+  // reported for a name identifier_fits () refused. The PL server turns it into a compile error
+  // carrying the line and column of the name (see ParseTreeConverter.askServerSemanticQuestions).
+  static const char *TOO_LONG_NAME_MSG = "Qualified name is too long. it must be shorter than 255 bytes.";
+
+  static bool
   prepend_user_name (std::string &name, char *buf, int buf_size)
   {
-    char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+    char uniq_name[DB_MAX_IDENTIFIER_LENGTH];
     std::string pkg, temp;
     size_t start_pos = 0;
     split_str (name, start_pos, pkg);
     assert (start_pos); // name has a dot
-    sm_user_specified_name (pkg.c_str(), uniq_name, sizeof (uniq_name)); // prepend the current user name
+    if (sm_user_specified_name (pkg.c_str(), uniq_name, sizeof (uniq_name)) == NULL) // prepend the current user name
+      {
+	return false;
+      }
     temp = uniq_name;
     temp += ".";
     temp += name.substr (start_pos);
+    // copy the user prepened string regardless of whether the result is true or false
     sm_downcase_name (temp.c_str(), buf, buf_size);
+
+    return identifier_fits (temp);
   }
 
   static int
@@ -821,10 +855,18 @@ namespace cubmethod
   {
     int err = NO_ERROR, match_cnt = 0;
     int save;
-    char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+    char uniq_name[DB_MAX_IDENTIFIER_LENGTH];
+    char uniq_name_1[DB_MAX_USER_LENGTH + 1 + DB_MAX_IDENTIFIER_LENGTH];  // <user> + '.' + name
     std::string &name = question.name;
     bool wants_function = (question.type == GSQT_FUNCTION);
     MOP routine_mop = NULL;
+
+    if (!identifier_fits (name))
+      {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = TOO_LONG_NAME_MSG;
+	return err;
+      }
 
     int dot_cnt = std::count (name.begin (), name.end(), '.');
     switch (dot_cnt)
@@ -864,29 +906,32 @@ namespace cubmethod
 	// second, try <pkg>.<name> case: search a routine with the name prefixed with the current owner
       {
 	MOP routine_mop2 = NULL;
-	prepend_user_name (name, uniq_name, sizeof (uniq_name));
-
-	err = find_routine_of_type (uniq_name, wants_function, routine_mop2, false);
-	if (err == NO_ERROR)
+	if (prepend_user_name (name, uniq_name_1, sizeof (uniq_name_1)))
 	  {
-	    if (routine_mop2)
+	    err = find_routine_of_type (uniq_name_1, wants_function, routine_mop2, false);
+	    if (err == NO_ERROR)
 	      {
-		routine_mop = routine_mop2;
-		match_cnt++;
+		if (routine_mop2)
+		  {
+		    routine_mop = routine_mop2;
+		    match_cnt++;
+		  }
 	      }
-	  }
-	else
-	  {
-	    res.err_id = err;
-	    res.err_msg = er_msg();
-	    return err;
+	    else
+	      {
+		res.err_id = err;
+		res.err_msg = er_msg();
+		return err;
+	      }
 	  }
       }
 
       if (match_cnt == 0)
 	{
-	  err = res.err_id = ER_FAILED;
-	  res.err_msg = "Failed to get attribute information";
+	  res.err_id = err = ER_SP_NOT_EXIST_2;
+	  const char *kind = wants_function ? "function" : "procedure";
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, err, 4, kind, uniq_name, kind, uniq_name_1);
+	  res.err_msg = er_msg();
 	  return err;
 	}
       else if (match_cnt == 2)
@@ -974,25 +1019,9 @@ namespace cubmethod
 		      param_info.type = db_get_int (&arg_type);
 		    }
 
-		  // a parameter "has a default" iff it is optional; the default value itself may be NULL
-		  // (for ':= NULL'), so it must not be inferred from the default_value column being null
 		  if (db_get (arg_mop_p, SP_ARG_ATTR_IS_OPTIONAL, &has_default) == NO_ERROR)
 		    {
-		      param_info.has_default =
-			      (!DB_IS_NULL (&has_default) && db_get_int (&has_default) != 0) ? 1 : 0;
-		    }
-		  if (param_info.has_default)
-		    {
-		      DB_VALUE dflt;
-		      if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &dflt) == NO_ERROR)
-			{
-			  const char *dv = DB_IS_NULL (&dflt) ? NULL : db_get_string (&dflt);
-			  if (dv != NULL)
-			    {
-			      param_info.default_value.assign (dv);
-			    }
-			  pr_clear_value (&dflt);
-			}
+		      param_info.has_default = (!DB_IS_NULL (&has_default) && db_get_int (&has_default) != 0) ? 1 : 0;
 		    }
 
 		  pr_clear_value (&mode);
@@ -1079,6 +1108,13 @@ exit:
     MOP serial_class_mop, serial_mop;
     DB_IDENTIFIER serial_obj_id;
 
+    if (!identifier_fits (question.name))
+      {
+	res.err_id = ER_FAILED;
+	res.err_msg = TOO_LONG_NAME_MSG;
+	return res.err_id;
+      }
+
     const char *serial_name = question.name.c_str ();
     serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
@@ -1133,8 +1169,16 @@ exit:
     split_str (name, start_pos, id);
 
     std::string class_name_with_owner = owner_name + class_name;
+    if (!identifier_fits (class_name_with_owner))
+      {
+	return ER_FAILED;
+      }
+
     char realname[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
-    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH + 1);
+    if (sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH + 1) == NULL)
+      {
+	return ER_FAILED;
+      }
 
     qualifier = realname;
     transform (id.begin(), id.end(), id.begin(), ::tolower);
@@ -1148,6 +1192,13 @@ exit:
     int err, match_cnt;
     std::string qualifier;
     std::string id;
+
+    if (!identifier_fits (question.name))
+      {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = TOO_LONG_NAME_MSG;
+	return err;
+      }
 
     err = normalize_id (question.name, qualifier, id);
     if (err != NO_ERROR)
@@ -1315,38 +1366,6 @@ exit:
   }
 
   int
-  callback_handler::change_rights (packing_unpacker &unpacker)
-  {
-    int error = NO_ERROR;
-
-    int command;
-    std::string auth_user_name;
-    unpacker.unpack_int (command);
-
-    if (command == 0) // PUSH
-      {
-	unpacker.unpack_string (auth_user_name);
-	MOP user = au_find_user (auth_user_name.c_str ());
-	if (user == NULL)
-	  {
-	    error = ER_FAILED;
-	  }
-	else
-	  {
-	    au_perform_push_user (user);
-	  }
-      }
-    else // POP
-      {
-	au_perform_pop_user ();
-      }
-
-    // no response
-
-    return error;
-  }
-
-  int
   callback_handler::get_code_by_name (packing_unpacker &unpacker)
   {
     // Look up the object code (ocode) of a stored procedure or package by its generated Java class
@@ -1455,17 +1474,91 @@ exit:
   }
 
   int
+  callback_handler::change_exec_rights (packing_unpacker &unpacker)
+  {
+    // Push/pop the execution rights around a direct call of an external PL/CSQL routine, so that the
+    // callee's body runs with its own owner's rights rather than the caller's. This does the same
+    // callee's body runs with its own owner's rights rather than the caller's. The outcome is
+    // reported back: neither the server nor the PL server may proceed if the switch did not happen.
+    int command;
+    std::string owner_name;
+
+    unpacker.unpack_int (command);
+
+    int error = NO_ERROR;
+
+    if (command == EXEC_RIGHTS_PUSH)
+      {
+	unpacker.unpack_string (owner_name);
+
+	MOP user = au_find_user (owner_name.c_str ());
+	if (user == NULL)
+	  {
+	    error = er_errid ();
+	    if (error == NO_ERROR)
+	      {
+		error = ER_AU_INVALID_USER;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, owner_name.c_str ());
+	      }
+	  }
+	else if (au_perform_push_user (user) != NO_ERROR)
+	  {
+	    error = er_errid ();
+	    if (error == NO_ERROR)
+	      {
+		error = ER_FAILED;
+	      }
+	  }
+      }
+    else if (command == EXEC_RIGHTS_POP)
+      {
+	if (au_perform_pop_user () != NO_ERROR)
+	  {
+	    error = er_errid ();
+	    if (error == NO_ERROR)
+	      {
+		error = ER_FAILED;
+	      }
+	  }
+      }
+    else
+      {
+	error = ER_OBJ_INVALID_ARGUMENTS;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      }
+
+    return xs_pack_and_queue (error);
+  }
+
+  int
   callback_handler::check_execute_auth (packing_unpacker &unpacker)
   {
     // Runtime EXECUTE check for a directly-called PL/CSQL routine/package member. This mirrors the
     // compile-time check in get_user_defined_routine_info, re-evaluated here at run time so that a
     // grant revoked after the caller was compiled takes effect. Au_user is the definer (pushed via
-    // METHOD_CALLBACK_CHANGE_RIGHTS), which is the correct principal for a definer's-rights routine.
+    // METHOD_CALLBACK_CHANGE_EXEC_RIGHTS), which is the correct principal for a definer's-rights routine.
     std::string unique_name;
     unpacker.unpack_all (unique_name);
 
     int auth_error = NO_ERROR;
+    std::string owner_name;
+    std::string err_msg;
     int save;
+
+    // Take the error reason CAS already composed, so that the PL server reports it.
+    auto take_error = [&auth_error, &err_msg] (int fallback)
+    {
+      auth_error = er_errid ();
+      if (auth_error == NO_ERROR)
+	{
+	  auth_error = fallback;
+	}
+      const char *msg = er_msg ();
+      if (msg != NULL)
+	{
+	  err_msg.assign (msg);
+	}
+    };
 
     AU_SAVE_AND_DISABLE (save);
 
@@ -1473,24 +1566,33 @@ exit:
     if (routine_mop == NULL)
       {
 	// dropped between the caller's compilation and this execution
-	auth_error = er_errid ();
-	if (auth_error == NO_ERROR)
-	  {
-	    auth_error = ER_SP_NOT_EXIST;
-	  }
+	take_error (ER_SP_NOT_EXIST);
       }
     else if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
       {
-	auth_error = er_errid ();
-	if (auth_error == NO_ERROR)
+	take_error (ER_FAILED);
+      }
+    else
+      {
+	// The caller switches the execution rights to this owner before the direct call. Reading it
+	// here spares a separate method call.
+	MOP owner = jsp_get_owner (routine_mop);
+	char *name = (owner == NULL) ? NULL : au_get_user_name (owner);
+	if (name == NULL)
 	  {
-	    auth_error = ER_FAILED;
+	    take_error (ER_FAILED);
+	  }
+	else
+	  {
+	    owner_name.assign (name);
+	    ws_free_string (name);
 	  }
       }
 
     AU_RESTORE (save);
 
-    return xs_pack_and_queue (auth_error);
+    // the owner name is empty unless the check passed, and the message empty unless it failed
+    return xs_pack_and_queue (auth_error, owner_name, err_msg);
   }
 
 //////////////////////////////////////////////////////////////////////////

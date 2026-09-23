@@ -65,6 +65,7 @@
 #include "authenticate_access_auth.hpp"
 #include "pl_signature.hpp"
 #include "oid.h"
+#include "intl_support.h"
 #include "string_buffer.hpp"
 #include "db_value_printer.hpp"
 #include "execute_statement.h"
@@ -2008,9 +2009,58 @@ error:
   return err;
 }
 
+/*
+ * pl_downcase_identifier - case-convert an identifier the way the server does
+ *   return: the case-converted name
+ *   name(in): identifier as the PL server sent it
+ *
+ * Note: Names of package items arrive verbatim, as they were written in the PL/CSQL source. The
+ *       server is what decides how an identifier is case-converted -- intl_identifier_lower ()
+ *       follows the identifier alphabet of the database locale, which is not plain ASCII for every
+ *       locale -- so the case conversion has to happen here rather than in the PL server, whose
+ *       JVM would otherwise have to reproduce those rules.
+ *
+ *       Unlike sm_downcase_name (), this sizes its own buffer, so an identifier of any length is
+ *       handled.
+ */
+static std::string
+pl_downcase_identifier (const std::string &name)
+{
+  if (name.empty ())
+    {
+      return name;
+    }
+
+  std::string lowered;
+  lowered.resize (intl_identifier_lower_string_size (name.c_str ()) + 1);
+  intl_identifier_lower (name.c_str (), &lowered[0]);
+  lowered.resize (strlen (lowered.c_str ()));
+
+  return lowered;
+}
+
+/*
+ * pl_downcase_leading_identifier - case-convert the identifier that leads a colon-separated entry
+ *   return: the entry with its leading name case-converted
+ *   entry(in): an entry of a cursor's parameters or a record type's fields, which is
+ *              'name:type...' (see the column comments in schema_system_catalog_install.cpp)
+ */
+static std::string
+pl_downcase_leading_identifier (const std::string &entry)
+{
+  size_t colon = entry.find (':');
+  if (colon == std::string::npos)
+    {
+      return pl_downcase_identifier (entry);
+    }
+
+  return pl_downcase_identifier (entry.substr (0, colon)) + entry.substr (colon);
+}
+
 static int
 sp_add_pkg_sp_arg (MOP *mop_out, const int idx, const cubpl::pkg_sp_arg arg)
 {
+  std::string arg_name;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2050,7 +2100,8 @@ sp_add_pkg_sp_arg (MOP *mop_out, const int idx, const cubpl::pkg_sp_arg arg)
     }
 
   // attribute arg_name
-  db_make_string (&value, arg.name.data());
+  arg_name = pl_downcase_identifier (arg.name);
+  db_make_string (&value, arg_name.data());
   err = dbt_put_internal (obt, SP_ARG_ATTR_ARG_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2138,6 +2189,7 @@ static int
 sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
 	       const char *pkg_unique_name, const char *class_name, const cubpl::pkg_sp &sp)
 {
+  std::string sp_name;
   DB_OTMPL *obt;
   DB_OBJECT *object, *sp_arg_obj, *classobj, *arg_classobj;
   DB_VALUE value;
@@ -2162,7 +2214,8 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
     } // side effect 0
 
   // attribute unique_name
-  n = snprintf (buffer, sizeof (buffer), "%s.%s", pkg_unique_name, sp.name.data());
+  sp_name = pl_downcase_identifier (sp.name);
+  n = snprintf (buffer, sizeof (buffer), "%s.%s", pkg_unique_name, sp_name.data());
   if (n >= (int) sizeof (buffer))
     {
       err = ER_PKG_PROC_UNIQ_NAME_TOO_LONG;
@@ -2178,7 +2231,7 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
     }
 
   // attribute sp_name
-  db_make_string (&value, sp.name.data());
+  db_make_string (&value, sp_name.data());
   err = dbt_put_internal (obt, SP_ATTR_SP_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2443,6 +2496,7 @@ error:
 static int
 sp_add_pkg_var (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_var &var)
 {
+  std::string var_name;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2473,7 +2527,8 @@ sp_add_pkg_var (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_var 
     }
 
   // attribute name
-  db_make_string (&value, var.name.data());
+  var_name = pl_downcase_identifier (var.name);
+  db_make_string (&value, var_name.data());
   err = dbt_put_internal (obt, PKG_VAR_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2557,6 +2612,7 @@ static int
 sp_add_pkg_exception (MOP *mop_out, const char *pkg_unique_name,
 		      const cubpl::pkg_exception &exception)
 {
+  std::string exception_name;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2587,7 +2643,8 @@ sp_add_pkg_exception (MOP *mop_out, const char *pkg_unique_name,
     }
 
   // attribute name
-  db_make_string (&value, exception.name.data());
+  exception_name = pl_downcase_identifier (exception.name);
+  db_make_string (&value, exception_name.data());
   err = dbt_put_internal (obt, PKG_EXCEPTION_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2638,6 +2695,8 @@ error:
 static int
 sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_cursor &cursor)
 {
+  std::string cursor_name;
+  std::string cursor_rec_type;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2668,7 +2727,8 @@ sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_c
     }
 
   // attribute name
-  db_make_string (&value, cursor.name.data());
+  cursor_name = pl_downcase_identifier (cursor.name);
+  db_make_string (&value, cursor_name.data());
   err = dbt_put_internal (obt, PKG_CURSOR_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2677,7 +2737,8 @@ sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_c
     }
 
   // attribute record_type
-  db_make_string (&value, cursor.record_type.data());
+  cursor_rec_type = pl_downcase_identifier (cursor.record_type);
+  db_make_string (&value, cursor_rec_type.data());
   err = dbt_put_internal (obt, PKG_CURSOR_ATTR_RECORD_TYPE, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2701,8 +2762,8 @@ sp_add_pkg_cursor (MOP *mop_out, const char *pkg_unique_name, const cubpl::pkg_c
     i = 0;
     for (const std::string &p: cursor.parameters)
       {
-
-	db_make_string (&v, p.data());
+	std::string param = pl_downcase_leading_identifier (p);
+	db_make_string (&v, param.data());
 	err = set_put_element (seq, i, &v);
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
@@ -2766,6 +2827,7 @@ static int
 sp_add_pkg_rec_type (MOP *mop_out, const char *pkg_unique_name,
 		     const cubpl::pkg_rec_type &rec_type)
 {
+  std::string rec_type_name;
 
   DB_OTMPL *obt;
   DB_OBJECT *object, *classobj;
@@ -2796,7 +2858,8 @@ sp_add_pkg_rec_type (MOP *mop_out, const char *pkg_unique_name,
     }
 
   // attribute name
-  db_make_string (&value, rec_type.name.data());
+  rec_type_name = pl_downcase_identifier (rec_type.name);
+  db_make_string (&value, rec_type_name.data());
   err = dbt_put_internal (obt, PKG_RECORD_TYPE_ATTR_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -2820,8 +2883,8 @@ sp_add_pkg_rec_type (MOP *mop_out, const char *pkg_unique_name,
     i = 0;
     for (const std::string &f: rec_type.fields)
       {
-
-	db_make_string (&v, f.data());
+	std::string field = pl_downcase_leading_identifier (f);
+	db_make_string (&v, field.data());
 	err = set_put_element (seq, i, &v);
 	pr_clear_value (&v);
 	if (err != NO_ERROR)
@@ -4251,8 +4314,49 @@ jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directi
 }
 
 /*
+ * jsp_user_specified_name - sm_user_specified_name () with its bounds checked, into a new string
+ *   return: the qualified name in lowercase, or an empty string if str cannot be one.
+ *           Never NULL unless the allocation fails; the caller frees it.
+ *   str(in) :
+ *
+ * Note: The parser bounds each identifier of str, but not their join, so a qualified name can be
+ *       longer than an identifier buffer holds. sm_downcase_name () and sm_user_specified_name ()
+ *       assert their bounds instead of checking them, which means a release build writes past the
+ *       buffer, so such a name has to be refused before it reaches them. Callers already treat an
+ *       empty name as invalid.
+ */
+
+static char *
+jsp_user_specified_name (const char *str)
+{
+  char buffer[SM_MAX_IDENTIFIER_LENGTH];
+  const char *dot = strchr (str, '.');
+
+  // sm_user_specified_name () asserts these rather than checking them: a debug build aborts and
+  // a release build has no check at all, so they have to be verified here. The total bounds the
+  // write into buffer; the parts bound what that function passes to sm_downcase_name (). A name
+  // without a qualifier needs no check of its own: that function refuses one too long to prepend
+  // the current user name to.
+  bool fits = (intl_identifier_lower_string_size (str) < (int) sizeof (buffer));
+  if (fits && dot != NULL)
+    {
+      fits = ((size_t) (dot - str) < SM_MAX_USER_LENGTH
+	      && strlen (dot + 1) < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH);
+    }
+
+  if (!fits)
+    {
+      return strdup ("");
+    }
+
+  sm_user_specified_name (str, buffer, sizeof (buffer));
+
+  return strdup (buffer);
+}
+
+/*
  * jsp_check_stored_procedure_name -
- *   return: java stored procedure name
+ *   return: java stored procedure name, or an empty string if str cannot be one
  *   str(in) :
  *
  * Note: convert lowercase
@@ -4261,23 +4365,32 @@ jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directi
 static char *
 jsp_check_stored_procedure_name (const char *str)
 {
-  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
-  char tmp[SM_MAX_IDENTIFIER_LENGTH + 2];
   char *name = NULL;
   static const int dbms_output_len = strlen ("dbms_output.");
 
-
   if (strncasecmp (str, "dbms_output.", dbms_output_len) == 0)
     {
-      sprintf (buffer, "public.dbms_output.%s",
-	       sm_downcase_name (str + dbms_output_len, tmp, SM_MAX_IDENTIFIER_LENGTH));
+      // the result is a three-part name, which is longer than a single identifier
+      static const char qualifier[] = "public.dbms_output.";
+      char buffer[sizeof (qualifier) - 1 + SM_MAX_IDENTIFIER_LENGTH];
+      char tmp[SM_MAX_IDENTIFIER_LENGTH];
+      const char *member = str + dbms_output_len;
+
+      if (intl_identifier_lower_string_size (member) < (int) sizeof (tmp)
+	  && sm_downcase_name (member, tmp, sizeof (tmp)) != NULL)
+	{
+	  snprintf (buffer, sizeof (buffer), "%s%s", qualifier, tmp);
+	  name = strdup (buffer);
+	}
+      else
+	{
+	  name = strdup ("");
+	}
     }
   else
     {
-      sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
+      name = jsp_user_specified_name (str);
     }
-
-  name = strdup (buffer);
 
   return name;
 }
@@ -4285,10 +4398,7 @@ jsp_check_stored_procedure_name (const char *str)
 static char *
 jsp_check_package_name (const char *str)
 {
-  char buffer[SM_MAX_IDENTIFIER_LENGTH + 2];
-
-  sm_user_specified_name (str, buffer, SM_MAX_IDENTIFIER_LENGTH);
-  return strdup (buffer);
+  return jsp_user_specified_name (str);
 }
 
 /*

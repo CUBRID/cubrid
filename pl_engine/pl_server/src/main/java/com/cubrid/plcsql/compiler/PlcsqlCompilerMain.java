@@ -306,7 +306,9 @@ public class PlcsqlCompilerMain {
         Unit unit;
         UnitSp unitSp = null;
         UnitPkg unitPkg = null;
-        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, referencedClasses);
+        Set<String> referencedMethods = new HashSet<>();
+        ParseTreeConverter converter =
+                new ParseTreeConverter(iStore, owner, referencedClasses, referencedMethods);
 
         if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
             unit = unitSp = (UnitSp) converter.visit(codeTree);
@@ -318,13 +320,6 @@ public class PlcsqlCompilerMain {
         if (verbose) {
             t0 = logElapsedTime(logStore, "converting to AST", t0);
         }
-
-        // ------------------------------------------
-        // ask server semantic infomation
-        // . signature of a global procedure/function
-        // . whether a name represent a serial or not
-        // . type of a table column
-        converter.askServerSemanticQuestions();
 
         if (verbose) {
             t0 = logElapsedTime(logStore, "getting global semantics information from server", t0);
@@ -350,18 +345,35 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        // Assign each directly-referenced routine/package a slot in the unit's runtime
-        // EXECUTE-check cache (static boolean[] authChecked). The slot numbers are meaningful
-        // only within this compilation: the field's size and every call site's index come from
-        // this same map.
+        // Slots of the unit's two per-invocation caches. The numbers are meaningful only within
+        // this compilation: each field's size and every call site's index come from these maps.
+        //
+        //   authCheckedIndex - one slot per directly-referenced class, keyed by its class name.
+        //                      Indexes authChecked, ownerName and targetClass, all of which are a
+        //                      property of the class rather than of a single routine in it.
+        //   methodIndex      - one slot per directly-referenced method, keyed by
+        // "<class>.<method>".
+        //                      Indexes method. A package class holds several routines, so this is
+        //                      finer-grained than authCheckedIndex.
         Map<String, Integer> authCheckedIndex = new HashMap<>();
         int slot = 0;
         for (String cls : referencedClasses) {
             authCheckedIndex.put(cls, slot++);
         }
 
+        Map<String, Integer> methodIndex = new HashMap<>();
+        slot = 0;
+        for (String mth : referencedMethods) {
+            methodIndex.put(mth, slot++);
+        }
+
         String javaCode =
-                new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls, authCheckedIndex)
+                new JavaCodeWriter(
+                                iStore,
+                                sqlUsesInRecursiveCalls,
+                                authCheckedIndex,
+                                methodIndex,
+                                converter.unitOwner)
                         .buildCodeLines(unit);
 
         if (verbose) {
