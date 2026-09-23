@@ -11854,6 +11854,66 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   pt_convert_dblink_dml_query (parser, node, (int) (remote_target == false), (int) (remote_target == true), snl);
 }
 
+/* true iff every ON DUPLICATE KEY UPDATE assignment can go out as remote statement text.
+ *
+ * It admits rather than excludes, and has to: the rejection that catches a local reference inside the
+ * clause (CBRD-27362) only fires while the statement has no sink kind, so granting the sink walks past
+ * it, and excluding by list would let through every shape nobody named.
+ */
+static bool
+pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
+{
+  PT_NODE *assign, *lhs, *rhs;
+
+  for (assign = assignments; assign != NULL; assign = assign->next)
+    {
+      if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN)
+	{
+	  return false;
+	}
+
+      lhs = assign->info.expr.arg1;
+      if (lhs == NULL || lhs->node_type != PT_NAME || lhs->info.name.original == NULL
+	  || lhs->info.name.original[0] == '\0')
+	{
+	  return false;
+	}
+
+      /* a negative literal is a sign over the number here, not one value -- nothing folds it yet */
+      rhs = assign->info.expr.arg2;
+      if (rhs != NULL && rhs->node_type == PT_EXPR && rhs->info.expr.op == PT_UNARY_MINUS)
+	{
+	  rhs = rhs->info.expr.arg1;
+	  if (rhs == NULL || !PT_IS_NUMERIC_TYPE (rhs->type_enum))
+	    {
+	      return false;
+	    }
+	}
+
+      if (rhs == NULL || rhs->node_type != PT_VALUE)
+	{
+	  return false;
+	}
+
+      /* a braced container and a parenthesized list are value nodes too, and their elements are
+       * ordinary expressions, so name the types that may go rather than the ones that may not */
+      if (!(PT_IS_NUMERIC_TYPE (rhs->type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (rhs->type_enum)
+	    || PT_IS_DATE_TIME_TYPE (rhs->type_enum) || rhs->type_enum == PT_TYPE_NULL))
+	{
+	  return false;
+	}
+
+      /* an introducer or a COLLATE modifier goes out as written, and the remote need not read it alike */
+      if (rhs->info.value.has_cs_introducer || rhs->info.value.print_charset || rhs->info.value.print_collation
+	  || rhs->info.value.coll_modifier != 0)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 static void
 pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
@@ -11879,10 +11939,11 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * REPLACE carries that meaning row by row, so honoring it is a matter of which statement
    * dblink_dml_open prepares; the values travel the same way.
    *
-   * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE is still excluded: the sink has nowhere to carry the
-   * update assignments yet. By not setting the flag here it falls through to the mixed local/remote
-   * rejection in pt_convert_dblink_dml_query. */
-  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL && node->info.insert.odku_assignments == NULL)
+   * ON DUPLICATE KEY UPDATE rides along when every assignment can be written out. One that cannot
+   * keeps the whole statement out of the sink, and it falls through to the mixed local/remote
+   * rejection. */
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
+      && pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
     }
