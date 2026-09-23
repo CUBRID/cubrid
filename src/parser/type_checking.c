@@ -12819,6 +12819,114 @@ pt_eval_method_call_type (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_sys_clock_available () - whether the statement clock (parser->sys_datetime / sys_epochtime) has been
+ *	synchronized with the server.  Every entry that evaluates an expression on the client synchronizes it
+ *	first (do_statement, a trigger action, a stored-procedure call), so an
+ *	unsynchronized clock is a caller's bug: a debug build stops on it, a release build reports it instead of
+ *	computing a time from a NULL value.
+ *   return: true if available
+ *   parser(in): parser context
+ */
+static bool
+pt_sys_clock_available (PARSER_CONTEXT * parser)
+{
+  if (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime))
+    {
+      assert (false);
+      PT_INTERNAL_ERROR (parser, "statement clock not synchronized");
+      return false;
+    }
+  return true;
+}
+
+/*
+ * pt_op_reads_statement_clock () - whether an operator, evaluated on the client, reads the statement clock
+ *	(parser->sys_datetime / sys_epochtime): the SYS / CURRENT / UTC date-time family, TZ_OFFSET, the
+ *	argument-less UNIX_TIMESTAMP () and the time-ordered UUID (7)
+ *   return: true if so
+ *   op(in): the operator
+ *   arg1(in): its first argument node, or NULL
+ */
+bool
+pt_op_reads_statement_clock (PT_OP_TYPE op, const PT_NODE * arg1)
+{
+  switch (op)
+    {
+    case PT_SYS_DATE:
+    case PT_CURRENT_DATE:
+    case PT_UTC_DATE:
+    case PT_SYS_TIME:
+    case PT_CURRENT_TIME:
+    case PT_UTC_TIME:
+    case PT_SYS_DATETIME:
+    case PT_CURRENT_DATETIME:
+    case PT_SYS_TIMESTAMP:
+    case PT_CURRENT_TIMESTAMP:
+    case PT_UTC_TIMESTAMP:
+    case PT_TZ_OFFSET:
+      return true;
+
+    case PT_UNIX_TIMESTAMP:
+      /* the one-argument form converts its argument through the session timezone instead */
+      return arg1 == NULL;
+
+    case PT_UUID:
+      /* UUID () and UUID (4) are random; a version that is not an integer literal is only known at evaluation,
+       * so the clock is required for it */
+      if (arg1 == NULL)
+	{
+	  return false;
+	}
+      if (arg1->node_type == PT_VALUE && arg1->type_enum == PT_TYPE_INTEGER)
+	{
+	  return arg1->info.value.data_value.i == 7;
+	}
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * pt_reads_statement_clock_walk () - parser_walk_tree pre-function of pt_expr_tree_reads_statement_clock
+ *   return: node
+ *   parser(in): parser context
+ *   node(in): visited node
+ *   arg(out): bool, set when a statement-clock operator is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_reads_statement_clock_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *reads = (bool *) arg;
+
+  if (node->node_type == PT_EXPR && pt_op_reads_statement_clock (node->info.expr.op, node->info.expr.arg1))
+    {
+      *reads = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_expr_tree_reads_statement_clock () - whether an expression tree contains an operator that reads the
+ *	statement clock (pt_op_reads_statement_clock): the clock must then be synchronized before the tree is
+ *	evaluated on the client
+ *   return: true if so
+ *   parser(in): parser context
+ *   tree(in): expression tree
+ */
+bool
+pt_expr_tree_reads_statement_clock (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  bool reads = false;
+
+  (void) parser_walk_tree (parser, tree, pt_reads_statement_clock_walk, &reads, NULL, NULL);
+  return reads;
+}
+
+/*
  * pt_evaluate_db_value_expr () - apply op to db_value opds & place it in result
  *   return: 1 if evaluation succeeded, 0 otherwise
  *   parser(in): handle to the parser context
@@ -12882,6 +12990,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
   typ2 = (arg2) ? DB_VALUE_TYPE (arg2) : DB_TYPE_NULL;
   cmp = 0;
   db_make_null (result);
+
+  if (pt_op_reads_statement_clock (op, o1) && !pt_sys_clock_available (parser))
+    {
+      return 0;
+    }
 
   switch (op)
     {
@@ -17690,9 +17803,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  }
 	else if (version == 7)
 	  {
-	    assert (!DB_IS_NULL (&parser->sys_epochtime));
-	    assert (!DB_IS_NULL (&parser->sys_datetime));
-
 	    uuid_state.last_ms = &parser->uuidv7_last_ms;
 	    uuid_state.seq = &parser->uuidv7_seq;
 	    epoch_ms = ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)

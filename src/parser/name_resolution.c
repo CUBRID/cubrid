@@ -189,8 +189,6 @@ static PT_NODE *pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, voi
 static PT_NODE *pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * const node);
 static PT_NODE *pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * name);
-static PT_NODE *pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-						    int *continue_walk);
 static bool pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr);
 
 static PT_NODE *pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement);
@@ -1838,83 +1836,6 @@ pt_set_fill_default_in_path_expression (PT_NODE * node)
 }
 
 /*
- * pt_residual_needs_si_datetime_walk () - walker that detects operators
- *	reading the statement clock (the SYS/CURRENT/UTC date-time family)
- *   return: node
- *   parser(in):
- *   node(in):
- *   arg(out): bool, set when a statement-clock operator is found
- *   continue_walk(in/out):
- */
-static PT_NODE *
-pt_residual_needs_si_datetime_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  bool *needs_si_datetime = (bool *) arg;
-
-  if (node->node_type == PT_EXPR)
-    {
-      switch (node->info.expr.op)
-	{
-	case PT_SYS_DATE:
-	case PT_CURRENT_DATE:
-	case PT_UTC_DATE:
-	case PT_SYS_TIME:
-	case PT_CURRENT_TIME:
-	case PT_UTC_TIME:
-	case PT_SYS_DATETIME:
-	case PT_CURRENT_DATETIME:
-	case PT_SYS_TIMESTAMP:
-	case PT_CURRENT_TIMESTAMP:
-	case PT_UTC_TIMESTAMP:
-	  *needs_si_datetime = true;
-	  *continue_walk = PT_STOP_WALK;
-	  break;
-	case PT_UNIX_TIMESTAMP:
-	  /* only the argument-less form reads the statement clock; the one-argument forms convert their
-	   * argument through the session timezone instead */
-	  if (node->info.expr.arg1 == NULL)
-	    {
-	      *needs_si_datetime = true;
-	      *continue_walk = PT_STOP_WALK;
-	    }
-	  break;
-	case PT_UUID:
-	  /* UUID(7) is time-ordered: its client (Local Evaluation) evaluation reads the synchronized
-	   * statement clock (parser->sys_datetime/sys_epochtime), so si_datetime must be in sync.  UUID() and
-	   * UUID(4) are random and need no clock (SYS_GUID() is v4 as well).  The systematic per-signature
-	   * si_datetime decision belongs to the function classification work; this is a targeted guard. */
-	  {
-	    PT_NODE *ver = node->info.expr.arg1;
-
-	    if (ver == NULL)
-	      {
-		/* UUID() defaults to v4 (random): no clock needed */
-	      }
-	    else if (ver->node_type == PT_VALUE && ver->type_enum == PT_TYPE_INTEGER)
-	      {
-		if (ver->info.value.data_value.i == 7)
-		  {
-		    *needs_si_datetime = true;
-		    *continue_walk = PT_STOP_WALK;
-		  }
-	      }
-	    else
-	      {
-		/* version not a known integer constant: synchronize conservatively */
-		*needs_si_datetime = true;
-		*continue_walk = PT_STOP_WALK;
-	      }
-	  }
-	  break;
-	default:
-	  break;
-	}
-    }
-
-  return node;
-}
-
-/*
  * pt_residual_default_needs_si_datetime () - whether an attribute's residual
  *	DEFAULT expression reads the statement clock, i.e. whether the Local
  *	Evaluation path must synchronize SI_SYS_DATETIME before evaluating it
@@ -1927,7 +1848,6 @@ static bool
 pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr, PT_NODE * stmt)
 {
   PT_NODE *residual;
-  bool needs_si_datetime = false;
 
   /* the parser-wide CDT registry tree (pt_cdt_registry_tree): shared and read-only, so it is only walked
    * here -- the Default References and the Local Evaluation CDT_EVAL_SET of this statement reuse the same
@@ -1946,9 +1866,7 @@ pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * a
       return true;
     }
 
-  (void) parser_walk_tree (parser, residual, pt_residual_needs_si_datetime_walk, &needs_si_datetime, NULL, NULL);
-
-  return needs_si_datetime;
+  return pt_expr_tree_reads_statement_clock (parser, residual);
 }
 
 /*
