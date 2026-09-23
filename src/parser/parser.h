@@ -248,9 +248,11 @@ extern "C"
 			      PT_NODE * elem_type_list);
   extern int pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 				       PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list);
+  extern int pt_coerce_value_w_precision (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
+					  PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list);
   extern int pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest,
 						PT_TYPE_ENUM desired_type, PT_NODE * elem_type_list,
-						DB_DEFAULT_EXPR_TYPE default_expr_type, bool check_string_precision);
+						bool check_string_precision);
   extern PT_NODE *pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_type, int p, int s,
 					PT_NODE * desired_dt);
   extern PT_NODE *pt_wrap_collection_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM set_type,
@@ -711,8 +713,6 @@ extern "C"
 
   extern PT_NODE *pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
-  extern void pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
-								DB_DEFAULT_EXPR * default_expr);
   extern int pt_compact_default_tree_to_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream,
 						int *stream_size);
   extern PT_NODE *pt_compact_default_tree_from_stream (PARSER_CONTEXT * parser, const char *stream, int stream_size);
@@ -720,10 +720,6 @@ extern "C"
   extern PT_NODE *pt_cdt_registry_tree_copy (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * err_node,
 					     PT_VOLATILITY * volatility);
   extern void pt_cdt_registry_free (PARSER_CONTEXT * parser);
-  extern void pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
-						     DB_DEFAULT_EXPR * default_expr);
-  extern PT_NODE *pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser,
-								const DB_DEFAULT_EXPR * default_expr);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);

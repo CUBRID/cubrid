@@ -730,14 +730,6 @@ extern "C"
 #define DB_UTIME_MIN       (DB_UTIME_ZERO + 1)
 #define DB_UTIME_MAX       DB_UINT32_MAX
 
-#define NULL_DEFAULT_EXPRESSION_OPERATOR (-1)
-
-#define DB_IS_DEFAULT_DATETIME_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
-    (v) == DB_DEFAULT_CURRENTTIME || (v) == DB_DEFAULT_CURRENTDATE || \
-    (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
-    (v) == DB_DEFAULT_UNIX_TIMESTAMP || (v) == DB_DEFAULT_CURRENTDATETIME || \
-    (v) == DB_DEFAULT_CURRENTTIMESTAMP || (v) == DB_DEFAULT_SYSTIME)
-
   /* This defines the basic type identifier constants. These are used in the domain specifications of attributes and method
    * arguments and as value type tags in the DB_VALUE structures.
    */
@@ -1280,31 +1272,14 @@ extern "C"
     DB_DEFAULT_UUIDV7 = 15,
   } DB_DEFAULT_EXPR_TYPE;
 
-#define DB_IS_DEFAULT_UUID_EXPR(c) \
-  ( (c) == DB_DEFAULT_SYSGUID || (c) == DB_DEFAULT_UUIDV4 || (c) == DB_DEFAULT_UUIDV7  )
-
-#define DB_IS_DEFAULT_UUID_TIMEBASE_EXPR(c) \
-  ( (c) == DB_DEFAULT_UUIDV7  )
-
-#define DB_IS_DEFAULT_DETERMINE_BY_STATEMENT(c) \
-  ( DB_IS_DEFAULT_DATETIME_EXPR(c) || (c) == DB_DEFAULT_USER || (c) == DB_DEFAULT_CURR_USER \
-  || (c) == DB_DEFAULT_FORMATTED_SYSDATE )
-
-#define DB_IS_DEFAULT_DETERMINE_BY_ROW(c) \
-  ( DB_IS_DEFAULT_UUID_EXPR(c) )
-
-  /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
-   * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.
+  /* The stored forms of a column DEFAULT expression: its original text (an Expression-Derived Literal keeps only
+   * this, next to its folded value) and, for a residual expression, the REGU stream evaluated on the server and
+   * the Compact DEFAULT Tree evaluated on the client.  The legacy pseudo-column enum (DB_DEFAULT_EXPR_TYPE) is not
+   * part of a column DEFAULT; it survives for ON UPDATE.
    */
   typedef struct db_default_expr DB_DEFAULT_EXPR;
   struct db_default_expr
   {
-    /* The legacy pseudo-column enum below (type/op/format) is no longer used for a column DEFAULT, which is
-     * described by default_expr_text and the residual streams; it survives only as the in-memory carrier of
-     * a stored-procedure parameter DEFAULT and is not written to the catalog. */
-    DB_DEFAULT_EXPR_TYPE default_expr_type;	/* default expression identifier */
-    int default_expr_op;	/* default expression operator */
-    const char *default_expr_format;	/* default expression format */
     const char *default_expr_text;	/* original text of an Expression-Derived Literal DEFAULT; NULL otherwise */
     const char *default_expr_regu_stream;	/* serialized REGU form (FUNC_PRED stream) of a residual DEFAULT
 						 * expression for Server Evaluation; NULL otherwise */
@@ -1317,8 +1292,7 @@ extern "C"
 /* A residual (STABLE or VOLATILE) DEFAULT: the expression is stored as a Compact DEFAULT Tree and evaluated
  * at execution time.  It is the only DEFAULT form with a tree stream.  (e) is a DB_DEFAULT_EXPR pointer. */
 #define DB_IS_RESIDUAL_DEFAULT_EXPR(e) \
-  ( (e)->default_expr_type == DB_DEFAULT_NONE && (e)->default_expr_tree_stream != NULL \
-    && (e)->default_expr_tree_stream_size > 0 )
+  ( (e)->default_expr_tree_stream != NULL && (e)->default_expr_tree_stream_size > 0 )
 
   typedef DB_DATETIME DB_C_DATETIME;
   typedef DB_DATETIMETZ DB_C_DATETIMETZ;

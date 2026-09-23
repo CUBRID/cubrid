@@ -19879,26 +19879,41 @@ pt_coerce_value_explicit (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest
 }
 
 /*
- * pt_coerce_value_for_default_value () - coerce a PT_VALUE of DEFAULT into another PT_VALUE of compatible type
+ * pt_coerce_value_w_precision () - pt_coerce_value that also checks the string precision of the result
  *   return: NO_ERROR on success, non-zero for ERROR
  *   parser(in):
  *   src(in): a pointer to the original PT_VALUE
  *   dest(out): a pointer to the coerced PT_VALUE
  *   desired_type(in): the desired type of the coerced result
  *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
- *   default_expr_type(in): default expression identifier
+ */
+int
+pt_coerce_value_w_precision (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
+			     PT_NODE * data_type)
+{
+  return pt_coerce_value_internal (parser, src, dest, desired_type, data_type, true, true);
+}
+
+/*
+ * pt_coerce_value_for_default_value () - coerce the PT_VALUE written as a DEFAULT into another PT_VALUE of
+ *	compatible type; the explicit coercions of pt_is_explicit_coerce_allowed_for_default_value are allowed
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in):
+ *   src(in): a pointer to the original PT_VALUE
+ *   dest(out): a pointer to the coerced PT_VALUE
+ *   desired_type(in): the desired type of the coerced result
+ *   data_type(in): the data type list of a (desired) set type or the data type of an object or NULL
  *   check_string_precision(in): true, if needs to consider string precision
  */
 int
 pt_coerce_value_for_default_value (PARSER_CONTEXT * parser, PT_NODE * src, PT_NODE * dest, PT_TYPE_ENUM desired_type,
-				   PT_NODE * data_type, DB_DEFAULT_EXPR_TYPE default_expr_type,
-				   bool check_string_precision)
+				   PT_NODE * data_type, bool check_string_precision)
 {
   bool implicit_coercion;
 
   assert (src != NULL && dest != NULL);
 
-  if (default_expr_type == DB_DEFAULT_NONE && src->node_type == PT_VALUE
+  if (src->node_type == PT_VALUE
       && pt_is_explicit_coerce_allowed_for_default_value (parser, src->type_enum, desired_type))
     {
       implicit_coercion = false;	/* explicit coercion */

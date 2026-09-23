@@ -886,101 +886,46 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
   int error = NO_ERROR;
   is_null = false;
 
-  DB_DEFAULT_EXPR default_expr;
-  pt_get_default_expression_from_data_default_node (parser, node, &default_expr);
-
   out.clear ();
-  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
+  PT_NODE *default_value = node->info.data_default.default_value;
+  DB_VALUE *value = NULL;
+  // do not use initialized db value
+  if (default_value->info.value.db_value_is_initialized)
     {
-      if (default_expr.default_expr_type == NULL_DEFAULT_EXPRESSION_OPERATOR)
-	{
-	  DB_VALUE *value = pt_value_to_db (parser, node->info.data_default.default_value);
-	  if (!DB_IS_NULL (value))
-	    {
-	      string_buffer sb;
-	      sb.clear ();
-	      db_sprint_value (value, sb);
+      default_value->info.value.db_value_is_initialized = false;
+    }
 
-	      out.append (sb.get_buffer ());
-	    }
-	  else
+  value = pt_value_to_db (parser, default_value);
+
+  if (!DB_IS_NULL (value))
+    {
+      if (TP_IS_CHAR_TYPE (db_value_domain_type (value)))
+	{
+	  if (db_get_string_size (value) > DB_MAX_DEFAULT_EXPR_LENGTH)
 	    {
-	      // empty out consider as NULL
-	      is_null = true;
+	      pt_reset_error (parser);
+	      PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG,
+			  DB_MAX_DEFAULT_EXPR_LENGTH);
+	      return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
 	    }
+
+	  out.append (db_get_string (value));
 	}
       else
 	{
-	  if (default_expr.default_expr_op == T_TO_CHAR)
+	  DB_VALUE tmp_val;
+	  error = db_value_coerce (value, &tmp_val, db_type_to_db_domain (DB_TYPE_VARCHAR));
+	  if (error == NO_ERROR)
 	    {
-	      out.append ("TO_CHAR(");
-	    }
-
-	  const char *default_value_expr_type_string = db_default_expression_string (default_expr.default_expr_type);
-	  if (default_value_expr_type_string != NULL)
-	    {
-	      out.append (default_value_expr_type_string);
-	    }
-	  else
-	    {
-	      out.append (parser_print_tree (parser, node));
-	    }
-
-	  if (default_expr.default_expr_op == T_TO_CHAR)
-	    {
-	      if (default_expr.default_expr_format != NULL)
-		{
-		  out.append (", \'");
-		  out.append (default_expr.default_expr_format);
-		  out.append ("\'");
-		}
-
-	      out.append (")");
+	      out.append (db_get_string (&tmp_val));
+	      db_value_clear (&tmp_val);
 	    }
 	}
     }
   else
     {
-      PT_NODE *default_value = node->info.data_default.default_value;
-      DB_VALUE *value = NULL;
-      // do not use initialized db value
-      if (default_value->info.value.db_value_is_initialized)
-	{
-	  default_value->info.value.db_value_is_initialized = false;
-	}
-
-      value = pt_value_to_db (parser, default_value);
-
-      if (!DB_IS_NULL (value))
-	{
-	  if (TP_IS_CHAR_TYPE (db_value_domain_type (value)))
-	    {
-	      if (db_get_string_size (value) > DB_MAX_DEFAULT_EXPR_LENGTH)
-		{
-		  pt_reset_error (parser);
-		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG,
-			      DB_MAX_DEFAULT_EXPR_LENGTH);
-		  return ER_SP_PARAM_DEFAULT_STR_TOO_BIG;
-		}
-
-	      out.append (db_get_string (value));
-	    }
-	  else
-	    {
-	      DB_VALUE tmp_val;
-	      error = db_value_coerce (value, &tmp_val, db_type_to_db_domain (DB_TYPE_VARCHAR));
-	      if (error == NO_ERROR)
-		{
-		  out.append (db_get_string (&tmp_val));
-		  db_value_clear (&tmp_val);
-		}
-	    }
-	}
-      else
-	{
-	  // empty out is considered NULL
-	  is_null = true;
-	}
+      // empty out is considered NULL
+      is_null = true;
     }
 
   return error;
@@ -2349,28 +2294,7 @@ jsp_get_default_expr_node_list (PARSER_CONTEXT *parser, cubpl::pl_signature &sig
 	}
       else if (sig.arg.arg_default_value_size[i] > 0)
 	{
-	  DB_DEFAULT_EXPR default_expr;
-	  pt_get_default_expression_from_string (parser, sig.arg.arg_default_value[i], sig.arg.arg_default_value_size[i],
-						 &default_expr);
-	  if (flag_si_datetime && !*flag_si_datetime && (DB_IS_DEFAULT_DATETIME_EXPR (default_expr.default_expr_type)
-	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (default_expr.default_expr_type)))
-	    {
-	      *flag_si_datetime = true;
-	    }
-
-	  if (default_expr.default_expr_type != DB_DEFAULT_NONE)
-	    {
-	      default_next_node = pt_make_default_value_tree_from_default_expr (parser, &default_expr);
-	      if (default_next_node == NULL)
-		{
-		  PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  return NULL;
-		}
-	    }
-	  else
-	    {
-	      default_next_node = pt_make_string_value (parser, sig.arg.arg_default_value[i]);
-	    }
+	  default_next_node = pt_make_string_value (parser, sig.arg.arg_default_value[i]);
 	}
 
       if (default_next_node != NULL)

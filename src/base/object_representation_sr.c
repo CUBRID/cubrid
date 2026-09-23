@@ -3617,11 +3617,6 @@ or_free_classrep (OR_CLASSREP * rep)
 	      free_and_init (att->default_value.value);
 	    }
 
-	  if (att->default_value.default_expr.default_expr_format != NULL)
-	    {
-	      free_and_init (att->default_value.default_expr.default_expr_format);
-	    }
-
 	  if (att->default_value.default_expr.default_expr_text != NULL)
 	    {
 	      free_and_init (att->default_value.default_expr.default_expr_text);
@@ -3635,11 +3630,6 @@ or_free_classrep (OR_CLASSREP * rep)
 	  if (att->current_default_value.value != NULL)
 	    {
 	      free_and_init (att->current_default_value.value);
-	    }
-
-	  if (att->current_default_value.default_expr.default_expr_format != NULL)
-	    {
-	      free_and_init (att->current_default_value.default_expr.default_expr_format);
 	    }
 
 	  if (att->current_default_value.default_expr.default_expr_text != NULL)
@@ -3671,19 +3661,9 @@ or_free_classrep (OR_CLASSREP * rep)
 	      free_and_init (att->default_value.value);
 	    }
 
-	  if (att->default_value.default_expr.default_expr_format != NULL)
-	    {
-	      free_and_init (att->default_value.default_expr.default_expr_format);
-	    }
-
 	  if (att->current_default_value.value != NULL)
 	    {
 	      free_and_init (att->current_default_value.value);
-	    }
-
-	  if (att->current_default_value.default_expr.default_expr_format != NULL)
-	    {
-	      free_and_init (att->current_default_value.default_expr.default_expr_format);
 	    }
 
 	  if (att->btids != NULL && att->btids != att->btid_pack)

@@ -8218,7 +8218,6 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 	    }
 	  default_data->info.data_default.default_value = default_value;
 	  default_data->info.data_default.shared = PT_DEFAULT;
-	  default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 	  if (expr_text != NULL)
 	    {
 	      /* the stored text and volatility travel with the copy: pt_check_data_default keeps them instead of

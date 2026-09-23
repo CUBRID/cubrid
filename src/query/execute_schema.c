@@ -13932,9 +13932,7 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
 	}
       else
 	{
-	  error =
-	    pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
-					       on_update_expr_type, true);
+	  error = pt_coerce_value_w_precision (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type);
 	}
     }
 
@@ -14005,14 +14003,12 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
 {
   int error = NO_ERROR;
   PT_NODE *def_val = NULL, *initial_def_val = NULL;
-  DB_DEFAULT_EXPR_TYPE def_expr_type;
   bool has_self_ref = false;
   bool is_residual;
   const char *data_type_print;
 
   assert (data_default != NULL && data_default->node_type == PT_DATA_DEFAULT);
 
-  def_expr_type = data_default->info.data_default.default_expr_type;
   is_residual = PT_IS_RESIDUAL_DEFAULT (data_default);
   def_val = data_default->info.data_default.default_value;
   def_val = pt_semantic_check (parser, def_val);
@@ -14068,10 +14064,9 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
       /* We allow default value if: 1. Not a default expression. 2. Value is NULL or value is empty set and collection
        * type is expected. */
       value = &def_val->info.value.db_value;
-      if (def_expr_type == DB_DEFAULT_NONE
-	  && (db_value_is_null (value)
-	      || (desired_type != PT_TYPE_OBJECT && TP_IS_SET_TYPE (value->domain.general_info.type)
-		  && value->data.set->set->size == 0)))
+      if (db_value_is_null (value)
+	  || (desired_type != PT_TYPE_OBJECT && TP_IS_SET_TYPE (value->domain.general_info.type)
+	      && value->data.set->set->size == 0))
 	{
 	  /* We can accept the default value. */
 	  pt_evaluate_tree (parser, def_val, default_value, 1);
@@ -14097,9 +14092,9 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
   else
     {
       /* try to coerce the default value into the attribute type */
-      if (def_expr_type == DB_DEFAULT_NONE && !is_residual)
+      if (!is_residual)
 	{
-	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, data_type, def_expr_type, true);
+	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, data_type, true);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;
@@ -14108,30 +14103,14 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
 	}
       else
 	{
-	  /* a legacy default expression, or a residual (STABLE or VOLATILE):
-	   * evaluate it exactly once at DDL time and coerce the result to the
-	   * attribute type, so an expression whose result is incompatible with
-	   * the column is rejected here -- as for constant defaults -- instead of
-	   * being deferred to the first INSERT.  For a residual the coerced value
-	   * seeds value/original_value (what unbound pre-existing rows read back);
-	   * future INSERTs re-evaluate the stored residual -- once per statement
-	   * (STABLE) or once per row (VOLATILE), so for VOLATILE the frozen
-	   * snapshot is only a type-checked placeholder, never the live default. */
+	  /* a residual (STABLE or VOLATILE): evaluate it once at DDL time and coerce the result to the
+	   * attribute type, so an incompatible result is rejected here rather than at the first INSERT.  The
+	   * coerced value seeds value/original_value (what unbound pre-existing rows read back); INSERTs
+	   * re-evaluate the stored residual, so for VOLATILE the snapshot is only a type-checked placeholder. */
 	  DB_VALUE src;
 	  PT_NODE *temp_val;
 
 	  db_make_null (&src);
-
-	  if (!is_residual)
-	    {
-	      def_val = pt_semantic_type (parser, def_val, NULL);
-	      if (pt_has_error (parser) || def_val == NULL)
-		{
-		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  error = er_errid ();
-		  goto exit;
-		}
-	    }
 
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
 	  if (pt_has_error (parser))
@@ -14150,9 +14129,9 @@ get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_defau
 	      goto exit;
 	    }
 
-	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, data_type, def_expr_type, true);
+	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, data_type, true);
 	  db_value_clear (&src);
-	  if (error == NO_ERROR && is_residual)
+	  if (error == NO_ERROR)
 	    {
 	      pt_evaluate_tree (parser, temp_val, default_value, 1);
 	    }

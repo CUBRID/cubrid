@@ -308,12 +308,10 @@ struct json_t;
         ( (n) && ((n)->node_type == PT_FUNCTION) )
 
 /* a PT_DATA_DEFAULT node carrying a residual DEFAULT expression: classified
- * STABLE or VOLATILE by pt_check_data_default, on the new DEFAULT path (no
- * legacy pseudo-column enum).  A STABLE residual is evaluated once per
- * statement, a VOLATILE one once per row. */
+ * STABLE or VOLATILE by pt_check_data_default.  A STABLE residual is
+ * evaluated once per statement, a VOLATILE one once per row. */
 #define PT_IS_RESIDUAL_DEFAULT(n) \
         ( (n) && ((n)->node_type == PT_DATA_DEFAULT) && \
-          (n)->info.data_default.default_expr_type == DB_DEFAULT_NONE && \
           PT_VOLATILITY_IS_RESIDUAL ((n)->info.data_default.expr_volatility) )
 
 #define PT_IS_VOLATILE_RESIDUAL_DEFAULT(n) \
@@ -2125,7 +2123,6 @@ struct pt_data_default_info
 {
   PT_NODE *default_value;	/* PT_VALUE (list) */
   PT_MISC_TYPE shared;		/* will PT_SHARED or PT_DEFAULT */
-  DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
   char *expr_text;		/* normalized source text of an expression DEFAULT (Expression-Derived Literal or
 				 * residual); NULL otherwise */
   PT_VOLATILITY expr_volatility;	/* effective volatility of a DEFAULT expression on the new path:
