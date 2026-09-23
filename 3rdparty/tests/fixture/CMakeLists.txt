@@ -26,7 +26,12 @@ add_library(fixture_shared SHARED src/fixture.c)
 set_target_properties(fixture_shared PROPERTIES OUTPUT_NAME odbc SOVERSION 2 VERSION 2.0.0)
 target_include_directories(fixture_shared PRIVATE "${CMAKE_CURRENT_LIST_DIR}/include")
 
-install(TARGETS fixture_static fixture_shared
+add_library(fixture_wrong_soname SHARED src/fixture.c)
+set_target_properties(fixture_wrong_soname PROPERTIES OUTPUT_NAME odbc_wrong NO_SONAME TRUE)
+target_include_directories(fixture_wrong_soname PRIVATE "${CMAKE_CURRENT_LIST_DIR}/include")
+target_link_options(fixture_wrong_soname PRIVATE "-Wl,-soname,libodbcXsoY2")
+
+install(TARGETS fixture_static fixture_shared fixture_wrong_soname
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   )

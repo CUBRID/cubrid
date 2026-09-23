@@ -37,7 +37,7 @@ This is a blocker-ordered linear chain. Work only the frontier: the first
 | 01 | [Canonical manifest, contract module, and standalone seam](issues/01-canonical-manifest-contract.md) | None | resolved |
 | 02 | [Complete relocatable prefix producer](issues/02-relocatable-prefix-producer.md) | 01 | resolved |
 | 03 | [Matching CI_PREBUILT consumer](issues/03-ci-prebuilt-consumer.md) | 02 | resolved |
-| 04 | [Fail-closed validation and diagnostics](issues/04-fail-closed-validation.md) | 03 | ready-for-agent |
+| 04 | [Fail-closed validation and diagnostics](issues/04-fail-closed-validation.md) | 03 | resolved |
 | 05 | [Release/OptDebug linkage qualification](issues/05-release-optdebug-qualification.md) | 04 | ready-for-agent |
 | 06 | [Activate cubridci PR #125](issues/06-activate-cubridci-pr-125.md) | 05 | ready-for-agent |
 | 07 | [Measure CI performance](issues/07-measure-ci-performance.md) | 06 | ready-for-agent |
@@ -45,8 +45,8 @@ This is a blocker-ordered linear chain. Work only the frontier: the first
 
 ## Frontier
 
-- `04` can start immediately.
-- `05` through `08` remain blocked until the preceding ticket is resolved.
+- `05` can start immediately.
+- `06` through `08` remain blocked until the preceding ticket is resolved.
 
 ## Decisions so far
 
@@ -74,6 +74,11 @@ This is a blocker-ordered linear chain. Work only the frontier: the first
   variable interface, empty dependency targets, and no ExternalProject
   declarations; ticket 04 can harden the same path's fail-closed validation and
   diagnostic contract.
+- [Ticket 04](issues/04-fail-closed-validation.md) resolved the fail-closed
+  validator and stable eight-field diagnostics with a 54-case labeled negative
+  matrix covering interface conflicts, manifests, provenance, artifacts, path
+  containment, symlink chains, and exact SONAME validation; ticket 05 can run
+  Release/OptDebug linkage qualification against this hardened consumer.
 
 ## Comments
 

@@ -24,7 +24,9 @@ foreach(required_variable IN ITEMS CUBRID_SOURCE_ROOT RESULT SENTINEL)
   endif()
 endforeach()
 
-list(APPEND CMAKE_MODULE_PATH "${CUBRID_SOURCE_ROOT}/cmake")
+list(APPEND CMAKE_MODULE_PATH
+  "${CMAKE_CURRENT_LIST_DIR}/../network-sentinel"
+  "${CUBRID_SOURCE_ROOT}/cmake")
 add_subdirectory("${CUBRID_SOURCE_ROOT}/3rdparty" thirdparty)
 
 foreach(external_target IN ITEMS

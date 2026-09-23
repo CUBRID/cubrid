@@ -16,8 +16,9 @@
 # 
 
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/CubridThirdPartyContract.cmake")
-cubrid_thirdparty_load_contract("${CMAKE_CURRENT_LIST_DIR}/manifest.json")
+cubrid_thirdparty_initialize_request("${CMAKE_CURRENT_LIST_DIR}/manifest.json")
 cubrid_thirdparty_select_mode(CUBRID_3RDPARTY_SELECTED_MODE)
+cubrid_thirdparty_load_contract("${CMAKE_CURRENT_LIST_DIR}/manifest.json")
 if(CUBRID_3RDPARTY_SELECTED_MODE STREQUAL "CI_PREBUILT")
   if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
     message(FATAL_ERROR "CUBRID_3RDPARTY_MODE=CI_PREBUILT is supported only on Linux")

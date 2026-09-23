@@ -24,13 +24,14 @@ endif()
 
 include("${CONTRACT_MODULE}")
 
-cubrid_thirdparty_load_contract("${MANIFEST}")
+cubrid_thirdparty_initialize_request("${MANIFEST}")
 cubrid_thirdparty_select_mode(thirdparty_route)
+cubrid_thirdparty_load_contract("${MANIFEST}")
 
 if(thirdparty_route STREQUAL "EXTERNAL")
   file(WRITE "${MARKER}" "external route selected\n")
 elseif(thirdparty_route STREQUAL "CI_PREBUILT")
-  file(WRITE "${SENTINEL}" "CI_PREBUILT reached the ExternalProject route\n")
+  cubrid_thirdparty_use_prebuilt_prefix()
 endif()
 
 file(WRITE "${RESULT}"
