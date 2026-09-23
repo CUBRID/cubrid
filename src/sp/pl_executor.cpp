@@ -49,6 +49,12 @@ namespace cubpl
     auth.assign (sig->auth);
     lang = sig->type;
     result_type = sig->result_type;
+    if (lang == PL_TYPE_PLCSQL)
+      {
+	// PL/CSQL SPs have compile_id.
+	assert (sig->ext.sp.compile_id != NULL);
+	compile_id.assign (sig->ext.sp.compile_id);
+      }
 
     pl_arg &arg = sig->arg;
     num_args = arg.arg_size;
@@ -61,7 +67,7 @@ namespace cubpl
 	arg_type[i] = arg.arg_type[i];
       }
 
-    transaction_control = (lang == SP_LANG_PLCSQL) ? true : tc;
+    transaction_control = (lang == PL_TYPE_PLCSQL) ? true : tc;
   }
 
   void
@@ -69,6 +75,7 @@ namespace cubpl
   {
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
+    serializator.pack_string (compile_id);
     serializator.pack_string (auth);
     serializator.pack_int (lang);
     serializator.pack_int (num_args);
@@ -95,6 +102,7 @@ namespace cubpl
   {
     size_t size = serializator.get_packed_int_size (start_offset); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
+    size += serializator.get_packed_string_size (compile_id, size); // compile_id
     size += serializator.get_packed_string_size (auth, size); // auth
     size += serializator.get_packed_int_size (size); // lang
     size += serializator.get_packed_int_size (size); // num_args
@@ -114,6 +122,7 @@ namespace cubpl
 //////////////////////////////////////////////////
   executor::executor (pl_signature &sig)
     : m_sig (sig)
+    , m_exec_rights_depth (0)
   {
     session *sess = get_session ();
     if (sess)
@@ -330,15 +339,28 @@ exit:
   executor::change_exec_rights (const char *auth_name)
   {
     int error = NO_ERROR;
-    int is_restore = (auth_name == NULL) ? 1 : 0;
+    int command = (auth_name == NULL) ? EXEC_RIGHTS_POP : EXEC_RIGHTS_PUSH;
+    int cas_error = NO_ERROR;
 
-    if (is_restore == 0)
+    auto get_result = [&] (const cubmem::block & b)
+    {
+      packing_unpacker result_unpacker (b.ptr, (size_t) b.dim);
+      result_unpacker.unpack_int (cas_error);
+      return NO_ERROR;
+    };
+
+    error = m_stack->send_data_to_client_recv (get_result, METHOD_CALLBACK_CHANGE_EXEC_RIGHTS, command,
+	    std::string (auth_name == NULL ? "" : auth_name));
+
+    if (error == NO_ERROR && cas_error != NO_ERROR)
       {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore, std::string (auth_name));
-      }
-    else
-      {
-	error = m_stack->send_data_to_client (METHOD_CALLBACK_CHANGE_RIGHTS, is_restore);
+	// the CAS refused the switch, e.g. the owner no longer exists. Running the routine with
+	// whatever rights happen to be in effect is not an option.
+	error = cas_error;
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  }
       }
 
     if (error != NO_ERROR)
@@ -575,6 +597,18 @@ exit:
 	break;
       case METHOD_CALLBACK_GET_CODE_ATTR:
 	error_code = callback_get_code_attr (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_GET_CODE_BY_NAME:
+	error_code = callback_get_code_by_name (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_CHECK_EXECUTE_AUTH:
+	error_code = callback_check_execute_auth (thread_ref, unpacker);
+	break;
+
+      case METHOD_CALLBACK_CHANGE_EXEC_RIGHTS:
+	error_code = callback_change_exec_rights (thread_ref, unpacker);
 	break;
 
       case METHOD_CALLBACK_SET_PL_SESSION_PARAM:
@@ -1033,6 +1067,102 @@ exit:
 
     error = m_stack->send_data_to_java (blk);
     blk.freemem ();
+
+    return error;
+  }
+
+  int
+  executor::callback_get_code_by_name (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int code = METHOD_CALLBACK_GET_CODE_BY_NAME;
+
+    std::string class_name;
+    std::string req_compile_id;
+    unpacker.unpack_all (class_name, req_compile_id);
+
+    auto relay_result = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    return m_stack->send_data_to_client_recv (relay_result, code, class_name, req_compile_id);
+  }
+
+  int
+  executor::callback_check_execute_auth (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int error = NO_ERROR;
+    int code = METHOD_CALLBACK_CHECK_EXECUTE_AUTH;
+
+    std::string unique_name;
+    unpacker.unpack_all (unique_name);
+
+    auto relay_result = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    error = m_stack->send_data_to_client_recv (relay_result, code, unique_name);
+    return error;
+  }
+
+  /*
+   * executor::callback_change_exec_rights - switch the execution rights to a routine's owner and back
+   *   return: error code
+   *   unpacker(in): EXEC_RIGHTS_PUSH followed by the owner name, or EXEC_RIGHTS_POP alone
+   *
+   * Note: A PL/CSQL routine that calls another one directly, without going through the server, has
+   *       to run the callee's body with the callee's own rights. The PL server asks for the switch
+   *       here, and this relays it to the CAS, which keeps a stack of users
+   *       (au_perform_push_user / au_perform_pop_user). A push and its matching pop therefore nest
+   *       correctly with the switch that executor::execute () already performs for the routine it
+   *       invokes.
+   *
+   *       The CAS answers with the outcome, which is handed to the PL server. A push that silently
+   *       failed would leave the callee running with the caller's rights, which is what this whole
+   *       path exists to prevent.
+   */
+  int
+  executor::callback_change_exec_rights (cubthread::entry &thread_ref, packing_unpacker &unpacker)
+  {
+    int code = METHOD_CALLBACK_CHANGE_EXEC_RIGHTS;
+
+    int command;
+    std::string owner_name;
+
+    unpacker.unpack_int (command);
+    if (command == EXEC_RIGHTS_PUSH)
+      {
+	unpacker.unpack_string (owner_name);
+      }
+    else if (command == EXEC_RIGHTS_POP && m_exec_rights_depth <= 0)
+      {
+	cubmem::block blk = std::move (pack_data_block (ER_OBJ_INVALID_ARGUMENTS));
+	if (blk.is_valid ())
+	  {
+	    m_stack->send_data_to_java (blk);
+	    blk.freemem ();
+	  }
+	return NO_ERROR;
+      }
+
+    auto relay_result = [&] (const cubmem::block & b)
+    {
+      return m_stack->send_data_to_java (b);
+    };
+
+    int error = m_stack->send_data_to_client_recv (relay_result, code, command, owner_name);
+    if (error == NO_ERROR)
+      {
+	if (command == EXEC_RIGHTS_PUSH)
+	  {
+	    m_exec_rights_depth++;
+	  }
+	else
+	  {
+	    m_exec_rights_depth--;
+	  }
+      }
 
     return error;
   }

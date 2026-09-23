@@ -45,12 +45,23 @@ public class DeclFunc extends DeclRoutine {
             String name,
             String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive,
             TypeSpec retTypeSpec,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx, name, comment, loopOptimizables, paramList, directive, retTypeSpec, decls, body);
+        super(
+                ctx,
+                name,
+                comment,
+                loopOptimizables,
+                isPublic,
+                paramList,
+                directive,
+                retTypeSpec,
+                decls,
+                body);
     }
 
     public DeclFunc(
@@ -58,6 +69,7 @@ public class DeclFunc extends DeclRoutine {
             String name,
             String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive,
             TypeSpec retTypeSpec) {
@@ -66,6 +78,7 @@ public class DeclFunc extends DeclRoutine {
                 name,
                 comment,
                 loopOptimizables,
+                isPublic,
                 paramList,
                 directive,
                 retTypeSpec,

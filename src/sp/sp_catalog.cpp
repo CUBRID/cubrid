@@ -85,7 +85,7 @@ static int sp_builtin_init ()
   db_sys_datetime (&current_datetime);
 
   // common
-  v.lang = SP_LANG_PLCSQL;
+  v.lang = SP_LANG_JAVA;
   v.is_system_generated = true;
   v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
   v.owner = Au_public_user;
@@ -521,6 +521,14 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    db_make_string (&value, info.compile_id.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_COMPILE_ID, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
     db_make_string (&value, info.target_class.data ());
     err = dbt_put_internal (obt_p, SP_ATTR_TARGET_CLASS, &value);
     pr_clear_value (&value);
@@ -839,6 +847,14 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
+  db_make_string (&value, info.compile_id.data ());
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_COMPILE_ID, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
   db_make_int (&value, info.stype);
   err = dbt_put_internal (obt_p, SP_CODE_ATTR_STYPE, &value);
   pr_clear_value (&value);
@@ -926,6 +942,14 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
 
   db_make_string (&value, info.name.data ());
   err = dbt_put_internal (obt_p, SP_CODE_ATTR_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, info.compile_id.data ());
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_COMPILE_ID, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -1062,3 +1086,34 @@ sp_args_get_entry_name (int index)
 {
   return sp_args_entry_names[index];
 }
+
+MOP
+sp_find_pkg_var (const char *pkg_unique_name, const char *name)
+{
+  MOP classobj, mop = NULL;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { PKG_VAR_ATTR_PKG_UNIQUE_NAME, PKG_VAR_ATTR_NAME };
+  int au_save;
+
+  if (!pkg_unique_name || !name)
+    {
+      return NULL;
+    }
+
+  classobj = db_find_class (CT_PACKAGE_VAR_NAME);
+  if (classobj == NULL)
+    {
+      return NULL;
+    }
+
+  db_make_string (&value[0], pkg_unique_name);
+  db_make_string (&value[1], name);
+
+  AU_SAVE_AND_DISABLE (au_save);
+  mop = db_find_multi_unique (classobj, 2, (char **) search_attrs, value_ptrs, DB_FETCH_READ);
+  AU_RESTORE (au_save);
+
+  return mop;
+}
+
