@@ -229,8 +229,8 @@ namespace
    * section with population frequencies; the remaining values form the equi-depth buckets. */
   template <typename T>
   char *
-  build_blob (THREAD_ENTRY *thread_p, std::vector<T> &samples, DB_TYPE attr_type, int max_buckets,
-	      std::int64_t n_total, std::int64_t n_nn, int *blob_length, INT64 *out_ndv = NULL,
+  build_blob (THREAD_ENTRY *thread_p, std::vector<T> &samples, DB_TYPE attr_type, int attr_precision,
+	      int max_buckets, std::int64_t n_total, std::int64_t n_nn, int *blob_length, INT64 *out_ndv = NULL,
 	      INT64 ndv_hint = -1)
   {
     std::vector<std::pair<T, std::int64_t>> vc = group_counts (samples);
@@ -384,7 +384,7 @@ namespace
       }
 
     const double null_frequency = (n_total > 0) ? (double) (n_total - n_nn) / (double) n_total : 0.0;
-    return builder.build (thread_p, attr_type, n_total, null_frequency, blob_length);
+    return builder.build (thread_p, attr_type, n_total, null_frequency, attr_precision, blob_length);
   }
 
   /* Exact, equality-preserving HLL hash of a NUMERIC value: raw coefficient bytes plus scale.
@@ -526,17 +526,9 @@ namespace
     else
       {
 	s = db_get_string (v);
-	len = db_get_string_size (v);
-	if (t == DB_TYPE_CHAR && s != NULL)
-	  {
-	    /* fixed CHAR heap values are padded to the column precision; the probe key on the
-	     * client side is the (unpadded) constant. SQL CHAR comparison ignores trailing
-	     * spaces, so strip them here to keep MCV equality and range order consistent. */
-	    while (len > 0 && s[len - 1] == ' ')
-	      {
-		len--;
-	      }
-	  }
+	/* a heap value's type is the column type; the client probe normalizes its constant by the
+	 * same column-type rule, so MCV equality and range order agree (see the helper) */
+	len = hist::string_key_size_for_column (t, s, db_get_string_size (v));
       }
     if (s == NULL || len < 0)
       {
@@ -1100,8 +1092,14 @@ cleanup:
       bool sampled;		/* true when the scan visited only a page sample: counts are expanded
 				   estimates and the HLL saw the sample only */
 
+      /* the column's declared width in characters, picked up from the first non-null heap value
+       * (its domain carries the column precision); 0 until seen, and for columns that have no
+       * padding. Stored in the blob so the planner can re-pad CHAR values (CBRD-27251). */
+      int attr_precision;
+
       col_collector (ATTR_ID id, DB_TYPE t, value_category c)
 	: attr_id (id), attr_type (t), cat (c), null_rows (0), ndv (-1), unique (false), sampled (false)
+	, attr_precision (0)
       {
       }
 
@@ -1197,6 +1195,13 @@ cleanup:
 	    null_rows++;
 	    return;
 	  }
+	if (attr_precision == 0 && attr_type == DB_TYPE_CHAR)
+	  {
+	    /* a heap CHAR value is read through its domain (mr_readval_char_internal () inits the
+	     * DB_VALUE with domain->precision), so any non-null row carries the column width. Read it
+	     * once: every row of this column reports the same number. */
+	    attr_precision = db_value_precision (v);
+	  }
 	if (!extract<T> (v, rs, (unique || sampled) ? NULL : &m_hll))
 	  {
 	    null_rows++;
@@ -1219,6 +1224,19 @@ cleanup:
 	m_merged = cubsampling::merge_partition_samples<T> (parts, seens, capacity,
 		   cubsampling::RESERVOIR_DEFAULT_SEED ^ m_sample_seed);
 	m_has_merged = true;
+	if (attr_precision == 0)
+	  {
+	    /* the merged collector never feeds a row of its own (parallel_scan_merge_multi () builds it
+	     * fresh and only merges), so take the width the workers saw -- same column, same number */
+	    for (const col_collector *p : peers)
+	      {
+		if (p->attr_precision > 0)
+		  {
+		    attr_precision = p->attr_precision;
+		    break;
+		  }
+	      }
+	  }
       }
 
       INT64 estimate_ndv_sampled (std::int64_t n_nn) override
@@ -1230,8 +1248,9 @@ cleanup:
       char *build (THREAD_ENTRY *thread_p, int max_buckets, std::int64_t total_rows, int *blob_length) override
       {
 	std::vector<T> &s = m_has_merged ? m_merged : rs.samples ();
-	return build_blob<T> (thread_p, s, attr_type, max_buckets, total_rows, total_rows - null_rows, blob_length,
-			      &ndv, (sampled && !unique) ? -1 : estimate_ndv (total_rows));
+	return build_blob<T> (thread_p, s, attr_type, attr_precision, max_buckets, total_rows,
+			      total_rows - null_rows, blob_length, &ndv,
+			      (sampled && !unique) ? -1 : estimate_ndv (total_rows));
       }
   };
 
@@ -2529,15 +2548,8 @@ namespace
 	else
 	  {
 	    s = db_get_string (v);
-	    len = db_get_string_size (v);
-	    if (t == DB_TYPE_CHAR && s != NULL)
-	      {
-		/* strip CHAR padding; must hash exactly like extract<std::string> () */
-		while (len > 0 && s[len - 1] == ' ')
-		  {
-		    len--;
-		  }
-	      }
+	    /* must hash exactly the bytes extract<std::string> () keys on: same helper */
+	    len = hist::string_key_size_for_column (t, s, db_get_string_size (v));
 	  }
 	if (s == NULL || len < 0)
 	  {

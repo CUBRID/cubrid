@@ -57,9 +57,11 @@ namespace hist
       /* add an MCV entry; MCVs must be added in ascending value order (binary-searched) */
       void add_mcv (HistogramTypes value, double freq);
       /* serialize the v2 blob. total_rows is the population row count incl nulls;
-       * null_frequency is nulls/total_rows. */
+       * null_frequency is nulls/total_rows. column_precision is the column's declared width in
+       * characters, or 0 when it has none: the planner re-pads stored CHAR values to it, so a
+       * blob written with 0 simply gets no re-padding. */
       char *build (THREAD_ENTRY *thread_p, DB_TYPE type, std::int64_t total_rows, double null_frequency,
-		   int *histogram_total_length);
+		   int column_precision, int *histogram_total_length);
 
     private:
       std::vector<Mcv> mcvs_;
