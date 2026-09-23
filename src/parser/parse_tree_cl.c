@@ -462,6 +462,9 @@ static PARSER_VARCHAR *pt_print_create_synonym (PARSER_CONTEXT * parser, PT_NODE
 static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
+static bool pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE ** rewritten_order_by);
+static PT_NODE *pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared, PT_NODE * query,
+						    PT_NODE * name_source);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -10183,13 +10186,34 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.spec.as_attr_list && !PT_SPEC_IS_CTE (p) && (p->info.spec.derived_table_type != PT_DERIVED_JSON_TABLE))
     {
-      save_custom = parser->custom_print;
-      parser->custom_print |= PT_SUPPRESS_RESOLVED;
-      r1 = pt_print_bytes_l (parser, p->info.spec.as_attr_list);
-      q = pt_append_nulstring (parser, q, " (");
-      q = pt_append_varchar (parser, q, r1);
-      q = pt_append_nulstring (parser, q, ")");
-      parser->custom_print = save_custom;
+      PT_NODE *attr_list = p->info.spec.as_attr_list;
+
+      /* as_attr_list mirrors the derived table's own select list one-for-one, hidden columns
+       * included -- printed as-is here it would drift out of sync with what pt_print_select ()
+       * actually emits for that same select list under static SQL (is_parsing_static_sql), the
+       * same hazard pt_print_cte () guards against for a CTE's own header; see
+       * pt_static_sql_align_declared_names (). */
+      if (parser->flag.is_parsing_static_sql)
+	{
+	  attr_list = pt_static_sql_align_declared_names (parser, attr_list, p->info.spec.derived_table,
+							  p->info.spec.as_attr_list);
+	}
+
+      if (attr_list != NULL)
+	{
+	  save_custom = parser->custom_print;
+	  parser->custom_print |= PT_SUPPRESS_RESOLVED;
+	  r1 = pt_print_bytes_l (parser, attr_list);
+	  q = pt_append_nulstring (parser, q, " (");
+	  q = pt_append_varchar (parser, q, r1);
+	  q = pt_append_nulstring (parser, q, ")");
+	  parser->custom_print = save_custom;
+	}
+
+      if (attr_list != p->info.spec.as_attr_list)
+	{
+	  parser_free_tree (parser, attr_list);
+	}
     }
 
   if (p->info.spec.on_cond)
@@ -14887,6 +14911,208 @@ pt_init_select (PT_NODE * p)
 }
 
 /*
+ * pt_static_sql_can_omit_hidden_columns() - Can hidden columns be omitted from
+ *                                           a query's static SQL text?
+ *   return: true if omission and rewrite succeed
+ *   parser(in): parser context
+ *   p(in): target query node
+ *   rewritten_order_by(out): new ORDER BY list independent of hidden column positions
+ *
+ * Note:
+ *   1. Purpose:
+ *      Static SQL queries embedded in compiled PL/CSQL classes are re-parsed at
+ *      runtime. Hidden columns (e.g., internal ORDER BY carry columns or OID columns)
+ *      must be excluded so they don't leak into user result sets and trigger
+ *      "FETCH INTO" count mismatch errors.
+ *
+ *   2. ORDER BY Rewriting:
+ *      Removing columns shifts select-list positional indices. Omission is only
+ *      valid if all sort specs can be rewritten:
+ *      - Visible columns receive updated positional indices.
+ *      - Hidden columns revert to their underlying expressions (or cast constants)
+ *        so they are re-evaluated as hidden columns upon re-parsing.
+ *
+ *   3. Error Handling (give_up):
+ *      Reaching `give_up` (returns false) occurs both on invalid query shapes and
+ *      node allocation failures (OOM). This function intentionally does NOT call
+ *      `er_clear()`, preserving the error code so upper callers (e.g.,
+ *      `get_sql_semantics()`) can correctly catch OOM as a compilation failure.
+ */
+static bool
+pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE ** rewritten_order_by)
+{
+  PT_NODE *select_list, *order_by, *order, *col, *new_order = NULL;
+  int i, n, new_pos, visible_cnt = 0, hidden_cnt = 0;
+
+  if (rewritten_order_by != NULL)
+    {
+      *rewritten_order_by = NULL;
+    }
+
+  if (!parser->flag.is_parsing_static_sql || p == NULL || !PT_IS_SELECT (p))
+    {
+      return false;
+    }
+
+  /* a union branch's select list has to stay aligned with the other branches' */
+  if (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY)
+    {
+      return false;
+    }
+
+  select_list = p->info.query.q.select.list;
+  for (col = select_list; col != NULL; col = col->next)
+    {
+      if (col->flag.is_hidden_column)
+	{
+	  hidden_cnt++;
+	}
+      else
+	{
+	  visible_cnt++;
+	}
+    }
+
+  /* nothing to leave out, or nothing would be left */
+  if (hidden_cnt == 0 || visible_cnt == 0)
+    {
+      return false;
+    }
+
+  order_by = p->info.query.order_by;
+  if (order_by == NULL)
+    {
+      return true;
+    }
+
+  /* ORDER SIBLINGS BY is resolved against the CONNECT BY tree, not against select list positions */
+  if (p->info.query.flag.order_siblings)
+    {
+      return false;
+    }
+
+  for (order = order_by; order != NULL; order = order->next)
+    {
+      PT_NODE *expr = order->info.sort_spec.expr;
+      PT_NODE *copy;
+
+      if (expr == NULL || expr->node_type != PT_VALUE || expr->type_enum != PT_TYPE_INTEGER)
+	{
+	  goto give_up;
+	}
+
+      n = expr->info.value.data_value.i;
+      if (n < 1)
+	{
+	  goto give_up;
+	}
+
+      /* walk to the n'th column, counting the ones that survive on the way */
+      new_pos = 0;
+      for (col = select_list, i = 1; col != NULL; col = col->next, i++)
+	{
+	  if (!col->flag.is_hidden_column)
+	    {
+	      new_pos++;
+	    }
+	  if (i == n)
+	    {
+	      break;
+	    }
+	}
+      if (col == NULL)
+	{
+	  goto give_up;
+	}
+
+      if (!col->flag.is_hidden_column)
+	{
+	  copy = parser_copy_tree (parser, order);
+	  if (copy == NULL)
+	    {
+	      goto give_up;
+	    }
+	  parser_free_tree (parser, copy->info.sort_spec.expr);
+	  copy->info.sort_spec.expr = pt_make_integer_value (parser, new_pos);
+	  if (copy->info.sort_spec.expr == NULL)
+	    {
+	      parser_free_tree (parser, copy);
+	      goto give_up;
+	    }
+	  copy->info.sort_spec.pos_descr.pos_no = new_pos;
+	  new_order = parser_append_node (copy, new_order);
+	  continue;
+	}
+
+      if (col->node_type == PT_HOST_VAR)
+	{
+	  /* a host variable is rejected as a sort spec by pt_check_order_by () */
+	  goto give_up;
+	}
+
+      copy = parser_copy_tree (parser, order);
+      if (copy == NULL)
+	{
+	  goto give_up;
+	}
+      parser_free_tree (parser, copy->info.sort_spec.expr);
+
+      if (col->node_type == PT_VALUE)
+	{
+	  /* 
+	   * Constant sort keys provide no ordering, but cannot be removed if ORDERBY_NUM() 
+	   * requires an ORDER BY clause. They also cannot be printed as-is, as re-parsing 
+	   * interprets raw values as select-list positions or syntax errors. 
+	   * 
+	   * Solution: Print as a cast constant (e.g., `CAST(NULL AS NULL)` avoidance via 
+	   * generic cast). Re-parsing resolves it into a hidden column with identical 
+	   * ordering behavior without domain-naming restrictions.
+	   */
+	  PT_NODE *zero = pt_make_integer_value (parser, 0);
+
+	  copy->info.sort_spec.expr =
+	    (zero == NULL) ? NULL : pt_wrap_with_cast_op (parser, zero, PT_TYPE_INTEGER,
+							  TP_FLOATING_PRECISION_VALUE, 0, NULL);
+	  if (copy->info.sort_spec.expr == NULL && zero != NULL)
+	    {
+	      /* pt_wrap_with_cast_op () gives up before it takes the constant over */
+	      parser_free_tree (parser, zero);
+	    }
+	}
+      else
+	{
+	  copy->info.sort_spec.expr = parser_copy_tree (parser, col);
+	}
+
+      if (copy->info.sort_spec.expr == NULL)
+	{
+	  parser_free_tree (parser, copy);
+	  goto give_up;
+	}
+      copy->info.sort_spec.expr->flag.is_hidden_column = 0;
+      copy->info.sort_spec.expr->alias_print = NULL;
+      new_order = parser_append_node (copy, new_order);
+    }
+
+  if (rewritten_order_by != NULL)
+    {
+      *rewritten_order_by = new_order;
+    }
+  else
+    {
+      parser_free_tree (parser, new_order);
+    }
+
+  return true;
+
+give_up:
+
+  parser_free_tree (parser, new_order);
+
+  return false;
+}
+
+/*
  * pt_print_select () -
  *   return:
  *   parser(in):
@@ -14903,6 +15129,8 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
   unsigned int save_custom = 0;
   PT_NODE *from = NULL, *derived_table = NULL;
   PT_PRINT_BUFFER print_buf = PT_PRINT_BUFFER_INITIALIZER;
+  bool omit_hidden_columns = false;
+  PT_NODE *static_sql_order_by = NULL;
 
   from = p->info.query.q.select.from;
   if (from != NULL && from->info.spec.derived_table_type == PT_IS_SHOWSTMT
@@ -15029,6 +15257,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
     }
   else
     {
+      /* static SQL: keep the internal hidden columns out of the text that is re-parsed at runtime.
+       * Built here rather than at the top of the function so that the list this hands back cannot
+       * outlive an early return above; from here on the only way out is the return at the end. */
+      omit_hidden_columns = pt_static_sql_can_omit_hidden_columns (parser, p, &static_sql_order_by);
+
       if (p->info.query.with != NULL)
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.with);
@@ -15411,6 +15644,27 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		}
 	    }
 	}
+      else if (omit_hidden_columns)
+	{
+	  bool is_first_col = true;
+
+	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
+	    {
+	      if (temp->flag.is_hidden_column)
+		{
+		  continue;
+		}
+
+	      if (!is_first_col)
+		{
+		  q = pt_append_nulstring (parser, q, ", ");
+		}
+
+	      r1 = pt_print_bytes (parser, temp);
+	      q = pt_append_varchar (parser, q, r1);
+	      is_first_col = false;
+	    }
+	}
       else
 	{
 	  /* ordinary cases */
@@ -15632,16 +15886,28 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
       if (p->info.query.order_by)
 	{
-	  r1 = pt_print_bytes_l (parser, p->info.query.order_by);
-	  if (p->info.query.flag.order_siblings)
+	  PT_NODE *order_by_to_print = omit_hidden_columns ? static_sql_order_by : p->info.query.order_by;
+
+	  if (order_by_to_print != NULL)
 	    {
-	      q = pt_append_nulstring (parser, q, " order siblings by ");
+	      r1 = pt_print_bytes_l (parser, order_by_to_print);
+	      if (p->info.query.flag.order_siblings)
+		{
+		  q = pt_append_nulstring (parser, q, " order siblings by ");
+		}
+	      else
+		{
+		  q = pt_append_nulstring (parser, q, " order by ");
+		}
+	      q = pt_append_varchar (parser, q, r1);
 	    }
-	  else
-	    {
-	      q = pt_append_nulstring (parser, q, " order by ");
-	    }
-	  q = pt_append_varchar (parser, q, r1);
+	}
+
+      if (static_sql_order_by != NULL)
+	{
+	  /* printed by now, and nothing else holds it */
+	  parser_free_tree (parser, static_sql_order_by);
+	  static_sql_order_by = NULL;
 	}
 
       if (p->info.query.orderby_for)
@@ -18215,6 +18481,85 @@ pt_name_list_has_name (PT_NODE * name_list, const char *name)
 }
 
 /*
+ * pt_static_sql_align_declared_names() - Align a declared column-name list (CTE's or
+ *                                        derived table's as_attr_list) with the
+ *                                        columns emitted by pt_print_select().
+ *   return: new caller-owned name list, or NULL
+ *   parser(in): parser context
+ *   declared(in): borrowed original declared names list
+ *   query(in): query whose exposed columns are described
+ *   name_source(in): original uncopied list to check for collision with synthesized names
+ *
+ * Note:
+ *   1. Length Alignment (Padding):
+ *      Post-parse optimizations (e.g., adding hidden ORDER BY carry columns) can lengthen
+ *      the query's select list beyond the cached `declared` list. If hidden columns cannot
+ *      be omitted, synthesized names are appended to pad the `declared` list so positions
+ *      match what `pt_print_select()` prints.
+ *
+ *   2. Content Alignment (Omission):
+ *      When static SQL can omit hidden columns (pt_static_sql_can_omit_hidden_columns()),
+ *      the corresponding entries must also be removed from `declared`. This prevents
+ *      column count mismatch errors during re-parsing.
+ */
+static PT_NODE *
+pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared, PT_NODE * query, PT_NODE * name_source)
+{
+  PT_NODE *aligned, *decl, *col;
+  PT_NODE *select_list = pt_get_select_list (parser, query);
+  int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
+  int declared_cnt = pt_length_of_list (declared);
+
+  aligned = parser_copy_tree_list (parser, declared);
+  if (actual_cnt > declared_cnt)
+    {
+      PT_NODE *extra = NULL;
+      int version = declared_cnt;
+      int i;
+
+      for (i = declared_cnt; i < actual_cnt; i++)
+	{
+	  const char *generated_name;
+
+	  do
+	    {
+	      generated_name = mq_generate_name (parser, "hidden_col", &version);
+	    }
+	  while (pt_name_list_has_name (name_source, generated_name));
+
+	  extra = parser_append_node (pt_name (parser, generated_name), extra);
+	}
+
+      aligned = parser_append_node (extra, aligned);
+    }
+
+  if (pt_static_sql_can_omit_hidden_columns (parser, query, NULL))
+    {
+      PT_NODE *filtered = NULL;
+
+      for (decl = aligned, col = select_list; decl != NULL && col != NULL; decl = decl->next, col = col->next)
+	{
+	  if (col->flag.is_hidden_column)
+	    {
+	      continue;
+	    }
+	  filtered = parser_append_node (parser_copy_tree (parser, decl), filtered);
+	}
+
+      parser_free_tree (parser, aligned);
+      aligned = filtered;
+
+      /* pt_static_sql_can_omit_hidden_columns () only returns true when query's select list has at
+       * least one visible column, so this filter can never remove every declared name; both callers
+       * (pt_print_cte (), pt_print_spec ()) still fall back to leaving the column-list clause out
+       * entirely if that invariant is ever wrong, rather than printing an empty, invalid "()". */
+      assert (aligned != NULL);
+    }
+
+  return aligned;
+}
+
+/*
  * pt_print_with_cte ()
  * return :
  * parser (in) :
@@ -18228,52 +18573,34 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
    * from scratch at runtime; that re-parse derives the CTE's exposed column count directly from how many
-   * items the header below prints. A rewrite/optimization applied to non_recursive_part after as_attr_list
-   * was computed (e.g. adding a hidden order-by carry column while merging a ROWNUM-filtered outer query
-   * with an ORDER BY inner subquery) can grow the actual select list past as_attr_list's cached length, so
-   * pad a local copy of the header here instead of printing a header/body pair that a fresh parse would
-   * reject as mismatched. */
+   * items the header below prints -- see pt_static_sql_align_declared_names () for why as_attr_list can't
+   * just be printed as-is here. */
   if (parser->flag.is_parsing_static_sql)
     {
-      PT_NODE *select_list = pt_get_select_list (parser, p->info.cte.non_recursive_part);
-      int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);
-      int declared_cnt = pt_length_of_list (as_attr_list);
-
-      if (actual_cnt > declared_cnt)
-	{
-	  PT_NODE *extra = NULL;
-	  int version = declared_cnt;
-	  int i;
-
-	  as_attr_list = parser_copy_tree_list (parser, as_attr_list);
-	  for (i = declared_cnt; i < actual_cnt; i++)
-	    {
-	      const char *generated_name;
-
-	      /* keep clear of any user-declared name so the header printed below can't collide with it once
-	       * this text is re-parsed (an "ambiguous reference" at semantic check, not a crash, but wrong) */
-	      do
-		{
-		  generated_name = mq_generate_name (parser, "hidden_col", &version);
-		}
-	      while (pt_name_list_has_name (p->info.cte.as_attr_list, generated_name));
-
-	      extra = parser_append_node (pt_name (parser, generated_name), extra);
-	    }
-
-	  as_attr_list = parser_append_node (extra, as_attr_list);
-	}
+      as_attr_list = pt_static_sql_align_declared_names (parser, as_attr_list, p->info.cte.non_recursive_part,
+							 p->info.cte.as_attr_list);
     }
 
   /* name of cte */
   r1 = pt_print_bytes_l (parser, p->info.cte.name);
   q = pt_append_varchar (parser, q, r1);
 
-  /* attribute list */
-  q = pt_append_nulstring (parser, q, "(");
-  r1 = pt_print_bytes_l (parser, as_attr_list);
-  q = pt_append_varchar (parser, q, r1);
-  q = pt_append_nulstring (parser, q, ")");
+  /*
+   * Attribute list: `as_attr_list` can only be NULL here under is_parsing_static_sql, where
+   * `pt_static_sql_align_declared_names ()` produced it -- and even there,
+   * `pt_static_sql_can_omit_hidden_columns ()` already refuses to omit every column (it returns
+   * false once 0 visible columns would remain), so this is unreachable in practice; the assert
+   * in that helper documents and enforces the invariant. Guard only the static-SQL path: outside
+   * it, `as_attr_list` is simply `p->info.cte.as_attr_list` as bound, unconditionally printed the
+   * same way this function always has.
+   */
+  if (!parser->flag.is_parsing_static_sql || as_attr_list != NULL)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+      r1 = pt_print_bytes_l (parser, as_attr_list);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+    }
 
   /* AS keyword */
   q = pt_append_nulstring (parser, q, " as ");
