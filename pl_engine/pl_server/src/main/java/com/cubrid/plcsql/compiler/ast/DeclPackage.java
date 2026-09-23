@@ -30,8 +30,8 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
+import java.util.Locale;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public class DeclPackage extends Decl {
@@ -58,7 +58,7 @@ public class DeclPackage extends Decl {
 
     public String getDeclBlockName() {
         // name came from Misc.getNormalizedText (), so case-convert it back the same way
-        return Misc.lowercaseLikeServer(name) + '_' + (scope.level + 1);
+        return name.toLowerCase(Locale.ROOT) + '_' + (scope.level + 1);
     }
 
     @Override

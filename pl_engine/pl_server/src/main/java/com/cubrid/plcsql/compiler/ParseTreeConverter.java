@@ -86,7 +86,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         this.iStore = iStore;
         // the server sends the owner already unquoted and case-converted, so only the case has to
         // match
-        this.unitOwner = Misc.uppercaseLikeServer(unitOwner);
+        this.unitOwner = unitOwner.toUpperCase(Locale.ROOT);
         this.referencedClasses = referencedClasses;
         this.referencedMethods = referencedMethods;
         this.sqlSerialNo = 1;

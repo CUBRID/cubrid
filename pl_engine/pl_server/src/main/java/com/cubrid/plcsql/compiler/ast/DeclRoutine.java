@@ -31,11 +31,11 @@
 package com.cubrid.plcsql.compiler.ast;
 
 import com.cubrid.jsp.data.CompileResponse;
-import com.cubrid.plcsql.compiler.Misc;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
+import java.util.Locale;
 import java.util.Set;
 import java.util.Stack;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -215,7 +215,7 @@ public abstract class DeclRoutine extends Decl {
 
     public String getDeclBlockName() {
         // name came from Misc.getNormalizedText (), so case-convert it back the same way
-        return Misc.lowercaseLikeServer(name) + '_' + (scope.level + 1);
+        return name.toLowerCase(Locale.ROOT) + '_' + (scope.level + 1);
     }
 
     public boolean isProcedure() {

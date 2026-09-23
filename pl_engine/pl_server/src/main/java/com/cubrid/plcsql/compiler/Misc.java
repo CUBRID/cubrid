@@ -30,7 +30,6 @@
 
 package com.cubrid.plcsql.compiler;
 
-import com.cubrid.jsp.Server;
 import com.cubrid.plcsql.compiler.ast.NodeList;
 import java.io.PrintStream;
 import java.util.HashMap;
@@ -144,7 +143,7 @@ public class Misc {
         int children = ctx.getChildCount();
 
         if (children <= 1) {
-            return peelId(uppercaseLikeServer(ctx.getText()));
+            return peelId(ctx.getText().toUpperCase(Locale.ROOT));
         } else {
             StringBuffer sbuf = new StringBuffer();
             for (int i = 0; i < children; i++) {
@@ -158,6 +157,10 @@ public class Misc {
         }
     }
 
+    public static String getNormalizedText(String s) {
+        return peelId(s.toUpperCase(Locale.ROOT));
+    }
+
     // Key of a direct call target: its generated Java class and the method in it. There is no
     // overloading of routines (unique_name is the catalog's primary key), so the pair identifies
     // the method. uniqueName is <owner>.<routine> or <owner>.<package>.<routine>.
@@ -167,16 +170,8 @@ public class Misc {
     }
 
     /*
-     * Convert case of an identifier the way the server would.
-     *
-     * The output of these may reach the server as a lookup key, and the server converts it again with
-     * intl_identifier_lower () / _upper (), which follow the identifier alphabet of the database
-     * locale. Locale.ROOT would be wrong for a locale that tailors case mapping -- tr_TR maps i and
-     * I to the dotted and dotless forms -- so the database locale has to be used here.
-     *
-     * Use these only for names that server produced or that are compared with those. A string compared against an
-     * ASCII literal in this source, or against nothing but itself, takes Locale.ROOT instead.
-     */
+     * Convert case of an identifier using the DB server locale.
+     * TODO: use them
     public static String uppercaseLikeServer(String s) {
         return s.toUpperCase(Server.getDbLocale());
     }
@@ -184,10 +179,7 @@ public class Misc {
     public static String lowercaseLikeServer(String s) {
         return s.toLowerCase(Server.getDbLocale());
     }
-
-    public static String getNormalizedText(String s) {
-        return peelId(uppercaseLikeServer(s));
-    }
+     */
 
     public static void printIndent(PrintStream out, int indentLevel) {
 

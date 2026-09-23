@@ -43,6 +43,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -612,7 +613,7 @@ public class SymbolStack {
 
         int level = symbolTableStack.size();
         // this name came from Misc.getNormalizedText (), so it is case-converted the same way
-        name = Misc.lowercaseLikeServer(name);
+        name = name.toLowerCase(Locale.ROOT);
 
         String routine;
         if (routineType == null) {
@@ -625,7 +626,7 @@ public class SymbolStack {
                 routine = currSymbolTable.scope.routine;
             }
         } else {
-            routine = Misc.uppercaseLikeServer(name);
+            routine = name.toUpperCase(Locale.ROOT);
         }
 
         String block = name + "_" + level;
