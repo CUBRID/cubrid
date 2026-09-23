@@ -544,13 +544,7 @@ namespace parallel_scan
 	scan_close_scan (&thread_ref, m_scan_id);
       }
 
-    for (int i = 0; i < m_vd->dbval_cnt; i++)
-      {
-	pr_clear_value (&m_vd->dbval_ptr[i]);
-      }
-
-    db_private_free (&thread_ref, m_vd->dbval_ptr);
-    db_private_free (&thread_ref, m_xasl_state);
+    qexec_free_xasl_state (&thread_ref, m_xasl_state);
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
@@ -577,7 +571,6 @@ namespace parallel_scan
   {
     THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     int err_code = NO_ERROR;
-    int i;
 
     if (m_uses_xasl_clone)
       {
@@ -634,35 +627,15 @@ namespace parallel_scan
 	  }
       }
 
-    m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
+    /* The worker's own copy on its own heap (D-318-06): it frees it in finalize. */
+    assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
+    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state);
     if (m_xasl_state == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
 	return ER_FAILED;
       }
-    m_xasl_state->qp_xasl_line = m_orig_vd->xasl_state->qp_xasl_line;
-    m_xasl_state->query_id = m_orig_vd->xasl_state->query_id;
-    /* Borrow only the const input for cache keys; inheriting the gate table is dpin-08. */
-    memset (&m_xasl_state->resolved, 0, sizeof (m_xasl_state->resolved));
-    m_xasl_state->resolved.in = m_orig_vd->xasl_state->resolved.in;
     m_vd = &m_xasl_state->vd;
-    memcpy (m_vd, m_orig_vd, sizeof (val_descr));
-    m_vd->xasl_state = m_xasl_state;
-    if (m_orig_vd->dbval_cnt > 0)
-      {
-	m_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (&thread_ref, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	if (m_vd->dbval_ptr == nullptr)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-	    db_private_free_and_init (&thread_ref, m_xasl_state);
-	    m_vd = nullptr;
-	    return ER_FAILED;
-	  }
-	for (i = 0; i < m_orig_vd->dbval_cnt; i++)
-	  {
-	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &m_vd->dbval_ptr[i]);
-	  }
-      }
     return NO_ERROR;
   }
 

@@ -1616,15 +1616,7 @@ namespace parallel_scan
       }
     if (m_vd != nullptr)
       {
-	if (m_vd->dbval_cnt > 0)
-	  {
-	    for (int i = 0; i < m_vd->dbval_cnt; i++)
-	      {
-		pr_clear_value (&m_vd->dbval_ptr[i]);
-	      }
-	    db_private_free (m_thread_p, m_vd->dbval_ptr);
-	  }
-	db_private_free (m_thread_p, m_vd);
+	qexec_free_xasl_state (m_thread_p, m_vd->xasl_state);
 	m_vd = nullptr;
       }
   }
@@ -1659,28 +1651,15 @@ namespace parallel_scan
       {
 	m_uses_xasl_clone = true;
       }
-    new_vd = (VAL_DESCR *) db_private_alloc (m_thread_p, sizeof (VAL_DESCR));
-    if (new_vd == nullptr)
+    /* m_vd is the vd of this thread's copy, so m_vd->xasl_state is what close frees (D-318-06). */
+    assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
+    xasl_state *new_xasl_state = qexec_deep_copy_xasl_state (m_thread_p, m_orig_vd->xasl_state);
+    if (new_xasl_state == nullptr)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VAL_DESCR));
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
 	return ER_FAILED;
       }
-    memcpy (new_vd, m_orig_vd, sizeof (VAL_DESCR));
-    if (m_orig_vd->dbval_cnt > 0)
-      {
-	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	if (new_vd->dbval_ptr == nullptr)
-	  {
-	    db_private_free (m_thread_p, new_vd);
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		    sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	    return ER_FAILED;
-	  }
-	for (int i = 0; i < m_orig_vd->dbval_cnt; i++)
-	  {
-	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &new_vd->dbval_ptr[i]);
-	  }
-      }
+    new_vd = &new_xasl_state->vd;
     m_vd = new_vd;
     m_input_handler = (input_handler_t *) db_private_alloc (m_thread_p, sizeof (input_handler_t));
     if (m_input_handler == nullptr)
@@ -2106,15 +2085,7 @@ namespace parallel_scan
     /* Clean up previous value descriptor */
     if (m_vd != nullptr)
       {
-	if (m_vd->dbval_cnt > 0)
-	  {
-	    for (int i = 0; i < m_vd->dbval_cnt; i++)
-	      {
-		pr_clear_value (&m_vd->dbval_ptr[i]);
-	      }
-	    db_private_free (m_thread_p, m_vd->dbval_ptr);
-	  }
-	db_private_free (m_thread_p, m_vd);
+	qexec_free_xasl_state (m_thread_p, m_vd->xasl_state);
 	m_vd = nullptr;
       }
 
