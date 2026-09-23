@@ -58,6 +58,8 @@ namespace parallel_scan
       {
 	m_err_messages->move_top_error_message_to_this();
 	m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	/* release what initialize () already acquired: the XASL clone and its cache entry fix above all */
+	finalize (thread_ref);
 	return;
       }
     loop (thread_ref);
@@ -469,6 +471,7 @@ namespace parallel_scan
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl, m_vd);
       }
+    m_handlers_initialized = true;
     if (er_errid () != NO_ERROR)
       {
 	return er_errid ();
@@ -489,7 +492,8 @@ namespace parallel_scan
 	  }
       }
 
-    if (thread_ref.on_trace)
+    /* finalize () also runs after a failed initialize (); what it did not reach is skipped below */
+    if (thread_ref.on_trace && m_handlers_initialized)
       {
 	TSC_TICKS end_tick;
 	TSCTIMEVAL tv_diff;
@@ -514,9 +518,16 @@ namespace parallel_scan
 				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_IOREADS));
 	perfmon_destroy_parallel_stats (&thread_ref);
       }
-    m_result_handler->write_finalize (&thread_ref);
-    m_input_handler->finalize (&thread_ref);
-    m_slot_iterator.finalize (&thread_ref);
+    else if (thread_ref.on_trace)
+      {
+	perfmon_destroy_parallel_stats (&thread_ref);
+      }
+    if (m_handlers_initialized)
+      {
+	m_result_handler->write_finalize (&thread_ref);
+	m_input_handler->finalize (&thread_ref);
+	m_slot_iterator.finalize (&thread_ref);
+      }
 
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
@@ -537,31 +548,47 @@ namespace parallel_scan
 		BTID_COPY (&xptr->spec_list->indexptr->btid, &xptr->spec_list->btid);
 	      }
 
-	    m_pre_execution_info->record_pre_execution_info (xptr->header.id, xptr);
+	    if (m_handlers_initialized)
+	      {
+		m_pre_execution_info->record_pre_execution_info (xptr->header.id, xptr);
+	      }
 
 	  }
 
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
-	scan_end_scan (&thread_ref, m_scan_id);
-	scan_close_scan (&thread_ref, m_scan_id);
+	if (m_handlers_initialized)
+	  {
+	    scan_end_scan (&thread_ref, m_scan_id);
+	    scan_close_scan (&thread_ref, m_scan_id);
+	  }
       }
 
-    for (int i = 0; i < m_vd->dbval_cnt; i++)
+    if (m_xasl_state != nullptr)
       {
-	pr_clear_value (&m_vd->dbval_ptr[i]);
-      }
+	for (int i = 0; i < m_vd->dbval_cnt; i++)
+	  {
+	    pr_clear_value (&m_vd->dbval_ptr[i]);
+	  }
 
-    db_private_free (&thread_ref, m_vd->dbval_ptr);
-    db_private_free (&thread_ref, m_xasl_state);
+	db_private_free (&thread_ref, m_vd->dbval_ptr);
+	db_private_free (&thread_ref, m_xasl_state);
+      }
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
     if (m_uses_xasl_clone)
       {
-	xcache_retire_clone (&thread_ref, m_xasl_cache_entry, &m_xasl_clone);
-	xcache_unfix (&thread_ref, m_xasl_cache_entry);
+	/* clone_xasl () can fail before it holds a clone or a fixed cache entry */
+	if (m_xasl_clone.xasl != nullptr)
+	  {
+	    xcache_retire_clone (&thread_ref, m_xasl_cache_entry, &m_xasl_clone);
+	  }
+	if (m_xasl_cache_entry != nullptr)
+	  {
+	    xcache_unfix (&thread_ref, m_xasl_cache_entry);
+	  }
       }
     else
       {
