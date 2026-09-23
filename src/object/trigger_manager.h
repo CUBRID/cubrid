@@ -389,9 +389,6 @@ extern void tr_invalidate_user_cache (void);
 extern const char *tr_time_as_string (DB_TRIGGER_TIME time);
 extern const char *tr_event_as_string (DB_TRIGGER_EVENT event);
 extern const char *tr_status_as_string (DB_TRIGGER_STATUS status);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int tr_dump_all_triggers (FILE * fp, bool quoted_id_flag);
-#endif
 extern void tr_free_trigger_list (TR_TRIGLIST * list);
 extern const char *tr_get_class_name (void);
 
