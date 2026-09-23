@@ -614,10 +614,10 @@ log_get_append_lsa (void)
  *
  * NOTE:
  */
-LOG_LSA *
+LOG_LSA
 log_get_eof_lsa (void)
 {
-  return (&log_Gl.hdr.eof_lsa);
+  return log_Gl.hdr.eof_lsa.load ();
 }
 
 /*
@@ -1186,7 +1186,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  log_Gl.hdr.append_lsa.store (LOG_LSA (LOGPAGEID_MAX, 0));
 
 	  /* sync append_lsa to prior_lsa */
-	  log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
+	  log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
 
 	  LSA_SET_NULL (&log_Gl.hdr.chkpt_lsa);
 	  log_Gl.hdr.nxarv_pageid = LOGPAGEID_MAX;
@@ -1425,11 +1425,13 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
 	{
-	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && log_Gl.hdr.append_lsa.load () > log_Gl.hdr.eof_lsa)
+	  const LOG_LSA eof_lsa = log_Gl.hdr.eof_lsa;
+
+	  if (!LSA_ISNULL (&eof_lsa) && log_Gl.hdr.append_lsa.load () > eof_lsa)
 	    {
 	      /* We cannot believe in append_lsa for this case. It points to an unflushed log page. Since we are
 	       * going to skip recovery for emergency startup, just replace it with eof_lsa. */
-	      LOG_RESET_APPEND_LSA (&log_Gl.hdr.eof_lsa);
+	      LOG_RESET_APPEND_LSA (&eof_lsa);
 	    }
 	}
 
@@ -1469,17 +1471,17 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
-  if (log_Gl.append.prev_lsa.load () != log_Gl.prior_info.prev_lsa)
+  if (log_Gl.append.prev_lsa.load () != log_Gl.prior_info.prev_lsa.load ())
     {
       assert (0);
       /* defense code */
-      log_Gl.prior_info.prev_lsa = log_Gl.append.prev_lsa;
+      log_Gl.prior_info.prev_lsa.store (log_Gl.append.prev_lsa.load ());
     }
-  if (log_Gl.hdr.append_lsa.load () != log_Gl.prior_info.prior_lsa)
+  if (log_Gl.hdr.append_lsa.load () != log_Gl.prior_info.prior_lsa.load ())
     {
       assert (0);
       /* defense code */
-      log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
+      log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
     }
 
   /*
@@ -3308,7 +3310,8 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
-  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.prior_info.prior_lsa);
+  const LOG_LSA prior_lsa = log_Gl.prior_info.prior_lsa.load ();
+  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &prior_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
@@ -9413,6 +9416,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
   LOG_LSA append_lsa = header->append_lsa;
+  LOG_LSA eof_lsa = header->eof_lsa;
 
   if (cursor >= 1)
     {
@@ -9581,7 +9585,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_string (out_values[idx], str);
   idx++;
 
-  lsa_to_string (buf, sizeof (buf), &header->eof_lsa);
+  lsa_to_string (buf, sizeof (buf), &eof_lsa);
   error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
