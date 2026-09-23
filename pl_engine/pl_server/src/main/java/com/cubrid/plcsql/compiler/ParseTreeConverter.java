@@ -130,7 +130,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         Body initializer = null;
         NodeList<Decl> pkgBodyItems = null;
-        if (bodyTree != null) {
+        if (bodyTree == null) {
+            symbolStack.getCurrentScope().setDeclDone();
+        } else {
 
             Create_package_bodyContext bodyContext =
                     ((Sql_scriptContext) bodyTree).create_package_body();
@@ -147,7 +149,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             // visit package body items
             topLevelStmt = CREATE_PKG_BODY;
-            if (bodyContext.seq_of_declare_specs() != null) {
+            if (bodyContext.seq_of_declare_specs() == null) {
+                symbolStack.getCurrentScope().setDeclDone();
+            } else {
                 pkgBodyItems = visitSeq_of_declare_specs(bodyContext.seq_of_declare_specs());
                 for (Decl d : pkgBodyItems.nodes) {
                     d.setPkgItem();
@@ -1498,7 +1502,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             }
         }
 
-        symbolStack.getCurrentScope().setDeclDone();
+        if (topLevelStmt == CREATE_PKG_SPEC) {
+            // do not close the declaration block: declarations in pacakge body can follow
+        } else {
+            symbolStack.getCurrentScope().setDeclDone();
+        }
 
         if (saved == null) {
             idUsedInCurrentDeclPart = null;
