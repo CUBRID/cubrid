@@ -97,8 +97,8 @@ qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE **
 			      qo_analyze_path_join, (*nodep)->info.query.q.select.where);
 	}			/* if (pred) */
 
-      /* shrink the GROUP BY first, so that qo_reduce_order_by () judges the ORDER BY against the
-       * grouping key that will actually run */
+      /* shrink or remove the GROUP BY first, so that qo_reduce_order_by () judges the ORDER BY
+       * against the grouping that will actually run */
       qo_remove_useless_groupby_columns (parser, (*nodep));
 
       if (qo_reduce_order_by (parser, (*nodep)) != NO_ERROR)
@@ -1347,7 +1347,7 @@ qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * c
 
 /*
  * qo_remove_useless_groupby_columns () - remove the GROUP BY columns that are functionally determined
- *			   by a key of the same table
+ *			   by a key of the same table, and the whole clause once every table is keyed
  *   return: void
  *   parser(in): parser global context info for reentrancy
  *   query(in/out): query node has GROUP BY
@@ -1368,13 +1368,25 @@ qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * c
  *        select pk, name, sum (amount) from t group by name, pk;
  *          -> select pk, name, sum (amount) from t group by pk;
  *
- *   A column goes wherever it is written, so the order in which a sorted GROUP BY hands out its
- *   groups may change. This must therefore run before qo_reduce_order_by (), which drops an
- *   ORDER BY only when the GROUP BY that will actually run still covers it.
- *
  *   When more than one key of the table is covered, the one with the fewest columns wins,
  *   because everything outside the chosen key is removed. A key column written twice keeps
  *   only its first occurrence.
+ *
+ *   When every table of the FROM clause hands over such a key, the grouping key picks out a single
+ *   row of the join, so every group holds exactly one row. With no aggregate to fold, the clause
+ *   does nothing but sort or hash the rows and is removed altogether.
+ *
+ *        select pk, name from t group by pk, name;
+ *          -> select pk, name from t;
+ *
+ *   pt_has_aggregate () reports a GROUP BY as aggregation by itself, and both pt_is_single_tuple ()
+ *   and pt_to_buildlist_proc () build the grouping machinery on that flag, so PT_SELECT_INFO_HAS_AGG
+ *   is cleared together with the clause.
+ *
+ *   A column goes wherever it is written, so the order in which a sorted GROUP BY hands out its
+ *   groups may change, and once the clause is gone the rows come out in no order at all. This must
+ *   therefore run before qo_reduce_order_by (), which drops an ORDER BY only when the GROUP BY that
+ *   will actually run still covers it.
  */
 static void
 qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
@@ -1383,6 +1395,8 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
   DB_OBJECT *classop;
   SM_CLASS_CONSTRAINT *cons, *best_cons;
   int i, size, best_size;
+  int save_flag;
+  bool remove_all;
 
   if (query->node_type != PT_SELECT)
     {
@@ -1396,6 +1410,10 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
       return;
     }
 
+  remove_all = (query->info.query.q.select.from != NULL && query->info.query.q.select.having == NULL
+		&& query->info.query.q.select.connect_by == NULL
+		&& (query->info.query.limit == NULL || query->info.query.order_by != NULL));
+
   for (spec = query->info.query.q.select.from; spec != NULL; spec = spec->next)
     {
       classop = NULL;
@@ -1403,7 +1421,13 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
       if (classop == NULL)
 	{
 	  /* derived tables and CTEs carry no constraint to rely on */
+	  remove_all = false;
 	  continue;
+	}
+
+      if (mq_is_outer_join_spec (parser, spec))
+	{
+	  remove_all = false;
 	}
 
       best_cons = NULL;
@@ -1431,6 +1455,8 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
 
       if (best_cons == NULL)
 	{
+	  /* no key of this table is grouped on */
+	  remove_all = false;
 	  continue;
 	}
 
@@ -1468,6 +1494,26 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
 	    pt_remove_from_list (parser, group, query->info.query.q.select.group_by);
 	}
     }
+
+  if (!remove_all)
+    {
+      return;
+    }
+
+  /* with the clause detached, only a real aggregate or groupby_num () answers */
+  group = query->info.query.q.select.group_by;
+  save_flag = query->info.query.q.select.flag;
+  query->info.query.q.select.group_by = NULL;
+  PT_SELECT_INFO_CLEAR_FLAG (query, PT_SELECT_INFO_HAS_AGG);
+
+  if (pt_has_aggregate (parser, query))
+    {
+      query->info.query.q.select.group_by = group;
+      query->info.query.q.select.flag = save_flag;
+      return;
+    }
+
+  parser_free_tree (parser, group);
 }
 
 /*
