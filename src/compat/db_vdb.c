@@ -3053,6 +3053,11 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   assert (pt_node_to_cmd_type (statement) == CUBRID_STMT_EXECUTE_PREPARE);
   db_init_prepare_info (&prepare_info);
 
+  assert (subquery_num != NULL && subquery_info != NULL);
+
+  *subquery_num = 0;
+  *subquery_info = NULL;
+
   name = statement->info.execute.name->info.name.original;
   err = csession_get_prepared_statement (name, &xasl_id, &stmt_info, &xasl_header);
   if (err != NO_ERROR)
@@ -3060,7 +3065,12 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
       return err;
     }
 
-  db_unpack_prepare_info (&prepare_info, stmt_info);
+  err = db_unpack_prepare_info (&prepare_info, stmt_info);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
   *subquery_num = prepare_info.subquery_num;
   *subquery_info = prepare_info.subquery_info;
 
@@ -3171,6 +3181,22 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
     }
 
 cleanup:
+  if (err != NO_ERROR && prepare_info.subquery_info != NULL)
+    {
+      for (i = 0; i < prepare_info.subquery_num; i++)
+	{
+	  if (prepare_info.subquery_info[i].host_var_index != NULL)
+	    {
+	      free_and_init (prepare_info.subquery_info[i].host_var_index);
+	    }
+	}
+
+      free_and_init (prepare_info.subquery_info);
+
+      *subquery_num = 0;
+      *subquery_info = NULL;
+    }
+
   if (stmt_info != NULL)
     {
       free_and_init (stmt_info);
