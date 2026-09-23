@@ -15616,11 +15616,11 @@ int
 do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
 {
   int i, q, err = NO_ERROR;
-  QUERY_ID query_id;
-  QFILE_LIST_ID *list_id;
 
   for (q = 0; q < num_query; q++)
     {
+      QUERY_ID query_id = NULL_QUERY_ID;
+      QFILE_LIST_ID *list_id = NULL;
       DB_VALUE *host_variables = NULL;
 
       if (info[q].host_var_count > 0)
@@ -15654,6 +15654,16 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	  free (host_variables);
 	}
 
+      if (list_id != NULL)
+	{
+	  cursor_free_self_list_id (list_id);
+	}
+
+      if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+	{
+	  qmgr_end_query (query_id);
+	}
+
       if (err != NO_ERROR)
 	{
 	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
@@ -15680,7 +15690,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 int
 do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  QUERY_ID query_id;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables = NULL;
   CACHE_TIME clt_cache_time;
