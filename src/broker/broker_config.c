@@ -267,7 +267,6 @@ const char *broker_keywords[] = {
   "SOURCE_ENV",
   /* Below is a keyword referenced from the source code, although it is not in the manual. */
   "APPL_SERVER",
-  "CACHE_USER_INFO",
   "CCI_PCONNECT",
   "DATABASES_CONNECTION_FILE",
   "ENABLE_MONITOR_SERVER",
@@ -969,14 +968,6 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
       INI_GETSTR_CHK (s, ini, sec_name, "KEEP_CONNECTION", DEFAULT_KEEP_CONNECTION, &lineno);
       br_info[num_brs].keep_connection = conf_get_value_keep_con (s);
       if (br_info[num_brs].keep_connection < 0)
-	{
-	  errcode = PARAM_BAD_VALUE;
-	  goto conf_error;
-	}
-
-      INI_GETSTR_CHK (s, ini, sec_name, "CACHE_USER_INFO", "OFF", &lineno);
-      br_info[num_brs].cache_user_info = conf_get_value_table_on_off (s);
-      if (br_info[num_brs].cache_user_info < 0)
 	{
 	  errcode = PARAM_BAD_VALUE;
 	  goto conf_error;
@@ -1767,12 +1758,6 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       if (tmp_str)
 	{
 	  fprintf (fp, "STRIPPED_COLUMN_NAME\t=%s\n", tmp_str);
-	}
-
-      tmp_str = get_conf_string (br_info[i].cache_user_info, tbl_on_off);
-      if (tmp_str)
-	{
-	  fprintf (fp, "CACHE_USER_INFO\t\t=%s\n", tmp_str);
 	}
 
 #if !defined (WINDOWS)
