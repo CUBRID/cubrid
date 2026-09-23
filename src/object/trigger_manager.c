@@ -4167,14 +4167,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	}
     }
 
-  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+  /* flush here, so that a failure in storing the trigger is raised by this command and undone to its savepoint
+   * rather than surfacing at commit */
+  if (locator_all_flush () != NO_ERROR)
     {
-      /* need to flush in isolation level >= RR, since in case of serializable conflict we have to abort the current
-       * command */
-      if (locator_all_flush () != NO_ERROR)
-	{
-	  goto error;
-	}
+      goto error;
     }
 
   return object;
