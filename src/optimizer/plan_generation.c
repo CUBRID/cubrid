@@ -911,23 +911,108 @@ mark_access_as_outer_join (PARSER_CONTEXT * parser, XASL_NODE * xasl)
 }
 
 /*
+ * add_semi_anti_key_limit () - give an NL semi/anti inner index scan an upper key limit of 1
+ *   return: NO_ERROR or ER_FAILED
+ *   parser(in):
+ *   key_infop(in/out): the inner index spec's key info
+ *
+ * Note: an EXISTS subquery that is not unnested gets "LIMIT 1" from the rewriter
+ * (qo_add_limit_clause) and, through pt_instnum_to_key_limit, an index key limit of
+ * 1, so its btree range scan stops at the first key.  The unnest into a semi/anti
+ * join bypasses that rewrite (the EXISTS node is gone before the rewriter reaches
+ * it), and the join-level first-match gate (QPROC_SINGLE_INNER) does not stop the
+ * btree: it only stops re-entry after the batch is read.  Restore the limit here.
+ * A user KEYLIMIT already on the spec is merged with LEAST(); key_limit_reset is
+ * left alone in that case so a multi-range user limit keeps its per-range reset.
+ * The limit is re-evaluated by scan_init_index_key_limit on every scan block reset,
+ * i.e. for every outer row, so a constant is enough.
+ */
+static int
+add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
+{
+  PT_NODE *node_one;
+  REGU_VARIABLE *regu_one;
+  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
+
+  node_one = pt_make_integer_value (parser, 1);
+  if (node_one == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE);
+  if (regu_one == NULL)
+    {
+      parser_free_node (parser, node_one);
+      return ER_FAILED;
+    }
+
+  if (key_infop->key_limit_u != NULL)
+    {
+      /* replace the user limit only once the merged node exists: on failure the caller carries on
+         without our limit, and the user's KEYLIMIT must survive that */
+      REGU_VARIABLE *merged = pt_make_regu_arith (key_infop->key_limit_u, regu_one, NULL, T_LEAST, dom_bigint);
+
+      if (merged == NULL)
+	{
+	  return ER_FAILED;
+	}
+      merged->domain = dom_bigint;
+      key_infop->key_limit_u = merged;
+    }
+  else
+    {
+      key_infop->key_limit_u = regu_one;
+      key_infop->key_limit_reset = false;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * mark_access_as_semi_anti_join () - mark an inner scan proc's access spec as a
  *      single-fetch NL semi/anti inner and tag the xasl with the semi/anti flag.
  *   return: void
+ *   parser(in):
  *   xasl(in): the inner scan proc xasl
  *   join_type(in): PT_JOIN_SEMI or PT_JOIN_ANTI
  */
 static void
-mark_access_as_semi_anti_join (XASL_NODE * xasl, PT_JOIN_TYPE join_type)
+mark_access_as_semi_anti_join (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_JOIN_TYPE join_type)
 {
   ACCESS_SPEC_TYPE *access;
+  bool key_limit_ok;
 
   XASL_SET_FLAG (xasl, (join_type == PT_JOIN_SEMI) ? XASL_NL_SEMIJOIN : XASL_NL_ANTIJOIN);
+
+  /* A key limit of 1 is only sound when nothing above the btree can reject the first key: the
+   * executor would then clear single_fetched and ask for the next row, which the limit has
+   * already cut off (same guard as pt_instnum_to_key_limit, plus the leaf-deferral predicates).
+   * With one match ANTI is decided too, so the limit applies to both. */
+  key_limit_ok = (xasl->if_pred == NULL && xasl->after_join_pred == NULL && xasl->bptr_list == NULL
+		  && xasl->dptr_list == NULL && xasl->fptr_list == NULL);
+  for (access = xasl->spec_list; access != NULL && key_limit_ok; access = access->next)
+    {
+      if (access->where_pred != NULL)
+	{
+	  key_limit_ok = false;
+	}
+    }
 
   for (access = xasl->spec_list; access; access = access->next)
     {
       /* fetch at most one qualifying inner row per outer row (first-match) */
       access->single_fetch = QPROC_SINGLE_INNER;
+
+      if (key_limit_ok && access->access == ACCESS_METHOD_INDEX && access->indexptr != NULL
+	  && !access->indexptr->use_iss && access->indexptr->ils_prefix_len == 0)
+	{
+	  if (add_semi_anti_key_limit (parser, &access->indexptr->key_info) != NO_ERROR)
+	    {
+	      /* not an error: the scan still stops at the join-level first-match gate */
+	      er_clear ();
+	    }
+	}
     }
 }
 
@@ -2419,7 +2504,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  PT_JOIN_TYPE sa_type = qo_plan_semi_anti_join_type (inner);
 		  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
 		    {
-		      mark_access_as_semi_anti_join (scan, sa_type);
+		      mark_access_as_semi_anti_join (parser, scan, sa_type);
 		    }
 		}
 	    }
