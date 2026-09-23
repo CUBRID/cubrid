@@ -7320,6 +7320,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
   int collation_id;
   TZ_ID tz_id = 0;
   DB_DATETIMETZ ldatetimetz;
+  bool zone_to_string = false;
 
   if (DB_IS_NULL (left) || DB_IS_NULL (right))
     {
@@ -7532,15 +7533,21 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 
   /* depending on the first argument, the result is either result_date or result_time */
 
-  if (domain != NULL)
+  /* D-335-10: the compiler types a string column or expression VARCHAR (the manual's "date/time string" row), and
+   * the zone such a string carries goes into the result string. A string literal, bind or session variable arrives
+   * without a domain and keeps the type its value gives (a zone makes it DATETIMETZ). */
+  zone_to_string = domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR && result_type == DB_TYPE_DATETIMETZ;
+  if (domain != NULL && !zone_to_string)
     {
       assert (TP_DOMAIN_TYPE (domain) == result_type);
     }
 
 #if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
   {
-    /* dpin-07 shadow check: the gate's value class and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer result_type */
-    DB_TYPE left_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left);
+    /* dpin-07 shadow check: domain_resolve (DOMAIN_CTX_FUNC_ARG) answers the result type - from the value's class
+     * when the compiler left no domain, from the compiled string type otherwise (D-335-10) */
+    DB_TYPE left_class = domain == NULL ? domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left)
+      : DB_VALUE_DOMAIN_TYPE (left);
     DOMAIN_OPERAND operands[2] = {
       {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (left)), left_class, -1, -1, false}
       ,
@@ -7549,9 +7556,9 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
     RESOLVED_DOMAIN resolved;
     bool needs_gate;
     int shadow_error = domain_resolve (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, operands, 2, NULL, &resolved, &needs_gate);
-    assert (left_class == (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (left)) ? result_type : DB_VALUE_DOMAIN_TYPE (left)));
     assert (shadow_error == NO_ERROR && !needs_gate);
-    assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == result_type);
+    assert (shadow_error != NO_ERROR
+	    || TP_DOMAIN_TYPE (resolved.domain) == (zone_to_string ? DB_TYPE_VARCHAR : result_type));
   }
 #endif
 
@@ -7608,6 +7615,20 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	if (error != NO_ERROR)
 	  {
 	    goto error_return;
+	  }
+	if (zone_to_string)
+	  {
+	    res_s = (char *) db_private_alloc (NULL, DATETIMETZ_BUF_SIZE);
+	    if (res_s == NULL)
+	      {
+		error = ER_DATE_CONVERSION;
+		goto error_return;
+	      }
+	    db_datetimetz_to_string (res_s, DATETIMETZ_BUF_SIZE, &dt_tz.datetime, &dt_tz.tz_id);
+	    db_make_varchar (result, strlen (res_s), res_s, strlen (res_s), TP_DOMAIN_CODESET (domain),
+			     TP_DOMAIN_COLLATION (domain));
+	    result->need_clear = true;
+	    break;
 	  }
 	db_make_datetimetz (result, &dt_tz);
 	break;

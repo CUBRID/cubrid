@@ -741,12 +741,20 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
        * (F-333-06), so the accumulator here is the function domain */
       if (!domain_is_interpolation_type (operand_type))
 	{
-	  /* the gate classified the value as DOUBLE, DATETIME or TIME */
-	  if (!domain_is_interpolation_type (val_type))
+	  if (domain_is_interpolation_type (val_type))
+	    {
+	      /* the gate classified the value as DOUBLE, DATETIME or TIME */
+	      function_domain = tp_domain_resolve_default (val_type);
+	    }
+	  else if (TP_IS_CHAR_TYPE (val_type))
+	    {
+	      /* a string the gate has no value for (a column, an expression) is a number (D-335-10) */
+	      function_domain = &tp_Double_domain;
+	    }
+	  else
 	    {
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
-	  function_domain = tp_domain_resolve_default (val_type);
 	}
       accumulator = function_domain;
       break;
@@ -763,8 +771,12 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
     }
   result->domain = function_domain;
   result->operand_domain[0] = accumulator;
-  /* D-335-04: a value-classified argument converts from its own type to the class (qx:21721 tp_value_cast) */
-  if (operand->domain != NULL && val_type != DB_TYPE_NULL && TP_DOMAIN_TYPE (operand->domain) != val_type)
+  /* D-335-04: a value-classified argument converts from its own type to the class (qx:21721 tp_value_cast), and so
+   * does a string interpolation argument typed DOUBLE (D-335-10) */
+  if (operand->domain != NULL && val_type != DB_TYPE_NULL
+      && (TP_DOMAIN_TYPE (operand->domain) != val_type
+	  || (TP_IS_CHAR_TYPE (val_type) && TP_DOMAIN_TYPE (accumulator) == DB_TYPE_DOUBLE
+	      && (function == PT_MEDIAN || function == PT_PERCENTILE_CONT || function == PT_PERCENTILE_DISC))))
     {
       result->conv[0] = domain_lookup_converter (TP_DOMAIN_TYPE (operand->domain), accumulator, DOMAIN_CONVERT_ASSIGN);
     }
@@ -887,7 +899,8 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	{
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  /* classified: VARCHAR without a zone, DATETIMETZ with one */
+	  /* a value is classified before this (VARCHAR without a zone, DATETIMETZ with one); a string the gate has no
+	   * value for (a column, an expression) is VARCHAR, the manual's "date/time string" row (D-335-10) */
 	  result_type = DB_TYPE_VARCHAR;
 	  break;
 	case DB_TYPE_DATETIME:

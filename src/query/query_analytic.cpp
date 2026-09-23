@@ -805,31 +805,44 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		  break;
 
 		default:
-		  /* try to cast dbval to double, datetime then time */
-		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-
-		  dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
-		  if (dom_status != DOMAIN_COMPATIBLE)
+		  /* the compiled function domain is the plan's: func_p->domain may already hold the first value's domain
+		   * from the late binding above */
+		  assert (func_p->domain_plan != NULL);
+		  if (func_p->domain_plan != NULL && func_p->domain_plan->fixed.domain != NULL
+		      && TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) != DB_TYPE_VARIABLE)
 		    {
-		      /* try datetime */
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
-
+		      /* D-335-10: a string column or expression is DOUBLE, the compiled function domain */
+		      tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain));
 		      dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
 		    }
-
-		  /* try time */
-		  if (dom_status != DOMAIN_COMPATIBLE)
+		  else
 		    {
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+		      /* a value (a literal, a bind) is classified: try to cast dbval to double, datetime then time */
+		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
 		      dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+		      if (dom_status != DOMAIN_COMPATIBLE)
+			{
+			  /* try datetime */
+			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
+
+			  dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+			}
+
+		      /* try time */
+		      if (dom_status != DOMAIN_COMPATIBLE)
+			{
+			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+
+			  dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+			}
 		    }
 
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
 		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
-			      "DOUBLE, DATETIME, TIME");
+			      TP_DOMAIN_TYPE (tmp_domain_p) == DB_TYPE_TIME ? "DOUBLE, DATETIME, TIME" : "DOUBLE");
 		      goto exit;
 		    }
 

@@ -3852,15 +3852,15 @@ qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE ty
 
 /*
  * qexec_gate_operand () - one operand of a gate-dependent node at the gate
- *   return: false when the operand's class comes from a value the gate does not have (a computed string: decided
- *	     per row as today, like rule table F10)
  *
  * An operand with a value (a bind, a literal) gives its value's type: execution computes with the value, and a bind
  * with a compiled domain keeps the type the client sent it with (F-335-06). A gate-dependent producer gives its
  * entry (resolved first, producer order) and any other producer its compiled domain. An arithmetic operator gives no
- * value for a NULL operand before it looks at the types, so a NULL the gate can see is DB_TYPE_NULL there.
+ * value for a NULL operand before it looks at the types, so a NULL the gate can see is DB_TYPE_NULL there. A value
+ * the resolver classifies (an interpolation argument, the ADDTIME left string, the STR_TO_DATE format) gives its
+ * class; a string without a value keeps its string type and the resolver types it statically (D-335-10).
  */
-static bool
+static void
 qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_GATE_LINK * link,
 		    int arg_index, DOMAIN_CTX context, int opcode, DOMAIN_OPERAND * operand)
 {
@@ -3878,13 +3878,9 @@ qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & reso
     }
   else if (item->slot >= 0)
     {
+      /* every producer is resolved before its consumers; a producer without a value holds tp_Null_domain */
       operand->domain = resolved.table[item->slot].domain;
       operand->is_gate_slot = true;
-      if (operand->domain == NULL)
-	{
-	  /* the producer is itself decided per row */
-	  return false;
-	}
     }
   else
     {
@@ -3898,18 +3894,11 @@ qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & reso
       operand->domain = &tp_Null_domain;
       operand->val_type = DB_TYPE_NULL;
     }
-  else if (qexec_gate_classifies (context, opcode, arg_index, operand->val_type))
+  else if (value != NULL && !DB_IS_NULL (value)
+	   && qexec_gate_classifies (context, opcode, arg_index, operand->val_type))
     {
-      if (value == NULL)
-	{
-	  return false;
-	}
-      if (!DB_IS_NULL (value))
-	{
-	  operand->val_type = domain_classify_value (context, opcode, arg_index, value);
-	}
+      operand->val_type = domain_classify_value (context, opcode, arg_index, value);
     }
-  return true;
 }
 
 /*
@@ -3934,13 +3923,7 @@ qexec_resolve_gate_node (const xasl_node * xasl, const DOMAIN_PLAN * plan, int i
   assert (node->slot >= 0 && node->slot < resolved.n_slots && link->n_operands > 0 && link->n_operands <= 3);
   for (int i = 0; i < link->n_operands; i++)
     {
-      if (!qexec_gate_operand (plan, resolved, link, i, context, cold->opcode, &operands[i]))
-	{
-	  *entry = RESOLVED_DOMAIN
-	  {
-	  };
-	  return NO_ERROR;
-	}
+      qexec_gate_operand (plan, resolved, link, i, context, cold->opcode, &operands[i]);
     }
 
   int error = domain_resolve (context, cold->opcode, operands, link->n_operands, link->consumer, entry, &needs_gate);
@@ -22113,32 +22096,74 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 			  || agg_p->operands->value.type == TYPE_INARITH
 			  || agg_p->operands->value.type == TYPE_POS_VALUE);
 
+		  {
+		    /* D-335-10: a string column or expression is DOUBLE - the compiled function domain, or the gate's
+		     * answer for a gate-dependent string (median(? || 'x')) - and a value (a literal, a bind, a session
+		     * variable read) is classified as today: DOUBLE, then DATETIME, then TIME. */
+		    const REGU_VARIABLE *operand = &agg_p->operands->value;
+		    const bool value_operand = operand->type == TYPE_DBVAL || operand->type == TYPE_POS_VALUE
+		      || (operand->type == TYPE_INARITH && operand->value.arithptr->opcode == T_EVALUATE_VARIABLE);
+		    const bool gate_node = agg_p->domain_plan != NULL
+		      && (agg_p->domain_plan->flags & DOMAIN_PLAN_GATE) != 0;
+		    /* the compiled function domain is the plan's: agg_p->domain may already hold the first value's
+		     * domain from the late binding above */
+		    const TP_DOMAIN *compiled = agg_p->domain_plan != NULL ? agg_p->domain_plan->fixed.domain : NULL;
+		    assert (agg_p->domain_plan != NULL);
+		    if (compiled != NULL && TP_DOMAIN_TYPE (compiled) != DB_TYPE_VARIABLE)
+		      {
+			tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (compiled));
+		      }
+		    else if (!value_operand && gate_node)
+		      {
+			tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+		      }
+		    else
+		      {
+			tmp_domain_p = NULL;
+		      }
+		  }
 #if !defined (NDEBUG)
-		  shadow_value_type = domain_classify_value (DOMAIN_CTX_AGG, agg_p->function, 0, dbval);
+		  if (tmp_domain_p == NULL)
+		    {
+		      shadow_value_type = domain_classify_value (DOMAIN_CTX_AGG, agg_p->function, 0, dbval);
+		    }
 #endif
-		  /* try to cast dbval to double, datetime then time */
-		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
 		  if (REGU_VARIABLE_IS_FLAGED (&agg_p->operands->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 		    {
 		      save_heapid = db_change_private_heap (thread_p, 0);
 		    }
 
-		  status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
-		  if (status != DOMAIN_COMPATIBLE)
+		  if (tmp_domain_p != NULL)
 		    {
-		      /* try datetime */
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
-
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
 		    }
-
-		  /* try time */
-		  if (status != DOMAIN_COMPATIBLE)
+		  else
 		    {
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+		      /* try to cast dbval to double, datetime then time */
+		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
 		      status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
+		      if (status != DOMAIN_COMPATIBLE)
+			{
+			  /* try datetime */
+			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
+
+			  status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
+			}
+
+		      /* try time */
+		      if (status != DOMAIN_COMPATIBLE)
+			{
+			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+
+			  status = tp_value_cast (dbval, dbval, tmp_domain_p, false);
+			}
+
+#if !defined (NDEBUG)
+		      assert ((status == DOMAIN_COMPATIBLE) == (shadow_value_type != DB_TYPE_NULL));
+		      assert (status != DOMAIN_COMPATIBLE || shadow_value_type == TP_DOMAIN_TYPE (tmp_domain_p));
+#endif
 		    }
 
 		  if (save_heapid != 0)
@@ -22154,15 +22179,11 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 			}
 		    }
 
-#if !defined (NDEBUG)
-		  assert ((status == DOMAIN_COMPATIBLE) == (shadow_value_type != DB_TYPE_NULL));
-		  assert (status != DOMAIN_COMPATIBLE || shadow_value_type == TP_DOMAIN_TYPE (tmp_domain_p));
-#endif
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
 		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (agg_p->function),
-			      "DOUBLE, DATETIME or TIME");
+			      TP_DOMAIN_TYPE (tmp_domain_p) == DB_TYPE_TIME ? "DOUBLE, DATETIME or TIME" : "DOUBLE");
 
 		      return error;
 		    }
@@ -23546,12 +23567,26 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   /* set SUBKEY_INFO.cmp_dom */
   if (has_interpolation_func)
     {
+      /* D-335-10: a string operand the compiler typed (a column, an expression: DOUBLE) sorts in that domain; a
+       * string value the gate classifies (a bind) sorts in the domain the first pair of values gives, as today
+       * (qfile_compare_with_interpolation_domain). The functions of one state share the operand key. */
+      TP_DOMAIN *compiled_cmp_dom = NULL;
+      for (func_p = a_func_list; func_p != NULL && compiled_cmp_dom == NULL; func_p = func_p->next)
+	{
+	  if (QPROC_IS_INTERPOLATION_FUNC (func_p) && TP_IS_STRING_TYPE (func_p->opr_dbtype)
+	      && func_p->domain_plan != NULL && func_p->domain_plan->fixed.domain != NULL
+	      && TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) != DB_TYPE_VARIABLE)
+	    {
+	      compiled_cmp_dom = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain));
+	    }
+	}
       for (i = 0, subkey = analytic_state->key_info.key; i < analytic_state->key_info.nkeys && subkey != NULL;
 	   ++i, ++subkey)
 	{
 	  if (i >= interpolation_func_sort_prefix_len && TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)))
 	    {
 	      subkey->use_cmp_dom = true;
+	      subkey->cmp_dom = compiled_cmp_dom;
 	    }
 	}
     }

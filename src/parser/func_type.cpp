@@ -1956,8 +1956,18 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	case PT_MEDIAN:
 	case PT_PERCENTILE_CONT:
 	case PT_PERCENTILE_DISC:
-	  /* let calculation decide the type */
-	  node->type_enum = PT_TYPE_MAYBE;
+	  if (PT_IS_STRING_TYPE (arg_type) && !PT_IS_CONST (arg_list))
+	    {
+	      /* D-335-10: a string column or expression is a number ("a string which can be converted into a number",
+	       * the manual's PERCENTILE_CONT), so the result is DOUBLE. A string literal or host variable keeps the type
+	       * its value gives at execution (a date string is a date). */
+	      node->type_enum = PT_TYPE_DOUBLE;
+	    }
+	  else
+	    {
+	      /* let calculation decide the type */
+	      node->type_enum = PT_TYPE_MAYBE;
+	    }
 	  node->data_type = NULL;
 	  break;
 

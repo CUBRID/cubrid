@@ -5997,8 +5997,11 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     }
 
   if (pt_is_op_hv_late_bind (op)
-      && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE))
+      && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE)
+      && !(op == PT_ADDTIME && PT_IS_STRING_TYPE (arg1_type)))
     {
+      /* an operator whose result type an undetermined argument can still change; ADDTIME's result is decided by its
+       * first argument alone, and a string first argument is VARCHAR (the manual's "date/time string" row, D-335-10) */
       expr->type_enum = PT_TYPE_MAYBE;
     }
   else

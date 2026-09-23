@@ -367,16 +367,6 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	    }
 	}
       known = known && n_links > 0;
-      /* ADDTIME classifies its left string by the value (D-328-06); a column gives the gate no value, so the node
-       * is decided per row as today, like F10 (rule table F4') */
-      REGU_VARIABLE *left = arith->leftptr;
-      if (known && arith->opcode == T_ADDTIME && left != NULL && left->type != TYPE_POS_VALUE
-	  && left->type != TYPE_DBVAL && left->domain_plan->slot < 0
-	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (left->domain_plan->fixed.domain)))
-	{
-	  item->flags |= DOMAIN_PLAN_RESIDUAL;
-	  known = false;
-	}
       if (known)
 	{
 	  domain_mark_gate_node (ctx, item, links, n_links, arith->domain);
@@ -654,13 +644,6 @@ domain_walk_sort (DOMAIN_LOAD_CONTEXT * ctx, SORT_LIST * list, OUTPTR_LIST * pro
     }
 }
 
-static bool
-domain_residual_aggregate (FUNC_CODE function, const TP_DOMAIN * domain)
-{
-  return (function == PT_MEDIAN || function == PT_PERCENTILE_CONT || function == PT_PERCENTILE_DISC)
-    && domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain));
-}
-
 static void
 domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 {
@@ -686,11 +669,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
       if (has_operand && agg->operands != NULL && item != NULL)
 	{
 	  domain_fixed_operand (item, 0, agg->operands->value.domain, agg->operands->value.domain, DOMAIN_CTX_FUNC_ARG);
-	  if (domain_residual_aggregate (agg->function, agg->operands->value.domain))
-	    {
-	      item->flags |= DOMAIN_PLAN_RESIDUAL;
-	    }
-	  else if (agg->operands->value.domain_plan != NULL && agg->operands->value.domain_plan->slot >= 0)
+	  if (agg->operands->value.domain_plan != NULL && agg->operands->value.domain_plan->slot >= 0)
 	    {
 	      /* the gate decides the argument, so it decides the function and accumulator domains (F7) */
 	      REGU_VARIABLE *operand = &agg->operands->value;
@@ -721,11 +700,7 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	      ctx->tail->output[1] = analytic->out_value;
 	    }
 	  domain_fixed_operand (item, 0, analytic->operand.domain, analytic->operand.domain, DOMAIN_CTX_FUNC_ARG);
-	  if (item != NULL && domain_residual_aggregate (analytic->function, analytic->operand.domain))
-	    {
-	      item->flags |= DOMAIN_PLAN_RESIDUAL;
-	    }
-	  else if (item != NULL && analytic->operand.domain_plan != NULL && analytic->operand.domain_plan->slot >= 0)
+	  if (item != NULL && analytic->operand.domain_plan != NULL && analytic->operand.domain_plan->slot >= 0)
 	    {
 	      REGU_VARIABLE *operand = &analytic->operand;
 	      domain_mark_gate_node (ctx, item, &operand, 1, analytic->domain);
@@ -960,7 +935,7 @@ domain_plan_validate (const DOMAIN_PLAN * plan)
   for (int i = 0; i < plan->n_items; i++)
     {
       const DOMAIN_PLAN_ITEM *item = &plan->items[i];
-      if (!(item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_ALIAS | DOMAIN_PLAN_RESIDUAL))
+      if (!(item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_ALIAS))
 	  && !domain_is_fixed (item->fixed.domain))
 	{
 	  return false;
