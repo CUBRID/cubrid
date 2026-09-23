@@ -2061,7 +2061,7 @@ jobs:
           # Those files say a case failed, never why. The pod and its overlay are
           # gone seconds after this step, so the evidence has to leave now -- on failure
           # only, because a green 50-shard run would write 50 archives nobody reads.
-          # The baseline uploaded the same three things (config.yml 323-336).
+          # CircleCI's Collect Logs keeps the same things, ERROR_BACKUP included.
           #
           # "Failed" is not ctp's exit code. Measured in the fork, run 32834158935:
           # shard 00 reported `ctp exit: 0` with 8 of its 10 cases failed. ctp.sh
@@ -2095,17 +2095,19 @@ jobs:
 
             # Not $CUBRID_DIR/log/coredump: core_pattern is `core`, and CTP packs each core
             # with the build and the case into one archive here, deleting the original.
-            # 10 GiB per file; the shards share one GlusterFS volume.
+            # The shards share one GlusterFS volume, hence the per-file cap, and a failed
+            # copy must not cost this shard its shard.done.
             backup="$WORKDIR/ERROR_BACKUP"
-            if [ -d "$backup" ] && [ -n "$(ls -A "$backup")" ]; then
-              mkdir -p "$out/artifacts/ERROR_BACKUP"
-              find "$backup" -maxdepth 1 -type f -print | while read -r f; do
-                sz=$(stat -c '%s' "$f")
+            if [ -d "$backup" ]; then
+              find "$backup" -maxdepth 1 -type f -print | while IFS= read -r f; do
+                mkdir -p "$out/artifacts/ERROR_BACKUP" || :
+                sz=$(stat -c '%s' "$f") || { echo "::warning::could not stat $f"; continue; }
                 if [ "$sz" -le 10737418240 ]; then
-                  cp -f "$f" "$out/artifacts/ERROR_BACKUP/"
+                  cp -f "$f" "$out/artifacts/ERROR_BACKUP/" \
+                    || echo "::warning::could not copy $(basename "$f")"
                 else
                   echo "::warning::$(basename "$f") is $((sz / 1048576)) MB, over the 10 GiB cap: not copied"
-                  printf '%s\t%s\n' "$(basename "$f")" "$sz" >> "$out/artifacts/ERROR_BACKUP/oversized.tsv"
+                  printf '%s\t%s\n' "$(basename "$f")" "$sz" >> "$out/artifacts/ERROR_BACKUP/oversized.tsv" || :
                 fi
               done
             fi
