@@ -61,6 +61,16 @@ struct DOMAIN_PLAN_ITEM_COLD
 };
 static_assert (sizeof (DOMAIN_PLAN_ITEM_COLD) == 32, "cold domain plan item layout");
 
+/* What the gate reads to resolve one gate-dependent node (#335): its operand items in operand order, the value of
+ * a literal operand, and the compiled domain AGG/ANALYTIC resolve against (the node's own domain otherwise). */
+struct DOMAIN_GATE_LINK
+{
+  const DOMAIN_PLAN_ITEM *operands[3];
+  const DB_VALUE *literal[3];
+  const TP_DOMAIN *consumer;
+  int n_operands;
+};
+
 typedef struct domain_plan DOMAIN_PLAN;
 struct domain_plan
 {
@@ -72,6 +82,7 @@ struct domain_plan
   int dbval_cnt;
   int n_gate_nodes;
   DOMAIN_PLAN_ITEM **gate_nodes;
+  DOMAIN_GATE_LINK *gate_links;	/* parallel to gate_nodes */
   int n_const_refs;
   DOMAIN_PLAN_ITEM **const_refs;
   int n_volatile;

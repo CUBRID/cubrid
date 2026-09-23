@@ -62,6 +62,8 @@ typedef enum tp_compare_coercion
 TP_COMPARE_COERCION tp_value_compare_common_domain (DB_TYPE type1, DB_TYPE type2);
 
 DOMAIN_CONVERTER domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMAIN_CONVERT_MODE mode);
+/* ENUM -> its name -> DOUBLE, ASSIGN: the ENUM operand of ENUM + string without plus_as_concat (D-335-05) */
+DOMAIN_CONVERTER domain_enumeration_name_converter (void);
 const char *domain_converter_name (DOMAIN_CONVERTER converter);
 
 #endif /* _OBJECT_DOMAIN_CONVERT_H_ */

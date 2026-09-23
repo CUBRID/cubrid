@@ -115,20 +115,29 @@ domain_arith_number (int opcode, DB_TYPE left, DB_TYPE right)
   return DB_TYPE_SHORT;
 }
 
-/* db_string_concatenate result type; DB_TYPE_NULL when character and bit strings are mixed. Character strings always
- * concatenate to VARCHAR (qstr_make_typed_string, so:1274); CHAR comes only from the NULL/empty-string path. */
-static DB_TYPE
-domain_arith_concat (DB_TYPE left, DB_TYPE right)
+/* db_string_concatenate on two values (so:4004): character strings give VARCHAR (qstr_make_typed_string, so:1274;
+ * CHAR comes only from the NULL/empty-string path) and bit strings BIT or VARBIT; a character with a bit string is
+ * ER_QSTR_INCOMPATIBLE_CODE_SETS and any other operand ER_QSTR_INVALID_DATA_TYPE. */
+static int
+domain_arith_concat (DB_TYPE left, DB_TYPE right, DB_TYPE * result_type)
 {
-  if (TP_IS_CHAR_TYPE (left) && TP_IS_CHAR_TYPE (right))
+  if (!TP_IS_CHAR_BIT_TYPE (left) || !TP_IS_CHAR_BIT_TYPE (right))
     {
-      return DB_TYPE_VARCHAR;
+      return ER_QSTR_INVALID_DATA_TYPE;
     }
-  if (TP_IS_BIT_TYPE (left) && TP_IS_BIT_TYPE (right))
+  if (TP_IS_CHAR_TYPE (left) != TP_IS_CHAR_TYPE (right))
     {
-      return (left == DB_TYPE_VARBIT || right == DB_TYPE_VARBIT) ? DB_TYPE_VARBIT : DB_TYPE_BIT;
+      return ER_QSTR_INCOMPATIBLE_CODE_SETS;
     }
-  return DB_TYPE_NULL;
+  if (TP_IS_CHAR_TYPE (left))
+    {
+      *result_type = DB_TYPE_VARCHAR;
+    }
+  else
+    {
+      *result_type = (left == DB_TYPE_VARBIT || right == DB_TYPE_VARBIT) ? DB_TYPE_VARBIT : DB_TYPE_BIT;
+    }
+  return NO_ERROR;
 }
 
 /* Date/time subtraction after the pre-cast (qdata_subtract_*_to_dbval): one side is a date/time, the other a date/time
@@ -185,13 +194,96 @@ domain_arith_subtract_datetime (DB_TYPE left, DB_TYPE right)
 }
 
 /*
+ * domain_arith_dispatch - the typed dispatch of qdata_{add,subtract,multiply,divide}_dbval after the pre-cast
+ *   return: NO_ERROR, or the error the dispatcher raises for the pair (D-335-02)
+ *   first, second(in): operand types after the pre-cast and, for addition, the swap
+ *   result_type(out): the result type; DB_TYPE_NULL when a typed helper passes the pair over without an error
+ *
+ * A dispatcher rejects a first operand it has no helper for: addition always (qo:2724), the others unless
+ * return_null_on_function_errors; a collection with a non-collection always. A typed helper leaves no value for a
+ * second operand it has no case for (DATETIME - TIME), except the date addition, which rejects it like the
+ * dispatchers (qdata_add_date_to_dbval).
+ */
+static int
+domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * result_type)
+{
+  const int reject = prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ? NO_ERROR : ER_QPROC_INVALID_DATATYPE;
+
+  *result_type = DB_TYPE_NULL;
+  if (TP_IS_NUMERIC_TYPE (first))
+    {
+      if (TP_IS_NUMERIC_TYPE (second))
+	{
+	  *result_type = domain_arith_number (opcode, first, second);
+	}
+      else if (opcode == T_SUB && TP_IS_DATE_OR_TIME_TYPE (second))
+	{
+	  /* the pre-cast made a floating first operand BIGINT */
+	  *result_type = domain_arith_subtract_datetime (first, second);
+	}
+      return NO_ERROR;
+    }
+  if (TP_IS_SET_TYPE (first) && opcode != T_DIV)
+    {
+      if (!TP_IS_SET_TYPE (second))
+	{
+	  return ER_QPROC_INVALID_DATATYPE;
+	}
+      /* partial resolve of a late-bound collection result (domain_p == NULL) */
+      *result_type = (opcode == T_ADD ? first == second : (first == second && first == DB_TYPE_SET))
+	? first : DB_TYPE_MULTISET;
+      return NO_ERROR;
+    }
+
+  switch (opcode)
+    {
+    case T_ADD:
+      if (TP_IS_CHAR_BIT_TYPE (first))
+	{
+	  return domain_arith_concat (first, second, result_type);
+	}
+      if (first == DB_TYPE_DATE)
+	{
+	  if (!TP_IS_DISCRETE_NUMBER_TYPE (second))
+	    {
+	      return reject;
+	    }
+	  *result_type = first;
+	  return NO_ERROR;
+	}
+      if (TP_IS_DATE_OR_TIME_TYPE (first))
+	{
+	  /* TIMESTAMPLTZ and DATETIMETZ with anything but an integer read an unset value today (qo:2651, 2325): P0
+	   * exception, no value like their siblings */
+	  if (TP_IS_DISCRETE_NUMBER_TYPE (second))
+	    {
+	      *result_type = first;
+	    }
+	  return NO_ERROR;
+	}
+      return ER_QPROC_INVALID_DATATYPE;
+
+    case T_SUB:
+      if (TP_IS_DATE_OR_TIME_TYPE (first))
+	{
+	  *result_type = domain_arith_subtract_datetime (first, second);
+	  return NO_ERROR;
+	}
+      return reject;
+
+    default:
+      return reject;
+    }
+}
+
+/*
  * domain_arith_binary - the pre-cast and typed dispatch of the four binary operators
- *   return: false when the operator rejects the pair (-3007 or no value today)
+ *   return: NO_ERROR, or the error the operator raises for the pair (D-335-02)
  *   left, right(in): operand types
  *   left_target, right_target(out): type each operand is cast to (qo:2438~2560, 4818~4910, 5512~5560, 6134~6260)
- *   result_type(out): type the operator produces; DB_TYPE_NULL for a NULL operand
+ *   result_type(out): type the operator produces; DB_TYPE_NULL for a NULL operand or a pair it passes over
  */
-static bool
+static int
 domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * right_target,
 		     DB_TYPE * result_type)
 {
@@ -203,7 +295,7 @@ domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_tar
 
   if (!is_add && (left == DB_TYPE_NULL || right == DB_TYPE_NULL))
     {
-      return true;
+      return NO_ERROR;
     }
 
   /* ENUM: the name when added to a string, the ordinal otherwise; multiply and divide take no ENUM */
@@ -220,13 +312,12 @@ domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_tar
 
   if (is_add && prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT) && TP_IS_CHAR_BIT_TYPE (left) && TP_IS_CHAR_BIT_TYPE (right))
     {
-      *result_type = domain_arith_concat (left, right);
-      return *result_type != DB_TYPE_NULL;
+      return domain_arith_concat (left, right, result_type);
     }
 
   if (left == DB_TYPE_NULL || right == DB_TYPE_NULL)
     {
-      return true;
+      return NO_ERROR;
     }
 
   /* addition handles STRING + NUMBER, NUMBER + DATE and STRING + DATE with the operands swapped */
@@ -287,28 +378,71 @@ domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_tar
   *first_target = first;
   *second_target = second;
 
-  if (TP_IS_NUMERIC_TYPE (first) && TP_IS_NUMERIC_TYPE (second))
+  return domain_arith_dispatch (opcode, first, second, result_type);
+}
+
+/* The result of the db_mod_<type> helpers for two numbers (ar:1965~); a character operand is DOUBLE by then. */
+static DB_TYPE
+domain_arith_mod_number (DB_TYPE left, DB_TYPE right)
+{
+  if (left == DB_TYPE_MONETARY || right == DB_TYPE_MONETARY)
     {
-      *result_type = domain_arith_number (opcode, first, second);
+      return DB_TYPE_MONETARY;
     }
-  else if (TP_IS_SET_TYPE (first) && TP_IS_SET_TYPE (second) && opcode != T_DIV)
+  if (left == DB_TYPE_DOUBLE || right == DB_TYPE_DOUBLE)
     {
-      /* partial resolve of a late-bound collection result (domain_p == NULL) */
-      *result_type = (is_add ? first == second : (first == second && first == DB_TYPE_SET)) ? first : DB_TYPE_MULTISET;
+      return DB_TYPE_DOUBLE;
     }
-  else if (is_add && TP_IS_BIT_TYPE (first) && TP_IS_BIT_TYPE (second))
+  if (left == DB_TYPE_FLOAT)
     {
-      *result_type = domain_arith_concat (first, second);
+      return right == DB_TYPE_NUMERIC ? DB_TYPE_DOUBLE : DB_TYPE_FLOAT;
     }
-  else if (is_add && TP_IS_DATE_OR_TIME_TYPE (first) && TP_IS_DISCRETE_NUMBER_TYPE (second))
+  if (left == DB_TYPE_NUMERIC)
     {
-      *result_type = first;
+      return right == DB_TYPE_FLOAT ? DB_TYPE_DOUBLE : DB_TYPE_NUMERIC;
     }
-  else if (opcode == T_SUB && (TP_IS_DATE_OR_TIME_TYPE (first) || TP_IS_DATE_OR_TIME_TYPE (second)))
+  /* an integer first operand */
+  if (right == DB_TYPE_FLOAT || right == DB_TYPE_NUMERIC)
     {
-      *result_type = domain_arith_subtract_datetime (first, second);
+      return right;
     }
-  return *result_type != DB_TYPE_NULL;
+  if (left == DB_TYPE_BIGINT || right == DB_TYPE_BIGINT)
+    {
+      return DB_TYPE_BIGINT;
+    }
+  if (left == DB_TYPE_INTEGER || right == DB_TYPE_INTEGER)
+    {
+      return DB_TYPE_INTEGER;
+    }
+  return DB_TYPE_SHORT;
+}
+
+/*
+ * domain_arith_mod - db_mod_dbval (ar:1965): a character first operand is taken as DOUBLE (db_mod_string), the typed
+ *		      helpers take a number or character second operand as DOUBLE; any other pair is rejected unless
+ *		      return_null_on_function_errors
+ */
+static int
+domain_arith_mod (DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * right_target, DB_TYPE * result_type)
+{
+  *left_target = TP_IS_CHAR_TYPE (left) ? DB_TYPE_DOUBLE : left;
+  *right_target = TP_IS_CHAR_TYPE (right) ? DB_TYPE_DOUBLE : right;
+  *result_type = DB_TYPE_NULL;
+
+  if (left == DB_TYPE_NULL || right == DB_TYPE_NULL)
+    {
+      *left_target = left;
+      *right_target = right;
+      return NO_ERROR;
+    }
+  if (!TP_IS_NUMERIC_TYPE (*left_target) || !TP_IS_NUMERIC_TYPE (*right_target))
+    {
+      *left_target = left;
+      *right_target = right;
+      return prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ? NO_ERROR : ER_QPROC_INVALID_DATATYPE;
+    }
+  *result_type = domain_arith_mod_number (*left_target, *right_target);
+  return NO_ERROR;
 }
 
 static int
@@ -322,17 +456,29 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
     case T_SUB:
     case T_MUL:
     case T_DIV:
+    case T_MOD:
       {
 	DB_TYPE left_target, right_target;
+	const DB_TYPE left = domain_operand_type (&operands[0]), right = domain_operand_type (&operands[1]);
 	assert (n_operands == 2);
-	if (!domain_arith_binary (opcode, domain_operand_type (&operands[0]), domain_operand_type (&operands[1]),
-				  &left_target, &right_target, &result_type))
+	int error = opcode == T_MOD ? domain_arith_mod (left, right, &left_target, &right_target, &result_type)
+	  : domain_arith_binary (opcode, left, right, &left_target, &right_target, &result_type);
+	if (error != NO_ERROR)
 	  {
-	    return ER_QPROC_INVALID_DATATYPE;
+	    return error;
 	  }
 	/* D-328-04: the pre-cast is tp_value_auto_cast, ASSIGN (ROUND) */
 	domain_set_operand (result, 0, &operands[0], left_target, DOMAIN_CONVERT_ASSIGN);
 	domain_set_operand (result, 1, &operands[1], right_target, DOMAIN_CONVERT_ASSIGN);
+	/* D-335-05: an ENUM added to a string without plus_as_concat reaches DOUBLE through its name, not its ordinal */
+	for (int i = 0; i < 2 && opcode == T_ADD; i++)
+	  {
+	    if (domain_operand_type (&operands[i]) == DB_TYPE_ENUMERATION
+		&& TP_DOMAIN_TYPE (result->operand_domain[i]) == DB_TYPE_DOUBLE)
+	      {
+		result->conv[i] = domain_enumeration_name_converter ();
+	      }
+	  }
 	break;
       }
 
@@ -346,25 +492,31 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
 	/* the value is the right operand of the unary operators and the left one of ROUND/TRUNC */
 	int arg = (opcode == T_ROUND || opcode == T_TRUNC) ? 0 : n_operands - 1;
 	DB_TYPE type = domain_operand_type (&operands[arg]);
+	DB_TYPE target;
 	if (type == DB_TYPE_NULL || TP_IS_NUMERIC_TYPE (type))
 	  {
-	    result_type = type;
+	    result_type = target = type;
 	  }
 	else if ((opcode == T_ROUND || opcode == T_TRUNC) && TP_IS_DATE_TYPE (type))
 	  {
 	    result_type = DB_TYPE_DATE;
+	    target = type;
 	  }
 	else if (TP_IS_CHAR_TYPE (type) || opcode == T_ROUND || opcode == T_TRUNC)
 	  {
 	    /* tp_value_str_auto_cast_to_number, or ROUND/TRUNC try DOUBLE for anything else */
-	    result_type = DB_TYPE_DOUBLE;
+	    result_type = target = DB_TYPE_DOUBLE;
+	  }
+	else if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	  {
+	    result_type = DB_TYPE_NULL;
+	    target = type;
 	  }
 	else
 	  {
 	    return ER_QPROC_INVALID_DATATYPE;
 	  }
-	domain_set_operand (result, arg, &operands[arg],
-			    result_type == DB_TYPE_DATE ? type : result_type, DOMAIN_CONVERT_ASSIGN);
+	domain_set_operand (result, arg, &operands[arg], target, DOMAIN_CONVERT_ASSIGN);
 	for (int i = 0; i < n_operands && i < 3; i++)
 	  {
 	    if (i != arg)
@@ -376,8 +528,8 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
       }
 
     default:
-      assert (false);
-      return ER_FAILED;
+      /* an operator the grid does not know: the gate must not guess (#335) */
+      return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
   /* NUMERIC results stay floating: the value operation decides p/s (converters §3) */
@@ -611,7 +763,15 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
     }
   result->domain = function_domain;
   result->operand_domain[0] = accumulator;
-  result->conv[0] = domain_lookup_converter (val_type, accumulator, DOMAIN_CONVERT_OPERAND);
+  /* D-335-04: a value-classified argument converts from its own type to the class (qx:21721 tp_value_cast) */
+  if (operand->domain != NULL && val_type != DB_TYPE_NULL && TP_DOMAIN_TYPE (operand->domain) != val_type)
+    {
+      result->conv[0] = domain_lookup_converter (TP_DOMAIN_TYPE (operand->domain), accumulator, DOMAIN_CONVERT_ASSIGN);
+    }
+  else
+    {
+      result->conv[0] = domain_lookup_converter (val_type, accumulator, DOMAIN_CONVERT_OPERAND);
+    }
   return NO_ERROR;
 }
 
@@ -665,12 +825,60 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
   return NO_ERROR;
 }
 
-/* Result types of the value-overloaded functions (so:7302~7420 ADDTIME, so:22578~22602 STR_TO_DATE). */
+/*
+ * domain_resolve_function - result types of the late-bound functions (pt_is_op_hv_late_bind) and the value copies
+ *   return: NO_ERROR, or the error the function raises for this argument type
+ *
+ * The value-overloaded ones take their class from the gate (so:7302~7420 ADDTIME, so:22578~22602 STR_TO_DATE); the
+ * others have a fixed result type (converters §3) or the type of the argument they copy. fetch_peek_arith gives no
+ * value for a NULL first argument, and for any NULL argument of ADDTIME, STR_TO_DATE, NEW_TIME, FROM_TZ and CONV.
+ */
 static int
 domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 			 const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result)
 {
-  DB_TYPE result_type;
+  DB_TYPE result_type = DB_TYPE_NULL;
+  bool null_any = false;
+  for (int i = 0; i < n_operands; i++)
+    {
+      null_any = null_any || domain_operand_type (&operands[i]) == DB_TYPE_NULL;
+    }
+
+  switch (opcode)
+    {
+    case T_ADDTIME:
+    case T_STR_TO_DATE:
+    case T_NEW_TIME:
+    case T_FROM_TZ:
+    case T_CONV:
+      if (null_any)
+	{
+	  goto set_operands;
+	}
+      break;
+    case T_TO_CHAR:
+    case T_HEX:
+    case T_ASCII:
+    case T_BIT_LENGTH:
+    case T_OCTET_LENGTH:
+    case T_HOUR:
+    case T_MINUTE:
+    case T_SECOND:
+    case T_TO_DATE:
+    case T_TO_TIME:
+    case T_TO_TIMESTAMP:
+    case T_TO_TIMESTAMP_TZ:
+    case T_TO_DATETIME:
+    case T_TO_DATETIME_TZ:
+      if (domain_operand_type (&operands[0]) == DB_TYPE_NULL)
+	{
+	  goto set_operands;
+	}
+      break;
+    default:
+      /* a copy takes its argument's domain, NULL included; any other operator is looked up below */
+      break;
+    }
 
   switch (opcode)
     {
@@ -714,18 +922,115 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	}
       break;
 
+    case T_NEW_TIME:
+      /* db_new_time (so:28216) converts DATETIME and TIME within their type */
+      result_type = domain_operand_type (&operands[0]);
+      if (result_type != DB_TYPE_DATETIME && result_type != DB_TYPE_TIME)
+	{
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+      break;
+
+    case T_FROM_TZ:
+      /* db_from_tz (so:28381) */
+      if (domain_operand_type (&operands[0]) != DB_TYPE_DATETIME)
+	{
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+      result_type = DB_TYPE_DATETIMETZ;
+      break;
+
+    case T_TO_CHAR:
+      /* db_to_char (so:12587): numbers and dates print to VARCHAR, a string comes back as it is */
+      result_type = domain_operand_type (&operands[0]);
+      if (TP_IS_NUMERIC_TYPE (result_type) || TP_IS_DATE_OR_TIME_TYPE (result_type))
+	{
+	  result_type = DB_TYPE_VARCHAR;
+	}
+      else if (!TP_IS_CHAR_TYPE (result_type))
+	{
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+      break;
+
+    case T_HEX:
+    case T_CONV:
+      /* db_hex, db_conv: db_make_string */
+      result_type = DB_TYPE_VARCHAR;
+      break;
+
+    case T_ASCII:
+      /* db_ascii: db_make_short */
+      result_type = DB_TYPE_SHORT;
+      break;
+
+    case T_BIT_LENGTH:
+    case T_OCTET_LENGTH:
+    case T_HOUR:
+    case T_MINUTE:
+    case T_SECOND:
+      result_type = DB_TYPE_INTEGER;
+      break;
+
+    case T_TO_DATE:
+      result_type = DB_TYPE_DATE;
+      break;
+
+    case T_TO_TIME:
+      result_type = DB_TYPE_TIME;
+      break;
+
+    case T_TO_TIMESTAMP:
+      result_type = DB_TYPE_TIMESTAMP;
+      break;
+
+    case T_TO_TIMESTAMP_TZ:
+      result_type = DB_TYPE_TIMESTAMPTZ;
+      break;
+
+    case T_TO_DATETIME:
+      result_type = DB_TYPE_DATETIME;
+      break;
+
+    case T_TO_DATETIME_TZ:
+      result_type = DB_TYPE_DATETIMETZ;
+      break;
+
+    case T_DEFINE_VARIABLE:
+      /* session_define_variable returns the value it stores: (name, value) */
+      assert (n_operands == 2);
+      result->domain = domain_operand_domain (&operands[1]);
+      goto copy_operands;
+
+    case T_PRIOR:
+    case T_CONNECT_BY_ROOT:
+    case T_QPRIOR:
+      /* the argument's value in another row */
+      result->domain = domain_operand_domain (&operands[0]);
+      goto copy_operands;
+
+    case T_CAST:
+    case T_CAST_NOFAIL:
+    case T_CAST_WRAP:
+      /* a cast the compiler left without a target (a gate node is VARIABLE) keeps the argument's value and type */
+      result->domain = domain_operand_domain (&operands[0]);
+      goto copy_operands;
+
     default:
-      assert (false);
-      return ER_FAILED;
+      /* a function the grid does not know: the gate must not guess (#335) */
+      return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
+set_operands:
+  result->domain = tp_domain_resolve_default (result_type);
+
+copy_operands:
   /* the functions take their arguments as they are; the classified slot keeps its value */
   for (int i = 0; i < n_operands && i < 3; i++)
     {
       result->operand_domain[i] = operands[i].domain;
       result->conv[i] = NULL;
     }
-  result->domain = tp_domain_resolve_default (result_type);
   return NO_ERROR;
 }
 

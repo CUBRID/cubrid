@@ -265,6 +265,9 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 					   &resolved, &needs_gate);
 	assert (shadow_error == NO_ERROR && !needs_gate);
 	assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == TP_DOMAIN_TYPE (func_p->domain));
+	/* #335: the gate decided the same function domain before execution */
+	const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (val_desc_p, func_p->domain_plan);
+	assert (gate_node == NULL || TP_DOMAIN_TYPE (gate_node->domain) == TP_DOMAIN_TYPE (func_p->domain));
       }
 #endif
 

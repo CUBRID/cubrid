@@ -4529,6 +4529,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  qdata_assert_resolved_arith (arithptr->opcode, 2, types, NULL, arithptr->value);
 	}
     }
+  /* #335 shadow check: where develop binds a gate-dependent node's domain from its first value, that value's type is
+   * the gate's decision when the operator had its operands (no NULL: the grid answers for values) */
+  if (original_domain != NULL && !DB_IS_NULL (arithptr->value)
+      && prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL
+      && (peek_left == NULL || !DB_IS_NULL (peek_left)) && (peek_right == NULL || !DB_IS_NULL (peek_right))
+      && (peek_third == NULL || !DB_IS_NULL (peek_third)))
+    {
+      const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, arithptr->domain_plan);
+      assert (gate_node == NULL || TP_DOMAIN_TYPE (gate_node->domain) == DB_VALUE_DOMAIN_TYPE (arithptr->value));
+    }
 #endif
 
   if (original_domain != NULL && TP_DOMAIN_TYPE (original_domain) == DB_TYPE_VARIABLE)

@@ -3836,6 +3836,148 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, resolved);
 }
 
+/* Whether the resolver takes this operand's class from its value (D-328-06): an interpolation argument, the ADDTIME
+ * left string, the STR_TO_DATE format. */
+static bool
+qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
+{
+  if (context == DOMAIN_CTX_AGG)
+    {
+      return arg_index == 0 && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC)
+	&& TP_IS_CHAR_TYPE (type);
+    }
+  return context == DOMAIN_CTX_FUNC_ARG && ((opcode == T_ADDTIME && arg_index == 0 && TP_IS_CHAR_TYPE (type))
+					    || (opcode == T_STR_TO_DATE && arg_index == 1));
+}
+
+/*
+ * qexec_gate_operand () - one operand of a gate-dependent node at the gate
+ *   return: false when the operand's class comes from a value the gate does not have (a computed string: decided
+ *	     per row as today, like rule table F10)
+ *
+ * An operand with a value (a bind, a literal) gives its value's type: execution computes with the value, and a bind
+ * with a compiled domain keeps the type the client sent it with (F-335-06). A gate-dependent producer gives its
+ * entry (resolved first, producer order) and any other producer its compiled domain. An arithmetic operator gives no
+ * value for a NULL operand before it looks at the types, so a NULL the gate can see is DB_TYPE_NULL there.
+ */
+static bool
+qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_GATE_LINK * link,
+		    int arg_index, DOMAIN_CTX context, int opcode, DOMAIN_OPERAND * operand)
+{
+  const DOMAIN_PLAN_ITEM *item = link->operands[arg_index];
+  const int val_pos = plan->items_cold[item - plan->items].val_pos;
+  const DB_VALUE *value = val_pos >= 0 ? &resolved.in[val_pos] : link->literal[arg_index];
+
+  *operand = DOMAIN_OPERAND
+  {
+  NULL, DB_TYPE_NULL, -1, -1, false};
+  if (value != NULL)
+    {
+      operand->domain = tp_domain_resolve_value (value, NULL);
+      operand->is_gate_slot = (item->flags & DOMAIN_PLAN_GATE) != 0;
+    }
+  else if (item->slot >= 0)
+    {
+      operand->domain = resolved.table[item->slot].domain;
+      operand->is_gate_slot = true;
+      if (operand->domain == NULL)
+	{
+	  /* the producer is itself decided per row */
+	  return false;
+	}
+    }
+  else
+    {
+      operand->domain = item->fixed.domain;
+    }
+  assert (operand->domain != NULL);
+  operand->val_type = TP_DOMAIN_TYPE (operand->domain);
+
+  if (value != NULL && DB_IS_NULL (value) && context == DOMAIN_CTX_ARITH)
+    {
+      operand->domain = &tp_Null_domain;
+      operand->val_type = DB_TYPE_NULL;
+    }
+  else if (qexec_gate_classifies (context, opcode, arg_index, operand->val_type))
+    {
+      if (value == NULL)
+	{
+	  return false;
+	}
+      if (!DB_IS_NULL (value))
+	{
+	  operand->val_type = domain_classify_value (context, opcode, arg_index, value);
+	}
+    }
+  return true;
+}
+
+/*
+ * qexec_resolve_gate_node () - G1 step 4 for one gate-dependent node: the grid's answer for this execution's operand
+ *   types goes into the node's slot once (D-327-08)
+ *   return: NO_ERROR, or the pre-execution error of an arithmetic pair the operator rejects (D-335-02)
+ *
+ * The other contexts raise their errors when they evaluate, as develop does; the slot then holds "no value". An
+ * operator the grid does not know is an error, not a guess.
+ */
+static int
+qexec_resolve_gate_node (const xasl_node * xasl, const DOMAIN_PLAN * plan, int index, RESOLVED_DOMAIN_TABLE & resolved)
+{
+  const DOMAIN_PLAN_ITEM *node = plan->gate_nodes[index];
+  const DOMAIN_PLAN_ITEM_COLD *cold = &plan->items_cold[node - plan->items];
+  const DOMAIN_GATE_LINK *link = &plan->gate_links[index];
+  const DOMAIN_CTX context = (DOMAIN_CTX) cold->ctx;
+  RESOLVED_DOMAIN *entry = &resolved.table[node->slot];
+  DOMAIN_OPERAND operands[3];
+  bool needs_gate = false;
+
+  assert (node->slot >= 0 && node->slot < resolved.n_slots && link->n_operands > 0 && link->n_operands <= 3);
+  for (int i = 0; i < link->n_operands; i++)
+    {
+      if (!qexec_gate_operand (plan, resolved, link, i, context, cold->opcode, &operands[i]))
+	{
+	  *entry = RESOLVED_DOMAIN
+	  {
+	  };
+	  return NO_ERROR;
+	}
+    }
+
+  int error = domain_resolve (context, cold->opcode, operands, link->n_operands, link->consumer, entry, &needs_gate);
+  assert (error != NO_ERROR || (!needs_gate && entry->domain != NULL));
+  switch (error)
+    {
+    case NO_ERROR:
+      return NO_ERROR;
+
+    case ER_QPROC_DOMAIN_UNRESOLVED:
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute",
+	      xasl->query_alias != NULL ? xasl->query_alias : "", (int) (node - plan->items),
+	      pr_type_name (DB_TYPE_VARIABLE));
+      return error;
+
+    case ER_OUT_OF_VIRTUAL_MEMORY:
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
+	}
+      return error;
+
+    default:
+      *entry = RESOLVED_DOMAIN
+      {
+      };
+      entry->domain = &tp_Null_domain;
+      if (context == DOMAIN_CTX_ARITH)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  return error;
+	}
+      return NO_ERROR;
+    }
+}
+
 /*
  * qexec_resolve_domains () - the execution gate G1, once per execution before
  *   the main block.
@@ -3847,7 +3989,8 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
  * reference (val_pos, domain, failure policy) has its own value. D-335-08: the
  * client has already cast the bind values where develop did, so each reference
  * takes its value as given and a GATE slot takes the value's domain into the gate
- * table.
+ * table. Every gate-dependent node then takes the grid's answer for this
+ * execution's operand types (#335).
  */
 int
 qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state)
@@ -3913,9 +4056,16 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	}
     }
 
-  /* Gate-dependent nodes have no reader before the resolver is connected (#335),
-   * volatile gate slots (S5) come with the session-variable mirror (dpin-10) and
-   * constant key ranges with the key plan (dpin-16). */
+  /* G1 step 4: gate-dependent nodes in producer order, each once (D-327-08). Volatile gate slots (S5) come with
+   * the session-variable mirror (dpin-10) and constant key ranges with the key plan (dpin-16). */
+  for (int i = 0; plan != NULL && i < plan->n_gate_nodes; i++)
+    {
+      error = qexec_resolve_gate_node (xasl, plan, i, resolved);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
   assert (plan == NULL || plan->n_keys == 0);
 
   if (dbval_cnt > 0)
@@ -17842,7 +17992,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
       (void) logtb_get_mvcc_snapshot (thread_p);
     }
 
-  /* G1: convert the bind values once, before the main block and its aptr/PX clones. */
+  /* G1: own the bind values and decide the gate domains once, before the main block and its aptr/PX clones. */
   stat = qexec_resolve_domains (thread_p, xasl, &xasl_state);
   if (stat != NO_ERROR)
     {
@@ -22046,6 +22196,9 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    assert (shadow_error != NO_ERROR || agg_p->accumulator_domain.value_dom == NULL
 		    || TP_DOMAIN_TYPE (resolved.operand_domain[0]) ==
 		    TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom));
+	    /* #335: the gate decided the same function domain before execution */
+	    const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, agg_p->domain_plan);
+	    assert (gate_node == NULL || TP_DOMAIN_TYPE (gate_node->domain) == TP_DOMAIN_TYPE (agg_p->domain));
 	  }
 #endif
 

@@ -65,6 +65,10 @@ struct DOMAIN_LOAD_RECORD
   DB_VALUE *output[2];
   REGU_VARIABLE *regu;
   DOMAIN_LOAD_RECORD *alias;
+  /* gate-dependent node: the operands its DOMAIN_GATE_LINK points at once they are published */
+  REGU_VARIABLE *link[3];
+  int n_link;
+  const TP_DOMAIN *consumer;
 };
 struct DOMAIN_LOAD_BINDING
 {
@@ -92,6 +96,80 @@ domain_is_fixed (const TP_DOMAIN * domain)
 {
   return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
     && domain->collation_flag != TP_DOMAIN_COLL_LEAVE;
+}
+
+/* The type axis only: the collation of a character result is merged at the gate by #338 (D-335-03). */
+static bool
+domain_type_is_fixed (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE;
+}
+
+/* The gate reads a type it can trust for this operand: a GATE slot or a gate-dependent node, a bind or a literal
+ * (its value), or a compiled domain the values follow (an attribute, a computed expression). A value pointer (a list
+ * column, a correlated value) keeps the type its producer gave the value, which the compiled domain may not describe
+ * (F-335-07: a recursive CTE column typed by its first branch); dpin-11 decides those. */
+static bool
+domain_operand_is_known (const REGU_VARIABLE * operand)
+{
+  const DOMAIN_PLAN_ITEM *item = operand->domain_plan;
+  if (item == NULL)
+    {
+      return false;
+    }
+  if (item->slot >= 0 || operand->type == TYPE_POS_VALUE || operand->type == TYPE_DBVAL)
+    {
+      return true;
+    }
+  return operand->type != TYPE_CONSTANT && operand->type != TYPE_POSITION && domain_type_is_fixed (item->fixed.domain);
+}
+
+/* The resolver context of a gate-dependent operator node. */
+static DOMAIN_CTX
+domain_gate_context (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_ADD:
+    case T_SUB:
+    case T_MUL:
+    case T_DIV:
+    case T_MOD:
+    case T_UNMINUS:
+    case T_ABS:
+    case T_FLOOR:
+    case T_CEIL:
+    case T_ROUND:
+    case T_TRUNC:
+      return DOMAIN_CTX_ARITH;
+    case T_NVL:
+    case T_NVL2:
+    case T_IFNULL:
+    case T_COALESCE:
+    case T_NULLIF:
+    case T_LEAST:
+    case T_GREATEST:
+      return DOMAIN_CTX_COMMON_VALUE;
+    default:
+      return DOMAIN_CTX_FUNC_ARG;
+    }
+}
+
+/* Makes the item just added a gate-dependent node: the gate resolves it into its own slot from these operands. */
+static void
+domain_mark_gate_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM * item, REGU_VARIABLE * const *operands,
+		       int n_operands, const TP_DOMAIN * consumer)
+{
+  assert (&ctx->tail->item == item && n_operands <= 3);
+  item->flags |= DOMAIN_PLAN_GATE;
+  item->slot = ctx->plan->n_slots++;
+  item->fixed.domain = NULL;
+  for (int i = 0; i < n_operands; i++)
+    {
+      ctx->tail->link[i] = operands[i];
+    }
+  ctx->tail->n_link = n_operands;
+  ctx->tail->consumer = consumer;
 }
 
 static DOMAIN_PLAN_ITEM *
@@ -268,21 +346,45 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     {
       ctx->tail->output[0] = arith->value;
     }
-  if (item != NULL && marked_gate)
+  /* A node the compiler left without a result type (a late-bound operator over a slot, A8'') is resolved by the
+   * gate once per execution when every operand gives it a type it can trust (#335). A session variable read (S5)
+   * and a derived consumer (a list column, a correlated value, an open producer) keep the node, and every node over
+   * it, on the execution path until dpin-10 and dpin-11 decide them; CONNECT_BY_ROOT and QPRIOR carry their XASL in
+   * thirdptr. */
+  const bool late_bound = arith->domain != NULL && TP_DOMAIN_TYPE (arith->domain) == DB_TYPE_VARIABLE;
+  if (item != NULL && (marked_gate || late_bound) && arith->opcode != T_EVALUATE_VARIABLE)
     {
-      item->flags |= DOMAIN_PLAN_GATE;
-      item->slot = ctx->plan->n_slots++;
-      item->fixed.domain = NULL;
+      REGU_VARIABLE *links[3];
+      int n_links = 0;
+      bool known = true;
+      const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
+      for (int i = 0; i < n_value_operands; i++)
+	{
+	  if (operands[i] != NULL)
+	    {
+	      known = known && domain_operand_is_known (operands[i]);
+	      links[n_links++] = operands[i];
+	    }
+	}
+      known = known && n_links > 0;
+      /* ADDTIME classifies its left string by the value (D-328-06); a column gives the gate no value, so the node
+       * is decided per row as today, like F10 (rule table F4') */
+      REGU_VARIABLE *left = arith->leftptr;
+      if (known && arith->opcode == T_ADDTIME && left != NULL && left->type != TYPE_POS_VALUE
+	  && left->type != TYPE_DBVAL && left->domain_plan->slot < 0
+	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (left->domain_plan->fixed.domain)))
+	{
+	  item->flags |= DOMAIN_PLAN_RESIDUAL;
+	  known = false;
+	}
+      if (known)
+	{
+	  domain_mark_gate_node (ctx, item, links, n_links, arith->domain);
+	  ctx->tail->cold.ctx = domain_gate_context (arith->opcode);
+	}
     }
   for (int i = 0; i < 3; i++)
     {
-      if (item != NULL && operands[i] != NULL && operands[i]->domain_plan != NULL
-	  && (operands[i]->domain_plan->slot >= 0) && !(item->flags & DOMAIN_PLAN_GATE))
-	{
-	  item->flags |= DOMAIN_PLAN_GATE;
-	  item->slot = ctx->plan->n_slots++;
-	  item->fixed.domain = NULL;
-	}
       if (operands[i] != NULL)
 	{
 	  /* Static operand targets come from compiled operand domains, never
@@ -588,6 +690,12 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	    {
 	      item->flags |= DOMAIN_PLAN_RESIDUAL;
 	    }
+	  else if (agg->operands->value.domain_plan != NULL && agg->operands->value.domain_plan->slot >= 0)
+	    {
+	      /* the gate decides the argument, so it decides the function and accumulator domains (F7) */
+	      REGU_VARIABLE *operand = &agg->operands->value;
+	      domain_mark_gate_node (ctx, item, &operand, 1, agg->domain);
+	    }
 	}
       domain_walk_sort (ctx, agg->sort_list, NULL);
     }
@@ -616,6 +724,11 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	  if (item != NULL && domain_residual_aggregate (analytic->function, analytic->operand.domain))
 	    {
 	      item->flags |= DOMAIN_PLAN_RESIDUAL;
+	    }
+	  else if (item != NULL && analytic->operand.domain_plan != NULL && analytic->operand.domain_plan->slot >= 0)
+	    {
+	      REGU_VARIABLE *operand = &analytic->operand;
+	      domain_mark_gate_node (ctx, item, &operand, 1, analytic->domain);
 	    }
 	}
       domain_walk_sort (ctx, eval->sort_list, output);
@@ -996,11 +1109,12 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   plan->items = (DOMAIN_PLAN_ITEM *) domain_plan_alloc (thread_p, plan->n_items, sizeof (*plan->items));
   plan->items_cold = (DOMAIN_PLAN_ITEM_COLD *) domain_plan_alloc (thread_p, plan->n_items, sizeof (*plan->items_cold));
   plan->gate_nodes = (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_gate_nodes, sizeof (*plan->gate_nodes));
+  plan->gate_links = (DOMAIN_GATE_LINK *) domain_plan_alloc (thread_p, plan->n_gate_nodes, sizeof (*plan->gate_links));
   plan->const_refs = (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_const_refs, sizeof (*plan->const_refs));
   plan->volatile_refs =
     (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_volatile, sizeof (*plan->volatile_refs));
-  ctx.failed = ctx.failed || (plan->n_items && (!plan->items || !plan->items_cold)) || (plan->n_gate_nodes
-											&& !plan->gate_nodes)
+  ctx.failed = ctx.failed || (plan->n_items && (!plan->items || !plan->items_cold))
+    || (plan->n_gate_nodes && (!plan->gate_nodes || !plan->gate_links))
     || (plan->n_const_refs && !plan->const_refs) || (plan->n_volatile && !plan->volatile_refs);
   int gate = 0, constant = 0, vol = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
@@ -1015,6 +1129,16 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	      plan->items_cold[r->index] = r->cold;
 	      if ((item->flags & DOMAIN_PLAN_GATE) && !(r->cold.val_pos >= 0))
 		{
+		  /* producer order: every operand record came earlier, so its owner already holds its published item */
+		  DOMAIN_GATE_LINK *link = &plan->gate_links[gate];
+		  memset (link, 0, sizeof (*link));
+		  link->n_operands = r->n_link;
+		  link->consumer = r->consumer;
+		  for (int i = 0; i < r->n_link; i++)
+		    {
+		      link->operands[i] = r->link[i]->domain_plan;
+		      link->literal[i] = r->link[i]->type == TYPE_DBVAL ? &r->link[i]->value.dbval : NULL;
+		    }
 		  plan->gate_nodes[gate++] = item;
 		}
 	      if (item->operand_class == OPERAND_CONST)

@@ -26878,6 +26878,35 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
    },
 };
 
+/*
+ * tp_value_convert_enumeration_name_to_double () - an ENUM added to a string without plus_as_concat: its name, then
+ *   the name read as a number (qdata_add_dbval casts the ENUM to VARCHAR, then both strings to DOUBLE). The table
+ *   cell (ENUM, DOUBLE) stays the ordinal; the domain resolver picks this one for that grid position (D-335-05).
+ */
+static TP_DOMAIN_STATUS
+tp_value_convert_enumeration_name_to_double (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
+{
+  TP_DOMAIN *varchar_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+  DB_VALUE name;
+
+  db_value_domain_init (&name, DB_TYPE_VARCHAR, varchar_domain->precision, 0);
+  TP_DOMAIN_STATUS status = tp_value_convert_enumeration_to_varchar (src, &name, varchar_domain);
+  if (status == DOMAIN_COMPATIBLE)
+    {
+      DOMAIN_CONVERTER to_number = domain_convert_table[DOMAIN_CONVERT_ASSIGN][DB_TYPE_VARCHAR][DB_TYPE_DOUBLE];
+      assert (to_number != nullptr);
+      status = to_number (&name, target, desired_domain);
+    }
+  pr_clear_value (&name);
+  return status;
+}
+
+DOMAIN_CONVERTER
+domain_enumeration_name_converter (void)
+{
+  return tp_value_convert_enumeration_name_to_double;
+}
+
 DOMAIN_CONVERTER
 domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain, DOMAIN_CONVERT_MODE mode)
 {
@@ -27155,6 +27184,8 @@ domain_converter_name (DOMAIN_CONVERTER converter)
     tp_value_convert_enumeration_to_datetimeltz, "enumeration_to_datetimeltz"},
     {
     tp_value_convert_enumeration_to_datetimetz, "enumeration_to_datetimetz"},
+    {
+    tp_value_convert_enumeration_name_to_double, "enumeration_name_to_double"},
     {
     tp_value_convert_enumeration_to_double, "enumeration_to_double"},
     {

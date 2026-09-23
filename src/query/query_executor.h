@@ -94,6 +94,27 @@ struct xasl_state
   RESOLVED_DOMAIN_TABLE resolved;
 };
 
+#if !defined (NDEBUG)
+/* The gate's decision for a gate-dependent node of the tree this execution loaded, or NULL when the gate did not
+ * decide it here (another load's tree, a node decided per row) - #335 shadow checks. */
+inline const RESOLVED_DOMAIN *
+RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  if (vd == NULL || vd->xasl_state == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_GATE))
+    {
+      return NULL;
+    }
+  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  const DOMAIN_PLAN *plan = resolved.plan;
+  if (!resolved.sealed || plan == NULL || item < plan->items || item >= plan->items + plan->n_items
+      || item->slot >= resolved.n_slots || resolved.table[item->slot].domain == NULL)
+    {
+      return NULL;
+    }
+  return &resolved.table[item->slot];
+}
+#endif
+
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr, QUERY_ID query_id);
 extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,
