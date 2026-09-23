@@ -525,12 +525,16 @@ namespace parallel_scan
 	    if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->parts != NULL)
 	      {
 		xptr->spec_list->curent = NULL;
+	      }
 
-		/* init btid */
-		if (xptr->spec_list->indexptr)
-		  {
-		    BTID_COPY (&xptr->spec_list->indexptr->btid, &xptr->spec_list->btid);
-		  }
+	    /* init btid regardless of parts: initialize () overwrites indexptr->btid with the partition BTID
+	     * even though this clone was never pruned (parts is NULL unless trace pruned it). The clone goes
+	     * back to the shared XASL cache clone pool, and a leader that picks it up would prune the
+	     * partitioned class with a partition BTID, which heap_get_indexinfo_of_btid () rejects without
+	     * setting an error (CBRD-27484). */
+	    if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->indexptr)
+	      {
+		BTID_COPY (&xptr->spec_list->indexptr->btid, &xptr->spec_list->btid);
 	      }
 
 	    m_pre_execution_info->record_pre_execution_info (xptr->header.id, xptr);
