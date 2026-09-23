@@ -126,7 +126,8 @@ namespace parallel_scan
 	  val_list_domain_resolved (false),
 	  agg_hash_state (HS_NONE),
 	  g_agg_domains_resolved (TRUE),
-	  is_topn (false) {}
+	  is_topn (false),
+	  write_initialized (false) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
@@ -138,6 +139,8 @@ namespace parallel_scan
       int g_agg_domains_resolved;
       /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
       bool is_topn;
+      /* write_initialize () went through; write_finalize () may use xasl and the hash context. */
+      bool write_initialized;
       /* once this worker has seen the atomic-draw quota exhausted, stop touching the shared counter. */
       bool instnum_quota_done = false;
   };
