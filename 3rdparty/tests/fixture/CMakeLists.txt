@@ -18,7 +18,7 @@ cmake_minimum_required(VERSION 3.21)
 
 project(cubrid_thirdparty_contract_fixture C)
 
-add_library(fixture_static STATIC src/fixture.c)
+add_library(fixture_static STATIC src/fixture_static.c)
 set_target_properties(fixture_static PROPERTIES OUTPUT_NAME fixture)
 target_include_directories(fixture_static PRIVATE "${CMAKE_CURRENT_LIST_DIR}/include")
 
@@ -33,6 +33,7 @@ install(TARGETS fixture_static fixture_shared
 install(FILES
   include/fixture/header_only.hpp
   include/fixture/shared.h
+  include/fixture/static.h
   DESTINATION include/fixture
   )
 install(FILES licenses/fixture.txt DESTINATION licenses)

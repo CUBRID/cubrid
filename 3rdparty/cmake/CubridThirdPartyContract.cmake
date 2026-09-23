@@ -678,8 +678,111 @@ function(cubrid_thirdparty_select_mode output_variable)
   set(${output_variable} "${selected_mode}" PARENT_SCOPE)
 endfunction()
 
+function(_cubrid_thirdparty_prefix_artifacts dependency artifact_kind prefix_root output_variable)
+  string(TOUPPER "${dependency}" dependency_variable_name)
+  set(manifest_variable
+    "CUBRID_3RDPARTY_${dependency_variable_name}_OUTPUT_${artifact_kind}")
+  set(prefix_artifacts "")
+  foreach(relative_path IN LISTS ${manifest_variable})
+    list(APPEND prefix_artifacts "${prefix_root}/${relative_path}")
+  endforeach()
+  set(${output_variable} "${prefix_artifacts}" PARENT_SCOPE)
+endfunction()
+
+function(cubrid_thirdparty_use_prebuilt_prefix)
+  set(cache_root "")
+  if(DEFINED CUBRID_3RDPARTY_ROOT)
+    set(cache_root "${CUBRID_3RDPARTY_ROOT}")
+  endif()
+  set(environment_root "$ENV{CUBRID_3RDPARTY_ROOT}")
+  if(NOT cache_root STREQUAL "" AND NOT environment_root STREQUAL ""
+      AND NOT cache_root STREQUAL environment_root)
+    _cubrid_thirdparty_fail(
+      "CUBRID_3RDPARTY_ROOT differs between CMake ('${cache_root}') and environment ('${environment_root}')")
+  endif()
+  if(NOT cache_root STREQUAL "")
+    set(prefix_root "${cache_root}")
+  else()
+    set(prefix_root "${environment_root}")
+  endif()
+  if(prefix_root STREQUAL "")
+    _cubrid_thirdparty_fail("CUBRID_3RDPARTY_ROOT is required in CI_PREBUILT mode")
+  endif()
+  if(NOT IS_ABSOLUTE "${prefix_root}")
+    _cubrid_thirdparty_fail("CUBRID_3RDPARTY_ROOT must be absolute in CI_PREBUILT mode")
+  endif()
+  if(NOT IS_DIRECTORY "${prefix_root}")
+    _cubrid_thirdparty_fail("CUBRID_3RDPARTY_ROOT is not a directory: ${prefix_root}")
+  endif()
+  file(REAL_PATH "${prefix_root}" prefix_root)
+
+  set(prefix_manifest "${prefix_root}/share/cubrid-thirdparty/manifest.json")
+  if(NOT EXISTS "${prefix_manifest}" OR IS_DIRECTORY "${prefix_manifest}")
+    _cubrid_thirdparty_fail("prefix manifest is missing: ${prefix_manifest}")
+  endif()
+  file(SHA256 "${prefix_manifest}" prefix_fingerprint)
+  if(NOT prefix_fingerprint STREQUAL CUBRID_3RDPARTY_SPEC_FINGERPRINT)
+    _cubrid_thirdparty_fail(
+      "prefix manifest fingerprint mismatch: expected ${CUBRID_3RDPARTY_SPEC_FINGERPRINT}, got ${prefix_fingerprint}")
+  endif()
+
+  set(prefix_include "${prefix_root}/include")
+  set(EP_TARGETS "")
+  set(TBB_TARGETS "")
+  foreach(dependency_prefix IN ITEMS
+      LIBEDIT LIBEXPAT LZ4 LIBOPENSSL LIBUNIXODBC RAPIDJSON RE2 LIBTBB)
+    set(${dependency_prefix}_TARGET "")
+    set(${dependency_prefix}_INCLUDES "${prefix_include}")
+  endforeach()
+  foreach(dependency IN ITEMS expat libedit lz4 openssl unixodbc rapidjson re2 onetbb)
+    string(TOUPPER "${dependency}" dependency_variable_name)
+    if(dependency STREQUAL "onetbb")
+      set(dependency_variable_name LIBTBB)
+    elseif(dependency MATCHES "^(expat|libedit|openssl|unixodbc)$")
+      if(NOT dependency STREQUAL "libedit")
+        string(PREPEND dependency_variable_name LIB)
+      endif()
+    endif()
+    _cubrid_thirdparty_prefix_artifacts(
+      "${dependency}" LIBRARIES "${prefix_root}" "${dependency_variable_name}_LIBS")
+  endforeach()
+  set(EP_INCLUDES
+    "${LIBEXPAT_INCLUDES}"
+    "${LIBEDIT_INCLUDES}"
+    "${LZ4_INCLUDES}"
+    "${LIBOPENSSL_INCLUDES}"
+    "${LIBUNIXODBC_INCLUDES}"
+    "${RAPIDJSON_INCLUDES}"
+    "${RE2_INCLUDES}")
+  set(EP_LIBS
+    "${LIBEXPAT_LIBS};${LIBEDIT_LIBS};${LZ4_LIBS};${LIBOPENSSL_LIBS};${RE2_LIBS}")
+  set(LIBTBB_INCLUDES
+    "${prefix_include}/tbb"
+    "${prefix_include}/oneapi"
+    "${prefix_include}/oneapi/tbb"
+    "${prefix_include}/oneapi/tbb/detail")
+  set(TBB_INCLUDES "${LIBTBB_INCLUDES}")
+  set(TBB_LIBS "${LIBTBB_LIBS}")
+
+  set(CUBRID_3RDPARTY_ROOT "${prefix_root}" PARENT_SCOPE)
+  foreach(contract_variable IN ITEMS
+      EP_TARGETS EP_LIBS EP_INCLUDES
+      TBB_TARGETS TBB_LIBS TBB_INCLUDES
+      LIBEDIT_TARGET LIBEDIT_LIBS LIBEDIT_INCLUDES
+      LIBEXPAT_TARGET LIBEXPAT_LIBS LIBEXPAT_INCLUDES
+      LZ4_TARGET LZ4_LIBS LZ4_INCLUDES
+      LIBOPENSSL_TARGET LIBOPENSSL_LIBS LIBOPENSSL_INCLUDES
+      LIBUNIXODBC_TARGET LIBUNIXODBC_LIBS LIBUNIXODBC_INCLUDES
+      RAPIDJSON_TARGET RAPIDJSON_LIBS RAPIDJSON_INCLUDES
+      RE2_TARGET RE2_LIBS RE2_INCLUDES
+      LIBTBB_TARGET LIBTBB_LIBS LIBTBB_INCLUDES)
+    set(${contract_variable} "${${contract_variable}}" PARENT_SCOPE)
+  endforeach()
+endfunction()
+
 macro(cubrid_thirdparty_export_variables)
   foreach(contract_variable IN ITEMS
+      CUBRID_3RDPARTY_MODE CUBRID_3RDPARTY_ROOT
       EP_TARGETS EP_LIBS EP_INCLUDES
       TBB_TARGETS TBB_LIBS TBB_INCLUDES
       LIBEDIT_TARGET LIBEDIT_LIBS LIBEDIT_INCLUDES

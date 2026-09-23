@@ -46,6 +46,9 @@ set(CONTRACT_CASES
   malformed_json
   unset_mode_uses_external
   external_mode_uses_external
+  consumer_cache_success
+  consumer_environment_success
+  consumer_cache_environment_equal
   producer_success
   producer_missing_input_atomic
   producer_output_unset
@@ -88,3 +91,10 @@ set_tests_properties(
   thirdparty-contract.producer_output_source_descendant
   PROPERTIES
   LABELS "thirdparty-contract;thirdparty-contract-producer")
+
+set_tests_properties(
+  thirdparty-contract.consumer_cache_success
+  thirdparty-contract.consumer_environment_success
+  thirdparty-contract.consumer_cache_environment_equal
+  PROPERTIES
+  LABELS "thirdparty-contract;thirdparty-contract-consumer")

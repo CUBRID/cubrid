@@ -426,6 +426,147 @@ if(CASE MATCHES "^producer_")
   return()
 endif()
 
+if(CASE MATCHES "^consumer_")
+  set(producer_build "${case_root}/producer-build")
+  set(producer_output "${case_root}/producer-prefix")
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}"
+      -S "${TEST_SOURCE_ROOT}/producer-project"
+      -B "${producer_build}"
+      -G "${TEST_GENERATOR}"
+      "-DCONTRACT_MODULE=${CONTRACT_MODULE}"
+      "-DFIXTURE_ROOT=${fixture_root}"
+      "-DMANIFEST=${MANIFEST}"
+      "-DCUBRID_3RDPARTY_PREFIX_OUTPUT=${producer_output}"
+    RESULT_VARIABLE producer_status
+    OUTPUT_VARIABLE producer_stdout
+    ERROR_VARIABLE producer_stderr)
+  if(NOT producer_status EQUAL 0)
+    message(FATAL_ERROR
+      "consumer fixture producer configure failed (${producer_status}):\n"
+      "${producer_stdout}${producer_stderr}")
+  endif()
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" --build "${producer_build}" --target cubrid_thirdparty_prefix
+    RESULT_VARIABLE producer_status
+    OUTPUT_VARIABLE producer_stdout
+    ERROR_VARIABLE producer_stderr)
+  if(NOT producer_status EQUAL 0)
+    message(FATAL_ERROR
+      "consumer fixture producer build failed (${producer_status}):\n"
+      "${producer_stdout}${producer_stderr}")
+  endif()
+
+  set(relocated_output "${case_root}/relocated-prefix")
+  file(RENAME "${producer_output}" "${relocated_output}")
+  set(consumer_environment_arguments
+    --unset=CUBRID_3RDPARTY_MODE
+    --unset=CUBRID_3RDPARTY_ROOT)
+  set(consumer_cache_arguments "")
+  if(CASE STREQUAL "consumer_environment_success")
+    list(APPEND consumer_environment_arguments
+      CUBRID_3RDPARTY_MODE=CI_PREBUILT
+      "CUBRID_3RDPARTY_ROOT=${relocated_output}")
+  elseif(CASE STREQUAL "consumer_cache_environment_equal")
+    list(APPEND consumer_environment_arguments
+      CUBRID_3RDPARTY_MODE=CI_PREBUILT
+      "CUBRID_3RDPARTY_ROOT=${relocated_output}")
+    list(APPEND consumer_cache_arguments
+      -DCUBRID_3RDPARTY_MODE=CI_PREBUILT
+      "-DCUBRID_3RDPARTY_ROOT=${relocated_output}")
+  else()
+    list(APPEND consumer_cache_arguments
+      -DCUBRID_3RDPARTY_MODE=CI_PREBUILT
+      "-DCUBRID_3RDPARTY_ROOT=${relocated_output}")
+  endif()
+  set(configure_command
+    "${CMAKE_COMMAND}" -E env
+    ${consumer_environment_arguments}
+    "${CMAKE_COMMAND}"
+    -S "${TEST_SOURCE_ROOT}/consumer-project"
+    -B "${case_build}"
+    -G "${TEST_GENERATOR}"
+    "-DCUBRID_SOURCE_ROOT=${TEST_SOURCE_ROOT}/../.."
+    "-DRESULT=${result}"
+    "-DSENTINEL=${sentinel}"
+    ${consumer_cache_arguments})
+  execute_process(
+    COMMAND ${configure_command}
+    RESULT_VARIABLE configure_status
+    OUTPUT_VARIABLE configure_stdout
+    ERROR_VARIABLE configure_stderr)
+  if(NOT configure_status EQUAL 0)
+    message(FATAL_ERROR
+      "consumer configure failed (${configure_status}):\n${configure_stdout}${configure_stderr}")
+  endif()
+  if(EXISTS "${sentinel}")
+    file(READ "${sentinel}" sentinel_contents)
+    message(FATAL_ERROR "ExternalProject sentinel was touched: ${sentinel_contents}")
+  endif()
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" --build "${case_build}" --target thirdparty_consumer
+    RESULT_VARIABLE consumer_status
+    OUTPUT_VARIABLE consumer_stdout
+    ERROR_VARIABLE consumer_stderr)
+  if(NOT consumer_status EQUAL 0)
+    message(FATAL_ERROR
+      "consumer build failed (${consumer_status}):\n${consumer_stdout}${consumer_stderr}")
+  endif()
+  execute_process(
+    COMMAND "${case_build}/bin/thirdparty_consumer"
+    RESULT_VARIABLE consumer_status
+    OUTPUT_VARIABLE consumer_stdout
+    ERROR_VARIABLE consumer_stderr)
+  if(NOT consumer_status EQUAL 0)
+    message(FATAL_ERROR
+      "consumer executable failed (${consumer_status}):\n${consumer_stdout}${consumer_stderr}")
+  endif()
+  file(READ "${result}" result_contents)
+  string(CONCAT expected_ep_includes
+    "${relocated_output}/include;${relocated_output}/include;${relocated_output}/include;"
+    "${relocated_output}/include;${relocated_output}/include;${relocated_output}/include;"
+    "${relocated_output}/include")
+  string(CONCAT expected_ep_libs
+    "${relocated_output}/lib/libexpat.a;${relocated_output}/lib/libedit.a;"
+    "${relocated_output}/lib/liblz4.a;${relocated_output}/lib/libssl.a;"
+    "${relocated_output}/lib/libcrypto.a;${relocated_output}/lib/libre2.a")
+  string(CONCAT expected_tbb_includes
+    "${relocated_output}/include/tbb;${relocated_output}/include/oneapi;"
+    "${relocated_output}/include/oneapi/tbb;${relocated_output}/include/oneapi/tbb/detail")
+  foreach(expected_line IN ITEMS
+      "root=${relocated_output}"
+      "ep_targets="
+      "ep_includes=${expected_ep_includes}"
+      "ep_libs=${expected_ep_libs}"
+      "tbb_targets="
+      "tbb_includes=${expected_tbb_includes}"
+      "libexpat_target="
+      "libedit_target="
+      "lz4_target="
+      "libopenssl_target="
+      "libunixodbc_target="
+      "rapidjson_target="
+      "re2_target="
+      "libtbb_target=")
+    string(FIND "${result_contents}" "${expected_line}\n" expected_line_position)
+    if(expected_line_position EQUAL -1)
+      message(FATAL_ERROR "consumer interface is missing '${expected_line}':\n${result_contents}")
+    endif()
+  endforeach()
+  foreach(interface_line IN ITEMS
+      ep_includes ep_libs tbb_includes tbb_libs
+      libexpat_includes libexpat_libs libedit_includes libedit_libs
+      lz4_includes lz4_libs libopenssl_includes libopenssl_libs
+      libunixodbc_includes libunixodbc_libs rapidjson_includes
+      re2_includes re2_libs libtbb_includes libtbb_libs)
+    if(NOT result_contents MATCHES "${interface_line}=${relocated_output}/")
+      message(FATAL_ERROR
+        "consumer interface ${interface_line} does not point into relocated prefix:\n${result_contents}")
+    endif()
+  endforeach()
+  return()
+endif()
+
 set(configure_command
   "${CMAKE_COMMAND}" -E env
   --unset=CUBRID_3RDPARTY_MODE

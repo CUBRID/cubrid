@@ -633,7 +633,7 @@ endif(UNIX)
 target_link_libraries(cubridcs PUBLIC cascci)
 
 add_dependencies(cubridcs gen_csql_grammar gen_csql_lexer gen_loader_grammar gen_loader_lexer)
-add_dependencies(cubridcs ${EP_TARGETS})
+cubrid_add_optional_dependencies(cubridcs ${EP_TARGETS})
 
 if(ENABLE_SYSTEMTAP)
   target_include_directories(cubridcs PRIVATE ${CMAKE_BINARY_DIR})

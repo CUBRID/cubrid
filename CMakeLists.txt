@@ -314,6 +314,12 @@ set(LOADER_LEXER_OUTPUT ${CMAKE_BINARY_DIR}/load_lexer.cpp)
 message("Including Third Party Libraries")
 add_subdirectory(3rdparty)
 
+function(cubrid_add_optional_dependencies target)
+  if(ARGC GREATER 1)
+    add_dependencies(${target} ${ARGN})
+  endif()
+endfunction()
+
 # CSQL FLEX/BISON targets
 # replace old bison directives with new ones
 # use add_custom_command because we want to regenerate csql_grammar.yy
@@ -792,7 +798,15 @@ add_subdirectory(cs)
 add_subdirectory(cubrid)
 add_subdirectory(util)
 if(WITH_CCI)
+  # The pinned CCI submodule checks only whether EP_TARGETS is defined before
+  # calling add_dependencies, while CI_PREBUILT deliberately exports it empty.
+  if(CUBRID_3RDPARTY_MODE STREQUAL "CI_PREBUILT")
+    unset(EP_TARGETS)
+  endif()
   add_subdirectory(cubrid-cci)
+  if(CUBRID_3RDPARTY_MODE STREQUAL "CI_PREBUILT")
+    set(EP_TARGETS "")
+  endif()
 endif(WITH_CCI)
 add_subdirectory(broker)
 add_subdirectory(cm_common)

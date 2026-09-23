@@ -19,8 +19,25 @@ include("${CMAKE_CURRENT_LIST_DIR}/cmake/CubridThirdPartyContract.cmake")
 cubrid_thirdparty_load_contract("${CMAKE_CURRENT_LIST_DIR}/manifest.json")
 cubrid_thirdparty_select_mode(CUBRID_3RDPARTY_SELECTED_MODE)
 if(CUBRID_3RDPARTY_SELECTED_MODE STREQUAL "CI_PREBUILT")
-  message(FATAL_ERROR
-    "CUBRID_3RDPARTY_MODE=CI_PREBUILT is not available until the prefix consumer is enabled")
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "CUBRID_3RDPARTY_MODE=CI_PREBUILT is supported only on Linux")
+  endif()
+  cubrid_thirdparty_use_prebuilt_prefix()
+
+  find_package(FLEX 2.5.34 REQUIRED)
+  find_package(BISON 3.0.0 REQUIRED)
+  cubrid_thirdparty_export_variables()
+
+  include(3rdparty_util)
+  expose_3rdparty_variable(LIBEDIT)
+  expose_3rdparty_variable(LIBEXPAT)
+  expose_3rdparty_variable(LZ4)
+  expose_3rdparty_variable(LIBOPENSSL)
+  expose_3rdparty_variable(LIBUNIXODBC)
+  expose_3rdparty_variable(RAPIDJSON)
+  expose_3rdparty_variable(RE2)
+  expose_3rdparty_variable(LIBTBB)
+  return()
 endif()
 
 # Unused: on Linux flex and bison come from the system, and only WIN_FLEX_BISON_URL
