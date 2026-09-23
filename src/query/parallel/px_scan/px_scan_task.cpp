@@ -299,7 +299,12 @@ namespace parallel_scan
 			  }
 		      }
 
-		    if (thread_ref.on_trace && HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
+		    /* a partitioned SEMI / ANTI inner is not advanced partition by partition by the main thread's
+		     * scan-block iteration (qexec_next_scan_block_iterations skips it); qexec_execute_scan walks
+		     * every partition per outer row itself, so the clone needs the pruned partition list the main
+		     * thread got in qexec_open_scan, or it probes only the one captured partition (CBRD-27485) */
+		    if ((thread_ref.on_trace || XASL_IS_NL_SEMI_OR_ANTI (xptr))
+			&& HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
 		      {
 			err_code = partition_prune_spec (&thread_ref, m_vd, xptr->curr_spec);
 			if (err_code != NO_ERROR)
@@ -307,7 +312,8 @@ namespace parallel_scan
 			    return err_code;
 			  }
 			/* prune partition stats */
-			for (PARTITION_SPEC_TYPE *part_spec = xptr->curr_spec->parts; part_spec != NULL; part_spec = part_spec->next)
+			for (PARTITION_SPEC_TYPE *part_spec = xptr->curr_spec->parts;
+			     thread_ref.on_trace && part_spec != NULL; part_spec = part_spec->next)
 			  {
 			    if (HFID_EQ (&part_spec->hfid, &scan_info.hfid))
 			      {
@@ -522,6 +528,13 @@ namespace parallel_scan
       {
 	for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	  {
+	    /* a partitioned SEMI / ANTI inner that went through its last partition is left with curr_spec
+	     * NULL; point it back at its spec so the record below and qexec_clear_xasl () close its scan */
+	    if (xptr->curr_spec == NULL)
+	      {
+		xptr->curr_spec = xptr->spec_list;
+	      }
+
 	    if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->parts != NULL)
 	      {
 		xptr->spec_list->curent = NULL;
@@ -746,7 +759,9 @@ namespace parallel_scan
 
 		/* handle the scan procedure */
 		m_xasl->scan_ptr->next_scan_on = false;
-		if (scan_reset_scan_block (&thread_ref, &m_xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+		/* as qexec_intprt_fnc: rewind a partitioned SEMI / ANTI inner to its first partition (its
+		 * curr_spec is NULL once the previous probe went through every partition) */
+		if (qexec_reset_sa_inner_scan_block (&thread_ref, m_xasl->scan_ptr) == S_ERROR)
 		  {
 		    m_err_messages->move_top_error_message_to_this();
 		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
