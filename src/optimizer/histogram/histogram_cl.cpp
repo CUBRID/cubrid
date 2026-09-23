@@ -2577,6 +2577,21 @@ histogram_split_hv_range (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_n
   return false;
 }
 
+/*
+ * histogram_split_hv_predicate () - is this a (column op ?) predicate the bind-sensitive planner can price?
+ * return            : true when matched
+ * node (in)         : expression node to test
+ * out_name (out)    : the column node (end of a path expression)
+ * out_hv (out)      : the user host variable
+ * out_reversed (out): true for the `? op col` spelling of a comparison
+ *
+ * Note: the candidate set is defined by what qo_expr_selectivity () prices with the bound VALUE --
+ *       equality and the comparisons (histogram_get_equal/comp_selectivity) and LIKE / NOT LIKE
+ *       (qo_like_selectivity -> histogram_get_like_selectivity). A LIKE qualifies only when the
+ *       pattern is the host variable itself: `col LIKE ? ESCAPE '\\'` wraps it in a PT_LIKE_ESCAPE
+ *       expression the planner does not classify as a host variable (it falls back to
+ *       like_term_selectivity), so pricing it here would replan for an estimate that never lands.
+ */
 static bool
 histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_name, PT_NODE **out_hv,
 			      bool *out_reversed)
@@ -2600,7 +2615,7 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
     }
 
   PT_OP_TYPE op = node->info.expr.op;
-  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
+  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE && op != PT_LIKE && op != PT_NOT_LIKE)
     {
       return false;
     }
@@ -2620,6 +2635,13 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
 	  *out_hv = a2;
 	}
       return true;
+    }
+
+  if (op == PT_LIKE || op == PT_NOT_LIKE)
+    {
+      /* `? LIKE col`: the pattern is the column and the host variable is the matched string --
+       * the histogram estimator matches a pattern against the column's values, not the reverse */
+      return false;
     }
 
   if (a1 != NULL && a1->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a1)
@@ -2803,6 +2825,15 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
     case PT_LE:
       histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
       break;
+    case PT_LIKE:
+    case PT_NOT_LIKE:
+      histogram_get_like_selectivity (name, val, &sel, &ok);
+      if (ok && op == PT_NOT_LIKE)
+	{
+	  /* the same complement qo_expr_selectivity () applies: NOT LIKE is priced as 1 - LIKE */
+	  sel = 1.0 - sel;
+	}
+      break;
     default:
       break;
     }
@@ -2815,8 +2846,9 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
        * a raw value hash here would (a) replan the first execution of statements on
        * never-analyzed tables for zero gain (the recompile still prices with
        * DEFAULT_*_SELECTIVITY) and (b) under bind sensitivity give every distinct value
-       * its own fingerprint, replanning per value. Value-shape recompiles (LIKE, MRO,
-       * SORT-LIMIT) have their own machinery and do not need this one. */
+       * its own fingerprint, replanning per value. Value-shape recompiles (MRO, SORT-LIMIT,
+       * the LIKE removability check behind LIKE_RECOMPILE_CANDIDATE) have their own machinery
+       * and do not need this one. */
       return node;
     }
 
@@ -2826,6 +2858,37 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
       /* equality estimates are stepwise (MCV hit or the flat non-MCV residual): values in
        * the same class produce the same estimate, hence the same fingerprint, hence reuse */
       component = (std::uint64_t) (sel * 1.0e12);
+    }
+  else if (op == PT_LIKE || op == PT_NOT_LIKE)
+    {
+      /* LIKE estimates span decades -- a rare prefix sits at 1/N, a leading-wildcard pattern
+       * near 1 -- and mix stepwise parts (MCV hits, bucket-boundary match counts) with a
+       * continuous heuristic on small histograms. The range rule's 0.01 steps would fold every
+       * prefix pattern below 1% into one band, so a pattern 10x rarer than the one the plan was
+       * fixed under would never replan. A power-of-two band tells 0.1% from 1% apart (scan cost
+       * is roughly linear in selectivity, so 2x is the unit at which a plan can flip) and caps a
+       * predicate's distinct fingerprints at ~log2 (N) regardless of histogram size. frexp:
+       * sel = m * 2^e with 0.5 <= m < 1; e alone is the band (0 for a 1 - LIKE of exactly 0). */
+      if (sel <= 0.0)
+	{
+	  /* "no rows at all" -- NOT LIKE of a pattern every value matches (a column whose
+	   * values are all MCVs and `NOT LIKE 'abc%'` over them). frexp (0) reports exponent 0,
+	   * the band of [0.5, 1): the opposite end of the scale would share the fingerprint
+	   * and a plan fixed for zero rows would be reused for most of the table (review
+	   * report). Give zero a band of its own, below every reachable exponent band. */
+	  component = 0;
+	}
+      else
+	{
+	  int band = 0;
+
+	  (void) std::frexp (sel, &band);
+	  /* the offset keeps the band non-negative: sel is floored at 1/N by the estimator and
+	   * a positive 1 - LIKE is a normal double, so e stays far above -1024 (a subnormal
+	   * would need e < -1022); e <= 1 for sel <= 1. Even a negative sum would fold
+	   * deterministically. */
+	  component = (std::uint64_t) (band + 1024);
+	}
     }
   else
     {
@@ -2844,19 +2907,49 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
 
 struct hv_pred_ctx
 {
+  PARSER_CONTEXT *parser;
+  PT_NODE *statement;		/* for resolving an aliased spec to its class (see bind_fp_walk_ctx) */
   bool found;
 };
 
-/* structural check only (no value fetch): is there a (column op ?) predicate that the
- * bind-sensitive planner could price? Used at plan generation, where host variables carry
- * no execution values, to mark a plan as chosen under unbound markers. */
+/* does the column carry a histogram at all? The planner leaves the blob on the segment's
+ * name node (query_graph.c) once it has priced the class; a node it did not annotate falls
+ * back to the class cache. No value is probed here -- a column without a histogram can never
+ * be priced, whatever gets bound. */
+static bool
+histogram_column_has_histogram (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE *name)
+{
+  name = pt_get_end_path_node (name);
+  if (name == NULL || name->node_type != PT_NAME)
+    {
+      return false;
+    }
+  if (name->info.name.histogram != NULL)
+    {
+      return true;
+    }
+  return histogram_blob_from_class_cache (parser, statement, name) != NULL;
+}
+
+/* structural check (no value fetch): is there a (column op ?) predicate that the bind-sensitive
+ * planner could price -- a candidate operator AND a histogram on the column? Used at plan
+ * generation, where host variables carry no execution values, to mark a plan as chosen under
+ * unbound markers.
+ *
+ * The histogram half matters: a statement flagged HV_PRED_PLAN_UNPEEKED whose columns have no
+ * histogram can never be priced, so the fingerprint stays empty and no kept tree is
+ * registered -- yet the SQL EXECUTE path nulls the cached XASL id on the flag alone and
+ * re-parses/recompiles the stored text on EVERY execution (review report: ~1.8x the server
+ * round trips of a plain cached execution, on `col = ?` and `col LIKE ?` alike). Only a plan
+ * that a later value could actually change is worth that first replan. */
 static PT_NODE *
 hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
   hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
+  PT_NODE *name = NULL;
 
-  if (histogram_split_hv_predicate (parser, node, NULL, NULL, NULL)
-      || histogram_split_hv_range (parser, node, NULL))
+  if ((histogram_split_hv_predicate (parser, node, &name, NULL, NULL) || histogram_split_hv_range (parser, node, &name))
+      && histogram_column_has_histogram (ctx->parser, ctx->statement, name))
     {
       ctx->found = true;
       *continue_walk = PT_STOP_WALK;
@@ -2868,6 +2961,8 @@ bool
 histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   hv_pred_ctx ctx;
+  ctx.parser = parser;
+  ctx.statement = statement;
   ctx.found = false;
   (void) parser_walk_tree (parser, statement, hv_pred_walk, &ctx, NULL, NULL);
   return ctx.found;

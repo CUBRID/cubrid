@@ -97,13 +97,18 @@ int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_
 					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect,
 					INT64 *out_pages_seen = NULL, INT64 *out_pages_kept = NULL);
 /* fingerprint of the host-variable predicate values as the plan would see them: for each
- * (column op ?) predicate mix in the quantized histogram selectivity of the bound value (same
- * MCV/bucket -> same fingerprint -> same plan), or a typed value hash when no histogram applies.
- * Returns false when the statement has no such predicate (no bind sensitivity). */
+ * (column op ?) predicate -- op being =, <, <=, >, >= (also in the RANGE form the rewriter makes
+ * of them), LIKE or NOT LIKE with the pattern as the host variable -- mix in the quantized
+ * histogram selectivity of the bound value (same MCV/bucket/band -> same fingerprint -> same
+ * plan). A predicate the histogram cannot price contributes nothing (no value hash: there is no
+ * estimate band without an estimate). Returns false when no predicate contributed (no bind
+ * sensitivity). */
 bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp);
 /* structural (value-independent): true if the statement has a (column op ?) predicate the
- * bind-sensitive planner could price. Used at plan generation to flag a plan built with
- * unbound host-variable markers so the first execution replans under the real values. */
+ * bind-sensitive planner could price -- a candidate operator on a column that carries a
+ * histogram. Used at plan generation to flag a plan built with unbound host-variable markers
+ * so the first execution replans under the real values; a statement no value can re-price is
+ * not flagged (the flag alone makes the SQL EXECUTE path recompile every execution). */
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
