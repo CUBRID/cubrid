@@ -8202,6 +8202,16 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 
       assert (xasl->curr_spec != NULL);
 
+      /* a new pass over the scan blocks starts here, e.g. a partitioned inner rewound for the next outer
+       * block, which is first positioned on its empty parent class; memoized results belong to the block
+       * they were read from and must not be replayed for this one. A single unpartitioned spec has one
+       * block only, so its memoized results stay valid. */
+      if (xasl->memoize_storage && (xasl->curr_spec->parts != NULL || xasl->spec_list->next != NULL))
+	{
+	  clear_memoize_storage (thread_p, xasl);
+	  new_memoize_storage (thread_p, xasl);
+	}
+
       /* initialize scan */
       if ((xasl->curr_spec->type == TARGET_CLASS || xasl->curr_spec->type == TARGET_CLASS_ATTR)
 	  && xasl->curr_spec->parts != NULL && xasl->curr_spec->curent == NULL
@@ -8282,6 +8292,13 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  if (xasl->curr_spec == NULL)
 	    {
 	      return S_END;
+	    }
+
+	  /* memoized results belong to the previous access spec */
+	  if (xasl->memoize_storage)
+	    {
+	      clear_memoize_storage (thread_p, xasl);
+	      new_memoize_storage (thread_p, xasl);
 	    }
 
 	  /* initialize scan */
