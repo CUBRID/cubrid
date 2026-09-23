@@ -19686,6 +19686,98 @@ pt_finish_remote_dml_xasl (XASL_NODE * xasl)
 }
 
 /*
+ * pt_fill_remote_odku_assigns () - Fill the ON DUPLICATE KEY UPDATE text the remote INSERT carries.
+ *   The left-hand side is the remote column name -- a remote target gets no name resolution, so what
+ *   the user wrote is the column -- and the right-hand side is printed with the flags the other text
+ *   push paths use, so the same value cannot come out two ways. Which right-hand sides may arrive is
+ *   the gate's decision, not this loop's: whatever it admitted is printed as it stands.
+ *   return: true on success. false after PT_ERROR; the caller returns NULL.
+ *   parser(in): parser context. custom_print is saved across the printing and restored on every return.
+ *   statement(in): PT_INSERT node
+ *   insert(out): remote_odku_cols, remote_odku_exprs, remote_num_odku. NULL and 0 when there is no clause.
+ */
+static bool
+pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSERT_PROC_NODE * insert)
+{
+  PT_NODE *assign;
+  int n, i;
+  char **cols, **exprs;
+  unsigned int save_custom_print;
+  bool ok;
+
+  if (statement->info.insert.odku_assignments == NULL)
+    {
+      insert->remote_odku_cols = NULL;
+      insert->remote_odku_exprs = NULL;
+      insert->remote_num_odku = 0;
+      return true;
+    }
+
+  n = pt_length_of_list (statement->info.insert.odku_assignments);
+  cols = (char **) parser_alloc (parser, n * sizeof (char *));
+  exprs = (char **) parser_alloc (parser, n * sizeof (char *));
+  if (cols == NULL || exprs == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      return false;
+    }
+
+  save_custom_print = parser->custom_print;
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK;
+  ok = true;
+
+  for (assign = statement->info.insert.odku_assignments, i = 0; assign != NULL && i < n; assign = assign->next, i++)
+    {
+      PARSER_VARCHAR *printed;
+
+      /* the gate admits only an assignment to a plain name, and a remote target gets no local check on
+       * the clause, so nothing stands between that test and this one -- reaching here otherwise means a
+       * plan built wrong */
+      if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN || assign->info.expr.arg1 == NULL
+	  || assign->info.expr.arg2 == NULL || assign->info.expr.arg1->node_type != PT_NAME)
+	{
+	  PT_ERROR (parser, assign,
+		    "dblink: remote ON DUPLICATE KEY UPDATE assignment is not an assignment to a column");
+	  ok = false;
+	  break;
+	}
+
+      /* refuse an unusable name here rather than let it travel: the sink would only find it when it
+       * assembles the statement, which moves the failure from compile time to execution */
+      cols[i] = (char *) assign->info.expr.arg1->info.name.original;
+      if (cols[i] == NULL || cols[i][0] == '\0')
+	{
+	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE column has no resolvable name");
+	  ok = false;
+	  break;
+	}
+
+      printed = pt_print_bytes (parser, assign->info.expr.arg2);
+      if (printed == NULL)
+	{
+	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE value cannot be printed");
+	  ok = false;
+	  break;
+	}
+
+      exprs[i] = (char *) printed->bytes;
+    }
+
+  parser->custom_print = save_custom_print;
+  if (!ok)
+    {
+      return false;
+    }
+
+  insert->remote_odku_cols = cols;
+  insert->remote_odku_exprs = exprs;
+  insert->remote_num_odku = n;
+  return true;
+}
+
+/*
  * pt_to_insert_xasl_remote_select () - Builds INSERT_PROC XASL for remote INSERT SELECT.
  *   Wires a local SELECT aptr and fills INSERT_PROC_NODE remote sink fields so
  *   the executor can stream rows via CCI into the remote table.
@@ -19819,6 +19911,11 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* positional insert: dblink_dml_open builds INSERT INTO t VALUES (?,?) */
       insert->remote_attr_names = NULL;
       insert->remote_num_attrs = 0;
+    }
+
+  if (!pt_fill_remote_odku_assigns (parser, statement, insert))
+    {
+      return NULL;
     }
 
   /* the statement kind the sink sends: REPLACE INTO when the statement asked for it, INSERT INTO
