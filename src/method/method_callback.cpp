@@ -832,7 +832,7 @@ namespace cubmethod
   static bool
   prepend_user_name (std::string &name, char *buf, int buf_size)
   {
-    char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+    char uniq_name[DB_MAX_IDENTIFIER_LENGTH];
     std::string pkg, temp;
     size_t start_pos = 0;
     split_str (name, start_pos, pkg);
@@ -844,14 +844,10 @@ namespace cubmethod
     temp = uniq_name;
     temp += ".";
     temp += name.substr (start_pos);
-    if (!identifier_fits (temp))
-      {
-	// this candidate cannot name an existing routine, so leave it unmatched rather than
-	// failing the question: the other candidate may still match
-	return false;
-      }
+    // copy the user prepened string regardless of whether the result is true or false
     sm_downcase_name (temp.c_str(), buf, buf_size);
-    return true;
+
+    return identifier_fits (temp);
   }
 
   static int
@@ -860,7 +856,7 @@ namespace cubmethod
     int err = NO_ERROR, match_cnt = 0;
     int save;
     char uniq_name[DB_MAX_IDENTIFIER_LENGTH];
-    char uniq_name_1[DB_MAX_IDENTIFIER_LENGTH];
+    char uniq_name_1[DB_MAX_USER_LENGTH + 1 + DB_MAX_IDENTIFIER_LENGTH];  // <user> + '.' + name
     std::string &name = question.name;
     bool wants_function = (question.type == GSQT_FUNCTION);
     MOP routine_mop = NULL;
