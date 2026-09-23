@@ -14661,7 +14661,7 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (statement->xasl_id == NULL)
     {
       /* Nothing to execute for a remote target, e.g. false where or not prepared correctly -- the same as
-       * do_execute_delete (). The do_insert () fallback below stays with local targets (CBRD-24867). */
+       * do_execute_delete (). The do_insert () fallback below is for local targets only. */
       if (statement->info.insert.spec->info.spec.remote_server_name != NULL)
 	{
 	  statement->etc = NULL;

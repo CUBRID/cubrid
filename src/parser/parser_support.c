@@ -11881,7 +11881,7 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    *
    * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE is still excluded: the sink has nowhere to carry the
    * update assignments yet. By not setting the flag here it falls through to the mixed local/remote
-   * rejection in pt_convert_dblink_dml_query -- the same behavior develop gives for it. */
+   * rejection in pt_convert_dblink_dml_query. */
   if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL && node->info.insert.odku_assignments == NULL)
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
