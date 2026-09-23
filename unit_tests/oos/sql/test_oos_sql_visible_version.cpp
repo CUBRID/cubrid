@@ -25,6 +25,9 @@
 #include "log_impl.h"
 #include "test_oos_sql_common.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* bridge functions defined in oos_file.cpp (CUBRID_UNIT_TEST_ENABLED builds) */
 void bridge_oos_debug_counters_reset ();
 oos_debug_counters bridge_oos_debug_counters_get ();
@@ -62,7 +65,7 @@ TEST_F (OosSqlVisibleVersion, ScanrangeNextFirstObjectFetchDoesNotExpandWholeRec
   OID class_oid = *reinterpret_cast<OID *> (db_identifier (class_object));
   HFID hfid;
   FILE_TYPE file_type;
-  rc = heap_get_class_info (thread_p, &class_oid, &hfid, &file_type, nullptr);
+  rc = heap_get_class_hfid (thread_p, &class_oid, &hfid, &file_type);
   ASSERT_EQ (rc, NO_ERROR);
 
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);

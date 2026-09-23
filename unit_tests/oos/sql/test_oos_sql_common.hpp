@@ -43,9 +43,6 @@
 #include "vacuum.h"
 #endif /* SA_MODE */
 
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
-
 // ============================================================================
 // Server environment (reusable across all SQL test binaries)
 // ============================================================================
@@ -205,7 +202,7 @@ get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
 
   HFID hfid;
   FILE_TYPE ftype;
-  int err = heap_get_class_info (thread_p, class_oid, &hfid, &ftype, NULL);
+  int err = heap_get_class_hfid (thread_p, class_oid, &hfid, &ftype);
   if (err != NO_ERROR)
     {
       return false;

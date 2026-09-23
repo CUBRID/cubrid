@@ -53,9 +53,6 @@
 #include "file_manager.h"
 #include "heap_file.h"
 
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
-#include "memory_wrapper.hpp"
-
 /* Global thread entry — set during ServerModeEnv::SetUp(). */
 static THREAD_ENTRY *thread_p;
 

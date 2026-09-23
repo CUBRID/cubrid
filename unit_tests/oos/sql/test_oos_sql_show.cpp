@@ -35,6 +35,9 @@
 
 #include "test_oos_sql_common.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 void bridge_oos_debug_counters_reset ();
 oos_debug_counters bridge_oos_debug_counters_get ();

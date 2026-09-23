@@ -16,7 +16,8 @@
  *
  */
 
-#pragma once
+#ifndef _TEST_OOS_COMMON_HPP_
+#define _TEST_OOS_COMMON_HPP_
 #include "gtest/gtest.h"
 #include <cstdio>
 #include <cstring>
@@ -211,3 +212,5 @@ namespace test_oos_utils
   using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
   using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
 }
+
+#endif /* _TEST_OOS_COMMON_HPP_ */

@@ -791,6 +791,7 @@ if(AT_LEAST_ONE_UNIT_TEST)
 endif()
 
 # include subdirectories
+add_subdirectory(upgrade)
 add_subdirectory(sa)
 add_subdirectory(cs)
 add_subdirectory(cubrid)
