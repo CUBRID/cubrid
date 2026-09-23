@@ -50,6 +50,7 @@ struct tp_domain;
 struct valptr_list_node;
 struct xasl_node;
 struct xasl_state;
+struct access_spec_node;
 using XASL_STATE = xasl_state;
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
@@ -94,6 +95,7 @@ struct xasl_state
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr, QUERY_ID query_id);
+extern void qexec_set_expr_share_spec (xasl_node * xasl, access_spec_node * spec);
 extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,
 				    UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 extern int qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate);
