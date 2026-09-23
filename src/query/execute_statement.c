@@ -15612,11 +15612,11 @@ int
 do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
 {
   int i, q, err = NO_ERROR;
-  QUERY_ID query_id;
-  QFILE_LIST_ID *list_id;
 
   for (q = 0; q < num_query; q++)
     {
+      QUERY_ID query_id = NULL_QUERY_ID;
+      QFILE_LIST_ID *list_id = NULL;
       DB_VALUE *host_variables = NULL;
 
       if (info[q].host_var_count > 0)
@@ -15650,6 +15650,16 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	  free (host_variables);
 	}
 
+      if (list_id != NULL)
+	{
+	  cursor_free_self_list_id (list_id);
+	}
+
+      if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+	{
+	  qmgr_end_query (query_id);
+	}
+
       if (err != NO_ERROR)
 	{
 	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
@@ -15676,7 +15686,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 int
 do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  QUERY_ID query_id;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables = NULL;
   CACHE_TIME clt_cache_time;
@@ -15711,6 +15721,19 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  db_value_clear (&host_variables[i]);
 	}
       free (host_variables);
+    }
+
+  /* server already cached the result (RESULT_CACHE_REQUIRED); this only triggers that, does not read rows back. */
+  if (list_id != NULL)
+    {
+      cursor_free_self_list_id (list_id);
+    }
+
+  /* only unpins this query from the cache entry; the entry is not cleared and stays for reuse.
+   * skipping this leaks a query entry per call, exhausting max_query_per_tran and raising ER_QM_QENTRY_RUNOUT. */
+  if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+    {
+      qmgr_end_query (query_id);
     }
 
   if (err == ER_QPROC_RESULT_CACHE_INVALID)
@@ -20602,10 +20625,14 @@ do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 /*
  * do_set_query_trace() - Set query trace
- *   return: NO_ERROR
+ *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a set statement
  *
+ * Note: The values go through db_set_system_parameters() rather than prm_set_*_value(),
+ *   because only the former also stores them in the server session state. A value set by
+ *   prm_set_*_value() lives in this client process alone, so it is lost once CAS restarts and
+ *   the driver reconnects with the same session id. SET NAMES and SET TIMEZONE do the same.
  */
 int
 do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -20613,25 +20640,25 @@ do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
 #if defined(SA_MODE)
   return NO_ERROR;
 #else
+#define MAX_LEN  50
+  int error = NO_ERROR;
+  char sys_prm_chg[MAX_LEN];
+
   if (statement->info.trace.on_off == PT_TRACE_ON)
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, true);
+      const char *trace_format = (statement->info.trace.format == PT_TRACE_FORMAT_JSON) ? "json" : "text";
 
-      if (statement->info.trace.format == PT_TRACE_FORMAT_TEXT)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_TEXT);
-	}
-      else if (statement->info.trace.format == PT_TRACE_FORMAT_JSON)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_JSON);
-	}
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=y; query_trace_format=%s", trace_format);
     }
   else
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, false);
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=n");
     }
 
-  return NO_ERROR;
+  error = db_set_system_parameters (sys_prm_chg);
+
+#undef MAX_LEN
+  return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
 #endif /* SA_MODE */
 }
 

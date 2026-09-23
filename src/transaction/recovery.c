@@ -871,6 +871,12 @@ struct rvfun RV_fun[] = {
    log_rv_no_logging_index_committed_redo,
    NULL,
    NULL},
+  {RVLOG_SYSMETA_VERSION_UPDATE,
+   "RVLOG_SYSMETA_VERSION_UPDATE",
+   log_rv_undoredo_sysmeta_version,
+   log_rv_undoredo_sysmeta_version,
+   NULL,
+   NULL},
 };
 
 /*

@@ -5980,7 +5980,8 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
     }
 
   thread_p = enter_server ();
-  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL) != NO_ERROR)
+
+  if (heap_get_class_hfid (thread_p, class_oid, &hfid, NULL) != NO_ERROR)
     {
       exit_server (*thread_p);
       free (priv_blobs);
