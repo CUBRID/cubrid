@@ -19768,6 +19768,91 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       insert->remote_num_attrs = 0;
     }
 
+  /* ON DUPLICATE KEY UPDATE assignments, carried as text: the left-hand side is the remote column
+   * name -- a remote target gets no name resolution, so what the user wrote is the column -- and the
+   * right-hand side is printed with the flags the other text push paths use, so the same value cannot
+   * come out two ways. Which right-hand sides may arrive is the gate's decision, not this loop's:
+   * whatever it admitted is printed as it stands. */
+  if (statement->info.insert.odku_assignments != NULL)
+    {
+      PT_NODE *assign;
+      int n, i;
+      char **cols, **exprs;
+      unsigned int save_custom_print;
+
+      n = pt_length_of_list (statement->info.insert.odku_assignments);
+      cols = (char **) parser_alloc (parser, n * sizeof (char *));
+      exprs = (char **) parser_alloc (parser, n * sizeof (char *));
+      if (cols == NULL || exprs == NULL)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  return NULL;
+	}
+
+      save_custom_print = parser->custom_print;
+      parser->custom_print |=
+	PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+	PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+      for (assign = statement->info.insert.odku_assignments, i = 0; assign != NULL && i < n;
+	   assign = assign->next, i++)
+	{
+	  PARSER_VARCHAR *printed;
+
+	  /* the gate admits only an assignment to a plain name, and a remote target gets no local check on
+	   * the clause, so nothing stands between that test and this one -- reaching here otherwise means a
+	   * plan built wrong */
+	  if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN || assign->info.expr.arg1 == NULL
+	      || assign->info.expr.arg2 == NULL || assign->info.expr.arg1->node_type != PT_NAME)
+	    {
+	      parser->custom_print = save_custom_print;
+	      PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE assignment is not an assignment to a column");
+	      return NULL;
+	    }
+
+	  /* refuse an unusable name here rather than let it travel: the sink would only find it when it
+	   * assembles the statement, which moves the failure from compile time to execution */
+	  cols[i] = (char *) assign->info.expr.arg1->info.name.original;
+	  if (cols[i] == NULL || cols[i][0] == '\0')
+	    {
+	      parser->custom_print = save_custom_print;
+	      PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE column has no resolvable name");
+	      return NULL;
+	    }
+
+	  printed = pt_print_bytes (parser, assign->info.expr.arg2);
+	  if (printed == NULL)
+	    {
+	      parser->custom_print = save_custom_print;
+	      PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE value cannot be printed");
+	      return NULL;
+	    }
+
+	  /* pt_print_bytes hands back a counted buffer; the sink appends C strings, so copy and terminate */
+	  exprs[i] = (char *) parser_alloc (parser, printed->length + 1);
+	  if (exprs[i] == NULL)
+	    {
+	      parser->custom_print = save_custom_print;
+	      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	      return NULL;
+	    }
+	  memcpy (exprs[i], printed->bytes, printed->length);
+	  exprs[i][printed->length] = '\0';
+	}
+
+      parser->custom_print = save_custom_print;
+
+      insert->remote_odku_cols = cols;
+      insert->remote_odku_exprs = exprs;
+      insert->remote_num_odku = n;
+    }
+  else
+    {
+      insert->remote_odku_cols = NULL;
+      insert->remote_odku_exprs = NULL;
+      insert->remote_num_odku = 0;
+    }
+
   /* the statement kind the sink sends: REPLACE INTO when the statement asked for it, INSERT INTO
    * otherwise. Already serialized with the rest of INSERT_PROC, so the server reads it as it stands. */
   insert->do_replace = (statement->info.insert.do_replace ? 1 : 0);

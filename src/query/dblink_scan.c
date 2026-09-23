@@ -1350,7 +1350,7 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  *   num_attrs(in)  : length of attr_names (0 when positional)
  *   num_bind(in)   : number of ? placeholders (= SELECT column count)
  *   do_replace(in) : true to head the statement with REPLACE INTO instead of INSERT INTO
- *   odku(in)       : ON DUPLICATE KEY UPDATE assignments, or NULL for a statement without the clause
+ *   odku(in)       : ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means no clause
  *   sql_out(out)   : set to the built SQL text on success
  */
 static int
@@ -1649,6 +1649,8 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
  *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders (= SELECT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
+ *   odku(in)        : INSERT only -- ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means
+ *                     no clause. REPLACE is refused when it carries any
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:
@@ -1676,7 +1678,7 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user, const char *pwd,
 		 const char *table_name, char **attr_names, int num_attrs, int num_bind, const char *key_col,
-		 const char *op, DBLINK_DML_STATE * state)
+		 const char *op, const DBLINK_ODKU_ASSIGNS * odku, DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
@@ -1732,7 +1734,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
     case DBLINK_DML_INSERT:
     case DBLINK_DML_REPLACE:
       ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind,
-					 kind == DBLINK_DML_REPLACE, NULL, &sql);
+					 kind == DBLINK_DML_REPLACE, odku, &sql);
       break;
     case DBLINK_DML_DELETE:
       ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, &sql);
