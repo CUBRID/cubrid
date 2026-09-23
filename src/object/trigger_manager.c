@@ -3557,64 +3557,39 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
-  DB_SET *table;
-  DB_VALUE value;
-  int max, i;
+  DB_OBJLIST *objects = NULL, *o;
 
   *list = NULL;
 
-  if (Au_root == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  error = obj_get (Au_root, "triggers", &value);
+  error = tr_find_trigger_objects (TR_QUERY_ALL_TRIGGERS, &objects);
   if (error != NO_ERROR)
     {
-      return NO_ERROR;
+      return error;
     }
 
-  if (DB_IS_NULL (&value))
+  for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      table = NULL;
-    }
-  else
-    {
-      table = db_get_set (&value);
-    }
-
-  if (table == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  error = set_filter (table);
-  max = set_size (table);
-  for (i = 1; i < max && error == NO_ERROR; i += 2)
-    {
-      error = set_get_element (table, i, &value);
-      if (error == NO_ERROR)
+      trigger = tr_map_trigger (o->op, 1);
+      if (trigger == NULL)
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
+	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
 	    {
-	      /* think about possibly avoiding this, especially if we're going to turn around and delete it */
-	      trigger = tr_map_trigger (db_get_object (&value), 1);
-	      if (trigger == NULL)
-		{
-		  ASSERT_ERROR_AND_SET (error);
-		}
-	      else
-		{
-		  if ((!active_filter || trigger->status == TR_STATUS_ACTIVE)
-		      && check_authorization (trigger, alter_filter))
-		    {
-		      error = ml_ext_add (list, db_get_object (&value), NULL);
-		    }
-		}
+	      /* dropped by another transaction after the query read it */
+	      er_clear ();
+	      continue;
 	    }
+	  ASSERT_ERROR_AND_SET (error);
+	}
+      else if ((!active_filter || trigger->status == TR_STATUS_ACTIVE) && check_authorization (trigger, alter_filter))
+	{
+	  error = ml_ext_add (list, o->op, NULL);
 	}
     }
-  set_free (table);
+
+  if (objects != NULL)
+    {
+      ml_free (objects);
+    }
 
   if (error != NO_ERROR && *list != NULL)
     {
