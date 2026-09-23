@@ -3742,6 +3742,9 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
     {
       return NULL;
     }
+  /* Workers borrow only the const input for cache keys; inheriting the gate table is dpin-08. */
+  memset (&new_xasl_state->resolved, 0, sizeof (new_xasl_state->resolved));
+  new_xasl_state->resolved.in = xasl_state_p->resolved.in;
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
   new_xasl_state->vd.xasl_state = new_xasl_state;
@@ -3770,6 +3773,138 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
       pr_clone_value (&xasl_state_p->vd.dbval_ptr[i], &new_xasl_state->vd.dbval_ptr[i]);
     }
   return new_xasl_state;
+}
+
+/* Allocate values and the sparse domain table as one owner-local block.
+ * Every value starts as NULL so the common error exit can clear a partial fill. */
+static int
+qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, XASL_STATE * xasl_state)
+{
+  RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
+  assert (!resolved.sealed && resolved.vals == NULL);
+  assert (plan == NULL || plan->dbval_cnt == xasl_state->vd.dbval_cnt);
+  resolved.in = xasl_state->vd.dbval_ptr;
+  resolved.owner = thread_p;
+  resolved.plan = plan;
+  const int n_vals = plan == NULL ? xasl_state->vd.dbval_cnt : plan->n_refs;
+  const int n_slots = plan == NULL ? 0 : plan->n_slots;
+  assert (n_vals >= xasl_state->vd.dbval_cnt && n_slots >= 0);
+  static_assert (sizeof (DB_VALUE) % alignof (RESOLVED_DOMAIN) == 0, "gate table alignment");
+  const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_slots;
+  if (bytes == 0)
+    {
+      return NO_ERROR;
+    }
+  resolved.vals = (DB_VALUE *) db_private_alloc (thread_p, bytes);
+  if (resolved.vals == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (int i = 0; i < n_vals; i++)
+    {
+      db_make_null (&resolved.vals[i]);
+    }
+  resolved.n_vals = n_vals;
+  resolved.n_slots = n_slots;
+  if (n_slots != 0)
+    {
+      resolved.table = (RESOLVED_DOMAIN *) (resolved.vals + n_vals);
+      memset (resolved.table, 0, sizeof (*resolved.table) * n_slots);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * qexec_resolve_domains () - the execution gate G1, once per execution before
+ *   the main block.
+ *   return: NO_ERROR, or ER_code (a failure is a pre-execution error)
+ *   xasl(in): root of the XASL tree carrying the load-derived DOMAIN_PLAN
+ *   xasl_state(in/out): after return vd.dbval_ptr points to the owned values
+ *
+ * D-323-01/03/04: the plan stays immutable, the input stays const, and each
+ * reference (val_pos, domain, failure policy) has its own value. Values are
+ * copied unchanged: converting them and fixing GATE slots switches on together
+ * with the client cast removal in dpin-09 (#332 r1: today's regu domains are
+ * not rule-table domains yet, so conversion failures would change answers).
+ */
+int
+qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state)
+{
+  RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
+  const int dbval_cnt = xasl_state->vd.dbval_cnt;
+  const DOMAIN_PLAN *plan = xasl->domain_plan;
+  if (plan != NULL && plan->dbval_cnt != dbval_cnt)
+    {
+      /* qmgr accepts surplus client values; plan references past dbval_cnt would overlap them. */
+      assert (plan->dbval_cnt < dbval_cnt);
+      plan = NULL;
+    }
+
+  int error = qexec_init_resolved_domains (thread_p, plan, xasl_state);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (resolved.vals != NULL)
+    {
+      xasl_state->vd.dbval_ptr = resolved.vals;
+    }
+
+  /* const_refs is sorted by ref, and non-bind constants (ref -1) come first:
+   * merge it with the value positions so each value is produced exactly once. */
+  const int n_const_refs = plan == NULL ? 0 : plan->n_const_refs;
+  int next = 0;
+  for (int ref = 0; ref < resolved.n_vals; ref++)
+    {
+      while (next < n_const_refs && plan->const_refs[next]->ref < ref)
+	{
+	  next++;
+	}
+      int val_pos = ref;
+      if (next < n_const_refs && plan->const_refs[next]->ref == ref)
+	{
+	  val_pos = plan->items_cold[plan->const_refs[next] - plan->items].val_pos;
+	}
+      /* Only a bind value no plan item references lacks an item; a secondary
+       * reference is always a constant bind reference. */
+      assert (val_pos >= 0 && val_pos < dbval_cnt);
+      error = pr_clone_value (&resolved.in[val_pos], &resolved.vals[ref]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* GATE slots, volatile gate slots (S5), gate-dependent nodes and constant key
+   * ranges receive work once the compiler emits GATE (dpin-09) and keys (dpin-16). */
+  assert (plan == NULL || (plan->n_slots == 0 && plan->n_gate_nodes == 0 && plan->n_keys == 0));
+
+  if (dbval_cnt > 0)
+    {
+      perfmon_add_stat (thread_p, PSTAT_QM_NUM_DOMAIN_GATE_CONVERT, dbval_cnt);
+    }
+  resolved.sealed = true;
+  return NO_ERROR;
+}
+
+/* The connection owns the gate block and all cloned payloads, including
+ * secondary references. The input may alias an SA client's host variables. */
+void
+qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
+{
+  RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
+  assert (resolved.owner == thread_p || resolved.vals == NULL);
+  for (int i = 0; i < resolved.n_vals; i++)
+    {
+      pr_clear_value (&resolved.vals[i]);
+    }
+  if (resolved.vals != NULL)
+    {
+      db_private_free (thread_p, resolved.vals);
+      xasl_state->vd.dbval_ptr = const_cast < DB_VALUE * >(resolved.in);
+    }
+  memset (&resolved, 0, sizeof (resolved));
 }
 
 extern void
@@ -17628,6 +17763,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
+  memset (&xasl_state.resolved, 0, sizeof (xasl_state.resolved));
 
   /* save the query_id into the XASL state struct */
   xasl_state.query_id = query_id;
@@ -17670,6 +17806,14 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
       /* We need to be sure we have a snapshot. Insert ... values execution might not get any snapshot. Then next
        * select may obtain weird results (since things that changed after executing insert will be visible). */
       (void) logtb_get_mvcc_snapshot (thread_p);
+    }
+
+  /* G1: convert the bind values once, before the main block and its aptr/PX clones. */
+  stat = qexec_resolve_domains (thread_p, xasl, &xasl_state);
+  if (stat != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, &xasl_state);
+      goto query_error;
     }
 
   /* execute the query set the query in progress flag so that qmgr_clear_trans_wakeup() will not remove our XASL
@@ -17774,6 +17918,7 @@ query_error:
 #endif /* CUBRID_DEBUG */
 
 end:
+  qexec_clear_resolved_domains (thread_p, &xasl_state);
 
 #if defined (SERVER_MODE)
   if (prm_get_bool_value (PRM_ID_LOG_QUERY_LISTS))
@@ -29044,7 +29189,8 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
 
 	  for (i = 0; i < host_var_count; i++)
 	    {
-	      dbval_p[i] = xasl_state->vd.dbval_ptr[host_var_index[i]];
+	      /* qmgr_process_query stores the cache under the original values. */
+	      dbval_p[i] = xasl_state->resolved.in[host_var_index[i]];
 	    }
 	}
 

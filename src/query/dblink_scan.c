@@ -646,7 +646,8 @@ dblink_bind_param (int conn_handle, int stmt_handle, VAL_DESCR * vd, DBLINK_HOST
   for (n = 0; n < host_vars->count; n++)
     {
       i = host_vars->index[n];
-      ret = dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1, &vd->dbval_ptr[i]);
+      /* The remote server binds the original value, not the gate's converted one. */
+      ret = dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1, (DB_VALUE *) & vd->xasl_state->resolved.in[i]);
       if (ret != NO_ERROR)
 	{
 	  return ret;

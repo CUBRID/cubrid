@@ -36,6 +36,29 @@
 // forward definitions
 struct regu_variable_list_node;
 
+/* Read-only execution views. Peek callers retain the existing no-write
+ * contract even though their public DB_VALUE ** output is not const. */
+inline const DB_VALUE *
+REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
+{
+  assert (vd->xasl_state->resolved.sealed);
+  assert (regu->domain_plan != NULL && regu->domain_plan->ref >= 0);
+  assert (regu->domain_plan->ref < vd->xasl_state->resolved.n_vals);
+  return vd->dbval_ptr + regu->domain_plan->ref;
+}
+
+inline const RESOLVED_DOMAIN *
+RESOLVED (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  assert (item != NULL);
+  if (item->slot < 0)
+    {
+      return &item->fixed;
+    }
+  assert (vd->xasl_state->resolved.sealed && item->slot < vd->xasl_state->resolved.n_slots);
+  return &vd->xasl_state->resolved.table[item->slot];
+}
+
 extern int fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_descr * vd,
 				  OID * class_oid, OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
 

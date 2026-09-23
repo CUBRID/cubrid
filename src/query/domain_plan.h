@@ -80,6 +80,17 @@ struct domain_plan
   domain_plan_key *keys;
 };
 
+struct RESOLVED_DOMAIN_TABLE
+{
+  const DB_VALUE *in;
+  DB_VALUE *vals;
+  RESOLVED_DOMAIN *table;
+  int n_vals, n_slots;
+  THREAD_ENTRY *owner;
+  const DOMAIN_PLAN *plan;
+  bool sealed;
+};
+
 int stx_build_domain_plan (THREAD_ENTRY *thread_p, xasl_node *root, xasl_unpack_info *unpack_info,
                           bool is_pred_stream);
 bool domain_plan_validate (const DOMAIN_PLAN *plan);

@@ -34,6 +34,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
+#include "domain_plan.h"
 #include "query_list.h"
 #include "system.h"
 #include "thread_compat.hpp"
@@ -90,6 +91,7 @@ struct xasl_state
   VAL_DESCR vd;			/* Value Descriptor */
   QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
+  RESOLVED_DOMAIN_TABLE resolved;
 };
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
@@ -114,6 +116,8 @@ extern int qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, xasl_nod
 extern qfile_list_id *qexec_get_xasl_list_id (xasl_node * xasl);
 extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 extern void qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
+extern int qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state);
+extern void qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 #if defined(CUBRID_DEBUG)
 extern void get_xasl_dumper_linked_in ();
 #endif
