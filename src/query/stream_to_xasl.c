@@ -2264,7 +2264,12 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->sub_host_var_count);
   if (xasl->sub_host_var_count > 0)
     {
-      xasl->sub_host_var_index = (int *) malloc (sizeof (int) * xasl->sub_host_var_count);
+      xasl->sub_host_var_index = (int *) stx_alloc_struct (thread_p, sizeof (int) * xasl->sub_host_var_count);
+      if (xasl->sub_host_var_index == NULL)
+	{
+	  goto error;
+	}
+
       for (i = 0; i < xasl->sub_host_var_count; i++)
 	{
 	  ptr = or_unpack_int (ptr, &xasl->sub_host_var_index[i]);

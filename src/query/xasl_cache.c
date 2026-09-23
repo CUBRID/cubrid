@@ -357,6 +357,14 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_Cleanup_array = (XCACHE_CLEANUP_CANDIDATE *) malloc (xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
   if (xcache_Cleanup_array == NULL)
     {
+      xcache_Hashmap.destroy ();
+
+      /* Use global heap */
+      save_heapid = db_change_private_heap (thread_p, 0);
+      bh_destroy (thread_p, xcache_Cleanup_bh);
+      xcache_Cleanup_bh = NULL;
+      (void) db_change_private_heap (thread_p, save_heapid);
+
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      xcache_Soft_capacity * sizeof (XCACHE_CLEANUP_CANDIDATE));
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
@@ -401,6 +409,11 @@ xcache_finalize (THREAD_ENTRY * thread_p)
       xcache_Cleanup_bh = NULL;
     }
   (void) db_change_private_heap (thread_p, save_heapid);
+
+  if (xcache_Cleanup_array != NULL)
+    {
+      free_and_init (xcache_Cleanup_array);
+    }
 
   xcache_Enabled = false;
 }
@@ -1580,7 +1593,7 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       if (*xcache_entry == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
+	  goto error;
 	}
 
       /* Initialize xcache_entry stuff. */
