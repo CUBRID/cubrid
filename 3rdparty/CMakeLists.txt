@@ -15,19 +15,27 @@
 #   limitations under the License.
 # 
 
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/CubridThirdPartyContract.cmake")
+cubrid_thirdparty_load_contract("${CMAKE_CURRENT_LIST_DIR}/manifest.json")
+cubrid_thirdparty_select_mode(CUBRID_3RDPARTY_SELECTED_MODE)
+if(CUBRID_3RDPARTY_SELECTED_MODE STREQUAL "CI_PREBUILT")
+  message(FATAL_ERROR
+    "CUBRID_3RDPARTY_MODE=CI_PREBUILT is not available until the prefix consumer is enabled")
+endif()
+
 # Unused: on Linux flex and bison come from the system, and only WIN_FLEX_BISON_URL
 # below is downloaded. Kept commented out in case bundling is ever revived - the
 # versions named here are NOT built or shipped, so they are not a CVE surface.
 #set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
 #set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
-set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.8.2.tar.gz")             # expat library sources URL
-set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.2.tar.gz")                  # editline library sources URL
-set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0-250205.tar.gz")              # rapidjson library sources URL
-set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-3.5.7.tar.gz")       # openssl library sources URL
-set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.14.tar.gz")     # unixODBC library sources URL
-set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
-set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2023-03-01.tar.gz")                      # RE2
-set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/lz4-1.10.0.tar.gz")                          # LZ4
+set(WITH_LIBEXPAT_URL "${CUBRID_3RDPARTY_EXPAT_SOURCE_URL}")
+set(WITH_LIBEDIT_URL "${CUBRID_3RDPARTY_LIBEDIT_SOURCE_URL}")
+set(WITH_RAPIDJSON_URL "${CUBRID_3RDPARTY_RAPIDJSON_SOURCE_URL}")
+set(WITH_LIBOPENSSL_URL "${CUBRID_3RDPARTY_OPENSSL_SOURCE_URL}")
+set(WITH_LIBUNIXODBC_URL "${CUBRID_3RDPARTY_UNIXODBC_SOURCE_URL}")
+set(WITH_LIBTBB_URL "${CUBRID_3RDPARTY_ONETBB_SOURCE_URL}")
+set(WITH_RE2_URL "${CUBRID_3RDPARTY_RE2_SOURCE_URL}")
+set(WITH_LZ4_URL "${CUBRID_3RDPARTY_LZ4_SOURCE_URL}")
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
@@ -45,14 +53,14 @@ set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_
 #   Then set the resulting SHA256 hash in the format: "SHA256=<hash_value>"
 #
 # Below are the URL_HASH values for different libraries used in this project:
-set(WITH_LIBEXPAT_URL_HASH "SHA256=ef7d1994f533c9e7343d6c19f31064fc8ebbcbcaa144be3812b4f43052a05f4c")		# expat library 
-set(WITH_LIBEDIT_URL_HASH "SHA256=140312cd2dd22b4981d22448f02ef215fd7685ca57bb90b1427e496234d2d7da")            # editline libray
-set(WITH_RAPIDJSON_URL_HASH "SHA256=2d2601a82d2d3b7e143a3c8d43ef616671391034bc46891a9816b79cf2d3e7a8")          # rapidjson library 
-set(WITH_LIBOPENSSL_URL_HASH "SHA256=a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8")         # openssl library 
-set(WITH_LIBUNIXODBC_URL_HASH "SHA256=4e2814de3e01fc30b0b9f75e83bb5aba91ab0384ee951286504bb70205524771")        # unixODBC library 
-set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")             # intel oneTBB library 
-set(WITH_RE2_URL_HASH "SHA256=7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48")		# RE2
-set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b")		# LZ4
+set(WITH_LIBEXPAT_URL_HASH "SHA256=${CUBRID_3RDPARTY_EXPAT_SOURCE_SHA256}")
+set(WITH_LIBEDIT_URL_HASH "SHA256=${CUBRID_3RDPARTY_LIBEDIT_SOURCE_SHA256}")
+set(WITH_RAPIDJSON_URL_HASH "SHA256=${CUBRID_3RDPARTY_RAPIDJSON_SOURCE_SHA256}")
+set(WITH_LIBOPENSSL_URL_HASH "SHA256=${CUBRID_3RDPARTY_OPENSSL_SOURCE_SHA256}")
+set(WITH_LIBUNIXODBC_URL_HASH "SHA256=${CUBRID_3RDPARTY_UNIXODBC_SOURCE_SHA256}")
+set(WITH_LIBTBB_URL_HASH "SHA256=${CUBRID_3RDPARTY_ONETBB_SOURCE_SHA256}")
+set(WITH_RE2_URL_HASH "SHA256=${CUBRID_3RDPARTY_RE2_SOURCE_SHA256}")
+set(WITH_LZ4_URL_HASH "SHA256=${CUBRID_3RDPARTY_LZ4_SOURCE_SHA256}")
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
@@ -102,20 +110,62 @@ endif()
 set (3RDPARTY_LIBS_DIR ${CMAKE_BINARY_DIR}/3rdparty)
 set_property(DIRECTORY PROPERTY EP_BASE "${3RDPARTY_LIBS_DIR}")
 
-# What CUBRID adds to every third-party library built below: -fPIC because these
-# are static archives linked into CUBRID's shared libraries, -w because their
-# warnings are not actionable here.
-#
-# The optimization level stays per-library, at whatever upstream declares and
-# tests; debug info is not carried over. Beware how flags reach a library: a make
-# command-line variable overrides the Makefile's own assignments, and CFLAGS given
-# to configure suppresses autoconf's "-g -O2". Passing only -fPIC or -w leaves the
-# library at -O0.
-set(3RDPARTY_COMMON_FLAGS "-fPIC -w")
-
-# restates the level from autoconf's "-g -O2", which supplying CFLAGS suppresses.
-# No CXXFLAGS: none of these compile C++ in the target this build runs.
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3rdparty --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
+# Artifact-affecting recipe arguments and fixed flags come from manifest.json.
+cubrid_thirdparty_require_recipe(expat autoconf)
+cubrid_thirdparty_require_recipe(libedit autoconf)
+cubrid_thirdparty_require_recipe(lz4 make)
+cubrid_thirdparty_require_recipe(openssl openssl)
+cubrid_thirdparty_require_recipe(unixodbc autoconf)
+cubrid_thirdparty_require_recipe(rapidjson cmake)
+cubrid_thirdparty_require_recipe(re2 make)
+cubrid_thirdparty_require_recipe(onetbb cmake)
+# Temporary equality guards keep normalized output declarations coupled to the
+# ExternalProject graph until producer and consumer paths use them exclusively.
+cubrid_thirdparty_require_outputs(expat
+  HEADERS include/expat.h include/expat_config.h include/expat_external.h
+  LIBRARIES lib/libexpat.a LINKAGES static SONAMES -)
+cubrid_thirdparty_require_outputs(libedit
+  HEADERS include/editline include/histedit.h
+  LIBRARIES lib/libedit.a LINKAGES static SONAMES -)
+cubrid_thirdparty_require_outputs(lz4
+  HEADERS include/lz4.h include/lz4frame.h include/lz4hc.h
+  LIBRARIES lib/liblz4.a LINKAGES static SONAMES -)
+cubrid_thirdparty_require_outputs(openssl
+  HEADERS include/openssl
+  LIBRARIES lib/libssl.a lib/libcrypto.a LINKAGES static static SONAMES - -)
+cubrid_thirdparty_require_outputs(unixodbc
+  HEADERS include/sql.h include/sqlext.h include/sqltypes.h
+  LIBRARIES lib/libodbc.so LINKAGES shared SONAMES libodbc.so.2)
+cubrid_thirdparty_require_outputs(rapidjson HEADERS include/rapidjson)
+cubrid_thirdparty_require_outputs(re2
+  HEADERS include/re2
+  LIBRARIES lib/libre2.a LINKAGES static SONAMES -)
+cubrid_thirdparty_require_outputs(onetbb
+  HEADERS include/oneapi include/tbb
+  LIBRARIES lib/libtbb.a LINKAGES static SONAMES -)
+cubrid_thirdparty_expand_arguments(expat CONFIGURE "${3RDPARTY_LIBS_DIR}" LIBEXPAT_CONFIGURE_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(expat BUILD "${3RDPARTY_LIBS_DIR}" LIBEXPAT_BUILD_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(expat INSTALL "${3RDPARTY_LIBS_DIR}" LIBEXPAT_INSTALL_ARGUMENTS)
+cubrid_thirdparty_expand_environment(expat CFLAGS "${3RDPARTY_LIBS_DIR}" LIBEXPAT_CFLAGS)
+cubrid_thirdparty_expand_arguments(libedit CONFIGURE "${3RDPARTY_LIBS_DIR}" LIBEDIT_CONFIGURE_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(libedit BUILD "${3RDPARTY_LIBS_DIR}" LIBEDIT_BUILD_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(libedit INSTALL "${3RDPARTY_LIBS_DIR}" LIBEDIT_INSTALL_ARGUMENTS)
+cubrid_thirdparty_expand_environment(libedit CFLAGS "${3RDPARTY_LIBS_DIR}" LIBEDIT_CFLAGS)
+cubrid_thirdparty_expand_environment(libedit LDFLAGS "${3RDPARTY_LIBS_DIR}" LIBEDIT_LDFLAGS)
+cubrid_thirdparty_expand_environment(libedit LIBS "${3RDPARTY_LIBS_DIR}" LIBEDIT_LINK_LIBS)
+cubrid_thirdparty_expand_arguments(lz4 BUILD "${3RDPARTY_LIBS_DIR}" LZ4_BUILD_ARGUMENTS)
+cubrid_thirdparty_expand_environment(lz4 USERCFLAGS "${3RDPARTY_LIBS_DIR}" LZ4_USERCFLAGS)
+cubrid_thirdparty_expand_arguments(openssl CONFIGURE "${3RDPARTY_LIBS_DIR}" LIBOPENSSL_CONFIGURE_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(openssl BUILD "${3RDPARTY_LIBS_DIR}" LIBOPENSSL_BUILD_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(openssl INSTALL "${3RDPARTY_LIBS_DIR}" LIBOPENSSL_INSTALL_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(unixodbc CONFIGURE "${3RDPARTY_LIBS_DIR}" LIBUNIXODBC_CONFIGURE_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(unixodbc BUILD "${3RDPARTY_LIBS_DIR}" LIBUNIXODBC_BUILD_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(unixodbc INSTALL "${3RDPARTY_LIBS_DIR}" LIBUNIXODBC_INSTALL_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(rapidjson CONFIGURE "${3RDPARTY_LIBS_DIR}" RAPIDJSON_CONFIGURE_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(re2 BUILD "${3RDPARTY_LIBS_DIR}" RE2_BUILD_ARGUMENTS)
+cubrid_thirdparty_expand_environment(re2 CXXFLAGS "${3RDPARTY_LIBS_DIR}" RE2_CXXFLAGS)
+cubrid_thirdparty_expand_arguments(onetbb CONFIGURE "${3RDPARTY_LIBS_DIR}" LIBTBB_CONFIGURE_ARGUMENTS)
+cubrid_thirdparty_expand_arguments(onetbb INSTALL "${3RDPARTY_LIBS_DIR}" LIBTBB_INSTALL_ARGUMENTS)
 
 # Job count for the libraries whose BUILD_COMMAND drives make directly. CMake does
 # not forward its own -j to an ExternalProject's custom BUILD_COMMAND, and the
@@ -238,9 +288,9 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       # fallback; newer hosts still pick getentropy or getrandom ahead of it. Prefer the
       # configure option over defining XML_DEV_URANDOM through CPPFLAGS, so that the
       # configure summary and expat_config.h record what was actually built.
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook --with-dev-urandom
-      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    ${LIBEXPAT_CONFIGURE_ARGUMENTS} "CFLAGS=${LIBEXPAT_CFLAGS}"
+      BUILD_COMMAND        make ${LIBEXPAT_BUILD_ARGUMENTS}
+      INSTALL_COMMAND      make ${LIBEXPAT_INSTALL_ARGUMENTS}
       "${LIBEXPAT_BYPRODUCTS}"
       )
   elseif(WIN32)
@@ -286,9 +336,10 @@ if(UNIX)
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    "LDFLAGS=-L${3RDPARTY_LIBS_DIR}" ${DEFAULT_CONFIGURE_OPTS} LIBS=-ldl
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    "LDFLAGS=${LIBEDIT_LDFLAGS}" ${LIBEDIT_CONFIGURE_ARGUMENTS}
+                           "CFLAGS=${LIBEDIT_CFLAGS}" "LIBS=${LIBEDIT_LINK_LIBS}"
+      BUILD_COMMAND        make ${LIBEDIT_BUILD_ARGUMENTS}
+      INSTALL_COMMAND      make ${LIBEDIT_INSTALL_ARGUMENTS}
       "${LIBEDIT_BYPRODUCTS}"
       )
     if(TARGET ${LIBNCURSES_TARGET})
@@ -340,7 +391,7 @@ else()
     # drop -O3, so the level is restated here. Without this the archive is built
     # without -fPIC and cannot be linked into libcubridcs.so.
     # The liblz4.a target skips the shared library, which CUBRID does not use.
-    BUILD_COMMAND         make -C lib "USERCFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}" liblz4.a
+    BUILD_COMMAND         make ${LZ4_BUILD_ARGUMENTS} "USERCFLAGS=${LZ4_USERCFLAGS}"
     INSTALL_COMMAND       ""                  # suppress install
     "${LZ4_BYPRODUCTS}"
   )
@@ -386,9 +437,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       # no-tests/no-docs + the build_sw target: OpenSSL 3.x puts every fuzz and test
       # binary in PROGRAMS, and "all" is "build_sw build_docs". install_sw needs
       # neither, and building them costs ~20 minutes and ~1.5 GB of objects.
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} --libdir=lib no-shared no-module no-tests no-docs # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make -j${3RDPARTY_NPROC} build_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    ${LIBOPENSSL_CONFIGURE_ARGUMENTS}
+      BUILD_COMMAND        make -j${3RDPARTY_NPROC} ${LIBOPENSSL_BUILD_ARGUMENTS}
+      INSTALL_COMMAND      make ${LIBOPENSSL_INSTALL_ARGUMENTS}
       "${LIBOPENSSL_BYPRODUCTS}"
       )
     # unix-Makefile.tmpl does an unconditional "use Time::Piece", which minimal Perl
@@ -447,9 +498,9 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${3RDPARTY_LIBS_DIR} # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    ${LIBUNIXODBC_CONFIGURE_ARGUMENTS}
+      BUILD_COMMAND        make ${LIBUNIXODBC_BUILD_ARGUMENTS}
+      INSTALL_COMMAND      make ${LIBUNIXODBC_INSTALL_ARGUMENTS}
       "${LIBUNIXODBC_BYPRODUCTS}"
       )
     list(APPEND EP_TARGETS ${LIBUNIXODBC_TARGET})
@@ -477,9 +528,7 @@ externalproject_add(${RAPIDJSON_TARGET}
   # don't install
   INSTALL_COMMAND      ""
   # don't build test, doc and examples
-  CMAKE_CACHE_ARGS     -DRAPIDJSON_BUILD_TESTS:STRING=off
-                       -DRAPIDJSON_BUILD_DOC:STRING=off
-                       -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
+  CMAKE_CACHE_ARGS     ${RAPIDJSON_CONFIGURE_ARGUMENTS}
   "${RAPIDJSON_BYPRODUCTS}"
 )
 
@@ -504,7 +553,7 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
       # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g".
       # No CFLAGS: re2 has no C sources and its Makefile never reads CFLAGS.
-      BUILD_COMMAND make "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
+      BUILD_COMMAND make ${RE2_BUILD_ARGUMENTS} "CXXFLAGS=${RE2_CXXFLAGS}"
       INSTALL_COMMAND ""
       "${RE2_BYPRODUCTS}"
     )
@@ -533,7 +582,6 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
     #e.g. https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.11.0.tar.gz
     set(LIBTBB_LIBS ${3RDPARTY_LIBS_DIR}/lib/libtbb.a)
     set(LIBTBB_INCLUDES ${3RDPARTY_LIBS_DIR}/Source/libtbb/include/tbb ${3RDPARTY_LIBS_DIR}/Source/libtbb/include/oneapi ${3RDPARTY_LIBS_DIR}/Source/libtbb/include/oneapi/tbb ${3RDPARTY_LIBS_DIR}/Source/libtbb/include/oneapi/tbb/detail)
-    set(LIBTBB_CONFIGURE -DCMAKE_INSTALL_PREFIX=${3RDPARTY_LIBS_DIR} -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_CXX_FLAGS=-DTBB_ALLOCATOR_TRAITS_BROKEN -D__TBB_DYNAMIC_LOAD_ENABLED=0 -DTBBMALLOC_BUILD=OFF -DTBBMALLOC_PROXY_BUILD=OFF -DTBB_TEST=OFF -DTBB_ENABLE_IPO=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release)
     ADD_BY_PRODUCTS_VARIABLE ("LIBTBB" ${LIBTBB_LIBS})
     externalproject_add(${LIBTBB_TARGET}
       URL                  ${WITH_LIBTBB_URL}
@@ -543,10 +591,10 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBTBB_CONFIGURE}
+      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBTBB_CONFIGURE_ARGUMENTS}
       BUILD_IN_SOURCE      TRUE
       BUILD_COMMAND        make -j${3RDPARTY_NPROC}
-      INSTALL_COMMAND      make -j${3RDPARTY_NPROC} install
+      INSTALL_COMMAND      make -j${3RDPARTY_NPROC} ${LIBTBB_INSTALL_ARGUMENTS}
       "${LIBTBB_BYPRODUCTS}"
     )
 
@@ -557,18 +605,12 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
 endif()
 
 # [FIXME!] Expose variables for other CMakeLists
-set (EP_TARGETS ${EP_TARGETS} PARENT_SCOPE)
-set (EP_LIBS ${EP_LIBS} PARENT_SCOPE)
-set (EP_INCLUDES ${EP_INCLUDES} PARENT_SCOPE)
-
 # TODO: EP_TARGETS, EP_LIBS, and EP_INCLUDES are currently linked across all targets.
 # However, TBB is only required on the server side and should only be linked to libcubrid.so.
 # To achieve this, TBB has been separated into a distinct list to ensure exclusive linking with libcubrid.so.
 # Going forward, directories and libraries strictly used on the server side should be categorized
 # under the EP_SERVER_XXX section.
-set (TBB_TARGETS ${TBB_TARGETS} PARENT_SCOPE)
-set (TBB_INCLUDES ${TBB_INCLUDES} PARENT_SCOPE)
-set (TBB_LIBS ${TBB_LIBS} PARENT_SCOPE)
+cubrid_thirdparty_export_variables()
 
 # Expose targets for sa - FIXME better solutions
 include (3rdparty_util)

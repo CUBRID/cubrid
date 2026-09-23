@@ -1,0 +1,393 @@
+{
+  "dependencies": [
+    {
+      "build": {
+        "build_arguments": [
+          "AUTOCONF=:",
+          "AUTOHEADER=:",
+          "AUTOMAKE=:",
+          "ACLOCAL=:"
+        ],
+        "configure_arguments": [
+          "<SOURCE_DIR>/configure",
+          "--prefix=<PREFIX>",
+          "--enable-static",
+          "--disable-shared",
+          "--with-pic",
+          "--without-xmlwf",
+          "--without-docbook",
+          "--with-dev-urandom"
+        ],
+        "environment": {
+          "CFLAGS": "-O2 -fPIC -w"
+        },
+        "install_arguments": [
+          "install",
+          "AUTOCONF=:",
+          "AUTOHEADER=:",
+          "AUTOMAKE=:",
+          "ACLOCAL=:"
+        ],
+        "recipe": "autoconf"
+      },
+      "licenses": [
+        {
+          "destination": "licenses/libexpat_license.txt",
+          "sha256": "31b15de82aa19a845156169a17a5488bf597e561b2c318d159ed583139b25e87",
+          "source": "3rdparty/license/libexpat_license.txt"
+        }
+      ],
+      "name": "expat",
+      "outputs": {
+        "headers": [
+          "include/expat.h",
+          "include/expat_config.h",
+          "include/expat_external.h"
+        ],
+        "libraries": [
+          {
+            "link_name": "lib/libexpat.a",
+            "linkage": "static",
+            "soname": null
+          }
+        ]
+      },
+      "patches": [],
+      "source": {
+        "sha256": "ef7d1994f533c9e7343d6c19f31064fc8ebbcbcaa144be3812b4f43052a05f4c",
+        "url": "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.8.2.tar.gz"
+      }
+    },
+    {
+      "build": {
+        "build_arguments": [
+          "all",
+          "AUTOCONF=:",
+          "AUTOHEADER=:",
+          "AUTOMAKE=:",
+          "ACLOCAL=:"
+        ],
+        "configure_arguments": [
+          "<SOURCE_DIR>/configure",
+          "--prefix=<PREFIX>",
+          "--enable-static",
+          "--disable-shared",
+          "--with-pic"
+        ],
+        "environment": {
+          "CFLAGS": "-O2 -fPIC -w",
+          "LDFLAGS": "-L<PREFIX>",
+          "LIBS": "-ldl"
+        },
+        "install_arguments": [
+          "install",
+          "AUTOCONF=:",
+          "AUTOHEADER=:",
+          "AUTOMAKE=:",
+          "ACLOCAL=:"
+        ],
+        "recipe": "autoconf"
+      },
+      "licenses": [
+        {
+          "destination": "licenses/libedit_license.txt",
+          "sha256": "9da6c9c74987a36c84302982799d17d2f748ba1c1c0c471425716173c1d07649",
+          "source": "3rdparty/license/libedit_license.txt"
+        }
+      ],
+      "name": "libedit",
+      "outputs": {
+        "headers": [
+          "include/editline",
+          "include/histedit.h"
+        ],
+        "libraries": [
+          {
+            "link_name": "lib/libedit.a",
+            "linkage": "static",
+            "soname": null
+          }
+        ]
+      },
+      "patches": [],
+      "source": {
+        "sha256": "140312cd2dd22b4981d22448f02ef215fd7685ca57bb90b1427e496234d2d7da",
+        "url": "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.2.tar.gz"
+      }
+    },
+    {
+      "build": {
+        "build_arguments": [
+          "-C",
+          "lib",
+          "liblz4.a"
+        ],
+        "configure_arguments": [],
+        "environment": {
+          "USERCFLAGS": "-O3 -fPIC -w"
+        },
+        "install_arguments": [],
+        "recipe": "make"
+      },
+      "licenses": [
+        {
+          "destination": "licenses/lz4_license.txt",
+          "sha256": "8b58c446121a109ccf32edc094bba3010a3d85e4ee3702950db55e4d3e87736c",
+          "source": "3rdparty/license/lz4_license.txt"
+        }
+      ],
+      "name": "lz4",
+      "outputs": {
+        "headers": [
+          "include/lz4.h",
+          "include/lz4frame.h",
+          "include/lz4hc.h"
+        ],
+        "libraries": [
+          {
+            "link_name": "lib/liblz4.a",
+            "linkage": "static",
+            "soname": null
+          }
+        ]
+      },
+      "patches": [],
+      "source": {
+        "sha256": "537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b",
+        "url": "https://github.com/CUBRID/3rdparty/raw/develop/lz4/lz4-1.10.0.tar.gz"
+      }
+    },
+    {
+      "build": {
+        "build_arguments": [
+          "build_sw",
+          "AUTOCONF=:",
+          "AUTOHEADER=:",
+          "AUTOMAKE=:",
+          "ACLOCAL=:"
+        ],
+        "configure_arguments": [
+          "<SOURCE_DIR>/config",
+          "--prefix=<PREFIX>",
+          "--libdir=lib",
+          "no-shared",
+          "no-module",
+          "no-tests",
+          "no-docs"
+        ],
+        "environment": {},
+        "install_arguments": [
+          "install_sw",
+          "AUTOCONF=:",
+          "AUTOHEADER=:",
+          "AUTOMAKE=:",
+          "ACLOCAL=:"
+        ],
+        "recipe": "openssl"
+      },
+      "licenses": [
+        {
+          "destination": "licenses/libopenssl_license.txt",
+          "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a",
+          "source": "3rdparty/license/libopenssl_license.txt"
+        }
+      ],
+      "name": "openssl",
+      "outputs": {
+        "headers": [
+          "include/openssl"
+        ],
+        "libraries": [
+          {
+            "link_name": "lib/libssl.a",
+            "linkage": "static",
+            "soname": null
+          },
+          {
+            "link_name": "lib/libcrypto.a",
+            "linkage": "static",
+            "soname": null
+          }
+        ]
+      },
+      "patches": [],
+      "source": {
+        "sha256": "a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8",
+        "url": "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-3.5.7.tar.gz"
+      }
+    },
+    {
+      "build": {
+        "build_arguments": [
+          "AUTOCONF=:",
+          "AUTOHEADER=:",
+          "AUTOMAKE=:",
+          "ACLOCAL=:"
+        ],
+        "configure_arguments": [
+          "<SOURCE_DIR>/configure",
+          "--prefix=<PREFIX>"
+        ],
+        "environment": {},
+        "install_arguments": [
+          "install",
+          "AUTOCONF=:",
+          "AUTOHEADER=:",
+          "AUTOMAKE=:",
+          "ACLOCAL=:"
+        ],
+        "recipe": "autoconf"
+      },
+      "licenses": [
+        {
+          "destination": "licenses/libodbc_license.txt",
+          "sha256": "a6b9aa1e9bfade121164c06fd975e9b913a8e38bf33d25ff967dfa3ed07d12f8",
+          "source": "3rdparty/license/libodbc_license.txt"
+        }
+      ],
+      "name": "unixodbc",
+      "outputs": {
+        "headers": [
+          "include/sql.h",
+          "include/sqlext.h",
+          "include/sqltypes.h"
+        ],
+        "libraries": [
+          {
+            "link_name": "lib/libodbc.so",
+            "linkage": "shared",
+            "soname": "libodbc.so.2"
+          }
+        ]
+      },
+      "patches": [],
+      "source": {
+        "sha256": "4e2814de3e01fc30b0b9f75e83bb5aba91ab0384ee951286504bb70205524771",
+        "url": "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.14.tar.gz"
+      }
+    },
+    {
+      "build": {
+        "build_arguments": [],
+        "configure_arguments": [
+          "-DRAPIDJSON_BUILD_DOC:STRING=off",
+          "-DRAPIDJSON_BUILD_EXAMPLES:STRING=off",
+          "-DRAPIDJSON_BUILD_TESTS:STRING=off"
+        ],
+        "environment": {},
+        "install_arguments": [],
+        "recipe": "cmake"
+      },
+      "licenses": [
+        {
+          "destination": "licenses/rapidjson_license.txt",
+          "sha256": "a140e5d46fe734a1c78f1a3c3ef207871dd75648be71fdda8e309b23ab8b1f32",
+          "source": "3rdparty/license/rapidjson_license.txt"
+        }
+      ],
+      "name": "rapidjson",
+      "outputs": {
+        "headers": [
+          "include/rapidjson"
+        ],
+        "libraries": []
+      },
+      "patches": [],
+      "source": {
+        "sha256": "2d2601a82d2d3b7e143a3c8d43ef616671391034bc46891a9816b79cf2d3e7a8",
+        "url": "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0-250205.tar.gz"
+      }
+    },
+    {
+      "build": {
+        "build_arguments": [],
+        "configure_arguments": [],
+        "environment": {
+          "CXXFLAGS": "-O3 -fPIC -w"
+        },
+        "install_arguments": [],
+        "recipe": "make"
+      },
+      "licenses": [
+        {
+          "destination": "licenses/re2_license.txt",
+          "sha256": "6040cda75d90b1738292a631d89934c411ef7ffd543c4d6a1b7edfc8edf29449",
+          "source": "3rdparty/license/re2_license.txt"
+        }
+      ],
+      "name": "re2",
+      "outputs": {
+        "headers": [
+          "include/re2"
+        ],
+        "libraries": [
+          {
+            "link_name": "lib/libre2.a",
+            "linkage": "static",
+            "soname": null
+          }
+        ]
+      },
+      "patches": [],
+      "source": {
+        "sha256": "7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48",
+        "url": "https://github.com/CUBRID/3rdparty/raw/develop/re2/2023-03-01.tar.gz"
+      }
+    },
+    {
+      "build": {
+        "build_arguments": [],
+        "configure_arguments": [
+          "-DBUILD_SHARED_LIBS=OFF",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DCMAKE_CXX_FLAGS=-DTBB_ALLOCATOR_TRAITS_BROKEN",
+          "-DCMAKE_INSTALL_LIBDIR=lib",
+          "-DCMAKE_INSTALL_PREFIX=<PREFIX>",
+          "-DTBBMALLOC_BUILD=OFF",
+          "-DTBBMALLOC_PROXY_BUILD=OFF",
+          "-DTBB_ENABLE_IPO=OFF",
+          "-DTBB_TEST=OFF",
+          "-D__TBB_DYNAMIC_LOAD_ENABLED=0"
+        ],
+        "environment": {},
+        "install_arguments": [
+          "install"
+        ],
+        "recipe": "cmake"
+      },
+      "licenses": [
+        {
+          "destination": "licenses/libtbb_license.txt",
+          "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+          "source": "3rdparty/license/libtbb_license.txt"
+        }
+      ],
+      "name": "onetbb",
+      "outputs": {
+        "headers": [
+          "include/oneapi",
+          "include/tbb"
+        ],
+        "libraries": [
+          {
+            "link_name": "lib/libtbb.a",
+            "linkage": "static",
+            "soname": null
+          }
+        ]
+      },
+      "patches": [],
+      "source": {
+        "sha256": "782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363",
+        "url": "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz"
+      }
+    }
+  ],
+  "platform": {
+    "architecture": "x86_64",
+    "os": "linux",
+    "variant": "build_rl8.10-default"
+  },
+  "recipe_revision": 1,
+  "schema": "cubrid-thirdparty-manifest-v1"
+}
