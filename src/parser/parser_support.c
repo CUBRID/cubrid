@@ -12072,7 +12072,7 @@ pt_dblink_dml_check_qualifier (PT_NODE * cond, PT_NODE * spec, const char **bad_
  * DELETE's shape gate; an UPDATE reaches it from the decline step and the mixed-reference rejection, while
  * its own gate is pt_dblink_update_where_is_inscope.
  * Correlation / row subquery are not decided here (correlation_level is 0 on a DELETE WHERE subquery), but
- * downstream on both paths: the pt_dblink_delete_corr_ref_pre/_post walk (semantic_check.c) rejects
+ * downstream on both paths: the pt_dblink_dml_corr_ref_pre/_post walk (semantic_check.c) rejects
  * correlated ones, pt_dblink_dml_xasl_where () (xasl_generation.c) rejects row/multi-column ones. */
 static bool
 pt_dblink_dml_where_is_inscope (PT_NODE * cond)
