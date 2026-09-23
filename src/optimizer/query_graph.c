@@ -10640,6 +10640,13 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 	  fk_node = node_i;
 	  pk_node = node_j;
 
+	  if (QO_NODE_IS_SEMI_ANTI_JOIN (fk_node) || QO_NODE_IS_SEMI_ANTI_JOIN (pk_node))
+	    {
+	      /* Semi/anti equi-join columns are excluded from EQCLASS, so this path is currently unreachable.
+	       * Keep this guard in case that policy changes in the future. */
+	      continue;
+	    }
+
 	  pk_node_indexp = QO_NODE_INDEXES (pk_node);
 	  if (pk_node_indexp == NULL)
 	    {
