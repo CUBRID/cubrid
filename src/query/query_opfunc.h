@@ -76,6 +76,11 @@ extern int qdata_divide_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * 
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
+#if !defined (NDEBUG)
+/* dpin-07 shadow check (optdebug only): the domain resolver answers what the operator did. */
+extern void qdata_assert_resolved_arith (int opcode, int n_operands, const DB_TYPE * types, const DB_TYPE * targets,
+					 const DB_VALUE * raw_result_p);
+#endif
 
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);

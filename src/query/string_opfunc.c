@@ -56,6 +56,9 @@
 #include "string_regex.hpp"
 #include "tz_support.h"
 #include "util_func.h"
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+#include "domain_resolver.h"
+#endif
 
 #include <algorithm>
 #include <string>
@@ -7533,6 +7536,24 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
     {
       assert (TP_DOMAIN_TYPE (domain) == result_type);
     }
+
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+  {
+    /* dpin-07 shadow check: the gate's value class and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer result_type */
+    DB_TYPE left_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left);
+    DOMAIN_OPERAND operands[2] = {
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (left)), left_class, -1, -1, false}
+      ,
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (right)), DB_VALUE_DOMAIN_TYPE (right), -1, -1, false}
+    };
+    RESOLVED_DOMAIN resolved;
+    bool needs_gate;
+    int shadow_error = domain_resolve (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, operands, 2, NULL, &resolved, &needs_gate);
+    assert (left_class == (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (left)) ? result_type : DB_VALUE_DOMAIN_TYPE (left)));
+    assert (shadow_error == NO_ERROR && !needs_gate);
+    assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == result_type);
+  }
+#endif
 
   switch (result_type)
     {
@@ -22612,6 +22633,25 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	  goto error;
 	}
     }
+
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+  {
+    /* dpin-07 shadow check: the gate's format class and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
+    DB_TYPE format_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, 1, format);
+    DOMAIN_OPERAND operands[2] = {
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, -1, false}
+      ,
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (format)), format_class, -1, -1, false}
+    };
+    RESOLVED_DOMAIN resolved;
+    bool needs_gate;
+    int shadow_error = domain_resolve (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, operands, 2, domain, &resolved,
+				       &needs_gate);
+    assert (domain != NULL || format_class == res_type);
+    assert (shadow_error == NO_ERROR && !needs_gate);
+    assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == res_type);
+  }
+#endif
 
   /*
    * 1. Get information according to format specifiers

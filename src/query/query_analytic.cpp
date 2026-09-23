@@ -198,6 +198,10 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       && !DB_IS_NULL (&dbval))
     {
       perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
+#if !defined (NDEBUG)
+      const TP_DOMAIN *shadow_compiled = func_p->domain;
+      bool shadow_late_bound = func_p->opr_dbtype == DB_TYPE_VARIABLE;
+#endif
       /* set function default domain when late binding */
       switch (func_p->function)
 	{
@@ -249,6 +253,20 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  error = ER_FAILED;
 	  goto exit;
 	}
+
+#if !defined (NDEBUG)
+      {
+	/* dpin-07 shadow check: domain_resolve (DOMAIN_CTX_ANALYTIC) answers the late-bound operand domain */
+	DOMAIN_OPERAND operand =
+	{ tp_domain_resolve_value (&dbval, NULL), DB_VALUE_DOMAIN_TYPE (&dbval), -1, -1, shadow_late_bound };
+	RESOLVED_DOMAIN resolved;
+	bool needs_gate;
+	int shadow_error = domain_resolve (DOMAIN_CTX_ANALYTIC, func_p->function, &operand, 1, shadow_compiled,
+					   &resolved, &needs_gate);
+	assert (shadow_error == NO_ERROR && !needs_gate);
+	assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == TP_DOMAIN_TYPE (func_p->domain));
+      }
+#endif
 
       /* coerce operand */
       if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)

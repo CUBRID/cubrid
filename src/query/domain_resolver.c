@@ -19,6 +19,14 @@
 #include "config.h"
 #include "domain_resolver.h"
 #include "object_domain_convert.h"
+#include "db_date_status.h"
+#include "db_function.hpp"
+#include "dbtype.h"
+#include "memory_alloc.h"
+#include "object_primitive.h"
+#include "chartype.h"
+#include "storage_common.h"
+#include "system_parameter.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -30,4 +38,902 @@ domain_lookup_converter (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CTX co
   DOMAIN_CONVERT_MODE mode = context == DOMAIN_CTX_ASSIGN ? DOMAIN_CONVERT_ASSIGN
     : context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_CONVERT_COMPARE : DOMAIN_CONVERT_OPERAND;
   return domain_lookup_converter (source, target, mode);
+}
+
+static DB_TYPE
+domain_operand_type (const DOMAIN_OPERAND * operand)
+{
+  if (operand->val_type != DB_TYPE_NULL || operand->domain == NULL)
+    {
+      return operand->val_type;
+    }
+  return TP_DOMAIN_TYPE (operand->domain);
+}
+
+/* The operand's own domain when it describes its type, otherwise the default domain of that type
+ * (a classified slot keeps its value domain while val_type is the class, D-328-06). */
+static const TP_DOMAIN *
+domain_operand_domain (const DOMAIN_OPERAND * operand)
+{
+  DB_TYPE type = domain_operand_type (operand);
+  if (operand->domain != NULL && TP_DOMAIN_TYPE (operand->domain) == type)
+    {
+      return operand->domain;
+    }
+  return tp_domain_resolve_default (type);
+}
+
+static void
+domain_set_operand (RESOLVED_DOMAIN * result, int i, const DOMAIN_OPERAND * operand, DB_TYPE target,
+		    DOMAIN_CONVERT_MODE mode)
+{
+  if (target == domain_operand_type (operand))
+    {
+      result->operand_domain[i] = domain_operand_domain (operand);
+      result->conv[i] = NULL;
+      return;
+    }
+  result->operand_domain[i] = tp_domain_resolve_default (target);
+  result->conv[i] = domain_lookup_converter (domain_operand_type (operand), result->operand_domain[i], mode);
+}
+
+/* Result of two numbers after the pre-cast: the typed dispatch of qdata_{add,subtract,multiply,divide}_*_to_dbval. */
+static DB_TYPE
+domain_arith_number (int opcode, DB_TYPE left, DB_TYPE right)
+{
+  if (left == DB_TYPE_MONETARY || right == DB_TYPE_MONETARY)
+    {
+      return DB_TYPE_MONETARY;
+    }
+  if (left == DB_TYPE_DOUBLE || right == DB_TYPE_DOUBLE)
+    {
+      return DB_TYPE_DOUBLE;
+    }
+  if (left == DB_TYPE_FLOAT || right == DB_TYPE_FLOAT)
+    {
+      DB_TYPE other = left == DB_TYPE_FLOAT ? right : left;
+      /* FLOAT with NUMERIC goes through qdata_coerce_numeric_to_double; FLOAT + BIGINT (not BIGINT + FLOAT) is
+       * qdata_add_double in qdata_add_float_to_dbval. */
+      if (other == DB_TYPE_NUMERIC || (opcode == T_ADD && left == DB_TYPE_FLOAT && right == DB_TYPE_BIGINT))
+	{
+	  return DB_TYPE_DOUBLE;
+	}
+      return DB_TYPE_FLOAT;
+    }
+  if (left == DB_TYPE_NUMERIC || right == DB_TYPE_NUMERIC)
+    {
+      return DB_TYPE_NUMERIC;
+    }
+  if (left == DB_TYPE_BIGINT || right == DB_TYPE_BIGINT)
+    {
+      return DB_TYPE_BIGINT;
+    }
+  if (left == DB_TYPE_INTEGER || right == DB_TYPE_INTEGER)
+    {
+      return DB_TYPE_INTEGER;
+    }
+  return DB_TYPE_SHORT;
+}
+
+/* db_string_concatenate result type; DB_TYPE_NULL when character and bit strings are mixed. Character strings always
+ * concatenate to VARCHAR (qstr_make_typed_string, so:1274); CHAR comes only from the NULL/empty-string path. */
+static DB_TYPE
+domain_arith_concat (DB_TYPE left, DB_TYPE right)
+{
+  if (TP_IS_CHAR_TYPE (left) && TP_IS_CHAR_TYPE (right))
+    {
+      return DB_TYPE_VARCHAR;
+    }
+  if (TP_IS_BIT_TYPE (left) && TP_IS_BIT_TYPE (right))
+    {
+      return (left == DB_TYPE_VARBIT || right == DB_TYPE_VARBIT) ? DB_TYPE_VARBIT : DB_TYPE_BIT;
+    }
+  return DB_TYPE_NULL;
+}
+
+/* Date/time subtraction after the pre-cast (qdata_subtract_*_to_dbval): one side is a date/time, the other a date/time
+ * or a discrete number. */
+static DB_TYPE
+domain_arith_subtract_datetime (DB_TYPE left, DB_TYPE right)
+{
+  if (TP_IS_DISCRETE_NUMBER_TYPE (left))
+    {
+      switch (right)
+	{
+	case DB_TYPE_TIME:
+	case DB_TYPE_TIMESTAMP:
+	case DB_TYPE_TIMESTAMPLTZ:
+	case DB_TYPE_TIMESTAMPTZ:
+	  return right;
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_DATETIMELTZ:
+	case DB_TYPE_DATETIMETZ:
+	  return left == DB_TYPE_BIGINT ? DB_TYPE_NULL : DB_TYPE_BIGINT;
+	case DB_TYPE_DATE:
+	  return left == DB_TYPE_SHORT ? DB_TYPE_TIME : DB_TYPE_DATE;
+	default:
+	  return DB_TYPE_NULL;
+	}
+    }
+
+  bool right_is_number = TP_IS_DISCRETE_NUMBER_TYPE (right);
+  bool right_is_timestamp = right == DB_TYPE_TIMESTAMP || right == DB_TYPE_TIMESTAMPLTZ || right == DB_TYPE_TIMESTAMPTZ;
+  bool right_is_datetime = right == DB_TYPE_DATETIME || right == DB_TYPE_DATETIMELTZ || right == DB_TYPE_DATETIMETZ;
+  switch (left)
+    {
+    case DB_TYPE_TIME:
+      return right_is_number ? DB_TYPE_TIME : right == DB_TYPE_TIME ? DB_TYPE_INTEGER : DB_TYPE_NULL;
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+      return right_is_number ? left : right_is_timestamp ? DB_TYPE_INTEGER : right_is_datetime ? DB_TYPE_BIGINT
+	: DB_TYPE_NULL;
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
+      if (right_is_number)
+	{
+	  /* DATETIMELTZ is subtracted as DATETIMETZ (qdata_subtract_dbval) */
+	  return left == DB_TYPE_DATETIME ? DB_TYPE_DATETIME : DB_TYPE_DATETIMETZ;
+	}
+      return (right_is_timestamp || right_is_datetime || right == DB_TYPE_DATE) ? DB_TYPE_BIGINT : DB_TYPE_NULL;
+    case DB_TYPE_DATE:
+      return right_is_number ? DB_TYPE_DATE : right == DB_TYPE_DATE ? DB_TYPE_INTEGER : DB_TYPE_NULL;
+    default:
+      return DB_TYPE_NULL;
+    }
+}
+
+/*
+ * domain_arith_binary - the pre-cast and typed dispatch of the four binary operators
+ *   return: false when the operator rejects the pair (-3007 or no value today)
+ *   left, right(in): operand types
+ *   left_target, right_target(out): type each operand is cast to (qo:2438~2560, 4818~4910, 5512~5560, 6134~6260)
+ *   result_type(out): type the operator produces; DB_TYPE_NULL for a NULL operand
+ */
+static bool
+domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * right_target,
+		     DB_TYPE * result_type)
+{
+  bool is_add = opcode == T_ADD;
+
+  *left_target = left;
+  *right_target = right;
+  *result_type = DB_TYPE_NULL;
+
+  if (!is_add && (left == DB_TYPE_NULL || right == DB_TYPE_NULL))
+    {
+      return true;
+    }
+
+  /* ENUM: the name when added to a string, the ordinal otherwise; multiply and divide take no ENUM */
+  if ((is_add || opcode == T_SUB) && (left == DB_TYPE_ENUMERATION || right == DB_TYPE_ENUMERATION))
+    {
+      if (left == DB_TYPE_ENUMERATION)
+	{
+	  DB_TYPE step = (is_add && TP_IS_CHAR_BIT_TYPE (right)) ? DB_TYPE_VARCHAR : DB_TYPE_SHORT;
+	  return domain_arith_binary (opcode, step, right, left_target, right_target, result_type);
+	}
+      DB_TYPE step = (is_add && TP_IS_CHAR_BIT_TYPE (left)) ? DB_TYPE_VARCHAR : DB_TYPE_SHORT;
+      return domain_arith_binary (opcode, left, step, left_target, right_target, result_type);
+    }
+
+  if (is_add && prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT) && TP_IS_CHAR_BIT_TYPE (left) && TP_IS_CHAR_BIT_TYPE (right))
+    {
+      *result_type = domain_arith_concat (left, right);
+      return *result_type != DB_TYPE_NULL;
+    }
+
+  if (left == DB_TYPE_NULL || right == DB_TYPE_NULL)
+    {
+      return true;
+    }
+
+  /* addition handles STRING + NUMBER, NUMBER + DATE and STRING + DATE with the operands swapped */
+  DB_TYPE *first_target = left_target, *second_target = right_target;
+  DB_TYPE first = left, second = right;
+  if (is_add && ((TP_IS_CHAR_TYPE (left) && TP_IS_NUMERIC_TYPE (right))
+		 || (TP_IS_NUMERIC_TYPE (left) && TP_IS_DATE_OR_TIME_TYPE (right))
+		 || (TP_IS_CHAR_TYPE (left) && TP_IS_DATE_OR_TIME_TYPE (right))))
+    {
+      first = right;
+      second = left;
+      first_target = right_target;
+      second_target = left_target;
+    }
+
+  if (TP_IS_NUMERIC_TYPE (first) && TP_IS_CHAR_TYPE (second))
+    {
+      second = DB_TYPE_DOUBLE;
+    }
+  else if (!is_add && TP_IS_CHAR_TYPE (first) && TP_IS_NUMERIC_TYPE (second))
+    {
+      first = DB_TYPE_DOUBLE;
+    }
+  else if (TP_IS_CHAR_TYPE (first) && TP_IS_CHAR_TYPE (second))
+    {
+      first = DB_TYPE_DOUBLE;
+      second = DB_TYPE_DOUBLE;
+    }
+  else if (is_add && TP_IS_DATE_OR_TIME_TYPE (first) && (TP_IS_FLOATING_NUMBER_TYPE (second)
+							 || TP_IS_CHAR_TYPE (second)))
+    {
+      second = DB_TYPE_BIGINT;
+    }
+  else if (opcode == T_SUB && TP_IS_DATE_OR_TIME_TYPE (first) && TP_IS_FLOATING_NUMBER_TYPE (second))
+    {
+      second = DB_TYPE_BIGINT;
+    }
+  else if (opcode == T_SUB && TP_IS_FLOATING_NUMBER_TYPE (first) && TP_IS_DATE_OR_TIME_TYPE (second))
+    {
+      first = DB_TYPE_BIGINT;
+    }
+  else if (opcode == T_SUB && TP_IS_DATE_OR_TIME_TYPE (first) && TP_IS_CHAR_TYPE (second))
+    {
+      second = first == DB_TYPE_TIME ? DB_TYPE_TIME : DB_TYPE_DATETIME;
+      first = first == DB_TYPE_TIME ? DB_TYPE_TIME : DB_TYPE_DATETIME;
+    }
+  else if (opcode == T_SUB && TP_IS_CHAR_TYPE (first) && TP_IS_DATE_OR_TIME_TYPE (second))
+    {
+      first = second == DB_TYPE_TIME ? DB_TYPE_TIME : DB_TYPE_DATETIME;
+      second = second == DB_TYPE_TIME ? DB_TYPE_TIME : DB_TYPE_DATETIME;
+    }
+  else if (opcode == T_DIV && prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR)
+	   && TP_IS_DISCRETE_NUMBER_TYPE (first) && TP_IS_DISCRETE_NUMBER_TYPE (second))
+    {
+      first = DB_TYPE_NUMERIC;
+      second = DB_TYPE_NUMERIC;
+    }
+  *first_target = first;
+  *second_target = second;
+
+  if (TP_IS_NUMERIC_TYPE (first) && TP_IS_NUMERIC_TYPE (second))
+    {
+      *result_type = domain_arith_number (opcode, first, second);
+    }
+  else if (TP_IS_SET_TYPE (first) && TP_IS_SET_TYPE (second) && opcode != T_DIV)
+    {
+      /* partial resolve of a late-bound collection result (domain_p == NULL) */
+      *result_type = (is_add ? first == second : (first == second && first == DB_TYPE_SET)) ? first : DB_TYPE_MULTISET;
+    }
+  else if (is_add && TP_IS_BIT_TYPE (first) && TP_IS_BIT_TYPE (second))
+    {
+      *result_type = domain_arith_concat (first, second);
+    }
+  else if (is_add && TP_IS_DATE_OR_TIME_TYPE (first) && TP_IS_DISCRETE_NUMBER_TYPE (second))
+    {
+      *result_type = first;
+    }
+  else if (opcode == T_SUB && (TP_IS_DATE_OR_TIME_TYPE (first) || TP_IS_DATE_OR_TIME_TYPE (second)))
+    {
+      *result_type = domain_arith_subtract_datetime (first, second);
+    }
+  return *result_type != DB_TYPE_NULL;
+}
+
+static int
+domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
+{
+  DB_TYPE result_type;
+
+  switch (opcode)
+    {
+    case T_ADD:
+    case T_SUB:
+    case T_MUL:
+    case T_DIV:
+      {
+	DB_TYPE left_target, right_target;
+	assert (n_operands == 2);
+	if (!domain_arith_binary (opcode, domain_operand_type (&operands[0]), domain_operand_type (&operands[1]),
+				  &left_target, &right_target, &result_type))
+	  {
+	    return ER_QPROC_INVALID_DATATYPE;
+	  }
+	/* D-328-04: the pre-cast is tp_value_auto_cast, ASSIGN (ROUND) */
+	domain_set_operand (result, 0, &operands[0], left_target, DOMAIN_CONVERT_ASSIGN);
+	domain_set_operand (result, 1, &operands[1], right_target, DOMAIN_CONVERT_ASSIGN);
+	break;
+      }
+
+    case T_UNMINUS:
+    case T_ABS:
+    case T_FLOOR:
+    case T_CEIL:
+    case T_ROUND:
+    case T_TRUNC:
+      {
+	/* the value is the right operand of the unary operators and the left one of ROUND/TRUNC */
+	int arg = (opcode == T_ROUND || opcode == T_TRUNC) ? 0 : n_operands - 1;
+	DB_TYPE type = domain_operand_type (&operands[arg]);
+	if (type == DB_TYPE_NULL || TP_IS_NUMERIC_TYPE (type))
+	  {
+	    result_type = type;
+	  }
+	else if ((opcode == T_ROUND || opcode == T_TRUNC) && TP_IS_DATE_TYPE (type))
+	  {
+	    result_type = DB_TYPE_DATE;
+	  }
+	else if (TP_IS_CHAR_TYPE (type) || opcode == T_ROUND || opcode == T_TRUNC)
+	  {
+	    /* tp_value_str_auto_cast_to_number, or ROUND/TRUNC try DOUBLE for anything else */
+	    result_type = DB_TYPE_DOUBLE;
+	  }
+	else
+	  {
+	    return ER_QPROC_INVALID_DATATYPE;
+	  }
+	domain_set_operand (result, arg, &operands[arg],
+			    result_type == DB_TYPE_DATE ? type : result_type, DOMAIN_CONVERT_ASSIGN);
+	for (int i = 0; i < n_operands && i < 3; i++)
+	  {
+	    if (i != arg)
+	      {
+		domain_set_operand (result, i, &operands[i], domain_operand_type (&operands[i]), DOMAIN_CONVERT_ASSIGN);
+	      }
+	  }
+	break;
+      }
+
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* NUMERIC results stay floating: the value operation decides p/s (converters §3) */
+  result->domain = tp_domain_resolve_default (result_type);
+  return NO_ERROR;
+}
+
+static const TP_DOMAIN *
+domain_char_with_collation (DB_TYPE type, int codeset, int collation_id)
+{
+  TP_DOMAIN *domain = tp_domain_copy (tp_domain_resolve_default (type), false);
+  if (domain == NULL)
+    {
+      return NULL;
+    }
+  domain->codeset = codeset;
+  domain->collation_id = collation_id;
+  return tp_domain_cache (domain);
+}
+
+/* The coerced side's target of tp_value_compare_with_error: the default domain of the other side's type, carrying
+ * the collation of the coerced side when a character or ENUM becomes a character string (od:10580~10608). */
+static const TP_DOMAIN *
+domain_compare_target (const DOMAIN_OPERAND * coerced, DB_TYPE target_type)
+{
+  DB_TYPE coerced_type = domain_operand_type (coerced);
+  if (TP_TYPE_HAS_COLLATION (coerced_type) && TP_IS_CHAR_TYPE (target_type))
+    {
+      const TP_DOMAIN *source = domain_operand_domain (coerced);
+      int collation_id = coerced->coll_id >= 0 ? coerced->coll_id : source->collation_id;
+      return domain_char_with_collation (target_type, source->codeset, collation_id);
+    }
+  return tp_domain_resolve_default (target_type);
+}
+
+static int
+domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result)
+{
+  DB_TYPE type1 = domain_operand_type (&operands[0]);
+  DB_TYPE type2 = domain_operand_type (&operands[1]);
+  const TP_DOMAIN *target1 = domain_operand_domain (&operands[0]);
+  const TP_DOMAIN *target2 = domain_operand_domain (&operands[1]);
+
+  if (type1 != DB_TYPE_NULL && type2 != DB_TYPE_NULL && type1 != type2)
+    {
+      switch (tp_value_compare_common_domain (type1, type2))
+	{
+	case TP_COMPARE_COERCE_NONE:
+	  break;
+	case TP_COMPARE_COERCE_TO_DOUBLE:
+	  target1 = target2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  break;
+	case TP_COMPARE_COERCE_FIRST_TO_DATE:
+	  target1 = tp_domain_resolve_default (type2);
+	  break;
+	case TP_COMPARE_COERCE_SECOND_TO_DATE:
+	  target2 = tp_domain_resolve_default (type1);
+	  break;
+	case TP_COMPARE_COERCE_SECOND_TO_FIRST:
+	  target2 = domain_compare_target (&operands[1], type1);
+	  break;
+	case TP_COMPARE_COERCE_FIRST_TO_SECOND:
+	  target1 = domain_compare_target (&operands[0], type2);
+	  break;
+	}
+      if (target1 == NULL || target2 == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+
+  /* D-328-05: the planned comparison converters are ASSIGN cells (today's tp_value_coerce on reachable cells) */
+  const TP_DOMAIN *targets[2] = { target1, target2 };
+  for (int i = 0; i < 2; i++)
+    {
+      result->operand_domain[i] = targets[i];
+      result->conv[i] = targets[i] == domain_operand_domain (&operands[i]) ? NULL
+	: domain_lookup_converter (domain_operand_type (&operands[i]), targets[i], DOMAIN_CONVERT_ASSIGN);
+    }
+  result->domain = target1 != domain_operand_domain (&operands[0]) ? target1 : target2;
+  return NO_ERROR;
+}
+
+/* tp_infer_common_domain folded left to right: NVL/NVL2/IFNULL/COALESCE/NULLIF/LEAST/GREATEST (fe:3306~3961). */
+static int
+domain_resolve_common_value (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
+{
+  TP_DOMAIN *common = (TP_DOMAIN *) domain_operand_domain (&operands[0]);
+  for (int i = 1; i < n_operands && common != NULL; i++)
+    {
+      common = tp_infer_common_domain (common, (TP_DOMAIN *) domain_operand_domain (&operands[i]));
+    }
+  if (common == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (int i = 0; i < n_operands && i < 3; i++)
+    {
+      result->operand_domain[i] = common;
+      result->conv[i] = domain_lookup_converter (domain_operand_type (&operands[i]), common, DOMAIN_CONVERT_OPERAND);
+    }
+  result->domain = common;
+  return NO_ERROR;
+}
+
+static bool
+domain_is_interpolation_type (DB_TYPE type)
+{
+  return TP_IS_NUMERIC_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type);
+}
+
+/* Whether the late-binding update of qexec_resolve_domains_for_aggregation / the analytic late binding applies: the
+ * operand was VARIABLE when compiled (opr_dbtype, not the function's domain) or the function domain leaves collation. */
+static bool
+domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand)
+{
+  return operand->is_gate_slot || compiled == NULL || TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL;
+}
+
+/*
+ * domain_resolve_aggregate - accumulator domains of qexec_resolve_domains_for_aggregation (qx:21504~21630, 21716~21730)
+ *   compiled(in): the aggregate's compiled function domain (agg_p->domain, xasl_generation.c:4072)
+ *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain when it is a gate slot
+ *		  (is_gate_slot: VARIABLE when compiled); val_type = value type, classified at the gate (D-328-06)
+ */
+static int
+domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
+			  RESOLVED_DOMAIN * result)
+{
+  DB_TYPE val_type = domain_operand_type (operand);
+  const TP_DOMAIN *argument = compiled;
+  DB_TYPE operand_type = operand->domain != NULL ? TP_DOMAIN_TYPE (operand->domain) : val_type;
+  const TP_DOMAIN *value_dom = NULL;
+  const TP_DOMAIN *value2_dom = &tp_Null_domain;
+
+  if (function == PT_COUNT || function == PT_COUNT_STAR || function == PT_JSON_ARRAYAGG
+      || function == PT_JSON_OBJECTAGG)
+    {
+      /* fixed signatures; the argument is taken as it is */
+      value_dom = (function == PT_COUNT || function == PT_COUNT_STAR) ? &tp_Bigint_domain : &tp_Json_domain;
+      argument = domain_operand_domain (operand);
+    }
+  else
+    {
+      if (domain_function_is_late_bound (compiled, operand))
+	{
+	  if (TP_IS_CHAR_TYPE (val_type) && (function == PT_SUM || function == PT_AVG))
+	    {
+	      argument = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	    }
+	  else if (!TP_IS_CHAR_TYPE (val_type) && function == PT_GROUP_CONCAT)
+	    {
+	      argument = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+	    }
+	  else
+	    {
+	      argument = domain_operand_domain (operand);
+	    }
+	  operand_type = TP_DOMAIN_TYPE (argument);
+	}
+
+      switch (function)
+	{
+	case PT_AGG_BIT_AND:
+	case PT_AGG_BIT_OR:
+	case PT_AGG_BIT_XOR:
+	case PT_MIN:
+	case PT_MAX:
+	case PT_GROUP_CONCAT:
+	  value_dom = argument;
+	  break;
+
+	case PT_AVG:
+	case PT_SUM:
+	  if (!TP_IS_NUMERIC_TYPE (val_type))
+	    {
+	      value_dom = argument;
+	    }
+	  else if (TP_DOMAIN_TYPE (argument) == DB_TYPE_NUMERIC || val_type == DB_TYPE_NUMERIC)
+	    {
+	      value_dom = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_DEFAULT_NUMERIC_PRECISION,
+					     DB_DEFAULT_NUMERIC_SCALE, NULL, 0);
+	    }
+	  else if (val_type == DB_TYPE_FLOAT)
+	    {
+	      value_dom = tp_domain_resolve (DB_TYPE_DOUBLE, NULL, DB_DOUBLE_DECIMAL_PRECISION, 0, NULL, 0);
+	    }
+	  else
+	    {
+	      value_dom = tp_domain_resolve_default (val_type);
+	    }
+	  break;
+
+	case PT_STDDEV:
+	case PT_STDDEV_POP:
+	case PT_STDDEV_SAMP:
+	case PT_VARIANCE:
+	case PT_VAR_POP:
+	case PT_VAR_SAMP:
+	  value_dom = value2_dom = &tp_Double_domain;
+	  break;
+
+	case PT_GROUPBY_NUM:
+	  value_dom = &tp_Null_domain;
+	  break;
+
+	case PT_MEDIAN:
+	case PT_PERCENTILE_CONT:
+	case PT_PERCENTILE_DISC:
+	  /* keyed on the operand type (opr_dbtype), as today */
+	  if (!domain_is_interpolation_type (operand_type))
+	    {
+	      /* the gate classified the value as DOUBLE, DATETIME or TIME */
+	      if (!domain_is_interpolation_type (val_type))
+		{
+		  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+		}
+	      argument = tp_domain_resolve_default (val_type);
+	    }
+	  value_dom = argument;
+	  break;
+
+	default:
+	  value_dom = argument;
+	  break;
+	}
+    }
+
+  if (value_dom == NULL || argument == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  result->domain = value_dom;
+  result->operand_domain[0] = argument;
+  result->operand_domain[1] = value2_dom;
+  result->conv[0] = domain_lookup_converter (val_type, argument, DOMAIN_CONVERT_OPERAND);
+  return NO_ERROR;
+}
+
+/* Late-bound analytic operand domain (qn:197~259): its own rules, not the aggregate ones. */
+static int
+domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
+			 RESOLVED_DOMAIN * result)
+{
+  DB_TYPE val_type = domain_operand_type (operand);
+  const TP_DOMAIN *argument = compiled;
+
+  if (domain_function_is_late_bound (compiled, operand))
+    {
+      switch (function)
+	{
+	case PT_COUNT:
+	case PT_COUNT_STAR:
+	  argument = tp_domain_resolve_default (DB_TYPE_BIGINT);
+	  break;
+	case PT_AVG:
+	case PT_STDDEV:
+	case PT_STDDEV_POP:
+	case PT_STDDEV_SAMP:
+	case PT_VARIANCE:
+	case PT_VAR_POP:
+	case PT_VAR_SAMP:
+	  argument = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  break;
+	case PT_SUM:
+	  argument = TP_IS_NUMERIC_TYPE (val_type) ? domain_operand_domain (operand)
+	    : tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  break;
+	case PT_MEDIAN:
+	case PT_PERCENTILE_CONT:
+	  argument = TP_IS_NUMERIC_TYPE (val_type) ? tp_domain_resolve_default (DB_TYPE_DOUBLE)
+	    : domain_operand_domain (operand);
+	  break;
+	default:
+	  argument = domain_operand_domain (operand);
+	  break;
+	}
+    }
+  if (argument == NULL)
+    {
+      return ER_FAILED;
+    }
+  result->domain = argument;
+  result->operand_domain[0] = argument;
+  result->conv[0] = domain_lookup_converter (val_type, argument, DOMAIN_CONVERT_OPERAND);
+  return NO_ERROR;
+}
+
+/* Result types of the value-overloaded functions (so:7302~7420 ADDTIME, so:22578~22602 STR_TO_DATE). */
+static int
+domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_operands,
+			 const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result)
+{
+  DB_TYPE result_type;
+
+  switch (opcode)
+    {
+    case T_ADDTIME:
+      switch (domain_operand_type (&operands[0]))
+	{
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  /* classified: VARCHAR without a zone, DATETIMETZ with one */
+	  result_type = DB_TYPE_VARCHAR;
+	  break;
+	case DB_TYPE_DATETIME:
+	case DB_TYPE_TIMESTAMP:
+	case DB_TYPE_DATE:
+	  result_type = DB_TYPE_DATETIME;
+	  break;
+	case DB_TYPE_DATETIMELTZ:
+	case DB_TYPE_TIMESTAMPLTZ:
+	  result_type = DB_TYPE_DATETIMELTZ;
+	  break;
+	case DB_TYPE_DATETIMETZ:
+	case DB_TYPE_TIMESTAMPTZ:
+	  result_type = DB_TYPE_DATETIMETZ;
+	  break;
+	case DB_TYPE_TIME:
+	  result_type = DB_TYPE_TIME;
+	  break;
+	default:
+	  return ER_QSTR_INVALID_DATA_TYPE;
+	}
+      break;
+
+    case T_STR_TO_DATE:
+      assert (n_operands >= 2);
+      result_type = consumer_domain != NULL && TP_DOMAIN_TYPE (consumer_domain) != DB_TYPE_VARIABLE
+	? TP_DOMAIN_TYPE (consumer_domain) : domain_operand_type (&operands[1]);
+      if (result_type != DB_TYPE_TIME && result_type != DB_TYPE_DATE && result_type != DB_TYPE_DATETIME
+	  && result_type != DB_TYPE_DATETIMETZ)
+	{
+	  return ER_OBJ_INVALID_ARGUMENTS;
+	}
+      break;
+
+    default:
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /* the functions take their arguments as they are; the classified slot keeps its value */
+  for (int i = 0; i < n_operands && i < 3; i++)
+    {
+      result->operand_domain[i] = operands[i].domain;
+      result->conv[i] = NULL;
+    }
+  result->domain = tp_domain_resolve_default (result_type);
+  return NO_ERROR;
+}
+
+int
+domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
+		const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_gate)
+{
+  assert (operands != NULL && n_operands > 0 && result != NULL && needs_gate != NULL);
+
+  *needs_gate = false;
+  for (int i = 0; i < n_operands; i++)
+    {
+      if (operands[i].val_type == DB_TYPE_NULL
+	  && (operands[i].domain == NULL || TP_DOMAIN_TYPE (operands[i].domain) == DB_TYPE_VARIABLE))
+	{
+	  *needs_gate = true;
+	  return NO_ERROR;
+	}
+    }
+
+  *result = RESOLVED_DOMAIN
+  {
+  };
+
+  switch (context)
+    {
+    case DOMAIN_CTX_ARITH:
+      return domain_resolve_arith (opcode, operands, n_operands, result);
+
+    case DOMAIN_CTX_COMPARE:
+      assert (n_operands == 2);
+      return domain_resolve_compare (operands, result);
+
+    case DOMAIN_CTX_COMMON_VALUE:
+      return domain_resolve_common_value (operands, n_operands, result);
+
+    case DOMAIN_CTX_AGG:
+      return domain_resolve_aggregate (opcode, consumer_domain, &operands[0], result);
+
+    case DOMAIN_CTX_ANALYTIC:
+      return domain_resolve_analytic (opcode, consumer_domain, &operands[0], result);
+
+    case DOMAIN_CTX_FUNC_ARG:
+      return domain_resolve_function (opcode, operands, n_operands, consumer_domain, result);
+
+    case DOMAIN_CTX_ASSIGN:
+    case DOMAIN_CTX_KEY_ELEM:
+      /* the consumer (assignment target, index element) is the target */
+      assert (consumer_domain != NULL);
+      result->domain = result->operand_domain[0] = consumer_domain;
+      result->conv[0] = domain_lookup_converter (domain_operand_type (&operands[0]), consumer_domain, context);
+      return NO_ERROR;
+
+    case DOMAIN_CTX_LIST_COLUMN:
+      /* the producer's domain (#323 ALIAS) */
+      result->domain = result->operand_domain[0] = domain_operand_domain (&operands[0]);
+      return NO_ERROR;
+    }
+
+  assert (false);
+  return ER_FAILED;
+}
+
+/* MEDIAN/PERCENTILE: DOUBLE, then DATETIME, then TIME, as tp_value_cast (…, false) would (qx:21713~21735). */
+static DB_TYPE
+domain_classify_interpolation (const DB_VALUE * value)
+{
+  static const DB_TYPE candidates[] = { DB_TYPE_DOUBLE, DB_TYPE_DATETIME, DB_TYPE_TIME };
+  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+
+  if (domain_is_interpolation_type (type))
+    {
+      return type;
+    }
+for (DB_TYPE candidate:candidates)
+    {
+      const TP_DOMAIN *target = tp_domain_resolve_default (candidate);
+      DOMAIN_CONVERTER converter = domain_lookup_converter (type, target, DOMAIN_CONVERT_ASSIGN);
+      if (converter == NULL)
+	{
+	  return candidate;
+	}
+      DB_VALUE converted;
+      db_value_domain_init (&converted, candidate, target->precision, target->scale);
+      TP_DOMAIN_STATUS status = converter (value, &converted, target);
+      pr_clear_value (&converted);
+      if (status == DOMAIN_COMPATIBLE)
+	{
+	  return candidate;
+	}
+    }
+  return DB_TYPE_NULL;
+}
+
+/* ADDTIME left string: DATETIMETZ with a zone, VARCHAR otherwise; not a time/date string → DB_TYPE_NULL. */
+static DB_TYPE
+domain_classify_addtime (const DB_VALUE * value)
+{
+  if (!TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value)))
+    {
+      return DB_VALUE_DOMAIN_TYPE (value);
+    }
+
+  const char *str = db_get_string (value);
+  int size = db_get_string_size (value);
+  date_conversion_error date_error;
+  DB_DATETIMETZ datetimetz;
+  bool has_zone = false;
+
+  if (db_string_to_datetimetz_ex_core (str, size, &datetimetz, &has_zone, &date_error) == NO_ERROR && has_zone)
+    {
+      return DB_TYPE_DATETIMETZ;
+    }
+
+  DB_TIME time;
+  int millisecond;
+  if (db_date_parse_time_core (str, size, &time, &millisecond, &date_error) == NO_ERROR)
+    {
+      return DB_TYPE_VARCHAR;
+    }
+
+  DB_DATETIME datetime;
+  bool has_explicit_time = false;
+  if (db_date_parse_datetime_parts_core (str, size, &datetime, &has_explicit_time, NULL, NULL, NULL,
+					 &date_error) != NO_ERROR)
+    {
+      return DB_TYPE_NULL;
+    }
+  return has_zone ? DB_TYPE_DATETIMETZ : DB_TYPE_VARCHAR;
+}
+
+/* STR_TO_DATE format: the specifiers left after removing white space decide the result type. */
+static DB_TYPE
+domain_classify_str_to_date_format (const DB_VALUE * value)
+{
+  if (!TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value)))
+    {
+      return DB_TYPE_NULL;
+    }
+
+  const char *format = db_get_string (value);
+  int length = db_get_string_size (value);
+  length = length < 0 ? (int) strlen (format) : length;
+
+  char *compact = (char *) db_private_alloc (NULL, length + 1);
+  if (compact == NULL)
+    {
+      return DB_TYPE_NULL;
+    }
+  int k = 0;
+  bool is_valid = true;
+  for (int i = 0; i < length && is_valid; i++)
+    {
+      if (!char_isspace2 (format[i]))
+	{
+	  compact[k++] = format[i];
+	}
+      else if (i > 0 && format[i - 1] == '%')
+	{
+	  /* '%' without format specifier */
+	  is_valid = false;
+	}
+    }
+  compact[k] = '\0';
+
+  DB_TYPE type = DB_TYPE_NULL;
+  if (is_valid)
+    {
+      switch (db_check_time_date_format (compact))
+	{
+	case TIME_SPECIFIER:
+	  type = DB_TYPE_TIME;
+	  break;
+	case DATE_SPECIFIER:
+	  type = DB_TYPE_DATE;
+	  break;
+	case DATETIME_SPECIFIER:
+	  type = DB_TYPE_DATETIME;
+	  break;
+	case DATETIMETZ_SPECIFIER:
+	  type = DB_TYPE_DATETIMETZ;
+	  break;
+	default:
+	  break;
+	}
+    }
+  db_private_free (NULL, compact);
+  return type;
+}
+
+DB_TYPE
+domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value)
+{
+  assert (value != NULL && !DB_IS_NULL (value));
+
+  if (context == DOMAIN_CTX_AGG && arg_index == 0
+      && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC))
+    {
+      return domain_classify_interpolation (value);
+    }
+  if (context == DOMAIN_CTX_FUNC_ARG && opcode == T_ADDTIME && arg_index == 0)
+    {
+      return domain_classify_addtime (value);
+    }
+  if (context == DOMAIN_CTX_FUNC_ARG && opcode == T_STR_TO_DATE && arg_index == 1)
+    {
+      return domain_classify_str_to_date_format (value);
+    }
+  return DB_VALUE_DOMAIN_TYPE (value);
 }

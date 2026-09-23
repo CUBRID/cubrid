@@ -2417,6 +2417,57 @@ qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domai
   return error;
 }
 
+#if !defined (NDEBUG)
+/*
+ * qdata_assert_resolved_arith () - dpin-07 shadow check: domain_resolve (DOMAIN_CTX_ARITH) must answer what the
+ *				    operator did, until the deletion tickets remove the per-row resolution
+ *   opcode(in): operator
+ *   n_operands(in): operand count
+ *   types(in): operand value types on entry
+ *   targets(in): operand types after the pre-cast, per operand position; NULL when not observed
+ *   raw_result_p(in): result before the XASL domain coerce; NULL when not observed
+ */
+void
+qdata_assert_resolved_arith (int opcode, int n_operands, const DB_TYPE * types, const DB_TYPE * targets,
+			     const DB_VALUE * raw_result_p)
+{
+  DOMAIN_OPERAND operands[3];
+  RESOLVED_DOMAIN resolved;
+  bool needs_gate;
+
+  /* MySQL compatibility makes date results depend on the previous result value */
+  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
+    {
+      return;
+    }
+
+  assert (n_operands > 0 && n_operands <= 3);
+  for (int i = 0; i < n_operands; i++)
+    {
+      operands[i] = DOMAIN_OPERAND
+      {
+      tp_domain_resolve_default (types[i]), types[i], -1, -1, false};
+    }
+
+  int error = domain_resolve (DOMAIN_CTX_ARITH, opcode, operands, n_operands, NULL, &resolved, &needs_gate);
+  assert (!needs_gate);
+  if (error != NO_ERROR)
+    {
+      /* only a pair the operator also rejects: it produced no value */
+      assert (raw_result_p == NULL || DB_IS_NULL (raw_result_p));
+      return;
+    }
+  for (int i = 0; targets != NULL && i < n_operands; i++)
+    {
+      assert (TP_DOMAIN_TYPE (resolved.operand_domain[i]) == targets[i]);
+    }
+  if (raw_result_p != NULL && !DB_IS_NULL (raw_result_p))
+    {
+      assert (TP_DOMAIN_TYPE (resolved.domain) == DB_VALUE_DOMAIN_TYPE (raw_result_p));
+    }
+}
+#endif
+
 /*
  * qdata_add_dbval () -
  *   return: NO_ERROR, or ER_code
@@ -2453,6 +2504,10 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 
   type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
   type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
+#if !defined (NDEBUG)
+  const DB_TYPE entry_types[2] = { type1, type2 };
+  bool swapped = false;
+#endif
 
   /* Enumeration */
   if (type1 == DB_TYPE_ENUMERATION)
@@ -2474,6 +2529,12 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	}
       error = qdata_add_dbval (&cast_value1, dbval2_p, result_p, domain_p);
       pr_clear_value (&cast_value1);
+#if !defined (NDEBUG)
+      if (error == NO_ERROR)
+	{
+	  qdata_assert_resolved_arith (T_ADD, 2, entry_types, NULL, domain_p == NULL ? result_p : NULL);
+	}
+#endif
       return error;
     }
   else if (type2 == DB_TYPE_ENUMERATION)
@@ -2494,6 +2555,12 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 	}
       error = qdata_add_dbval (dbval1_p, &cast_value2, result_p, domain_p);
       pr_clear_value (&cast_value2);
+#if !defined (NDEBUG)
+      if (error == NO_ERROR)
+	{
+	  qdata_assert_resolved_arith (T_ADD, 2, entry_types, NULL, domain_p == NULL ? result_p : NULL);
+	}
+#endif
       return error;
     }
 
@@ -2502,7 +2569,14 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
     {
       if (TP_IS_CHAR_BIT_TYPE (type1) && TP_IS_CHAR_BIT_TYPE (type2))
 	{
-	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+	  error = qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+#if !defined (NDEBUG)
+	  if (error == NO_ERROR && !DB_IS_NULL (dbval1_p) && !DB_IS_NULL (dbval2_p))
+	    {
+	      qdata_assert_resolved_arith (T_ADD, 2, entry_types, entry_types, domain_p == NULL ? result_p : NULL);
+	    }
+#endif
+	  return error;
 	}
     }
 
@@ -2526,6 +2600,9 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       temp = dbval1_p;
       dbval1_p = dbval2_p;
       dbval2_p = temp;
+#if !defined (NDEBUG)
+      swapped = true;
+#endif
       type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
       type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
     }
@@ -2727,6 +2804,12 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       return error;
     }
 
+#if !defined (NDEBUG)
+  {
+    const DB_TYPE targets[2] = { swapped ? type2 : type1, swapped ? type1 : type2 };
+    qdata_assert_resolved_arith (T_ADD, 2, entry_types, targets, TP_IS_SET_TYPE (type1) ? NULL : result_p);
+  }
+#endif
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
@@ -4836,6 +4919,9 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+#if !defined (NDEBUG)
+  const DB_TYPE entry_types[2] = { type1, type2 };
+#endif
 
   if (type1 == DB_TYPE_ENUMERATION)
     {
@@ -4847,7 +4933,14 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
 	  return error;
 	}
-      return qdata_subtract_dbval (&cast_value1, dbval2_p, result_p, domain_p);
+      error = qdata_subtract_dbval (&cast_value1, dbval2_p, result_p, domain_p);
+#if !defined (NDEBUG)
+      if (error == NO_ERROR)
+	{
+	  qdata_assert_resolved_arith (T_SUB, 2, entry_types, NULL, domain_p == NULL ? result_p : NULL);
+	}
+#endif
+      return error;
     }
   else if (type2 == DB_TYPE_ENUMERATION)
     {
@@ -4858,7 +4951,14 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
 	  return error;
 	}
-      return qdata_subtract_dbval (dbval1_p, &cast_value2, result_p, domain_p);
+      error = qdata_subtract_dbval (dbval1_p, &cast_value2, result_p, domain_p);
+#if !defined (NDEBUG)
+      if (error == NO_ERROR)
+	{
+	  qdata_assert_resolved_arith (T_SUB, 2, entry_types, NULL, domain_p == NULL ? result_p : NULL);
+	}
+#endif
+      return error;
     }
 
   /* number - string : cast string to number, substract as numbers */
@@ -5086,6 +5186,12 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       return error;
     }
 
+#if !defined (NDEBUG)
+  {
+    const DB_TYPE targets[2] = { type1, type2 };
+    qdata_assert_resolved_arith (T_SUB, 2, entry_types, targets, TP_IS_SET_TYPE (type1) ? NULL : result_p);
+  }
+#endif
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
@@ -5527,6 +5633,9 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
 
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+#if !defined (NDEBUG)
+  const DB_TYPE entry_types[2] = { type1, type2 };
+#endif
 
   db_make_null (&cast_value1);
   db_make_null (&cast_value2);
@@ -5657,6 +5766,12 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       return error;
     }
 
+#if !defined (NDEBUG)
+  {
+    const DB_TYPE targets[2] = { type1, type2 };
+    qdata_assert_resolved_arith (T_MUL, 2, entry_types, targets, TP_IS_SET_TYPE (type1) ? NULL : result_p);
+  }
+#endif
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
@@ -6152,6 +6267,9 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+#if !defined (NDEBUG)
+  const DB_TYPE entry_types[2] = { type1, type2 };
+#endif
 
   db_make_null (&cast_value1);
   db_make_null (&cast_value2);
@@ -6276,6 +6394,12 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       return error;
     }
 
+#if !defined (NDEBUG)
+  {
+    const DB_TYPE targets[2] = { type1, type2 };
+    qdata_assert_resolved_arith (T_DIV, 2, entry_types, targets, TP_IS_SET_TYPE (type1) ? NULL : result_p);
+  }
+#endif
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 

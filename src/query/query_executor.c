@@ -21809,6 +21809,17 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  continue;
 	}
 
+#if !defined (NDEBUG)
+      /* dpin-07 shadow check inputs, taken before either changes: the compiled function domain, and for the operand
+       * its compiled domain (opr_dbtype) or, late bound, its value domain. The value itself may already have been cast
+       * in place by an earlier MEDIAN over the same operand (median(c), median(c)), so its type is not the operand's. */
+      const TP_DOMAIN *shadow_compiled = agg_p->domain;
+      bool shadow_late_bound = agg_p->opr_dbtype == DB_TYPE_VARIABLE;
+      const TP_DOMAIN *shadow_value_domain = shadow_late_bound ? tp_domain_resolve_value (dbval, NULL)
+	: tp_domain_resolve_default (agg_p->opr_dbtype);
+      DB_TYPE shadow_value_type = DB_VALUE_DOMAIN_TYPE (dbval);
+#endif
+
       /* update variable domain of function */
       if (agg_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL)
 	{
@@ -21918,6 +21929,9 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 			  || agg_p->operands->value.type == TYPE_INARITH
 			  || agg_p->operands->value.type == TYPE_POS_VALUE);
 
+#if !defined (NDEBUG)
+		  shadow_value_type = domain_classify_value (DOMAIN_CTX_AGG, agg_p->function, 0, dbval);
+#endif
 		  /* try to cast dbval to double, datetime then time */
 		  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
@@ -21956,6 +21970,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 			}
 		    }
 
+#if !defined (NDEBUG)
+		  assert ((status == DOMAIN_COMPATIBLE) == (shadow_value_type != DB_TYPE_NULL));
+		  assert (status != DOMAIN_COMPATIBLE || shadow_value_type == TP_DOMAIN_TYPE (tmp_domain_p));
+#endif
 		  if (status != DOMAIN_COMPATIBLE)
 		    {
 		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
@@ -21980,6 +21998,25 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    default:
 	      break;
 	    }
+
+#if !defined (NDEBUG)
+	  {
+	    /* dpin-07 shadow check: domain_resolve (DOMAIN_CTX_AGG) answers the domains just set up */
+	    DOMAIN_OPERAND operand = { shadow_value_domain, shadow_value_type, -1, -1, shadow_late_bound };
+	    RESOLVED_DOMAIN resolved;
+	    bool needs_gate;
+	    int shadow_error = domain_resolve (DOMAIN_CTX_AGG, agg_p->function, &operand, 1, shadow_compiled, &resolved,
+					       &needs_gate);
+	    assert (shadow_error == NO_ERROR && !needs_gate);
+	    assert (shadow_error != NO_ERROR
+		    || TP_DOMAIN_TYPE (resolved.operand_domain[0]) == TP_DOMAIN_TYPE (agg_p->domain));
+	    assert (shadow_error != NO_ERROR || agg_p->accumulator_domain.value_dom == NULL
+		    || TP_DOMAIN_TYPE (resolved.domain) == TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom));
+	    assert (shadow_error != NO_ERROR || agg_p->accumulator_domain.value2_dom == NULL
+		    || TP_DOMAIN_TYPE (resolved.operand_domain[1]) ==
+		    TP_DOMAIN_TYPE (agg_p->accumulator_domain.value2_dom));
+	  }
+#endif
 
 	  /* set the distinct/sort list file domain before finalize; a *variable* readval
 	   * is a no-op and would silently drop all values. */

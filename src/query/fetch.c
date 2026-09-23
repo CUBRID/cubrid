@@ -630,6 +630,33 @@ fetch_agg_expr_eval_dbl (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_
   return true;
 }
 
+#if !defined (NDEBUG)
+/*
+ * fetch_assert_resolved_common_value () - dpin-07 shadow check: domain_resolve (DOMAIN_CTX_COMMON_VALUE) folds the
+ *					   argument domains to the common domain this operator just inferred
+ */
+static void
+fetch_assert_resolved_common_value (int opcode, const TP_DOMAIN * common, int n_args, const TP_DOMAIN * arg1,
+				    const TP_DOMAIN * arg2, const TP_DOMAIN * arg3)
+{
+  const TP_DOMAIN *args[3] = { arg1, arg2, arg3 };
+  DOMAIN_OPERAND operands[3];
+  RESOLVED_DOMAIN resolved;
+  bool needs_gate;
+
+  assert (n_args >= 2 && n_args <= 3);
+  for (int i = 0; i < n_args; i++)
+    {
+      operands[i] = DOMAIN_OPERAND
+      {
+      args[i], TP_DOMAIN_TYPE (args[i]), -1, -1, false};
+    }
+  int error = domain_resolve (DOMAIN_CTX_COMMON_VALUE, opcode, operands, n_args, NULL, &resolved, &needs_gate);
+  assert (error == NO_ERROR && !needs_gate);
+  assert (error != NO_ERROR || resolved.domain == common);
+}
+#endif
+
 /*
  * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
@@ -3313,6 +3340,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	    perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
 	    target_domain = tp_infer_common_domain (arg1, arg2);
+#if !defined (NDEBUG)
+	    fetch_assert_resolved_common_value (arithptr->opcode, target_domain, 2, arg1, arg2, NULL);
+#endif
 	  }
 
 	src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
@@ -3367,6 +3397,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 		target_domain = tmp_domain;
 	      }
+#if !defined (NDEBUG)
+	    fetch_assert_resolved_common_value (arithptr->opcode, target_domain, arg3 != NULL ? 3 : 2, arg1, arg2,
+						arg3);
+#endif
 	  }
 
 	if (DB_IS_NULL (peek_left))
@@ -3882,6 +3916,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	    perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
 	    target_domain = tp_infer_common_domain (arg1, arg2);
+#if !defined (NDEBUG)
+	    fetch_assert_resolved_common_value (arithptr->opcode, target_domain, 2, arg1, arg2, NULL);
+#endif
 	  }
 
 	cmp_res = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
@@ -3933,6 +3970,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	    perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
 	    target_domain = tp_infer_common_domain (arg1, arg2);
+#if !defined (NDEBUG)
+	    fetch_assert_resolved_common_value (arithptr->opcode, target_domain, 2, arg1, arg2, NULL);
+#endif
 	  }
 
 	dom_status = tp_value_cast (arithptr->value, arithptr->value, target_domain, false);
@@ -3965,6 +4005,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	    perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
 	    target_domain = tp_infer_common_domain (arg1, arg2);
+#if !defined (NDEBUG)
+	    fetch_assert_resolved_common_value (arithptr->opcode, target_domain, 2, arg1, arg2, NULL);
+#endif
 	  }
 
 	dom_status = tp_value_cast (arithptr->value, arithptr->value, target_domain, false);
@@ -4469,6 +4512,24 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     }
 
   *peek_dbval = arithptr->value;
+
+#if !defined (NDEBUG)
+  /* dpin-07 shadow check: a late-bound unary arithmetic result is what domain_resolve answers */
+  if (original_domain != NULL)
+    {
+      if ((arithptr->opcode == T_UNMINUS || arithptr->opcode == T_ABS || arithptr->opcode == T_FLOOR
+	   || arithptr->opcode == T_CEIL) && peek_right != NULL)
+	{
+	  const DB_TYPE types[1] = { DB_VALUE_DOMAIN_TYPE (peek_right) };
+	  qdata_assert_resolved_arith (arithptr->opcode, 1, types, NULL, arithptr->value);
+	}
+      else if ((arithptr->opcode == T_ROUND || arithptr->opcode == T_TRUNC) && peek_left != NULL && peek_right != NULL)
+	{
+	  const DB_TYPE types[2] = { DB_VALUE_DOMAIN_TYPE (peek_left), DB_VALUE_DOMAIN_TYPE (peek_right) };
+	  qdata_assert_resolved_arith (arithptr->opcode, 2, types, NULL, arithptr->value);
+	}
+    }
+#endif
 
   if (original_domain != NULL && TP_DOMAIN_TYPE (original_domain) == DB_TYPE_VARIABLE)
     {

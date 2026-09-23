@@ -30547,6 +30547,41 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 }
 
 /*
+ * tp_value_compare_common_domain - which operand a comparison of two values of the given types coerces
+ *    return: coercion direction; TP_COMPARE_COERCE_NONE when the types compare as they are
+ *    type1(in): type of the first value
+ *    type2(in): type of the second value
+ * Note:
+ *    Pure rule shared by tp_value_compare_with_error and the server domain resolver (dpin-07, D-328-05).
+ */
+TP_COMPARE_COERCION
+tp_value_compare_common_domain (const DB_TYPE type1, const DB_TYPE type2)
+{
+  if (ARE_COMPARABLE (type1, type2))
+    {
+      return TP_COMPARE_COERCE_NONE;
+    }
+  if ((TP_IS_CHAR_TYPE (type1) && TP_IS_NUMERIC_TYPE (type2))
+      || (TP_IS_NUMERIC_TYPE (type1) && TP_IS_CHAR_TYPE (type2)))
+    {
+      return TP_COMPARE_COERCE_TO_DOUBLE;
+    }
+  if (TP_IS_CHAR_TYPE (type1) && TP_IS_DATE_OR_TIME_TYPE (type2))
+    {
+      return TP_COMPARE_COERCE_FIRST_TO_DATE;
+    }
+  if (TP_IS_DATE_OR_TIME_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
+    {
+      return TP_COMPARE_COERCE_SECOND_TO_DATE;
+    }
+  if (tp_more_general_type (type1, type2) > 0)
+    {
+      return TP_COMPARE_COERCE_SECOND_TO_FIRST;
+    }
+  return TP_COMPARE_COERCE_FIRST_TO_SECOND;
+}
+
+/*
  * tp_set_compare - compare two collection
  *    return: zero if equal, <0 if less, >0 if greater
  *    value1(in): first collection value
@@ -30733,6 +30768,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
   bool use_collation_of_v2 = false;
   DB_VALUE_COMPARE_RESULT result = DB_UNK;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+  TP_COMPARE_COERCION coercion_kind;
 
   coercion = 0;
   char_conv = 0;
@@ -30831,13 +30867,14 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE);
 	    }
 #endif
-	  if (do_coercion && !ARE_COMPARABLE (vtype1, vtype2))
+	  coercion_kind = tp_value_compare_common_domain (vtype1, vtype2);
+	  if (do_coercion && coercion_kind != TP_COMPARE_COERCE_NONE)
 	    {
 	      db_make_null (&temp1);
 	      db_make_null (&temp2);
 	      coercion = 1;
 
-	      if (TP_IS_CHAR_TYPE (vtype1) && TP_IS_NUMERIC_TYPE (vtype2))
+	      if (coercion_kind == TP_COMPARE_COERCE_TO_DOUBLE && TP_IS_CHAR_TYPE (vtype1))
 		{
 		  /* coerce v1 to double */
 		  status = tp_value_coerce (v1, &temp1, tp_domain_resolve_default (DB_TYPE_DOUBLE));
@@ -30858,7 +30895,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 			}
 		    }
 		}
-	      else if (TP_IS_NUMERIC_TYPE (vtype1) && TP_IS_CHAR_TYPE (vtype2))
+	      else if (coercion_kind == TP_COMPARE_COERCE_TO_DOUBLE)
 		{
 		  /* coerce v2 to double */
 		  status = tp_value_coerce (v2, &temp2, tp_domain_resolve_default (DB_TYPE_DOUBLE));
@@ -30879,7 +30916,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 			}
 		    }
 		}
-	      else if (TP_IS_CHAR_TYPE (vtype1) && TP_IS_DATE_OR_TIME_TYPE (vtype2))
+	      else if (coercion_kind == TP_COMPARE_COERCE_FIRST_TO_DATE)
 		{
 		  /* vtype2 is the date or time type, coerce value 1 */
 		  TP_DOMAIN *d2 = tp_domain_resolve_default (vtype2);
@@ -30890,7 +30927,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		      vtype1 = DB_VALUE_TYPE (v1);
 		    }
 		}
-	      else if (TP_IS_DATE_OR_TIME_TYPE (vtype1) && TP_IS_CHAR_TYPE (vtype2))
+	      else if (coercion_kind == TP_COMPARE_COERCE_SECOND_TO_DATE)
 		{
 		  /* vtype1 is the date or time type, coerce value 2 */
 		  TP_DOMAIN *d1 = tp_domain_resolve_default (vtype1);
@@ -30901,7 +30938,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 		      vtype2 = DB_VALUE_TYPE (v2);
 		    }
 		}
-	      else if (tp_more_general_type (vtype1, vtype2) > 0)
+	      else if (coercion_kind == TP_COMPARE_COERCE_SECOND_TO_FIRST)
 		{
 		  /* vtype1 is more general, coerce value 2 */
 		  TP_DOMAIN *d1 = tp_domain_resolve_default (vtype1);

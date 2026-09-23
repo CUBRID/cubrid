@@ -140,6 +140,69 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  * Predicate Evaluation
  */
 
+#if !defined (NDEBUG)
+/*
+ * eval_assert_resolved_compare () - dpin-07 shadow check: comparing the values converted by the planned comparison
+ *				     converters of domain_resolve (DOMAIN_CTX_COMPARE, ASSIGN cells) gives the result
+ *				     tp_value_compare_with_error just gave (D-328-05)
+ */
+static void
+eval_assert_resolved_compare (const DB_VALUE * dbval1, const DB_VALUE * dbval2, int total_order, int result,
+			      bool comparable)
+{
+  DB_TYPE type1 = DB_VALUE_DOMAIN_TYPE (dbval1);
+  DB_TYPE type2 = DB_VALUE_DOMAIN_TYPE (dbval2);
+
+  /* ENUM names carry the ENUM collation (collation axis, dpin-12); collections and objects compare elsewhere */
+  if (!comparable || DB_IS_NULL (dbval1) || DB_IS_NULL (dbval2) || type1 == type2 || type1 == DB_TYPE_ENUMERATION
+      || type2 == DB_TYPE_ENUMERATION || TP_IS_SET_TYPE (type1) || TP_IS_SET_TYPE (type2) || type1 == DB_TYPE_OID
+      || type2 == DB_TYPE_OID || type1 == DB_TYPE_OBJECT || type2 == DB_TYPE_OBJECT)
+    {
+      return;
+    }
+
+  DOMAIN_OPERAND operands[2] = {
+    {tp_domain_resolve_default (type1), type1, -1, -1, false}
+    ,
+    {tp_domain_resolve_default (type2), type2, -1, -1, false}
+  };
+  RESOLVED_DOMAIN resolved;
+  bool needs_gate;
+  int error = domain_resolve (DOMAIN_CTX_COMPARE, 0, operands, 2, NULL, &resolved, &needs_gate);
+  assert (error == NO_ERROR && !needs_gate);
+  if (error != NO_ERROR || (resolved.conv[0] == NULL && resolved.conv[1] == NULL))
+    {
+      /* nothing converted: comparing again would only count PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE twice */
+      return;
+    }
+
+  const DB_VALUE *sides[2] = { dbval1, dbval2 };
+  DB_VALUE converted[2];
+  bool converted_ok = true;
+  db_make_null (&converted[0]);
+  db_make_null (&converted[1]);
+  for (int i = 0; i < 2 && converted_ok; i++)
+    {
+      if (resolved.conv[i] != NULL)
+	{
+	  const TP_DOMAIN *target = resolved.operand_domain[i];
+	  db_value_domain_init (&converted[i], TP_DOMAIN_TYPE (target), target->precision, target->scale);
+	  /* a failed conversion is the KEEP path of the gate, which this check does not model */
+	  converted_ok = resolved.conv[i] (sides[i], &converted[i], target) == DOMAIN_COMPATIBLE;
+	  sides[i] = &converted[i];
+	}
+    }
+  if (converted_ok)
+    {
+      bool planned_comparable = true;
+      int planned = tp_value_compare_with_error (sides[0], sides[1], 1, total_order, &planned_comparable);
+      assert (planned_comparable && planned == result);
+    }
+  pr_clear_value (&converted[0]);
+  pr_clear_value (&converted[1]);
+}
+#endif
+
 /*
  * eval_value_rel_cmp () - Compare two db_values according to the given
  *                       relational operator
@@ -277,6 +340,9 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 	  /* do ordinal comparison, but NULL's still yield UNKNOWN */
 	  result = tp_value_compare_with_error (dbval1, dbval2, 1, 0, &comparable);
 	}
+#if !defined (NDEBUG)
+      eval_assert_resolved_compare (dbval1, dbval2, rel_operator == R_EQ_TORDER, result, comparable);
+#endif
       break;
     }
 

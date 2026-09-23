@@ -41,7 +41,34 @@ struct RESOLVED_DOMAIN
   const TP_DOMAIN *setdomain;
 };
 
-/* Context-to-mode adapter; the value-dependent grid is added by dpin-07. */
+struct DOMAIN_OPERAND
+{
+  const TP_DOMAIN *domain;	/* plan domain at load, value domain at the gate */
+  DB_TYPE val_type;		/* gate only (classified for value-overloaded slots); DB_TYPE_NULL at load */
+  int coll_id;			/* character operands only; -1 otherwise */
+  int coercibility;		/* character operands only; -1 otherwise */
+  bool is_gate_slot;
+};
+
+/* Context-to-mode adapter. */
 DOMAIN_CONV_FUNC domain_lookup_converter (DB_TYPE source, const TP_DOMAIN *target, DOMAIN_CTX context);
+
+/*
+ * The single home of the server G-row grid (D-318-07, D-323-02): the value-type rules that execution applies today
+ * in qdata_{add,subtract,multiply,divide}_dbval, tp_value_compare_with_error, tp_infer_common_domain,
+ * qexec_resolve_domains_for_aggregation, the analytic late binding, ADDTIME and STR_TO_DATE, kept answer for answer
+ * (P0). Result domains are cache domains (no caller-owned allocation, no er_set; #333). An operand with
+ * val_type == DB_TYPE_NULL whose domain is not fixed sets *needs_gate and leaves result untouched.
+ * opcode is OPERATOR_TYPE for ARITH/COMPARE/COMMON_VALUE/FUNC_ARG and FUNC_CODE for AGG/ANALYTIC.
+ * AGG/ANALYTIC: consumer_domain = the function's compiled domain, operands[0].is_gate_slot = its operand was VARIABLE.
+ * result: domain = result (COMPARE: comparison domain; AGG: accumulator value domain), operand_domain[i] = target of
+ * operand i (AGG: argument domain, [1] = second accumulator domain), conv[i] = operand converter in the grid's mode.
+ */
+int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
+		    const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_gate);
+
+/* val_type of a value-overloaded slot (MEDIAN/PERCENTILE argument, STR_TO_DATE format, ADDTIME left). Gate only,
+ * once, before domain_resolve (D-328-06). DB_TYPE_NULL when the value cannot be classified: the function's own error. */
+DB_TYPE domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value);
 
 #endif /* _DOMAIN_RESOLVER_H_ */
