@@ -47,6 +47,10 @@
 #include "string_regex.hpp"
 #include "language_support.h"
 #include "error_manager.h"
+#include "system_parameter.h"
+#include "memory_hash.h"
+#include "intl_support.h"
+#include <cstring>
 
 static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
 static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
@@ -2898,6 +2902,724 @@ histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *
     }
   *out_fp = (ctx.fp == 0) ? 1 : ctx.fp;	/* 0 is the "not recorded" sentinel */
   return true;
+}
+
+/*===========================================================================*/
+/* bind-value plan watch: node-cardinality fingerprint, target selection, early window */
+
+/* the value-dependent row estimate of one FROM spec: the rows its histogram was built from,
+ * scaled by every histogram-priceable host-variable term on it. Terms the histogram cannot
+ * price are left out of BOTH the recorded and the current vector, so the ratio between them
+ * is exactly the ratio of the value-dependent part -- which is the only part a new bind value
+ * can move. The absolute number is therefore an over-estimate (value-independent predicates
+ * are not applied); only the row floor reads it as an absolute, and reading it high there
+ * errs toward watching. */
+struct bind_card_ctx
+{
+  PARSER_CONTEXT *parser;
+  PT_NODE *statement;
+  int count;
+  bool overflow;		/* more distinct specs than the vector holds */
+  UINTPTR spec_id[BIND_WATCH_MAX_NODES];
+  double rows[BIND_WATCH_MAX_NODES];
+  double sel[BIND_WATCH_MAX_NODES];
+  char name[BIND_WATCH_MAX_NODES][BIND_WATCH_NAME_LEN];
+};
+
+/* slot of the spec this column belongs to, creating it on first sight. -1 when the column has
+ * no usable histogram (nothing to price) or the vector is full. */
+static int
+bind_card_slot (bind_card_ctx *ctx, PT_NODE *name)
+{
+  UINTPTR id = name->info.name.spec_id;
+  double total_rows;
+  int i;
+
+  for (i = 0; i < ctx->count; i++)
+    {
+      if (ctx->spec_id[i] == id)
+	{
+	  return i;
+	}
+    }
+
+  if (!histogram_get_total_rows (name, &total_rows))
+    {
+      return -1;
+    }
+  if (ctx->count >= BIND_WATCH_MAX_NODES)
+    {
+      ctx->overflow = true;
+      return -1;
+    }
+
+  i = ctx->count++;
+  ctx->spec_id[i] = id;
+  ctx->rows[i] = total_rows;
+  ctx->sel[i] = 1.0;
+
+  {
+    /* a replan reason naming "spec 94896027952800" is unreadable; name the table, falling back to
+     * the exposed spec name (an alias, which is what the query text shows) */
+    const char *label = histogram_spec_class_name (ctx->parser, ctx->statement, name);
+
+    if (label == NULL)
+      {
+	label = (name->info.name.resolved != NULL) ? name->info.name.resolved : "?";
+      }
+    snprintf (ctx->name[i], BIND_WATCH_NAME_LEN, "%s", label);
+  }
+  return i;
+}
+
+/* value behind a comparison operand: a bound host variable, or a constant the rewriter left in
+ * place. Auto-parameterized literals arrive as host variables too and are resolved here -- for
+ * a range term they are part of the term's selectivity even though they are not what makes the
+ * term value-dependent (that test stays histogram_is_user_host_var). */
+static DB_VALUE *
+bind_card_arg_value (PARSER_CONTEXT *parser, PT_NODE *arg)
+{
+  if (arg == NULL)
+    {
+      return NULL;
+    }
+
+  /* same classification the optimizer prices these bounds with (qo_between_range_arg_value), so
+   * the cardinality this walk derives tracks the one the plan was costed with. Materializing a
+   * value here instead (pt_value_to_db) could raise a parser error on a tree that is only being
+   * measured, which would surface as a failure of the statement itself. */
+  switch (qo_classify (arg))
+    {
+    case PC_HOST_VAR:
+    {
+      int idx = arg->info.host_var.index;
+
+      if (parser->host_variables == NULL || idx < 0 || idx >= parser->host_var_count + parser->auto_param_count)
+	{
+	  return NULL;
+	}
+      return &parser->host_variables[idx];
+    }
+    case PC_CONST:
+      return &arg->info.value.db_value;
+    default:
+      return NULL;
+    }
+}
+
+/* selectivity of a (column RANGE {...}) term, or false when any of its items cannot be priced.
+ * The items are OR-ed alternatives chained through or_next (the same list qo_range_selectivity
+ * walks), so their selectivities add; an unpriceable item would silently shrink that sum, so
+ * the whole term is dropped instead. */
+static bool
+bind_card_range_selectivity (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *name, double *out_sel,
+			     bool *out_value_dependent)
+{
+  PT_NODE *range_node;
+  double total = 0.0;
+
+  *out_value_dependent = false;
+
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->or_next)
+    {
+      DB_VALUE *v1, *v2;
+      double item_sel = 0.0;
+
+      if (range_node->node_type != PT_EXPR)
+	{
+	  return false;
+	}
+
+      if (histogram_is_user_host_var (parser, range_node->info.expr.arg1)
+	  || histogram_is_user_host_var (parser, range_node->info.expr.arg2))
+	{
+	  *out_value_dependent = true;
+	}
+
+      if (range_node->info.expr.op == PT_BETWEEN_EQ_NA)
+	{
+	  bool ok = false;
+
+	  v1 = bind_card_arg_value (parser, range_node->info.expr.arg1);
+	  if (v1 == NULL)
+	    {
+	      return false;
+	    }
+	  histogram_get_equal_selectivity (name, v1, &item_sel, &ok);
+	  if (!ok)
+	    {
+	      return false;
+	    }
+	}
+      else
+	{
+	  v1 = bind_card_arg_value (parser, range_node->info.expr.arg1);
+	  v2 = bind_card_arg_value (parser, range_node->info.expr.arg2);
+	  if (v1 == NULL)
+	    {
+	      return false;
+	    }
+	  if (!qo_between_range_histogram_selectivity (name, range_node->info.expr.op, v1, v2, &item_sel))
+	    {
+	      return false;
+	    }
+	}
+
+      total += item_sel;
+    }
+
+  *out_sel = MIN (1.0, MAX (0.0, total));
+  return true;
+}
+
+static PT_NODE *
+bind_card_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  bind_card_ctx *ctx = (bind_card_ctx *) arg;
+  PT_NODE *name, *hv;
+  bool reversed = false;
+  double sel = 0.0;
+  bool ok = false;
+  int slot;
+
+  if (histogram_split_hv_range (parser, node, &name))
+    {
+      bool value_dependent = false;
+
+      if (!bind_card_range_selectivity (parser, node, name, &sel, &value_dependent) || !value_dependent)
+	{
+	  return node;
+	}
+      slot = bind_card_slot (ctx, name);
+      if (slot >= 0)
+	{
+	  ctx->sel[slot] *= sel;
+	}
+      return node;
+    }
+
+  if (!histogram_split_hv_predicate (parser, node, &name, &hv, &reversed))
+    {
+      return node;
+    }
+
+  {
+    DB_VALUE *val = bind_card_arg_value (parser, hv);
+
+    if (val == NULL)
+      {
+	return node;
+      }
+
+    switch (node->info.expr.op)
+      {
+      case PT_EQ:
+	histogram_get_equal_selectivity (name, val, &sel, &ok);
+	break;
+      case PT_GT:
+	histogram_get_comp_selectivity (name, val, !reversed, false, &sel, &ok);
+	break;
+      case PT_GE:
+	histogram_get_comp_selectivity (name, val, !reversed, true, &sel, &ok);
+	break;
+      case PT_LT:
+	histogram_get_comp_selectivity (name, val, reversed, false, &sel, &ok);
+	break;
+      case PT_LE:
+	histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
+	break;
+      default:
+	break;
+      }
+  }
+
+  if (!ok)
+    {
+      /* same contract as the scalar fingerprint: without an estimate there is no band, so the
+       * term is outside the comparison on both sides rather than hashed raw */
+      return node;
+    }
+
+  slot = bind_card_slot (ctx, name);
+  if (slot >= 0)
+    {
+      ctx->sel[slot] *= sel;
+    }
+  return node;
+}
+
+/* build the current node-cardinality vector into out. false = nothing priceable (or the
+ * statement is wider than the vector), which the caller reads as "stop watching". */
+static bool
+bind_card_vector (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *out)
+{
+  bind_card_ctx ctx;
+  int i;
+
+  ctx.parser = parser;
+  ctx.statement = statement;
+  ctx.count = 0;
+  ctx.overflow = false;
+
+  bind_fp_active_parser = parser;
+  bind_fp_active_statement = statement;
+
+  (void) parser_walk_tree (parser, statement, bind_card_walk, &ctx, NULL, NULL);
+
+  bind_fp_active_parser = NULL;
+  bind_fp_active_statement = NULL;
+
+  if (ctx.count == 0 || ctx.overflow)
+    {
+      return false;
+    }
+
+  out->nodes = ctx.count;
+  for (i = 0; i < ctx.count; i++)
+    {
+      out->spec_id[i] = ctx.spec_id[i];
+      /* a node the current values rule out entirely still occupies one row's worth of work,
+       * and log space has no room for zero */
+      out->card[i] = MAX (1.0, ctx.rows[i] * ctx.sel[i]);
+      memcpy (out->name[i], ctx.name[i], BIND_WATCH_NAME_LEN);
+    }
+  return true;
+}
+
+UINT64
+histogram_bind_value_hash (PARSER_CONTEXT *parser)
+{
+  std::uint64_t h = 1469598103934665603ULL;
+  int i;
+
+  if (parser == NULL || parser->host_variables == NULL || parser->host_var_count <= 0)
+    {
+      return 0;
+    }
+
+  for (i = 0; i < parser->host_var_count; i++)
+    {
+      DB_VALUE *v = &parser->host_variables[i];
+
+      if (DB_IS_NULL (v))
+	{
+	  h = bind_fp_mix (h, 0x4e554c4cULL);
+	  continue;
+	}
+      h = bind_fp_mix (h, (std::uint64_t) mht_valhash (v, 0x7FFFFFFF));
+    }
+  return (h == 0) ? 1 : h;
+}
+
+/*
+ * histogram_bind_watch_check () - compare the node cardinalities the current bind values imply
+ *   against the ones the plan was chosen under, splitting the difference into shape and scale.
+ *
+ *   In log space the per-node change is r_i = ln (now_i / then_i). Their mean g is the common
+ *   component -- everything moved by e^g, the SCALE. What is left, max |r_i - g|, is the
+ *   SHAPE: how far the nodes moved relative to each other, which is what flips a driving
+ *   order. Shape gets the narrow band because reversing (1000,10) into (10,1000) reverses the
+ *   join; scale gets the wide one because (1000,10) -> (10000,100) keeps the order and only
+ *   risks crossing absolute thresholds (parallel-scan entry, hash-join spill, hash-aggregation
+ *   give-up).
+ */
+bool
+histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws, bool *out_usable)
+{
+  BIND_WATCH_STATE cur;
+  const double row_floor = (double) prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_ROW_FLOOR);
+  const double shape_band = (double) prm_get_float_value (PRM_ID_PLAN_CACHE_BIND_SHAPE_BAND);
+  const double scale_band = (double) prm_get_float_value (PRM_ID_PLAN_CACHE_BIND_SCALE_BAND);
+  const bool trace = prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_WATCH_TRACE);
+  double ratio_sum = 0.0, mean_ratio = 0.0, worst_shape = 0.0;
+  int compared = 0, worst_i = -1, i, j;
+  bool out_of_band = false;
+
+  assert (ws != NULL && out_usable != NULL);
+  *out_usable = false;
+
+  cur.nodes = 0;
+  if (!bind_card_vector (parser, statement, &cur))
+    {
+      return false;
+    }
+  *out_usable = true;
+
+  if (trace)
+    {
+      for (i = 0; i < cur.nodes; i++)
+	{
+	  double recorded = -1.0;
+
+	  for (j = 0; j < ws->nodes; j++)
+	    {
+	      if (ws->spec_id[j] == cur.spec_id[i])
+		{
+		  recorded = ws->card[j];
+		  break;
+		}
+	    }
+	  _er_log_debug (ARG_FILE_LINE, "bind watch dump: %s estimated rows %.0f (plan was chosen at %.0f)\n",
+			 cur.name[i], cur.card[i], recorded);
+	}
+    }
+
+  if (ws->nodes < 0 || ws->nodes != cur.nodes)
+    {
+      /* nothing recorded yet, or the set of priceable nodes itself changed (a value that makes
+       * a term unpriceable drops its node): there is no vector to compare against */
+      out_of_band = (ws->nodes >= 0);
+      if (out_of_band)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "bind watch replan (nodes): %d priced node(s), the plan was chosen with %d\n",
+			 cur.nodes, ws->nodes);
+	}
+      goto record;
+    }
+
+  for (i = 0; i < cur.nodes; i++)
+    {
+      /* the recorded vector is built by the same walk in the same order, but a NULL value can
+       * reorder first-sight, so match by spec */
+      for (j = 0; j < ws->nodes && ws->spec_id[j] != cur.spec_id[i]; j++)
+	{
+	  ;
+	}
+      if (j == ws->nodes)
+	{
+	  out_of_band = true;
+	  goto record;
+	}
+      if (cur.card[i] < row_floor && ws->card[j] < row_floor)
+	{
+	  /* 1 row becoming 3 does not move a plan */
+	  continue;
+	}
+      ratio_sum += std::log (cur.card[i] / ws->card[j]);
+      compared++;
+    }
+
+  if (compared == 0)
+    {
+      return false;
+    }
+
+  mean_ratio = ratio_sum / compared;
+
+  for (i = 0; i < cur.nodes; i++)
+    {
+      double deviation;
+
+      for (j = 0; j < ws->nodes && ws->spec_id[j] != cur.spec_id[i]; j++)
+	{
+	  ;
+	}
+      if (j == ws->nodes || (cur.card[i] < row_floor && ws->card[j] < row_floor))
+	{
+	  continue;
+	}
+      deviation = std::fabs (std::log (cur.card[i] / ws->card[j]) - mean_ratio);
+      if (deviation > worst_shape)
+	{
+	  worst_shape = deviation;
+	  worst_i = i;
+	}
+    }
+
+  if (worst_shape > std::log (shape_band))
+    {
+      out_of_band = true;
+    }
+  else if (std::fabs (mean_ratio) > std::log (scale_band))
+    {
+      out_of_band = true;
+      worst_i = -1;
+    }
+
+  if (out_of_band)
+    {
+      if (worst_i >= 0)
+	{
+	  double then, fold;
+
+	  for (j = 0; j < ws->nodes && ws->spec_id[j] != cur.spec_id[worst_i]; j++)
+	    {
+	      ;
+	    }
+	  then = ws->card[j];
+	  fold = (cur.card[worst_i] >= then) ? cur.card[worst_i] / then : then / cur.card[worst_i];
+	  _er_log_debug (ARG_FILE_LINE,
+			 "bind watch replan (shape): %s estimated rows %.0f -> %.0f, %.1fx %s"
+			 " (shape band %.1fx, overall scale %.1fx)\n",
+			 cur.name[worst_i], then, cur.card[worst_i], fold,
+			 (cur.card[worst_i] >= then) ? "up" : "down", shape_band, std::exp (mean_ratio));
+	}
+      else
+	{
+	  double fold = std::exp (std::fabs (mean_ratio));
+
+	  _er_log_debug (ARG_FILE_LINE,
+			 "bind watch replan (scale): all %d nodes moved %.1fx %s (scale band %.1fx)\n",
+			 cur.nodes, fold, (mean_ratio >= 0.0) ? "up" : "down", scale_band);
+	}
+    }
+
+record:
+  if (out_of_band || ws->nodes < 0)
+    {
+      ws->nodes = cur.nodes;
+      for (i = 0; i < cur.nodes; i++)
+	{
+	  ws->spec_id[i] = cur.spec_id[i];
+	  ws->card[i] = cur.card[i];
+	  memcpy (ws->name[i], cur.name[i], BIND_WATCH_NAME_LEN);
+	}
+      return true;
+    }
+  return false;
+}
+
+/*===========================================================================*/
+/* bind-value plan watch: target selection */
+
+/* one histogram-priceable host-variable predicate found while judging candidacy */
+struct bind_target_term
+{
+  UINTPTR spec_id;
+  PT_NODE *name;
+  bool equality;
+  bool has_mcv;
+};
+
+struct bind_target_ctx
+{
+  PARSER_CONTEXT *parser;
+  int specs;			/* FROM specs over real classes */
+  int terms;
+  bool overflow;
+  bind_target_term term[BIND_WATCH_MAX_NODES * 2];
+};
+
+static bool
+bind_target_column_has_mcv (PT_NODE *name)
+{
+  hist::HistogramReader reader;
+
+  if (!histogram_init_reader_from_lhs (name, reader))
+    {
+      return false;
+    }
+  return reader.mcv_count () > 0;
+}
+
+static void
+bind_target_add (bind_target_ctx *ctx, PT_NODE *name, bool equality)
+{
+  int i;
+
+  if (ctx->terms >= (int) (sizeof (ctx->term) / sizeof (ctx->term[0])))
+    {
+      ctx->overflow = true;
+      return;
+    }
+  for (i = 0; i < ctx->terms; i++)
+    {
+      if (ctx->term[i].spec_id == name->info.name.spec_id && ctx->term[i].name->info.name.original != NULL
+	  && name->info.name.original != NULL
+	  && intl_identifier_casecmp (ctx->term[i].name->info.name.original, name->info.name.original) == 0)
+	{
+	  ctx->term[i].equality = ctx->term[i].equality || equality;
+	  return;
+	}
+    }
+
+  i = ctx->terms++;
+  ctx->term[i].spec_id = name->info.name.spec_id;
+  ctx->term[i].name = name;
+  ctx->term[i].equality = equality;
+  ctx->term[i].has_mcv = bind_target_column_has_mcv (name);
+}
+
+static PT_NODE *
+bind_target_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  bind_target_ctx *ctx = (bind_target_ctx *) arg;
+  PT_NODE *name, *hv;
+  bool reversed = false;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (node->node_type == PT_SPEC && node->info.spec.entity_name != NULL
+      && node->info.spec.entity_name->node_type == PT_NAME && node->info.spec.derived_table == NULL)
+    {
+      ctx->specs++;
+      return node;
+    }
+
+  if (histogram_split_hv_range (parser, node, &name))
+    {
+      PT_NODE *r;
+      bool equality = false;
+
+      for (r = node->info.expr.arg2; r != NULL; r = r->or_next)
+	{
+	  if (r->node_type == PT_EXPR && r->info.expr.op == PT_BETWEEN_EQ_NA)
+	    {
+	      equality = true;
+	    }
+	  else
+	    {
+	      equality = false;
+	      break;
+	    }
+	}
+      bind_target_add (ctx, name, equality);
+      return node;
+    }
+
+  if (histogram_split_hv_predicate (parser, node, &name, &hv, &reversed))
+    {
+      bind_target_add (ctx, name, node->info.expr.op == PT_EQ);
+    }
+  return node;
+}
+
+/* does an equality on these columns pin the spec's access path? A unique key all of whose
+ * columns are matched by an equality yields at most one row whatever the value is, so the
+ * optimizer has nothing left to choose there (qo_iscan_cost prices that path at 0) and
+ * watching the statement for that column is pure cost. */
+static bool
+bind_target_spec_is_unique_pinned (PARSER_CONTEXT *parser, PT_NODE *statement, bind_target_ctx *ctx,
+				   UINTPTR spec_id)
+{
+  const char *class_name = NULL;
+  DB_OBJECT *classop;
+  SM_CLASS_CONSTRAINT *constraints, *c;
+  int i;
+
+  for (i = 0; i < ctx->terms; i++)
+    {
+      if (ctx->term[i].spec_id == spec_id)
+	{
+	  class_name = histogram_spec_class_name (parser, statement, ctx->term[i].name);
+	  break;
+	}
+    }
+  if (class_name == NULL)
+    {
+      return false;
+    }
+
+  classop = db_find_class (class_name);
+  if (classop == NULL)
+    {
+      er_clear ();
+      return false;
+    }
+  constraints = sm_class_constraints (classop);
+  if (constraints == NULL)
+    {
+      er_clear ();
+      return false;
+    }
+
+  for (c = constraints; c != NULL; c = c->next)
+    {
+      SM_ATTRIBUTE **att;
+      bool all_matched = true;
+
+      if (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (c->type) || c->attributes == NULL || c->attributes[0] == NULL)
+	{
+	  continue;
+	}
+
+      for (att = c->attributes; *att != NULL && all_matched; att++)
+	{
+	  bool matched = false;
+
+	  for (i = 0; i < ctx->terms; i++)
+	    {
+	      if (ctx->term[i].spec_id == spec_id && ctx->term[i].equality
+		  && ctx->term[i].name->info.name.original != NULL
+		  && intl_identifier_casecmp (ctx->term[i].name->info.name.original, (*att)->header.name) == 0)
+		{
+		  matched = true;
+		  break;
+		}
+	    }
+	  all_matched = matched;
+	}
+      if (all_matched)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+bool
+histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement, double plan_cost)
+{
+  bind_target_ctx ctx;
+  int i;
+
+  /* the feature is off: a statement that is not watched must not pay a single walk for it */
+  if (prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS) <= 0)
+    {
+      return false;
+    }
+  if (parser == NULL || statement == NULL || parser->host_var_count <= 0)
+    {
+      return false;
+    }
+  /* a plan this cheap cannot get expensive enough for a replan to pay for itself */
+  if (plan_cost < (double) prm_get_float_value (PRM_ID_PLAN_CACHE_BIND_COST_THRESHOLD))
+    {
+      return false;
+    }
+
+  ctx.parser = parser;
+  ctx.specs = 0;
+  ctx.terms = 0;
+  ctx.overflow = false;
+
+  /* the MCV test below reads the column's histogram; give the probes the statement so a column
+   * the optimizer did not annotate still resolves through the class cache */
+  bind_fp_active_parser = parser;
+  bind_fp_active_statement = statement;
+
+  (void) parser_walk_tree (parser, statement, bind_target_walk, &ctx, NULL, NULL);
+
+  bind_fp_active_parser = NULL;
+  bind_fp_active_statement = NULL;
+
+  /* single-table queries are out of scope by contract: their worst case is a full scan, so the
+   * table bounds the damage, while a join's error multiplies at every probe with no bound.
+   * Use the hint when a single-table statement really needs watching. */
+  if (ctx.specs < 2 || ctx.terms == 0 || ctx.overflow)
+    {
+      return false;
+    }
+
+  for (i = 0; i < ctx.terms; i++)
+    {
+      /* without most-common values the estimate does not move with the value, so watching the
+       * column would cost without ever finding anything */
+      if (!ctx.term[i].has_mcv)
+	{
+	  continue;
+	}
+      if (bind_target_spec_is_unique_pinned (parser, statement, &ctx, ctx.term[i].spec_id))
+	{
+	  continue;
+	}
+      return true;
+    }
+  return false;
 }
 
 /*===========================================================================*/

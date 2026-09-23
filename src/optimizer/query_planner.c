@@ -11455,6 +11455,21 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
 }
 
 /*
+ * qo_plan_get_total_cost () - total estimated cost of a plan
+ *   return   : fixed + variable cost (CPU and IO), 0 for a NULL plan
+ *   plan (in): plan to price
+ */
+double
+qo_plan_get_total_cost (QO_PLAN * plan)
+{
+  if (plan == NULL)
+    {
+      return 0.0;
+    }
+  return plan->fixed_cpu_cost + plan->fixed_io_cost + plan->variable_cpu_cost + plan->variable_io_cost;
+}
+
+/*
  * qo_between_range_histogram_selectivity () - selectivity of one between-range operator from
  *   the column histogram. Shared by the RANGE path (attr RANGE {...}) and the BETWEEN path
  *   (attr BETWEEN a AND b), which price the same operators and must stay in step.
@@ -11474,7 +11489,7 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
  * arg2_val (in)   : upper bound value, NULL for one-sided operators
  * out_sel (out)   : selectivity in [0,1]
  */
-static bool
+bool
 qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
 					DB_VALUE * arg2_val, double *out_sel)
 {

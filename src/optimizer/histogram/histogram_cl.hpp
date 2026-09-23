@@ -106,6 +106,61 @@ bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UIN
  * unbound host-variable markers so the first execution replans under the real values. */
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
+/*===========================================================================*/
+/* bind-value plan watch (node-cardinality fingerprint)
+ *
+ * The scalar fingerprint above bands each predicate's selectivity on its own, so it changes
+ * when the plan would not (0.001 -> 0.002) and it does not look at the quantity that actually
+ * moves a plan: how many rows each node is expected to produce. The watch below records the
+ * per-node estimated row counts the current plan was chosen under and compares a later
+ * execution's values against them as RATIOS, split into
+ *   shape -- the nodes moved relative to each other, so the driving order flips (narrow band)
+ *   scale -- everything moved together, so absolute-value thresholds (parallel-scan entry,
+ *            hash-join spill, hash-aggregation give-up) may flip (wide band)
+ * and it does so only for the first N executions of a statement, after which the plan is left
+ * alone until it is invalidated. Continuous watching stays behind BIND_SENSITIVE /
+ * plan_cache_bind_sensitivity.
+ */
+
+/* Nodes tracked per statement. A node here is a FROM spec carrying at least one
+ * histogram-priceable host-variable predicate; queries wide enough to overflow this are not
+ * watched (the vector would be partial, and a partial vector cannot be compared honestly). */
+#define BIND_WATCH_MAX_NODES 16
+/* enough to recognize a table in a log line; longer names are truncated */
+#define BIND_WATCH_NAME_LEN 32
+
+struct bind_watch_state
+{
+  int nodes;			/* recorded nodes; -1 = nothing recorded yet */
+  int checks_left;		/* early-window checks still allowed; 0 = watching finished */
+  int replans;			/* replans this statement's watch has caused (observability) */
+  UINT64 value_hash;		/* hash of the values the last check ran on; 0 = none yet */
+  UINTPTR spec_id[BIND_WATCH_MAX_NODES];
+  double card[BIND_WATCH_MAX_NODES];	/* estimated rows of each node under those values */
+  char name[BIND_WATCH_MAX_NODES][BIND_WATCH_NAME_LEN];	/* class (or exposed) name, for the log */
+};
+typedef struct bind_watch_state BIND_WATCH_STATE;
+
+/* target selection, decided once when the plan is built: is this statement worth watching?
+ * Requires two or more joined nodes, a histogram-priceable host-variable predicate on a column
+ * that actually has most-common values, that predicate not pinning its node through a unique
+ * key, and a plan estimate above the cost threshold. Returns false without touching the tree
+ * when the feature is off. */
+bool histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement, double plan_cost);
+
+/* one early-window check under the values currently bound in parser.
+ * return            : true when the recorded cardinalities are out of band (caller replans);
+ *                     ws is then updated to the current vector
+ * ws (in/out)       : the statement's watch state
+ * out_usable (out)  : false when nothing in the statement can be priced by a histogram, which
+ *                     cannot change while this plan lives -- the caller stops watching */
+bool histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws,
+				 bool *out_usable);
+
+/* hash of the user host-variable values themselves, so a check can be skipped when the
+ * execution re-binds the same values. 0 when there are none. */
+UINT64 histogram_bind_value_hash (PARSER_CONTEXT *parser);
+
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
 int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc);
 /* free everything owned by a HISTOGRAM_COLLECT and reset it. */
