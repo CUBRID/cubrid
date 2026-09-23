@@ -1918,6 +1918,10 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	    }
 	  memset (&p->s_id.scan_stats, 0, sizeof (SCAN_STATS));
 
+	  /* partition_stats points into parts, which is freed here or was freed on an open error; a cached
+	   * XASL clone keeps the spec, and the next trace-on scan would write through the stale pointer */
+	  p->s_id.partition_stats = NULL;
+
 	  if (p->parts != NULL)
 	    {
 	      free (p->parts);
