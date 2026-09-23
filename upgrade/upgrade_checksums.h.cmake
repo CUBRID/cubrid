@@ -16,26 +16,15 @@
  *
  */
 
+#ifndef _UPGRADE_CHECKSUMS_H_
+#define _UPGRADE_CHECKSUMS_H_
 
-/*
- * schema_information_schema.hpp - SQL INFORMATION_SCHEMA (ISO/IEC 9075-11:2003) metadata interface
- */
+#include "system_metadata_version.h"
 
-#ifndef _SCHEMA_INFORMATION_SCHEMA_HPP_
-#define _SCHEMA_INFORMATION_SCHEMA_HPP_
+static_assert (@UPGRADE_SCRIPT_COUNT_VAL@ == SYSTEM_METADATA_VERSION - 1,
+	       "the upgrade script chain must end at SYSTEM_METADATA_VERSION");
 
-#include <string>
-#include <string_view>
-#include <vector>
+static const char *UPGRADE_SCRIPT_SHA256S[] = {
+@UPGRADE_CHECKSUM_ENTRIES@};
 
-void info_schema_init (void);
-int info_schema_install (void);
-int info_schema_rebuild_vclasses (void);
-bool sm_is_information_schema_views (const std::string_view name);
-
-namespace cubschema
-{
-  const std::vector<std::string> &get_information_schema_view_names ();
-}
-
-#endif /* _SCHEMA_INFORMATION_SCHEMA_HPP_ */
+#endif /* _UPGRADE_CHECKSUMS_H_ */
