@@ -139,6 +139,10 @@ const char *TR_ATT_COMMENT = "comment";
 const char *TR_ATT_CREATED_TIME = "created_time";
 const char *TR_ATT_UPDATED_TIME = "updated_time";
 
+/* db_get_all_objects is not used for this because it takes a shared lock on the catalog class, which would block
+ * against a concurrent CREATE or DROP TRIGGER. */
+const char *TR_QUERY_ALL_TRIGGERS = "SELECT [t] FROM [" CT_TRIGGER_NAME "] AS [t]";
+
 int tr_Current_depth = 0;
 int tr_Maximum_depth = TR_MAX_RECURSION_LEVEL;
 OID tr_Stack[TR_MAX_RECURSION_LEVEL + 1];
@@ -3413,6 +3417,103 @@ trigger_table_drop (const char *name)
 
 end:
   AU_RESTORE (save);
+
+  return error;
+}
+
+/*
+ * tr_find_trigger_objects() - Runs a catalog query and returns the trigger objects it selects
+ *    return: error code
+ *    query(in): the catalog query to run
+ *    objects(out): object list (returned)
+ *
+ * Note:
+ *    The list must be freed with ml_free.
+ */
+int
+tr_find_trigger_objects (const char *query, DB_OBJLIST ** objects)
+{
+  DB_SESSION *session = NULL;
+  DB_QUERY_RESULT *query_result = NULL;
+  DB_VALUE value;
+  MOP trigger_object;
+  int error = NO_ERROR;
+  int stmt_id, rows, cursor;
+  int save;
+
+  *objects = NULL;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  session = db_open_buffer_local (query);
+  if (session == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  error = db_set_system_generated_statement (session);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  stmt_id = db_compile_statement_local (session);
+  if (stmt_id < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto end;
+    }
+
+  rows = db_execute_statement_local (session, stmt_id, &query_result);
+  if (rows < 0)
+    {
+      error = rows;
+      goto end;
+    }
+
+  for (cursor = db_query_first_tuple (query_result); cursor == DB_CURSOR_SUCCESS;
+       cursor = db_query_next_tuple (query_result))
+    {
+      error = db_query_get_tuple_value (query_result, 0, &value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      trigger_object = db_get_object (&value);
+      pr_clear_value (&value);
+
+      /* keep the query order, since it is also the dump and the listing order */
+      error = ml_append (objects, trigger_object, NULL);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  if (cursor != DB_CURSOR_END)
+    {
+      error = cursor;
+    }
+
+end:
+  if (query_result != NULL)
+    {
+      db_query_end (query_result);
+    }
+  if (session != NULL)
+    {
+      db_close_session_local (session);
+    }
+
+  AU_RESTORE (save);
+
+  if (error != NO_ERROR && *objects != NULL)
+    {
+      ml_free (*objects);
+      *objects = NULL;
+    }
 
   return error;
 }
