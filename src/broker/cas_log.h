@@ -26,6 +26,7 @@
 
 #ident "$Id$"
 
+#include <signal.h>
 #include "hide_password.h"
 typedef enum
 {
@@ -46,7 +47,8 @@ typedef enum
 extern void cas_log_open (char *br_name);
 extern void cas_log_reset (char *br_name);
 extern void cas_log_close (bool flag);
-extern void cas_log_flush_if_needed (void);
+extern void cas_log_flush_on_exit (void);
+extern void cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx);
 #ifdef CAS_ERROR_LOG
 extern void cas_error_log (int err_code, char *err_msg, int client_ip_addr);
 #endif
