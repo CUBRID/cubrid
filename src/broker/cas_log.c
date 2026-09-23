@@ -120,27 +120,8 @@ static char cas_log_error_flag;
 #endif
 static CAS_LOG_FD *log_fp = NULL, *slow_log_fp = NULL;
 static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
-static INT64 saved_log_fpos = 0;	/* start of the in-flight unit; the handler reads it as one aligned INT64 load */
+static INT64 saved_log_fpos = 0;
 static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
-
-static sigset_t usr2_set;
-static sigset_t usr2_block_old;	/* mask saved by cas_log_block_usr2 () */
-static volatile sig_atomic_t usr2_in_crit = 0;	/* wrapper is in its critical section */
-static volatile sig_atomic_t usr2_flush_deferred = 0;	/* handler deferred the flush */
-static timer_t sql_log_timer;
-static bool sql_log_timer_ok = false;
-static bool sql_log_sig_inited = false;
-
-static void arm_flush_timer_1s (void);
-static void cas_log_timer_init (void);
-static void cas_log_crit_enter (void);
-static void cas_log_crit_leave (void);
-static void cas_log_block_usr2 (void);
-static void cas_log_restore_usr2 (void);
-static int pwrite_all (int fd, const char *p, size_t len, INT64 off);
-static int ftruncate_all (int fd, INT64 len);
-static int cas_fflush_internal (CAS_LOG_FD * lfd, int end);
-static int cas_log_timer_bound (CAS_LOG_FD * lfd);
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd);
 static void cas_fwrite_oneline (CAS_LOG_FD * lfd, const char *str);
@@ -158,6 +139,25 @@ static int cas_unlink (const char *pathname);
 static int cas_rename (const char *oldpath, const char *newpath);
 static int cas_mkdir (const char *pathname, mode_t mode);
 static void access_log_backup (char *access_log_file, struct tm *ct);
+
+static sigset_t usr2_set;
+static sigset_t usr2_block_old;	/* mask saved by cas_log_block_usr2 () */
+static volatile sig_atomic_t usr2_in_crit = 0;	/* wrapper is in its critical section */
+static volatile sig_atomic_t usr2_flush_deferred = 0;	/* handler deferred the flush */
+static timer_t sql_log_timer;	/* SQL log only: cas_slow_log_end () flushes the slow log */
+static bool sql_log_timer_ok = false;
+static bool sql_log_sig_inited = false;
+
+static void arm_flush_timer_1s (void);
+static void cas_log_timer_init (void);
+static void cas_log_crit_enter (void);
+static void cas_log_crit_leave (void);
+static void cas_log_block_usr2 (void);
+static void cas_log_restore_usr2 (void);
+static int pwrite_all (int fd, const char *p, size_t len, INT64 off);
+static int ftruncate_all (int fd, INT64 len);
+static int cas_fflush_internal (CAS_LOG_FD * lfd, int end);
+static int cas_log_timer_bound (CAS_LOG_FD * lfd);
 
 static INT64 saved_temp_stmt_fpos = 0;
 
