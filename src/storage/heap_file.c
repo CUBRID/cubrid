@@ -5452,7 +5452,14 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
-  cubstorage::bestspaces.destroy (hfid);
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      /* With vacuum disabled, vacuum_log_add_dropped_file () logs no postpone record, so the run-postpone
+       * handler vacuum_rv_notify_dropped_file () - the only remaining place that destroys the bestspace -
+       * never runs. There is also no vacuum worker to race with in this configuration, so destroy it here.
+       * When vacuum is enabled the postpone handler owns the destroy, after all workers pass the barrier. */
+      cubstorage::bestspaces.destroy (hfid);
+    }
 
   return NO_ERROR;
 }
@@ -5496,7 +5503,11 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
 
-  cubstorage::bestspaces.destroy (hfid);
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      /* see xheap_destroy (): with vacuum disabled the postpone handler never destroys the bestspace */
+      cubstorage::bestspaces.destroy (hfid);
+    }
 
   return ret;
 }
