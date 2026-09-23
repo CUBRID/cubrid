@@ -160,7 +160,6 @@ static PT_NODE *pt_make_default_value (PARSER_CONTEXT * parser, const char *clas
 static void pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter);
 static PT_NODE *pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list);
 static PT_NODE *pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static PT_NODE *pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_function (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
@@ -246,6 +245,7 @@ static DB_OBJECT *pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_r
 static int pt_collection_assignable (PARSER_CONTEXT * parser, const PT_NODE * d_col, const PT_NODE * s_col);
 static int pt_assignment_class_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs);
 static PT_NODE *pt_assignment_compatible (PARSER_CONTEXT * parser, PT_NODE * lhs, PT_NODE * rhs);
+static PT_CAST_VAL pt_get_cast_validity (PT_TYPE_ENUM arg_type, PT_TYPE_ENUM cast_type);
 static int pt_check_defaultf (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_vclass_union_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_NODE * attrds);
 static int pt_check_group_concat_order_by (PARSER_CONTEXT * parser, PT_NODE * func);
@@ -1053,6 +1053,41 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       arg_type = arg1->type_enum;
     }
 
+  cast_is_valid = pt_get_cast_validity (arg_type, cast_type);
+  if (arg_type == PT_TYPE_OBJECT && PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_SHOULD_FOLD))
+    {
+      /* some functions like DECODE, CASE perform wrap with CAST, allow it */
+      cast_is_valid = PT_CAST_VALID;
+    }
+
+  switch (cast_is_valid)
+    {
+    case PT_CAST_VALID:
+      break;
+    case PT_CAST_INVALID:
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+		   pt_short_print (parser, node->info.expr.arg1), pt_show_type_enum (cast_type));
+      break;
+    case PT_CAST_UNSUPPORTED:
+      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COERCE_UNSUPPORTED,
+		   pt_short_print (parser, node->info.expr.arg1), pt_show_type_enum (cast_type));
+      break;
+    }
+
+  return (cast_is_valid == PT_CAST_VALID) ? true : false;
+}
+
+/*
+ * pt_get_cast_validity () - the verdict of CAST (arg_type AS cast_type) from the two types alone
+ *   return: PT_CAST_VALID, PT_CAST_INVALID or PT_CAST_UNSUPPORTED
+ *   arg_type(in): type of the value being cast
+ *   cast_type(in): type it is cast to
+ */
+static PT_CAST_VAL
+pt_get_cast_validity (PT_TYPE_ENUM arg_type, PT_TYPE_ENUM cast_type)
+{
+  PT_CAST_VAL cast_is_valid = PT_CAST_VALID;
+
   switch (arg_type)
     {
     case PT_TYPE_INTEGER:
@@ -1241,11 +1276,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
     case PT_TYPE_OBJECT:
-      /* some functions like DECODE, CASE perform wrap with CAST, allow it */
-      if (!PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_SHOULD_FOLD))
-	{
-	  cast_is_valid = PT_CAST_UNSUPPORTED;
-	}
+      cast_is_valid = PT_CAST_UNSUPPORTED;
       break;
     case PT_TYPE_SET:
     case PT_TYPE_MULTISET:
@@ -1318,21 +1349,20 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  switch (cast_is_valid)
-    {
-    case PT_CAST_VALID:
-      break;
-    case PT_CAST_INVALID:
-      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		   pt_short_print (parser, node->info.expr.arg1), pt_show_type_enum (cast_type));
-      break;
-    case PT_CAST_UNSUPPORTED:
-      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COERCE_UNSUPPORTED,
-		   pt_short_print (parser, node->info.expr.arg1), pt_show_type_enum (cast_type));
-      break;
-    }
+  return cast_is_valid;
+}
 
-  return (cast_is_valid == PT_CAST_VALID) ? true : false;
+/*
+ * pt_is_cast_valid () - whether a value of arg_type can be cast to cast_type; the same table that
+ *	validates a CAST operator
+ *   return: true if the cast is valid
+ *   arg_type(in):
+ *   cast_type(in):
+ */
+bool
+pt_is_cast_valid (PT_TYPE_ENUM arg_type, PT_TYPE_ENUM cast_type)
+{
+  return pt_get_cast_validity (arg_type, cast_type) == PT_CAST_VALID;
 }
 
 /*
@@ -4133,6 +4163,76 @@ pt_default_expr_unclassified_name (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_is_argless_legacy_pseudo () - whether node is a legacy DEFAULT pseudo-column (the
+ *	DB_DEFAULT_EXPR_TYPE set without TO_CHAR) used without arguments
+ *   return: true if so
+ *   node(in): a DEFAULT (sub)expression
+ */
+static bool
+pt_is_argless_legacy_pseudo (const PT_NODE * node)
+{
+  if (node == NULL || !PT_IS_EXPR_NODE (node))
+    {
+      return false;
+    }
+
+  if (pt_default_expr_type_from_op (node->info.expr.op) == DB_DEFAULT_NONE)
+    {
+      return false;
+    }
+  return node->info.expr.arg1 == NULL && node->info.expr.arg2 == NULL && node->info.expr.arg3 == NULL;
+}
+
+/*
+ * pt_is_bare_legacy_default_form () - whether node may appear as a non-parenthesized (bare)
+ *	column DEFAULT: an argument-less legacy pseudo-column, UUID(<numeric literal>), or
+ *	TO_CHAR(<literal | argument-less datetime pseudo-column> [, <literal>])
+ *   return: true if so
+ *   node(in): the top-level node of the DEFAULT expression
+ */
+static bool
+pt_is_bare_legacy_default_form (const PT_NODE * node)
+{
+  const PT_NODE *arg1;
+
+  if (node == NULL || !PT_IS_EXPR_NODE (node))
+    {
+      return false;
+    }
+
+  if (pt_is_argless_legacy_pseudo (node))
+    {
+      return true;
+    }
+
+  if (node->info.expr.op == PT_UUID)
+    {
+      /* the version argument must be a numeric literal (UUID() was handled above) */
+      arg1 = node->info.expr.arg1;
+      return arg1 != NULL && arg1->node_type == PT_VALUE && arg1->next == NULL
+	&& PT_IS_NUMERIC_TYPE (arg1->type_enum) && node->info.expr.arg2 == NULL && node->info.expr.arg3 == NULL;
+    }
+
+  if (node->info.expr.op == PT_TO_CHAR)
+    {
+      arg1 = node->info.expr.arg1;
+      if (arg1 == NULL)
+	{
+	  return false;
+	}
+      /* the format must be a literal */
+      if (node->info.expr.arg2 != NULL && node->info.expr.arg2->node_type != PT_VALUE)
+	{
+	  return false;
+	}
+      /* one level of nesting only */
+      return arg1->node_type == PT_VALUE || pt_is_argless_legacy_pseudo (arg1);
+    }
+
+  return false;
+}
+
+/*
  * pt_check_data_default () - checks data_default for semantic errors
  *
  * result	    	 : modified data_default
@@ -4151,6 +4251,9 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
   bool has_query;
   PT_VOLATILITY expr_vol;
   char *edl_text;
+  PT_NODE *unclassified_node;
+  bool column_rules;
+  int held_do_not_fold;
 
   if (pt_has_error (parser))
     {
@@ -4170,6 +4273,8 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
     {
       save_next = data_default->next;
       data_default->next = NULL;
+      unclassified_node = NULL;
+      held_do_not_fold = -1;
 
       default_value = data_default->info.data_default.default_value;
 
@@ -4182,21 +4287,29 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
-      /* Detect an Expression-Derived Literal: a DEFAULT whose value is a compound
-       * expression -- not a plain literal, and not a legacy pseudo-column
-       * (default_expr_type stays DB_DEFAULT_NONE).  Only the new DEFAULT path is
-       * eligible (shared == PT_DEFAULT keeps SHARED on the legacy enum path).
-       * Capture the normalized source text and effective volatility BEFORE
-       * folding, because pt_semantic_type folds an Immutable expression down to a
-       * single literal value. */
-      expr_vol = PT_VOLATILITY_UNSET;
-      edl_text = NULL;
-      if (data_default->info.data_default.shared == PT_DEFAULT
-	  && data_default->info.data_default.default_expr_type == DB_DEFAULT_NONE
-	  && default_value != NULL && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION)
+      /* The column DEFAULT rules -- the bare-expression rule and the Stored DEFAULT Forms classification -- apply
+       * to a column DEFAULT written in the statement: not to a SHARED value, and not to the copy of a stored
+       * DEFAULT (CREATE VIEW), which arrives with its text and volatility set. */
+      expr_vol = data_default->info.data_default.expr_volatility;
+      edl_text = data_default->info.data_default.expr_text;
+      column_rules = (data_default->info.data_default.shared == PT_DEFAULT && expr_vol == PT_VOLATILITY_UNSET);
+
+      /* a bare (non-parenthesized) column DEFAULT expression is allowed only for the legacy whitelist forms and
+       * literals (a signed numeric literal included); anything else needs parentheses */
+      if (column_rules && default_value != NULL && PT_IS_EXPR_NODE (default_value)
+	  && default_value->info.expr.paren_type == 0 && !pt_is_bare_legacy_default_form (default_value)
 	  && !pt_is_signed_numeric_literal (default_value))
 	{
-	  PT_NODE *unclassified_node = NULL;
+	  PT_ERRORm (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_REQUIRES_PARENS);
+	  goto end;
+	}
+
+      /* An expression DEFAULT (not a plain literal): capture its normalized source text and effective volatility
+       * BEFORE folding, because pt_semantic_type folds an Immutable expression down to a single literal. */
+      if (column_rules && default_value != NULL
+	  && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION)
+	  && !pt_is_signed_numeric_literal (default_value))
+	{
 	  PT_VOLATILITY vol = pt_get_expr_tree_volatility (default_value, &unclassified_node);
 
 	  if (vol == PT_VOLATILITY_IMMUTABLE || PT_VOLATILITY_IS_RESIDUAL (vol))
@@ -4221,6 +4334,12 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 			      MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG, DB_MAX_DEFAULT_EXPR_LENGTH);
 		  goto end;
 		}
+
+	      /* the DDL checks the type of the expression against the column, and a folded NULL carries none: hold
+	       * the root back from the folding pass, record its type once typed, then fold it below (a root the
+	       * grammar already keeps from folding, a clock pseudo-column, stays so) */
+	      held_do_not_fold = default_value->flag.do_not_fold;
+	      default_value->flag.do_not_fold = 1;
 	    }
 	  else if (vol == PT_VOLATILITY_UNSET)
 	    {
@@ -4254,14 +4373,34 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	    }
 	  data_default = result;
 
+	  default_value = data_default->info.data_default.default_value;
+	  if (held_do_not_fold >= 0)
+	    {
+	      data_default->info.data_default.expr_type = default_value->type_enum;
+	      default_value->flag.do_not_fold = held_do_not_fold;
+	      if (held_do_not_fold == 0)
+		{
+		  default_value = pt_fold_const_node (parser, default_value, NULL);
+		  data_default->info.data_default.default_value = default_value;
+		  if (default_value == NULL || pt_has_error (parser))
+		    {
+		      goto end;
+		    }
+		}
+	    }
+	  if (expr_vol != PT_VOLATILITY_UNSET)
+	    {
+	      /* what survived folding decides: a STABLE operator over constant arguments (TO_CHAR (123)) folds to
+	       * a literal and is kept as an Expression-Derived Literal */
+	      expr_vol = pt_get_expr_tree_volatility (default_value, &unclassified_node);
+	    }
+
 	  /* Record the original text and volatility so storage and DDL execution
 	   * derive the stored forms from them.  An IMMUTABLE expression counts
 	   * only if it actually folded to a single literal (Expression-Derived
 	   * Literal); a residual (STABLE or VOLATILE) keeps its expression. */
 	  if (PT_VOLATILITY_IS_RESIDUAL (expr_vol)
-	      || (expr_vol == PT_VOLATILITY_IMMUTABLE
-		  && data_default->info.data_default.default_value != NULL
-		  && data_default->info.data_default.default_value->node_type == PT_VALUE))
+	      || (expr_vol == PT_VOLATILITY_IMMUTABLE && default_value != NULL && default_value->node_type == PT_VALUE))
 	    {
 	      data_default->info.data_default.expr_text = edl_text;
 	      data_default->info.data_default.expr_volatility = expr_vol;
@@ -4271,40 +4410,6 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	{
 	  /* an error has occurred, skip other checks */
 	  goto end;
-	}
-
-      node_ptr = NULL;
-      (void) parser_walk_tree (parser, default_value, pt_find_default_expression, &node_ptr, NULL, NULL);
-      if (node_ptr != NULL && node_ptr != default_value && !PT_VOLATILITY_IS_RESIDUAL (expr_vol))
-	{
-	  /* nested default expressions are not supported */
-	  PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,
-		      pt_show_binopcode (node_ptr->info.expr.op));
-	  goto end;
-	}
-
-      if (PT_IS_EXPR_NODE (default_value) && default_value->info.expr.op == PT_TO_CHAR
-	  && PT_IS_EXPR_NODE (default_value->info.expr.arg1))
-	{
-	  int op_type = -1;
-
-	  if (PT_IS_EXPR_NODE (default_value->info.expr.arg2))
-	    {
-	      /* nested expressions in arg2 are not supported */
-	      op_type = default_value->info.expr.arg2->info.expr.op;
-	    }
-	  else if (node_ptr == NULL)
-	    {
-	      /* nested expressions in arg1 are not supported except sys date, time and user. */
-	      op_type = default_value->info.expr.arg1->info.expr.op;
-	    }
-
-	  if (op_type != -1)
-	    {
-	      PT_ERRORmf (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DEFAULT_NESTED_EXPR_NOT_ALLOWED,
-			  pt_show_binopcode ((PT_OP_TYPE) op_type));
-	      goto end;
-	    }
 	}
 
       node_ptr = NULL;
@@ -4503,63 +4608,6 @@ pt_find_query (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue
   return tree;
 }
 
-
-/*
- * pt_find_default_expression () - find a default expression
- *
- * result	  :
- * parser(in)	  :
- * tree(in)	  :
- * arg(in)	  : will point to default expression if any is found
- * continue_walk  :
- */
-static PT_NODE *
-pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
-{
-  PT_NODE **default_expr = (PT_NODE **) arg, *node = NULL;
-
-  if (tree == NULL || !PT_IS_EXPR_NODE (tree))
-    {
-      *continue_walk = PT_STOP_WALK;
-      return tree;
-    }
-
-  if (tree->info.expr.op == PT_TO_CHAR && tree->info.expr.arg1 != NULL && PT_IS_EXPR_NODE (tree->info.expr.arg1))
-    {
-      /* The correctness of TO_CHAR expression is done a little bit later after obtaining system time. */
-      assert (tree->info.expr.arg2 != NULL);
-      node = tree->info.expr.arg1;
-    }
-  else
-    {
-      node = tree;
-    }
-
-  switch (node->info.expr.op)
-    {
-    case PT_SYS_TIME:
-    case PT_SYS_DATE:
-    case PT_SYS_DATETIME:
-    case PT_SYS_TIMESTAMP:
-    case PT_CURRENT_TIME:
-    case PT_CURRENT_DATE:
-    case PT_CURRENT_TIMESTAMP:
-    case PT_CURRENT_DATETIME:
-    case PT_USER:
-    case PT_CURRENT_USER:
-    case PT_UNIX_TIMESTAMP:
-    case PT_UUID:
-    case PT_SYS_GUID:
-      *default_expr = tree;
-      *continue_walk = PT_STOP_WALK;
-      break;
-
-    default:
-      break;
-    }
-
-  return tree;
-}
 
 /*
  * pt_find_aggregate_function () - check if current expression contains an
@@ -8184,56 +8232,51 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 
       if (attr->info.attr_def.data_default == NULL)
 	{
-	  if (DB_IS_NULL (&col_attr->default_value.value)
-	      && (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE))
-	    {
-	      /* don't create any default node if default value is null unless default expression type is not
-	       * DB_DEFAULT_NONE */
-	      continue;
-	    }
+	  const char *expr_text = NULL;
+	  PT_VOLATILITY expr_vol = PT_VOLATILITY_UNSET;
 
-	  if (col_attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
+	  /* a residual DEFAULT is inherited as a copy of its rehydrated expression, so the view keeps
+	   * evaluating it at INSERT time instead of freezing a DDL-time constant; a literal or
+	   * Expression-Derived Literal is rebuilt from its stored value and a NULL value is not inherited */
+	  if (DB_IS_RESIDUAL_DEFAULT_EXPR (&col_attr->default_value.default_expr))
 	    {
+	      default_value = pt_cdt_registry_tree_copy (parser, col_attr, qry, &expr_vol);
+	      if (default_value == NULL)
+		{
+		  goto error;
+		}
+	      expr_text = col_attr->default_value.default_expr.default_expr_text;
+	    }
+	  else
+	    {
+	      if (DB_IS_NULL (&col_attr->default_value.value))
+		{
+		  continue;
+		}
+
 	      default_value = pt_dbval_to_value (parser, &col_attr->default_value.value);
 	      if (default_value == NULL)
 		{
 		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		  goto error;
 		}
-
-	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
-	      if (default_data == NULL)
-		{
-		  parser_free_tree (parser, default_value);
-		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  goto error;
-		}
-	      default_data->info.data_default.default_value = default_value;
-	      default_data->info.data_default.shared = PT_DEFAULT;
-	      default_data->info.data_default.default_expr_type = DB_DEFAULT_NONE;
 	    }
-	  else
+
+	  default_data = parser_new_node (parser, PT_DATA_DEFAULT);
+	  if (default_data == NULL)
 	    {
-	      default_value =
-		pt_make_default_value_tree_from_default_expr (parser, &col_attr->default_value.default_expr);
-	      if (default_value == NULL)
-		{
-		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  goto error;
-		}
-
-	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
-	      if (default_data == NULL)
-		{
-		  parser_free_tree (parser, default_value);
-		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  goto error;
-		}
-
-	      default_data->info.data_default.default_value = default_value;
-	      default_data->info.data_default.shared = PT_DEFAULT;
-	      default_data->info.data_default.default_expr_type =
-		col_attr->default_value.default_expr.default_expr_type;
+	      parser_free_tree (parser, default_value);
+	      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      goto error;
+	    }
+	  default_data->info.data_default.default_value = default_value;
+	  default_data->info.data_default.shared = PT_DEFAULT;
+	  if (expr_text != NULL)
+	    {
+	      /* the stored text and volatility travel with the copy: pt_check_data_default keeps them instead of
+	       * re-deriving them from a tree the statement did not write */
+	      default_data->info.data_default.expr_text = pt_append_string (parser, NULL, expr_text);
+	      default_data->info.data_default.expr_volatility = expr_vol;
 	    }
 
 	  attr->info.attr_def.data_default = default_data;
@@ -9767,77 +9810,19 @@ pt_get_type_name (PT_TYPE_ENUM type_enum, PT_NODE * data_type)
 }
 
 /*
- * pt_check_default_value_param_for_stored_procedure () - do semantic checks for default value params' invalid form: Out parameter, system expressions, incoercible type
- *   return:  none
+ * pt_check_default_value_param_for_stored_procedure () - refuse a stored-procedure parameter DEFAULT: it is not
+ *	supported until it is stored as an expression, as a column DEFAULT is
+ *   return: ER_FAILED
  *   parser(in): the parser context used to derive the statement
- *   node(in): a statement
+ *   param(in): a parameter that has a DEFAULT
  */
 static int
 pt_check_default_value_param_for_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * param)
 {
-  int error = NO_ERROR;
-  PT_NODE *node_ptr = NULL;
-  PT_NODE *default_value_node = NULL;
-  PT_NODE *default_value = NULL;
-  const char *default_value_print = NULL;
-  DB_VALUE tmp;
-
-  default_value_node = param->info.sp_param.default_value =
-    pt_check_data_default (parser, param->info.sp_param.default_value);
-  if (pt_has_error (parser))
-    {
-      return ER_FAILED;
-    }
-
-  assert (default_value_node != NULL && default_value_node->info.data_default.shared == PT_DEFAULT);
-
-  default_value = default_value_node->info.data_default.default_value;
-  default_value_print = pt_short_print (parser, default_value);
-
-  if (param->info.sp_param.mode != PT_INPUT && param->info.sp_param.mode != PT_NOPUT)
-    {
-      PT_ERRORmf (parser,
-		  param,
-		  MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_SP_OUT_DEFAULT_ARG_NOT_ALLOWED, pt_short_print (parser, param->info.sp_param.name));
-      return ER_FAILED;
-    }
-
-  if (default_value->node_type == PT_EXPR && default_value_node->info.data_default.default_expr_type == DB_DEFAULT_NONE)
-    {
-      db_make_null (&tmp);
-      pt_evaluate_tree (parser, default_value, &tmp, 1);
-      if (pt_has_error (parser))
-	{
-	  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME__CAN_NOT_EVALUATE,
-		      pt_short_print (parser, default_value));
-	  error = ER_FAILED;
-	}
-      else
-	{
-	  parser_free_node (parser, default_value_node->info.data_default.default_value);
-	  default_value_node->info.data_default.default_value = pt_dbval_to_value (parser, &tmp);
-	}
-      db_value_clear (&tmp);
-    }
-
-  if (error == NO_ERROR)
-    {
-      PT_NODE *dummy = parser_new_node (parser, PT_VALUE);
-      error =
-	pt_coerce_value_for_default_value (parser, default_value, dummy, param->type_enum, param->data_type,
-					   default_value_node->info.data_default.default_expr_type, false);
-      parser_free_node (parser, dummy);
-      if (error != NO_ERROR)
-	{
-	  PT_ERRORmf2 (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
-		       (error ==
-			ER_IT_DATA_OVERFLOW) ? MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO : MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		       default_value_print, pt_get_type_name (param->type_enum, param->data_type));
-	}
-    }
-
-  return error;
+  assert (false);
+  PT_ERRORmf (parser, param->info.sp_param.default_value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_ALLOWED_HERE,
+	      "DEFAULT");
+  return ER_FAILED;
 }
 
 /*

@@ -534,12 +534,6 @@ is_stmt_based_repl_type (const PT_NODE * node)
   return false;
 }
 
-typedef enum
-{
-  DEFAULT_EXPR_EVAL_BY_ROW_ONLY,
-  DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY
-} DEFAULT_EXPR_EVAL_MODE;
-
 /*
  * CDT_EVAL_SET -- the Compact DEFAULT Trees (residual DEFAULTs) one INSERT must
  * evaluate on the client (Local Evaluation) path, with their volatility.
@@ -564,10 +558,8 @@ typedef enum
  * Re-evaluating the SAME tree per row is safe because pt_evaluate_tree recomputes
  * volatile leaves (UUID/...) on every call and never memoizes a result onto the
  * node.  The set is owned by the row-loop owner (do_insert_template,
- * insert_subquery_results) and is the only place CDTs are evaluated on this path;
- * the per-statement pass (do_evaluate_statement_default_expr) does not touch them,
- * and the attribute walk in do_evaluate_default_expr_by_smclass serves only the
- * legacy pseudo-column enum path.
+ * insert_subquery_results) and is the only place a DEFAULT is evaluated on this
+ * path (do_evaluate_row_default_expr_for_otemplate).
  */
 typedef struct cdt_eval_entry CDT_EVAL_ENTRY;
 struct cdt_eval_entry
@@ -768,365 +760,57 @@ do_evaluate_stable_cdts (PARSER_CONTEXT * parser, CDT_EVAL_SET * eval_set)
 }
 
 /*
- * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
+ * do_evaluate_row_default_expr_for_otemplate () - per-row DEFAULT pass for an object template: builds the
+ *				CDT eval set on the first call of a statement (evaluating its STABLE residuals once) and
+ *				evaluates the VOLATILE residuals for every row
  *   return: Error code
  *   parser(in):
- *   smclass(in):
- *   eval_mode(in):
- *   otemplate(in): the row's object template on the per-row pass (NULL on the per-statement
- *	pass); the residuals of the columns it already assigns a real value are left out of
- *	the eval set -- their DEFAULT is never consumed by this statement
- *   eval_set(in/out): per-statement CDT eval set -- required on the per-row pass, ignored
- *	(may be NULL) on the per-statement pass.  Residual DEFAULTs belong to the row-loop
- *	owner holding this eval set: STABLE ones are evaluated once when the eval set is built,
- *	VOLATILE ones once per row.  The per-statement pass handles only the legacy
- *	statement-determined pseudo-columns.
- */
-static int
-do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode,
-				     DB_OTMPL * otemplate, CDT_EVAL_SET * eval_set)
-{
-  SM_ATTRIBUTE *att;
-  int error = NO_ERROR;
-  TP_DOMAIN_STATUS dom_status;
-  char *user_name;
-  DB_DATETIME *datetime;
-  int month, day, year, hour, minute, second, millisecond;
-  DB_VALUE default_value, format_val, lang_val;
-  char *lang_str = NULL;
-  int flag;
-  TP_DOMAIN *result_domain = NULL;
-  bool has_user_format;
-  int j;
-
-  assert (smclass != NULL);
-
-  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY)
-    {
-      assert (eval_set != NULL);
-
-      /* Residual DEFAULT expressions (Compact DEFAULT Trees), evaluated on the client (Local Evaluation)
-       * path to the same value the server path would produce.  Rehydrated+classified once per statement
-       * into the eval set (see CDT_EVAL_SET), built lazily here and rebuilt if a different (e.g.
-       * partition) class arrives, from the residuals this statement's template can consume; the STABLE
-       * residuals are evaluated right then, once, so their value is in place before the first row's template
-       * consumes it. */
-      if (eval_set->smclass != smclass)
-	{
-	  error = do_build_cdt_eval_set (parser, smclass, otemplate, eval_set);
-	  if (error == NO_ERROR)
-	    {
-	      error = do_evaluate_stable_cdts (parser, eval_set);
-	    }
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-
-      /* VOLATILE residuals: a fresh value for this row, straight from the eval set */
-      for (j = 0; j < eval_set->count; j++)
-	{
-	  if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (eval_set->entries[j].vol))
-	    {
-	      continue;
-	    }
-	  error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-    }
-
-  /* Legacy pseudo-column enum defaults (default_expr_type != DB_DEFAULT_NONE): statement-determined ones on
-   * the per-statement pass, row-determined ones (UUID()/SYS_GUID()) on the per-row pass.  Residual
-   * attributes were handled above through the eval set. */
-  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
-    {
-      DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
-
-      if (DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
-	{
-	  continue;
-	}
-
-      if (default_expr_type != DB_DEFAULT_NONE)
-	{
-	  /* DB_IS_DEFAULT_DETERMINE_BY_STATEMENT same as !DB_IS_DEFAULT_DETERMINE_BY_ROW */
-	  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY && !DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
-	    {
-	      continue;
-	    }
-	  if (eval_mode == DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY && DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
-	    {
-	      continue;
-	    }
-
-	  error = NO_ERROR;
-	  switch (default_expr_type)
-	    {
-	    case DB_DEFAULT_SYSTIME:
-	      {
-		// The default expression must be evaluated only after server information (SI_SYS_DATETIME) is received
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
-				    &hour, &minute, &second, &millisecond);
-		db_make_time (&default_value, hour, minute, second);
-		break;
-	      }
-	    case DB_DEFAULT_CURRENTTIME:
-	      {
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		DB_TIME cur_time, db_time;
-		const char *t_source, *t_dest;
-		DB_DATETIME *datetime;
-
-		datetime = db_get_datetime (&parser->sys_datetime);
-		t_source = tz_get_system_timezone ();
-		t_dest = tz_get_session_local_timezone ();
-		db_time = datetime->time / 1000;
-		error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
-						     strlen (t_dest), &cur_time);
-		db_value_put_encoded_time (&default_value, &cur_time);
-		break;
-	      }
-	    case DB_DEFAULT_SYSDATE:
-	      {
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		datetime = db_get_datetime (&parser->sys_datetime);
-		error = db_value_put_encoded_date (&default_value, &datetime->date);
-		break;
-	      }
-	    case DB_DEFAULT_SYSDATETIME:
-	      {
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		error = pr_clone_value (&parser->sys_datetime, &default_value);
-		break;
-	      }
-	    case DB_DEFAULT_SYSTIMESTAMP:
-	      {
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
-		break;
-	      }
-	    case DB_DEFAULT_UNIX_TIMESTAMP:
-	      {
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		error = db_unix_timestamp (&parser->sys_datetime, &default_value);
-		break;
-	      }
-	    case DB_DEFAULT_USER:
-	      {
-		user_name = db_get_user_and_host_name ();
-		error = db_make_string (&default_value, user_name);
-		default_value.need_clear = true;
-		break;
-	      }
-	    case DB_DEFAULT_CURR_USER:
-	      {
-		user_name = db_get_user_name ();
-		error = db_make_string (&default_value, user_name);
-		default_value.need_clear = true;
-		break;
-	      }
-	    case DB_DEFAULT_CURRENTDATE:
-	    case DB_DEFAULT_CURRENTDATETIME:
-	      {
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		TZ_REGION system_tz_region, session_tz_region;
-		DB_DATETIME dest_dt;
-		DB_DATETIME *src_dt;
-
-		src_dt = db_get_datetime (&parser->sys_datetime);
-		tz_get_system_tz_region (&system_tz_region);
-		tz_get_session_tz_region (&session_tz_region);
-		error =
-		  tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
-		if (default_expr_type == DB_DEFAULT_CURRENTDATE)
-		  {
-		    db_value_put_encoded_date (&default_value, &dest_dt.date);
-		  }
-		else
-		  {
-		    db_make_datetime (&default_value, &dest_dt);
-		  }
-		break;
-	      }
-	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      {
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		DB_DATE tmp_date;
-		DB_TIME tmp_time;
-		DB_TIMESTAMP tmp_timestamp;
-		DB_DATETIME *sys_datetime;
-
-		sys_datetime = db_get_datetime (&parser->sys_datetime);
-		tmp_date = sys_datetime->date;
-		tmp_time = sys_datetime->time / 1000;
-		db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
-		db_make_timestamp (&default_value, tmp_timestamp);
-		break;
-	      }
-	    case DB_DEFAULT_SYSGUID:
-	      {
-		error = db_uuidv4 (&default_value);
-		break;
-	      }
-	    case DB_DEFAULT_UUIDV4:
-	      {
-		error = db_uuid_bin (UUID_V4, NULL, 0, &default_value);
-		break;
-	      }
-	    case DB_DEFAULT_UUIDV7:
-	      {
-		assert (!DB_IS_NULL (&parser->sys_epochtime));
-		assert (!DB_IS_NULL (&parser->sys_datetime));
-		UUID_STATE uuid_state;
-
-		uuid_state.last_ms = &parser->uuidv7_last_ms;
-		uuid_state.seq = &parser->uuidv7_seq;
-		error =
-		  db_uuid_bin (UUID_V7, &uuid_state,
-			       ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
-			       + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
-		break;
-	      }
-	    default:
-	      break;
-	    }
-
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-
-	  pr_clear_value (&att->default_value.value);
-	  if (att->default_value.default_expr.default_expr_op == T_TO_CHAR)
-	    {
-	      if (att->default_value.default_expr.default_expr_format != NULL)
-		{
-		  has_user_format = 1;
-		  db_make_string (&format_val, att->default_value.default_expr.default_expr_format);
-		}
-	      else
-		{
-		  has_user_format = 0;
-		  db_make_null (&format_val);
-		}
-
-	      lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-	      db_make_int (&lang_val, flag);
-
-	      if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (att->domain)))
-		{
-		  /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
-		  if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&default_value)))
-		    {
-		      result_domain = NULL;
-		    }
-		  else if (DB_IS_NULL (&format_val))
-		    {
-		      result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
-		    }
-		  else
-		    {
-		      result_domain = tp_domain_resolve_value (&format_val, NULL);
-		    }
-		}
-	      else
-		{
-		  result_domain = att->domain;
-		}
-
-	      error = db_to_char (&default_value, &format_val, &lang_val, &att->default_value.value, result_domain);
-
-	      if (has_user_format)
-		{
-		  pr_clear_value (&format_val);
-		}
-
-	      if (error != NO_ERROR)
-		{
-		  break;
-		}
-	    }
-	  else
-	    {
-	      pr_clone_value (&default_value, &att->default_value.value);
-	    }
-
-	  db_value_clear (&default_value);
-
-	  /* make sure the default value can be used for this attribute */
-	  dom_status = tp_value_cast (&att->default_value.value, &att->default_value.value, att->domain, false);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &att->default_value.value, att->domain);
-	      assert_release (error != NO_ERROR);
-
-	      break;
-	    }
-	}
-    }
-
-  return error;
-}
-
-/*
- * do_evaluate_statement_default_expr() - evaluates the default expressions determined by statement, if any, for
- *				the attributes of a given class
- *   return: Error code
- *   parser(in):
- *   class_name(in):
- */
-static int
-do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
-{
-  SM_CLASS *smclass;
-  int error = NO_ERROR;
-
-  assert (class_name->node_type == PT_NAME);
-
-  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  /* Legacy statement-determined pseudo-columns only.  A residual DEFAULT is evaluated by the row-loop owner
-   * (do_insert_template / insert_subquery_results) through its per-statement eval set -- STABLE once when the
-   * eval set is built, VOLATILE once per row -- so it is rehydrated exactly once per statement. */
-  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY, NULL, NULL);
-}
-
-/*
- * do_evaluate_row_default_expr_for_otemplate() - per-row DEFAULT pass for a class's object template: VOLATILE
- *				residuals from the eval set and legacy row-determined pseudo-columns; the first
- *				call of a statement also builds the CDT eval set (residuals of the columns
- *				the template assigns explicitly left out) and evaluates its STABLE residuals
- *   return: Error code
- *   parser(in):
- *   otemplate(in):
- *   eval_set(in/out): per-statement CDT eval set (required), reused across this INSERT's rows
+ *   otemplate(in): the row's object template
+ *   eval_set(in/out): per-statement CDT eval set, reused across this INSERT's rows
  */
 static int
 do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate, CDT_EVAL_SET * eval_set)
 {
+  SM_CLASS *smclass;
+  int error = NO_ERROR;
+  int j;
+
   assert (otemplate != NULL);
   assert (otemplate->class_ != NULL);
+  assert (eval_set != NULL);
 
-  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY, otemplate,
-					      eval_set);
+  smclass = otemplate->class_;
+
+  /* the eval set holds the residuals this statement's template consumes; it is built lazily (and rebuilt
+   * for another class, e.g. a partition) and its STABLE residuals are evaluated once, right away */
+  if (eval_set->smclass != smclass)
+    {
+      error = do_build_cdt_eval_set (parser, smclass, otemplate, eval_set);
+      if (error == NO_ERROR)
+	{
+	  error = do_evaluate_stable_cdts (parser, eval_set);
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* VOLATILE residuals: a fresh value for this row */
+  for (j = 0; j < eval_set->count; j++)
+    {
+      if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (eval_set->entries[j].vol))
+	{
+	  continue;
+	}
+      error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -14460,8 +14144,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spe
   attr = db_get_attributes (class_);
   while (attr)
     {
-      if (db_attribute_is_non_null (attr) && db_value_is_null (db_attribute_default (attr))
-	  && attr->default_value.default_expr.default_expr_type == DB_DEFAULT_NONE
+      if (db_attribute_is_non_null (attr) && !SM_DEFAULT_SUPPLIES_VALUE (&attr->default_value)
 	  && (is_attr_not_in_insert_list (parser, attr_list, db_attribute_name (attr)) || has_default_values_list)
 	  && !(attr->flags & SM_ATTFLAG_AUTO_INCREMENT))
 	{
@@ -14607,12 +14290,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  has_default_values_list = true;
 	  break;
 	}
-    }
-
-  error = do_evaluate_statement_default_expr (parser, class_);
-  if (error != NO_ERROR)
-    {
-      return error;
     }
 
   error =
@@ -18287,17 +17964,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       PT_NODE *save_list;
       PT_MISC_TYPE save_type;
 
-      /* evaluate statement-level DEFAULTs before the insert fills omitted columns, as do_execute_merge does */
-      err = do_evaluate_statement_default_expr (parser, flat);
-      if (err != NO_ERROR)
-	{
-	  if (old_wait_msecs >= -1)
-	    {
-	      (void) tran_reset_wait_times (old_wait_msecs);
-	    }
-	  goto exit;
-	}
-
       /* save node list */
       save_type = values_list->info.node_list.list_type;
       save_list = values_list->info.node_list.list;
@@ -19137,16 +18803,6 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_NODE *save_list;
 	  PT_MISC_TYPE save_type;
-
-	  err = do_evaluate_statement_default_expr (parser, flat);
-	  if (err != NO_ERROR)
-	    {
-	      if (old_wait_msecs >= -1)
-		{
-		  (void) tran_reset_wait_times (old_wait_msecs);
-		}
-	      goto exit;
-	    }
 
 	  /* save node list */
 	  save_type = values_list->info.node_list.list_type;

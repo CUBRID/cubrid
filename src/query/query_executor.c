@@ -571,9 +571,10 @@ static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_N
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
 					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state,
-					     PT_VOLATILITY * default_vols, FUNC_PRED_UNPACK_INFO * default_func_preds);
+					     FUNC_PRED_UNPACK_INFO * default_func_preds);
 static void qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr,
-					    PT_VOLATILITY ** default_vols, FUNC_PRED_UNPACK_INFO ** default_func_preds);
+					    FUNC_PRED_UNPACK_INFO ** default_func_preds);
+static bool qexec_default_func_pred_is_volatile (const FUNC_PRED_UNPACK_INFO * default_func_pred);
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -12798,40 +12799,79 @@ exit_on_error:
 /*
  * qexec_prepare_default_expr_stream () - deserialize a residual DEFAULT's stored
  *	REGU form once, returning the FUNC_PRED (and the XASL_UNPACK_INFO that owns
- *	it, which the caller must free) plus the effective volatility stamped on the
- *	root regu at DDL time.  Deserializing once per statement and reusing the
- *	FUNC_PRED across rows avoids one stx_map_stream_to_func_pred /
+ *	it, which the caller must free).  Deserializing once per statement and
+ *	reusing the FUNC_PRED across rows avoids one stx_map_stream_to_func_pred /
  *	free_xasl_unpack_info cycle per inserted row.
  *   return: NO_ERROR or ER_code
  *   thread_p(in): thread entry
  *   attr(in): attribute metadata carrying the REGU stream
  *   func_pred(out): deserialized predicate (points into *unpack_info)
  *   unpack_info(out): backing storage to be freed with free_xasl_unpack_info
- *   out_volatility(out): effective volatility stamped on the root regu
  */
 static int
 qexec_prepare_default_expr_stream (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, FUNC_PRED ** func_pred,
-				   XASL_UNPACK_INFO ** unpack_info, PT_VOLATILITY * out_volatility)
+				   XASL_UNPACK_INFO ** unpack_info)
 {
-  int error = NO_ERROR;
-
   assert (attr->current_default_value.default_expr.default_expr_regu_stream != NULL);
 
-  error = stx_map_stream_to_func_pred (thread_p, func_pred,
-				       (char *) attr->current_default_value.default_expr.default_expr_regu_stream,
-				       attr->current_default_value.default_expr.default_expr_regu_stream_size,
-				       unpack_info);
-  if (error != NO_ERROR)
+  return stx_map_stream_to_func_pred (thread_p, func_pred,
+				      (char *) attr->current_default_value.default_expr.default_expr_regu_stream,
+				      attr->current_default_value.default_expr.default_expr_regu_stream_size,
+				      unpack_info);
+}
+
+/*
+ * qexec_default_func_pred_is_volatile () - whether a cached residual DEFAULT is VOLATILE, per the effective
+ *	volatility stamped on its root regu at DDL time (no parser is needed on the server): it is then evaluated
+ *	once per row instead of once per statement.  A constant or Expression-Derived Literal DEFAULT has no
+ *	func_pred.
+ *   return: true if so
+ *   default_func_pred(in): cache entry of the DEFAULT
+ */
+static bool
+qexec_default_func_pred_is_volatile (const FUNC_PRED_UNPACK_INFO * default_func_pred)
+{
+  return (default_func_pred->func_pred != NULL
+	  && PT_VOLATILITY_IS_VOLATILE_RESIDUAL (REGU_VARIABLE_GET_DEFAULT_VOLATILITY
+						 (default_func_pred->func_pred->func_regu)));
+}
+
+/*
+ * qexec_default_expr_notnull_error () - report the NOT NULL violation of a column whose DEFAULT the row
+ *	supplied for itself, naming the column the way the client evaluation path (populate_defaults) names it.
+ *	The name is read from the class record; without it the violation is still reported, unnamed.
+ *   return: the error code set
+ *   thread_p(in): thread entry
+ *   class_oid(in): class being inserted into
+ *   attr_id(in): the attribute whose DEFAULT is NULL
+ */
+static int
+qexec_default_expr_notnull_error (THREAD_ENTRY * thread_p, const OID * class_oid, int attr_id)
+{
+  HEAP_SCANCACHE scan;
+  RECDES class_record;
+  char *name = NULL;
+  int alloced_name = 0;
+
+  if (class_oid != NULL && !OID_ISNULL (class_oid))
     {
-      return error;
+      heap_scancache_quick_start_root_hfid (thread_p, &scan);
+      if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) == S_SUCCESS
+	  && or_get_attrname (&class_record, attr_id, &name, &alloced_name) == NO_ERROR && name != NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, name);
+	  if (alloced_name == 1)
+	    {
+	      db_private_free_and_init (thread_p, name);
+	    }
+	  heap_scancache_end (thread_p, &scan);
+	  return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
+	}
+      heap_scancache_end (thread_p, &scan);
     }
 
-  /* effective volatility stamped on the root regu at DDL time: lets the caller
-   * evaluate a VOLATILE residual once per row and a STABLE one once per statement,
-   * without a parser on the server */
-  *out_volatility = REGU_VARIABLE_GET_DEFAULT_VOLATILITY ((*func_pred)->func_regu);
-
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
+  return ER_NULL_CONSTRAINT_VIOLATION;
 }
 
 /*
@@ -12850,12 +12890,13 @@ qexec_prepare_default_expr_stream (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr,
  *   thread_p(in): thread entry
  *   func_pred(in): deserialized predicate (from qexec_prepare_default_expr_stream)
  *   xasl_state(in): XASL state containing value descriptor
+ *   class_oid(in): class being inserted into, to name the column of a NOT NULL violation
  *   attr(in): attribute metadata (for the target domain)
  *   result(out): evaluated value, cast to the attribute domain
  */
 static int
 qexec_eval_default_expr_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pred, XASL_STATE * xasl_state,
-				   OR_ATTRIBUTE * attr, DB_VALUE * result)
+				   const OID * class_oid, OR_ATTRIBUTE * attr, DB_VALUE * result)
 {
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
   int error = NO_ERROR;
@@ -12872,14 +12913,11 @@ qexec_eval_default_expr_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pre
       error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, attr->domain);
     }
 
-  /* a residual DEFAULT that evaluated to NULL for an omitted NOT NULL column is
-   * not covered by cons_pred (built from the explicitly-listed columns only), so
-   * enforce the NOT NULL constraint here.  Only an evaluated NULL can reach this
-   * point: a constant NULL DEFAULT on a NOT NULL column is rejected at DDL. */
+  /* the DEFAULT this row evaluated for itself is NULL, which its NOT NULL column refuses: cons_pred does not
+   * cover the column (that predicate is built from the explicitly-listed ones only) */
   if (error == NO_ERROR && attr->is_notnull && DB_IS_NULL (result))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NULL_CONSTRAINT_VIOLATION, 0);
-      error = ER_NULL_CONSTRAINT_VIOLATION;
+      error = qexec_default_expr_notnull_error (thread_p, class_oid, attr->id);
     }
 
   return error;
@@ -12887,17 +12925,16 @@ qexec_eval_default_expr_func_pred (THREAD_ENTRY * thread_p, FUNC_PRED * func_pre
 
 /*
  * qexec_free_default_expr_caches () - release the per-statement residual DEFAULT
- *	caches allocated in qexec_execute_insert: the effective-volatility array and
- *	the func_pred / unpack_info parallel array.  Each cached unpack_info owns
- *	its func_pred, so it is released with free_xasl_unpack_info.  Both pointers
- *	are nulled.  Safe to call when none were allocated.
+ *	cache allocated in qexec_execute_insert: the func_pred / unpack_info array.
+ *	Each cached unpack_info owns its func_pred, so it is released with
+ *	free_xasl_unpack_info.  The pointer is nulled.  Safe to call when none was
+ *	allocated.
  *   thread_p(in): thread entry
  *   num_default_expr(in): array length
- *   default_vols(in/out): effective-volatility array
  *   default_func_preds(in/out): cached predicate array
  */
 static void
-qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr, PT_VOLATILITY ** default_vols,
+qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr,
 				FUNC_PRED_UNPACK_INFO ** default_func_preds)
 {
   int k;
@@ -12923,227 +12960,69 @@ qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr, P
 	}
       db_private_free_and_init (thread_p, *default_func_preds);
     }
-  if (*default_vols != NULL)
-    {
-      db_private_free_and_init (thread_p, *default_vols);
-    }
 }
 
 /*
- * qexec_generate_row_default_expr () - Generate a row-level default expression value
- *   return: NO_ERROR or ER_code
- *   attr(in): attribute metadata
- *   xasl_state(in): XASL state containing value descriptor
- *   uuid_state(in): UUID generation state
- *   out_val(out): generated value
- */
-static int
-qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, UUID_STATE * uuid_state,
-				 DB_VALUE * out_val)
-{
-  DB_VALUE new_val;
-  DB_DEFAULT_EXPR_TYPE expr_type;
-  int error = NO_ERROR;
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  assert (attr != NULL);
-  assert (out_val != NULL);
-
-  expr_type = attr->current_default_value.default_expr.default_expr_type;
-  assert (DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type));
-
-  pr_clear_value (out_val);
-  db_make_null (&new_val);
-
-  switch (expr_type)
-    {
-    case DB_DEFAULT_SYSGUID:
-      error = db_uuidv4 (&new_val);
-      break;
-
-    case DB_DEFAULT_UUIDV4:
-      error = db_uuid_bin (UUID_V4, NULL, 0, &new_val);
-      break;
-
-    case DB_DEFAULT_UUIDV7:
-      if (DATETIME_IS_NULL (&xasl_state->vd.sys_datetime) || xasl_state->vd.sys_epochtime == 0)
-	{
-	  qexec_failure_line (__LINE__, xasl_state);
-	  return ER_FAILED;
-	}
-      error =
-	db_uuid_bin (UUID_V7, uuid_state,
-		     ((uint64_t) xasl_state->vd.sys_epochtime * 1000ULL)
-		     + (uint64_t) (xasl_state->vd.sys_datetime.time % 1000), &new_val);
-      break;
-
-    default:
-      assert (false);
-      qexec_failure_line (__LINE__, xasl_state);
-      return ER_FAILED;
-    }
-
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
-    {
-      DB_VALUE format_val, lang_val;
-      int has_user_format = 0;
-      int flag = 0;
-      const char *lang_str;
-      TP_DOMAIN *result_domain;
-
-      if (attr->current_default_value.default_expr.default_expr_format != NULL)
-	{
-	  db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
-	  has_user_format = 1;
-	}
-      else
-	{
-	  db_make_null (&format_val);
-	  has_user_format = 0;
-	}
-
-      lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-      db_make_int (&lang_val, flag);
-
-      if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
-	{
-	  if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&new_val)))
-	    {
-	      result_domain = NULL;
-	    }
-	  else if (DB_IS_NULL (&format_val))
-	    {
-	      result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
-	    }
-	  else
-	    {
-	      result_domain = tp_domain_resolve_value (&format_val, NULL);
-	    }
-	}
-      else
-	{
-	  result_domain = attr->domain;
-	}
-
-      error = db_to_char (&new_val, &format_val, &lang_val, out_val, result_domain);
-
-      if (has_user_format)
-	{
-	  pr_clear_value (&format_val);
-	}
-      pr_clear_value (&new_val);
-    }
-  else
-    {
-      error = pr_clone_value (&new_val, out_val);
-      pr_clear_value (&new_val);
-    }
-
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  status = tp_value_cast (out_val, out_val, attr->domain, false);
-  if (status != DOMAIN_COMPATIBLE)
-    {
-      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, out_val, attr->domain);
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * qexec_evaluate_row_default_exprs () - Regenerate row-level default expressions (e.g., UUID)
+ * qexec_evaluate_row_default_exprs () - per-row pass over the DEFAULTs an INSERT fills: re-evaluate
+ *	every VOLATILE residual DEFAULT for the row at hand
  *   return: NO_ERROR or ER_code
  *   thread_p(in): thread context
  *   insert(in): INSERT_PROC_NODE
  *   attr_info(in): attribute info
  *   xasl_state(in): XASL state containing value descriptor
- *   default_vols(in): per default-attr effective volatility of residual DEFAULTs (may be NULL)
- *   default_func_preds(in): per residual DEFAULT, the func_pred deserialized once per statement
+ *   default_func_preds(in): per DEFAULT the INSERT fills, the func_pred of a residual deserialized once per
+ *			      statement (may be NULL when none is filled)
  *
- * Note: This function regenerates DEFAULT values that must be unique per row:
- *       the legacy row-determined pseudo-columns UUID(4), UUID(7) and SYS_GUID
- *       (identified by DB_IS_DEFAULT_DETERMINE_BY_ROW), and VOLATILE residual
- *       DEFAULT expressions (identified by the volatility stamped on their REGU
- *       form), which are re-evaluated from the cached func_pred.
+ * Note: a constant or STABLE residual keeps the value computed once per statement in the fill loop of
+ *       qexec_execute_insert; a VOLATILE residual is re-evaluated from the cached func_pred for every row.
  */
 static int
 qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
 				  HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state,
-				  PT_VOLATILITY * default_vols, FUNC_PRED_UNPACK_INFO * default_func_preds)
+				  FUNC_PRED_UNPACK_INFO * default_func_preds)
 {
   int k;
   int num_default_expr = insert->num_default_expr;
-  UUID_STATE uuid_state;
 
-  if (num_default_expr <= 0)
+  if (num_default_expr <= 0 || default_func_preds == NULL)
     {
       return NO_ERROR;
     }
 
-  /* Share one monotonic UUIDv7 source across BOTH the legacy row-determined path
-   * (qexec_generate_row_default_expr) and residual DEFAULTs that embed UUID(7),
-   * which are evaluated via fetch.c and advance thread_p->uuidv7_* directly.  This
-   * runs once per row, so copying to locals and restoring at function exit would
-   * discard fetch.c's per-row advance and desync the two generators. */
-  uuid_state.last_ms = &thread_p->uuidv7_last_ms;
-  uuid_state.seq = &thread_p->uuidv7_seq;
-
   for (k = 0; k < num_default_expr; k++)
     {
-      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
-      DB_DEFAULT_EXPR_TYPE expr_type;
+      OR_ATTRIBUTE *attr;
       int error;
 
+      if (!qexec_default_func_pred_is_volatile (&default_func_preds[k]))
+	{
+	  continue;
+	}
+
+      attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
       if (attr == NULL)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
 	  return ER_FAILED;
 	}
 
-      expr_type = attr->current_default_value.default_expr.default_expr_type;
-      if (DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type))
+      /* VOLATILE residual: re-evaluate the cached func_pred so every row gets a distinct value */
+      pr_clear_value (insert->vals[k]);
+      error = qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state,
+						 &insert->class_oid, attr, insert->vals[k]);
+      if (error != NO_ERROR)
 	{
-	  /* legacy row-determined pseudo-column (UUID()/SYS_GUID() enum) */
-	  error = qexec_generate_row_default_expr (attr, xasl_state, &uuid_state, insert->vals[k]);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
+	  return error;
 	}
-      else if (default_vols != NULL && PT_VOLATILITY_IS_VOLATILE_RESIDUAL (default_vols[k]))
-	{
-	  /* VOLATILE residual DEFAULT expression: re-evaluate the func_pred that was
-	   * deserialized once per statement (in the fill loop) so every row gets a
-	   * distinct value.  STABLE residuals keep the single value already computed
-	   * once per statement in the fill loop. */
-	  assert (default_func_preds != NULL && default_func_preds[k].func_pred != NULL);
-	  pr_clear_value (insert->vals[k]);
-	  error = qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
-						     insert->vals[k]);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
 #if !defined(NDEBUG)
-	  /* A VOLATILE residual must never settle to REGU_VARIABLE_FETCH_ALL_CONST:
-	   * its NOT_CONST leaf (UUID/SYS_GUID/...) propagates up so fetch_peek_arith
-	   * recomputes per row rather than returning a cached value.  If a function
-	   * were classified VOLATILE on the client (PT_VOLATILITY) yet failed to
-	   * self-mark NOT_CONST on the server, the reused func_pred would hand back
-	   * row 1's value for every row -- this guard trips before that ships. */
-	  assert (!REGU_VARIABLE_IS_FLAGED (default_func_preds[k].func_pred->func_regu, REGU_VARIABLE_FETCH_ALL_CONST));
+      /* A VOLATILE residual must never settle to REGU_VARIABLE_FETCH_ALL_CONST:
+       * its NOT_CONST leaf (UUID/SYS_GUID/...) propagates up so fetch_peek_arith
+       * recomputes per row rather than returning a cached value.  If a function
+       * were classified VOLATILE on the client (PT_VOLATILITY) yet failed to
+       * self-mark NOT_CONST on the server, the reused func_pred would hand back
+       * row 1's value for every row -- this guard trips before that ships. */
+      assert (!REGU_VARIABLE_IS_FLAGED (default_func_preds[k].func_pred->func_regu, REGU_VARIABLE_FETCH_ALL_CONST));
 #endif
-	}
     }
 
   return NO_ERROR;
@@ -13232,7 +13111,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   int scan_cache_op_type = 0;
   int force_count = 0;
   int num_default_expr = 0;
-  PT_VOLATILITY *default_vols = NULL;	/* per default-attr effective volatility (residual DEFAULTs) */
+  bool has_volatile_default = false;	/* a VOLATILE residual DEFAULT is re-evaluated for every row */
   FUNC_PRED_UNPACK_INFO *default_func_preds = NULL;	/* per residual DEFAULT: deserialized once, reused per row */
   LC_COPYAREA_OPERATION operation = LC_FLUSH_INSERT;
   PRUNING_CONTEXT context, *volatile pcontext = NULL;
@@ -13242,12 +13121,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   ODKU_INFO *odku_assignments = insert->odku;
   DB_VALUE oid_val;
   int is_autoincrement_set = 0;
-  int month, day, year, hour, minute, second, millisecond;
-  DB_VALUE insert_val, format_val, lang_val;
-  char *lang_str = NULL;
-  int flag;
-  TP_DOMAIN *result_domain;
-  bool has_user_format;
+  DB_VALUE insert_val;
   char auto_incr_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
   int auto_incr_pos = -1;
 
@@ -13375,21 +13249,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (num_default_expr > 0)
     {
-      /* per default-attr effective volatility, captured while the fill loop
-       * deserializes each residual REGU once; consulted per row to re-evaluate
-       * only the VOLATILE residuals (qexec_evaluate_row_default_exprs).  The
-       * func_pred / unpack_info parallel array caches that single deserialization
-       * so the per-row pass reuses it instead of re-deserializing each row. */
-      default_vols = (PT_VOLATILITY *) db_private_alloc (thread_p, num_default_expr * sizeof (PT_VOLATILITY));
+      /* the func_pred / unpack_info of each residual DEFAULT, deserialized once by the fill loop below and
+       * reused by the per-row pass (qexec_evaluate_row_default_exprs) for the VOLATILE ones */
       default_func_preds =
 	(FUNC_PRED_UNPACK_INFO *) db_private_alloc (thread_p, num_default_expr * sizeof (FUNC_PRED_UNPACK_INFO));
-      if (default_vols == NULL || default_func_preds == NULL)
+      if (default_func_preds == NULL)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
       for (k = 0; k < num_default_expr; k++)
 	{
-	  default_vols[k] = PT_VOLATILITY_UNSET;
 	  default_func_preds[k].func_pred = NULL;
 	  default_func_preds[k].unpack_info = NULL;
 	}
@@ -13401,7 +13270,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       OR_ATTRIBUTE *attr;
       DB_VALUE *new_val;
       int error = NO_ERROR;
-      TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
       attr = heap_locate_last_attrepr (insert->att_id[k], &attr_info);
       if (attr == NULL)
@@ -13416,265 +13284,43 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       db_make_null (new_val);
       insert->vals[k] = new_val;
 
-      switch (attr->current_default_value.default_expr.default_expr_type)
+      if (attr->current_default_value.default_expr.default_expr_regu_stream != NULL)
 	{
-	case DB_DEFAULT_SYSTIME:
-	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_make_time (&insert_val, hour, minute, second);
-	  break;
-
-	case DB_DEFAULT_CURRENTTIME:
-	  {
-	    DB_TIME cur_time, db_time;
-	    const char *t_source, *t_dest;
-	    int len_source, len_dest;
-
-	    t_source = tz_get_system_timezone ();
-	    t_dest = tz_get_session_local_timezone ();
-	    len_source = (int) strlen (t_source);
-	    len_dest = (int) strlen (t_dest);
-	    db_time = xasl_state->vd.sys_datetime.time / 1000;
-	    error = tz_conv_tz_time_w_zone_name (&db_time, t_source, len_source, t_dest, len_dest, &cur_time);
-	    db_value_put_encoded_time (&insert_val, &cur_time);
-	  }
-	  break;
-
-	case DB_DEFAULT_SYSDATE:
-	  db_datetime_decode (&xasl_state->vd.sys_datetime, &month, &day, &year, &hour, &minute, &second, &millisecond);
-	  db_make_date (&insert_val, month, day, year);
-	  break;
-
-	case DB_DEFAULT_CURRENTDATE:
-	  {
-	    TZ_REGION system_tz_region, session_tz_region;
-	    DB_DATETIME dest_dt;
-
-	    tz_get_system_tz_region (&system_tz_region);
-	    tz_get_session_tz_region (&session_tz_region);
-	    error =
-	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
-					    &dest_dt, NULL, NULL);
-	    db_value_put_encoded_date (&insert_val, &dest_dt.date);
-	  }
-	  break;
-
-	case DB_DEFAULT_SYSDATETIME:
-	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
-	  break;
-
-	case DB_DEFAULT_SYSTIMESTAMP:
-	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
-	  error = db_datetime_to_timestamp (&insert_val, &insert_val);
-	  break;
-
-	case DB_DEFAULT_CURRENTDATETIME:
-	  {
-	    TZ_REGION system_tz_region, session_tz_region;
-	    DB_DATETIME dest_dt;
-
-	    tz_get_system_tz_region (&system_tz_region);
-	    tz_get_session_tz_region (&session_tz_region);
-	    error =
-	      tz_conv_tz_datetime_w_region (&xasl_state->vd.sys_datetime, &system_tz_region, &session_tz_region,
-					    &dest_dt, NULL, NULL);
-	    db_make_datetime (&insert_val, &dest_dt);
-	  }
-	  break;
-
-	case DB_DEFAULT_CURRENTTIMESTAMP:
-	  {
-	    DB_DATE tmp_date;
-	    DB_TIME tmp_time;
-	    DB_TIMESTAMP tmp_timestamp;
-
-	    tmp_date = xasl_state->vd.sys_datetime.date;
-	    tmp_time = xasl_state->vd.sys_datetime.time / 1000;
-	    db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
-	    db_make_timestamp (&insert_val, tmp_timestamp);
-	  }
-	  break;
-
-	case DB_DEFAULT_UNIX_TIMESTAMP:
-	  db_make_datetime (&insert_val, &xasl_state->vd.sys_datetime);
-	  error = db_unix_timestamp (&insert_val, &insert_val);
-	  break;
-
-	case DB_DEFAULT_USER:
-	  {
-	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	    LOG_TDES *tdes = NULL;
-	    char *temp = NULL;
-
-	    tdes = LOG_FIND_TDES (tran_index);
-	    if (tdes)
-	      {
-		size_t len = tdes->client.db_user.length () + tdes->client.host_name.length () + 2;
-		temp = (char *) db_private_alloc (thread_p, len);
-		if (temp == NULL)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len);
-		    GOTO_EXIT_ON_ERROR;
-		  }
-		else
-		  {
-		    strcpy (temp, tdes->client.get_db_user ());
-		    strcat (temp, "@");
-		    strcat (temp, tdes->client.get_host_name ());
-		  }
-	      }
-
-	    db_make_string (&insert_val, temp);
-	    insert_val.need_clear = true;
-	  }
-	  break;
-
-	case DB_DEFAULT_CURR_USER:
-	  {
-	    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-	    LOG_TDES *tdes = NULL;
-	    char *temp = NULL;
-
-	    tdes = LOG_FIND_TDES (tran_index);
-	    if (tdes != NULL)
-	      {
-		temp = CONST_CAST (char *, tdes->client.get_db_user ());	// will not be modified
-	      }
-	    db_make_string (&insert_val, temp);
-	  }
-	  break;
-
-	case DB_DEFAULT_SYSGUID:
-	case DB_DEFAULT_UUIDV4:
-	case DB_DEFAULT_UUIDV7:
-	  /*
-	   * SYS_GUID(), UUID() in DEFAULT does not evaluate value per statement
-	   *   - use 'qexec_evaluate_row_default_exprs'
-	   * You can prepare things here
-	   */
-	  break;
-
-	case DB_DEFAULT_NONE:
-	  if (attr->current_default_value.default_expr.default_expr_regu_stream != NULL)
+	  /* residual DEFAULT: deserialize the stored REGU form ONCE here and cache the FUNC_PRED for reuse
+	   * across rows.  A STABLE residual is evaluated now, once per statement; a VOLATILE one is left NULL
+	   * and evaluated per row, where an embedded UUID(7) would otherwise burn a sequence number here. */
+	  error = qexec_prepare_default_expr_stream (thread_p, attr, &default_func_preds[k].func_pred,
+						     &default_func_preds[k].unpack_info);
+	  if (error != NO_ERROR)
 	    {
-	      /* residual DEFAULT: deserialize the stored REGU form ONCE here and
-	       * cache the FUNC_PRED (default_func_preds[k]) for reuse across rows,
-	       * capturing the effective volatility stamped on it at DDL time.  A
-	       * STABLE residual is evaluated now, once per statement, instead of
-	       * reading the frozen DDL-time snapshot; the result lands in new_val
-	       * already cast to the attribute domain, so the shared clone/cast tail
-	       * below is unnecessary.  A VOLATILE residual is left NULL here and
-	       * evaluated per row in qexec_evaluate_row_default_exprs -- evaluating
-	       * it here too would only be discarded by the per-row pass, and an
-	       * embedded UUID(7) would burn a sequence number for nothing. */
-	      error = qexec_prepare_default_expr_stream (thread_p, attr, &default_func_preds[k].func_pred,
-							 &default_func_preds[k].unpack_info, &default_vols[k]);
-	      if (error != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (default_vols[k]))
-		{
-		  error =
-		    qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state, attr,
-						       new_val);
-		  if (error != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		}
-	      continue;
+	      GOTO_EXIT_ON_ERROR;
 	    }
-	  else if (attr->current_default_value.val_length <= 0)
+	  if (qexec_default_func_pred_is_volatile (&default_func_preds[k]))
 	    {
-	      /* leave default value as NULL */
-	      break;
+	      has_volatile_default = true;
 	    }
 	  else
 	    {
-	      error = qexec_get_attr_default (thread_p, attr, &insert_val);
+	      error =
+		qexec_eval_default_expr_func_pred (thread_p, default_func_preds[k].func_pred, xasl_state,
+						   &insert->class_oid, attr, new_val);
 	      if (error != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
-	  break;
-
-	default:
-	  assert (0);
-	  error = ER_FAILED;
-	  GOTO_EXIT_ON_ERROR;
-	  break;
-	}
-
-      if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
-	{
-	  assert (attr->current_default_value.default_expr.default_expr_type != DB_DEFAULT_NONE);
-	  if (attr->current_default_value.default_expr.default_expr_format != NULL)
-	    {
-	      db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
-	      has_user_format = 1;
-	    }
-	  else
-	    {
-	      db_make_null (&format_val);
-	      has_user_format = 0;
-	    }
-
-	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-	  db_make_int (&lang_val, flag);
-
-	  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
-	    {
-	      /* TO_CHAR returns a string value, we need to pass an expected domain of the result */
-	      if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&insert_val)))
-		{
-		  result_domain = NULL;
-		}
-	      else if (DB_IS_NULL (&format_val))
-		{
-		  result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
-		}
-	      else
-		{
-		  result_domain = tp_domain_resolve_value (&format_val, NULL);
-		}
-	    }
-	  else
-	    {
-	      result_domain = attr->domain;
-	    }
-
-	  error = db_to_char (&insert_val, &format_val, &lang_val, insert->vals[k], result_domain);
-
-	  if (has_user_format)
-	    {
-	      pr_clear_value (&format_val);
-	    }
-	}
-      else
-	{
-	  pr_clone_value (&insert_val, insert->vals[k]);
-	}
-
-      pr_clear_value (&insert_val);
-
-      if (error != NO_ERROR)
-	{
-	  GOTO_EXIT_ON_ERROR;
-	}
-
-      if (attr->current_default_value.default_expr.default_expr_type == DB_DEFAULT_NONE)
-	{
-	  /* skip the value cast */
 	  continue;
 	}
-
-      status = tp_value_cast (insert->vals[k], insert->vals[k], attr->domain, false);
-      if (status != DOMAIN_COMPATIBLE)
+      if (attr->current_default_value.val_length > 0)
 	{
-	  (void) tp_domain_status_er_set (status, ARG_FILE_LINE, insert->vals[k], attr->domain);
-	  GOTO_EXIT_ON_ERROR;
+	  /* a constant DEFAULT, already in the attribute domain; without a stored value it stays NULL */
+	  error = qexec_get_attr_default (thread_p, attr, &insert_val);
+	  if (error != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  pr_clone_value (&insert_val, new_val);
+	  pr_clear_value (&insert_val);
 	}
     }
 
@@ -13737,9 +13383,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  insert->vals[k] = vallist->val;
 		}
 
-	      /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
-	      if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state, default_vols,
-						    default_func_preds) != NO_ERROR)
+	      /* re-evaluate the VOLATILE residual DEFAULTs (UUID, SYS_GUID, ...) for this row */
+	      if (has_volatile_default
+		  && qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state,
+						       default_func_preds) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -13922,9 +13569,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      insert->vals[k] = valp;
 	    }
 
-	  /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
-	  if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state, default_vols,
-						default_func_preds) != NO_ERROR)
+	  /* re-evaluate the VOLATILE residual DEFAULTs (UUID, SYS_GUID, ...) for this row */
+	  if (has_volatile_default
+	      && qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state,
+						   default_func_preds) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -14150,7 +13798,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       pr_clear_value (insert->vals[k]);
       db_private_free_and_init (thread_p, insert->vals[k]);
     }
-  qexec_free_default_expr_caches (thread_p, num_default_expr, &default_vols, &default_func_preds);
+  qexec_free_default_expr_caches (thread_p, num_default_expr, &default_func_preds);
 
   if (odku_assignments && insert->has_uniques)
     {
@@ -14166,7 +13814,7 @@ exit_on_error:
       pr_clear_value (insert->vals[k]);
       db_private_free_and_init (thread_p, insert->vals[k]);
     }
-  qexec_free_default_expr_caches (thread_p, num_default_expr, &default_vols, &default_func_preds);
+  qexec_free_default_expr_caches (thread_p, num_default_expr, &default_func_preds);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
   if (func_indx_preds)
@@ -26045,7 +25693,6 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
   OR_CLASSREP *rep = NULL;
   OR_INDEX *index = NULL;
   char *attr_name = NULL, *default_value_string = NULL;
-  const char *default_expr_type_string = NULL, *default_expr_format = NULL;
   char *attr_comment = NULL;
   OR_ATTRIBUTE *volatile attrepr = NULL;
   DB_VALUE **out_values = NULL;
@@ -26252,10 +25899,9 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  /* default values */
 	  alloced_string = 0;
-	  if (attrepr->default_value.default_expr.default_expr_text != NULL)
+	  if (DB_HAS_DEFAULT_EXPR (&attrepr->default_value.default_expr))
 	    {
-	      /* Expression-Derived Literal: report the DEFAULT as its original
-	       * expression text, consistent with ;schema and SHOW CREATE TABLE. */
+	      /* an expression DEFAULT is reported as its original text, like ;schema and the catalog views */
 	      size_t deflen = strlen (attrepr->default_value.default_expr.default_expr_text) + 1;
 
 	      default_value_string = (char *) malloc (deflen);
@@ -26266,56 +25912,6 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	      memcpy (default_value_string, attrepr->default_value.default_expr.default_expr_text, deflen);
 	      db_make_string (out_values[idx_val], default_value_string);
 	      out_values[idx_val]->need_clear = true;
-	      idx_val++;
-	    }
-	  else if (attrepr->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
-	    {
-	      const char *default_expr_op_string = NULL;
-
-	      default_expr_type_string =
-		db_default_expression_string (attrepr->default_value.default_expr.default_expr_type);
-	      if (!default_expr_type_string)
-		{
-		  default_expr_type_string = "";
-		}
-
-	      if (attrepr->default_value.default_expr.default_expr_op == T_TO_CHAR)
-		{
-		  size_t len;
-
-		  default_expr_op_string = qdump_operator_type_string (T_TO_CHAR);
-		  default_expr_format = attrepr->default_value.default_expr.default_expr_format;
-
-		  len = ((default_expr_op_string ? strlen (default_expr_op_string) : 0)
-			 + 6 /* parenthesis, a comma, a blank and quotes */  + strlen (default_expr_type_string)
-			 + (default_expr_format ? strlen (default_expr_format) : 0)) + 1;
-
-		  default_value_string = (char *) db_private_alloc (thread_p, len);
-		  if (default_value_string == NULL)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-
-		  if (default_expr_format)
-		    {
-		      snprintf (default_value_string, len, "%s(%s, \'%s\')", default_expr_op_string,
-				default_expr_type_string, default_expr_format);
-		    }
-		  else
-		    {
-		      snprintf (default_value_string, len, "%s(%s)", default_expr_op_string, default_expr_type_string);
-		    }
-
-		  db_make_string (out_values[idx_val], default_value_string);
-		  out_values[idx_val]->need_clear = true;
-		}
-	      else
-		{
-		  if (default_expr_type_string)
-		    {
-		      db_make_string (out_values[idx_val], default_expr_type_string);
-		    }
-		}
 	      idx_val++;
 	    }
 	  else if (attrepr->current_default_value.value == NULL || attrepr->current_default_value.val_length <= 0)

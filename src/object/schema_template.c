@@ -1338,10 +1338,11 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	  ERROR1 (error, ER_SM_DEFAULT_NOT_ALLOWED, att->type->name);
 	  return error;
 	}
-      else if (proposed_value && DB_IS_NULL (proposed_value)
-	       && (default_expr == NULL || default_expr->default_expr_type == DB_DEFAULT_NONE)
-	       && (att->flags & SM_ATTFLAG_PRIMARY_KEY))
+      else if (proposed_value && DB_IS_NULL (proposed_value) && (att->flags & SM_ATTFLAG_PRIMARY_KEY)
+	       && (default_expr == NULL || !DB_HAS_DEFAULT_EXPR (default_expr)))
 	{
+	  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT: the DDL layer leaves its
+	   * NULL to the rows, which are checked when each supplies its own value */
 	  ERROR1 (error, ER_CANNOT_HAVE_PK_DEFAULT_NULL, name);
 	  return error;
 	}
@@ -4656,7 +4657,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
    */
   db_make_null (&default_value);
   classobj_initialize_default_expr (&default_expr);
-  if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
+  if (new_default_value == NULL && !DB_HAS_DEFAULT_EXPR (new_default_expr))
     {
       pr_clone_value (&(*found_att)->default_value.value, &default_value);
 
@@ -4665,7 +4666,9 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 	  new_default_value = &default_value;
 	}
 
-      if ((*found_att)->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+      /* no new DEFAULT clause: an expression DEFAULT keeps its text and streams (the value alone would
+       * freeze a residual to its DDL-time snapshot) */
+      if (DB_HAS_DEFAULT_EXPR (&(*found_att)->default_value.default_expr))
 	{
 	  error = classobj_copy_default_expr (&default_expr, &(*found_att)->default_value.default_expr);
 	  if (error != NO_ERROR)
@@ -4678,7 +4681,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
     }
 
   is_class_attr = (name_space == ID_CLASS_ATTRIBUTE);
-  if (new_default_value != NULL || (new_default_expr != NULL && new_default_expr->default_expr_type != DB_DEFAULT_NONE))
+  if (new_default_value != NULL || (new_default_expr != NULL && DB_HAS_DEFAULT_EXPR (new_default_expr)))
     {
       assert (((*found_att)->flags & SM_ATTFLAG_NEW) == 0);
       error = smt_set_attribute_default (def, ((new_name != NULL) ? new_name : name), is_class_attr, new_default_value,

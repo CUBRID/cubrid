@@ -8784,7 +8784,6 @@ classobj_clear_default_expr (DB_DEFAULT_EXPR * default_expr)
 {
   assert (default_expr != NULL);
 
-  ws_free_string (default_expr->default_expr_format);
   ws_free_string (default_expr->default_expr_text);
   db_ws_free ((void *) default_expr->default_expr_regu_stream);
   db_ws_free ((void *) default_expr->default_expr_tree_stream);
@@ -8845,23 +8844,6 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
    * when the caller hands over uninitialized storage; dest owns nothing on
    * entry (owning callers clear it first) */
   classobj_initialize_default_expr (dest);
-
-  dest->default_expr_type = src->default_expr_type;
-  dest->default_expr_op = src->default_expr_op;
-  if (src->default_expr_format)
-    {
-      dest->default_expr_format = ws_copy_string (src->default_expr_format);
-      if (dest->default_expr_format == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (src->default_expr_format));
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error_rollback;
-	}
-    }
-  else
-    {
-      dest->default_expr_format = NULL;
-    }
 
   if (src->default_expr_text)
     {

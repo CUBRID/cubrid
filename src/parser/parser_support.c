@@ -10455,265 +10455,6 @@ pt_has_non_groupby_column_node (PARSER_CONTEXT * parser, PT_NODE * node, void *a
   return node;
 }
 
-static DB_DEFAULT_EXPR_TYPE
-parse_default_expr_type (const char *str, const int str_size, int *next_len)
-{
-  if (str_size < 4)
-    {
-      *next_len = 0;
-      return DB_DEFAULT_NONE;
-    }
-
-  switch (str[0])
-    {
-    case 'S':
-      if (str_size >= 13 && strncmp (str, "SYS_TIMESTAMP", 13) == 0)
-	{
-	  *next_len = 13;
-	  return DB_DEFAULT_SYSTIMESTAMP;
-	}
-      if (str_size >= 12 && strncmp (str, "SYS_DATETIME", 12) == 0)
-	{
-	  *next_len = 12;
-	  return DB_DEFAULT_SYSDATETIME;
-	}
-      if (str_size >= 10 && strncmp (str, "SYS_GUID()", 10) == 0)
-	{
-	  *next_len = 10;
-	  return DB_DEFAULT_SYSGUID;
-	}
-      if (str_size >= 8)
-	{
-	  if (strncmp (str, "SYS_DATE", 8) == 0)
-	    {
-	      *next_len = 8;
-	      return DB_DEFAULT_SYSDATE;
-	    }
-	  if (strncmp (str, "SYS_TIME", 8) == 0)
-	    {
-	      *next_len = 8;
-	      return DB_DEFAULT_SYSTIME;
-	    }
-	}
-      break;
-
-    case 'C':
-      if (str_size >= 17 && strncmp (str, "CURRENT_TIMESTAMP", 17) == 0)
-	{
-	  *next_len = 17;
-	  return DB_DEFAULT_CURRENTTIMESTAMP;
-	}
-      if (str_size >= 16 && strncmp (str, "CURRENT_DATETIME", 16) == 0)
-	{
-	  *next_len = 16;
-	  return DB_DEFAULT_CURRENTDATETIME;
-	}
-      if (str_size >= 12)
-	{
-	  if (strncmp (str, "CURRENT_DATE", 12) == 0)
-	    {
-	      *next_len = 12;
-	      return DB_DEFAULT_CURRENTDATE;
-	    }
-	  if (strncmp (str, "CURRENT_TIME", 12) == 0)
-	    {
-	      *next_len = 12;
-	      return DB_DEFAULT_CURRENTTIME;
-	    }
-	  if (strncmp (str, "CURRENT_USER", 12) == 0)
-	    {
-	      *next_len = 12;
-	      return DB_DEFAULT_CURR_USER;
-	    }
-	}
-      break;
-
-    case 'U':
-      if (str_size >= 16 && strncmp (str, "UNIX_TIMESTAMP()", 16) == 0)
-	{
-	  *next_len = 16;
-	  return DB_DEFAULT_UNIX_TIMESTAMP;
-	}
-      if (str_size >= 7 && strncmp (str, "UUID(4)", 7) == 0)
-	{
-	  *next_len = 7;
-	  return DB_DEFAULT_UUIDV4;
-	}
-      if (str_size >= 7 && strncmp (str, "UUID(7)", 7) == 0)
-	{
-	  *next_len = 7;
-	  return DB_DEFAULT_UUIDV7;
-	}
-      if (str_size >= 6 && strncmp (str, "USER()", 6) == 0)
-	{
-	  *next_len = 6;
-	  return DB_DEFAULT_USER;
-	}
-      if (str_size >= 4 && strncmp (str, "USER", 4) == 0)
-	{
-	  *next_len = 4;
-	  return DB_DEFAULT_CURR_USER;
-	}
-      break;
-    }
-
-  *next_len = 0;
-  return DB_DEFAULT_NONE;
-}
-
-/*
- * pt_get_default_expression_from_string () - get default value from string
- * return : error code or NO_ERROR
- *
- * parser (in)		  : parser context
- * str (in) : default expression string
- * str_size (in) : default expression string size
- * default_expr (out)	  : default expression
- */
-void
-pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str, const int str_size,
-				       DB_DEFAULT_EXPR * default_expr)
-{
-  assert (parser != NULL && default_expr != NULL);
-  assert (str != NULL && str_size > 0);
-
-  classobj_initialize_default_expr (default_expr);
-
-  std::string expr_str (str, str_size);
-
-  int curr_idx = 0;
-  int curr_len = str_size;
-
-  const int to_char_size = sizeof ("TO_CHAR(") - 1;
-  if (str_size > to_char_size && strncmp (str, "TO_CHAR(", to_char_size) == 0)
-    {
-      curr_idx += to_char_size;
-      curr_len -= to_char_size;
-      default_expr->default_expr_op = T_TO_CHAR;
-    }
-
-  int parsed_len;
-  default_expr->default_expr_type = parse_default_expr_type (&str[curr_idx], curr_len, &parsed_len);
-  curr_idx += parsed_len;
-  curr_len -= parsed_len;
-
-  if (default_expr->default_expr_op == T_TO_CHAR)
-    {
-      // find next '\''
-      const char *formatted_string = strchr (&str[curr_idx], '\'') + 1;
-
-      // get remaining length before the last '\''
-      int remaining_len = strchr (formatted_string, '\'') - formatted_string;
-
-      default_expr->default_expr_format = strndup (formatted_string, remaining_len);
-    }
-}
-
-PT_NODE *
-pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser, const DB_DEFAULT_EXPR * default_expr)
-{
-  PT_NODE *default_value = NULL;
-
-  assert (default_expr != NULL);
-  assert (default_expr->default_expr_type != DB_DEFAULT_NONE);
-
-  default_value = pt_make_expression_default_expr (parser, NULL, default_expr->default_expr_type);
-  if (default_value == NULL)
-    {
-      return NULL;
-    }
-
-  if (default_expr->default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
-    {
-      return default_value;
-    }
-
-  if (default_expr->default_expr_op == T_TO_CHAR)
-    {
-      PT_NODE *arg1, *arg2, *arg3;
-      bool has_user_format = (default_expr->default_expr_format != NULL);
-      const char *lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-      int flag = 0;
-
-      arg1 = default_value;
-      arg2 = pt_make_string_value (parser, default_expr->default_expr_format);
-      if (arg2 == NULL)
-	{
-	  parser_free_tree (parser, default_value);
-	  return NULL;
-	}
-
-      arg3 = parser_new_node (parser, PT_VALUE);
-      if (arg3 == NULL)
-	{
-	  parser_free_tree (parser, default_value);
-	  parser_free_tree (parser, arg2);
-	  return NULL;
-	}
-
-      arg3->type_enum = PT_TYPE_INTEGER;
-      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-      arg3->info.value.data_value.i = (long) flag;
-
-      default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-      if (default_value == NULL)
-	{
-	  parser_free_tree (parser, arg1);
-	  parser_free_tree (parser, arg2);
-	  parser_free_tree (parser, arg3);
-	  return NULL;
-	}
-    }
-
-  return default_value;
-}
-
-/*
- * pt_get_default_value_from_attrnode () - get default value from data default node
- * return : error code or NO_ERROR
- *
- * parser (in)		  : parser context
- * data_default_node (in) : attribute node
- * default_expr (out)	  : default expression
- */
-void
-pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NODE * data_default_node,
-						  DB_DEFAULT_EXPR * default_expr)
-{
-  PT_NODE *pt_default_expr = NULL;
-  DB_VALUE *db_value_default_expr_format = NULL;
-  assert (parser != NULL && default_expr != NULL);
-
-  classobj_initialize_default_expr (default_expr);
-  if (data_default_node != NULL)
-    {
-      assert (data_default_node->node_type == PT_DATA_DEFAULT);
-      default_expr->default_expr_type = data_default_node->info.data_default.default_expr_type;
-
-      /* Expression-Derived Literal: carry the normalized source text so the
-       * folded literal is stored/displayed as its original expression. */
-      default_expr->default_expr_text = data_default_node->info.data_default.expr_text;
-
-      pt_default_expr = data_default_node->info.data_default.default_value;
-      if (pt_default_expr && pt_default_expr->node_type == PT_EXPR
-	  && default_expr->default_expr_type != DB_DEFAULT_NONE)
-	{
-	  if (pt_default_expr->info.expr.op == PT_TO_CHAR)
-	    {
-	      default_expr->default_expr_op = T_TO_CHAR;
-	      assert (pt_default_expr->info.expr.arg2 != NULL
-		      && pt_default_expr->info.expr.arg2->node_type == PT_VALUE);
-
-	      if (PT_IS_CHAR_STRING_TYPE (pt_default_expr->info.expr.arg2->type_enum))
-		{
-		  db_value_default_expr_format = pt_value_to_db (parser, pt_default_expr->info.expr.arg2);
-		  default_expr->default_expr_format = db_get_string (db_value_default_expr_format);
-		}
-	    }
-	}
-    }
-}
-
 /* Compact DEFAULT Tree: a minimal VALUE/OP expression IR persisted for a
  * residual DEFAULT expression, rehydratable into a PT_NODE without re-parsing:
  * re-parsing the stored source text would re-run name resolution and semantic
@@ -11305,6 +11046,42 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
       *volatility = entry->volatility;
     }
   return tree;
+}
+
+/*
+ * pt_cdt_registry_tree_copy () - a private copy of the registry tree of a residual DEFAULT (pt_cdt_registry_tree)
+ *	for a caller that folds or releases it; a failure the registry reported is carried into the parser's
+ *	error channel
+ *   return: the copy, or NULL on error
+ *   parser(in): parser context
+ *   att(in): attribute with a residual DEFAULT
+ *   err_node(in): node the error is reported on; may be NULL
+ *   volatility(out): effective volatility of the tree; may be NULL
+ */
+PT_NODE *
+pt_cdt_registry_tree_copy (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * err_node,
+			   PT_VOLATILITY * volatility)
+{
+  PT_NODE *shared, *copy;
+
+  shared = pt_cdt_registry_tree (parser, att, volatility);
+  if (shared == NULL)
+    {
+      /* the registry diagnosed the failure where it happened */
+      assert (er_errid () != NO_ERROR);
+      if (!pt_has_error (parser) && er_errid () != NO_ERROR)
+	{
+	  PT_ERRORc (parser, err_node, er_msg ());
+	}
+      return NULL;
+    }
+
+  copy = parser_copy_tree (parser, shared);
+  if (copy == NULL)
+    {
+      PT_ERRORm (parser, err_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+    }
+  return copy;
 }
 
 /*
@@ -13495,6 +13272,15 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
   return;
 }
 
+/*
+ * pt_make_data_default_expr_node () - the PT_DATA_DEFAULT node of a column DEFAULT
+ *   return: new node, or NULL on allocation failure
+ *   parser(in): parser context
+ *   expr(in): the DEFAULT value expression
+ *
+ * The legacy pseudo-column enum is not used: every expression, the legacy whitelist
+ * included, is classified by volatility and stored through the Stored DEFAULT Forms.
+ */
 extern PT_NODE *
 pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 {
@@ -13502,122 +13288,8 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 
   if (node)
     {
-      PT_NODE *def;
-
       node->info.data_default.default_value = expr;
       node->info.data_default.shared = PT_DEFAULT;
-
-      def = node->info.data_default.default_value;
-      if (def && def->node_type == PT_EXPR)
-	{
-	  if (def->info.expr.op == PT_TO_CHAR)
-	    {
-	      if (def->info.expr.arg3)
-		{
-		  bool has_user_lang = false;
-		  bool dummy;
-
-		  assert (def->info.expr.arg3->node_type == PT_VALUE);
-		  (void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy,
-						     &has_user_lang);
-		  if (has_user_lang)
-		    {
-		      PT_ERROR (parser, def->info.expr.arg3, "do not allow lang format in default to_char");
-		    }
-		}
-
-	      if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
-		{
-		  def = def->info.expr.arg1;
-		}
-	    }
-
-	  switch (def->info.expr.op)
-	    {
-	    case PT_SYS_TIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
-	      break;
-	    case PT_SYS_DATE:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
-	      break;
-	    case PT_SYS_DATETIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
-	      break;
-	    case PT_SYS_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-	      break;
-	    case PT_CURRENT_TIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
-	      break;
-	    case PT_CURRENT_DATE:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
-	      break;
-	    case PT_CURRENT_DATETIME:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-	      break;
-	    case PT_CURRENT_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-	      break;
-	    case PT_USER:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_USER;
-	      break;
-	    case PT_CURRENT_USER:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
-	      break;
-	    case PT_UNIX_TIMESTAMP:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-	      break;
-	    case PT_SYS_GUID:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSGUID;
-	      break;
-	    case PT_UUID:
-	      {
-		PT_NODE *uuid_arg = def->info.expr.arg1;
-
-		if (uuid_arg == NULL)
-		  {
-		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
-		  }
-		else if (uuid_arg->node_type == PT_VALUE && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum))
-		  {
-		    if (pt_coerce_value (parser, uuid_arg, uuid_arg, PT_TYPE_INTEGER, NULL) == NO_ERROR)
-		      {
-			if (uuid_arg->info.value.data_value.i == 0 || uuid_arg->info.value.data_value.i == 4)
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
-			  }
-			else if (uuid_arg->info.value.data_value.i == 7)
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
-			  }
-			else
-			  {
-			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
-			  }
-		      }
-		    else
-		      {
-			node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			PT_ERROR (parser, node, "UUID argument coercion error");
-		      }
-		  }
-		else
-		  {
-		    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-		    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
-		  }
-	      }
-	      break;
-	    default:
-	      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-	      break;
-	    }
-	}
-      else
-	{
-	  node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-	}
     }
 
   return node;

@@ -8971,7 +8971,9 @@ pt_init_data_default (PT_NODE * p)
 {
   p->info.data_default.default_value = (PT_NODE *) 0;
   p->info.data_default.shared = (PT_MISC_TYPE) 0;
-  p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+  p->info.data_default.expr_text = NULL;
+  p->info.data_default.expr_volatility = PT_VOLATILITY_UNSET;
+  p->info.data_default.expr_type = PT_TYPE_NONE;
   return p;
 }
 

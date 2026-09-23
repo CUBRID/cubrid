@@ -236,6 +236,8 @@ struct db_value_slist
 static int drop_class_name (const char *name, bool is_cascade_constraints);
 
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
+static int do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAULT_EXPR * dest);
+static void do_free_default_expr_streams (DB_DEFAULT_EXPR * dest);
 static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
 static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -301,6 +303,9 @@ static int get_att_order_from_def (PT_NODE * attribute, bool * ord_first, const 
 
 static int check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute);
 
+static int get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default,
+					      PT_TYPE_ENUM desired_type, PT_NODE * data_type, const char *classname,
+					      DB_VALUE * default_value);
 static int get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE ** default_value,
 				     const char *classname);
 
@@ -432,7 +437,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *data_type, *data_default, *path;
   PT_NODE *slist;
   PT_TYPE_ENUM pt_desired_type;
-  PT_NODE *temp_val, *def_val, *initial_def_val = NULL;
 #if 0
   HFID *hfid;
 #endif
@@ -1008,122 +1012,39 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      break;
 	    }
 
-	  def_val = d->info.data_default.default_value;
-	  if (d->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+	  /* the DDL-time value, coerced to the attribute type the way ADD / CHANGE / MODIFY coerce theirs */
+	  error = get_att_default_from_data_default (parser, d, pt_desired_type, data_type, NULL, &src_val);
+	  if (error != NO_ERROR)
 	    {
-	      initial_def_val = parser_copy_tree (parser, def_val);
-	      if (initial_def_val == NULL)
-		{
-		  error = ER_FAILED;
-		  break;
-		}
-	      error = pt_coerce_value_for_default_value (parser, def_val, def_val, pt_desired_type, data_type,
-							 d->info.data_default.default_expr_type, true);
-	      if (error != NO_ERROR)
-		{
-		  if (pt_has_error (parser))
-		    {
-		      /* forget previous one to set the better error */
-		      pt_reset_error (parser);
-		    }
-
-		  if (error == ER_IT_DATA_OVERFLOW)
-		    {
-		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-				   pt_short_print (parser, initial_def_val), pt_short_print (parser, data_type));
-		    }
-		  else
-		    {
-		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   pt_short_print (parser, initial_def_val), pt_short_print (parser, data_type));
-		    }
-
-		  parser_free_tree (parser, data_type);
-		  break;
-		}
-
-	      pt_evaluate_tree (parser, d->info.data_default.default_value, &src_val, 1);
-
-	      /* Fix CUBRIDSUS-8035. FOR Primary Key situation, we will throw another ERROR in function
-	       * dbt_change_default, so I excluded it from here. */
-	      if (DB_IS_NULL (&src_val) && (def_attr->flags & SM_ATTFLAG_NON_NULL)
-		  && !(def_attr->flags & SM_ATTFLAG_PRIMARY_KEY))
-		{
-		  db_value_clear (&src_val);
-		  parser_free_tree (parser, data_type);
-		  ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, attr_name);
-		  break;
-		}
-
-	      if (n->info.name.meta_class == PT_META_ATTR)
-		{
-		  error = dbt_change_default (ctemplate, attr_name, 1, &src_val);
-		}
-	      else
-		{
-		  error = dbt_change_default (ctemplate, attr_name, 0, &src_val);
-		}
+	      parser_free_tree (parser, data_type);
+	      break;
 	    }
-	  else
+
+	  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT, so its NULL is left to
+	   * the rows.  A PRIMARY KEY column is refused by smt_set_attribute_default below (CUBRIDSUS-8035). */
+	  if (DB_IS_NULL (&src_val) && !PT_HAS_DEFAULT_EXPR (d) && (def_attr->flags & SM_ATTFLAG_NON_NULL)
+	      && !(def_attr->flags & SM_ATTFLAG_PRIMARY_KEY))
 	    {
-	      def_val = pt_semantic_type (parser, def_val, NULL);
-	      if (pt_has_error (parser) || def_val == NULL)
-		{
-		  parser_free_tree (parser, data_type);
-		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  error = er_errid ();
-		  break;
-		}
-
-	      pt_evaluate_tree_having_serial (parser, def_val, &src_val, 1);
-	      if (pt_has_error (parser))
-		{
-		  parser_free_tree (parser, data_type);
-		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  error = er_errid ();
-		  break;
-		}
-
-	      temp_val = pt_dbval_to_value (parser, &src_val);
-	      if (temp_val == NULL)
-		{
-		  parser_free_tree (parser, data_type);
-		  db_value_clear (&src_val);
-		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  error = er_errid ();
-		  break;
-		}
-
-	      error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, pt_desired_type, data_type,
-							 d->info.data_default.default_expr_type, true);
 	      db_value_clear (&src_val);
-	      temp_val->info.value.db_value_is_in_workspace = 0;
-	      parser_free_node (parser, temp_val);
-	      if (error != NO_ERROR)
-		{
-		  if (pt_has_error (parser))
-		    {
-		      /* forget previous one to set the better error */
-		      pt_reset_error (parser);
-		    }
-
-		  if (error == ER_IT_DATA_OVERFLOW)
-		    {
-		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
-		    }
-		  else
-		    {
-		      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   pt_short_print (parser, def_val), pt_short_print (parser, data_type));
-		    }
-		  parser_free_tree (parser, data_type);
-		  break;
-		}
-
-	      pt_get_default_expression_from_data_default_node (parser, d, &default_expr);
-	      smt_set_attribute_default (ctemplate, attr_name, 0, &src_val, &default_expr);
+	      parser_free_tree (parser, data_type);
+	      ERROR1 (error, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, attr_name);
+	      break;
 	    }
+
+	  /* the Stored DEFAULT Forms, as CREATE / MODIFY / CHANGE derive them: a residual keeps its expression
+	   * (REGU stream and Compact DEFAULT Tree) while src_val stays the DDL-time snapshot stored as the value */
+	  error = do_build_default_expr (parser, d, &default_expr);
+	  if (error != NO_ERROR)
+	    {
+	      parser_free_tree (parser, data_type);
+	      break;
+	    }
+
+	  error = smt_set_attribute_default (ctemplate, attr_name,
+					     (n->info.name.meta_class == PT_META_ATTR) ? 1 : 0, &src_val,
+					     &default_expr);
+
+	  do_free_default_expr_streams (&default_expr);
 	  if (pt_has_error (parser))
 	    {
 	      pt_report_to_ersys (parser, PT_SEMANTIC);
@@ -1317,11 +1238,6 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
       assert (false);
       dbt_abort_class (ctemplate);
       return error;
-    }
-
-  if (initial_def_val != NULL)
-    {
-      parser_free_tree (parser, initial_def_val);
     }
 
   /* Process resolution list if appropriate */
@@ -8060,27 +7976,31 @@ get_attr_name (PT_NODE * attribute)
 }
 
 /*
- * do_compile_residual_default_streams () - derive the Stored DEFAULT Forms of a
- *	residual (STABLE or VOLATILE) DEFAULT: the serialized REGU form (server
- *	evaluation, once per statement or once per row according to the
- *	volatility stamped on it) and the Compact DEFAULT Tree (local evaluation).
- *	No-op unless data_default carries a residual.
+ * do_build_default_expr () - the Stored DEFAULT Forms of an attribute DEFAULT from its PT_DATA_DEFAULT node:
+ *	the source text of an expression DEFAULT and, for a residual (STABLE or VOLATILE), the serialized REGU
+ *	form (server evaluation, once per statement or once per row according to the volatility stamped on
+ *	it) and the Compact DEFAULT Tree (local evaluation)
  *   return: Error code
  *   parser(in): Parser context
  *   data_default(in): PT_DATA_DEFAULT node of the attribute (may be NULL)
- *   dest(in/out): DB_DEFAULT_EXPR receiving the stream pointers
- *   regu_stream(out): malloc'd REGU stream -- caller frees
- *   regu_stream_size(out): its size in bytes
- *   tree_stream(out): malloc'd tree stream -- caller frees
- *   tree_stream_size(out): its size in bytes
+ *   dest(out): DB_DEFAULT_EXPR receiving the text and the streams; the caller releases the streams with
+ *		do_free_default_expr_streams
  */
 static int
-do_compile_residual_default_streams (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAULT_EXPR * dest,
-				     char **regu_stream, int *regu_stream_size, char **tree_stream,
-				     int *tree_stream_size)
+do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAULT_EXPR * dest)
 {
   PT_NODE *residual_expr;
+  char *stream;
+  int stream_size;
   int error;
+
+  classobj_initialize_default_expr (dest);
+  if (data_default == NULL)
+    {
+      return NO_ERROR;
+    }
+  assert (data_default->node_type == PT_DATA_DEFAULT);
+  dest->default_expr_text = data_default->info.data_default.expr_text;
 
   if (!PT_IS_RESIDUAL_DEFAULT (data_default))
     {
@@ -8089,28 +8009,39 @@ do_compile_residual_default_streams (PARSER_CONTEXT * parser, PT_NODE * data_def
 
   residual_expr = data_default->info.data_default.default_value;
 
-  error = pt_to_default_expr_stream (parser, residual_expr, regu_stream, regu_stream_size);
+  error = pt_to_default_expr_stream (parser, residual_expr, &stream, &stream_size);
   if (error != NO_ERROR)
     {
       return error;
     }
-  dest->default_expr_regu_stream = *regu_stream;
-  dest->default_expr_regu_stream_size = *regu_stream_size;
+  dest->default_expr_regu_stream = stream;
+  dest->default_expr_regu_stream_size = stream_size;
 
-  error = pt_compact_default_tree_to_stream (parser, residual_expr, tree_stream, tree_stream_size);
+  error = pt_compact_default_tree_to_stream (parser, residual_expr, &stream, &stream_size);
   if (error != NO_ERROR)
     {
       /* release the partial result: no caller error path owns it yet */
-      free_and_init (*regu_stream);
-      *regu_stream_size = 0;
-      dest->default_expr_regu_stream = NULL;
-      dest->default_expr_regu_stream_size = 0;
+      do_free_default_expr_streams (dest);
       return error;
     }
-  dest->default_expr_tree_stream = *tree_stream;
-  dest->default_expr_tree_stream_size = *tree_stream_size;
+  dest->default_expr_tree_stream = stream;
+  dest->default_expr_tree_stream_size = stream_size;
 
   return NO_ERROR;
+}
+
+/*
+ * do_free_default_expr_streams () - release the streams do_build_default_expr derived into dest
+ *   return: none
+ *   dest(in/out): DB_DEFAULT_EXPR whose streams are released and nulled
+ */
+static void
+do_free_default_expr_streams (DB_DEFAULT_EXPR * dest)
+{
+  free_and_init (dest->default_expr_regu_stream);
+  dest->default_expr_regu_stream_size = 0;
+  free_and_init (dest->default_expr_tree_stream);
+  dest->default_expr_tree_stream_size = 0;
 }
 
 /*
@@ -8142,10 +8073,6 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   const char *add_after_attr = NULL;
   PT_NODE *cnstr, *pk_attr, *comment;
   DB_DEFAULT_EXPR default_expr;
-  char *default_expr_stream = NULL;
-  int default_expr_stream_size = 0;
-  char *default_expr_tree_stream = NULL;
-  int default_expr_tree_stream_size = 0;
   PARSER_VARCHAR *comment_str = NULL;
 
   db_make_null (&stack_value);
@@ -8182,31 +8109,48 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
   if (default_value && DB_IS_NULL (default_value))
     {
-      /* don't allow a default value of NULL for NOT NULL constrained columns */
-      if (attribute->info.attr_def.constrain_not_null)
+      if (PT_HAS_DEFAULT_EXPR (attribute->info.attr_def.data_default))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
-	  error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
-	  goto error_exit;
-	}
-
-      /* don't allow a default value of NULL in new PK constraint */
-      for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
-	{
-	  if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
+	  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT, so its NULL is left to
+	   * the rows.  The rows already in the class supply nothing of their own: everything but a VOLATILE
+	   * residual fills them instantly with the one value they share, so it is checked once, for all. */
+	  if (attribute->info.attr_def.constrain_not_null
+	      && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (attribute->info.attr_def.data_default) && ctemplate->op != NULL
+	      && db_is_class (ctemplate->op) > 0 && db_class_has_instance (ctemplate->op))
 	    {
-	      break;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTR_NOT_NULL, 1, attr_name);
+	      error = ER_SM_ATTR_NOT_NULL;
+	      goto error_exit;
 	    }
 	}
-      if (cnstr != NULL)
+      else
 	{
-	  for (pk_attr = cnstr->info.constraint.un.primary_key.attrs; pk_attr != NULL; pk_attr = pk_attr->next)
+	  /* don't allow a default value of NULL for NOT NULL constrained columns */
+	  if (attribute->info.attr_def.constrain_not_null)
 	    {
-	      if (intl_identifier_casecmp (pk_attr->info.name.original, attr_name) == 0)
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL, 1, attr_name);
+	      error = ER_CANNOT_HAVE_NOTNULL_DEFAULT_NULL;
+	      goto error_exit;
+	    }
+
+	  /* don't allow a default value of NULL in new PK constraint */
+	  for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
+	    {
+	      if (cnstr->info.constraint.type == PT_CONSTRAIN_PRIMARY_KEY)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_HAVE_PK_DEFAULT_NULL, 1, attr_name);
-		  error = ER_CANNOT_HAVE_PK_DEFAULT_NULL;
-		  goto error_exit;
+		  break;
+		}
+	    }
+	  if (cnstr != NULL)
+	    {
+	      for (pk_attr = cnstr->info.constraint.un.primary_key.attrs; pk_attr != NULL; pk_attr = pk_attr->next)
+		{
+		  if (intl_identifier_casecmp (pk_attr->info.name.original, attr_name) == 0)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_HAVE_PK_DEFAULT_NULL, 1, attr_name);
+		      error = ER_CANNOT_HAVE_PK_DEFAULT_NULL;
+		      goto error_exit;
+		    }
 		}
 	    }
 	}
@@ -8248,15 +8192,11 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
     }
 
   on_update_expr = attribute->info.attr_def.on_update;
-  pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
 
-  /* residual DEFAULT (STABLE or VOLATILE): compile the surviving expression so
-   * the server keeps evaluating it -- once per INSERT statement (STABLE) or once
-   * per row (VOLATILE, per the volatility stamped on the REGU form) */
-  error = do_compile_residual_default_streams (parser, attribute->info.attr_def.data_default, &default_expr,
-					       &default_expr_stream, &default_expr_stream_size,
-					       &default_expr_tree_stream, &default_expr_tree_stream_size);
+  /* a residual DEFAULT (STABLE or VOLATILE) keeps its expression, which the server evaluates once per INSERT
+   * statement or once per row */
+  error = do_build_default_expr (parser, attribute->info.attr_def.data_default, &default_expr);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -8265,8 +8205,7 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space,
 					    add_first, add_after_attr, &default_expr, &on_update_expr, NULL);
 
-  free_and_init (default_expr_stream);
-  free_and_init (default_expr_tree_stream);
+  do_free_default_expr_streams (&default_expr);
 
   db_value_clear (&stack_value);
 
@@ -11630,10 +11569,6 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   const char *attr_name = NULL;
   PARSER_VARCHAR *comment_str = NULL;
   DB_DEFAULT_EXPR new_default_expr;
-  char *default_expr_stream = NULL;
-  int default_expr_stream_size = 0;
-  char *default_expr_tree_stream = NULL;
-  int default_expr_tree_stream_size = 0;
   PT_NODE *comment = NULL;
 
   assert (attr_chg_prop != NULL);
@@ -11717,14 +11652,10 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   /* default_value is either NULL or pointing to address of stack_value */
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
-  pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &new_default_expr);
 
-  /* residual DEFAULT (STABLE or VOLATILE): derive the Stored DEFAULT Forms here
-   * too, so a MODIFY/CHANGE'd DEFAULT keeps re-evaluating (per statement / per
-   * row) instead of silently freezing to the DDL-time snapshot */
-  error = do_compile_residual_default_streams (parser, attribute->info.attr_def.data_default, &new_default_expr,
-					       &default_expr_stream, &default_expr_stream_size,
-					       &default_expr_tree_stream, &default_expr_tree_stream_size);
+  /* a residual DEFAULT (STABLE or VOLATILE) keeps its expression through MODIFY / CHANGE, so it keeps being
+   * evaluated per statement or per row instead of freezing to the DDL-time snapshot */
+  error = do_build_default_expr (parser, attribute->info.attr_def.data_default, &new_default_expr);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -12038,8 +11969,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
 
 exit:
-  free_and_init (default_expr_stream);
-  free_and_init (default_expr_tree_stream);
+  do_free_default_expr_streams (&new_default_expr);
   db_value_clear (&stack_value);
   return error;
 }
@@ -12144,7 +12074,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
     }
   if (!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
-      || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+      || DB_HAS_DEFAULT_EXPR (&att->default_value.default_expr))
     {
       attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
     }
@@ -12195,7 +12125,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   else if (attr_def->info.attr_def.auto_increment != NULL)
     {
       if ((!DB_IS_NULL (&(att->default_value.original_value)) || !DB_IS_NULL (&(att->default_value.value))
-	   || att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE))
+	   || DB_HAS_DEFAULT_EXPR (&att->default_value.default_expr)))
 	{
 	  attr_chg_properties->p[P_DEFAULT_VALUE] |= ATT_CHG_PROPERTY_LOST;
 	}
@@ -14019,9 +13949,7 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
 	}
       else
 	{
-	  error =
-	    pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
-					       on_update_expr_type, true);
+	  error = pt_coerce_value_w_precision (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type);
 	}
     }
 
@@ -14070,45 +13998,39 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
 }
 
 /*
- * get_att_default_from_def() - Retrieves the default value property from the
- *				attribute definition node
- *
+ * get_att_default_from_data_default () - the DDL-time DEFAULT value of an attribute from its PT_DATA_DEFAULT
+ *	node, coerced to the attribute type.  A literal is coerced as written.  An expression must have a type
+ *	that casts to the attribute type.  A residual (STABLE or VOLATILE) is evaluated once and its result
+ *	coerced, so an incompatible expression is rejected here rather than at the first INSERT; INSERTs
+ *	re-evaluate the stored residual.  The value of a STABLE residual is the snapshot that rows predating the
+ *	DEFAULT read back; a VOLATILE residual has no DDL-time value and leaves it NULL.  Shared by CREATE TABLE,
+ *	ALTER ADD / CHANGE / MODIFY and ALTER ... SET DEFAULT.
  *  return : NO_ERROR, if success; error code otherwise
  *  parser(in): parser context
- *  attribute(in): attribute definition node (PT_ATTR_DEF)
- *  default_value(in/out): default value; this must be initially passed as
- *			   pointer to an allocated DB_VALUE; it is returned
- *			   as NULL if a DEFAULT is not specified for the
- *			   attribute, otherwise the DEFAULT value is returned
- *			   (the initially passed value is used for storage)
+ *  data_default(in): PT_DATA_DEFAULT node of the attribute
+ *  desired_type(in): type of the attribute
+ *  data_type(in): PT_DATA_TYPE list of the attribute, or NULL
  *  classname(in): If part of create class statement, this argument will be
  *		   the name of the class. We want to avoid fetching it since
  *		   it doesn't exist yet.
- *
+ *  default_value(out): the DEFAULT value
  */
 static int
-get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE ** default_value,
-			  const char *classname)
+get_att_default_from_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default, PT_TYPE_ENUM desired_type,
+				   PT_NODE * data_type, const char *classname, DB_VALUE * default_value)
 {
   int error = NO_ERROR;
   PT_NODE *def_val = NULL, *initial_def_val = NULL;
-  DB_DEFAULT_EXPR_TYPE def_expr_type;
-  PT_TYPE_ENUM desired_type = attribute->type_enum;
   bool has_self_ref = false;
   bool is_residual;
+  PT_TYPE_ENUM expr_type;
   const char *data_type_print;
+  const char *def_val_print;
 
-  assert (attribute->node_type == PT_ATTR_DEF);
+  assert (data_default != NULL && data_default->node_type == PT_DATA_DEFAULT);
 
-  if (attribute->info.attr_def.data_default == NULL)
-    {
-      *default_value = NULL;
-      return NO_ERROR;
-    }
-
-  def_expr_type = attribute->info.attr_def.data_default->info.data_default.default_expr_type;
-  is_residual = PT_IS_RESIDUAL_DEFAULT (attribute->info.attr_def.data_default);
-  def_val = attribute->info.attr_def.data_default->info.data_default.default_value;
+  is_residual = PT_IS_RESIDUAL_DEFAULT (data_default);
+  def_val = data_default->info.data_default.default_value;
   def_val = pt_semantic_check (parser, def_val);
   if (pt_has_error (parser) || def_val == NULL)
     {
@@ -14117,11 +14039,11 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       goto exit;
     }
 
-  if (classname != NULL && attribute->data_type != NULL)
+  if (classname != NULL && data_type != NULL)
     {
       PT_NODE *dt = NULL;
 
-      for (dt = attribute->data_type; dt != NULL; dt = dt->next)
+      for (dt = data_type; dt != NULL; dt = dt->next)
 	{
 	  if (dt->info.data_type.entity != NULL && dt->info.data_type.entity->node_type == PT_NAME
 	      && pt_user_specified_name_compare (dt->info.data_type.entity->info.name.original, classname) == 0)
@@ -14162,13 +14084,12 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
       /* We allow default value if: 1. Not a default expression. 2. Value is NULL or value is empty set and collection
        * type is expected. */
       value = &def_val->info.value.db_value;
-      if (def_expr_type == DB_DEFAULT_NONE
-	  && (db_value_is_null (value)
-	      || (desired_type != PT_TYPE_OBJECT && TP_IS_SET_TYPE (value->domain.general_info.type)
-		  && value->data.set->set->size == 0)))
+      if (db_value_is_null (value)
+	  || (desired_type != PT_TYPE_OBJECT && TP_IS_SET_TYPE (value->domain.general_info.type)
+	      && value->data.set->set->size == 0))
 	{
 	  /* We can accept the default value. */
-	  pt_evaluate_tree (parser, def_val, *default_value, 1);
+	  pt_evaluate_tree (parser, def_val, default_value, 1);
 	}
       else
 	{
@@ -14190,42 +14111,42 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
     }
   else
     {
-      /* try to coerce the default value into the attribute type */
-      if (def_expr_type == DB_DEFAULT_NONE && !is_residual)
+      /* an expression DEFAULT is checked by its type first: its DDL-time value is a single evaluation, and a
+       * NULL result coerces to any type, which would let a DATE expression into an INT column here only to
+       * fail as DEFAULT (col) later.  The type is the one recorded before folding (a folded NULL has none);
+       * a copy of a stored DEFAULT arrives without it and is typed as it stands. */
+      expr_type = data_default->info.data_default.expr_type;
+      if (expr_type == PT_TYPE_NONE)
 	{
-	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type,
-						     def_expr_type, true);
+	  expr_type = def_val->type_enum;
+	}
+      if (PT_HAS_DEFAULT_EXPR (data_default) && !pt_is_cast_valid (expr_type, desired_type))
+	{
+	  error = ER_IT_INCOMPATIBLE_DATATYPE;
+	  goto exit_on_coerce_error;
+	}
+
+      /* try to coerce the default value into the attribute type */
+      if (!is_residual)
+	{
+	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, data_type, true);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;
 	    }
+	  pt_evaluate_tree (parser, def_val, default_value, 1);
 	}
       else
 	{
-	  /* a legacy default expression, or a residual (STABLE or VOLATILE):
-	   * evaluate it exactly once at DDL time and coerce the result to the
-	   * attribute type, so an expression whose result is incompatible with
-	   * the column is rejected here -- as for constant defaults -- instead of
-	   * being deferred to the first INSERT.  For a residual the coerced value
-	   * seeds value/original_value (what unbound pre-existing rows read back);
-	   * future INSERTs re-evaluate the stored residual -- once per statement
-	   * (STABLE) or once per row (VOLATILE), so for VOLATILE the frozen
-	   * snapshot is only a type-checked placeholder, never the live default. */
+	  /* a residual (STABLE or VOLATILE): evaluate it once at DDL time and coerce the result to the
+	   * attribute type, so an incompatible result is rejected here rather than at the first INSERT.  A
+	   * STABLE result becomes the DDL-time value (what unbound pre-existing rows read back).  A VOLATILE
+	   * residual has no DDL-time value -- one value cannot stand for a per-row evaluation -- so its result
+	   * is discarded and the value stays NULL. */
 	  DB_VALUE src;
 	  PT_NODE *temp_val;
 
 	  db_make_null (&src);
-
-	  if (!is_residual)
-	    {
-	      def_val = pt_semantic_type (parser, def_val, NULL);
-	      if (pt_has_error (parser) || def_val == NULL)
-		{
-		  pt_report_to_ersys (parser, PT_SEMANTIC);
-		  error = er_errid ();
-		  goto exit;
-		}
-	    }
 
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
 	  if (pt_has_error (parser))
@@ -14244,12 +14165,11 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	      goto exit;
 	    }
 
-	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
-						     def_expr_type, true);
+	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, data_type, true);
 	  db_value_clear (&src);
-	  if (error == NO_ERROR && is_residual)
+	  if (error == NO_ERROR && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (data_default))
 	    {
-	      pt_evaluate_tree (parser, temp_val, *default_value, 1);
+	      pt_evaluate_tree (parser, temp_val, default_value, 1);
 	    }
 	  temp_val->info.value.db_value_is_in_workspace = 0;
 	  parser_free_node (parser, temp_val);
@@ -14258,15 +14178,6 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	    {
 	      goto exit_on_coerce_error;
 	    }
-	}
-
-      if (def_expr_type == DB_DEFAULT_NONE && !is_residual)
-	{
-	  pt_evaluate_tree (parser, def_val, *default_value, 1);
-	}
-      else if (def_expr_type != DB_DEFAULT_NONE)
-	{
-	  *default_value = NULL;
 	}
 
       if (pt_has_error (parser))
@@ -14291,24 +14202,27 @@ exit_on_coerce_error:
       pt_reset_error (parser);
     }
 
-  if (attribute->data_type != NULL)
+  if (data_type != NULL)
     {
-      data_type_print = pt_short_print (parser, attribute->data_type);
+      data_type_print = pt_short_print (parser, data_type);
     }
   else
     {
       data_type_print = pt_show_type_enum ((PT_TYPE_ENUM) desired_type);
     }
 
+  /* name the expression as written: what it folded to may be a bare NULL */
+  def_val_print = (PT_HAS_DEFAULT_EXPR (data_default) ? data_default->info.data_default.expr_text
+		   : pt_short_print (parser, initial_def_val));
   if (error == ER_IT_DATA_OVERFLOW)
     {
-      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO,
-		   pt_short_print (parser, initial_def_val), data_type_print);
+      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OVERFLOW_COERCING_TO, def_val_print,
+		   data_type_print);
     }
   else
     {
-      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-		   pt_short_print (parser, initial_def_val), data_type_print);
+      PT_ERRORmf2 (parser, def_val, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, def_val_print,
+		   data_type_print);
     }
 
   if (initial_def_val != NULL)
@@ -14317,6 +14231,39 @@ exit_on_coerce_error:
     }
 
   return error;
+}
+
+/*
+ * get_att_default_from_def() - Retrieves the default value property from the
+ *				attribute definition node (get_att_default_from_data_default)
+ *
+ *  return : NO_ERROR, if success; error code otherwise
+ *  parser(in): parser context
+ *  attribute(in): attribute definition node (PT_ATTR_DEF)
+ *  default_value(in/out): default value; this must be initially passed as
+ *			   pointer to an allocated DB_VALUE; it is returned
+ *			   as NULL if a DEFAULT is not specified for the
+ *			   attribute, otherwise the DEFAULT value is returned
+ *			   (the initially passed value is used for storage)
+ *  classname(in): If part of create class statement, this argument will be
+ *		   the name of the class. We want to avoid fetching it since
+ *		   it doesn't exist yet.
+ *
+ */
+static int
+get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE ** default_value,
+			  const char *classname)
+{
+  assert (attribute->node_type == PT_ATTR_DEF);
+
+  if (attribute->info.attr_def.data_default == NULL)
+    {
+      *default_value = NULL;
+      return NO_ERROR;
+    }
+
+  return get_att_default_from_data_default (parser, attribute->info.attr_def.data_default, attribute->type_enum,
+					    attribute->data_type, classname, *default_value);
 }
 
 
@@ -14773,7 +14720,6 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
   PT_NODE *attr = NULL;
   PT_NODE *save = NULL;
   PT_NODE *copy = NULL;
-  DB_DEFAULT_EXPR default_expr;
 
   assert (alter->node_type == PT_ALTER);
   assert (alter->info.alter.code == PT_ADD_ATTR_MTHD);
@@ -14788,14 +14734,11 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
 	  continue;
 	}
 
-      pt_get_default_expression_from_data_default_node (parser, pt_data_default, &default_expr);
-      if (default_expr.default_expr_type == DB_DEFAULT_NONE && !PT_IS_VOLATILE_RESIDUAL_DEFAULT (pt_data_default))
+      if (!PT_IS_VOLATILE_RESIDUAL_DEFAULT (pt_data_default))
 	{
-	  /* New DEFAULT path with effective volatility <= STABLE (constant,
-	   * Expression-Derived Literal, or STABLE residual): existing rows are
-	   * filled instantly via the frozen original_value -- no table rewrite.
-	   * A VOLATILE residual falls through to the eager rewrite below, since
-	   * a single frozen value cannot express "once per row". */
+	  /* effective volatility <= STABLE (constant, Expression-Derived Literal or STABLE residual): existing
+	   * rows are filled instantly via the frozen original_value -- no table rewrite.  A VOLATILE residual
+	   * falls through to the eager rewrite below, since one frozen value cannot express "once per row". */
 	  continue;
 	}
 
@@ -15003,8 +14946,9 @@ check_change_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE *
   /* ptr_def is either NULL or pointing to address of def_value */
   assert (ptr_def == NULL || ptr_def == &def_value);
 
-  if (ptr_def && DB_IS_NULL (ptr_def)
-      && attribute->info.attr_def.data_default->info.data_default.default_expr_type == DB_DEFAULT_NONE)
+  /* the DDL-time value of an expression DEFAULT is a snapshot, not the DEFAULT: a row is checked against its
+   * constraints when it supplies its own value, and a CHANGE fills no row from the snapshot */
+  if (ptr_def && DB_IS_NULL (ptr_def) && !PT_HAS_DEFAULT_EXPR (attribute->info.attr_def.data_default))
     {
       for (cnstr = constraints; cnstr != NULL; cnstr = cnstr->next)
 	{
