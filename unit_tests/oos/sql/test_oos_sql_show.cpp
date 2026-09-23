@@ -518,7 +518,7 @@ TEST_F (OosSqlShow, RawCopyAreaRoutesInsertAndMovementWithoutChangingPayload)
   OID root = *db_identifier (cls);
   OID source = *db_identifier (db_find_class ("t_oos_show_yes"));
   HFID root_hfid;
-  ASSERT_EQ (heap_get_class_info (thread_p, &root, &root_hfid, nullptr, nullptr), NO_ERROR);
+  ASSERT_EQ (heap_get_class_hfid (thread_p, &root, &root_hfid, nullptr), NO_ERROR);
   OID row_oid = OID_INITIALIZER;
   OID last_destination = root;
   HFID last_hfid = root_hfid;
@@ -752,7 +752,7 @@ TEST_F (OosSqlShow, InternalAndAddressReservationsBypassPreparation)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   OID cls = *db_identifier (db_find_class ("t_oos_show_yes"));
   HFID hfid;
-  ASSERT_EQ (heap_get_class_info (thread_p, &cls, &hfid, nullptr, nullptr), NO_ERROR);
+  ASSERT_EQ (heap_get_class_hfid (thread_p, &cls, &hfid, nullptr), NO_ERROR);
   heap_prepared_row_test_fail_allocation_once (heap_prepared_row_allocation::owner);
   OID reserved = OID_INITIALIZER;
   ASSERT_EQ (heap_assign_address (thread_p, &hfid, &cls, &reserved, 100), NO_ERROR);
@@ -894,7 +894,7 @@ TEST_F (OosSqlShow, LoaderQueueRetainsClearedInputsAndRollsBackBulkFailure)
   DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
   OID class_oid = *db_identifier (cls);
   HFID hfid;
-  ASSERT_EQ (heap_get_class_info (thread_p, &class_oid, &hfid, nullptr, nullptr), NO_ERROR);
+  ASSERT_EQ (heap_get_class_hfid (thread_p, &class_oid, &hfid, nullptr), NO_ERROR);
   ATTR_ID id_attr = db_attribute_id (db_get_attribute (cls, "id"));
   ATTR_ID payload_attr = db_attribute_id (db_get_attribute (cls, "payload"));
   const std::string payload (50000, static_cast<char> (0xab));
@@ -983,7 +983,7 @@ TEST_F (OosSqlShow, PreparationMemoryAndMoveAssignmentPreserveValues)
   ASSERT_NE (cls, nullptr);
   OID class_oid = *db_identifier (cls);
   HFID hfid;
-  ASSERT_EQ (heap_get_class_info (thread_p, &class_oid, &hfid, nullptr, nullptr), NO_ERROR);
+  ASSERT_EQ (heap_get_class_hfid (thread_p, &class_oid, &hfid, nullptr), NO_ERROR);
   ATTR_ID id_attr = db_attribute_id (db_get_attribute (cls, "id"));
   DB_ATTRIBUTE *payload_attr = db_get_attribute (cls, "payload");
   for (int size :
@@ -1035,7 +1035,7 @@ TEST_F (OosSqlShow, MovedPreparationOutlivesAttributeCache)
   ASSERT_NE (cls, nullptr);
   OID class_oid = *db_identifier (cls);
   HFID hfid;
-  ASSERT_EQ (heap_get_class_info (thread_p, &class_oid, &hfid, nullptr, nullptr), NO_ERROR);
+  ASSERT_EQ (heap_get_class_hfid (thread_p, &class_oid, &hfid, nullptr), NO_ERROR);
   HEAP_CACHE_ATTRINFO attrs;
   ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
   DB_ATTRIBUTE *id_attr = db_get_attribute (cls, "id");
