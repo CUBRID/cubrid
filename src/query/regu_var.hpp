@@ -177,7 +177,7 @@ const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery ca
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
-const int REGU_VARIABLE_GATE = 0x4000; /* compile-time gate marker; not emitted yet */
+const int REGU_VARIABLE_GATE = 0x4000; /* the execution gate takes this host variable's domain from its value */
 
 class regu_variable_node
 {

@@ -3825,13 +3825,14 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
 {
   RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
   assert (!resolved.sealed && resolved.vals == NULL);
-  assert (plan == NULL || plan->dbval_cnt == xasl_state->vd.dbval_cnt);
+  assert (plan == NULL || plan->dbval_cnt <= xasl_state->vd.dbval_cnt);
   resolved.in = xasl_state->vd.dbval_ptr;
   resolved.owner = thread_p;
   resolved.plan = plan;
-  const int n_vals = plan == NULL ? xasl_state->vd.dbval_cnt : plan->n_refs;
+  /* The array covers dbval_cnt even when qmgr sent values the tree never references. */
+  const int dbval_cnt = xasl_state->vd.dbval_cnt;
+  const int n_vals = plan == NULL || plan->n_refs < dbval_cnt ? dbval_cnt : plan->n_refs;
   const int n_slots = plan == NULL ? 0 : plan->n_slots;
-  assert (n_vals >= xasl_state->vd.dbval_cnt && n_slots >= 0);
   return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, resolved);
 }
 
@@ -3842,11 +3843,11 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
  *   xasl(in): root of the XASL tree carrying the load-derived DOMAIN_PLAN
  *   xasl_state(in/out): after return vd.dbval_ptr points to the owned values
  *
- * D-323-01/03/04: the plan stays immutable, the input stays const, and each
- * reference (val_pos, domain, failure policy) has its own value. Values are
- * copied unchanged: converting them and fixing GATE slots switches on together
- * with the client cast removal in dpin-09 (#332 r1: today's regu domains are
- * not rule-table domains yet, so conversion failures would change answers).
+ * D-323-01/03/04/05: the plan stays immutable, the input stays const, and each
+ * reference (val_pos, domain, failure policy) has its own value. D-335-08: the
+ * client has already cast the bind values where develop did, so each reference
+ * takes its value as given and a GATE slot takes the value's domain into the gate
+ * table.
  */
 int
 qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state)
@@ -3856,11 +3857,12 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
   RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
   const int dbval_cnt = xasl_state->vd.dbval_cnt;
   const DOMAIN_PLAN *plan = xasl->domain_plan;
-  if (plan != NULL && plan->dbval_cnt != dbval_cnt)
+  if (plan != NULL && plan->dbval_cnt > dbval_cnt)
     {
-      /* qmgr accepts surplus client values; plan references past dbval_cnt would overlap them. */
-      assert (plan->dbval_cnt < dbval_cnt);
-      plan = NULL;
+      /* The plan covers every referenced position; qmgr sent fewer values than the tree reads. */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_VALLIST_INDEX, 1, plan->dbval_cnt - 1);
+      return ER_QPROC_INVALID_VALLIST_INDEX;
     }
 
   int error = qexec_init_resolved_domains (thread_p, plan, xasl_state);
@@ -3873,8 +3875,9 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
       xasl_state->vd.dbval_ptr = resolved.vals;
     }
 
-  /* const_refs is sorted by ref, and non-bind constants (ref -1) come first:
-   * merge it with the value positions so each value is produced exactly once. */
+  /* const_refs is sorted by ref (traversal order within a ref), and non-bind constants
+   * (ref -1) come first: each value is produced once by the first item of its ref, and
+   * every GATE item of that ref records the value's domain in its own slot. */
   const int n_const_refs = plan == NULL ? 0 : plan->n_const_refs;
   int next = 0;
   for (int ref = 0; ref < resolved.n_vals; ref++)
@@ -3883,24 +3886,37 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	{
 	  next++;
 	}
-      int val_pos = ref;
       if (next < n_const_refs && plan->const_refs[next]->ref == ref)
 	{
-	  val_pos = plan->items_cold[plan->const_refs[next] - plan->items].val_pos;
+	  const int val_pos = plan->items_cold[plan->const_refs[next] - plan->items].val_pos;
+	  assert (val_pos >= 0 && val_pos < dbval_cnt);
+	  error = pr_clone_value (&resolved.in[val_pos], &resolved.vals[ref]);
+	  for (; error == NO_ERROR && next < n_const_refs && plan->const_refs[next]->ref == ref; next++)
+	    {
+	      const DOMAIN_PLAN_ITEM *item = plan->const_refs[next];
+	      if (item->flags & DOMAIN_PLAN_GATE)
+		{
+		  assert (item->slot >= 0 && item->slot < resolved.n_slots);
+		  const DB_VALUE *source = &resolved.in[plan->items_cold[item - plan->items].val_pos];
+		  resolved.table[item->slot].domain = tp_domain_resolve_value (source, NULL);
+		}
+	    }
 	}
-      /* Only a bind value no plan item references lacks an item; a secondary
-       * reference is always a constant bind reference. */
-      assert (val_pos >= 0 && val_pos < dbval_cnt);
-      error = pr_clone_value (&resolved.in[val_pos], &resolved.vals[ref]);
+      else if (ref < dbval_cnt)
+	{
+	  /* A value no item references: a bind the tree does not read, or a surplus one. */
+	  error = pr_clone_value (&resolved.in[ref], &resolved.vals[ref]);
+	}
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
     }
 
-  /* GATE slots, volatile gate slots (S5), gate-dependent nodes and constant key
-   * ranges receive work once the compiler emits GATE (dpin-09) and keys (dpin-16). */
-  assert (plan == NULL || (plan->n_slots == 0 && plan->n_gate_nodes == 0 && plan->n_keys == 0));
+  /* Gate-dependent nodes have no reader before the resolver is connected (#335),
+   * volatile gate slots (S5) come with the session-variable mirror (dpin-10) and
+   * constant key ranges with the key plan (dpin-16). */
+  assert (plan == NULL || plan->n_keys == 0);
 
   if (dbval_cnt > 0)
     {

@@ -6416,9 +6416,12 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  regu->domain = pt_xasl_node_to_domain (parser, node);
 	}
 
-      if (regu->domain == NULL && (parser->flag.set_host_var == 1 || typ != DB_TYPE_NULL))
+      /* A user host variable never takes its domain from the bound value, so the plan does
+       * not depend on the values (D-318-05); the client casts the value to its expected
+       * domain (D-335-08). An auto-parameter's value is its literal, so it keeps the literal
+       * domain (rule B33). */
+      if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && typ != DB_TYPE_NULL)
 	{
-	  /* if the host var DB_VALUE was initialized before, use its domain for regu variable */
 	  TP_DOMAIN *domain;
 	  if (TP_IS_CHAR_TYPE (typ))
 	    {
@@ -6459,35 +6462,40 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  regu->domain = pt_xasl_type_enum_to_domain (node->type_enum);
 	}
 
-      if (regu->domain == NULL)
+      if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
 	{
-	  PT_INTERNAL_ERROR (parser, "unresolved data type of host var");
-	  regu = NULL;
+	  /* D-323-14, D-325-09: no sibling fixes this slot; the execution gate takes the
+	   * bound value's own domain, once per execution. */
+	  regu->domain = &tp_Variable_domain;
+	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_GATE);
 	}
-      else
+
+      exptyp = TP_DOMAIN_TYPE (regu->domain);
+      if (parser->flag.set_host_var == 0 && typ == DB_TYPE_NULL)
 	{
-	  exptyp = TP_DOMAIN_TYPE (regu->domain);
-	  if (parser->flag.set_host_var == 0 && typ == DB_TYPE_NULL)
+	  /* If the host variable was not given before by the user, preset it by the expected domain. When the user
+	   * set the host variable, its value will be casted to this domain if necessary. */
+	  (void) db_value_domain_init (val, exptyp, regu->domain->precision, regu->domain->scale);
+	  if (TP_IS_CHAR_TYPE (exptyp))
 	    {
-	      /* If the host variable was not given before by the user, preset it by the expected domain. When the user
-	       * set the host variable, its value will be casted to this domain if necessary. */
-	      (void) db_value_domain_init (val, exptyp, regu->domain->precision, regu->domain->scale);
-	      if (TP_IS_CHAR_TYPE (exptyp))
-		{
-		  db_string_put_cs_and_collation (val, TP_DOMAIN_CODESET (regu->domain),
-						  TP_DOMAIN_COLLATION (regu->domain));
-		}
+	      db_string_put_cs_and_collation (val, TP_DOMAIN_CODESET (regu->domain),
+					      TP_DOMAIN_COLLATION (regu->domain));
 	    }
-	  else if (typ != exptyp
+	}
+      else if (typ != DB_TYPE_NULL && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_GATE)
+	       && (node->info.host_var.index >= parser->host_var_count || node->data_type != NULL)
+	       && (typ != exptyp
 		   || (TP_TYPE_HAS_COLLATION (typ) && TP_TYPE_HAS_COLLATION (exptyp)
-		       && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain))))
+		       && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain)))))
+	{
+	  /* D-335-08: a value given before compilation is still cast where develop cast it -- an
+	   * auto-parameter, or a host variable with its own data type; any other host variable's
+	   * value is cast by the client to its expected domain. */
+	  if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)
 	    {
-	      if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)
-		{
-		  PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR, -(ER_TP_CANT_COERCE),
-			       pr_type_name (DB_VALUE_DOMAIN_TYPE (val)), pr_type_name (TP_DOMAIN_TYPE (regu->domain)));
-		  regu = NULL;
-		}
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR, -(ER_TP_CANT_COERCE),
+			   pr_type_name (DB_VALUE_DOMAIN_TYPE (val)), pr_type_name (TP_DOMAIN_TYPE (regu->domain)));
+	      regu = NULL;
 	    }
 	}
     }
@@ -23737,6 +23745,10 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
+      /* L-30: the tree reads only positions the client sends (host variables, then
+       * auto-parameters). A nested parser_generate_xasl () or a statement the client
+       * compiles in parts references a subset, so the count may be smaller. */
+      assert (parser->dbval_cnt <= parser->host_var_count + parser->auto_param_count);
       xasl->dbval_cnt = parser->dbval_cnt;
     }
 

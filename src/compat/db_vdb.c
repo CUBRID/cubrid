@@ -3239,20 +3239,25 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 
   for (i = 0; i < hv_count; i++)
     {
-      int prec;
       DB_TYPE typ;
+      DB_VALUE char_cast;
+      bool keep_varchar;
 
       hv = &host_vars[i];
       typ = db_value_type (hv);
-      prec = db_value_precision (hv);
       hv_dom = expected_domains[i];
       if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
 	{
 	  /* skip casting enum and unknown type values */
 	  continue;
 	}
-      if (tp_value_cast_preserve_domain (hv, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
+      /* D-327-01 (pd:3128): a VARCHAR value bound to a CHAR(n) slot keeps its original value once the cast
+       * accepts it, as pt_set_host_variables does; re-initializing the cast value's domain here left a NULL. */
+      keep_varchar = TP_IS_CHAR_TYPE (hv_dom->type->id) && hv_dom->type->id != typ && typ == DB_TYPE_VARCHAR;
+      db_make_null (&char_cast);
+      if (tp_value_cast_preserve_domain (hv, keep_varchar ? &char_cast : hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
+	  pr_clear_value (&char_cast);
 	  d = pt_type_enum_to_db_domain (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom)));
 	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
 		       d);
@@ -3261,14 +3266,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	  pt_reset_error (session->parser);
 	  return ER_PT_EXECUTE;
 	}
-
-      if (TP_IS_CHAR_TYPE (hv_dom->type->id))
-	{
-	  if (hv_dom->type->id != typ && (typ == DB_TYPE_VARCHAR))
-	    {
-	      db_value_domain_init (hv, typ, prec, 0);
-	    }
-	}
+      pr_clear_value (&char_cast);
     }
 
   session->parser->flag.set_host_var = 1;
@@ -3490,9 +3488,8 @@ exit:
  * do_replan_statement_with_bind_peek () - regenerate plan selection and XASL from an
  *   already-compiled statement with the CURRENT bind values in place, so the optimizer's
  *   histogram probes price the predicates with the actual values. Only called when the
- *   statement has a host-variable predicate the histogram can use (see the call sites),
- *   so the value typing it bakes into the XASL lands on a predicate constant (coerced to
- *   the column domain anyway), never on an unrelated select-list host variable.
+ *   statement has a host-variable predicate the histogram can use (see the call sites).
+ *   The values only price the plan: the host variables keep their compiled domains (D-318-05).
  * return : error code
  * parser (in)    : parser holding the compiled statement and the bound values
  * statement (in) : compiled statement to replan
@@ -3729,7 +3726,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
        * LIKE / MRO / SORT-LIMIT checks and the user's RECOMPILE request existed before the
        * unpeeked-plan path and always compiled with the values bound, which is what lets
        * host-variable peeking shape the replacement plan (and dump it for SET TRACE).
-       * Compile-first is kept only for the unpeeked first execution, whose value-typed
+       * Compile-first is kept only for the unpeeked first execution, whose bind-peek
        * replan runs separately below. */
       assert (session->parser->flag.set_host_var == 1);
       err = do_set_user_host_variables (new_session, statement->info.execute.using_list);
@@ -3750,11 +3747,8 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
     {
       /* compile exactly like PREPARE does: the host variables are still unbound, so the
        * in-compile expected-domain cast (db_compile_statement's subsession block) must not
-       * run -- besides having nothing to cast, it flips set_host_var on, and XASL
-       * generation would then derive the select-list host variables' domains from the
-       * unbound (NULL) values, baking a NULL-domain coercion into the plan: whatever the
-       * user binds afterwards would be fetched as NULL. The values are bound and cast to
-       * their expected domains right below, like the db_compile/db_push_values flow. */
+       * run -- it has nothing to cast yet. The values are bound and cast to their expected
+       * domains right below, like the db_compile/db_push_values flow. */
       new_session->is_subsession_for_prepared = false;
       idx = db_compile_statement (new_session);
       new_session->is_subsession_for_prepared = true;
@@ -3795,9 +3789,8 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       /* first execution: if the statement has a host-variable PREDICATE the histogram can
        * price (histogram_bind_fingerprint returns true), fix the plan under the actual
        * bind values instead of the unbound markers the PREPARE-time plan was chosen under.
-       * Gating on a real predicate candidate keeps the value-typed regeneration off
-       * statements whose only host variables are select-list arguments (e.g. analytic
-       * min(?) over ()), which must stay generically typed for per-execution typing.
+       * Gating on a real predicate candidate keeps the regeneration off statements whose
+       * only host variables are select-list arguments (e.g. analytic min(?) over ()).
        * This runs regardless of plan_cache_bind_sensitivity -- with the parameter off the
        * fixed plan simply stays for every later execution; with it on, later bucket
        * changes replan again. */

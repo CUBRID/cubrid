@@ -367,6 +367,14 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     case TYPE_ORDERBY_NUM:
       return;
     case TYPE_POS_VALUE:
+      if (regu->domain == NULL)
+	{
+	  /* An allocated but unset regu (regu_init: TYPE_POS_VALUE 0) is no bind reference;
+	   * every host variable regu carries a domain, VARIABLE for a GATE slot. */
+	  return;
+	}
+      cls = OPERAND_CONST;
+      break;
     case TYPE_DBVAL:
       cls = OPERAND_CONST;
       break;
@@ -560,14 +568,20 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	{
 	  continue;
 	}
-      domain_walk_list (ctx, agg->operands, DOMAIN_CTX_AGG);
+      /* COUNT(*) and GROUPBY_NUM pack a default regu (TYPE_POS_VALUE 0, xasl_generation.c
+       * "hack") only to carry a domain. It is never fetched, so it is no bind reference. */
+      const bool has_operand = agg->function != PT_COUNT_STAR && agg->function != PT_GROUPBY_NUM;
+      if (has_operand)
+	{
+	  domain_walk_list (ctx, agg->operands, DOMAIN_CTX_AGG);
+	}
       DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &agg->domain_plan, agg->domain, OPERAND_ROW,
 						DOMAIN_CTX_AGG, agg->function, "aggregate");
       if (item != NULL)
 	{
 	  ctx->tail->output[0] = agg->accumulator.value;
 	}
-      if (agg->operands != NULL && item != NULL)
+      if (has_operand && agg->operands != NULL && item != NULL)
 	{
 	  domain_fixed_operand (item, 0, agg->operands->value.domain, agg->operands->value.domain, DOMAIN_CTX_FUNC_ARG);
 	  if (domain_residual_aggregate (agg->function, agg->operands->value.domain))
@@ -926,6 +940,17 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  r->index = r->alias->index;
 	}
     }
+  /* A nested parser_generate_xasl () restarts parser->dbval_cnt, so root->dbval_cnt can
+   * understate the positions the tree references (qmgr then sees surplus values). The
+   * plan covers every referenced position so secondary references never overlap one. */
+  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
+    {
+      if (r->cold.val_pos >= plan->dbval_cnt)
+	{
+	  plan->dbval_cnt = r->cold.val_pos + 1;
+	}
+    }
+  plan->n_refs = plan->dbval_cnt;
   /* References are assigned in deterministic traversal order. The first use of
    * each bind keeps val_pos; only a different (domain, failure policy) adds a value. */
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL && !ctx.failed; r = r->next)
