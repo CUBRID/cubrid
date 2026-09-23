@@ -15331,6 +15331,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * CCI/JDBC prepared statements, which arrive through this driver-neutral path. */
 	      statement->flag.hv_pred_plan_unpeeked = 1;
 	    }
+	  if (stream.xasl_header->xasl_flag & BIND_WATCH_CANDIDATE)
+	    {
+	      /* the cached plan passed bind-value watch target selection; record it so the early
+	       * window compares node cardinalities on this driver-neutral path too */
+	      statement->flag.bind_watch_candidate = 1;
+	    }
 	}
     }
 
@@ -15352,6 +15358,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* freshly compiled with unbound host-variable markers (see the cache-hit branch above) */
 	  statement->flag.hv_pred_plan_unpeeked = 1;
+	}
+      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+	{
+	  statement->flag.bind_watch_candidate = 1;
 	}
       AU_RESTORE (au_save);
 

@@ -478,4 +478,14 @@ extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan)
 
 extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
 
+/* selectivity of one between-range operator straight from the column histogram, with no
+ * QO_ENV around it. Shared with the bind-value plan watch (histogram_cl.cpp), which prices the
+ * same range terms outside the optimizer and must not drift from what the optimizer charged. */
+extern bool qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
+						    DB_VALUE * arg2_val, double *out_sel);
+
+/* total estimated cost of a plan (fixed + variable, CPU + IO), for callers outside the
+ * optimizer that only need its magnitude. 0 for a NULL plan. */
+extern double qo_plan_get_total_cost (QO_PLAN * plan);
+
 #endif /* _QUERY_PLANNER_H_ */

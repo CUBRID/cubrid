@@ -963,6 +963,22 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 
   *new_node = *old_node;
 
+  /* the bind-value watch state belongs to the statement whose plan it records, and the copy is
+   * a different statement with its own plan: sharing the pointer would let one of them record
+   * cardinalities the other is compared against. The copy simply starts unwatched. */
+  if (PT_IS_QUERY (new_node))
+    {
+      new_node->info.query.bind_watch = NULL;
+    }
+  else if (new_node->node_type == PT_UPDATE)
+    {
+      new_node->info.update.bind_watch = NULL;
+    }
+  else if (new_node->node_type == PT_DELETE)
+    {
+      new_node->info.delete_.bind_watch = NULL;
+    }
+
   /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
   new_node->xasl_id = NULL;
   if (old_node->xasl_id != NULL)
