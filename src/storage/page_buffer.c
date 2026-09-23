@@ -37,6 +37,7 @@
 #include "system_parameter.h"
 #include "error_manager.h"
 #include "file_io.h"
+#include "disk_manager.h"
 #include "lockfree_circular_queue.hpp"
 #include "log_append.hpp"
 #include "log_manager.h"
@@ -1115,6 +1116,7 @@ static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID *
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+static void pgbuf_discard_page (THREAD_ENTRY * thread_p, const VPID * vpid);
 static int pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
 static int pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
 static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p);
@@ -2512,7 +2514,22 @@ fast_path:
     {
       /* this cannot be a new page or a deallocated page.
        * note: temporary pages are not strictly handled in regard with their deallocation status. */
-      assert (fetch_mode != NEW_PAGE || pgbuf_is_lsa_temporary (pgptr));
+      if (fetch_mode == NEW_PAGE && !pgbuf_is_lsa_temporary (pgptr))
+	{
+	  /* a live buffered copy of a page being allocated as new: recovery redo re-materializes pages of a file that
+	   * was destroyed later in the log (the destroy discards them without logging). the copy is void; make it look
+	   * like a freshly claimed frame. */
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_fix: neutralize stale buffered copy of new page %d|%d (ptype = %d)\n",
+			VPID_AS_ARGS (vpid), (int) bufptr->iopage_buffer->iopage.prv.ptype);
+	  PGBUF_BCB_LOCK (bufptr);
+	  if (pgbuf_bcb_is_dirty (bufptr))
+	    {
+	      /* must never reach disk */
+	      pgbuf_bcb_clear_dirty (thread_p, bufptr);
+	    }
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  fileio_initialize_res (thread_p, &bufptr->iopage_buffer->iopage, IO_PAGESIZE);
+	}
     }
 
   /* Record number of fetches in statistics */
@@ -3444,6 +3461,154 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
     }
 
   return NO_ERROR;
+}
+
+/* retries (10 ms each) before pgbuf_discard_page () gives up on a page that stays fixed */
+#define PGBUF_DISCARD_FCNT_MAX_RETRIES 100
+
+/*
+ * pgbuf_discard_page () - drop the buffered copy of a page of a destroyed file: clear dirty and invalidate, without
+ *                         flushing or logging. on return no bcb for the page remains (except a page that stays fixed
+ *                         beyond the retry limit, which is left to the NEW_PAGE fix). the caller unreserves the
+ *                         sector right after, so an in-flight write must be finished before returning.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * vpid (in)     : page identifier
+ *
+ * note: the caller must guarantee the page cannot be fixed concurrently (file unregistered and exclusively locked).
+ */
+static void
+pgbuf_discard_page (THREAD_ENTRY * thread_p, const VPID * vpid)
+{
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_BCB *bufptr;
+  int fcnt_retries = 0;
+
+  assert (vpid != NULL && !VPID_ISNULL (vpid));
+
+retry:
+  hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)];
+  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid);
+  if (bufptr == NULL)
+    {
+      /* not buffered; done. */
+      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+      return;
+    }
+  /* bufptr->mutex is held. */
+
+  if (get_fcnt (&bufptr->atomic_latch) > 0)
+    {
+      /* no one should be able to fix a page of a file being destroyed. */
+      assert (false);
+      if (++fcnt_retries > PGBUF_DISCARD_FCNT_MAX_RETRIES)
+	{
+	  /* broken invariant: do not spin forever in release. clear dirty and leave the bcb to the NEW_PAGE fix. */
+	  er_log_debug (ARG_FILE_LINE, "pgbuf_discard_page: page %d|%d is still fixed after %d retries; left to the "
+			"NEW_PAGE fix\n", VPID_AS_ARGS (vpid), fcnt_retries - 1);
+	  if (pgbuf_bcb_is_dirty (bufptr))
+	    {
+	      pgbuf_bcb_clear_dirty (thread_p, bufptr);
+	    }
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  return;
+	}
+      PGBUF_BCB_UNLOCK (bufptr);
+      thread_sleep (0.01f);
+      goto retry;
+    }
+
+  /* must never reach disk */
+  if (pgbuf_bcb_is_dirty (bufptr))
+    {
+      pgbuf_bcb_clear_dirty (thread_p, bufptr);
+    }
+
+  if (pgbuf_bcb_is_flushing (bufptr))
+    {
+      /* flush in progress: its write must finish before the sector is unreserved. wait for the flusher (the
+       * safe_flush variants skip this bcb because the flusher already cleared the dirty flag). */
+      set_waiter_exists (&bufptr->atomic_latch, true);
+      if (pgbuf_block_bcb (thread_p, bufptr, PGBUF_LATCH_FLUSH, 0, false) != NO_ERROR)
+	{
+	  /* interrupted. not propagated: this commit postpone cannot be cancelled, and the wait is bounded because the
+	   * flusher always clears the flushing status and wakes the waiters. */
+	  thread_sleep (0.01f);
+	}
+      /* pgbuf_block_bcb () released bufptr->mutex; look the page up again. */
+      goto retry;
+    }
+
+  if (pgbuf_bcb_avoid_victim (bufptr))
+    {
+      /* assigned as a direct victim; the claiming thread removes it from the hash shortly. */
+      PGBUF_BCB_UNLOCK (bufptr);
+      thread_sleep (0.01f);
+      goto retry;
+    }
+
+  /* residual hint flags would block the move to the invalid list (see pgbuf_put_bcb_into_invalid_list) */
+  pgbuf_bcb_update_flags (thread_p, bufptr, 0,
+			  PGBUF_BCB_TO_VACUUM_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG | PGBUF_BCB_ASYNC_FLUSH_REQ);
+
+#if defined(CUBRID_DEBUG)
+  pgbuf_scramble (&bufptr->iopage_buffer->iopage);
+#endif /* CUBRID_DEBUG */
+
+  (void) pgbuf_invalidate_bcb (thread_p, bufptr);
+  /* bufptr->mutex has been released in above function. */
+
+  /* confirm the page is really gone; pgbuf_invalidate_bcb gives up on rare transient states. */
+  goto retry;
+}
+
+/*
+ * pgbuf_discard_pages_of_sectors () - discard all buffered pages of the given sectors in one pass over the buffer
+ *                                     pool (cost: pool size, not file size); each hit goes through
+ *                                     pgbuf_discard_page ().
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * vsids (in)    : sectors of the destroyed file, sorted by disk_compare_vsids
+ * nsects (in)   : number of sectors
+ *
+ * note: the caller must guarantee that no page of these sectors can be fixed concurrently.
+ */
+void
+pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects)
+{
+  PGBUF_BCB *bufptr;
+  VSID vsid_key;
+  VPID vpid;
+  int bufid;
+
+  if (vsids == NULL || nsects <= 0)
+    {
+      assert (false);
+      return;
+    }
+
+  for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
+    {
+      bufptr = PGBUF_FIND_BCB_PTR (bufid);
+
+      /* dirty read is enough for filtering: a matching vpid belongs to the destroyed file (its sectors are exclusive)
+       * and pgbuf_discard_page () re-verifies through the hash. */
+      vpid = bufptr->vpid;
+      if (VPID_ISNULL (&vpid))
+	{
+	  continue;
+	}
+      vsid_key.volid = vpid.volid;
+      vsid_key.sectid = SECTOR_FROM_PAGEID (vpid.pageid);
+      if (bsearch (&vsid_key, vsids, nsects, sizeof (VSID), disk_compare_vsids) == NULL)
+	{
+	  continue;
+	}
+
+      pgbuf_discard_page (thread_p, &vpid);
+    }
 }
 
 /*
