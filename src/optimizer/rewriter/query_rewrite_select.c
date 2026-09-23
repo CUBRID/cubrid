@@ -44,7 +44,6 @@ static bool qo_check_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, 
 						       QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
 static void qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 						 QO_REDUCE_REFERENCE_INFO * reduce_reference_info);
-static bool qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons);
 static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * cons);
 static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -1270,7 +1269,7 @@ exit_on_error:
  *   Only SM_NORMAL_INDEX is trusted: an invisible index or one that is still being built
  *   online does not guarantee uniqueness yet.
  */
-static bool
+bool
 qo_is_row_identifying_key (SM_CLASS_CONSTRAINT * cons)
 {
   int i;
@@ -3792,7 +3791,7 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	case PT_JOIN_ANTI:
 	  /* semi/anti are reorder barriers. the explicit->implicit rewrite below also resets this segment's
 	   * ON-predicate locations via qo_reset_location(), which would strip the semi/anti ON location that
-	   * query_graph relies on to bind the join term and set outer_dep_set; so the whole segment is frozen. */
+	   * query_graph relies on to bind the join term and set semi_anti_dep_set; so the whole segment is frozen. */
 	  info.found_outerjoin = true;
 	  break;
 	default:

@@ -213,7 +213,7 @@ struct qo_plan
 
     struct
     {
-      JOIN_TYPE join_type;	/* JOIN_INNER, _LEFT, _RIGHT, _OUTER */
+      JOIN_TYPE join_type;	/* JOIN_INNER, _LEFT, _RIGHT, _OUTER, _SEMI, _ANTI */
       QO_JOINMETHOD join_method;	/* NL_JOIN, MERGE_JOIN */
       QO_PLAN *outer;
       QO_PLAN *inner;
@@ -344,6 +344,8 @@ struct qo_info
   double total_rows;		/* Number of rows excluding search conditions */
   double group_rows;		/* Number of rows expected after grouping */
   double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost */
+  bool is_distinct;		/* true only on an info built by qo_prepare_distinct_info (): the node read once
+				 * with the duplicates removed, so a join over it is an ordinary join */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -435,6 +437,11 @@ struct qo_planner
 
 
   QO_INFO **node_info;
+  QO_INFO **distinct_info;	/* per node: the plans that read it once with the duplicates removed, set for a
+				   SEMI JOIN inner that may be joined the other way round.  Kept apart from
+				   node_info because the two hold different numbers of rows; the join order
+				   search takes it in place of node_info only where it puts the node ahead of
+				   the side it depends on (qo_get_distinct_info_ahead ()) */
   QO_INFO **join_info;
   QO_INFO **cp_info;
   QO_INFO *best_info;
@@ -476,6 +483,5 @@ extern PRED_CLASS qo_classify (PT_NODE * node);
 
 extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
 
-extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
 
 #endif /* _QUERY_PLANNER_H_ */

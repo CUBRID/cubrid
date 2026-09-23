@@ -27,7 +27,9 @@
 #include "dbi.h"
 
 static bool qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where);
-static bool qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list);
+static bool qo_operand_is_non_null (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * spec_list, PT_NODE * where);
+static bool qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name);
+static bool qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec);
 static bool qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node,
 				       QO_UNNEST_INFO * info);
 
@@ -146,14 +148,17 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
 }
 
 /*
- * qo_operand_is_non_null () - true iff 'operand' is a base-table column the schema guarantees is never
- *      NULL (NOT NULL or PRIMARY KEY); anything unprovable is reported nullable
+ * qo_operand_is_non_null () - true iff 'operand' can never be NULL in this query: a WHERE conjunct
+ *      already rejects its NULLs, or the schema declares the column NOT NULL or PRIMARY KEY.  Anything
+ *      unprovable is reported nullable
  *   return: bool
+ *   parser(in):
  *   operand(in): one side of the synthesized join equality
  *   spec_list(in): the FROM list the operand's spec_id must resolve in
+ *   where(in): the WHERE of the query level the operand belongs to
  */
 static bool
-qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
+qo_operand_is_non_null (PARSER_CONTEXT * parser, PT_NODE * operand, PT_NODE * spec_list, PT_NODE * where)
 {
   PT_NODE *spec, *next_spec, *flat;
   DB_ATTRIBUTE *attr;
@@ -162,6 +167,14 @@ qo_operand_is_non_null (PT_NODE * operand, PT_NODE * spec_list)
       || operand->info.name.original == NULL)
     {
       return false;
+    }
+
+  /* asked before the schema checks below, which refuse an outer join's null-supplying side: a WHERE
+   * conjunct of location 0 runs after every join and needs no such refusal.  Conjuncts holding a
+   * subquery are skipped because this pass rewrites them away, its own included. */
+  if (pt_where_rejects_column_null (parser, where, operand, true))
+    {
+      return true;
     }
 
   for (spec = spec_list; spec != NULL; spec = spec->next)
@@ -283,13 +296,6 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       return false;
     }
 
-  /* uncorrelated IN / = SOME belongs to qo_rewrite_subqueries (), which ran just above; the ANTI forms
-   * have no such path */
-  if (info->is_in_form && !info->is_anti && subq->info.query.correlation_level != 1)
-    {
-      return false;
-    }
-
   inner_spec = subq->info.query.q.select.from;
   on_cond = subq->info.query.q.select.where;
 
@@ -317,9 +323,12 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 	  return false;
 	}
 
+      /* ANTI JOIN keeps a row whose key is NULL where NOT IN drops it.  The item side reads the
+       * subquery's own WHERE: the synthesized equality joins 'on_cond' below and would answer for itself. */
       if (info->is_anti
-	  && !(qo_operand_is_non_null (lhs, node->info.query.q.select.from)
-	       && qo_operand_is_non_null (item, inner_spec)))
+	  && !(qo_operand_is_non_null (parser, lhs, node->info.query.q.select.from,
+				       node->info.query.q.select.where)
+	       && qo_operand_is_non_null (parser, item, inner_spec, subq->info.query.q.select.where)))
 	{
 	  return false;
 	}
@@ -433,6 +442,7 @@ exit:
   return false;
 }
 
+
 /*
  * qo_rewrite_exists_semi_anti () - unnest [NOT] EXISTS / [NOT] IN conjuncts in a SELECT's WHERE into
  *   SEMI / ANTI JOINs (see the block comment above)
@@ -519,8 +529,8 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 
       inner_spec->info.spec.join_type = (info.is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
 
-      /* count the position rather than read the last spec's location: a derived spec appended earlier by
-       * qo_rewrite_subqueries () still carries the unset -1, and qo_analyze_term () indexes the node array by
+      /* count the position rather than read the last spec's location: a spec the rewriter appended carries
+       * the unset -1 (pt_bind_names () is long past), and qo_analyze_term () indexes the node array by
        * location, so it must equal the FROM position */
       loc = 0;
       for (spec = node->info.query.q.select.from; spec->next != NULL; spec = spec->next)
@@ -554,6 +564,124 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   node->info.query.q.select.where = parser_append_node (on_conds, node->info.query.q.select.where);
+
+  /* a SEMI JOIN, unnested above or written by the user, whose ON pins down one inner row per outer row is an
+   * INNER JOIN: same rows, and the planner is free to reorder it (a SEMI inner is frozen behind its outer,
+   * see QO_ADD_SEMI_ANTI_DEP_SET) */
+  for (spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.join_type == PT_JOIN_SEMI && spec->info.spec.derived_table == NULL
+	  && spec->info.spec.cte_name == NULL
+	  && qo_is_unique_semi_inner (parser, node->info.query.q.select.where, spec))
+	{
+	  spec->info.spec.join_type = PT_JOIN_INNER;
+	}
+    }
+}
+
+
+/*
+ * qo_check_eq_term_on_column () - does the ON of this spec hold a plain '=' term between this column of the spec
+ *      and something that does not read the spec? Such a term fixes the column to one value per row of the side
+ *      the spec is joined to
+ *   return: bool
+ *   parser(in):
+ *   where(in): the WHERE list holding the parked ON conjuncts; only those at the spec's location are read
+ *   spec(in): the spec whose ON is read
+ *   col_name(in): attribute name of the spec's class
+ */
+static bool
+qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec, const char *col_name)
+{
+  PT_NODE *cnf, *mine, *other;
+  UINTPTR ref;
+
+  for (cnf = where; cnf != NULL; cnf = cnf->next)
+    {
+      if (cnf->node_type != PT_EXPR || cnf->or_next != NULL || cnf->info.expr.op != PT_EQ
+	  || cnf->info.expr.location != spec->info.spec.location)
+	{
+	  continue;
+	}
+
+      mine = cnf->info.expr.arg1;
+      other = cnf->info.expr.arg2;
+      if (mine == NULL || mine->node_type != PT_NAME || mine->info.name.spec_id != spec->info.spec.id)
+	{
+	  mine = cnf->info.expr.arg2;
+	  other = cnf->info.expr.arg1;
+	}
+      if (mine == NULL || mine->node_type != PT_NAME || mine->info.name.spec_id != spec->info.spec.id
+	  || mine->info.name.original == NULL || intl_identifier_casecmp (mine->info.name.original, col_name) != 0)
+	{
+	  continue;
+	}
+
+      /* the other side must not read the spec, or the equality fixes nothing */
+      ref = spec->info.spec.id;
+      (void) parser_walk_tree (parser, other, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
+      if (ref != 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_is_unique_semi_inner () - does the ON of a SEMI JOIN equate every column of a row-identifying key of
+ *      the inner? Then at most one inner row matches an outer row, and the SEMI JOIN returns the same rows as
+ *      an INNER JOIN
+ *   return: bool
+ *   parser(in):
+ *   where(in): the WHERE list holding every join's parked ON (see qo_move_on_of_explicit_join_to_where ())
+ *   spec(in): the SEMI JOIN inner spec
+ */
+static bool
+qo_is_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * spec)
+{
+  PT_NODE *flat;
+  DB_OBJECT *classop;
+  SM_CLASS_CONSTRAINT *cons;
+  int i;
+
+  /* one resolved class: a hierarchy carries no key to rely on */
+  flat = spec->info.spec.flat_entity_list;
+  if (spec->info.spec.only_all == PT_ALL || flat == NULL || flat->next != NULL)
+    {
+      return false;
+    }
+
+  classop = NULL;
+  PT_SPEC_GET_DB_OBJECT (spec, classop);
+  if (classop == NULL)
+    {
+      return false;
+    }
+
+  for (cons = sm_class_constraints (classop); cons != NULL; cons = cons->next)
+    {
+      if (!qo_is_row_identifying_key (cons))
+	{
+	  continue;
+	}
+
+      for (i = 0; cons->attributes[i] != NULL; i++)
+	{
+	  if (!qo_check_eq_term_on_column (parser, where, spec, cons->attributes[i]->header.name))
+	    {
+	      break;
+	    }
+	}
+
+      if (cons->attributes[i] == NULL)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 

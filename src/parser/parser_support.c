@@ -2448,6 +2448,68 @@ pt_get_end_path_node (PT_NODE * node)
 }
 
 /*
+ * pt_where_rejects_column_null () - true if some conjunct of the CNF WHERE list already rejects NULL
+ *     values of the given column, mirroring the criteria qo_fold_is_and_not_null () uses to fold a
+ *     user-written "col IS NOT NULL" away: a single-predicate term (no or_next) of the WHERE location
+ *     whose first argument or right-hand side is that column. IS NULL and <=> accept NULL operands and
+ *     therefore do not count.
+ *   return: bool
+ *   parser(in): context
+ *   where(in): CNF WHERE list
+ *   column(in): PT_NAME node of the column to prove non-NULL
+ *   skip_subquery_terms(in): true to ignore conjuncts holding a subquery, for a caller that rewrites
+ *     those away: "x NOT IN (...) rejects a NULL x" holds only while it is still a NOT IN.
+ */
+bool
+pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * column, bool skip_subquery_terms)
+{
+  PT_NODE *term, *term_prior;
+  bool has_subquery;
+
+  for (term = where; term != NULL; term = term->next)
+    {
+      if (term->node_type != PT_EXPR || term->or_next != NULL || term->info.expr.location != 0)
+	{
+	  /* not a single-predicate conjunct of the WHERE proper: an OR-ed predicate
+	   * can still accept a NULL of the column through its other disjuncts */
+	  continue;
+	}
+
+      if (term->info.expr.op == PT_IS_NULL || term->info.expr.op == PT_NULLSAFE_EQ)
+	{
+	  /* these evaluate to true on NULL operands */
+	  continue;
+	}
+
+      if (skip_subquery_terms)
+	{
+	  PT_NODE *save_next = term->next;
+
+	  /* this conjunct alone: the walk would otherwise run on through its siblings */
+	  term->next = NULL;
+	  has_subquery = false;
+	  (void) parser_walk_tree (parser, term, pt_check_subquery_pre, NULL, pt_check_subquery_post, &has_subquery);
+	  term->next = save_next;
+
+	  if (has_subquery)
+	    {
+	      continue;
+	    }
+	}
+
+      term_prior = pt_get_first_arg_ignore_prior (term);
+      if ((term_prior != NULL && pt_check_path_eq (parser, column, term_prior) == 0)
+	  || (term->info.expr.arg2 != NULL && pt_check_path_eq (parser, column, term->info.expr.arg2) == 0))
+	{
+	  /* a NULL column value makes this conjunct UNKNOWN, so the row cannot qualify */
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * pt_get_first_arg_ignore_prior () -
  *   return: the first argument of an expression node; if the argument is
  *           PRIOR (arg) then PRIOR's argument is returned instead
