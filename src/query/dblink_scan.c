@@ -43,6 +43,7 @@
 #include "db_date.h"
 #include "tz_support.h"
 #include <cas_cci.h>
+#include <broker_cas_protocol.h>
 
 #include <db_json.hpp>
 
@@ -417,8 +418,57 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
   return error;
 }
 
+/*
+ * dblink_remote_is_cubrid () - is this connection to a CUBRID remote rather than a vendor gateway?
+ *   return: true for a CUBRID remote
+ *   conn_handle(in): open connection
+ *
+ * Note: The handshake already stored the type, so this costs no round trip.  It gates both the codeset
+ *   we declare and the values we refuse for not being in it, so the two always cover the same
+ *   connections.
+ */
+static bool
+dblink_remote_is_cubrid (int conn_handle)
+{
+  int dbms_type = cci_get_dbms_type (conn_handle);
+
+  return (dbms_type == CAS_DBMS_CUBRID || dbms_type == CAS_PROXY_DBMS_CUBRID);
+}
+
+/*
+ * dblink_refuse_undeclared_codeset () - refuse a value that is not in the codeset declared to the remote
+ *   return: ER_DBLINK
+ *   dbval(in): value about to be bound
+ *
+ * Note: A column may declare a codeset other than the database's, and the bind protocol carries no
+ *   per-value codeset -- the remote reads every bound value in the one codeset we named when the
+ *   connection opened.  The name is per connection while the codeset is per value, so a value in
+ *   any other codeset cannot be described to the remote, and it is refused rather than sent to be
+ *   read as something it is not.
+ *
+ *   Recoding the value to the declared codeset was the alternative.  It is refused instead so that
+ *   what a connection carries is settled by the column declarations alone: recoding is lossless or
+ *   not depending on the characters a row happens to hold, which leaves a statement failing part
+ *   way through a table whose columns are all the same.
+ */
 static int
-dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
+dblink_refuse_undeclared_codeset (DB_VALUE * dbval)
+{
+  char errmsg[128];
+
+  /* The second name is the database's, not the remote's -- the remote's codeset is never looked up.
+   * Saying it was declared to the remote reads as if it were the remote's, and ER_DBLINK already
+   * names dblink, so the message stays with the two codesets it is about. */
+  snprintf (errmsg, sizeof (errmsg), "a bound value is in %s, not the database codeset %s",
+	    lang_get_codeset_name ((int) db_get_string_codeset (dbval)),
+	    lang_get_codeset_name ((int) LANG_SYS_CODESET));
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+
+  return ER_DBLINK;
+}
+
+static int
+dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, DB_VALUE * dbval)
 {
   int ret, num_size = 0;
   T_CCI_A_TYPE a_type;
@@ -492,6 +542,13 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
       a_type = CCI_A_TYPE_STR;
       u_type = CCI_U_TYPE_STRING;
       value = (void *) db_get_string (dbval);
+      /* Gated as the declaration is, so the two cover the same connections: a vendor is reached
+       * through the gateway, which reads the statement and the bound values as UTF-8 whatever we
+       * say. */
+      if (db_get_string_codeset (dbval) != LANG_SYS_CODESET && dblink_remote_is_cubrid (conn_handle))
+	{
+	  return dblink_refuse_undeclared_codeset (dbval);
+	}
       break;
     case DB_TYPE_DATE:
       a_type = CCI_A_TYPE_DATE;
@@ -582,14 +639,14 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
 }
 
 static int
-dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
+dblink_bind_param (int conn_handle, int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars)
 {
   int i, n, ret;
 
   for (n = 0; n < host_vars->count; n++)
     {
       i = host_vars->index[n];
-      ret = dblink_bind_dbval_to_param (stmt_handle, n + 1, &vd->dbval_ptr[i]);
+      ret = dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1, &vd->dbval_ptr[i]);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -630,6 +687,59 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
     }
 
   return (tran_error == NO_ERROR) ? rc : tran_error;
+}
+
+/*
+ * dblink_declare_client_codeset () - tell a newly opened remote which codeset we send in
+ *   return: NO_ERROR, or ER_DBLINK when the remote does not take the declaration
+ *   conn_handle(in): connection that has just been opened
+ *
+ * Note: A remote reads incoming character data in its own codeset unless told otherwise.  When the
+ *   two differ, a pushed predicate then compares raw bytes and quietly matches nothing, and a
+ *   pushed value is stored as the wrong characters.  Sending our codeset name once makes the remote
+ *   convert both the literals inside the statement text and the values bound per row -- so the text
+ *   needs no rewriting, and the remote's own codeset need never be looked up.
+ *
+ *   CUBRID remotes only.  A vendor is reached through the gateway, which converts the statement as
+ *   if it arrived in UTF-8 (cgw_utf8_to_unicode ()), so a non-UTF-8 local side is already broken
+ *   before the text gets there and declaring a codeset would not change that.
+ *
+ *   Failing here fails the connection.  Every value bound afterwards is in the codeset named here
+ *   and nothing else is let through (dblink_refuse_undeclared_codeset ()), so a connection that did
+ *   not take the name would read all of them in its own codeset -- the corruption this declaration
+ *   exists to stop.
+ */
+static int
+dblink_declare_client_codeset (int conn_handle)
+{
+  T_CCI_ERROR err_buf;
+  char sql[64];
+  /* sized to hold the statement and the remote's whole message, so nothing is cut */
+  char errmsg[sizeof (sql) + sizeof (err_buf.err_msg) + 16];
+  int req_handle;
+
+  if (!dblink_remote_is_cubrid (conn_handle))
+    {
+      return NO_ERROR;
+    }
+
+  snprintf (sql, sizeof (sql), "SET NAMES %s", lang_get_codeset_name ((int) LANG_SYS_CODESET));
+
+  /* One round trip; prepare then execute would be two. */
+  req_handle = cci_prepare_and_execute (conn_handle, sql, 0, NULL, &err_buf);
+  if (req_handle < 0)
+    {
+      /* Name the statement: what comes back is the remote's own wording, which on its own does not
+       * say which statement failed. */
+      snprintf (errmsg, sizeof (errmsg), "%s failed: %s", sql,
+		err_buf.err_msg[0] != '\0' ? err_buf.err_msg : "no message from the remote");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return ER_DBLINK;
+    }
+
+  (void) cci_close_req_handle (req_handle);
+
+  return NO_ERROR;
 }
 
 /*
@@ -698,6 +808,13 @@ dblink_acquire_pooled_conn (THREAD_ENTRY * thread_p, const char *url, const char
 	  return ER_DBLINK;
 	}
 
+      /* Only for a connection just created; a pooled one was told when it was opened. */
+      if (dblink_declare_client_codeset (conn_handle) != NO_ERROR)
+	{
+	  (void) cci_disconnect (conn_handle, &err_buf);
+	  return ER_DBLINK;
+	}
+
       if (autocommit_mode == CCI_AUTOCOMMIT_FALSE)
 	{
 	  ret = qmgr_dblink_add_conn_handle (thread_p, conn_handle, (char *) url, (char *) user, (char *) pwd, is_dml);
@@ -741,7 +858,7 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
 
   if (host_vars->count > 0)
     {
-      if ((ret = dblink_bind_param (stmt_handle, vd, host_vars)) < 0)
+      if ((ret = dblink_bind_param (conn_handle, stmt_handle, vd, host_vars)) < 0)
 	{
 	  goto error_exit;
 	}
@@ -910,7 +1027,7 @@ dblink_corr_execute (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, VAL_
 	  scan_info->corr_skip_result_fetch = true;
 	  return NO_ERROR;
 	}
-      ret = dblink_bind_dbval_to_param (scan_info->stmt_handle, i + 1, peek_val);
+      ret = dblink_bind_dbval_to_param (scan_info->conn_handle, scan_info->stmt_handle, i + 1, peek_val);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -983,7 +1100,7 @@ dblink_open_scan (THREAD_ENTRY * thread_p, DBLINK_SCAN_INFO * scan_info, struct 
 
   if (host_vars->count > 0)
     {
-      if ((ret = dblink_bind_param (scan_info->stmt_handle, vd, host_vars)) < 0)
+      if ((ret = dblink_bind_param (scan_info->conn_handle, scan_info->stmt_handle, vd, host_vars)) < 0)
 	{
 	  return ER_DBLINK;
 	}
@@ -1715,7 +1832,7 @@ dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VA
 	  return ER_DBLINK;
 	}
 
-      err = dblink_bind_dbval_to_param (state->stmt_handle, k + 1, vals[k]);
+      err = dblink_bind_dbval_to_param (state->conn_handle, state->stmt_handle, k + 1, vals[k]);
       if (err != NO_ERROR)
 	{
 	  return err;
