@@ -109,6 +109,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/memory_monitor_api.cpp
   ${BASE_DIR}/memory_monitor_sr.cpp
   ${BASE_DIR}/memory_private_allocator.cpp
+  ${BASE_DIR}/memory_wrapper.cpp
   ${BASE_DIR}/message_catalog.c
   ${BASE_DIR}/misc_string.c
   ${BASE_DIR}/mprec.c
@@ -736,6 +737,9 @@ if(UNIX)
   target_link_libraries(cubrid PUBLIC stdc++fs)
   target_link_libraries(cubrid PUBLIC rt)
   target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
+  # keep the replaced global operator new and delete local to libcubrid (see memory_wrapper.cpp)
+  target_link_options(cubrid PRIVATE "LINKER:--version-script=${BASE_DIR}/memory_wrapper.map")
+  set_target_properties(cubrid PROPERTIES LINK_DEPENDS ${BASE_DIR}/memory_wrapper.map)
 
   # Add TBB
   target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})

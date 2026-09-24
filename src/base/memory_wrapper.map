@@ -1,0 +1,21 @@
+/*
+ * memory_wrapper.map - linker version script for libcubrid
+ *
+ * The global operator new and delete replaced in memory_wrapper.cpp are made local to libcubrid.
+ * Every reference inside libcubrid is still bound to them, but other shared objects keep their own,
+ * and valgrind does not substitute its own operator new and delete for them, which it does for any
+ * exported definition. Other symbols are exported as before.
+ */
+{
+  local:
+    _Znwm;
+    _Znam;
+    _ZnwmRKSt9nothrow_t;
+    _ZnamRKSt9nothrow_t;
+    _ZdlPv;
+    _ZdaPv;
+    _ZdlPvm;
+    _ZdaPvm;
+    _ZdlPvRKSt9nothrow_t;
+    _ZdaPvRKSt9nothrow_t;
+};
