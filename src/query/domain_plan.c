@@ -37,9 +37,9 @@
 /* Load boundary (a) (#336, D-323-09; #337 removed the derived-consumer exceptions X-8..X-10): every item the compiler
  * left without a type is a gate slot, a gate-dependent node or an alias of one; anything else refuses the load with
  * ER_QPROC_DOMAIN_UNRESOLVED. A derived consumer (a value pointer, a list position, a sort key, an accumulator)
- * reads its producer: the producer's gate slot (ALIAS) or its domain. The collation axis: a bind slot whose compiled
- * collation is LEAVE records the value collation at the gate (COLLATION_GATE); LEAVE on an expression result is
- * #338's. */
+ * reads its producer: the producer's gate slot (ALIAS) or its domain. The collation axis (#338): a string the
+ * compiler typed but whose collation the values give (LEAVE, ENFORCE) is a slot recording its bound value's domain,
+ * a node the gate decides from its operands (COLLATION_GATE), or a consumer reading its producer. */
 static const bool domain_plan_check_load = true;
 struct DOMAIN_PLAN_LOAD_EXCEPTION
 {
@@ -52,8 +52,7 @@ static const DOMAIN_PLAN_LOAD_EXCEPTION domain_plan_load_exceptions[] = {
   {"X-2", "REGU_VARIABLE_ANALYTIC_WINDOW", "alias list column"},
   {"X-3", "set-operation position", "alias producer"},
   {"X-4", "TYPE_LIST_ID / TYPE_ORDERBY_NUM", "no value-domain item"},
-  {"X-5", "collection constructor", "static element domains"},
-  {"X-11", "TP_DOMAIN_COLL_LEAVE on an expression result", "allowed; #338 (compile collation axis)"}
+  {"X-5", "collection constructor", "static element domains"}
 };
 
 /* Temporary load records are freed before publishing the plan. No record, owner
@@ -142,11 +141,20 @@ domain_is_fixed (const TP_DOMAIN * domain)
     && domain->collation_flag != TP_DOMAIN_COLL_LEAVE;
 }
 
-/* The type axis only: the collation of a character result is merged at the gate by #338 (D-335-03). */
+/* The type axis only: the collation of a character result is merged at the gate (#338, D-335-03). */
 static bool
 domain_type_is_fixed (const TP_DOMAIN * domain)
 {
   return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE;
+}
+
+/* A typed character domain whose collation the compiler left to the values (LEAVE) or enforced over an operand it
+ * could not type (ENFORCE): the values give it, so the gate decides it (#338). */
+static bool
+domain_character_open (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain))
+    && TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL;
 }
 
 /* The load record an item lives in: every item is a record's embedded item until the plan is published. */
@@ -579,11 +587,18 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
    * settled only after derived consumers read their producers, so the resolution pass decides it (#337); a session
    * variable read (S5, #336) is such a node too. CONNECT_BY_ROOT and QPRIOR carry their XASL in thirdptr. */
   const bool late_bound = arith->domain != NULL && TP_DOMAIN_TYPE (arith->domain) == DB_TYPE_VARIABLE;
-  if (item != NULL && (marked_gate || late_bound))
+  /* #338: a string the compiler typed but whose collation its values give (LEAVE, ENFORCE) is decided by the gate
+   * from its operands' decided domains, as a gate-dependent node on the collation axis */
+  const bool collation_open = !marked_gate && !late_bound && domain_character_open (arith->domain);
+  if (item != NULL && (marked_gate || late_bound || collation_open))
     {
       DOMAIN_LOAD_RECORD *record = domain_record_of (item);
       const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
       record->kind = DOMAIN_LOAD_NODE;
+      if (collation_open)
+	{
+	  item->flags |= DOMAIN_PLAN_COLLATION_GATE;
+	}
       domain_set_links (record, operands, n_value_operands, arith->domain);
       for (int i = 0; i < n_value_operands; i++)
 	{
@@ -765,11 +780,11 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       item->slot = ctx->plan->n_slots++;
       item->fixed.domain = NULL;
     }
-  else if (regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
-	   && regu->domain->collation_flag == TP_DOMAIN_COLL_LEAVE)
+  else if (regu->type == TYPE_POS_VALUE && domain_character_open (regu->domain))
     {
-      /* a string slot the compiler typed but whose collation is the bound value's (C3/C12): the gate records the
-       * value domain in this slot; the compiled type stays the plan type (#336) */
+      /* a string slot the compiler typed but whose collation is the bound value's (C3/C12, LEAVE) or enforced over
+       * the value the client sends as it is (an auto-parameter, ENFORCE): the gate records the value domain in this
+       * slot; the compiled type stays the plan type (#336, #338) */
       item->flags |= DOMAIN_PLAN_COLLATION_GATE;
       item->slot = ctx->plan->n_slots++;
     }
@@ -794,6 +809,44 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
        * (fetch_peek_dbval_slow, U3) */
       record->kind = DOMAIN_LOAD_CONSUMER;
       record->producer = domain_record_of (regu->value.reguval_list->regu_list->value->domain_plan);
+    }
+  else if (regu->type == TYPE_FUNC && domain_character_open (regu->domain) && regu->value.funcp->operand != NULL)
+    {
+      /* #338: a function the compiler typed as a string whose collation its values give is decided by the gate from
+       * its string operands. A node links three operands; a function with more strings than that is left to the row
+       * (cold opcode -1: the gate records no decision). */
+      REGU_VARIABLE *operands[3] = { NULL, NULL, NULL };
+      int n_operands = 0;
+      bool overflow = false;
+      for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+	{
+	  const TP_DOMAIN *d = op->value.domain;
+	  if (d != NULL && TP_DOMAIN_TYPE (d) != DB_TYPE_VARIABLE && !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d)))
+	    {
+	      continue;
+	    }
+	  if (n_operands == 3)
+	    {
+	      overflow = true;
+	      break;
+	    }
+	  operands[n_operands++] = &op->value;
+	}
+      if (n_operands == 0)
+	{
+	  operands[n_operands++] = &regu->value.funcp->operand->value;
+	}
+      record->kind = DOMAIN_LOAD_NODE;
+      item->flags |= DOMAIN_PLAN_COLLATION_GATE;
+      record->cold.opcode = overflow ? -1 : regu->value.funcp->ftype;
+      domain_set_links (record, operands, n_operands, regu->domain);
+      for (int i = 0; i < n_operands; i++)
+	{
+	  if (operands[i]->domain_plan == NULL)
+	    {
+	      record->n_link = -1;
+	    }
+	}
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
@@ -1276,7 +1329,8 @@ domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
 {
   DOMAIN_PLAN_ITEM *item = &record->item;
   const bool value_pointer = domain_is_value_pointer (record);
-  if (!value_pointer && domain_type_is_fixed (item->fixed.domain))
+  /* a compiled position keeps its domain unless the values give its collation (#338): then its list's column does */
+  if (!value_pointer && domain_type_is_fixed (item->fixed.domain) && !domain_character_open (item->fixed.domain))
     {
       record->known = true;
       if (record->regu != NULL && record->regu->type == TYPE_POSITION && record->producer != NULL)
@@ -1464,8 +1518,8 @@ domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
   record->state = 2;
 }
 
-/* Boundary (a): the type axis is strict, the collation axis records what the gate decides for slots and leaves the
- * rest to #338 (X-11). */
+/* Boundary (a): both axes are strict (#338 removed X-11): an item the gate does not decide has a fixed type, and a
+ * fixed string whose collation the values give is a slot recording its bound value's domain. */
 bool
 domain_plan_validate (const DOMAIN_PLAN * plan)
 {
@@ -1481,8 +1535,7 @@ domain_plan_validate (const DOMAIN_PLAN * plan)
 	{
 	  return false;
 	}
-      if (plan->items_cold[i].val_pos >= 0 && item->fixed.domain->collation_flag == TP_DOMAIN_COLL_LEAVE
-	  && !(item->flags & DOMAIN_PLAN_COLLATION_GATE))
+      if (domain_character_open (item->fixed.domain) && !(item->flags & DOMAIN_PLAN_COLLATION_GATE))
 	{
 	  return false;
 	}
@@ -1725,13 +1778,30 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  /* a node's decision inherits its sources' limits (producers come first, so theirs are set) */
 	  unsigned char flags = 0;
 	  const int ctx_of_node = r->cold.ctx;
-	  if (ctx_of_node == DOMAIN_CTX_ARITH || ctx_of_node == DOMAIN_CTX_COMMON_VALUE
-	      || ctx_of_node == DOMAIN_CTX_FUNC_ARG)
+	  if (r->item.flags & DOMAIN_PLAN_COLLATION_GATE)
 	    {
-	      flags |= DOMAIN_SLOT_TEXT_INEXACT | DOMAIN_SLOT_EXPRESSION;
+	      /* a node on the collation axis keeps its compiled type: no MySQL helper types, no CAST target (#338) */
+	    }
+	  else if (ctx_of_node == DOMAIN_CTX_ARITH || ctx_of_node == DOMAIN_CTX_COMMON_VALUE
+		   || ctx_of_node == DOMAIN_CTX_FUNC_ARG)
+	    {
+	      flags |= DOMAIN_SLOT_EXPRESSION;
 	      if (r->cold.opcode == T_CAST || r->cold.opcode == T_CAST_WRAP || r->cold.opcode == T_CAST_NOFAIL)
 		{
 		  flags |= DOMAIN_SLOT_CAST;
+		}
+	      if (r->cold.opcode == T_ADDTIME && r->n_link > 0 && r->literal[0] == NULL)
+		{
+		  const DOMAIN_LOAD_RECORD *left = domain_owner_record (domain_record_of (r->link[0]));
+		  const TP_DOMAIN *left_domain = left->item.fixed.domain;
+		  const bool string_left = left_domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (left_domain));
+		  if (left->cold.val_pos < 0 && (left->item.slot >= 0 || string_left))
+		    {
+		      /* D-335-10 types ADDTIME over a string the gate has no value for as VARCHAR, where the value may
+		       * hold a date and time with a zone: execution keeps the type develop takes from the value
+		       * (#338) */
+		      flags |= DOMAIN_SLOT_VALUE_TYPED;
+		    }
 		}
 	    }
 	  if (r->item.operand_class == OPERAND_VOLATILE)

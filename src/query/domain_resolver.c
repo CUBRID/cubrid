@@ -27,9 +27,14 @@
 #include "chartype.h"
 #include "storage_common.h"
 #include "system_parameter.h"
+#include "language_support.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+static int domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_operands,
+				    const TP_DOMAIN * compiled, RESOLVED_DOMAIN * result);
+static const TP_DOMAIN *domain_variable_string_value (const TP_DOMAIN * domain);
 
 /* D-325-01/02: CAST and pre-cast consumers supply ASSIGN explicitly. */
 DOMAIN_CONV_FUNC
@@ -532,6 +537,12 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
+  if (opcode == T_ADD && TP_IS_CHAR_TYPE (result_type))
+    {
+      /* plus as concatenation (qdata_strcat_dbval, db_string_concatenate so:1194): the operands' collations merge
+       * and their precisions add, as CONCAT's do (#338) */
+      return domain_character_result (T_CONCAT, operands, n_operands, NULL, result);
+    }
   /* NUMERIC results stay floating: the value operation decides p/s (converters §3) */
   result->domain = tp_domain_resolve_default (result_type);
   return NO_ERROR;
@@ -631,7 +642,8 @@ domain_resolve_common_value (const DOMAIN_OPERAND * operands, int n_operands, RE
       result->operand_domain[i] = common;
       result->conv[i] = domain_lookup_converter (domain_operand_type (&operands[i]), common, DOMAIN_CONVERT_OPERAND);
     }
-  result->domain = common;
+  /* the value cast to the common domain reads as a floating string's maximum precision (#338) */
+  result->domain = domain_variable_string_value (common);
   return NO_ERROR;
 }
 
@@ -1038,9 +1050,13 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 
     case T_HEX:
     case T_CONV:
-      /* db_hex, db_conv: db_make_string */
-      result_type = DB_TYPE_VARCHAR;
-      break;
+      /* db_hex, db_conv: db_make_string, a floating VARCHAR in LANG_SYS (#338) */
+      result->domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, LANG_SYS_COLLATION);
+      if (result->domain == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      goto copy_operands;
 
     case T_ASCII:
       /* db_ascii: db_make_short */
@@ -1114,6 +1130,7 @@ copy_operands:
       result->operand_domain[i] = operands[i].domain;
       result->conv[i] = NULL;
     }
+  result->domain = domain_variable_string_value (result->domain);
   return NO_ERROR;
 }
 
@@ -1359,4 +1376,374 @@ domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_V
       return domain_classify_str_to_date_format (value);
     }
   return DB_VALUE_DOMAIN_TYPE (value);
+}
+
+/*
+ * #338: the character results of compiled nodes whose collation the compiler left to the values (LEAVE) or enforced
+ * over an operand it could not type (ENFORCE). Each rule is what the operator gives its value at execution today
+ * (string_opfunc.c, tp_value_cast_internal); the gate applies it once to the operands' decided domains, as
+ * tp_domain_resolve_value would read the value (D-338-01).
+ */
+
+/* A variable string or bit string at floating precision reads as its maximum (tp_domain_resolve_value so:3313). */
+static const TP_DOMAIN *
+domain_variable_string_value (const TP_DOMAIN * domain)
+{
+  if (domain == NULL)
+    {
+      return NULL;
+    }
+  const bool floating = domain->precision == 0 || domain->precision == TP_FLOATING_PRECISION_VALUE;
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR && (floating || domain->precision > DB_MAX_VARCHAR_PRECISION))
+    {
+      return tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, domain->collation_id);
+    }
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT && (floating || domain->precision > DB_MAX_VARBIT_PRECISION))
+    {
+      return tp_domain_resolve (DB_TYPE_VARBIT, NULL, DB_MAX_VARBIT_PRECISION, 0, NULL, 0);
+    }
+  return domain;
+}
+
+const TP_DOMAIN *
+domain_as_value_domain (const TP_DOMAIN * domain)
+{
+  if (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_ENUMERATION)
+    {
+      /* a value carries no element list (tp_domain_resolve_value so:3335) */
+      return tp_domain_resolve_default (DB_TYPE_ENUMERATION);
+    }
+  return domain_variable_string_value (domain);
+}
+
+/* Where an operator's result takes its collation (and codeset) from. */
+enum DOMAIN_CHAR_SOURCE
+{
+  DOMAIN_CHAR_MERGE,		/* LANG_RT_COMMON_COLL over every character operand in operand order
+				 * (db_string_concatenate so:1194, db_string_pad, db_string_replace) */
+  DOMAIN_CHAR_FIRST,		/* the first character operand: the string being cut, cased, trimmed, reversed,
+				 * translated, repeated, hashed or bounded keeps its codeset and collation */
+  DOMAIN_CHAR_FORMAT,		/* the format argument, the second operand (db_date_format, db_time_format) */
+  DOMAIN_CHAR_SYSTEM,		/* LANG_SYS: a string the operator makes itself (db_make_string, LANG_COERCIBLE_COLL) */
+  DOMAIN_CHAR_BRANCH,		/* one operand's value, chosen per row (IF, CASE, DECODE, ELT) */
+  DOMAIN_CHAR_FIRST_BINARY	/* the binary collation of the first character operand's codeset (db_from_unixtime) */
+};
+
+/* The precision the value takes. */
+enum DOMAIN_CHAR_PRECISION
+{
+  DOMAIN_PREC_FLOATING,		/* the value's own length: floating (D-338-03) */
+  DOMAIN_PREC_SOURCE,		/* the first character operand's (db_string_substring, db_string_trim,
+				 * db_string_reverse) */
+  DOMAIN_PREC_SUM,		/* the character operands' added, floating if one is (db_string_concatenate so:1262) */
+  DOMAIN_PREC_COMPILED,		/* the compiled one (MD5 and SHA1 give CHAR of the digest length, UUID_FORMAT 36) */
+  DOMAIN_PREC_CHAR_SOURCE	/* a fixed CHAR source's, else floating */
+};
+
+struct DOMAIN_CHAR_RULE
+{
+  DB_TYPE type;			/* DB_TYPE_NULL: the first character operand's type (UPPER, LOWER keep CHAR) */
+  unsigned char source;		/* DOMAIN_CHAR_SOURCE */
+  unsigned char precision;	/* DOMAIN_CHAR_PRECISION */
+};
+
+/* The rule of a character operator; an operator not listed makes a string from its character operands, merged. */
+static DOMAIN_CHAR_RULE
+domain_character_rule (int opcode)
+{
+  switch (opcode)
+    {
+    case T_CONCAT:
+    case T_STRCAT:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_MERGE, DOMAIN_PREC_SUM };
+    case T_SUBSTRING:
+    case T_MID:
+    case T_LEFT:
+    case T_RIGHT:
+    case T_TRIM:
+    case T_LTRIM:
+    case T_RTRIM:
+    case T_REVERSE:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FIRST, DOMAIN_PREC_SOURCE };
+    case T_UPPER:
+    case T_LOWER:
+      /* db_string_upper/lower keep the string's type; a fixed CHAR keeps its length (the count of the cased
+       * characters), anything else its own length */
+      return DOMAIN_CHAR_RULE { DB_TYPE_NULL, DOMAIN_CHAR_FIRST, DOMAIN_PREC_CHAR_SOURCE };
+    case T_TRANSLATE:
+      /* db_string_translate makes the result in the source string's codeset and collation */
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FIRST, DOMAIN_PREC_FLOATING };
+    case T_UUID_FORMAT:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FIRST, DOMAIN_PREC_COMPILED };
+    case T_REPEAT:
+    case T_LIKE_LOWER_BOUND:
+    case T_LIKE_UPPER_BOUND:
+    case T_SHA_TWO:
+    case T_AES_ENCRYPT:
+    case T_AES_DECRYPT:
+    case T_TO_BASE64:
+    case T_FROM_BASE64:
+    case F_REGEXP_REPLACE:
+    case F_REGEXP_SUBSTR:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FIRST, DOMAIN_PREC_FLOATING };
+    case T_MD5:
+    case T_SHA_ONE:
+      return DOMAIN_CHAR_RULE { DB_TYPE_CHAR, DOMAIN_CHAR_FIRST, DOMAIN_PREC_COMPILED };
+    case T_DATE_FORMAT:
+    case T_TIME_FORMAT:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FORMAT, DOMAIN_PREC_FLOATING };
+    case T_SPACE:
+    case T_TZ_OFFSET:
+    case T_DATE_ADD:
+    case T_DATE_SUB:
+    case T_ADDDATE:
+    case T_SUBDATE:
+    case T_DATE:
+    case T_TIME:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_SYSTEM, DOMAIN_PREC_FLOATING };
+    case T_FROM_UNIXTIME:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FIRST_BINARY, DOMAIN_PREC_FLOATING };
+    case T_IF:
+    case T_CASE:
+    case T_DECODE:
+    case T_PRIOR:
+    case T_CONNECT_BY_ROOT:
+    case T_QPRIOR:
+    case F_ELT:
+      return DOMAIN_CHAR_RULE { DB_TYPE_NULL, DOMAIN_CHAR_BRANCH, DOMAIN_PREC_SOURCE };
+    default:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_MERGE, DOMAIN_PREC_FLOATING };
+    }
+}
+
+/* The character operands' collation, merged as the string operators merge their argument values: operands without
+ * a collation (NULL, a number, a date) take no part. return: false when two do not merge; *collation_id is -1 when no
+ * operand has a collation. */
+static bool
+domain_merge_collations (const DOMAIN_OPERAND * operands, int n_operands, int *collation_id)
+{
+  int merged = -1;
+  for (int i = 0; i < n_operands; i++)
+    {
+      const TP_DOMAIN *domain = domain_operand_domain (&operands[i]);
+      if (domain == NULL || !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+	{
+	  continue;
+	}
+      int common = domain->collation_id;
+      if (merged >= 0)
+	{
+	  LANG_RT_COMMON_COLL (merged, domain->collation_id, common);
+	  if (common == -1)
+	    {
+	      return false;
+	    }
+	}
+      merged = common;
+    }
+  *collation_id = merged;
+  return true;
+}
+
+/* The first operand that has a collation, or NULL. */
+static const TP_DOMAIN *
+domain_first_character_operand (const DOMAIN_OPERAND * operands, int n_operands)
+{
+  for (int i = 0; i < n_operands; i++)
+    {
+      const TP_DOMAIN *domain = domain_operand_domain (&operands[i]);
+      if (domain != NULL && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+	{
+	  return domain;
+	}
+    }
+  return NULL;
+}
+
+/* CAST, CAST_WRAP, CAST_NOFAIL to a character target: tp_value_cast_internal (od:29018). ENFORCE keeps a character
+ * source's type and precision under the target's collation, and leaves any other value as it is; LEAVE makes the
+ * target type and precision under a character source's collation, or the target's own for any other source. */
+static const TP_DOMAIN *
+domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled)
+{
+  const TP_DOMAIN *from = domain_operand_domain (source);
+  const bool char_source = from != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (from));
+  if (TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_ENFORCE)
+    {
+      if (!char_source)
+	{
+	  return from;
+	}
+      if (from->codeset != compiled->codeset)
+	{
+	  /* a string recoded into the target codeset comes out in the target type (CTP _07_session_var: an
+	   * iso88591 or binary CHAR bind cast to a utf8 VARCHAR) */
+	  return tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, compiled->precision, 0, NULL,
+				    compiled->collation_id);
+	}
+      return tp_domain_resolve (TP_DOMAIN_TYPE (from), NULL, from->precision, 0, NULL, compiled->collation_id);
+    }
+  return tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, compiled->precision, compiled->scale, NULL,
+			    char_source ? from->collation_id : compiled->collation_id);
+}
+
+/* The character result of opcode over the operands' decided domains; compiled is the node's compiled domain (NULL
+ * for a gate-dependent node: the rule's type and precision). */
+static int
+domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_operands, const TP_DOMAIN * compiled,
+			 RESOLVED_DOMAIN * result)
+{
+  const TP_DOMAIN *domain = NULL;
+  if (compiled != NULL && (opcode == T_CAST || opcode == T_CAST_WRAP || opcode == T_CAST_NOFAIL))
+    {
+      domain = n_operands > 0 ? domain_character_cast (&operands[n_operands - 1], compiled) : NULL;
+    }
+  else if (compiled != NULL && opcode == T_TO_CHAR)
+    {
+      /* db_to_char (so:12608) over the node's compiled domain: a string is coerced to it, keeping its collation
+       * (LEAVE); a number or a date prints into the compiled domain's codeset and collation */
+      const TP_DOMAIN *value = n_operands > 0 ? domain_operand_domain (&operands[0]) : NULL;
+      if (value != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (value)))
+	{
+	  domain = tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, compiled->precision, 0, NULL,
+				      value->collation_id);
+	}
+      else
+	{
+	  domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, compiled->collation_id);
+	}
+    }
+  else
+    {
+      const DOMAIN_CHAR_RULE rule = domain_character_rule (opcode);
+      const TP_DOMAIN *first = domain_first_character_operand (operands, n_operands);
+      int collation_id = -1;
+      switch (rule.source)
+	{
+	case DOMAIN_CHAR_MERGE:
+	  if (!domain_merge_collations (operands, n_operands, &collation_id))
+	    {
+	      return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	    }
+	  break;
+	case DOMAIN_CHAR_FIRST:
+	  collation_id = first != NULL ? first->collation_id : -1;
+	  break;
+	case DOMAIN_CHAR_FORMAT:
+	  {
+	    const TP_DOMAIN *format = n_operands > 1 ? domain_operand_domain (&operands[1]) : NULL;
+	    collation_id = format != NULL && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (format))
+	      ? format->collation_id : -1;
+	  }
+	  break;
+	case DOMAIN_CHAR_SYSTEM:
+	  collation_id = LANG_SYS_COLLATION;
+	  break;
+	case DOMAIN_CHAR_FIRST_BINARY:
+	  collation_id = first != NULL ? LANG_GET_BINARY_COLLATION (first->codeset) : -1;
+	  break;
+	case DOMAIN_CHAR_BRANCH:
+	  {
+	    /* the row takes one branch's value: one domain for every character branch, or the row decides */
+	    const TP_DOMAIN *branch = NULL;
+	    for (int i = 0; i < n_operands; i++)
+	      {
+		const TP_DOMAIN *d = domain_as_value_domain (domain_operand_domain (&operands[i]));
+		if (d == NULL || !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d)))
+		  {
+		    continue;
+		  }
+		if (branch != NULL && branch != d)
+		  {
+		    return ER_QPROC_DOMAIN_UNRESOLVED;
+		  }
+		branch = d;
+	      }
+	    if (branch == NULL)
+	      {
+		result->domain = &tp_Null_domain;
+		return NO_ERROR;
+	      }
+	    result->domain = branch;
+	    return NO_ERROR;
+	  }
+	}
+      if (collation_id < 0)
+	{
+	  /* no operand carries a collation: the value is NULL (the operators return NULL for NULL arguments) */
+	  result->domain = &tp_Null_domain;
+	  return NO_ERROR;
+	}
+
+      DB_TYPE type = rule.type;
+      if (type == DB_TYPE_NULL)
+	{
+	  type = first != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (first)) ? TP_DOMAIN_TYPE (first) : DB_TYPE_VARCHAR;
+	}
+      int precision = TP_FLOATING_PRECISION_VALUE;
+      switch (rule.precision)
+	{
+	case DOMAIN_PREC_SOURCE:
+	  precision = first != NULL ? first->precision : TP_FLOATING_PRECISION_VALUE;
+	  break;
+	case DOMAIN_PREC_SUM:
+	  precision = 0;
+	  for (int i = 0; i < n_operands; i++)
+	    {
+	      const TP_DOMAIN *d = domain_operand_domain (&operands[i]);
+	      if (d == NULL || !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d)))
+		{
+		  continue;
+		}
+	      if (d->precision == TP_FLOATING_PRECISION_VALUE || precision == TP_FLOATING_PRECISION_VALUE
+		  || TP_DOMAIN_TYPE (d) == DB_TYPE_ENUMERATION)
+		{
+		  precision = TP_FLOATING_PRECISION_VALUE;
+		}
+	      else
+		{
+		  precision = (int) MIN ((INT64) DB_MAX_VARCHAR_PRECISION, (INT64) precision + d->precision);
+		}
+	    }
+	  break;
+	case DOMAIN_PREC_COMPILED:
+	  precision = compiled != NULL ? compiled->precision : TP_FLOATING_PRECISION_VALUE;
+	  break;
+	case DOMAIN_PREC_CHAR_SOURCE:
+	  precision = first != NULL && TP_DOMAIN_TYPE (first) == DB_TYPE_CHAR ? first->precision
+	    : TP_FLOATING_PRECISION_VALUE;
+	  break;
+	default:
+	  break;
+	}
+      if (type == DB_TYPE_CHAR && precision == 0)
+	{
+	  precision = TP_FLOATING_PRECISION_VALUE;
+	}
+      domain = tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id);
+    }
+
+  if (domain == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  result->domain = domain_as_value_domain (domain);
+  return NO_ERROR;
+}
+
+int
+domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n_operands, const TP_DOMAIN * compiled,
+			  RESOLVED_DOMAIN * result)
+{
+  assert (compiled != NULL && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (compiled)));
+  assert (TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL);
+
+  *result = RESOLVED_DOMAIN
+  {
+  };
+  for (int i = 0; i < n_operands && i < 3; i++)
+    {
+      result->operand_domain[i] = operands[i].domain;
+    }
+  return domain_character_result (opcode, operands, n_operands, compiled, result);
 }

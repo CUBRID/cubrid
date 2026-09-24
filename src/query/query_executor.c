@@ -3891,7 +3891,7 @@ qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE ty
  * the resolver classifies (an interpolation argument, the ADDTIME left string, the STR_TO_DATE format) gives its
  * class; a string without a value keeps its string type and the resolver types it statically (D-335-10).
  */
-static void
+static bool
 qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_GATE_LINK * link,
 		    int arg_index, DOMAIN_CTX context, int opcode, DOMAIN_OPERAND * operand)
 {
@@ -3909,9 +3909,14 @@ qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & reso
     }
   else if (item->slot >= 0)
     {
-      /* every producer is resolved before its consumers; a producer without a value holds tp_Null_domain */
+      /* every producer is resolved before its consumers; a producer without a value holds tp_Null_domain, and an
+       * undecided one (its row decides, #338) leaves its consumers undecided too */
       operand->domain = resolved.table[item->slot].domain;
       operand->is_gate_slot = true;
+      if (operand->domain == NULL)
+	{
+	  return false;
+	}
     }
   else
     {
@@ -3930,6 +3935,7 @@ qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & reso
     {
       operand->val_type = domain_classify_value (context, opcode, arg_index, value);
     }
+  return true;
 }
 
 /*
@@ -3978,15 +3984,46 @@ qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const 
     }
   for (int i = 0; i < link->n_operands; i++)
     {
-      qexec_gate_operand (plan, resolved, link, i, context, cold->opcode, &operands[i]);
+      if (!qexec_gate_operand (plan, resolved, link, i, context, cold->opcode, &operands[i]))
+	{
+	  *entry = RESOLVED_DOMAIN
+	  {
+	  };
+	  return NO_ERROR;
+	}
+    }
+  if (node->flags & DOMAIN_PLAN_COLLATION_GATE)
+    {
+      /* #338: a string the compiler typed but whose collation its values give. D-338-02: when the operands'
+       * collations do not merge, the row raises develop's error there; when the row picks among different domains
+       * (or the node has more strings than it links), the row keeps develop's reading. Either way no decision. */
+      int error = cold->opcode < 0 ? ER_QPROC_DOMAIN_UNRESOLVED
+	: domain_resolve_character (cold->opcode, operands, link->n_operands, link->consumer, entry);
+      if (error == ER_OUT_OF_VIRTUAL_MEMORY)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
+	  return error;
+	}
+      if (error != NO_ERROR)
+	{
+	  *entry = RESOLVED_DOMAIN
+	  {
+	  };
+	}
+      return NO_ERROR;
     }
   if ((context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC) && link->argument != NULL)
     {
       /* #337: develop late-binds an aggregate or analytic from its argument only when the argument is open
        * (opr_dbtype VARIABLE). Over a compiled argument - a value pointer typed by the compiler, whatever its producer
        * holds - the function keeps its compiled domain and the argument's compiled type keys it; the value's type
-       * still counts where develop reads the value (SUM / AVG accumulator, MEDIAN class). */
-      operands[0].domain = link->argument;
+       * still counts where develop reads the value (SUM / AVG accumulator, MEDIAN class). A compiled string whose
+       * collation its values give keeps the gate's decision there (#338): a function compiled with LEAVE takes it. */
+      if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (link->argument))
+	  || TP_DOMAIN_COLLATION_FLAG (link->argument) == TP_DOMAIN_COLL_NORMAL)
+	{
+	  operands[0].domain = link->argument;
+	}
       operands[0].is_gate_slot = false;
     }
 
@@ -4010,6 +4047,13 @@ qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
 	}
       return error;
+
+    case ER_QSTR_INCOMPATIBLE_COLLATIONS:
+      /* plus as concatenation over collations that do not merge: the row raises it as develop does (D-338-02) */
+      *entry = RESOLVED_DOMAIN
+      {
+      };
+      return NO_ERROR;
 
     default:
       *entry = RESOLVED_DOMAIN
@@ -4151,8 +4195,9 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
  *   null_bind(in): also answer the NULL domain of a NULL bind (a list column holding only that NULL)
  *
  * The decision is the domain develop's first value gives the consumer, except where the slot flags say otherwise:
- * a character result whose collation #338 merges, a CAST node, a session variable whose type changed within the
- * statement, an expression in MySQL compatibility mode. Another load's tree (a PX worker's) has no decision here.
+ * a CAST node, ADDTIME over a string the gate has no value for (D-335-10), a session variable whose type changed
+ * within the statement, an expression in MySQL compatibility mode. Another load's tree (a PX worker's) has no
+ * decision here, and neither has a node the gate left undecided (its row decides, D-338-02).
  */
 const TP_DOMAIN *
 qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind)
@@ -4178,8 +4223,8 @@ qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
       return null_bind && plan->slot_gate_node[item->slot] < 0 ? domain : NULL;
     }
   const unsigned char flags = plan->slot_flags[item->slot];
-  if ((flags & DOMAIN_SLOT_CAST) || ((flags & DOMAIN_SLOT_VOLATILE) && resolved.volatile_changed)
-      || ((flags & DOMAIN_SLOT_TEXT_INEXACT) && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+  if ((flags & (DOMAIN_SLOT_CAST | DOMAIN_SLOT_VALUE_TYPED))
+      || ((flags & DOMAIN_SLOT_VOLATILE) && resolved.volatile_changed)
       || ((flags & DOMAIN_SLOT_EXPRESSION) && prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL))
     {
       return NULL;
@@ -4190,7 +4235,7 @@ qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
 /*
  * qexec_plan_domain () - the domain the plan gives a derived consumer for this execution (#337)
  *   return: its gate slot's decision (qexec_gate_domain), or the domain the load derived from its producer; NULL when
- *	     the plan leaves it to the value (a collation flag the gate does not decide yet, #338)
+ *	     the plan leaves it to the value (an undecided or unread gate slot)
  *
  * A value pointer, a list position, a sort key or an aggregate argument reads its producer: a gate slot (ALIAS) or a
  * compiled producer's domain. This is what develop's late binding would take from the first value.
@@ -4206,8 +4251,8 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
     {
       return qexec_gate_domain (vd, item, null_bind);
     }
-  /* a collation flag other than NORMAL (LEAVE, ENFORCE) does not fix the value's type - develop takes the value's
-   * domain there (F-336-01) - and belongs to the collation axis (#338) */
+  /* a collation flag other than NORMAL (LEAVE, ENFORCE) does not fix the value's domain (F-336-01): the load gives
+   * such an item a gate slot or its producer's (#338), so a fixed domain here is NORMAL */
   const TP_DOMAIN *domain = item->fixed.domain;
   domain = domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
     && TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL ? domain : NULL;
@@ -22113,6 +22158,22 @@ qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (TH
   return qexec_resolve_domains_for_aggregation (thread_p, xasl->proc.buildvalue.agg_list, vd_p, &tpl, NULL, resolved);
 }
 
+/* The DOMAIN_SLOT_FLAGS of an item's gate slot in this execution's tree; 0 for an item without one. */
+static unsigned char
+qexec_gate_slot_flags (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  if (vd == NULL || vd->xasl_state == NULL || item == NULL || item->slot < 0)
+    {
+      return 0;
+    }
+  const DOMAIN_PLAN *plan = vd->xasl_state->resolved.plan;
+  if (plan == NULL || item < plan->items || item >= plan->items + plan->n_items || item->slot >= plan->n_slots)
+    {
+      return 0;
+    }
+  return plan->slot_flags[item->slot];
+}
+
 /*
  * qexec_apply_aggregate_gate_domain () - the gate's decision for an aggregate the gate decides, applied as develop's
  *   late binding applies the first value's domain (qexec_resolve_domains_for_aggregation) (#337)
@@ -22139,8 +22200,12 @@ qexec_apply_aggregate_gate_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
       if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	{
 	  const TP_DOMAIN *argument = qexec_plan_domain (vd, agg_p->operands->value.domain_plan, false);
-	  if (argument == NULL)
+	  if (argument == NULL
+	      || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (argument))
+		  && (qexec_gate_slot_flags (vd, agg_p->operands->value.domain_plan) & DOMAIN_SLOT_VOLATILE)))
 	    {
+	      /* a string a session variable holds is classified by its first value, as develop's is: the gate has no
+	       * value to classify there (the MEDIAN first-value cascade is #340's) */
 	      return NULL;
 	    }
 	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (argument);

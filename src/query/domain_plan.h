@@ -37,8 +37,9 @@ enum DOMAIN_PLAN_FLAGS
   DOMAIN_PLAN_ACCUMULATOR = 0x40,	/* a compiled aggregate: fixed.operand_domain[0] is its accumulator domain,
 					 * derived at load from the operand's (L-43, #337) */
   DOMAIN_PLAN_TRUNCATE_OK = 0x80,
-  DOMAIN_PLAN_COLLATION_GATE = 0x100,	/* the type is compiled, the collation is the bound value's: the gate records
-					 * the value domain in this item's slot (C3/C12 slot rows, #336) */
+  DOMAIN_PLAN_COLLATION_GATE = 0x100,	/* the type is compiled, the collation is the values': a slot records the bound
+					 * value's domain (C3/C12 slot rows, #336); a node is decided by the gate from
+					 * its operands' decided domains (#338) */
   DOMAIN_PLAN_VALUE_ARGUMENT = 0x200	/* a MEDIAN / PERCENTILE whose argument carries a value (a literal, a bind, a
 					 * session variable read) through value pointers and list positions: its first
 					 * value is classified as develop does (D-335-10, #337) */
@@ -48,7 +49,8 @@ enum DOMAIN_PLAN_FLAGS
  * decision from these sources is not always the domain develop's first value would give. */
 enum DOMAIN_SLOT_FLAGS
 {
-  DOMAIN_SLOT_TEXT_INEXACT = 0x01,	/* a character result whose collation the gate does not merge yet (#338) */
+  DOMAIN_SLOT_VALUE_TYPED = 0x01,	/* ADDTIME over a string the gate has no value for: D-335-10 types it VARCHAR,
+					 * the value may type it otherwise (#338) */
   DOMAIN_SLOT_EXPRESSION = 0x02,	/* an expression result: MySQL compatibility mode types it with its own helpers */
   DOMAIN_SLOT_CAST = 0x04,	/* a CAST node: its compiled target stays (the union wrapper, F-336-03) */
   DOMAIN_SLOT_VOLATILE = 0x08	/* a session variable read: its type may change within the statement (D-336-E) */

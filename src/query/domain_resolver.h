@@ -72,4 +72,21 @@ int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * opera
  * once, before domain_resolve (D-328-06). DB_TYPE_NULL when the value cannot be classified: the function's own error. */
 DB_TYPE domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value);
 
+/*
+ * The character result of a node the compiler typed but whose collation it left to the values (LEAVE) or enforced
+ * over an operand it could not type (ENFORCE), decided at the gate from the operands' decided domains (#338): the
+ * type, collation and codeset its operator gives the value today. A variable string's precision is floating
+ * (D-338-03). opcode is OPERATOR_TYPE for an arithmetic node and FUNC_CODE for a function node; compiled is the
+ * node's compiled domain.
+ * return: NO_ERROR, ER_QSTR_INCOMPATIBLE_COLLATIONS when the operands' collations do not merge (the row raises it, as
+ *	   develop does), or ER_QPROC_DOMAIN_UNRESOLVED when the value's domain depends on the row (a branch chosen per
+ *	   row whose domains differ): the gate then leaves the node undecided.
+ */
+int domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n_operands, const TP_DOMAIN * compiled,
+			      RESOLVED_DOMAIN * result);
+
+/* The domain tp_domain_resolve_value gives a value of this domain: a variable string's floating precision reads as
+ * its maximum, and an ENUM value keeps no element list (#338). */
+const TP_DOMAIN *domain_as_value_domain (const TP_DOMAIN * domain);
+
 #endif /* _DOMAIN_RESOLVER_H_ */

@@ -630,6 +630,34 @@ fetch_agg_expr_eval_dbl (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_
   return true;
 }
 
+/*
+ * fetch_value_leaves_domain () - whether a session variable's value no longer has the domain the gate decided for
+ *   its read from the value stored when the execution began (D-336-E): its type, and for a string also its
+ *   precision, codeset and collation (#338: `@b := concat (@b, 'x')` grows the string)
+ */
+static bool
+fetch_value_leaves_domain (const DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  if (type != TP_DOMAIN_TYPE (domain))
+    {
+      return true;
+    }
+  if (!TP_IS_CHAR_TYPE (type))
+    {
+      return false;
+    }
+  int precision = db_value_precision (value);
+  if (type == DB_TYPE_VARCHAR
+      && (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE || precision > DB_MAX_VARCHAR_PRECISION))
+    {
+      /* read as tp_domain_resolve_value reads it */
+      precision = DB_MAX_VARCHAR_PRECISION;
+    }
+  return precision != domain->precision || db_get_string_codeset (value) != TP_DOMAIN_CODESET (domain)
+    || db_get_string_collation (value) != TP_DOMAIN_COLLATION (domain);
+}
+
 #if !defined (NDEBUG)
 /*
  * fetch_assert_resolved_common_value () - dpin-07 shadow check: domain_resolve (DOMAIN_CTX_COMMON_VALUE) folds the
@@ -653,7 +681,8 @@ fetch_assert_resolved_common_value (int opcode, const TP_DOMAIN * common, int n_
     }
   int error = domain_resolve (DOMAIN_CTX_COMMON_VALUE, opcode, operands, n_args, NULL, &resolved, &needs_gate);
   assert (error == NO_ERROR && !needs_gate);
-  assert (error != NO_ERROR || resolved.domain == common);
+  /* the resolver reads a floating string's precision as its maximum, as the value's domain reads (#338) */
+  assert (error != NO_ERROR || resolved.domain == common || resolved.domain == domain_as_value_domain (common));
 }
 #endif
 
@@ -1345,18 +1374,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     {
       const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, arithptr->domain_plan);
       if (gate_node != NULL && TP_DOMAIN_TYPE (gate_node->domain) != DB_TYPE_NULL
-	  && !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (gate_node->domain))
+	  && qexec_gate_domain (vd, arithptr->domain_plan, false) != NULL
 	  && arithptr->opcode != T_CAST && arithptr->opcode != T_CAST_WRAP && arithptr->opcode != T_CAST_NOFAIL
 	  && !(arithptr->domain_plan->operand_class == OPERAND_VOLATILE && vd->xasl_state->resolved.volatile_changed)
 	  && prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
 	{
 	  /* #336: the gate decided this node once for the execution; the row reads the decision in place of the
-	   * value-driven late binding below (qexec_clear_regu_var restores the loaded domain). Still late-bound
-	   * until the ticket named: a character result (its collation is merged by #338), a volatile node after a
-	   * session variable changed its type within the statement (D-336-E, develop's per-row answer; dpin-14
+	   * value-driven late binding below (qexec_clear_regu_var restores the loaded domain). A character result
+	   * carries its merged collation (#338). Still late-bound until the ticket named: a volatile node after a
+	   * session variable changed its domain within the statement (D-336-E, develop's per-row answer; dpin-14
 	   * re-looks the row up, D-325-10), MySQL compatibility mode (dpin-14 moves its helper types into the
-	   * resolver). A CAST node keeps its compiled target: the union's `CAST(x AS uncertain)` wrapper must keep
-	   * failing as develop's does (-181, L-18), not cast into the gate's decision. */
+	   * resolver), ADDTIME over a string the gate has no value for (D-335-10 types it VARCHAR where develop takes
+	   * the value's type; #340), a node the gate left undecided (D-338-02). A CAST node keeps its compiled
+	   * target: the union's `CAST(x AS uncertain)` wrapper must keep failing as develop's does (-181, L-18), not
+	   * cast into the gate's decision. */
 	  regu_var->domain = arithptr->domain = (TP_DOMAIN *) gate_node->domain;
 	}
       else
@@ -4101,7 +4132,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       if (!DB_IS_NULL (arithptr->value) && original_domain == NULL && regu_var->domain != NULL
 	  && TP_DOMAIN_TYPE (regu_var->domain) != DB_TYPE_VARIABLE && arithptr->domain_plan != NULL
 	  && arithptr->domain_plan->operand_class == OPERAND_VOLATILE && vd != NULL && vd->xasl_state != NULL
-	  && DB_VALUE_DOMAIN_TYPE (arithptr->value) != TP_DOMAIN_TYPE (regu_var->domain))
+	  && fetch_value_leaves_domain (arithptr->value, regu_var->domain))
 	{
 	  /* S5 (#336, D-336-E): the gate decided this read from the value stored when the execution began; the
 	   * variable has since changed its type within the statement (`@v := '2.5'` on an earlier column or row).
@@ -4570,10 +4601,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       && (peek_left == NULL || !DB_IS_NULL (peek_left)) && (peek_right == NULL || !DB_IS_NULL (peek_right))
       && (peek_third == NULL || !DB_IS_NULL (peek_third)))
     {
-      /* a character decision is compared by #338 (its collation merge is not the gate's yet); a volatile node
-       * after a session variable changed type is develop's late binding (D-336-E) */
+      /* a decision the row does not read (ADDTIME over a value-less string, D-335-10) is not the value's; a volatile
+       * node after a session variable changed type is develop's late binding (D-336-E) */
       const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, arithptr->domain_plan);
-      assert (gate_node == NULL || TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (gate_node->domain))
+      assert (gate_node == NULL || qexec_gate_domain (vd, arithptr->domain_plan, false) == NULL
 	      || TP_DOMAIN_TYPE (gate_node->domain) == DB_TYPE_NULL
 	      || (arithptr->domain_plan->operand_class == OPERAND_VOLATILE && vd->xasl_state->resolved.volatile_changed)
 	      || TP_DOMAIN_TYPE (gate_node->domain) == DB_VALUE_DOMAIN_TYPE (arithptr->value));
@@ -4598,16 +4629,37 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   if (arithptr->domain != NULL && arithptr->domain->collation_flag != TP_DOMAIN_COLL_NORMAL
       && !DB_IS_NULL (arithptr->value))
     {
-      TP_DOMAIN *resolved_dom;
-
       assert (TP_TYPE_HAS_COLLATION (arithptr->domain->type->id));
 
-      resolved_dom = tp_domain_resolve_value (arithptr->value, NULL);
-
-      /* keep DB_TYPE_VARIABLE if resolved domain is NULL */
-      if (TP_DOMAIN_TYPE (resolved_dom) != DB_TYPE_NULL)
+      const TP_DOMAIN *decided = qexec_gate_domain (vd, arithptr->domain_plan, false);
+      if (decided != NULL)
 	{
-	  regu_var->domain = resolved_dom;
+	  /* #338: the gate decided this string's domain once for the execution from its operands' decided domains;
+	   * the row reads it in place of its value's. A NULL value keeps the compiled domain, as develop's does. */
+#if !defined (NDEBUG)
+	  /* #338 shadow check: the decision is the value's domain but for a string's precision, which stays the
+	   * value's (D-338-03) */
+	  {
+	    const TP_DOMAIN *value_domain = tp_domain_resolve_value (arithptr->value, NULL);
+	    assert (value_domain == NULL || (TP_DOMAIN_TYPE (value_domain) == TP_DOMAIN_TYPE (decided)
+					     && (!TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (decided))
+						 || (value_domain->codeset == decided->codeset
+						     && value_domain->collation_id == decided->collation_id))));
+	  }
+#endif
+	  regu_var->domain = (TP_DOMAIN *) decided;
+	}
+      else
+	{
+	  /* a node the gate left undecided (D-338-02) or another load's tree (a PX worker's): develop's reading */
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
+	  TP_DOMAIN *resolved_dom = tp_domain_resolve_value (arithptr->value, NULL);
+
+	  /* keep DB_TYPE_VARIABLE if resolved domain is NULL */
+	  if (TP_DOMAIN_TYPE (resolved_dom) != DB_TYPE_NULL)
+	    {
+	      regu_var->domain = resolved_dom;
+	    }
 	}
     }
 
@@ -5343,10 +5395,10 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE
 	  || TP_DOMAIN_COLLATION_FLAG (regu_var->domain) != TP_DOMAIN_COLL_NORMAL)
 	{
-	  /* #337: a value pointer or a list position reads its producer's decision (a derived consumer); a slot's
-	   * value still decides here until dpin-14 */
+	  /* #337: a value pointer or a list position reads its producer's decision (a derived consumer), and a
+	   * string function its own (#338); a slot's value still decides here until dpin-14 */
 	  const TP_DOMAIN *planned = regu_var->type == TYPE_CONSTANT || regu_var->type == TYPE_POSITION
-	    ? qexec_plan_domain (vd, regu_var->domain_plan, false) : NULL;
+	    || regu_var->type == TYPE_FUNC ? qexec_plan_domain (vd, regu_var->domain_plan, false) : NULL;
 	  if (planned != NULL)
 	    {
 	      regu_var->domain = (TP_DOMAIN *) planned;
