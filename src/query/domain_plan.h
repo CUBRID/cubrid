@@ -34,11 +34,24 @@ enum DOMAIN_PLAN_FLAGS
 {
   DOMAIN_PLAN_GATE = 0x01, DOMAIN_PLAN_KEY1 = 0x02, DOMAIN_PLAN_KEY2 = 0x04,
   DOMAIN_PLAN_ISS = 0x08, DOMAIN_PLAN_ALIAS = 0x10, DOMAIN_PLAN_KEEP_LAZY = 0x20,
-  DOMAIN_PLAN_DERIVED = 0x40,	/* a derived consumer or a node over one (F-335-07): typed by dpin-11, excused from
-				 * load boundary (a) until then */
+  DOMAIN_PLAN_ACCUMULATOR = 0x40,	/* a compiled aggregate: fixed.operand_domain[0] is its accumulator domain,
+					 * derived at load from the operand's (L-43, #337) */
   DOMAIN_PLAN_TRUNCATE_OK = 0x80,
-  DOMAIN_PLAN_COLLATION_GATE = 0x100	/* the type is compiled, the collation is the bound value's: the gate records
+  DOMAIN_PLAN_COLLATION_GATE = 0x100,	/* the type is compiled, the collation is the bound value's: the gate records
 					 * the value domain in this item's slot (C3/C12 slot rows, #336) */
+  DOMAIN_PLAN_VALUE_ARGUMENT = 0x200	/* a MEDIAN / PERCENTILE whose argument carries a value (a literal, a bind, a
+					 * session variable read) through value pointers and list positions: its first
+					 * value is classified as develop does (D-335-10, #337) */
+};
+
+/* What execution must know before it takes a slot's decision in place of a value-driven late binding (#337): a
+ * decision from these sources is not always the domain develop's first value would give. */
+enum DOMAIN_SLOT_FLAGS
+{
+  DOMAIN_SLOT_TEXT_INEXACT = 0x01,	/* a character result whose collation the gate does not merge yet (#338) */
+  DOMAIN_SLOT_EXPRESSION = 0x02,	/* an expression result: MySQL compatibility mode types it with its own helpers */
+  DOMAIN_SLOT_CAST = 0x04,	/* a CAST node: its compiled target stays (the union wrapper, F-336-03) */
+  DOMAIN_SLOT_VOLATILE = 0x08	/* a session variable read: its type may change within the statement (D-336-E) */
 };
 
 typedef struct domain_plan_item DOMAIN_PLAN_ITEM;
@@ -73,6 +86,8 @@ struct DOMAIN_GATE_LINK
   const DOMAIN_PLAN_ITEM *operands[3];
   const DB_VALUE *literal[3];
   const TP_DOMAIN *consumer;
+  const TP_DOMAIN *argument;	/* AGG / ANALYTIC: the argument's compiled domain when it is not open (opr_dbtype); NULL
+				 * when the function is late-bound from its argument (#337) */
   int n_operands;
 };
 
@@ -86,8 +101,10 @@ struct domain_plan
   int n_refs;
   int dbval_cnt;
   int n_gate_nodes;
-  DOMAIN_PLAN_ITEM **gate_nodes;
+  DOMAIN_PLAN_ITEM **gate_nodes;	/* producers first: every operand slot is decided before its consumer */
   DOMAIN_GATE_LINK *gate_links;	/* parallel to gate_nodes */
+  int *slot_gate_node;		/* [n_slots] the gate_nodes index deciding the slot; -1 for a bind slot (#337) */
+  unsigned char *slot_flags;	/* [n_slots] DOMAIN_SLOT_FLAGS of the decision's sources (#337) */
   int n_const_refs;
   DOMAIN_PLAN_ITEM **const_refs;
   int n_volatile;

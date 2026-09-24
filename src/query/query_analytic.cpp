@@ -54,7 +54,7 @@ static int qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::an
  * list file and is also excluded.
  */
 static inline bool
-qdata_analytic_is_plain_sum_avg (cubthread::entry *thread_p, const ANALYTIC_TYPE *func_p)
+qdata_analytic_is_plain_sum_avg (cubthread::entry *thread_p, const ANALYTIC_TYPE *func_p, const VAL_DESCR *val_desc_p)
 {
   if ((func_p->function != PT_SUM && func_p->function != PT_AVG) || func_p->option == Q_DISTINCT)
     {
@@ -62,6 +62,13 @@ qdata_analytic_is_plain_sum_avg (cubthread::entry *thread_p, const ANALYTIC_TYPE
     }
   if (func_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL)
     {
+      if (qexec_gate_domain (val_desc_p, func_p->domain_plan, false) != NULL)
+	{
+	  /* #337: the gate decided the domain before the first row, so the domain does not block the fast path. The
+	   * first non-NULL value still takes the general path (curr_cnt < 1, sum_acc inactive), which applies that
+	   * decision before the accumulator is activated. */
+	  return true;
+	}
       /* Count domain-based rejection, not every visit to the general path. */
       perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
       return false;
@@ -166,7 +173,8 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
    * it directly to the accumulator. The first value, a restored partial, and
    * NULL stay on the general path, which owns the fetched value and clears it
    * afterward. */
-  if (qdata_analytic_is_plain_sum_avg (thread_p, func_p) && func_p->curr_cnt >= 1 && func_p->sum_acc.is_active)
+  if (qdata_analytic_is_plain_sum_avg (thread_p, func_p, val_desc_p) && func_p->curr_cnt >= 1
+      && func_p->sum_acc.is_active)
     {
       DB_VALUE *peek_operand_p = NULL;
 
@@ -197,14 +205,27 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   if ((func_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL)
       && !DB_IS_NULL (&dbval))
     {
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
 #if !defined (NDEBUG)
       const TP_DOMAIN *shadow_compiled = func_p->domain;
       bool shadow_late_bound = func_p->opr_dbtype == DB_TYPE_VARIABLE;
 #endif
-      /* set function default domain when late binding */
-      switch (func_p->function)
+      /* #337: the gate decided the function once for the execution; the first value no longer decides it */
+      const TP_DOMAIN *planned = qexec_gate_domain (val_desc_p, func_p->domain_plan, false);
+      if (planned != NULL)
 	{
+	  func_p->domain = (TP_DOMAIN *) planned;
+	}
+      else
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
+	}
+      /* set function default domain when late binding */
+      switch (planned != NULL ? PT_TOP_AGG_FUNC : func_p->function)
+	{
+	case PT_TOP_AGG_FUNC:
+	  /* decided by the gate */
+	  break;
+
 	case PT_COUNT:
 	case PT_COUNT_STAR:
 	  func_p->domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
@@ -255,8 +276,10 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	}
 
 #if !defined (NDEBUG)
+      if (!QPROC_IS_INTERPOLATION_FUNC (func_p))
       {
-	/* dpin-07 shadow check: domain_resolve (DOMAIN_CTX_ANALYTIC) answers the late-bound operand domain */
+	/* dpin-07 shadow check: domain_resolve (DOMAIN_CTX_ANALYTIC) answers the late-bound operand domain; an
+	 * interpolation function's answer is the class its first execution gives it (#337), not this step's */
 	DOMAIN_OPERAND operand =
 	{ tp_domain_resolve_value (&dbval, NULL), DB_VALUE_DOMAIN_TYPE (&dbval), -1, -1, shadow_late_bound };
 	RESOLVED_DOMAIN resolved;
@@ -274,7 +297,15 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       /* coerce operand */
       if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)
 	{
-	  error = ER_FAILED;
+	  /* D4 (#337): the failure used to leave no error, so the query ended silently with no rows (an assertion in
+	   * qexec_analytic_add_tuple under optdebug) */
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_TP_CANT_COERCE;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (&dbval)),
+		      pr_type_name (TP_DOMAIN_TYPE (func_p->domain)));
+	    }
 	  goto exit;
 	}
 
@@ -715,10 +746,26 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  if (func_p->is_first_exec_time)
 	    {
 	      func_p->is_first_exec_time = false;
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
+	      /* #337: an open function the gate decided takes that class; the value is coerced to it below */
+	      const TP_DOMAIN *planned = TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE
+		? qexec_gate_domain (val_desc_p, func_p->domain_plan, false) : NULL;
+	      if (planned != NULL)
+		{
+		  func_p->domain = (TP_DOMAIN *) planned;
+		}
+	      else if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE
+		       || (!TP_IS_NUMERIC_TYPE (func_p->opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (func_p->opr_dbtype)
+			   && (func_p->domain_plan == NULL || func_p->domain_plan->fixed.domain == NULL
+			       || TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) == DB_TYPE_VARIABLE)))
+		{
+		  /* a decision from the first value: the open function's type, or a string's class */
+		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
+		}
 	      /* determine domain based on first value */
+	      if (planned == NULL)
 	      switch (func_p->opr_dbtype)
 		{
+
 		case DB_TYPE_SHORT:
 		case DB_TYPE_INTEGER:
 		case DB_TYPE_BIGINT:

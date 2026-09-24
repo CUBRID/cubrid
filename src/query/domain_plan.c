@@ -34,10 +34,12 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* Load boundary (a) (#336, D-323-09): every item the compiler left without a type is a gate slot, a gate-dependent
- * node, an alias, or one of the derived-consumer classes below, which dpin-11 types; anything else refuses the load
- * with ER_QPROC_DOMAIN_UNRESOLVED. The collation axis: a bind slot whose compiled collation is LEAVE records the value
- * collation at the gate (COLLATION_GATE); LEAVE on an expression result is #338's. */
+/* Load boundary (a) (#336, D-323-09; #337 removed the derived-consumer exceptions X-8..X-10): every item the compiler
+ * left without a type is a gate slot, a gate-dependent node or an alias of one; anything else refuses the load with
+ * ER_QPROC_DOMAIN_UNRESOLVED. A derived consumer (a value pointer, a list position, a sort key, an accumulator)
+ * reads its producer: the producer's gate slot (ALIAS) or its domain. The collation axis: a bind slot whose compiled
+ * collation is LEAVE records the value collation at the gate (COLLATION_GATE); LEAVE on an expression result is
+ * #338's. */
 static const bool domain_plan_check_load = true;
 struct DOMAIN_PLAN_LOAD_EXCEPTION
 {
@@ -51,15 +53,24 @@ static const DOMAIN_PLAN_LOAD_EXCEPTION domain_plan_load_exceptions[] = {
   {"X-3", "set-operation position", "alias producer"},
   {"X-4", "TYPE_LIST_ID / TYPE_ORDERBY_NUM", "no value-domain item"},
   {"X-5", "collection constructor", "static element domains"},
-  {"X-8", "TYPE_CONSTANT / TYPE_POSITION value pointer and the nodes over it", "DERIVED; dpin-11 (F-335-07)"},
-  {"X-9", "accumulator / sort key / list column left VARIABLE", "DERIVED; dpin-11"},
-  {"X-10", "TYPE_FUNC result left VARIABLE", "DERIVED; dpin-11 (function-code resolution)"},
   {"X-11", "TP_DOMAIN_COLL_LEAVE on an expression result", "allowed; #338 (compile collation axis)"}
 };
 
 /* Temporary load records are freed before publishing the plan. No record, owner
  * link or traversal scratch survives in the hot arrays. Shared XASLs are marked
  * on entry; expression items are appended after their operands (producer order). */
+
+/* What the resolution pass decides for a record after the walk (#337). */
+enum DOMAIN_LOAD_KIND
+{
+  DOMAIN_LOAD_LEAF,		/* a bind, a literal, an attribute, a compiled node: nothing to derive */
+  DOMAIN_LOAD_CONSUMER,		/* a value pointer, a list position, a set-operation column: reads its producer */
+  DOMAIN_LOAD_NODE,		/* a node the compiler left without a type: a gate-dependent node when every operand
+				 * is known */
+  DOMAIN_LOAD_ARITH_REGU,	/* the regu wrapping an arithmetic node: carries that node's answer */
+  DOMAIN_LOAD_FIXED_AGG		/* a compiled aggregate or analytic: accumulator derived once (L-43) */
+};
+
 struct DOMAIN_LOAD_RECORD
 {
   DOMAIN_LOAD_RECORD *next;
@@ -70,16 +81,35 @@ struct DOMAIN_LOAD_RECORD
   DB_VALUE *output[2];
   REGU_VARIABLE *regu;
   DOMAIN_LOAD_RECORD *alias;
-  /* gate-dependent node: the operands its DOMAIN_GATE_LINK points at once they are published */
-  REGU_VARIABLE *link[3];
+  unsigned char kind;		/* DOMAIN_LOAD_KIND */
+  unsigned char state;		/* resolution pass: 0 open, 1 in progress, 2 done */
+  bool known;			/* after resolution: the gate knows this operand's type (slot, value or domain) */
+  bool literal_value;		/* a bind or a literal: the gate reads its value */
+  bool follows_producer;	/* after resolution: this record carries its producer's answer (a link source goes
+				 * through it to the producer, a bind's value included) */
+  DOMAIN_LOAD_RECORD *producer;	/* CONSUMER / ARITH_REGU: whose answer this record reads */
+  /* NODE / FIXED_AGG: the operands in operand order, and the literal a TYPE_DBVAL operand carries */
+  DOMAIN_PLAN_ITEM *link[3];
+  const DB_VALUE *literal[3];
   int n_link;
   const TP_DOMAIN *consumer;
+  const TP_DOMAIN *argument;	/* FIXED_AGG: the argument's compiled domain when it is not open (DOMAIN_GATE_LINK) */
+  int gate_order;		/* index into plan->gate_nodes once this record is a gate-dependent node */
+  DOMAIN_PLAN_ITEM *self_owner;	/* owner storage of a synthetic record (a set-operation column) */
 };
 struct DOMAIN_LOAD_BINDING
 {
   DOMAIN_LOAD_BINDING *next;
   DOMAIN_PLAN_ITEM **owner;
   DOMAIN_PLAN_ITEM *target;
+};
+/* A set-operation or CTE list column, unified from its branches (X-3), made once per (list, column). */
+struct DOMAIN_LOAD_LIST_COLUMN
+{
+  DOMAIN_LOAD_LIST_COLUMN *next;
+  const XASL_NODE *xasl;
+  int pos;
+  DOMAIN_PLAN_ITEM *item;
 };
 struct DOMAIN_LOAD_CONTEXT
 {
@@ -90,11 +120,20 @@ struct DOMAIN_LOAD_CONTEXT
   DOMAIN_LOAD_BINDING *bindings;
   bool failed;
   XASL_NODE *block;
+  /* the list the TYPE_POSITION regus being walked read: its producer XASL, or its producer columns */
+  XASL_NODE *position_source;
+  REGU_VARIABLE_LIST position_columns;
+  DOMAIN_LOAD_LIST_COLUMN *list_columns;
+  DOMAIN_LOAD_RECORD **gate_order;	/* gate-dependent nodes in resolution order (producers first) */
+  int n_gate_order;
+  int max_gate_order;
 };
 
 static void domain_walk_xasl (DOMAIN_LOAD_CONTEXT *, XASL_NODE *);
 static void domain_walk_pred (DOMAIN_LOAD_CONTEXT *, PRED_EXPR *);
 static void domain_walk_regu (DOMAIN_LOAD_CONTEXT *, REGU_VARIABLE *, DOMAIN_CTX = DOMAIN_CTX_FUNC_ARG);
+static OUTPTR_LIST *domain_block_output (XASL_NODE * xasl);
+static DOMAIN_PLAN_ITEM *domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos);
 
 static bool
 domain_is_fixed (const TP_DOMAIN * domain)
@@ -110,23 +149,12 @@ domain_type_is_fixed (const TP_DOMAIN * domain)
   return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE;
 }
 
-/* The gate reads a type it can trust for this operand: a GATE slot or a gate-dependent node, a bind or a literal
- * (its value), or a compiled domain the values follow (an attribute, a computed expression). A value pointer (a list
- * column, a correlated value) keeps the type its producer gave the value, which the compiled domain may not describe
- * (F-335-07: a recursive CTE column typed by its first branch); dpin-11 decides those. */
-static bool
-domain_operand_is_known (const REGU_VARIABLE * operand)
+/* The load record an item lives in: every item is a record's embedded item until the plan is published. */
+static DOMAIN_LOAD_RECORD *
+domain_record_of (const DOMAIN_PLAN_ITEM * item)
 {
-  const DOMAIN_PLAN_ITEM *item = operand->domain_plan;
-  if (item == NULL)
-    {
-      return false;
-    }
-  if (item->slot >= 0 || operand->type == TYPE_POS_VALUE || operand->type == TYPE_DBVAL)
-    {
-      return true;
-    }
-  return operand->type != TYPE_CONSTANT && operand->type != TYPE_POSITION && domain_type_is_fixed (item->fixed.domain);
+  return item == NULL ? NULL
+    : (DOMAIN_LOAD_RECORD *) ((char *) const_cast < DOMAIN_PLAN_ITEM * >(item) - offsetof (DOMAIN_LOAD_RECORD, item));
 }
 
 /* The resolver context of a gate-dependent operator node. */
@@ -160,21 +188,47 @@ domain_gate_context (OPERATOR_TYPE opcode)
     }
 }
 
-/* Makes the item just added a gate-dependent node: the gate resolves it into its own slot from these operands. */
+/* Records the operands a node the compiler left without a type is decided from (resolution pass, #337). */
 static void
-domain_mark_gate_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM * item, REGU_VARIABLE * const *operands,
-		       int n_operands, const TP_DOMAIN * consumer)
+domain_set_links (DOMAIN_LOAD_RECORD * record, REGU_VARIABLE * const *operands, int n_operands,
+		  const TP_DOMAIN * consumer)
 {
-  assert (&ctx->tail->item == item && n_operands <= 3);
-  item->flags |= DOMAIN_PLAN_GATE;
-  item->slot = ctx->plan->n_slots++;
-  item->fixed.domain = NULL;
+  assert (n_operands <= 3);
+  record->n_link = 0;
   for (int i = 0; i < n_operands; i++)
     {
-      ctx->tail->link[i] = operands[i];
+      if (operands[i] != NULL && operands[i]->domain_plan != NULL)
+	{
+	  record->literal[record->n_link] = operands[i]->type == TYPE_DBVAL ? &operands[i]->value.dbval : NULL;
+	  record->link[record->n_link++] = operands[i]->domain_plan;
+	}
     }
-  ctx->tail->n_link = n_operands;
-  ctx->tail->consumer = consumer;
+  record->consumer = consumer;
+}
+
+/* Makes a resolved node a gate-dependent node: the gate decides it into its own slot once per execution, after every
+ * operand (the resolution pass appends it after its producers). */
+static void
+domain_mark_gate_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
+{
+  if (ctx->n_gate_order == ctx->max_gate_order)
+    {
+      int max = ctx->max_gate_order == 0 ? 16 : ctx->max_gate_order * 2;
+      DOMAIN_LOAD_RECORD **order =
+	(DOMAIN_LOAD_RECORD **) db_private_realloc (ctx->thread_p, ctx->gate_order, max * sizeof (*order));
+      if (order == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->gate_order = order;
+      ctx->max_gate_order = max;
+    }
+  record->item.flags |= DOMAIN_PLAN_GATE;
+  record->item.slot = ctx->plan->n_slots++;
+  record->item.fixed.domain = NULL;
+  record->gate_order = ctx->n_gate_order;
+  ctx->gate_order[ctx->n_gate_order++] = record;
 }
 
 static DOMAIN_PLAN_ITEM *
@@ -193,6 +247,7 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
     }
   memset (record, 0, sizeof (*record));
   record->owner = owner;
+  record->gate_order = -1;
   record->index = ctx->plan->n_items++;
   record->item.slot = -1;
   record->item.ref = -1;
@@ -315,6 +370,174 @@ domain_walk_list (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST list, DOMAIN_CTX
     }
 }
 
+/* Walks regu lists that read the list file of `source` (or whose columns are `columns`): their TYPE_POSITION regus
+ * read that list's columns (#337). */
+static void
+domain_walk_position_list (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST list, XASL_NODE * source,
+			   REGU_VARIABLE_LIST columns)
+{
+  XASL_NODE *saved_source = ctx->position_source;
+  REGU_VARIABLE_LIST saved_columns = ctx->position_columns;
+  ctx->position_source = source;
+  ctx->position_columns = columns;
+  domain_walk_list (ctx, list);
+  ctx->position_source = saved_source;
+  ctx->position_columns = saved_columns;
+}
+
+/* The item of column `pos` of a column list. A list file does not store hidden columns; a sort list numbers the
+ * output list with them (qexec_resolve_domains_on_sort_list). */
+static DOMAIN_PLAN_ITEM *
+domain_column_item (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST columns, int pos, bool skip_hidden)
+{
+  for (REGU_VARIABLE_LIST col = columns; col != NULL && pos >= 0; col = col->next)
+    {
+      if (skip_hidden && REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  continue;
+	}
+      if (pos-- == 0)
+	{
+	  /* a producer column is walked in its own list's context, not in the reader's */
+	  XASL_NODE *saved_source = ctx->position_source;
+	  REGU_VARIABLE_LIST saved_columns = ctx->position_columns;
+	  ctx->position_source = NULL;
+	  ctx->position_columns = NULL;
+	  domain_walk_regu (ctx, &col->value, DOMAIN_CTX_LIST_COLUMN);
+	  ctx->position_source = saved_source;
+	  ctx->position_columns = saved_columns;
+	  return col->value.domain_plan;
+	}
+    }
+  return NULL;
+}
+
+/* The name of a synthetic list-column item: boundary (a) checks its readers, not the item (it has no XASL node). */
+static const char domain_list_column_name[] = "list column";
+
+/* A synthetic record owning an item no XASL node points at: a set-operation or CTE list column (X-3). */
+static DOMAIN_LOAD_RECORD *
+domain_add_synthetic (DOMAIN_LOAD_CONTEXT * ctx, const char *name)
+{
+  DOMAIN_PLAN_ITEM *owner = NULL;
+  DOMAIN_PLAN_ITEM *item =
+    domain_add_item (ctx, &owner, &tp_Variable_domain, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0, name);
+  if (item == NULL)
+    {
+      return NULL;
+    }
+  DOMAIN_LOAD_RECORD *record = domain_record_of (item);
+  /* the record keeps its own owner slot: publishing writes the published item there */
+  record->self_owner = item;
+  record->owner = &record->self_owner;
+  return record;
+}
+
+/*
+ * domain_list_column () - the item giving column `pos` of the list file `xasl` produces (L-41)
+ *
+ * A block's list holds its output columns. A set operation's list unifies its branches' lists, and a CTE's list its
+ * non-recursive part's with the rows its recursive part appends (qfile_unify_types): that column is a node over the
+ * branch columns (X-3), made once per (list, column).
+ */
+static DOMAIN_PLAN_ITEM *
+domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos)
+{
+  if (xasl == NULL || pos < 0 || ctx->failed)
+    {
+      return NULL;
+    }
+  XASL_NODE *branches[2] = { NULL, NULL };
+  switch (xasl->type)
+    {
+    case UNION_PROC:
+    case DIFFERENCE_PROC:
+    case INTERSECTION_PROC:
+      branches[0] = xasl->proc.union_.left;
+      branches[1] = xasl->proc.union_.right;
+      break;
+    case CTE_PROC:
+      branches[0] = xasl->proc.cte.non_recursive_part;
+      branches[1] = xasl->proc.cte.recursive_part;
+      break;
+    default:
+      {
+	OUTPTR_LIST *output = domain_block_output (xasl);
+	return output == NULL ? NULL : domain_column_item (ctx, output->valptrp, pos, true);
+      }
+    }
+  for (DOMAIN_LOAD_LIST_COLUMN * c = ctx->list_columns; c != NULL; c = c->next)
+    {
+      if (c->xasl == xasl && c->pos == pos)
+	{
+	  return c->item;
+	}
+    }
+  DOMAIN_LOAD_LIST_COLUMN *entry = (DOMAIN_LOAD_LIST_COLUMN *) db_private_alloc (ctx->thread_p, sizeof (*entry));
+  DOMAIN_LOAD_RECORD *record = entry == NULL ? NULL : domain_add_synthetic (ctx, domain_list_column_name);
+  if (record == NULL)
+    {
+      if (entry != NULL)
+	{
+	  db_private_free (ctx->thread_p, entry);
+	}
+      ctx->failed = true;
+      return NULL;
+    }
+  /* registered before the branches are asked: a recursive part reads this very column */
+  entry->xasl = xasl;
+  entry->pos = pos;
+  entry->item = &record->item;
+  entry->next = ctx->list_columns;
+  ctx->list_columns = entry;
+  record->kind = DOMAIN_LOAD_NODE;
+  record->n_link = 0;
+  for (int i = 0; i < 2; i++)
+    {
+      DOMAIN_PLAN_ITEM *column = domain_list_column (ctx, branches[i], pos);
+      if (column != NULL)
+	{
+	  record->link[record->n_link++] = column;
+	}
+    }
+  if (record->n_link == 0)
+    {
+      record->n_link = -1;
+    }
+  return &record->item;
+}
+
+/* The output list whose columns a block's result list file holds: the analytic or GROUP BY output when the block
+ * has one (a BUILDLIST has at most one of the two). */
+static OUTPTR_LIST *
+domain_block_output (XASL_NODE * xasl)
+{
+  if (xasl->type == BUILDLIST_PROC)
+    {
+      BUILDLIST_PROC_NODE *b = &xasl->proc.buildlist;
+      if (b->a_eval_list != NULL && b->a_outptr_list != NULL)
+	{
+	  return b->a_outptr_list;
+	}
+      if (b->groupby_list != NULL && b->g_outptr_list != NULL)
+	{
+	  return b->g_outptr_list;
+	}
+    }
+  return xasl->outptr_list;
+}
+
+/* The producer of a TYPE_POSITION regu being walked: the column of the list it reads. */
+static DOMAIN_PLAN_ITEM *
+domain_position_producer (DOMAIN_LOAD_CONTEXT * ctx, int pos)
+{
+  if (ctx->position_columns != NULL)
+    {
+      return domain_column_item (ctx, ctx->position_columns, pos, true);
+    }
+  return domain_list_column (ctx, ctx->position_source, pos);
+}
+
 static void
 domain_walk_out (DOMAIN_LOAD_CONTEXT * ctx, OUTPTR_LIST * list)
 {
@@ -351,48 +574,23 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     {
       ctx->tail->output[0] = arith->value;
     }
-  /* A node the compiler left without a result type (a late-bound operator over a slot, A8'') is resolved by the
-   * gate once per execution when every operand gives it a type it can trust (#335). A session variable read (S5)
-   * and a derived consumer (a list column, a correlated value, an open producer) keep the node, and every node over
-   * it, on the execution path until dpin-10 and dpin-11 decide them; CONNECT_BY_ROOT and QPRIOR carry their XASL in
-   * thirdptr. */
+  /* A node the compiler left without a result type (a late-bound operator over a slot, A8'') is decided by the gate
+   * once per execution when every operand gives it a type the gate knows (#335). Whether an operand is known is
+   * settled only after derived consumers read their producers, so the resolution pass decides it (#337); a session
+   * variable read (S5, #336) is such a node too. CONNECT_BY_ROOT and QPRIOR carry their XASL in thirdptr. */
   const bool late_bound = arith->domain != NULL && TP_DOMAIN_TYPE (arith->domain) == DB_TYPE_VARIABLE;
   if (item != NULL && (marked_gate || late_bound))
     {
-      REGU_VARIABLE *links[3];
-      int n_links = 0;
-      bool known = true;
+      DOMAIN_LOAD_RECORD *record = domain_record_of (item);
       const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
+      record->kind = DOMAIN_LOAD_NODE;
+      domain_set_links (record, operands, n_value_operands, arith->domain);
       for (int i = 0; i < n_value_operands; i++)
 	{
-	  if (operands[i] != NULL)
+	  if (operands[i] != NULL && operands[i]->domain_plan == NULL)
 	    {
-	      known = known && domain_operand_is_known (operands[i]);
-	      links[n_links++] = operands[i];
-	    }
-	}
-      known = known && n_links > 0;
-      if (known)
-	{
-	  /* a session variable read without a sibling (S5, #336) is a gate node too: the gate reads the variable's
-	   * current value once per execution (qexec_resolve_gate_node) */
-	  domain_mark_gate_node (ctx, item, links, n_links, arith->domain);
-	  ctx->tail->cold.ctx = domain_gate_context (arith->opcode);
-	}
-      else
-	{
-	  /* an operand the gate cannot trust (a value pointer, F-335-07) keeps this node on the derived path */
-	  item->flags |= DOMAIN_PLAN_DERIVED;
-	}
-    }
-  if (item != NULL)
-    {
-      for (int i = 0; i < 3; i++)
-	{
-	  if (operands[i] != NULL && operands[i]->domain_plan != NULL
-	      && (operands[i]->domain_plan->flags & DOMAIN_PLAN_DERIVED))
-	    {
-	      item->flags |= DOMAIN_PLAN_DERIVED;
+	      /* an operand without a value domain (X-4) leaves the node undecided */
+	      record->n_link = -1;
 	    }
 	}
     }
@@ -553,11 +751,13 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     {
       return;
     }
-  ctx->tail->regu = regu;
-  ctx->tail->output[0] = regu->vfetch_to;
+  DOMAIN_LOAD_RECORD *record = domain_record_of (item);
+  record->regu = regu;
+  record->output[0] = regu->vfetch_to;
+  record->literal_value = regu->type == TYPE_POS_VALUE || regu->type == TYPE_DBVAL;
   if (regu->type == TYPE_POS_VALUE)
     {
-      ctx->tail->cold.val_pos = regu->value.val_pos;
+      record->cold.val_pos = regu->value.val_pos;
     }
   if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_GATE) && regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
     {
@@ -573,16 +773,27 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       item->flags |= DOMAIN_PLAN_COLLATION_GATE;
       item->slot = ctx->plan->n_slots++;
     }
-  if (regu->type == TYPE_CONSTANT || regu->type == TYPE_POSITION
-      || ((regu->type == TYPE_FUNC || regu->type == TYPE_REGUVAL_LIST) && !domain_type_is_fixed (regu->domain)))
+  if (regu->type == TYPE_CONSTANT)
     {
-      /* a value pointer, a function result or a multi-row VALUES column the compiler left open: list-column and
-       * function-code resolution is dpin-11 (X-8..X-10) */
-      item->flags |= DOMAIN_PLAN_DERIVED;
+      /* a value pointer holds what its producer wrote there, whatever domain the reader was compiled with (an
+       * INSERT ... SELECT reader carries the target column's domain): its producer is found by value identity after
+       * the walk (#337, F-335-07) */
+      record->kind = DOMAIN_LOAD_CONSUMER;
     }
-  if (regu->type == TYPE_POSITION)
+  else if (regu->type == TYPE_POSITION)
     {
+      /* a list position reads its list's column: the gate's slot for it, or its domain (X-2, X-3, L-41) */
+      record->kind = DOMAIN_LOAD_CONSUMER;
+      record->producer = domain_record_of (domain_position_producer (ctx, regu->value.pos_descr.pos_no));
       domain_bind_item (ctx, &regu->value.pos_descr.domain_plan, item);
+    }
+  else if (regu->type == TYPE_REGUVAL_LIST && regu->value.reguval_list->regu_list != NULL
+	   && !domain_type_is_fixed (regu->domain))
+    {
+      /* a multi-row VALUES column takes its first row's domain; later rows are checked against it as they are read
+       * (fetch_peek_dbval_slow, U3) */
+      record->kind = DOMAIN_LOAD_CONSUMER;
+      record->producer = domain_record_of (regu->value.reguval_list->regu_list->value->domain_plan);
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
@@ -598,16 +809,10 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
 	}
       if (arith->domain_plan != NULL)
 	{
+	  /* the wrapper carries its node's answer once the resolution pass has it */
 	  item->fixed = arith->domain_plan->fixed;
-	  if (arith->domain_plan->flags & DOMAIN_PLAN_GATE)
-	    {
-	      item->flags |= DOMAIN_PLAN_ALIAS;
-	      item->slot = arith->domain_plan->slot;
-	    }
-	  if (arith->domain_plan->flags & DOMAIN_PLAN_DERIVED)
-	    {
-	      item->flags |= DOMAIN_PLAN_DERIVED;
-	    }
+	  record->kind = DOMAIN_LOAD_ARITH_REGU;
+	  record->producer = domain_record_of (arith->domain_plan);
 	}
     }
   else
@@ -663,30 +868,25 @@ domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
     }
 }
 
+/* A sort key reads column pos_no of the list it sorts: the producer's item is the key's item (X-2). An aggregate's
+ * ORDER BY sorts the aggregate's own list, whose columns are its operands. */
 static void
-domain_walk_sort (DOMAIN_LOAD_CONTEXT * ctx, SORT_LIST * list, OUTPTR_LIST * producer)
+domain_walk_sort (DOMAIN_LOAD_CONTEXT * ctx, SORT_LIST * list, REGU_VARIABLE_LIST columns, XASL_NODE * source = NULL)
 {
   for (; list != NULL && !ctx->failed; list = list->next)
     {
       QFILE_TUPLE_VALUE_POSITION *pos = &list->pos_descr;
-      REGU_VARIABLE_LIST col = producer == NULL ? NULL : producer->valptrp;
-      for (int i = 0; col != NULL && i < pos->pos_no; i++)
+      /* a block without an output list (a set operation) sorts its own list file: the key reads that list's column */
+      DOMAIN_PLAN_ITEM *column = columns != NULL ? domain_column_item (ctx, columns, pos->pos_no, false)
+	: domain_list_column (ctx, source, pos->pos_no);
+      if (column != NULL)
 	{
-	  col = col->next;
-	}
-      if (col != NULL)
-	{
-	  domain_walk_regu (ctx, &col->value, DOMAIN_CTX_LIST_COLUMN);
-	  domain_bind_item (ctx, &pos->domain_plan, col->value.domain_plan);
+	  domain_bind_item (ctx, &pos->domain_plan, column);
 	}
       else
 	{
-	  DOMAIN_PLAN_ITEM *item =
-	    domain_add_item (ctx, &pos->domain_plan, pos->dom, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0, "position");
-	  if (item != NULL)
-	    {
-	      item->flags |= DOMAIN_PLAN_DERIVED;
-	    }
+	  (void) domain_add_item (ctx, &pos->domain_plan, pos->dom, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0,
+				  "position");
 	}
     }
 }
@@ -711,24 +911,45 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 						DOMAIN_CTX_AGG, agg->function, "aggregate");
       if (item != NULL)
 	{
-	  ctx->tail->output[0] = agg->accumulator.value;
-	}
-      if (has_operand && agg->operands != NULL && item != NULL)
-	{
-	  domain_fixed_operand (item, 0, agg->operands->value.domain, agg->operands->value.domain, DOMAIN_CTX_FUNC_ARG);
-	  if (agg->operands->value.domain_plan != NULL && agg->operands->value.domain_plan->slot >= 0
-	      && (agg->operands->value.domain_plan->flags & DOMAIN_PLAN_GATE))
+	  DOMAIN_LOAD_RECORD *record = domain_record_of (item);
+	  record->output[0] = agg->accumulator.value;
+	  if (has_operand && agg->operands != NULL)
 	    {
-	      /* the gate decides the argument, so it decides the function and accumulator domains (F7) */
 	      REGU_VARIABLE *operand = &agg->operands->value;
-	      domain_mark_gate_node (ctx, item, &operand, 1, agg->domain);
+	      domain_fixed_operand (item, 0, operand->domain, operand->domain, DOMAIN_CTX_FUNC_ARG);
+	      /* the function, accumulator and list domains follow the argument (F7, L-43): the gate decides them when
+	       * it decides the argument or the compiler left the function open; a compiled one gets its accumulator
+	       * derived once (resolution pass) */
+	      record->kind = DOMAIN_LOAD_FIXED_AGG;
+	      domain_set_links (record, &operand, 1, agg->domain);
+	      record->argument = agg->opr_dbtype != DB_TYPE_VARIABLE && domain_type_is_fixed (operand->domain)
+		? operand->domain : NULL;
+	      if (operand->domain_plan == NULL)
+		{
+		  record->n_link = -1;
+		}
 	    }
 	}
-      if (item != NULL && !(item->flags & DOMAIN_PLAN_GATE) && !domain_type_is_fixed (item->fixed.domain))
+      if (QPROC_IS_INTERPOLATION_FUNC (agg) && agg->domain_plan != NULL)
 	{
-	  item->flags |= DOMAIN_PLAN_DERIVED;
+	  /* MEDIAN / PERCENTILE sort values cast to the function's domain
+	   * (qdata_update_agg_interpolation_func_value_and_domain sets the key to it): the key reads the aggregate */
+	  for (SORT_LIST * key = agg->sort_list; key != NULL && !ctx->failed; key = key->next)
+	    {
+	      domain_bind_item (ctx, &key->pos_descr.domain_plan, agg->domain_plan);
+	    }
 	}
-      domain_walk_sort (ctx, agg->sort_list, NULL);
+      else
+	{
+	  /* CUME_DIST / PERCENT_RANK wrap their ORDER BY values in one TYPE_REGU_VAR_LIST operand (X-1): those values
+	   * are the columns of the list the key sorts */
+	  REGU_VARIABLE_LIST columns = agg->operands;
+	  if (columns != NULL && columns->value.type == TYPE_REGU_VAR_LIST)
+	    {
+	      columns = columns->value.value.regu_var_list;
+	    }
+	  domain_walk_sort (ctx, agg->sort_list, columns);
+	}
     }
 }
 
@@ -748,22 +969,23 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 						    DOMAIN_CTX_ANALYTIC, analytic->function, "analytic");
 	  if (item != NULL)
 	    {
-	      ctx->tail->output[0] = analytic->value;
-	      ctx->tail->output[1] = analytic->out_value;
-	    }
-	  domain_fixed_operand (item, 0, analytic->operand.domain, analytic->operand.domain, DOMAIN_CTX_FUNC_ARG);
-	  if (item != NULL && analytic->operand.domain_plan != NULL && analytic->operand.domain_plan->slot >= 0
-	      && (analytic->operand.domain_plan->flags & DOMAIN_PLAN_GATE))
-	    {
+	      DOMAIN_LOAD_RECORD *record = domain_record_of (item);
 	      REGU_VARIABLE *operand = &analytic->operand;
-	      domain_mark_gate_node (ctx, item, &operand, 1, analytic->domain);
-	    }
-	  if (item != NULL && !(item->flags & DOMAIN_PLAN_GATE) && !domain_type_is_fixed (item->fixed.domain))
-	    {
-	      item->flags |= DOMAIN_PLAN_DERIVED;
+	      record->output[0] = analytic->value;
+	      record->output[1] = analytic->out_value;
+	      domain_fixed_operand (item, 0, operand->domain, operand->domain, DOMAIN_CTX_FUNC_ARG);
+	      /* as an aggregate's: the operand is a value pointer into a_val_list, so its producer decides (#337) */
+	      record->kind = DOMAIN_LOAD_FIXED_AGG;
+	      domain_set_links (record, &operand, 1, analytic->domain);
+	      record->argument = analytic->opr_dbtype != DB_TYPE_VARIABLE && domain_type_is_fixed (operand->domain)
+		? operand->domain : NULL;
+	      if (operand->domain_plan == NULL)
+		{
+		  record->n_link = -1;
+		}
 	    }
 	}
-      domain_walk_sort (ctx, eval->sort_list, output);
+      domain_walk_sort (ctx, eval->sort_list, output == NULL ? NULL : output->valptrp);
     }
 }
 
@@ -799,11 +1021,15 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 	  domain_walk_out (ctx, spec->s.cls_node.cls_output_val_list);
 	  break;
 	case TARGET_LIST:
-	  domain_walk_xasl (ctx, spec->s.list_node.xasl_node);
-	  domain_walk_list (ctx, spec->s.list_node.list_regu_list_pred);
-	  domain_walk_list (ctx, spec->s.list_node.list_regu_list_rest);
-	  domain_walk_list (ctx, spec->s.list_node.list_regu_list_build);
-	  domain_walk_list (ctx, spec->s.list_node.list_regu_list_probe);
+	  {
+	    /* the list regus read the list file of the spec's XASL: its columns are their producers */
+	    XASL_NODE *source = spec->s.list_node.xasl_node;
+	    domain_walk_xasl (ctx, source);
+	    domain_walk_position_list (ctx, spec->s.list_node.list_regu_list_pred, source, NULL);
+	    domain_walk_position_list (ctx, spec->s.list_node.list_regu_list_rest, source, NULL);
+	    domain_walk_position_list (ctx, spec->s.list_node.list_regu_list_build, source, NULL);
+	    domain_walk_position_list (ctx, spec->s.list_node.list_regu_list_probe, source, NULL);
+	  }
 	  break;
 	case TARGET_JSON_TABLE:
 	  domain_walk_regu (ctx, spec->s.json_table_node.m_json_reguvar);
@@ -877,8 +1103,8 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     case HASHJOIN_PROC:
       domain_walk_xasl (ctx, xasl->proc.hashjoin.outer.xasl);
       domain_walk_xasl (ctx, xasl->proc.hashjoin.inner.xasl);
-      domain_walk_list (ctx, xasl->proc.hashjoin.outer.regu_list_pred);
-      domain_walk_list (ctx, xasl->proc.hashjoin.inner.regu_list_pred);
+      domain_walk_position_list (ctx, xasl->proc.hashjoin.outer.regu_list_pred, xasl->proc.hashjoin.outer.xasl, NULL);
+      domain_walk_position_list (ctx, xasl->proc.hashjoin.inner.regu_list_pred, xasl->proc.hashjoin.inner.xasl, NULL);
       break;
     case CTE_PROC:
       domain_walk_xasl (ctx, xasl->proc.cte.non_recursive_part);
@@ -916,19 +1142,23 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     case BUILDLIST_PROC:
       {
 	BUILDLIST_PROC_NODE *b = &xasl->proc.buildlist;
-	domain_walk_list (ctx, b->g_regu_list);
+	/* the scan output (the intermediate list the GROUP BY and analytic passes read) first: producers before
+	 * their readers */
+	domain_walk_out (ctx, xasl->outptr_list);
+	REGU_VARIABLE_LIST scan_columns = xasl->outptr_list == NULL ? NULL : xasl->outptr_list->valptrp;
+	domain_walk_list (ctx, b->g_scan_regu_list);
+	domain_walk_position_list (ctx, b->g_regu_list, NULL, scan_columns);
 	domain_walk_agg (ctx, b->g_agg_list);
 	domain_walk_out (ctx, b->g_outptr_list);
-	domain_walk_list (ctx, b->g_hk_sort_regu_list);
+	domain_walk_position_list (ctx, b->g_hk_sort_regu_list, NULL, scan_columns);
 	domain_walk_list (ctx, b->g_hk_scan_regu_list);
-	domain_walk_list (ctx, b->g_scan_regu_list);
 	domain_walk_pred (ctx, b->g_having_pred);
 	domain_walk_pred (ctx, b->g_grbynum_pred);
-	domain_walk_sort (ctx, b->groupby_list, xasl->outptr_list);
-	domain_walk_sort (ctx, b->after_groupby_list, b->g_outptr_list);
-	domain_walk_analytic (ctx, b->a_eval_list, b->a_outptr_list);
-	domain_walk_list (ctx, b->a_regu_list);
+	domain_walk_sort (ctx, b->groupby_list, scan_columns);
+	domain_walk_sort (ctx, b->after_groupby_list, b->g_outptr_list == NULL ? NULL : b->g_outptr_list->valptrp);
 	domain_walk_list (ctx, b->a_scan_regu_list);
+	domain_walk_position_list (ctx, b->a_regu_list, NULL, scan_columns);
+	domain_walk_analytic (ctx, b->a_eval_list, b->a_outptr_list_ex);
 	domain_walk_out (ctx, b->a_outptr_list);
 	domain_walk_out (ctx, b->a_outptr_list_ex);
 	domain_walk_out (ctx, b->a_outptr_list_interm);
@@ -979,23 +1209,272 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
       break;
     }
   domain_walk_out (ctx, xasl->outptr_list);
-  domain_walk_sort (ctx, xasl->orderby_list, xasl->outptr_list);
-  domain_walk_sort (ctx, xasl->after_iscan_list, xasl->outptr_list);
+  OUTPTR_LIST *output = domain_block_output (xasl);
+  domain_walk_sort (ctx, xasl->orderby_list, output == NULL ? NULL : output->valptrp, xasl);
+  domain_walk_sort (ctx, xasl->after_iscan_list, xasl->outptr_list == NULL ? NULL : xasl->outptr_list->valptrp);
+  if (xasl->single_tuple != NULL)
+    {
+      /* a single-row subquery copies its result row into single_tuple (qdata_get_single_tuple_from_list_id):
+       * value k there is written by list column k, which a scalar-subquery reader's value pointer then finds */
+      int k = 0;
+      for (QPROC_DB_VALUE_LIST value = xasl->single_tuple->valp; value != NULL && !ctx->failed; value = value->next)
+	{
+	  DOMAIN_LOAD_RECORD *column = domain_record_of (domain_list_column (ctx, xasl, k++));
+	  if (column != NULL && column->output[1] == NULL)
+	    {
+	      column->output[1] = value->val;
+	    }
+	}
+    }
   domain_walk_xasl (ctx, xasl->scan_ptr);
   domain_walk_xasl (ctx, xasl->next);
   ctx->block = previous_block;
 }
 
+/*
+ * Resolution pass (#337): after the walk every derived consumer reads its producer and every node the compiler left
+ * without a type becomes a gate-dependent node when all its operands are known. It recurses producer first, so the
+ * gate nodes come out in an order the gate can decide them in, whatever order the walk met them.
+ */
+
+static DOMAIN_LOAD_RECORD *
+domain_owner_record (DOMAIN_LOAD_RECORD * record)
+{
+  return record != NULL && record->alias != NULL ? record->alias : record;
+}
+
+static bool
+domain_is_value_pointer (const DOMAIN_LOAD_RECORD * record)
+{
+  return record->regu != NULL && record->regu->type == TYPE_CONSTANT;
+}
+
+static void domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record);
+
+/* The item a node's operand is decided from: through value pointers, list positions and wrappers that share a slot
+ * to the bind or node owning it, so the gate sees a bind's value (value classification, D-328-06). */
+static DOMAIN_PLAN_ITEM *
+domain_link_source (DOMAIN_PLAN_ITEM * item)
+{
+  for (int guard = 0; item != NULL && guard < 256; guard++)
+    {
+      DOMAIN_LOAD_RECORD *record = domain_owner_record (domain_record_of (item));
+      if (!record->follows_producer || record->producer == NULL)
+	{
+	  return &record->item;
+	}
+      item = &record->producer->item;
+    }
+  return item;
+}
+
+/* A derived consumer reads its producer: the producer's slot (ALIAS) or its domain. A value pointer takes the
+ * producer's domain even when it was compiled with another one (the reader's), because the value is the producer's;
+ * a compiled list position or VALUES column keeps its domain, which is what its list holds. */
+static void
+domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
+{
+  DOMAIN_PLAN_ITEM *item = &record->item;
+  const bool value_pointer = domain_is_value_pointer (record);
+  if (!value_pointer && domain_type_is_fixed (item->fixed.domain))
+    {
+      record->known = true;
+      if (record->regu != NULL && record->regu->type == TYPE_POSITION && record->producer != NULL)
+	{
+	  /* the list holds its producer's values: when the producer carries a literal or a bind of the position's
+	   * type, a node over the position classifies that value (D-328-06) as develop's first value does */
+	  domain_resolve_record (ctx, record->producer);
+	  DOMAIN_LOAD_RECORD *producer = domain_owner_record (record->producer);
+	  const DOMAIN_LOAD_RECORD *root = domain_owner_record (domain_record_of (domain_link_source (&producer->item)));
+	  const TP_DOMAIN *carried = root->item.fixed.domain;
+	  if (root->literal_value && carried != NULL
+	      && (TP_DOMAIN_TYPE (carried) == TP_DOMAIN_TYPE (item->fixed.domain)
+		  || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (carried)) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (item->fixed.domain)))))
+	    {
+	      record->producer = producer;
+	      record->follows_producer = true;
+	    }
+	}
+      return;
+    }
+  if (record->producer == NULL)
+    {
+      /* a value pointer no walked node writes (an execution counter such as inst_num): its compiled domain */
+      record->known = domain_type_is_fixed (item->fixed.domain);
+      return;
+    }
+  domain_resolve_record (ctx, record->producer);
+  DOMAIN_LOAD_RECORD *producer = domain_owner_record (record->producer);
+  if (producer->state == 1 && producer->regu == NULL && producer->kind == DOMAIN_LOAD_NODE && producer->n_link > 0)
+    {
+      /* a recursive CTE part reads the column it is producing: its first iteration reads the non-recursive part's
+       * rows (qexec_execute_cte), so that column is its producer; the CTE column itself unifies both parts */
+      DOMAIN_LOAD_RECORD *first = domain_owner_record (domain_record_of (producer->link[0]));
+      domain_resolve_record (ctx, first);
+      producer = first;
+    }
+  if (!producer->known)
+    {
+      record->known = false;
+      return;
+    }
+  if (producer->item.slot >= 0)
+    {
+      item->flags |= DOMAIN_PLAN_ALIAS;
+      item->slot = producer->item.slot;
+    }
+  else
+    {
+      item->fixed.domain = producer->item.fixed.domain;
+    }
+  record->producer = producer;
+  record->follows_producer = true;
+  record->known = true;
+}
+
+/* A node over known operands becomes a gate-dependent node; a compiled aggregate or analytic gets its accumulator
+ * domain derived once from its operand's (L-43). A set-operation column over compiled branches of one type is that
+ * type. */
+static void
+domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
+{
+  DOMAIN_PLAN_ITEM *item = &record->item;
+  const bool compiled = domain_type_is_fixed (item->fixed.domain);
+  if (record->n_link <= 0)
+    {
+      record->known = record->kind == DOMAIN_LOAD_FIXED_AGG && compiled;
+      return;
+    }
+  bool known = true, any_slot = false;
+  for (int i = 0; i < record->n_link; i++)
+    {
+      record->link[i] = domain_link_source (record->link[i]);
+      DOMAIN_LOAD_RECORD *operand = domain_owner_record (domain_record_of (record->link[i]));
+      domain_resolve_record (ctx, operand);
+      /* the link may have moved through a chain: re-read the source after the operand is resolved */
+      record->link[i] = domain_link_source (&operand->item);
+      operand = domain_owner_record (domain_record_of (record->link[i]));
+      known = known && operand->known;
+      any_slot = any_slot || operand->item.slot >= 0;
+      if (operand->regu != NULL && operand->regu->type == TYPE_DBVAL)
+	{
+	  record->literal[i] = &operand->regu->value.dbval;
+	}
+    }
+  if (record->kind == DOMAIN_LOAD_FIXED_AGG
+      && (record->cold.opcode == PT_MEDIAN || record->cold.opcode == PT_PERCENTILE_CONT
+	  || record->cold.opcode == PT_PERCENTILE_DISC))
+    {
+      /* D-335-10 at execution: a value argument is classified, a value-less string is DOUBLE. The argument of a
+       * function over a list (GROUP BY, analytic) is a value pointer; its source tells which. */
+      const DOMAIN_LOAD_RECORD *argument = domain_owner_record (domain_record_of (record->link[0]));
+      if (argument->literal_value
+	  || (argument->regu == NULL && argument->kind == DOMAIN_LOAD_NODE && argument->cold.opcode == T_EVALUATE_VARIABLE))
+	{
+	  item->flags |= DOMAIN_PLAN_VALUE_ARGUMENT;
+	}
+    }
+  if (!known)
+    {
+      record->known = compiled && record->kind == DOMAIN_LOAD_FIXED_AGG;
+      return;
+    }
+  if (record->kind == DOMAIN_LOAD_FIXED_AGG && compiled && !any_slot)
+    {
+      const DOMAIN_PLAN_ITEM *argument = record->link[0];
+      DOMAIN_OPERAND operand = { argument->fixed.domain, TP_DOMAIN_TYPE (argument->fixed.domain), -1, -1, false };
+      RESOLVED_DOMAIN resolved;
+      bool needs_gate = false;
+      if (domain_type_is_fixed (argument->fixed.domain)
+	  && domain_resolve ((DOMAIN_CTX) record->cold.ctx, record->cold.opcode, &operand, 1, item->fixed.domain,
+			     &resolved, &needs_gate) == NO_ERROR && !needs_gate && resolved.domain != NULL)
+	{
+	  /* the function domain stays the compiled one; the accumulator is the operand's rule */
+	  item->fixed.operand_domain[0] = resolved.operand_domain[0];
+	  item->fixed.conv[0] = resolved.conv[0];
+	  item->flags |= DOMAIN_PLAN_ACCUMULATOR;
+	}
+      record->known = true;
+      return;
+    }
+  if (record->regu == NULL && record->kind == DOMAIN_LOAD_NODE && record->cold.ctx == DOMAIN_CTX_LIST_COLUMN
+      && !any_slot)
+    {
+      /* a set-operation column over compiled branches: one type, or the gate unifies them at execution */
+      const TP_DOMAIN *first = record->link[0]->fixed.domain;
+      bool same = true;
+      for (int i = 1; i < record->n_link; i++)
+	{
+	  same = same && TP_DOMAIN_TYPE (record->link[i]->fixed.domain) == TP_DOMAIN_TYPE (first);
+	}
+      if (same)
+	{
+	  item->fixed.domain = first;
+	  record->known = true;
+	  return;
+	}
+    }
+  domain_mark_gate_node (ctx, record);
+  if (record->kind == DOMAIN_LOAD_NODE && record->cold.ctx != DOMAIN_CTX_LIST_COLUMN)
+    {
+      record->cold.ctx = domain_gate_context ((OPERATOR_TYPE) record->cold.opcode);
+    }
+  record->known = !ctx->failed;
+}
+
+static void
+domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
+{
+  record = domain_owner_record (record);
+  if (record == NULL || record->state != 0 || ctx->failed)
+    {
+      /* done, or in progress: a recursive CTE part reads the column it produces; the reader stays open */
+      return;
+    }
+  record->state = 1;
+  DOMAIN_PLAN_ITEM *item = &record->item;
+  switch (record->kind)
+    {
+    case DOMAIN_LOAD_CONSUMER:
+      domain_link_producer (ctx, record);
+      break;
+    case DOMAIN_LOAD_ARITH_REGU:
+      {
+	domain_resolve_record (ctx, record->producer);
+	DOMAIN_LOAD_RECORD *node = domain_owner_record (record->producer);
+	item->fixed = node->item.fixed;
+	if (node->item.flags & DOMAIN_PLAN_GATE)
+	  {
+	    item->flags |= DOMAIN_PLAN_ALIAS;
+	    item->slot = node->item.slot;
+	  }
+	record->producer = node;
+	record->follows_producer = true;
+	record->known = node->known;
+      }
+      break;
+    case DOMAIN_LOAD_NODE:
+    case DOMAIN_LOAD_FIXED_AGG:
+      domain_resolve_node (ctx, record);
+      break;
+    default:
+      record->known = item->slot >= 0 || record->literal_value || domain_type_is_fixed (item->fixed.domain);
+      break;
+    }
+  record->state = 2;
+}
+
 /* Boundary (a): the type axis is strict, the collation axis records what the gate decides for slots and leaves the
- * rest to #338 (X-11). A derived-consumer item (X-8..X-10) passes until dpin-11 types it. */
+ * rest to #338 (X-11). */
 bool
 domain_plan_validate (const DOMAIN_PLAN * plan)
 {
   for (int i = 0; i < plan->n_items; i++)
     {
       const DOMAIN_PLAN_ITEM *item = &plan->items[i];
-      if (item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_ALIAS | DOMAIN_PLAN_DERIVED))
+      if ((item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_ALIAS)) || plan->items_cold[i].name == domain_list_column_name)
 	{
+	  /* a synthetic list column no reader could use leaves its readers open, and they answer for it */
 	  continue;
 	}
       if (!domain_type_is_fixed (item->fixed.domain))
@@ -1053,7 +1532,10 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   memset (plan, 0, sizeof (*plan));
   plan->dbval_cnt = root->dbval_cnt;
   plan->n_refs = root->dbval_cnt;
-  DOMAIN_LOAD_CONTEXT ctx = { thread_p, plan, NULL, NULL, NULL, false, NULL };
+  DOMAIN_LOAD_CONTEXT ctx;
+  memset (&ctx, 0, sizeof (ctx));
+  ctx.thread_p = thread_p;
+  ctx.plan = plan;
   domain_walk_xasl (&ctx, root);
   /* Output/list readers borrow their producer's answer. Match the restored
    * value identity, not a column ordinal from a different XASL block. Keep an
@@ -1079,6 +1561,38 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	      break;
 	    }
 	}
+    }
+  /* A value pointer's producer is the node writing the value it points at (#337, F-335-07): a fetch into a value
+   * list, an arithmetic result, an accumulator, an analytic result, a single-row subquery's column. */
+  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL && !ctx.failed; r = r->next)
+    {
+      if (r->alias != NULL || r->regu == NULL || r->regu->type != TYPE_CONSTANT || r->regu->value.dbvalptr == NULL)
+	{
+	  continue;
+	}
+      /* a writer that is itself a value pointer counts too: a scalar subquery's BUILDVALUE column points at its
+       * accumulator and is copied into single_tuple */
+      for (DOMAIN_LOAD_RECORD * p = ctx.head; p != NULL; p = p->next)
+	{
+	  if (p != r && (p->output[0] == r->regu->value.dbvalptr || p->output[1] == r->regu->value.dbvalptr))
+	    {
+	      r->producer = p;
+	      break;
+	    }
+	}
+    }
+  /* CTE columns first: a recursive part then meets its own column in progress and reads the non-recursive column in
+   * its place, whichever record the walk met first */
+  for (DOMAIN_LOAD_LIST_COLUMN * c = ctx.list_columns; c != NULL && !ctx.failed; c = c->next)
+    {
+      if (c->xasl->type == CTE_PROC)
+	{
+	  domain_resolve_record (&ctx, domain_record_of (c->item));
+	}
+    }
+  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL && !ctx.failed; r = r->next)
+    {
+      domain_resolve_record (&ctx, r);
     }
   plan->n_items = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
@@ -1143,11 +1657,9 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	{
 	  plan->n_volatile++;
 	}
-      if ((r->item.flags & DOMAIN_PLAN_GATE) && !(r->cold.val_pos >= 0))
-	{
-	  plan->n_gate_nodes++;
-	}
     }
+  /* gate-dependent nodes in resolution order: producers first (#337) */
+  plan->n_gate_nodes = ctx.n_gate_order;
   plan->items = (DOMAIN_PLAN_ITEM *) domain_plan_alloc (thread_p, plan->n_items, sizeof (*plan->items));
   plan->items_cold = (DOMAIN_PLAN_ITEM_COLD *) domain_plan_alloc (thread_p, plan->n_items, sizeof (*plan->items_cold));
   plan->gate_nodes = (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_gate_nodes, sizeof (*plan->gate_nodes));
@@ -1155,10 +1667,13 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   plan->const_refs = (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_const_refs, sizeof (*plan->const_refs));
   plan->volatile_refs =
     (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_volatile, sizeof (*plan->volatile_refs));
+  plan->slot_gate_node = (int *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_gate_node));
+  plan->slot_flags = (unsigned char *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_flags));
   ctx.failed = ctx.failed || (plan->n_items && (!plan->items || !plan->items_cold))
     || (plan->n_gate_nodes && (!plan->gate_nodes || !plan->gate_links))
-    || (plan->n_const_refs && !plan->const_refs) || (plan->n_volatile && !plan->volatile_refs);
-  int gate = 0, constant = 0, vol = 0;
+    || (plan->n_const_refs && !plan->const_refs) || (plan->n_volatile && !plan->volatile_refs)
+    || (plan->n_slots && (!plan->slot_gate_node || !plan->slot_flags));
+  int constant = 0, vol = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
     {
       if (!ctx.failed)
@@ -1169,20 +1684,6 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	    {
 	      *item = r->item;
 	      plan->items_cold[r->index] = r->cold;
-	      if ((item->flags & DOMAIN_PLAN_GATE) && !(r->cold.val_pos >= 0))
-		{
-		  /* producer order: every operand record came earlier, so its owner already holds its published item */
-		  DOMAIN_GATE_LINK *link = &plan->gate_links[gate];
-		  memset (link, 0, sizeof (*link));
-		  link->n_operands = r->n_link;
-		  link->consumer = r->consumer;
-		  for (int i = 0; i < r->n_link; i++)
-		    {
-		      link->operands[i] = r->link[i]->domain_plan;
-		      link->literal[i] = r->link[i]->type == TYPE_DBVAL ? &r->link[i]->value.dbval : NULL;
-		    }
-		  plan->gate_nodes[gate++] = item;
-		}
 	      if (item->operand_class == OPERAND_CONST)
 		{
 		  plan->const_refs[constant++] = item;
@@ -1204,6 +1705,63 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	{
 	  *r->owner = NULL;
 	}
+    }
+  if (!ctx.failed)
+    {
+      for (int i = 0; i < plan->n_slots; i++)
+	{
+	  plan->slot_gate_node[i] = -1;
+	  plan->slot_flags[i] = 0;
+	}
+      for (int g = 0; g < ctx.n_gate_order; g++)
+	{
+	  /* every operand is a record's item; its published copy sits at that record's index */
+	  DOMAIN_LOAD_RECORD *r = ctx.gate_order[g];
+	  DOMAIN_GATE_LINK *link = &plan->gate_links[g];
+	  memset (link, 0, sizeof (*link));
+	  link->n_operands = r->n_link;
+	  link->consumer = r->consumer;
+	  link->argument = r->argument;
+	  /* a node's decision inherits its sources' limits (producers come first, so theirs are set) */
+	  unsigned char flags = 0;
+	  const int ctx_of_node = r->cold.ctx;
+	  if (ctx_of_node == DOMAIN_CTX_ARITH || ctx_of_node == DOMAIN_CTX_COMMON_VALUE
+	      || ctx_of_node == DOMAIN_CTX_FUNC_ARG)
+	    {
+	      flags |= DOMAIN_SLOT_TEXT_INEXACT | DOMAIN_SLOT_EXPRESSION;
+	      if (r->cold.opcode == T_CAST || r->cold.opcode == T_CAST_WRAP || r->cold.opcode == T_CAST_NOFAIL)
+		{
+		  flags |= DOMAIN_SLOT_CAST;
+		}
+	    }
+	  if (r->item.operand_class == OPERAND_VOLATILE)
+	    {
+	      flags |= DOMAIN_SLOT_VOLATILE;
+	    }
+	  for (int i = 0; i < r->n_link; i++)
+	    {
+	      const DOMAIN_LOAD_RECORD *source = domain_owner_record (domain_record_of (r->link[i]));
+	      link->operands[i] = &plan->items[source->index];
+	      link->literal[i] = r->literal[i];
+	      if (source->item.slot >= 0)
+		{
+		  flags |= plan->slot_flags[source->item.slot];
+		}
+	    }
+	  plan->gate_nodes[g] = &plan->items[r->index];
+	  plan->slot_gate_node[r->item.slot] = g;
+	  plan->slot_flags[r->item.slot] = flags;
+	}
+    }
+  if (ctx.gate_order != NULL)
+    {
+      db_private_free (thread_p, ctx.gate_order);
+    }
+  while (ctx.list_columns != NULL)
+    {
+      DOMAIN_LOAD_LIST_COLUMN *c = ctx.list_columns;
+      ctx.list_columns = c->next;
+      db_private_free (thread_p, c);
     }
   while (ctx.bindings != NULL)
     {

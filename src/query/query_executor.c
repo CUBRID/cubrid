@@ -675,11 +675,20 @@ static DB_VALUE_COMPARE_RESULT bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOM
 						  int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 						 int *start_colp, int collation);
-static void qexec_resolve_domains_on_sort_list (SORT_LIST * order_list, REGU_VARIABLE_LIST reference_regu_list);
-static void qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST * reference_out_list);
+static void qexec_resolve_domains_on_sort_list (const VAL_DESCR * vd, SORT_LIST * order_list,
+						REGU_VARIABLE_LIST reference_regu_list);
+static void qexec_resolve_domains_for_group_by (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist,
+						OUTPTR_LIST * reference_out_list);
+static bool qexec_apply_group_by_gate_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist);
+static void qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist);
 static int qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_p,
 						  VAL_DESCR * vd, QFILE_TUPLE_RECORD * tplrec,
 						  REGU_VARIABLE_LIST regu_list, int *resolved);
+static bool qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd);
+static bool qexec_try_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list,
+					       const VAL_DESCR * vd);
+static bool qexec_setup_argument_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p);
+static const TP_DOMAIN *qexec_apply_aggregate_gate_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p);
 static int query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state);
@@ -991,6 +1000,27 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (list_id->is_domain_resolved == false)
     {
+      /* #337: a column the gate decided takes that domain; only the others wait for their values below. A column
+       * holding a NULL bind is NULL-typed rather than left open, so a set operation or a CTE unifies it with the
+       * other branch (qfile_unify_types) the way it does an empty branch (D6). */
+      REGU_VARIABLE_LIST column = outptr_list->valptrp;
+      for (int i = 0; column != NULL && i < list_id->type_list.type_cnt; column = column->next)
+	{
+	  if (REGU_VARIABLE_IS_FLAGED (&column->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	    {
+	      continue;
+	    }
+	  TP_DOMAIN *listed = list_id->type_list.domp[i];
+	  if (TP_DOMAIN_TYPE (listed) == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (listed) != TP_DOMAIN_COLL_NORMAL)
+	    {
+	      const TP_DOMAIN *planned = qexec_plan_domain (vd, column->value.domain_plan, true);
+	      if (planned != NULL)
+		{
+		  list_id->type_list.domp[i] = (TP_DOMAIN *) planned;
+		}
+	    }
+	  i++;
+	}
       /* Resolve DB_TYPE_VARIABLE domains. It will be done when generating the first tuple. */
       if (qfile_update_domains_on_type_list (thread_p, list_id, outptr_list) != NO_ERROR)
 	{
@@ -3842,7 +3872,7 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
 static bool
 qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
 {
-  if (context == DOMAIN_CTX_AGG)
+  if (context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC)
     {
       return arg_index == 0 && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC)
 	&& TP_IS_CHAR_TYPE (type);
@@ -3949,6 +3979,15 @@ qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const 
   for (int i = 0; i < link->n_operands; i++)
     {
       qexec_gate_operand (plan, resolved, link, i, context, cold->opcode, &operands[i]);
+    }
+  if ((context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC) && link->argument != NULL)
+    {
+      /* #337: develop late-binds an aggregate or analytic from its argument only when the argument is open
+       * (opr_dbtype VARIABLE). Over a compiled argument - a value pointer typed by the compiler, whatever its producer
+       * holds - the function keeps its compiled domain and the argument's compiled type keys it; the value's type
+       * still counts where develop reads the value (SUM / AVG accumulator, MEDIAN class). */
+      operands[0].domain = link->argument;
+      operands[0].is_gate_slot = false;
     }
 
   int error = domain_resolve (context, cold->opcode, operands, link->n_operands, link->consumer, entry, &needs_gate);
@@ -4101,6 +4140,78 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
   resolved.volatile_changed = false;
   resolved.sealed = true;
   return NO_ERROR;
+}
+
+/*
+ * qexec_gate_domain () - the gate's domain for a derived consumer of this execution's tree, read in place of a
+ *   value-driven late binding (#337)
+ *   return: the domain, or NULL when execution keeps develop's late binding at this site
+ *   vd(in): the execution's value descriptor
+ *   item(in): the consumer's plan item: a gate slot, a gate-dependent node, or an alias of one
+ *   null_bind(in): also answer the NULL domain of a NULL bind (a list column holding only that NULL)
+ *
+ * The decision is the domain develop's first value gives the consumer, except where the slot flags say otherwise:
+ * a character result whose collation #338 merges, a CAST node, a session variable whose type changed within the
+ * statement, an expression in MySQL compatibility mode. Another load's tree (a PX worker's) has no decision here.
+ */
+const TP_DOMAIN *
+qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind)
+{
+  if (vd == NULL || vd->xasl_state == NULL || item == NULL || item->slot < 0)
+    {
+      return NULL;
+    }
+  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  const DOMAIN_PLAN *plan = resolved.plan;
+  if (!resolved.sealed || plan == NULL || item < plan->items || item >= plan->items + plan->n_items
+      || item->slot >= resolved.n_slots || item->slot >= plan->n_slots)
+    {
+      return NULL;
+    }
+  const TP_DOMAIN *domain = resolved.table[item->slot].domain;
+  if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+    {
+      return NULL;
+    }
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+    {
+      return null_bind && plan->slot_gate_node[item->slot] < 0 ? domain : NULL;
+    }
+  const unsigned char flags = plan->slot_flags[item->slot];
+  if ((flags & DOMAIN_SLOT_CAST) || ((flags & DOMAIN_SLOT_VOLATILE) && resolved.volatile_changed)
+      || ((flags & DOMAIN_SLOT_TEXT_INEXACT) && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+      || ((flags & DOMAIN_SLOT_EXPRESSION) && prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL))
+    {
+      return NULL;
+    }
+  return domain;
+}
+
+/*
+ * qexec_plan_domain () - the domain the plan gives a derived consumer for this execution (#337)
+ *   return: its gate slot's decision (qexec_gate_domain), or the domain the load derived from its producer; NULL when
+ *	     the plan leaves it to the value (a collation flag the gate does not decide yet, #338)
+ *
+ * A value pointer, a list position, a sort key or an aggregate argument reads its producer: a gate slot (ALIAS) or a
+ * compiled producer's domain. This is what develop's late binding would take from the first value.
+ */
+const TP_DOMAIN *
+qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind)
+{
+  if (item == NULL)
+    {
+      return NULL;
+    }
+  if (item->slot >= 0)
+    {
+      return qexec_gate_domain (vd, item, null_bind);
+    }
+  /* a collation flag other than NORMAL (LEAVE, ENFORCE) does not fix the value's type - develop takes the value's
+   * domain there (F-336-01) - and belongs to the collation axis (#338) */
+  const TP_DOMAIN *domain = item->fixed.domain;
+  domain = domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+    && TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL ? domain : NULL;
+  return domain;
 }
 
 /* The connection owns the gate block and all cloned payloads, including
@@ -4586,7 +4697,7 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
   /* late binding : resolve sort list */
   if (outptr_list != NULL)
     {
-      qexec_resolve_domains_on_sort_list (order_list, outptr_list->valptrp);
+      qexec_resolve_domains_on_sort_list (&xasl_state->vd, order_list, outptr_list->valptrp);
     }
 
   if (order_list == NULL && option != Q_DISTINCT)
@@ -5902,10 +6013,14 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       db_make_bigint (buildlist->g_grbynum_val, 0);
     }
 
-  /* late binding : resolve group_by (buildlist) */
+  /* late binding : resolve group_by (buildlist); #337: only what the gate did not decide waits for the values */
   if (xasl->outptr_list != NULL)
     {
-      qexec_resolve_domains_for_group_by (buildlist, xasl->outptr_list);
+      if (qexec_apply_group_by_gate_domains (&xasl_state->vd, buildlist))
+	{
+	  qexec_resolve_domains_for_group_by (&xasl_state->vd, buildlist, xasl->outptr_list);
+	}
+      qexec_finish_group_by_domains (buildlist);
     }
 
   if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list, buildlist->g_having_pred,
@@ -16860,6 +16975,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	   * qexec_end_one_iteration (): the domains were just reset above. */
 	  qexec_mark_aggregate_operand_expressions (xasl);
 
+	  /* #337: when the plan decided every aggregate, no first row resolves them (L-43) */
+	  if (xasl->proc.buildlist.g_agg_list != NULL
+	      && qexec_setup_aggregate_domains (thread_p, xasl->proc.buildlist.g_agg_list, &xasl_state->vd))
+	    {
+	      xasl->proc.buildlist.g_agg_domains_resolved = 1;
+	      qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list);
+	    }
+
 	  if (xasl->proc.buildlist.a_eval_list)
 	    {
 	      if (qdata_setup_analytic_eval_list (thread_p, xasl, xasl_state) != NO_ERROR)
@@ -16888,6 +17011,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	   * Accumulator sharing is deferred until the domains are resolved in
 	   * qexec_end_one_iteration (): the domains were just reset above. */
 	  qexec_mark_aggregate_operand_expressions (xasl);
+
+	  /* #337: when the plan decided every aggregate, no first row resolves them (L-43) */
+	  if (xasl->proc.buildvalue.agg_list != NULL
+	      && qexec_setup_aggregate_domains (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd))
+	    {
+	      xasl->proc.buildvalue.agg_domains_resolved = 1;
+	      qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list);
+	    }
 	}
 
       multi_upddel = QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl);
@@ -21581,7 +21712,8 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
  *			    domains
  */
 static void
-qexec_resolve_domains_on_sort_list (SORT_LIST * order_list, REGU_VARIABLE_LIST reference_regu_list)
+qexec_resolve_domains_on_sort_list (const VAL_DESCR * vd, SORT_LIST * order_list,
+				    REGU_VARIABLE_LIST reference_regu_list)
 {
   int ref_curr_pos = 0;
   SORT_LIST *orderby_ptr = NULL;
@@ -21600,6 +21732,13 @@ qexec_resolve_domains_on_sort_list (SORT_LIST * order_list, REGU_VARIABLE_LIST r
       if (TP_DOMAIN_TYPE (orderby_ptr->pos_descr.dom) == DB_TYPE_VARIABLE
 	  || TP_DOMAIN_COLLATION_FLAG (orderby_ptr->pos_descr.dom) != TP_DOMAIN_COLL_NORMAL)
 	{
+	  /* #337: a sort key's item is its column's; the gate decided that column once for the execution */
+	  const TP_DOMAIN *planned = qexec_plan_domain (vd, orderby_ptr->pos_descr.domain_plan, false);
+	  if (planned != NULL)
+	    {
+	      orderby_ptr->pos_descr.dom = (TP_DOMAIN *) planned;
+	      continue;
+	    }
 	  ref_curr_pos = orderby_ptr->pos_descr.pos_no;
 	  regu_list = reference_regu_list;
 	  while (ref_curr_pos > 0 && regu_list)
@@ -21620,6 +21759,62 @@ qexec_resolve_domains_on_sort_list (SORT_LIST * order_list, REGU_VARIABLE_LIST r
 }
 
 /*
+ * qexec_apply_group_by_gate_domains () - the gate's decisions for the GROUP BY keys, the positions that read the
+ *   sorted list and the output columns that read the accumulators (#337)
+ *   return: true when a key or a position still waits for the scan's values (qexec_resolve_domains_for_group_by,
+ *	     develop's late binding), false when the plan decided them all
+ */
+static bool
+qexec_apply_group_by_gate_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist)
+{
+  bool pending = false;
+  for (SORT_LIST * key = buildlist->groupby_list; key != NULL; key = key->next)
+    {
+      if (TP_DOMAIN_TYPE (key->pos_descr.dom) != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_COLLATION_FLAG (key->pos_descr.dom) == TP_DOMAIN_COLL_NORMAL)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *planned = qexec_plan_domain (vd, key->pos_descr.domain_plan, false);
+      if (planned == NULL)
+	{
+	  pending = true;
+	  continue;
+	}
+      key->pos_descr.dom = (TP_DOMAIN *) planned;
+    }
+  REGU_VARIABLE_LIST lists[] = { buildlist->g_regu_list, buildlist->g_hk_sort_regu_list,
+    buildlist->g_outptr_list != NULL ? buildlist->g_outptr_list->valptrp : NULL
+  };
+  for (int i = 0; i < 3; i++)
+    {
+      for (REGU_VARIABLE_LIST regu = lists[i]; regu != NULL; regu = regu->next)
+	{
+	  if (regu->value.domain == NULL
+	      || (TP_DOMAIN_TYPE (regu->value.domain) != DB_TYPE_VARIABLE
+		  && TP_DOMAIN_COLLATION_FLAG (regu->value.domain) == TP_DOMAIN_COLL_NORMAL))
+	    {
+	      continue;
+	    }
+	  const TP_DOMAIN *planned = qexec_plan_domain (vd, regu->value.domain_plan, false);
+	  if (planned == NULL)
+	    {
+	      /* the late binding resolves the positions of the sorted list; the hash keys and output columns follow
+	       * them, or their values (fetch) */
+	      pending = pending || (i == 0 && regu->value.type == TYPE_POSITION);
+	      continue;
+	    }
+	  regu->value.domain = (TP_DOMAIN *) planned;
+	  if (regu->value.type == TYPE_POSITION)
+	    {
+	      regu->value.value.pos_descr.dom = (TP_DOMAIN *) planned;
+	    }
+	}
+    }
+  return pending;
+}
+
+/*
  * qexec_resolve_domains_for_group_by () - checks if the domains in the
  *	various lists of 'buildlist' node are all solved, and if any is still
  *	unresolved (VARIABLE), it will be replaced with the domain of
@@ -21632,12 +21827,12 @@ qexec_resolve_domains_on_sort_list (SORT_LIST * order_list, REGU_VARIABLE_LIST r
  *  Note : this function is used for statements with GROUP BY clause
  */
 static void
-qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST * reference_out_list)
+qexec_resolve_domains_for_group_by (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist,
+				    OUTPTR_LIST * reference_out_list)
 {
   int ref_index = 0;
   REGU_VARIABLE_LIST group_regu = NULL;
   REGU_VARIABLE_LIST reference_regu_list = reference_out_list->valptrp;
-  AGGREGATE_TYPE *agg_p;
 
   if (perfmon_is_perf_tracking ())
     {
@@ -21647,7 +21842,7 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
   assert (buildlist != NULL && reference_regu_list != NULL);
 
   /* domains in GROUP BY list (this is a SORT_LIST) */
-  qexec_resolve_domains_on_sort_list (buildlist->groupby_list, reference_regu_list);
+  qexec_resolve_domains_on_sort_list (vd, buildlist->groupby_list, reference_regu_list);
 
   /* following code aims to resolve VARIABLE domains in GROUP BY lists: g_regu_list, g_agg_list, g_outprr_list,
    * g_hk_regu_list; pointer values are used to match the REGU VARIABLES */
@@ -21828,6 +22023,18 @@ qexec_resolve_domains_for_group_by (BUILDLIST_PROC_NODE * buildlist, OUTPTR_LIST
 	    }
 	}
     }
+}
+
+/*
+ * qexec_finish_group_by_domains () - the accumulator domains of aggregates that saw only NULL values and the domains
+ *   of the hash aggregation lists, once the GROUP BY domains are known (the tail of what
+ *   qexec_resolve_domains_for_group_by did before #337; it runs whether or not that late binding had work)
+ */
+static void
+qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist)
+{
+  REGU_VARIABLE_LIST group_regu = NULL;
+  AGGREGATE_TYPE *agg_p;
 
   /* treat case with only NULL values */
   for (agg_p = buildlist->g_agg_list; agg_p; agg_p = agg_p->next)
@@ -21907,6 +22114,239 @@ qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (TH
 }
 
 /*
+ * qexec_apply_aggregate_gate_domain () - the gate's decision for an aggregate the gate decides, applied as develop's
+ *   late binding applies the first value's domain (qexec_resolve_domains_for_aggregation) (#337)
+ *   return: the accumulator domain the resolver derived, or NULL when the gate has no usable decision
+ *
+ * The function domain is the gate's decision: the compiled domain where develop keeps it (a compiled argument), the
+ * first value's where develop late-binds (qexec_resolve_gate_node). opr_dbtype changes where develop changes it (an
+ * operand compiled VARIABLE or a function domain that leaves collation): to the decision's type, except for
+ * MEDIAN / PERCENTILE, whose first stage keeps the value's own type there (the class comes later,
+ * qdata_update_agg_interpolation_func_value_and_domain).
+ */
+static const TP_DOMAIN *
+qexec_apply_aggregate_gate_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
+{
+  const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, agg_p->domain_plan);
+  const TP_DOMAIN *planned = qexec_gate_domain (vd, agg_p->domain_plan, false);
+  if (gate_node == NULL || planned == NULL)
+    {
+      return NULL;
+    }
+  if (agg_p->opr_dbtype == DB_TYPE_VARIABLE || agg_p->domain == NULL
+      || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
+	{
+	  const TP_DOMAIN *argument = qexec_plan_domain (vd, agg_p->operands->value.domain_plan, false);
+	  if (argument == NULL)
+	    {
+	      return NULL;
+	    }
+	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (argument);
+	}
+      else
+	{
+	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (planned);
+	}
+    }
+  agg_p->domain = (TP_DOMAIN *) planned;
+  return gate_node->operand_domain[0] != NULL ? gate_node->operand_domain[0] : planned;
+}
+
+/*
+ * qexec_setup_aggregate_domains () - the function, accumulator and list domains of aggregates the plan decided, set
+ *   before the first row (#337, L-43)
+ *   return: true when every aggregate is set, so qexec_resolve_domains_for_aggregation need not run on the first
+ *	     rows; false leaves them to it (a function only a value decides, or one whose first value it must cast)
+ *   agg_list(in/out): the block's aggregates, their accumulator domains just reset
+ *   vd(in): the execution's value descriptor
+ *
+ * The domains are the ones the first non-NULL value gives in qexec_resolve_domains_for_aggregation: the gate's
+ * decision for a function the gate decides (its accumulator is the resolver's), the compiled function and the
+ * accumulator the load derived from the argument for a compiled one.
+ */
+static bool
+qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd)
+{
+  if (qexec_try_setup_aggregate_domains (thread_p, agg_list, vd))
+    {
+      return true;
+    }
+  /* all or nothing: the first rows resolve every function, as if no setup had run (a set accumulator domain would
+   * make qexec_resolve_domains_for_aggregation skip that function's accumulator and list setup) */
+  for (AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
+    {
+      agg_p->accumulator_domain.value_dom = NULL;
+      agg_p->accumulator_domain.value2_dom = NULL;
+    }
+  return false;
+}
+
+/*
+ * qexec_setup_argument_domain () - the domain a distinct / sort list file of an aggregate opens with, set before the
+ *   first row (#337)
+ *   return: false when only a value decides it
+ *
+ * The list opens with the argument regu's domain (qdata_process_distinct_or_sort), after this setup, and GROUP BY
+ * opens one per group. An open argument takes that domain on its first fetch in develop (the fetch late binding the
+ * first rows' qexec_resolve_domains_for_aggregation makes); here it takes the decision that fetch would read.
+ */
+static bool
+qexec_setup_argument_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
+{
+  REGU_VARIABLE *argument = &agg_p->operands->value;
+  if (argument->domain != NULL && TP_DOMAIN_TYPE (argument->domain) != DB_TYPE_VARIABLE
+      && TP_DOMAIN_COLLATION_FLAG (argument->domain) == TP_DOMAIN_COLL_NORMAL)
+    {
+      return true;
+    }
+  const TP_DOMAIN *decided = qexec_plan_domain (vd, argument->domain_plan, false);
+  if (decided == NULL)
+    {
+      return false;
+    }
+  argument->domain = (TP_DOMAIN *) decided;
+  return true;
+}
+
+static bool
+qexec_try_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd)
+{
+  for (AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
+    {
+      if (agg_p->function == PT_CUME_DIST || agg_p->function == PT_PERCENT_RANK)
+	{
+	  continue;
+	}
+      if (agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR)
+	{
+	  if (agg_p->option == Q_DISTINCT && !qexec_setup_argument_domain (vd, agg_p))
+	    {
+	      return false;
+	    }
+	  agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  continue;
+	}
+      if (agg_p->function == PT_JSON_ARRAYAGG || agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  agg_p->accumulator_domain.value_dom = &tp_Json_domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  continue;
+	}
+
+      /* the function domain and the accumulator */
+      const TP_DOMAIN *accumulator = NULL;
+      if (RESOLVED_GATE_NODE (vd, agg_p->domain_plan) != NULL)
+	{
+	  accumulator = qexec_apply_aggregate_gate_domain (vd, agg_p);
+	  if (accumulator == NULL)
+	    {
+	      return false;
+	    }
+	}
+      else if (agg_p->opr_dbtype != DB_TYPE_VARIABLE && agg_p->domain != NULL
+	       && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE
+	       && TP_DOMAIN_COLLATION_FLAG (agg_p->domain) == TP_DOMAIN_COLL_NORMAL && agg_p->domain_plan != NULL
+	       && (agg_p->domain_plan->flags & DOMAIN_PLAN_ACCUMULATOR))
+	{
+	  accumulator = agg_p->domain_plan->fixed.operand_domain[0];
+	}
+      else
+	{
+	  return false;
+	}
+
+      switch (agg_p->function)
+	{
+	case PT_AGG_BIT_AND:
+	case PT_AGG_BIT_OR:
+	case PT_AGG_BIT_XOR:
+	case PT_MIN:
+	case PT_MAX:
+	case PT_GROUP_CONCAT:
+	  agg_p->accumulator_domain.value_dom = agg_p->domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  break;
+
+	case PT_AVG:
+	case PT_SUM:
+	  if (accumulator == NULL || TP_DOMAIN_TYPE (accumulator) == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_TYPE (accumulator) == DB_TYPE_NULL)
+	    {
+	      return false;
+	    }
+	  agg_p->accumulator_domain.value_dom = (TP_DOMAIN *) accumulator;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  break;
+
+	case PT_STDDEV:
+	case PT_STDDEV_POP:
+	case PT_STDDEV_SAMP:
+	case PT_VARIANCE:
+	case PT_VAR_POP:
+	case PT_VAR_SAMP:
+	  agg_p->accumulator_domain.value_dom = &tp_Double_domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Double_domain;
+	  break;
+
+	case PT_GROUPBY_NUM:
+	  agg_p->accumulator_domain.value_dom = &tp_Null_domain;
+	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  break;
+
+	case PT_MEDIAN:
+	case PT_PERCENTILE_CONT:
+	case PT_PERCENTILE_DISC:
+	  /* a number or date argument leaves the accumulators unset, as the first value does (F-333-06). A string value
+	   * the gate classified takes that class, as the first value's cast gives it. A string column or expression
+	   * keeps the first value's cast to DOUBLE, which reports develop's error for a value that is not a number: that
+	   * cascade is #340's to replace. */
+	  if (!TP_IS_NUMERIC_TYPE (agg_p->opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (agg_p->opr_dbtype))
+	    {
+	      if (RESOLVED_GATE_NODE (vd, agg_p->domain_plan) == NULL
+		  || !(agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT))
+		{
+		  return false;
+		}
+	      agg_p->accumulator_domain.value_dom = agg_p->domain;
+	      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	    }
+	  break;
+
+	default:
+	  break;
+	}
+
+      /* the distinct / sort list file: MEDIAN / PERCENTILE retype theirs to the function's domain before the first
+       * value is written (qdata_update_agg_interpolation_func_value_and_domain) */
+      if ((agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL) && !QPROC_IS_INTERPOLATION_FUNC (agg_p)
+	  && !qexec_setup_argument_domain (vd, agg_p))
+	{
+	  return false;
+	}
+
+      /* initialize accumulators */
+      if (agg_p->accumulator.value != NULL && agg_p->accumulator_domain.value_dom != NULL
+	  && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL
+	  && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom),
+				   DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+	{
+	  return false;
+	}
+      if (agg_p->accumulator.value2 != NULL && agg_p->accumulator_domain.value2_dom != NULL
+	  && DB_VALUE_TYPE (agg_p->accumulator.value2) == DB_TYPE_NULL
+	  && db_value_domain_init (agg_p->accumulator.value2, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value2_dom),
+				   DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
  * qexec_resolve_domains_for_aggregation () - update domains of aggregate
  *                                            functions and accumulators
  *   returns: error code or NO_ERROR
@@ -21974,7 +22414,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	      else if (agg_p->list_id != NULL && agg_p->list_id->type_list.type_cnt > 0
 		       && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
 		{
-		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
+		  /* #337: the argument's decided domain, else the first value's */
+		  const TP_DOMAIN *planned = qexec_plan_domain (vd, agg_p->operands->value.domain_plan, false);
+		  agg_p->list_id->type_list.domp[0] = planned != NULL ? (TP_DOMAIN *) planned
+		    : tp_domain_resolve_value (dbval, NULL);
 		}
 	    }
 
@@ -21987,6 +22430,16 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	  agg_p->accumulator_domain.value_dom = &tp_Json_domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 	  continue;
+	}
+
+      /* #337: a function the gate decided takes that domain before any value, a NULL one included (D2: a
+       * GROUP_CONCAT of NULL binds kept the compiled LEAVE collation into the output); its accumulator is the
+       * gate's, and a compiled function's is the one the load derived from its argument */
+      const TP_DOMAIN *planned_accumulator = qexec_apply_aggregate_gate_domain (vd, agg_p);
+      if (planned_accumulator == NULL && agg_p->domain_plan != NULL
+	  && (agg_p->domain_plan->flags & DOMAIN_PLAN_ACCUMULATOR) && agg_p->opr_dbtype != DB_TYPE_VARIABLE)
+	{
+	  planned_accumulator = agg_p->domain_plan->fixed.operand_domain[0];
 	}
 
       DB_VALUE benchmark_dummy_dbval;
@@ -22067,7 +22520,17 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 
 	    case PT_AVG:
 	    case PT_SUM:
-	      if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
+	      if (planned_accumulator != NULL && TP_DOMAIN_TYPE (planned_accumulator) != DB_TYPE_VARIABLE
+		  && TP_DOMAIN_TYPE (planned_accumulator) != DB_TYPE_NULL)
+		{
+		  /* #337: the accumulator the gate or the load derived from the argument's domain */
+		  assert (!TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval))
+			  || TP_DOMAIN_TYPE (planned_accumulator) == DB_TYPE_NUMERIC
+			  || TP_DOMAIN_TYPE (planned_accumulator) == DB_TYPE_DOUBLE
+			  || TP_DOMAIN_TYPE (planned_accumulator) == DB_VALUE_TYPE (dbval));
+		  agg_p->accumulator_domain.value_dom = (TP_DOMAIN *) planned_accumulator;
+		}
+	      else if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
 		{
 		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC || DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
 		    {
@@ -22145,8 +22608,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		     * answer for a gate-dependent string (median(? || 'x')) - and a value (a literal, a bind, a session
 		     * variable read) is classified as today: DOUBLE, then DATETIME, then TIME. */
 		    const REGU_VARIABLE *operand = &agg_p->operands->value;
+		    /* #337: an argument read through a value pointer (GROUP BY) carries its source's value */
 		    const bool value_operand = operand->type == TYPE_DBVAL || operand->type == TYPE_POS_VALUE
-		      || (operand->type == TYPE_INARITH && operand->value.arithptr->opcode == T_EVALUATE_VARIABLE);
+		      || (operand->type == TYPE_INARITH && operand->value.arithptr->opcode == T_EVALUATE_VARIABLE)
+		      || (agg_p->domain_plan != NULL && (agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT));
 		    const bool gate_node = agg_p->domain_plan != NULL
 		      && (agg_p->domain_plan->flags & DOMAIN_PLAN_GATE) != 0;
 		    /* the compiled function domain is the plan's: agg_p->domain may already hold the first value's
@@ -22249,8 +22714,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    }
 
 #if !defined (NDEBUG)
+	  if (!QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	  {
-	    /* dpin-07 shadow check: domain_resolve (DOMAIN_CTX_AGG) answers the domains just set up */
+	    /* dpin-07 shadow check: domain_resolve (DOMAIN_CTX_AGG) answers the domains just set up; an interpolation
+	     * function's answer is the class its first value gives it (qa:3345, #337), not this step's */
 	    DOMAIN_OPERAND operand = { shadow_value_domain, shadow_value_type, -1, -1, shadow_late_bound };
 	    RESOLVED_DOMAIN resolved;
 	    bool needs_gate;
@@ -22263,7 +22730,8 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		    TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom));
 	    /* #335: the gate decided the same function domain before execution */
 	    const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, agg_p->domain_plan);
-	    assert (gate_node == NULL || TP_DOMAIN_TYPE (gate_node->domain) == TP_DOMAIN_TYPE (agg_p->domain));
+	    assert (gate_node == NULL || gate_node->domain == NULL
+		    || TP_DOMAIN_TYPE (gate_node->domain) == TP_DOMAIN_TYPE (agg_p->domain));
 	  }
 #endif
 
@@ -22280,7 +22748,10 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 		}
 	      else
 		{
-		  agg_p->list_id->type_list.domp[0] = tp_domain_resolve_value (dbval, NULL);
+		  /* #337: the argument's decided domain, else the first value's */
+		  const TP_DOMAIN *planned = qexec_plan_domain (vd, agg_p->operands->value.domain_plan, false);
+		  agg_p->list_id->type_list.domp[0] = planned != NULL ? (TP_DOMAIN *) planned
+		    : tp_domain_resolve_value (dbval, NULL);
 		}
 	    }
 
@@ -22956,7 +23427,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   a_outptr_list = (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
 
   /* resolve late bindings in analytic sort list */
-  qexec_resolve_domains_on_sort_list (analytic_eval->sort_list, buildlist->a_outptr_list_ex->valptrp);
+  qexec_resolve_domains_on_sort_list (&xasl_state->vd, analytic_eval->sort_list,
+				      buildlist->a_outptr_list_ex->valptrp);
 
   /* initialized analytic functions state structure */
   if (qexec_initialize_analytic_state (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list,
@@ -23644,8 +24116,15 @@ resolve_domain:
 	  && (TP_DOMAIN_TYPE (regu_list->value.value.pos_descr.dom) == DB_TYPE_VARIABLE
 	      || TP_DOMAIN_COLLATION_FLAG (regu_list->value.value.pos_descr.dom) != TP_DOMAIN_COLL_NORMAL))
 	{
+	  /* #337: the gate decided the column this position reads */
+	  const TP_DOMAIN *planned = qexec_plan_domain (&xasl_state->vd, regu_list->value.domain_plan, false);
 	  int pos = regu_list->value.value.pos_descr.pos_no;
-	  if (pos <= type_list->type_cnt)
+	  if (planned != NULL)
+	    {
+	      regu_list->value.value.pos_descr.dom = (TP_DOMAIN *) planned;
+	      regu_list->value.domain = (TP_DOMAIN *) planned;
+	    }
+	  else if (pos <= type_list->type_cnt)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
 	      regu_list->value.value.pos_descr.dom = type_list->domp[pos];

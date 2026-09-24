@@ -641,6 +641,36 @@ domain_is_interpolation_type (DB_TYPE type)
   return TP_IS_NUMERIC_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type);
 }
 
+/*
+ * domain_interpolation_final () - the domain MEDIAN / PERCENTILE_CONT / PERCENTILE_DISC takes from its first value
+ *   (qdata_update_agg_interpolation_func_value_and_domain, qa:3329; the analytic first-execution block, qn:715)
+ *   return: the final domain, or NULL when only a value could tell (a string nobody classified)
+ *   domain(in): the domain the function holds before that value (never VARIABLE here)
+ *   class_type(in): the class the gate gave a string value (DOUBLE, DATETIME or TIME), DB_TYPE_NULL otherwise
+ *
+ * A date or time stays; a DOUBLE (MEDIAN, PERCENTILE_CONT) or any number (PERCENTILE_DISC) stays; any other number
+ * becomes DOUBLE, and a string becomes the first of DOUBLE, DATETIME, TIME it casts to (#337).
+ */
+static const TP_DOMAIN *
+domain_interpolation_final (int function, const TP_DOMAIN * domain, DB_TYPE class_type)
+{
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  if (TP_IS_DATE_OR_TIME_TYPE (type)
+      || (function == PT_PERCENTILE_DISC ? TP_IS_NUMERIC_TYPE (type) : type == DB_TYPE_DOUBLE))
+    {
+      return domain;
+    }
+  if (TP_IS_NUMERIC_TYPE (type))
+    {
+      return tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    }
+  if (class_type == DB_TYPE_DOUBLE || class_type == DB_TYPE_DATETIME || class_type == DB_TYPE_TIME)
+    {
+      return tp_domain_resolve_default (class_type);
+    }
+  return NULL;
+}
+
 /* Whether the late-binding update of qexec_resolve_domains_for_aggregation / the analytic late binding applies: the
  * operand was VARIABLE when compiled (opr_dbtype, not the function's domain) or the function domain leaves collation. */
 static bool
@@ -739,6 +769,13 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
     case PT_PERCENTILE_DISC:
       /* keyed on the operand type (opr_dbtype), as today; a number or date operand leaves value_dom unset today
        * (F-333-06), so the accumulator here is the function domain */
+      if (operand->val_type == DB_TYPE_NULL && operand->domain != NULL
+	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operand->domain)))
+	{
+	  /* #337: a string value none of DOUBLE, DATETIME, TIME takes (the gate's classification failed): no domain;
+	   * the first value raises the error (qexec_resolve_domains_for_aggregation) */
+	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	}
       if (!domain_is_interpolation_type (operand_type))
 	{
 	  if (domain_is_interpolation_type (val_type))
@@ -756,6 +793,20 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
 	}
+      else if (function_domain == NULL || TP_DOMAIN_TYPE (function_domain) == DB_TYPE_VARIABLE)
+	{
+	  /* #337: the compiler leaves the function open for a number or date argument (func_type.cpp) and the first
+	   * value opens it with the default domain of its type (qa:3345) */
+	  function_domain = tp_domain_resolve_default (operand_type);
+	}
+      /* #337: then the value takes the function's final class (qa:3355): the gate records that domain */
+      {
+	const TP_DOMAIN *final_domain = domain_interpolation_final (function, function_domain, val_type);
+	if (final_domain != NULL)
+	  {
+	    function_domain = final_domain;
+	  }
+      }
       accumulator = function_domain;
       break;
 
@@ -825,6 +876,25 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 	default:
 	  argument = domain_operand_domain (operand);
 	  break;
+	}
+    }
+  if (function == PT_MEDIAN || function == PT_PERCENTILE_CONT || function == PT_PERCENTILE_DISC)
+    {
+      /* #337: the first execution types an interpolation function (qn:715): a function the compiler left open takes
+       * its operand's domain, then a number becomes DOUBLE (PERCENTILE_DISC keeps it) and a string the class the
+       * gate gave its value, or DOUBLE when it has no value (D-335-10) */
+      const TP_DOMAIN *open = argument == NULL || TP_DOMAIN_TYPE (argument) == DB_TYPE_VARIABLE
+	? domain_operand_domain (operand) : argument;
+      if (open != NULL && TP_DOMAIN_TYPE (open) != DB_TYPE_VARIABLE)
+	{
+	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (open)) && operand->val_type == DB_TYPE_NULL)
+	    {
+	      /* a string value none of DOUBLE, DATETIME, TIME takes: the first execution raises the error */
+	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	    }
+	  const TP_DOMAIN *final_domain = domain_interpolation_final (function, open, val_type);
+	  argument = final_domain != NULL ? final_domain
+	    : TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (open)) ? tp_domain_resolve_default (DB_TYPE_DOUBLE) : open;
 	}
     }
   if (argument == NULL)
@@ -1047,6 +1117,43 @@ copy_operands:
   return NO_ERROR;
 }
 
+/*
+ * domain_resolve_list_column - a list column: its producer's domain (#323 ALIAS); a set-operation or CTE column
+ *   unifies its branches as qfile_unify_types does (#337)
+ *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES when the branches differ
+ *
+ * A branch without a value (a NULL bind) takes the other's domain; one domain, or one variable string type, keeps
+ * the first branch's. Two different domains have no answer before execution: qfile_unify_types raises the error when
+ * both branch lists hold rows and takes the other branch's domain when one is empty, so the gate records no value
+ * and execution unifies the lists as develop does.
+ */
+static int
+domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
+{
+  const TP_DOMAIN *domain = NULL;
+  for (int i = 0; i < n_operands; i++)
+    {
+      const TP_DOMAIN *branch = domain_operand_domain (&operands[i]);
+      if (branch == NULL || TP_DOMAIN_TYPE (branch) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (domain == NULL)
+	{
+	  domain = branch;
+	}
+      else if (branch != domain
+	       && !(TP_DOMAIN_TYPE (branch) == TP_DOMAIN_TYPE (domain)
+		    && ((pr_is_string_type (TP_DOMAIN_TYPE (domain)) && pr_is_variable_type (TP_DOMAIN_TYPE (domain)))
+			|| TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON)))
+	{
+	  return ER_QPROC_INCOMPATIBLE_TYPES;
+	}
+    }
+  result->domain = result->operand_domain[0] = domain != NULL ? domain : &tp_Null_domain;
+  return NO_ERROR;
+}
+
 int
 domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 		const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_gate)
@@ -1098,9 +1205,7 @@ domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands,
       return NO_ERROR;
 
     case DOMAIN_CTX_LIST_COLUMN:
-      /* the producer's domain (#323 ALIAS) */
-      result->domain = result->operand_domain[0] = domain_operand_domain (&operands[0]);
-      return NO_ERROR;
+      return domain_resolve_list_column (operands, n_operands, result);
     }
 
   assert (false);
@@ -1239,9 +1344,10 @@ domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_V
 {
   assert (value != NULL && !DB_IS_NULL (value));
 
-  if (context == DOMAIN_CTX_AGG && arg_index == 0
+  if ((context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC) && arg_index == 0
       && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC))
     {
+      /* an analytic interpolation function classifies its first value as the aggregate does (qn:807, #337) */
       return domain_classify_interpolation (value);
     }
   if (context == DOMAIN_CTX_FUNC_ARG && opcode == T_ADDTIME && arg_index == 0)

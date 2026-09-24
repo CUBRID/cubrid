@@ -205,6 +205,7 @@ static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static bool scan_apply_list_scan_gate_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp);
 static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
 static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
 					    QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list);
@@ -7164,7 +7165,10 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
 
-  resolve_domains_on_list_scan (llsidp, scan_id->val_list);
+  if (scan_apply_list_scan_gate_domains (scan_id->vd, llsidp))
+    {
+      resolve_domains_on_list_scan (llsidp, scan_id->val_list);
+    }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
     {
@@ -8207,6 +8211,64 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
 }
 
 /*
+ * scan_apply_list_scan_gate_domains () - the gate's decisions for the positions and predicate operands of a list scan
+ *   (#337)
+ *   return: true when one of them still waits for the list's values (resolve_domains_on_list_scan, develop's late
+ *	     binding), false when the plan decided them all
+ *
+ * A list position reads its list's column and a value pointer its producer: the gate decided both once for the
+ * execution, so the per-row late binding below has nothing left to resolve.
+ */
+static bool
+scan_apply_list_scan_gate_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
+{
+  bool pending = false;
+  regu_variable_list_node *lists[] = { llsidp->scan_pred.regu_list, llsidp->rest_regu_list };
+  for (regu_variable_list_node * list:lists)
+    {
+      for (regu_variable_list_node * scan_regu = list; scan_regu != NULL; scan_regu = scan_regu->next)
+	{
+	  if (scan_regu->value.type != TYPE_POSITION
+	      || (TP_DOMAIN_TYPE (scan_regu->value.domain) != DB_TYPE_VARIABLE
+		  && TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain) == TP_DOMAIN_COLL_NORMAL))
+	    {
+	      continue;
+	    }
+	  const TP_DOMAIN *planned = qexec_plan_domain (vd, scan_regu->value.domain_plan, false);
+	  if (planned == NULL)
+	    {
+	      pending = true;
+	      continue;
+	    }
+	  scan_regu->value.value.pos_descr.dom = (TP_DOMAIN *) planned;
+	  scan_regu->value.domain = (TP_DOMAIN *) planned;
+	}
+    }
+  if (llsidp->scan_pred.pred_expr != NULL && llsidp->scan_pred.pred_expr->type == T_EVAL_TERM
+      && llsidp->scan_pred.pred_expr->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+    {
+      COMP_EVAL_TERM *comp = &llsidp->scan_pred.pred_expr->pe.m_eval_term.et.et_comp;
+      REGU_VARIABLE *operands[] = { comp->lhs, comp->rhs };
+      for (REGU_VARIABLE * operand:operands)
+	{
+	  if (operand == NULL || (TP_DOMAIN_TYPE (operand->domain) != DB_TYPE_VARIABLE
+				  && TP_DOMAIN_COLLATION_FLAG (operand->domain) == TP_DOMAIN_COLL_NORMAL))
+	    {
+	      continue;
+	    }
+	  const TP_DOMAIN *planned = qexec_plan_domain (vd, operand->domain_plan, false);
+	  if (planned == NULL)
+	    {
+	      pending = true;
+	      continue;
+	    }
+	  operand->domain = (TP_DOMAIN *) planned;
+	}
+    }
+  return pending;
+}
+
+/*
  * resolve_domains_on_list_scan () - scans the structures in a list scan id
  *   and resolves the domains in sub-components like regu variables from scan
  *   predicates;
@@ -8801,7 +8863,10 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
 
-  resolve_domains_on_list_scan (llsidp, scan_id->val_list);
+  if (scan_apply_list_scan_gate_domains (scan_id->vd, llsidp))
+    {
+      resolve_domains_on_list_scan (llsidp, scan_id->val_list);
+    }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
     {

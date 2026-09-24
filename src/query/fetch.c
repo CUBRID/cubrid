@@ -5343,8 +5343,19 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE
 	  || TP_DOMAIN_COLLATION_FLAG (regu_var->domain) != TP_DOMAIN_COLL_NORMAL)
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
-	  regu_var->domain = tp_domain_resolve_value (*peek_dbval, NULL);
+	  /* #337: a value pointer or a list position reads its producer's decision (a derived consumer); a slot's
+	   * value still decides here until dpin-14 */
+	  const TP_DOMAIN *planned = regu_var->type == TYPE_CONSTANT || regu_var->type == TYPE_POSITION
+	    ? qexec_plan_domain (vd, regu_var->domain_plan, false) : NULL;
+	  if (planned != NULL)
+	    {
+	      regu_var->domain = (TP_DOMAIN *) planned;
+	    }
+	  else
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
+	      regu_var->domain = tp_domain_resolve_value (*peek_dbval, NULL);
+	    }
 	}
 
       /* for REGUVAL_LIST compare type with the corresponding column of first row if not compatible, raise an error

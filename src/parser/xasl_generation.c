@@ -555,6 +555,7 @@ static ACCESS_SPEC_TYPE *pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METH
 						   REGU_VARIABLE_LIST attr_list_rest,
 						   REGU_VARIABLE_LIST attr_list_build,
 						   REGU_VARIABLE_LIST attr_list_probe);
+static void pt_set_hq_probe_numeric_domain (ACCESS_SPEC_TYPE * spec);
 
 static ACCESS_SPEC_TYPE *pt_make_showstmt_access_spec (PRED_EXPR * where_pred, SHOWSTMT_TYPE show_type,
 						       REGU_VARIABLE_LIST arg_list);
@@ -940,6 +941,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	{
 	  xasl->spec_list->s.list_node.hash_list_scan_yn = 0;
 	}
+      pt_set_hq_probe_numeric_domain (xasl->spec_list);
     }
 
   /* sepparate after CONNECT BY predicate regu list */
@@ -5436,6 +5438,42 @@ pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METHOD access, INDX_INFO * in
     }
 
   return spec;
+}
+
+/*
+ * pt_set_hq_probe_numeric_domain () - give the hash probe key of a hierarchical join the precision and scale of the
+ *                                     first fixed NUMERIC list column (S-21, #337)
+ *   spec(in/out): the CONNECT BY list scan spec
+ *
+ * The key is typed float NUMERIC when a join or an expression widened it. Its values are cast to the key domain
+ * before hashing, so a float NUMERIC key would hash integer values unscaled, unlike the fixed NUMERIC build column.
+ * qexec_execute_connect_by copies the list column's precision and scale into a float NUMERIC key domain at every
+ * execution; the compiled key domain carries them instead, so that condition no longer holds.
+ */
+static void
+pt_set_hq_probe_numeric_domain (ACCESS_SPEC_TYPE * spec)
+{
+  REGU_VARIABLE *probe = spec->s.list_node.list_regu_list_probe == NULL ? NULL
+    : &spec->s.list_node.list_regu_list_probe->value;
+  if (probe == NULL || probe->domain == NULL || TP_DOMAIN_TYPE (probe->domain) != DB_TYPE_NUMERIC
+      || probe->domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      return;
+    }
+  for (REGU_VARIABLE_LIST rest = spec->s.list_node.list_regu_list_rest; rest != NULL; rest = rest->next)
+    {
+      const TP_DOMAIN *column = rest->value.domain;
+      if (column != NULL && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
+	  && column->precision != DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  TP_DOMAIN *domain = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, column->precision, column->scale, NULL, 0);
+	  if (domain != NULL)
+	    {
+	      probe->domain = domain;
+	    }
+	  return;
+	}
+    }
 }
 
 /*
