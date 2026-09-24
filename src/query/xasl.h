@@ -1060,6 +1060,10 @@ struct func_stat
 struct topn_tuples
 {
   SORT_LIST *sort_items;	/* sort items position in tuple and sort order */
+  const TP_DOMAIN **sort_domains;	/* per sort item: the domain its values compare in - the plan's for an open one -
+					 * or NULL where the values' types decide (S-11, #340) */
+  bool *sort_volatile;		/* per sort item: its column holds a session variable read, whose type may change within
+				 * the statement (D-336-E) */
   struct binary_heap *heap;	/* heap used to hold top-n tuples */
   TOPN_TUPLE *tuples;		/* actual tuples stored in memory */
   int values_count;		/* number of values in a tuple */

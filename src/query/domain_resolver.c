@@ -1111,8 +1111,11 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
     case T_CAST:
     case T_CAST_NOFAIL:
     case T_CAST_WRAP:
-      /* a cast the compiler left without a target (a gate node is VARIABLE) keeps the argument's value and type */
-      result->domain = domain_operand_domain (&operands[0]);
+      /* the value is cast into the compiled target (fetch_peek_arith, tp_value_cast_internal): a target the compiler
+       * left VARIABLE (the set operation's CAST(x AS uncertain) wrapper, L-18) casts no value - a NULL stays NULL and
+       * any other argument fails as develop's does (-181) - so the node holds no value (#340) */
+      result->domain = consumer_domain != NULL && TP_DOMAIN_TYPE (consumer_domain) != DB_TYPE_VARIABLE
+	? consumer_domain : &tp_Null_domain;
       goto copy_operands;
 
     default:
@@ -1612,6 +1615,20 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	{
 	  domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, compiled->collation_id);
 	}
+    }
+  else if (compiled != NULL && opcode == PT_GROUP_CONCAT)
+    {
+      /* a reader of a GROUP_CONCAT accumulator (#340): qdata_group_concat_first_value makes the accumulator in its
+       * compiled string type under the function domain's codeset and collation, of its own length; a function the
+       * gate saw no value for gives no value */
+      const TP_DOMAIN *function = n_operands > 0 ? domain_operand_domain (&operands[0]) : NULL;
+      if (function == NULL || !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (function)))
+	{
+	  result->domain = &tp_Null_domain;
+	  return NO_ERROR;
+	}
+      domain = tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL,
+				  function->collation_id);
     }
   else
     {

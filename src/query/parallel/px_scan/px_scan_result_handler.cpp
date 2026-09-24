@@ -314,6 +314,13 @@ namespace parallel_scan
 	tl.g_agg_domains_resolved = TRUE;
 	if (m_.g_hash_eligible)
 	  {
+	    /* #340: the worker aggregates into its own clone, whose accumulator domains are the last execution's; empty
+	     * them as the leader does before its scan (see the BUILDVALUE write_initialize) */
+	    for (AGGREGATE_TYPE *agg_p = curr_xasl->proc.buildlist.g_agg_list; agg_p != NULL; agg_p = agg_p->next)
+	      {
+		agg_p->accumulator_domain.value_dom = NULL;
+		agg_p->accumulator_domain.value2_dom = NULL;
+	      }
 	    if (qexec_alloc_agg_hash_context_buildlist_xasl (thread_p, curr_xasl, vd->xasl_state, true) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
@@ -1586,6 +1593,11 @@ namespace parallel_scan
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
 	bool ok;
+	/* #340: a worker's clone comes from the pool the leaders use and keeps the accumulator domains of the execution
+	 * that used it last (CBRD-27484), and the first row sets them up only when they are empty. Empty them as the
+	 * leader does before its scan, so this execution's binds and gate decisions set them. */
+	agg_node->accumulator_domain.value_dom = NULL;
+	agg_node->accumulator_domain.value2_dom = NULL;
 	switch (agg_node->function)
 	  {
 	  case PT_COUNT_STAR:

@@ -49,10 +49,6 @@ enum DOMAIN_PLAN_FLAGS
  * decision from these sources is not always the domain develop's first value would give. */
 enum DOMAIN_SLOT_FLAGS
 {
-  DOMAIN_SLOT_VALUE_TYPED = 0x01,	/* ADDTIME over a string the gate has no value for: D-335-10 types it VARCHAR,
-					 * the value may type it otherwise (#338) */
-  DOMAIN_SLOT_EXPRESSION = 0x02,	/* an expression result: MySQL compatibility mode types it with its own helpers */
-  DOMAIN_SLOT_CAST = 0x04,	/* a CAST node: its compiled target stays (the union wrapper, F-336-03) */
   DOMAIN_SLOT_VOLATILE = 0x08	/* a session variable read: its type may change within the statement (D-336-E) */
 };
 
@@ -107,6 +103,8 @@ struct domain_plan
   DOMAIN_GATE_LINK *gate_links;	/* parallel to gate_nodes */
   int *slot_gate_node;		/* [n_slots] the gate_nodes index deciding the slot; -1 for a bind slot (#337) */
   unsigned char *slot_flags;	/* [n_slots] DOMAIN_SLOT_FLAGS of the decision's sources (#337) */
+  unsigned long long *slot_volatile_reads;	/* [n_slots] the session variable reads a decision depends on: bit i is the
+						 * i-th read, the last bit every read past it (#340) */
   int n_const_refs;
   DOMAIN_PLAN_ITEM **const_refs;
   int n_volatile;
@@ -124,8 +122,10 @@ struct RESOLVED_DOMAIN_TABLE
   THREAD_ENTRY *owner;
   const DOMAIN_PLAN *plan;
   bool sealed;
-  bool volatile_changed;	/* a session variable changed its type within the execution (D-336-E): volatile nodes
-				 * read develop's per-row late binding instead of the gate's decision from then on */
+  bool inherited;		/* a PX worker's copy (qexec_deep_copy_xasl_state): the worker's own load of the same stream
+				 * numbers its items and slots as the plan does (D-318-06, #340) */
+  unsigned long long changed_reads;	/* the session variable reads whose value left the gate's decision within the
+					 * execution (D-336-E): a decision that depends on one is not taken (#340) */
 };
 
 int stx_build_domain_plan (THREAD_ENTRY *thread_p, xasl_node *root, xasl_unpack_info *unpack_info,

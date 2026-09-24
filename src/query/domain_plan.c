@@ -960,6 +960,11 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	{
 	  domain_walk_list (ctx, agg->operands, DOMAIN_CTX_AGG);
 	}
+      if (agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
+	{
+	  /* the fraction is fetched with the execution's value descriptor (qdata_evaluate_aggregate_list) (#340) */
+	  domain_walk_regu (ctx, agg->info.percentile.percentile_reguvar);
+	}
       DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &agg->domain_plan, agg->domain, OPERAND_ROW,
 						DOMAIN_CTX_AGG, agg->function, "aggregate");
       if (item != NULL)
@@ -1279,6 +1284,10 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 	    }
 	}
     }
+  /* an uncorrelated scalar subquery runs once before the scan that reads it (qexec_execute_mainblock_internal), fetched
+   * through the regu that owns it: a predicate operand, or a regu no predicate holds (an index key range reads a copy)
+   * (#340) */
+  domain_walk_regu (ctx, xasl->precomp_owner_regu, DOMAIN_CTX_COMPARE);
   domain_walk_xasl (ctx, xasl->scan_ptr);
   domain_walk_xasl (ctx, xasl->next);
   ctx->block = previous_block;
@@ -1300,6 +1309,17 @@ static bool
 domain_is_value_pointer (const DOMAIN_LOAD_RECORD * record)
 {
   return record->regu != NULL && record->regu->type == TYPE_CONSTANT;
+}
+
+/* GROUP_CONCAT accumulates in its compiled string type under the function's collation (qdata_group_concat_first_value):
+ * the function domain the gate decides follows the argument (a CHAR bind makes it CHAR), the accumulator does not. An
+ * output column reading it is retyped with the function domain before its first fetch (qexec_end_one_iteration, the
+ * GROUP BY setup), so the list carries that domain; any other reader sees the accumulator's own value. */
+static bool
+domain_reads_group_concat_value (const DOMAIN_LOAD_RECORD * reader, const DOMAIN_LOAD_RECORD * producer)
+{
+  return producer->kind == DOMAIN_LOAD_FIXED_AGG && producer->cold.ctx == DOMAIN_CTX_AGG
+    && producer->cold.opcode == PT_GROUP_CONCAT && reader->cold.ctx != DOMAIN_CTX_LIST_COLUMN;
 }
 
 static void domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record);
@@ -1370,6 +1390,22 @@ domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
   if (!producer->known)
     {
       record->known = false;
+      return;
+    }
+  if (value_pointer && domain_reads_group_concat_value (record, producer) && producer->item.slot >= 0
+      && domain_character_open (item->fixed.domain))
+    {
+      /* a reader of the accumulator of a GROUP_CONCAT the gate decides takes the accumulator's string under the decided
+       * collation, a gate-dependent node on the collation axis (#340): the resolver's GROUP_CONCAT rule */
+      record->kind = DOMAIN_LOAD_NODE;
+      record->cold.opcode = PT_GROUP_CONCAT;
+      record->link[0] = &producer->item;
+      record->literal[0] = NULL;
+      record->n_link = 1;
+      record->consumer = item->fixed.domain;
+      item->flags |= DOMAIN_PLAN_COLLATION_GATE;
+      domain_mark_gate_node (ctx, record);
+      record->known = !ctx->failed;
       return;
     }
   if (producer->item.slot >= 0)
@@ -1608,7 +1644,8 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  if ((p->output[0] == r->regu->value.dbvalptr || p->output[1] == r->regu->value.dbvalptr)
 	      && p->item.fixed.domain == r->item.fixed.domain
 	      && p->item.operand_class == r->item.operand_class
-	      && p->item.flags == r->item.flags && p->item.fail[0] == r->item.fail[0])
+	      && p->item.flags == r->item.flags && p->item.fail[0] == r->item.fail[0]
+	      && !domain_reads_group_concat_value (r, p))
 	    {
 	      r->alias = p;
 	      break;
@@ -1722,10 +1759,12 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_volatile, sizeof (*plan->volatile_refs));
   plan->slot_gate_node = (int *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_gate_node));
   plan->slot_flags = (unsigned char *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_flags));
+  plan->slot_volatile_reads =
+    (unsigned long long *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_volatile_reads));
   ctx.failed = ctx.failed || (plan->n_items && (!plan->items || !plan->items_cold))
     || (plan->n_gate_nodes && (!plan->gate_nodes || !plan->gate_links))
     || (plan->n_const_refs && !plan->const_refs) || (plan->n_volatile && !plan->volatile_refs)
-    || (plan->n_slots && (!plan->slot_gate_node || !plan->slot_flags));
+    || (plan->n_slots && (!plan->slot_gate_node || !plan->slot_flags || !plan->slot_volatile_reads));
   int constant = 0, vol = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
     {
@@ -1765,7 +1804,9 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	{
 	  plan->slot_gate_node[i] = -1;
 	  plan->slot_flags[i] = 0;
+	  plan->slot_volatile_reads[i] = 0;
 	}
+      int n_reads = 0;
       for (int g = 0; g < ctx.n_gate_order; g++)
 	{
 	  /* every operand is a record's item; its published copy sits at that record's index */
@@ -1777,36 +1818,17 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  link->argument = r->argument;
 	  /* a node's decision inherits its sources' limits (producers come first, so theirs are set) */
 	  unsigned char flags = 0;
-	  const int ctx_of_node = r->cold.ctx;
-	  if (r->item.flags & DOMAIN_PLAN_COLLATION_GATE)
-	    {
-	      /* a node on the collation axis keeps its compiled type: no MySQL helper types, no CAST target (#338) */
-	    }
-	  else if (ctx_of_node == DOMAIN_CTX_ARITH || ctx_of_node == DOMAIN_CTX_COMMON_VALUE
-		   || ctx_of_node == DOMAIN_CTX_FUNC_ARG)
-	    {
-	      flags |= DOMAIN_SLOT_EXPRESSION;
-	      if (r->cold.opcode == T_CAST || r->cold.opcode == T_CAST_WRAP || r->cold.opcode == T_CAST_NOFAIL)
-		{
-		  flags |= DOMAIN_SLOT_CAST;
-		}
-	      if (r->cold.opcode == T_ADDTIME && r->n_link > 0 && r->literal[0] == NULL)
-		{
-		  const DOMAIN_LOAD_RECORD *left = domain_owner_record (domain_record_of (r->link[0]));
-		  const TP_DOMAIN *left_domain = left->item.fixed.domain;
-		  const bool string_left = left_domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (left_domain));
-		  if (left->cold.val_pos < 0 && (left->item.slot >= 0 || string_left))
-		    {
-		      /* D-335-10 types ADDTIME over a string the gate has no value for as VARCHAR, where the value may
-		       * hold a date and time with a zone: execution keeps the type develop takes from the value
-		       * (#338) */
-		      flags |= DOMAIN_SLOT_VALUE_TYPED;
-		    }
-		}
-	    }
+	  unsigned long long reads = 0;
 	  if (r->item.operand_class == OPERAND_VOLATILE)
 	    {
 	      flags |= DOMAIN_SLOT_VOLATILE;
+	    }
+	  if (r->cold.opcode == T_EVALUATE_VARIABLE)
+	    {
+	      /* a session variable read is its own source: a decision above it holds while no read it depends on has
+	       * left the gate's decision (D-336-E, #340) */
+	      reads = n_reads < 63 ? 1ULL << n_reads : 1ULL << 63;
+	      n_reads++;
 	    }
 	  for (int i = 0; i < r->n_link; i++)
 	    {
@@ -1816,11 +1838,13 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	      if (source->item.slot >= 0)
 		{
 		  flags |= plan->slot_flags[source->item.slot];
+		  reads |= plan->slot_volatile_reads[source->item.slot];
 		}
 	    }
 	  plan->gate_nodes[g] = &plan->items[r->index];
 	  plan->slot_gate_node[r->item.slot] = g;
 	  plan->slot_flags[r->item.slot] = flags;
+	  plan->slot_volatile_reads[r->item.slot] = reads;
 	}
     }
   if (ctx.gate_order != NULL)

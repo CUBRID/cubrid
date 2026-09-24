@@ -726,7 +726,10 @@ static int qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_
 						AGGREGATE_TYPE * agg_list, bool * is_scan_needed);
 
 static BH_CMP_RESULT qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg);
-static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec);
+static void qexec_topn_sort_domains (const VAL_DESCR * vd, SORT_LIST * sort_items, const TP_DOMAIN ** domains,
+				     bool * volatile_keys);
+static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec,
+				       const TP_DOMAIN * domain, bool volatile_key);
 static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count);
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p, PRED_EXPR * pred, VAL_DESCR * vd,
 					     DB_VALUE * ubound);
@@ -3835,7 +3838,10 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
   resolved.plan = src.plan;
   resolved.owner = thread_p;
   resolved.sealed = src.sealed;
-  resolved.volatile_changed = src.volatile_changed;
+  /* the worker loads the same stream (xcache clone or stx_map_stream_to_xasl), so its items number the slots as the
+   * plan does: it reads the inherited decisions with its own items (D-M3, #340) */
+  resolved.inherited = true;
+  resolved.changed_reads = src.changed_reads;
 
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
@@ -3889,15 +3895,17 @@ qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE ty
  * entry (resolved first, producer order) and any other producer its compiled domain. An arithmetic operator gives no
  * value for a NULL operand before it looks at the types, so a NULL the gate can see is DB_TYPE_NULL there. A value
  * the resolver classifies (an interpolation argument, the ADDTIME left string, the STR_TO_DATE format) gives its
- * class; a string without a value keeps its string type and the resolver types it statically (D-335-10).
+ * class - a session variable read's value included, which the gate reads as its read node does (D-335-10, #340); a
+ * string without a value keeps its string type and the resolver types it statically (D-335-10).
  */
 static bool
-qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_GATE_LINK * link,
-		    int arg_index, DOMAIN_CTX context, int opcode, DOMAIN_OPERAND * operand)
+qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved,
+		    const DOMAIN_GATE_LINK * link, int arg_index, DOMAIN_CTX context, int opcode, DOMAIN_OPERAND * operand)
 {
   const DOMAIN_PLAN_ITEM *item = link->operands[arg_index];
   const int val_pos = plan->items_cold[item - plan->items].val_pos;
   const DB_VALUE *value = val_pos >= 0 ? &resolved.in[val_pos] : link->literal[arg_index];
+  const DB_VALUE *session_name = NULL;
 
   *operand = DOMAIN_OPERAND
   {
@@ -3917,6 +3925,11 @@ qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & reso
 	{
 	  return false;
 	}
+      const int producer = plan->slot_gate_node[item->slot];
+      if (producer >= 0 && plan->items_cold[plan->gate_nodes[producer] - plan->items].opcode == T_EVALUATE_VARIABLE)
+	{
+	  session_name = plan->gate_links[producer].literal[0];
+	}
     }
   else
     {
@@ -3934,6 +3947,24 @@ qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & reso
 	   && qexec_gate_classifies (context, opcode, arg_index, operand->val_type))
     {
       operand->val_type = domain_classify_value (context, opcode, arg_index, value);
+    }
+  else if (session_name != NULL && qexec_gate_classifies (context, opcode, arg_index, operand->val_type))
+    {
+      /* the value the read node found when the execution began (qexec_resolve_gate_node, S5) */
+      DB_VALUE current;
+      db_make_null (&current);
+      if (session_get_variable (thread_p, session_name, &current) == NO_ERROR)
+	{
+	  if (!DB_IS_NULL (&current))
+	    {
+	      operand->val_type = domain_classify_value (context, opcode, arg_index, &current);
+	    }
+	}
+      else
+	{
+	  er_clear ();
+	}
+      pr_clear_value (&current);
     }
   return true;
 }
@@ -3984,7 +4015,7 @@ qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const 
     }
   for (int i = 0; i < link->n_operands; i++)
     {
-      if (!qexec_gate_operand (plan, resolved, link, i, context, cold->opcode, &operands[i]))
+      if (!qexec_gate_operand (thread_p, plan, resolved, link, i, context, cold->opcode, &operands[i]))
 	{
 	  *entry = RESOLVED_DOMAIN
 	  {
@@ -4181,7 +4212,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     {
       perfmon_add_stat (thread_p, PSTAT_QM_NUM_DOMAIN_GATE_CONVERT, dbval_cnt);
     }
-  resolved.volatile_changed = false;
+  resolved.changed_reads = 0;
   resolved.sealed = true;
   return NO_ERROR;
 }
@@ -4194,10 +4225,11 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
  *   item(in): the consumer's plan item: a gate slot, a gate-dependent node, or an alias of one
  *   null_bind(in): also answer the NULL domain of a NULL bind (a list column holding only that NULL)
  *
- * The decision is the domain develop's first value gives the consumer, except where the slot flags say otherwise:
- * a CAST node, ADDTIME over a string the gate has no value for (D-335-10), a session variable whose type changed
- * within the statement, an expression in MySQL compatibility mode. Another load's tree (a PX worker's) has no
- * decision here, and neither has a node the gate left undecided (its row decides, D-338-02).
+ * The decision is the domain develop's first value gives the consumer, except a decision over a session variable read
+ * whose value left the gate's within the statement (D-336-E). MySQL compatibility mode reads the decisions too: its
+ * date helpers type a result by the result buffer, which holds the decided type from the first row on (#340). A node
+ * without gate state has no decision here, and neither has a node the gate left undecided (its row decides,
+ * D-338-02). A PX worker reads the decisions it inherited with its own load's items (#340).
  */
 const TP_DOMAIN *
 qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind)
@@ -4207,12 +4239,11 @@ qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
       return NULL;
     }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  const DOMAIN_PLAN *plan = resolved.plan;
-  if (!resolved.sealed || plan == NULL || item < plan->items || item >= plan->items + plan->n_items
-      || item->slot >= resolved.n_slots || item->slot >= plan->n_slots)
+  if (!RESOLVED_OWNS_SLOT (resolved, item))
     {
       return NULL;
     }
+  const DOMAIN_PLAN *plan = resolved.plan;
   const TP_DOMAIN *domain = resolved.table[item->slot].domain;
   if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
     {
@@ -4222,10 +4253,7 @@ qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
     {
       return null_bind && plan->slot_gate_node[item->slot] < 0 ? domain : NULL;
     }
-  const unsigned char flags = plan->slot_flags[item->slot];
-  if ((flags & (DOMAIN_SLOT_CAST | DOMAIN_SLOT_VALUE_TYPED))
-      || ((flags & DOMAIN_SLOT_VOLATILE) && resolved.volatile_changed)
-      || ((flags & DOMAIN_SLOT_EXPRESSION) && prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL))
+  if ((plan->slot_flags[item->slot] & DOMAIN_SLOT_VOLATILE) && !RESOLVED_VOLATILE_HOLDS (resolved, item))
     {
       return NULL;
     }
@@ -22166,12 +22194,11 @@ qexec_gate_slot_flags (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     {
       return 0;
     }
-  const DOMAIN_PLAN *plan = vd->xasl_state->resolved.plan;
-  if (plan == NULL || item < plan->items || item >= plan->items + plan->n_items || item->slot >= plan->n_slots)
+  if (!RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item))
     {
       return 0;
     }
-  return plan->slot_flags[item->slot];
+  return vd->xasl_state->resolved.plan->slot_flags[item->slot];
 }
 
 /*
@@ -22205,7 +22232,7 @@ qexec_apply_aggregate_gate_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
 		  && (qexec_gate_slot_flags (vd, agg_p->operands->value.domain_plan) & DOMAIN_SLOT_VOLATILE)))
 	    {
 	      /* a string a session variable holds is classified by its first value, as develop's is: the gate has no
-	       * value to classify there (the MEDIAN first-value cascade is #340's) */
+	       * value to classify there (the MEDIAN first-value cascade is #341's) */
 	      return NULL;
 	    }
 	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (argument);
@@ -22367,7 +22394,7 @@ qexec_try_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg
 	  /* a number or date argument leaves the accumulators unset, as the first value does (F-333-06). A string value
 	   * the gate classified takes that class, as the first value's cast gives it. A string column or expression
 	   * keeps the first value's cast to DOUBLE, which reports develop's error for a value that is not a number: that
-	   * cascade is #340's to replace. */
+	   * cascade is #341's to replace. */
 	  if (!TP_IS_NUMERIC_TYPE (agg_p->opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (agg_p->opr_dbtype))
 	    {
 	      if (RESOLVED_GATE_NODE (vd, agg_p->domain_plan) == NULL
@@ -28589,6 +28616,39 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
 }
 
 /*
+ * qexec_topn_sort_domains () - the domain each top-n sort key compares in, read once before the heap is filled (S-11)
+ *   vd(in): the execution's value descriptor
+ *   sort_items(in): the ORDER BY list
+ *   domains(out): one per sort item
+ *
+ * A key the compiler left open (`ORDER BY val + ?`, a string whose collation its values give) reads the domain the
+ * gate decided for its column (#337, #338); the values compare with that domain's cmpval, as a compiled key's do
+ * (#340). A key over a session variable read compares by its values' types where a value left that domain: the
+ * variable may change type within the statement (D-336-E). A NULL-only column compares its NULLs before any domain
+ * is read.
+ */
+static void
+qexec_topn_sort_domains (const VAL_DESCR * vd, SORT_LIST * sort_items, const TP_DOMAIN ** domains,
+			 bool * volatile_keys)
+{
+  int i = 0;
+  for (SORT_LIST * key = sort_items; key != NULL; key = key->next, i++)
+    {
+      const TP_DOMAIN *domain = key->pos_descr.dom;
+      bool volatile_key = false;
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+	{
+	  const DOMAIN_PLAN_ITEM *item = key->pos_descr.domain_plan;
+	  domain = qexec_plan_domain (vd, item, true);
+	  volatile_key = domain != NULL && item != NULL && item->slot >= 0
+	    && vd->xasl_state->resolved.plan->slot_volatile_reads[item->slot] != 0;
+	}
+      domains[i] = domain;
+      volatile_keys[i] = volatile_key;
+    }
+}
+
+/*
  * qexec_setup_topn_proc () - setup a top-n object
  * return : error code or NO_ERROR
  * thread_p (in) :
@@ -28718,12 +28778,23 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
     }
 
 
-  top_n = (TOPN_TUPLES *) db_private_alloc (thread_p, sizeof (TOPN_TUPLES));
+  int n_sort_items;
+  n_sort_items = 0;
+  for (SORT_LIST * key = xasl->orderby_list; key != NULL; key = key->next)
+    {
+      n_sort_items++;
+    }
+  /* the sort domains live in the same block, so every path that frees top_n frees them */
+  top_n = (TOPN_TUPLES *) db_private_alloc (thread_p, sizeof (TOPN_TUPLES)
+					    + n_sort_items * (sizeof (TP_DOMAIN *) + sizeof (bool)));
   if (top_n == NULL)
     {
       error = ER_FAILED;
       goto error_return;
     }
+  top_n->sort_domains = (const TP_DOMAIN **) (top_n + 1);
+  top_n->sort_volatile = (bool *) (top_n->sort_domains + n_sort_items);
+  qexec_topn_sort_domains (vd, xasl->orderby_list, top_n->sort_domains, top_n->sort_volatile);
 
   top_n->max_size = max_size;
   top_n->total_size = 0;
@@ -28785,10 +28856,12 @@ qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg)
   TOPN_TUPLE *right_tuple = *((TOPN_TUPLE **) right);
   BH_CMP_RESULT cmp;
 
-  for (key = proc->sort_items; key != NULL; key = key->next)
+  int i = 0;
+  for (key = proc->sort_items; key != NULL; key = key->next, i++)
     {
       pos = key->pos_descr.pos_no;
-      cmp = qexec_topn_cmpval (&left_tuple->values[pos], &right_tuple->values[pos], key);
+      cmp = qexec_topn_cmpval (&left_tuple->values[pos], &right_tuple->values[pos], key, proc->sort_domains[i],
+			       proc->sort_volatile[i]);
       if (cmp == BH_EQ)
 	{
 	  continue;
@@ -28809,7 +28882,8 @@ qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg)
  * Note: tp_value_compare is too complex for our case
  */
 static BH_CMP_RESULT
-qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec)
+qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec, const TP_DOMAIN * domain,
+		   bool volatile_key)
 {
   int cmp;
   if (DB_IS_NULL (left))
@@ -28836,10 +28910,12 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec)
     }
   else
     {
-      if (TP_DOMAIN_TYPE (sort_spec->pos_descr.dom) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_COLLATION_FLAG (sort_spec->pos_descr.dom) != TP_DOMAIN_COLL_NORMAL)
+      if (domain == NULL
+	  || (volatile_key && (DB_VALUE_DOMAIN_TYPE (left) != TP_DOMAIN_TYPE (domain)
+			       || DB_VALUE_DOMAIN_TYPE (right) != TP_DOMAIN_TYPE (domain))))
 	{
-	  /* In cases like order by val + ?, the domain of the expression is not known at compile time */
+	  /* a key the plan gives no domain here, or a session variable value that left it (qexec_topn_sort_domains):
+	   * its values' types decide */
 	  if (perfmon_is_perf_tracking ())
 	    {
 	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE);
@@ -28848,8 +28924,7 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec)
 	}
       else
 	{
-	  cmp =
-	    sort_spec->pos_descr.dom->type->cmpval (left, right, 1, 1, NULL, sort_spec->pos_descr.dom->collation_id);
+	  cmp = domain->type->cmpval (left, right, 1, 1, NULL, domain->collation_id);
 	}
     }
   if (sort_spec->s_order == S_DESC)
@@ -28936,10 +29011,12 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
     }
   assert (heap_max != NULL);
 
-  for (key = topn_items->sort_items; key != NULL; key = key->next)
+  int i = 0;
+  for (key = topn_items->sort_items; key != NULL; key = key->next, i++)
     {
       pos = key->pos_descr.pos_no;
-      res = qexec_topn_cmpval (&heap_max->values[pos], tpldescr->f_valp[pos], key);
+      res = qexec_topn_cmpval (&heap_max->values[pos], tpldescr->f_valp[pos], key, topn_items->sort_domains[i],
+			       topn_items->sort_volatile[i]);
       if (res == BH_EQ)
 	{
 	  continue;

@@ -94,9 +94,24 @@ struct xasl_state
   RESOLVED_DOMAIN_TABLE resolved;
 };
 
+/* Whether a plan item's slot is this execution's gate table slot: an item of the plan the gate resolved, or, in a PX
+ * worker's inherited copy, an item of the worker's own load of the same stream, which numbers its slots alike
+ * (D-318-06, #340). */
+inline bool
+RESOLVED_OWNS_SLOT (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
+{
+  const DOMAIN_PLAN *plan = resolved.plan;
+  if (!resolved.sealed || plan == NULL || item->slot < 0 || item->slot >= resolved.n_slots
+      || item->slot >= plan->n_slots)
+    {
+      return false;
+    }
+  return resolved.inherited || (item >= plan->items && item < plan->items + plan->n_items);
+}
+
 /* The gate's decision for a gate-dependent node of the tree this execution loaded, or NULL when the gate did not
- * decide it here (another load's tree, a node decided per row). fetch reads it in place of a row-time late binding
- * (#336); the #335 shadow checks compare against it. */
+ * decide it here (a node without gate state, a node the gate left undecided). fetch reads it in place of a row-time
+ * late binding (#336); the #335 shadow checks compare against it. */
 inline const RESOLVED_DOMAIN *
 RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
@@ -105,13 +120,20 @@ RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
       return NULL;
     }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  const DOMAIN_PLAN *plan = resolved.plan;
-  if (!resolved.sealed || plan == NULL || item < plan->items || item >= plan->items + plan->n_items
-      || item->slot >= resolved.n_slots || resolved.table[item->slot].domain == NULL)
+  if (!RESOLVED_OWNS_SLOT (resolved, item) || resolved.table[item->slot].domain == NULL)
     {
       return NULL;
     }
   return &resolved.table[item->slot];
+}
+
+/* Whether a decision still holds for this execution: none of the session variable reads it depends on has left the
+ * gate's decision within the statement (D-336-E). A read's first value, or any later one, that leaves it marks the
+ * read; a decision above it is then not taken where develop still binds from the first value (#340). */
+inline bool
+RESOLVED_VOLATILE_HOLDS (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
+{
+  return (resolved.plan->slot_volatile_reads[item->slot] & resolved.changed_reads) == 0;
 }
 
 extern const TP_DOMAIN *qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind);
