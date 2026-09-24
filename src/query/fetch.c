@@ -666,8 +666,8 @@ enum FETCH_GATE_READING
 				 * collation pair that does not merge (D-338-02), a cast into a target left open (L-18);
 				 * the row computes as develop's unbound node does and gives NULL or the operator's error */
   FETCH_GATE_LATE,		/* develop's binding from the first value: a session variable read under the node left
-				 * the gate's decision before the node's first value (D-336-E), or the node runs without
-				 * the execution's gate state (a hash join worker's spawned copy, F-334-01 -> #352) */
+				 * the gate's decision before the node's first value (D-336-E), or the node is fetched
+				 * without a value descriptor (a temporary regu an analytic function makes, #341) */
   FETCH_GATE_UNRESOLVED		/* no decision where the plan promised one: the execution boundary (b) */
 };
 
@@ -692,11 +692,17 @@ fetch_arith_gate_reading (const VAL_DESCR * vd, const ARITH_TYPE * arithptr, con
 	}
       return FETCH_GATE_NO_VALUE;
     }
-  if (vd == NULL || vd->xasl_state == NULL)
+  if (vd == NULL)
     {
       return FETCH_GATE_LATE;
     }
+  /* every execution-time descriptor carries its gate state: a PX worker's and a hash join worker's inherit it through
+   * qexec_deep_copy_xasl_state (D-318-06, F-334-01) */
   const DOMAIN_PLAN_ITEM *item = arithptr->domain_plan;
+  if (vd->xasl_state == NULL)
+    {
+      return FETCH_GATE_UNRESOLVED;
+    }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
   if (item == NULL || !(item->flags & DOMAIN_PLAN_GATE) || !RESOLVED_OWNS_SLOT (resolved, item))
     {
@@ -724,15 +730,19 @@ fetch_arith_gate_reading (const VAL_DESCR * vd, const ARITH_TYPE * arithptr, con
  * that do not merge raise their error before a value forms, so the undecided node that reaches here is a branch whose
  * picked operands carry different domains, or a function with more strings than a node links; #343 removes this
  * reading with the collation pair conditions - a decision over a session variable read that left the gate's within
- * the statement (D-336-E), and a node without the execution's gate state (a hash join worker's spawned copy,
- * F-334-01 -> #352).
+ * the statement (D-336-E), and a regu fetched without a value descriptor (a temporary regu an analytic function makes,
+ * #341). A descriptor without gate state is the boundary: a hash join worker inherits the state (F-334-01).
  */
 static bool
 fetch_row_reads_string_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  if (vd == NULL || vd->xasl_state == NULL)
+  if (vd == NULL)
     {
       return true;
+    }
+  if (vd->xasl_state == NULL)
+    {
+      return false;
     }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
   if (item == NULL || !RESOLVED_OWNS_SLOT (resolved, item))
@@ -5023,8 +5033,8 @@ error:
  * function reads its producer's or its own decision, so the domain develop took from the first value is already
  * there. The value's domain is read instead only where the plan hands it to the row: a bind value eval_value_rel_cmp
  * coerced in place for an earlier comparison (S-09, #352), a decision over a session variable read that left the
- * gate's (D-336-E), a string the gate left undecided (D-338-02, #343), and a regu without the execution's gate state
- * (a hash join worker's spawned copy, F-334-01 -> #352).
+ * gate's (D-336-E), a string the gate left undecided (D-338-02, #343), and a regu fetched without a value descriptor
+ * (a temporary regu an analytic function makes, #341).
  */
 static int
 fetch_read_plan_domain (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE * value)
@@ -5214,7 +5224,11 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
-      *peek_dbval = (DB_VALUE *) vd->dbval_ptr + regu_var->value.val_pos;
+      /* each bind reference reads its own value (D-323-03, #352). An operand-less aggregate's placeholder operand
+       * (GROUPBY_NUM: an unset TYPE_POS_VALUE, no domain) is no bind reference and has no item; it reads its position
+       * as develop does (none when there are no values) */
+      *peek_dbval = regu_var->domain_plan != NULL ? (DB_VALUE *) REGU_RESOLVED_VALUE (vd, regu_var)
+	: (DB_VALUE *) vd->dbval_ptr + regu_var->value.val_pos;
       break;
 
     case TYPE_CONSTANT:	/* fetch constant-column value */
@@ -5736,7 +5750,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
   /* flag a stable regu_var (cached attr/literal/pos/const) so inline fetch_peek_dbval () peeks it directly */
   if ((((regu_var->type == TYPE_ATTR_ID || regu_var->type == TYPE_SHARED_ATTR_ID
 	 || regu_var->type == TYPE_CLASS_ATTR_ID) && regu_var->value.attr_descr.cache_dbvalp != NULL)
-       || regu_var->type == TYPE_DBVAL || regu_var->type == TYPE_POS_VALUE
+       || regu_var->type == TYPE_DBVAL || (regu_var->type == TYPE_POS_VALUE && regu_var->domain_plan != NULL)
        || (regu_var->type == TYPE_CONSTANT && regu_var->xasl == NULL && regu_var->value.dbvalptr != NULL))
       && !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION)
       && regu_var->domain != NULL

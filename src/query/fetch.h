@@ -69,7 +69,7 @@ extern int fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, regu_variable_node * 
  *   pointer directly - no call frame, no type switch, no domain dereference:
  *     TYPE_DBVAL     -> the embedded constant db_value;
  *     TYPE_CONSTANT  -> the value-pointer slot, only when there is no linked subquery to execute;
- *     TYPE_POS_VALUE -> the value-list slot at the fixed position (live slot; value changes per row);
+ *     TYPE_POS_VALUE -> the reference's value in the gate's value array (REGU_RESOLVED_VALUE);
  *     TYPE_*ATTR_ID  -> the cached attribute value pointer (instance/shared/class; re-checked != NULL
  *                       so a later cache reset is handled safely, same as the slow path).
  *   Everything else (incl. the first fetch that sets the flag, collation/variable-domain, subqueries)
@@ -92,7 +92,8 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 	  *peek_dbval = regu_var->value.dbvalptr;
 	  return NO_ERROR;
 	case TYPE_POS_VALUE:
-	  *peek_dbval = (DB_VALUE *) vd->dbval_ptr + regu_var->value.val_pos;
+	  /* the reference's own value (D-323-03): the slow path flags only a bind reference with a plan item */
+	  *peek_dbval = (DB_VALUE *) REGU_RESOLVED_VALUE (vd, regu_var);
 	  return NO_ERROR;
 	case TYPE_ATTR_ID:
 	case TYPE_SHARED_ATTR_ID:

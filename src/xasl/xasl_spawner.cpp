@@ -28,6 +28,7 @@
 #include "dbtype.h"
 #include "object_primitive.h"
 #include "xasl.h"
+#include "query_executor.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -277,6 +278,8 @@ namespace cubxasl
     dest->flags = src->flags;
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
     dest->original_domain = dest->domain;
+    /* the leader's plan item: immutable and alive until the leader retires its clone, after every worker (F-334-01) */
+    dest->domain_plan = src->domain_plan;
     dest->vfetch_to = spawn (src->vfetch_to);
 
     /* TODO: unsupported */
@@ -398,6 +401,7 @@ namespace cubxasl
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
     dest->original_domain = dest->domain;
+    dest->domain_plan = src->domain_plan;
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
     dest->rightptr = spawn (src->rightptr);
@@ -564,6 +568,7 @@ namespace cubxasl
 
     dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
     dest->original_domain = dest->dom;
+    dest->domain_plan = src->domain_plan;
     dest->pos_no = src->pos_no;
 
     return er_errid ();
@@ -874,6 +879,14 @@ namespace cubxasl
     return er_errid ();
   }
 
+  /* frees a worker's copy of the execution gate state on the thread that made it (D-318-06) */
+  static void
+  spawner_free_xasl_state (cubthread::entry *thread_p, void *ptr, int)
+  {
+    VAL_DESCR *vd = static_cast<VAL_DESCR *> (ptr);
+    qexec_free_xasl_state (thread_p, vd->xasl_state);
+  }
+
   VAL_DESCR *
   spawner::spawn (const VAL_DESCR *src)
   {
@@ -883,6 +896,32 @@ namespace cubxasl
     if (dest != nullptr)
       {
 	return dest;
+      }
+
+    if (src != nullptr && src->xasl_state != nullptr)
+      {
+	/* the worker inherits the gate's decisions and values through the one PX copy (D-318-06, F-334-01): every
+	 * reference value (secondary references included) and the gate table, owned and freed by this thread */
+	xasl_state *copy = qexec_deep_copy_xasl_state (&m_thread_ref, src->xasl_state);
+	if (copy == nullptr)
+	  {
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
+	      }
+	    return nullptr;
+	  }
+	cached_entry entry;
+	entry.ptr = &copy->vd;
+	entry.count = 1;
+	entry.deleter = spawner_free_xasl_state;
+	if (!m_cached_ptrs.try_emplace (src, std::move (entry)).second)
+	  {
+	    assert_release_error (false);
+	    qexec_free_xasl_state (&m_thread_ref, copy);
+	    return nullptr;
+	  }
+	return &copy->vd;
       }
 
     dest = alloc (src);
@@ -909,10 +948,7 @@ namespace cubxasl
     dest->lrand = src->lrand;
     dest->drand = src->drand;
 
-    /* TODO: unsupported */
-#if 0
-    assert_release_error (src->xasl_state == nullptr);
-#endif
+    /* a descriptor no execution gate made (no gate state) copies its values only */
     dest->xasl_state = NULL;
 
     return dest;
