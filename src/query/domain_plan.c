@@ -18,6 +18,7 @@
 
 #include "config.h"
 #include "domain_plan.h"
+#include "error_manager.h"
 #include "object_primitive.h"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -33,9 +34,11 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* The compiler still emits VARIABLE/LEAVE. Boundary (a) is enabled only after the
- * compiler and executor deletion tickets; the old original_domain links remain live. */
-static const bool domain_plan_check_load = false;
+/* Load boundary (a) (#336, D-323-09): every item the compiler left without a type is a gate slot, a gate-dependent
+ * node, an alias, or one of the derived-consumer classes below, which dpin-11 types; anything else refuses the load
+ * with ER_QPROC_DOMAIN_UNRESOLVED. The collation axis: a bind slot whose compiled collation is LEAVE records the value
+ * collation at the gate (COLLATION_GATE); LEAVE on an expression result is #338's. */
+static const bool domain_plan_check_load = true;
 struct DOMAIN_PLAN_LOAD_EXCEPTION
 {
   const char *id;
@@ -48,8 +51,10 @@ static const DOMAIN_PLAN_LOAD_EXCEPTION domain_plan_load_exceptions[] = {
   {"X-3", "set-operation position", "alias producer"},
   {"X-4", "TYPE_LIST_ID / TYPE_ORDERBY_NUM", "no value-domain item"},
   {"X-5", "collection constructor", "static element domains"},
-  {"X-6", "T_EVALUATE_VARIABLE", "volatile; require compiler GATE marker"},
-  {"X-7", "MEDIAN / PERCENTILE string operand", "residual"}
+  {"X-8", "TYPE_CONSTANT / TYPE_POSITION value pointer and the nodes over it", "DERIVED; dpin-11 (F-335-07)"},
+  {"X-9", "accumulator / sort key / list column left VARIABLE", "DERIVED; dpin-11"},
+  {"X-10", "TYPE_FUNC result left VARIABLE", "DERIVED; dpin-11 (function-code resolution)"},
+  {"X-11", "TP_DOMAIN_COLL_LEAVE on an expression result", "allowed; #338 (compile collation axis)"}
 };
 
 /* Temporary load records are freed before publishing the plan. No record, owner
@@ -352,7 +357,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
    * it, on the execution path until dpin-10 and dpin-11 decide them; CONNECT_BY_ROOT and QPRIOR carry their XASL in
    * thirdptr. */
   const bool late_bound = arith->domain != NULL && TP_DOMAIN_TYPE (arith->domain) == DB_TYPE_VARIABLE;
-  if (item != NULL && (marked_gate || late_bound) && arith->opcode != T_EVALUATE_VARIABLE)
+  if (item != NULL && (marked_gate || late_bound))
     {
       REGU_VARIABLE *links[3];
       int n_links = 0;
@@ -369,8 +374,26 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
       known = known && n_links > 0;
       if (known)
 	{
+	  /* a session variable read without a sibling (S5, #336) is a gate node too: the gate reads the variable's
+	   * current value once per execution (qexec_resolve_gate_node) */
 	  domain_mark_gate_node (ctx, item, links, n_links, arith->domain);
 	  ctx->tail->cold.ctx = domain_gate_context (arith->opcode);
+	}
+      else
+	{
+	  /* an operand the gate cannot trust (a value pointer, F-335-07) keeps this node on the derived path */
+	  item->flags |= DOMAIN_PLAN_DERIVED;
+	}
+    }
+  if (item != NULL)
+    {
+      for (int i = 0; i < 3; i++)
+	{
+	  if (operands[i] != NULL && operands[i]->domain_plan != NULL
+	      && (operands[i]->domain_plan->flags & DOMAIN_PLAN_DERIVED))
+	    {
+	      item->flags |= DOMAIN_PLAN_DERIVED;
+	    }
 	}
     }
   for (int i = 0; i < 3; i++)
@@ -542,6 +565,21 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       item->slot = ctx->plan->n_slots++;
       item->fixed.domain = NULL;
     }
+  else if (regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
+	   && regu->domain->collation_flag == TP_DOMAIN_COLL_LEAVE)
+    {
+      /* a string slot the compiler typed but whose collation is the bound value's (C3/C12): the gate records the
+       * value domain in this slot; the compiled type stays the plan type (#336) */
+      item->flags |= DOMAIN_PLAN_COLLATION_GATE;
+      item->slot = ctx->plan->n_slots++;
+    }
+  if (regu->type == TYPE_CONSTANT || regu->type == TYPE_POSITION
+      || ((regu->type == TYPE_FUNC || regu->type == TYPE_REGUVAL_LIST) && !domain_type_is_fixed (regu->domain)))
+    {
+      /* a value pointer, a function result or a multi-row VALUES column the compiler left open: list-column and
+       * function-code resolution is dpin-11 (X-8..X-10) */
+      item->flags |= DOMAIN_PLAN_DERIVED;
+    }
   if (regu->type == TYPE_POSITION)
     {
       domain_bind_item (ctx, &regu->value.pos_descr.domain_plan, item);
@@ -565,6 +603,10 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
 	    {
 	      item->flags |= DOMAIN_PLAN_ALIAS;
 	      item->slot = arith->domain_plan->slot;
+	    }
+	  if (arith->domain_plan->flags & DOMAIN_PLAN_DERIVED)
+	    {
+	      item->flags |= DOMAIN_PLAN_DERIVED;
 	    }
 	}
     }
@@ -639,7 +681,12 @@ domain_walk_sort (DOMAIN_LOAD_CONTEXT * ctx, SORT_LIST * list, OUTPTR_LIST * pro
 	}
       else
 	{
-	  domain_add_item (ctx, &pos->domain_plan, pos->dom, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0, "position");
+	  DOMAIN_PLAN_ITEM *item =
+	    domain_add_item (ctx, &pos->domain_plan, pos->dom, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0, "position");
+	  if (item != NULL)
+	    {
+	      item->flags |= DOMAIN_PLAN_DERIVED;
+	    }
 	}
     }
 }
@@ -669,12 +716,17 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
       if (has_operand && agg->operands != NULL && item != NULL)
 	{
 	  domain_fixed_operand (item, 0, agg->operands->value.domain, agg->operands->value.domain, DOMAIN_CTX_FUNC_ARG);
-	  if (agg->operands->value.domain_plan != NULL && agg->operands->value.domain_plan->slot >= 0)
+	  if (agg->operands->value.domain_plan != NULL && agg->operands->value.domain_plan->slot >= 0
+	      && (agg->operands->value.domain_plan->flags & DOMAIN_PLAN_GATE))
 	    {
 	      /* the gate decides the argument, so it decides the function and accumulator domains (F7) */
 	      REGU_VARIABLE *operand = &agg->operands->value;
 	      domain_mark_gate_node (ctx, item, &operand, 1, agg->domain);
 	    }
+	}
+      if (item != NULL && !(item->flags & DOMAIN_PLAN_GATE) && !domain_type_is_fixed (item->fixed.domain))
+	{
+	  item->flags |= DOMAIN_PLAN_DERIVED;
 	}
       domain_walk_sort (ctx, agg->sort_list, NULL);
     }
@@ -700,10 +752,15 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	      ctx->tail->output[1] = analytic->out_value;
 	    }
 	  domain_fixed_operand (item, 0, analytic->operand.domain, analytic->operand.domain, DOMAIN_CTX_FUNC_ARG);
-	  if (item != NULL && analytic->operand.domain_plan != NULL && analytic->operand.domain_plan->slot >= 0)
+	  if (item != NULL && analytic->operand.domain_plan != NULL && analytic->operand.domain_plan->slot >= 0
+	      && (analytic->operand.domain_plan->flags & DOMAIN_PLAN_GATE))
 	    {
 	      REGU_VARIABLE *operand = &analytic->operand;
 	      domain_mark_gate_node (ctx, item, &operand, 1, analytic->domain);
+	    }
+	  if (item != NULL && !(item->flags & DOMAIN_PLAN_GATE) && !domain_type_is_fixed (item->fixed.domain))
+	    {
+	      item->flags |= DOMAIN_PLAN_DERIVED;
 	    }
 	}
       domain_walk_sort (ctx, eval->sort_list, output);
@@ -929,14 +986,24 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   ctx->block = previous_block;
 }
 
+/* Boundary (a): the type axis is strict, the collation axis records what the gate decides for slots and leaves the
+ * rest to #338 (X-11). A derived-consumer item (X-8..X-10) passes until dpin-11 types it. */
 bool
 domain_plan_validate (const DOMAIN_PLAN * plan)
 {
   for (int i = 0; i < plan->n_items; i++)
     {
       const DOMAIN_PLAN_ITEM *item = &plan->items[i];
-      if (!(item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_ALIAS))
-	  && !domain_is_fixed (item->fixed.domain))
+      if (item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_ALIAS | DOMAIN_PLAN_DERIVED))
+	{
+	  continue;
+	}
+      if (!domain_type_is_fixed (item->fixed.domain))
+	{
+	  return false;
+	}
+      if (plan->items_cold[i].val_pos >= 0 && item->fixed.domain->collation_flag == TP_DOMAIN_COLL_LEAVE
+	  && !(item->flags & DOMAIN_PLAN_COLLATION_GATE))
 	{
 	  return false;
 	}
@@ -1168,7 +1235,9 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   (void) domain_plan_load_exceptions;
   if (domain_plan_check_load && !domain_plan_validate (plan))
     {
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load",
+	      root->query_alias != NULL ? root->query_alias : "", plan->n_items, pr_type_name (DB_TYPE_VARIABLE));
+      return ER_QPROC_DOMAIN_UNRESOLVED;
     }
   return NO_ERROR;
 }

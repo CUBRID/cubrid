@@ -3134,6 +3134,16 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    }
 	  string = pt_append_nulstring (parser, string, ";bind_var_cnt=");
 	  string = pt_append_nulstring (parser, string, host_var_count);
+	  if (parser->host_var_count > 0)
+	    {
+	      /* F-335-04 (#336): a user host variable and an auto-parameterized literal both print as ?:N, so a bind
+	       * statement and its literal form share one hash text. Their compiled slot domains differ (a mirror
+	       * slot against the literal's own domain), so the plan key tells them apart by the user count; a
+	       * literal-only statement keeps its key. */
+	      snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count);
+	      string = pt_append_nulstring (parser, string, ";host_var_cnt=");
+	      string = pt_append_nulstring (parser, string, host_var_count);
+	    }
 	}
 
       if ((parser->custom_print & PT_PRINT_DBLINK_INFO) && parser->dblink_server_text)

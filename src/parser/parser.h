@@ -648,7 +648,7 @@ extern "C"
   extern bool pt_is_operator_arith (PT_OP_TYPE op);
   extern bool pt_list_has_logical_nodes (PT_NODE * list);
   extern bool pt_is_pseudo_const (PT_NODE * expr);
-  extern bool pt_is_op_hv_late_bind (PT_OP_TYPE op);
+  extern bool pt_is_op_gate_dependent (PT_OP_TYPE op);
   extern void pt_mark_spec_list_for_update (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern void pt_mark_spec_list_for_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern void pt_init_assignments_helper (PARSER_CONTEXT * parser, PT_ASSIGNMENTS_HELPER * helper,

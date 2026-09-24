@@ -306,6 +306,7 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_DOMAIN_PX_RESOLVE, "Num_domain_px_resolve"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_DOMAIN_RESTORE_CLONE, "Num_domain_restore_clone"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_DOMAIN_GATE_CONVERT, "Num_domain_gate_convert"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_DOMAIN_BIND_PLAN_MISMATCH, "Num_domain_bind_plan_mismatch"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_QM_NUM_PLANNED_CONVERT, "Num_planned_convert"),
 
   /* Execution statistics for external sort */

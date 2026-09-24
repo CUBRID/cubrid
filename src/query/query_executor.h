@@ -94,9 +94,9 @@ struct xasl_state
   RESOLVED_DOMAIN_TABLE resolved;
 };
 
-#if !defined (NDEBUG)
 /* The gate's decision for a gate-dependent node of the tree this execution loaded, or NULL when the gate did not
- * decide it here (another load's tree, a node decided per row) - #335 shadow checks. */
+ * decide it here (another load's tree, a node decided per row). fetch reads it in place of a row-time late binding
+ * (#336); the #335 shadow checks compare against it. */
 inline const RESOLVED_DOMAIN *
 RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
@@ -113,7 +113,6 @@ RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     }
   return &resolved.table[item->slot];
 }
-#endif
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr, QUERY_ID query_id);

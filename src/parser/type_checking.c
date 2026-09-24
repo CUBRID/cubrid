@@ -4652,7 +4652,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
 
   if (node->type_enum == PT_TYPE_MAYBE)
     {
-      if ((node->node_type == PT_EXPR && pt_is_op_hv_late_bind (node->info.expr.op))
+      if ((node->node_type == PT_EXPR && pt_is_op_gate_dependent (node->info.expr.op))
 	  || (node->node_type == PT_SELECT && node->info.query.is_subquery == PT_IS_SUBQUERY))
 	{
 	  /* wrap with cast, instead of setting expected domain */
@@ -4825,7 +4825,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * a
 	  if (common_type == PT_TYPE_MAYBE && op != PT_COALESCE)
 	    {
 	      /* "mirror" the known argument type to the other argument if the later is PT_TYPE_MAYBE */
-	      if (!pt_is_op_hv_late_bind (op))
+	      if (!pt_is_op_gate_dependent (op))
 		{
 		  if (arg1_eq_type != PT_TYPE_MAYBE)
 		    {
@@ -4866,7 +4866,7 @@ pt_infer_common_type (const PT_OP_TYPE op, PT_TYPE_ENUM * arg1, PT_TYPE_ENUM * a
 	    }
 	}
     }
-  if (common_type == PT_TYPE_MAYBE && expected_type != PT_TYPE_NONE && !pt_is_op_hv_late_bind (op))
+  if (common_type == PT_TYPE_MAYBE && expected_type != PT_TYPE_NONE && !pt_is_op_gate_dependent (op))
     {
       /* if expected type if not PT_TYPE_NONE then a expression higher up in the parser tree has set an expected domain
        * for this node and we can use it to set the expected domain of the arguments */
@@ -5996,7 +5996,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return ER_FAILED;
     }
 
-  if (pt_is_op_hv_late_bind (op)
+  if (pt_is_op_gate_dependent (op)
       && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE)
       && !(op == PT_ADDTIME && PT_IS_STRING_TYPE (arg1_type)))
     {
@@ -11291,7 +11291,7 @@ pt_common_type_op (PT_TYPE_ENUM t1, PT_OP_TYPE op, PT_TYPE_ENUM t2)
   /* it should not be static because the parameter could be changed without broker restart */
   bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
 
-  if (pt_is_op_hv_late_bind (op) && (t1 == PT_TYPE_MAYBE || t2 == PT_TYPE_MAYBE))
+  if (pt_is_op_gate_dependent (op) && (t1 == PT_TYPE_MAYBE || t2 == PT_TYPE_MAYBE))
     {
       result_type = PT_TYPE_MAYBE;
     }
@@ -13848,7 +13848,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
     case PT_MINUS:
     case PT_TIMES:
     case PT_DIVIDE:
-      if (typ == DB_TYPE_VARIABLE && pt_is_op_hv_late_bind (op))
+      if (typ == DB_TYPE_VARIABLE && pt_is_op_gate_dependent (op))
 	{
 	  rTyp = pt_common_type (pt_db_to_type_enum (typ1), pt_db_to_type_enum (typ2));
 	  /* TODO: override common type for plus, minus this should be done in a more generic code : but,
@@ -20500,7 +20500,7 @@ pt_between_to_comp_op (PT_OP_TYPE between, PT_OP_TYPE * left, PT_OP_TYPE * right
 static PT_TYPE_ENUM
 pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM arg_type, PT_OP_TYPE op)
 {
-  if (pt_is_op_hv_late_bind (op) && (def_type.type == pt_arg_type::GENERIC && arg_type == PT_TYPE_MAYBE))
+  if (pt_is_op_gate_dependent (op) && (def_type.type == pt_arg_type::GENERIC && arg_type == PT_TYPE_MAYBE))
     {
       /* leave undetermined type */
       return PT_TYPE_MAYBE;
@@ -20509,22 +20509,20 @@ pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM a
 }
 
 /*
- * pt_is_op_hv_late_bind () - checks if the operator is in the list of
- *			      operators that should perform late binding on
- *			      their host variable arguments
+ * pt_is_op_gate_dependent () - the operators whose result type is decided by the server gate when a host
+ *			       variable argument has no compile-time type (#335/#336; was pt_is_op_hv_late_bind)
  *
- *   return: true if arguments types should be mirrored
+ *   return: true if the operator leaves a MAYBE host variable argument to the gate
  *   op(in): operator type
  *
- *  Note: this functions is used by type inference algorithm to check if an
- *	  expression should leave its HV arguments as TYPE_MAYBE (the default
- *	  type inference behavior would be to match it with a concrete type
- *	  according to one of its signatures). Also, such expression is
- *	  wrapped with cast rather then its result type be forced to an
- *	  "expected domain" dictated by the expression context.
+ *  Note: type inference leaves such an argument as TYPE_MAYBE (the default behavior would match it with a concrete
+ *	  type from one of the operator's signatures) and gives the expression the VARIABLE result type; the
+ *	  expression is wrapped with a cast rather than forced to the "expected domain" of its context. The
+ *	  server's domain gate (qexec_resolve_domains) then decides the argument and result domains once per
+ *	  execution from the bound values — not a per-row late binding.
  */
 bool
-pt_is_op_hv_late_bind (PT_OP_TYPE op)
+pt_is_op_gate_dependent (PT_OP_TYPE op)
 {
   switch (op)
     {
@@ -20589,7 +20587,7 @@ static PT_NODE *
 pt_wrap_expr_w_exp_dom_cast (PARSER_CONTEXT * parser, PT_NODE * expr)
 {
   /* expressions returning MAYBE, but with an expected domain are wrapped with cast */
-  if (expr != NULL && expr->type_enum == PT_TYPE_MAYBE && pt_is_op_hv_late_bind (expr->info.expr.op)
+  if (expr != NULL && expr->type_enum == PT_TYPE_MAYBE && pt_is_op_gate_dependent (expr->info.expr.op)
       && expr->expected_domain != NULL)
     {
       PT_NODE *new_expr = NULL, *cast_type = NULL;

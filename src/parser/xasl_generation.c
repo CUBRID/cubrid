@@ -6410,9 +6410,33 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
       /* determine the domain of this host var */
       regu->domain = NULL;
 
-      if (node->data_type)
+      if (node->info.host_var.index < parser->host_var_count)
 	{
-	  /* try to get domain info from its data_type */
+	  /* A user host variable: the plan states the domain the client casts the bound value into
+	   * (host_var_expected_domains, D-335-08), so value type == plan domain holds by construction (#336). It
+	   * is left to the gate when the client does not cast: no expected domain, an ENUM domain (never cast,
+	   * CUBRIDSUS-9007; `enum_col op ?` compares the bound value, B13/B14), or an untyped copy (the LIMIT
+	   * operand). A compile-only expected domain the client does not apply -- the collation axis's ENFORCE
+	   * on `str_col + ?` / `enum_col + ?` (A3''/A13) -- is not a plan domain (F-335-06). */
+	  TP_DOMAIN *cast_domain = NULL;
+	  if (parser->host_var_expected_domains != NULL)
+	    {
+	      cast_domain = parser->host_var_expected_domains[node->info.host_var.index];
+	    }
+	  if (cast_domain != NULL && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_UNKNOWN
+	      && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_ENUMERATION
+	      && cast_domain->collation_flag != TP_DOMAIN_COLL_ENFORCE)
+	    {
+	      /* an ENFORCE domain (the collation axis's sibling collation, C1/C5) casts nothing: the client gives a
+	       * string value the sibling's collation and passes any other value through (tp_value_cast_internal),
+	       * so the slot's type is the value's -- a gate slot whose value already carries the enforced
+	       * collation (A3''/A13/C5) */
+	      regu->domain = cast_domain;
+	    }
+	}
+      else if (node->data_type)
+	{
+	  /* an auto-parameter: try to get domain info from its data_type */
 	  regu->domain = pt_xasl_node_to_domain (parser, node);
 	}
 
@@ -6450,15 +6474,15 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    }
 	}
 
-      if (regu->domain == NULL && node->expected_domain)
+      if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && node->expected_domain)
 	{
-	  /* try to get domain infor from its expected_domain */
+	  /* an auto-parameter: try to get domain infor from its expected_domain */
 	  regu->domain = node->expected_domain;
 	}
 
-      if (regu->domain == NULL)
+      if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count)
 	{
-	  /* try to get domain info from its type_enum */
+	  /* an auto-parameter: try to get domain info from its type_enum */
 	  regu->domain = pt_xasl_type_enum_to_domain (node->type_enum);
 	}
 
@@ -6508,6 +6532,23 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 
 error_exit:
   return NULL;
+}
+
+/*
+ * pt_gate_limit_regu () - a LIMIT / KEYLIMIT operand that is a host variable slot leaves its domain to the gate
+ *   (#336): auto-parameterized limits of different literal types (`limit 4`, `limit 2147483648`, `limit 3/2`)
+ *   share one plan, and execution reads the bound value (qexec_check_limit_clause: tp_value_compare against 0), so
+ *   no compiled domain describes every execution.
+ */
+static REGU_VARIABLE *
+pt_gate_limit_regu (REGU_VARIABLE * regu)
+{
+  if (regu != NULL && regu->type == TYPE_POS_VALUE)
+    {
+      regu->domain = &tp_Variable_domain;
+      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_GATE);
+    }
+  return regu;
 }
 
 /*
@@ -7889,7 +7930,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      if (node->type_enum == PT_TYPE_MAYBE)
 			{
-			  if (pt_is_op_hv_late_bind (node->info.expr.op))
+			  if (pt_is_op_gate_dependent (node->info.expr.op))
 			    {
 			      domain = pt_xasl_node_to_domain (parser, node);
 			    }
@@ -8033,7 +8074,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      if (node->type_enum == PT_TYPE_MAYBE)
 			{
-			  if (pt_is_op_hv_late_bind (node->info.expr.op))
+			  if (pt_is_op_gate_dependent (node->info.expr.op))
 			    {
 			      domain = pt_xasl_node_to_domain (parser, node);
 			    }
@@ -8144,7 +8185,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 		  if (node->type_enum == PT_TYPE_MAYBE)
 		    {
-		      if (pt_is_op_hv_late_bind (node->info.expr.op))
+		      if (pt_is_op_gate_dependent (node->info.expr.op))
 			{
 			  domain = pt_xasl_node_to_domain (parser, node);
 			}
@@ -16560,10 +16601,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     {
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+      xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
@@ -17871,10 +17912,10 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  limit = node->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	      xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	}
     }				/* end xasl */
   else
@@ -17975,10 +18016,10 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	      xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	}
     }
 
@@ -22304,10 +22345,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+      xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
   if (aptr_statement)
     {
@@ -23231,10 +23272,10 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+      xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
 
 cleanup:

@@ -3805,6 +3805,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
   resolved.plan = src.plan;
   resolved.owner = thread_p;
   resolved.sealed = src.sealed;
+  resolved.volatile_changed = src.volatile_changed;
 
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
@@ -3910,7 +3911,8 @@ qexec_gate_operand (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & reso
  * operator the grid does not know is an error, not a guess.
  */
 static int
-qexec_resolve_gate_node (const xasl_node * xasl, const DOMAIN_PLAN * plan, int index, RESOLVED_DOMAIN_TABLE & resolved)
+qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan, int index,
+			 RESOLVED_DOMAIN_TABLE & resolved)
 {
   const DOMAIN_PLAN_ITEM *node = plan->gate_nodes[index];
   const DOMAIN_PLAN_ITEM_COLD *cold = &plan->items_cold[node - plan->items];
@@ -3921,6 +3923,29 @@ qexec_resolve_gate_node (const xasl_node * xasl, const DOMAIN_PLAN * plan, int i
   bool needs_gate = false;
 
   assert (node->slot >= 0 && node->slot < resolved.n_slots && link->n_operands > 0 && link->n_operands <= 3);
+  if (cold->opcode == T_EVALUATE_VARIABLE)
+    {
+      /* S5 (#336): a session variable read with no sibling takes the type of the value stored when the execution
+       * starts; the row values are read as before (volatile). An undefined variable is unknown here and raises its
+       * error when a row reads it, as develop does. */
+      DB_VALUE current;
+      const TP_DOMAIN *domain = &tp_Null_domain;
+      db_make_null (&current);
+      if (link->literal[0] != NULL && session_get_variable (thread_p, link->literal[0], &current) == NO_ERROR)
+	{
+	  domain = DB_IS_NULL (&current) ? &tp_Null_domain : tp_domain_resolve_value (&current, NULL);
+	}
+      else
+	{
+	  er_clear ();
+	}
+      pr_clear_value (&current);
+      *entry = RESOLVED_DOMAIN
+      {
+      };
+      entry->domain = domain != NULL ? domain : &tp_Null_domain;
+      return NO_ERROR;
+    }
   for (int i = 0; i < link->n_operands; i++)
     {
       qexec_gate_operand (plan, resolved, link, i, context, cold->opcode, &operands[i]);
@@ -4020,11 +4045,29 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	  for (; error == NO_ERROR && next < n_const_refs && plan->const_refs[next]->ref == ref; next++)
 	    {
 	      const DOMAIN_PLAN_ITEM *item = plan->const_refs[next];
-	      if (item->flags & DOMAIN_PLAN_GATE)
+	      const DB_VALUE *source = &resolved.in[plan->items_cold[item - plan->items].val_pos];
+	      if (item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_COLLATION_GATE))
 		{
+		  /* a GATE slot: the value's domain is the plan; a COLLATION_GATE slot: the compiled type with the
+		   * value's collation (#336) */
 		  assert (item->slot >= 0 && item->slot < resolved.n_slots);
-		  const DB_VALUE *source = &resolved.in[plan->items_cold[item - plan->items].val_pos];
 		  resolved.table[item->slot].domain = tp_domain_resolve_value (source, NULL);
+		}
+	      if (!(item->flags & DOMAIN_PLAN_GATE) && item->fixed.domain != NULL && !DB_IS_NULL (source)
+		  && item->fail[0] != DOMAIN_FAIL_KEEP)
+		{
+		  /* "value type == plan domain" for every bind the compiler typed (#336 exit condition): the client cast
+		   * the value into the plan domain; CHAR vs VARCHAR is the kept original value (D-327-01) */
+		  const DB_TYPE plan_type = TP_DOMAIN_TYPE (item->fixed.domain);
+		  const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (source);
+		  const bool mismatch = plan_type != value_type
+		    && !(TP_IS_CHAR_TYPE (plan_type) && TP_IS_CHAR_TYPE (value_type));
+		  if (mismatch)
+		    {
+		      /* CTP sql + medium count 0 (#336); the boundary is the assert below, the counter its release measure */
+		      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_BIND_PLAN_MISMATCH);
+		    }
+		  assert (!mismatch);
 		}
 	    }
 	}
@@ -4043,7 +4086,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
    * the session-variable mirror (dpin-10) and constant key ranges with the key plan (dpin-16). */
   for (int i = 0; plan != NULL && i < plan->n_gate_nodes; i++)
     {
-      error = qexec_resolve_gate_node (xasl, plan, i, resolved);
+      error = qexec_resolve_gate_node (thread_p, xasl, plan, i, resolved);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4055,6 +4098,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     {
       perfmon_add_stat (thread_p, PSTAT_QM_NUM_DOMAIN_GATE_CONVERT, dbval_cnt);
     }
+  resolved.volatile_changed = false;
   resolved.sealed = true;
   return NO_ERROR;
 }

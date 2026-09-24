@@ -838,7 +838,7 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 }
 
 /*
- * domain_resolve_function - result types of the late-bound functions (pt_is_op_hv_late_bind) and the value copies
+ * domain_resolve_function - result types of the late-bound functions (pt_is_op_gate_dependent) and the value copies
  *   return: NO_ERROR, or the error the function raises for this argument type
  *
  * The value-overloaded ones take their class from the gate (so:7302~7420 ADDTIME, so:22578~22602 STR_TO_DATE); the

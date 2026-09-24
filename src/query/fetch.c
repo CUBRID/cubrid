@@ -1343,9 +1343,28 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   pr_clear_value (arithptr->value);
   if (regu_var->domain != NULL && TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE)
     {
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
-      original_domain = regu_var->domain;
-      regu_var->domain = NULL;
+      const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, arithptr->domain_plan);
+      if (gate_node != NULL && TP_DOMAIN_TYPE (gate_node->domain) != DB_TYPE_NULL
+	  && !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (gate_node->domain))
+	  && arithptr->opcode != T_CAST && arithptr->opcode != T_CAST_WRAP && arithptr->opcode != T_CAST_NOFAIL
+	  && !(arithptr->domain_plan->operand_class == OPERAND_VOLATILE && vd->xasl_state->resolved.volatile_changed)
+	  && prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL)
+	{
+	  /* #336: the gate decided this node once for the execution; the row reads the decision in place of the
+	   * value-driven late binding below (qexec_clear_regu_var restores the loaded domain). Still late-bound
+	   * until the ticket named: a character result (its collation is merged by #338), a volatile node after a
+	   * session variable changed its type within the statement (D-336-E, develop's per-row answer; dpin-14
+	   * re-looks the row up, D-325-10), MySQL compatibility mode (dpin-14 moves its helper types into the
+	   * resolver). A CAST node keeps its compiled target: the union's `CAST(x AS uncertain)` wrapper must keep
+	   * failing as develop's does (-181, L-18), not cast into the gate's decision. */
+	  regu_var->domain = arithptr->domain = (TP_DOMAIN *) gate_node->domain;
+	}
+      else
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
+	  original_domain = regu_var->domain;
+	  regu_var->domain = NULL;
+	}
     }
   switch (arithptr->opcode)
     {
@@ -4079,6 +4098,20 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  goto error;
 	}
+      if (!DB_IS_NULL (arithptr->value) && original_domain == NULL && regu_var->domain != NULL
+	  && TP_DOMAIN_TYPE (regu_var->domain) != DB_TYPE_VARIABLE && arithptr->domain_plan != NULL
+	  && arithptr->domain_plan->operand_class == OPERAND_VOLATILE && vd != NULL && vd->xasl_state != NULL
+	  && DB_VALUE_DOMAIN_TYPE (arithptr->value) != TP_DOMAIN_TYPE (regu_var->domain))
+	{
+	  /* S5 (#336, D-336-E): the gate decided this read from the value stored when the execution began; the
+	   * variable has since changed its type within the statement (`@v := '2.5'` on an earlier column or row).
+	   * The answer stays develop's: this read and every volatile node above it fall back to the value-driven
+	   * late binding for the rest of the execution. dpin-14 replaces the fallback by a table re-lookup. */
+	  vd->xasl_state->resolved.volatile_changed = true;
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
+	  original_domain = regu_var->original_domain;
+	  regu_var->domain = NULL;
+	}
       break;
 
     case T_DEFINE_VARIABLE:
@@ -4533,11 +4566,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
    * the gate's decision when the operator had its operands (no NULL: the grid answers for values) */
   if (original_domain != NULL && !DB_IS_NULL (arithptr->value)
       && prm_get_integer_value (PRM_ID_COMPAT_MODE) != COMPAT_MYSQL
+      && arithptr->domain_plan != NULL
       && (peek_left == NULL || !DB_IS_NULL (peek_left)) && (peek_right == NULL || !DB_IS_NULL (peek_right))
       && (peek_third == NULL || !DB_IS_NULL (peek_third)))
     {
+      /* a character decision is compared by #338 (its collation merge is not the gate's yet); a volatile node
+       * after a session variable changed type is develop's late binding (D-336-E) */
       const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, arithptr->domain_plan);
-      assert (gate_node == NULL || TP_DOMAIN_TYPE (gate_node->domain) == DB_VALUE_DOMAIN_TYPE (arithptr->value));
+      assert (gate_node == NULL || TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (gate_node->domain))
+	      || TP_DOMAIN_TYPE (gate_node->domain) == DB_TYPE_NULL
+	      || (arithptr->domain_plan->operand_class == OPERAND_VOLATILE && vd->xasl_state->resolved.volatile_changed)
+	      || TP_DOMAIN_TYPE (gate_node->domain) == DB_VALUE_DOMAIN_TYPE (arithptr->value));
     }
 #endif
 

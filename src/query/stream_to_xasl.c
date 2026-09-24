@@ -217,7 +217,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   char *p;
   int header_size;
   int offset;
-  int domain_plan_error;
+  int domain_plan_error = NO_ERROR;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
   XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
@@ -269,12 +269,20 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   if (domain_plan_error != NO_ERROR)
     {
       stx_set_xasl_errcode (thread_p, domain_plan_error);
-      free_xasl_unpack_info (thread_p, unpack_info_p);
       *xasl_tree = NULL;
       *xasl_unpack_info_ptr = NULL;
     }
 end:
+  /* the visited-pointer blocks live in the unpack info: release them before the block itself */
   stx_free_visited_ptrs (thread_p);
+  if (domain_plan_error != NO_ERROR)
+    {
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+#if !defined (SERVER_MODE)
+      /* the stand-alone pointer is a global; a freed block must not stay behind it (#336) */
+      set_xasl_unpack_info_ptr (thread_p, NULL);
+#endif
+    }
 #if defined(SERVER_MODE)
   set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
@@ -6863,6 +6871,12 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
       regu->domain = domain;
       /* save te original domain */
       regu->original_domain = domain;
+      if (regu->type == TYPE_POS_VALUE && domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+	{
+	  /* the item stream carries no flags: a slot row of an all-slot VALUES column is a gate slot, as the
+	   * compiler marked it (D-323-14: GATE == the VARIABLE placeholder on a slot; #336) */
+	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_GATE);
+	}
 
       if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH && regu->type != TYPE_POS_VALUE)
 	{

@@ -20,6 +20,7 @@
 #define _DOMAIN_PLAN_H_
 
 #include "domain_resolver.h"
+#include "object_domain_convert.h"
 #include "thread_compat.hpp"
 #include <cstddef>
 
@@ -33,7 +34,11 @@ enum DOMAIN_PLAN_FLAGS
 {
   DOMAIN_PLAN_GATE = 0x01, DOMAIN_PLAN_KEY1 = 0x02, DOMAIN_PLAN_KEY2 = 0x04,
   DOMAIN_PLAN_ISS = 0x08, DOMAIN_PLAN_ALIAS = 0x10, DOMAIN_PLAN_KEEP_LAZY = 0x20,
-  DOMAIN_PLAN_TRUNCATE_OK = 0x80
+  DOMAIN_PLAN_DERIVED = 0x40,	/* a derived consumer or a node over one (F-335-07): typed by dpin-11, excused from
+				 * load boundary (a) until then */
+  DOMAIN_PLAN_TRUNCATE_OK = 0x80,
+  DOMAIN_PLAN_COLLATION_GATE = 0x100	/* the type is compiled, the collation is the bound value's: the gate records
+					 * the value domain in this item's slot (C3/C12 slot rows, #336) */
 };
 
 typedef struct domain_plan_item DOMAIN_PLAN_ITEM;
@@ -41,10 +46,10 @@ struct domain_plan_item
 {
   int slot;
   int ref;
+  unsigned short flags;
   unsigned char operand_class;
-  unsigned char flags;
   unsigned char fail[3];
-  unsigned char pad[3];
+  unsigned char pad[2];
   RESOLVED_DOMAIN fixed;
 };
 /* D-328-03 supersedes the original 64-byte limit: operand targets are distinct from the result. */
@@ -100,11 +105,12 @@ struct RESOLVED_DOMAIN_TABLE
   THREAD_ENTRY *owner;
   const DOMAIN_PLAN *plan;
   bool sealed;
+  bool volatile_changed;	/* a session variable changed its type within the execution (D-336-E): volatile nodes
+				 * read develop's per-row late binding instead of the gate's decision from then on */
 };
 
 int stx_build_domain_plan (THREAD_ENTRY *thread_p, xasl_node *root, xasl_unpack_info *unpack_info,
                           bool is_pred_stream);
 bool domain_plan_validate (const DOMAIN_PLAN *plan);
-const char *domain_converter_name (DOMAIN_CONV_FUNC converter);
 
 #endif /* _DOMAIN_PLAN_H_ */

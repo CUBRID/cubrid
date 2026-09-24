@@ -7513,6 +7513,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
     "UNION ALL (SELECT 'domain_px_resolve' as [variable] , exec_stats('Num_domain_px_resolve') as [value])"
     "UNION ALL (SELECT 'domain_restore_clone' as [variable] , exec_stats('Num_domain_restore_clone') as [value])"
     "UNION ALL (SELECT 'domain_gate_convert' as [variable] , exec_stats('Num_domain_gate_convert') as [value])"
+    "UNION ALL (SELECT 'bind_plan_mismatch' as [variable] , exec_stats('Num_domain_bind_plan_mismatch') as [value])"
     "UNION ALL (SELECT 'planned_convert' as [variable] , exec_stats('Num_planned_convert') as [value])"
     "UNION ALL (SELECT 'sort_io_pages' as [variable] , exec_stats('Num_sort_io_pages') as [value])"
     "UNION ALL (SELECT 'sort_data_pages' as [variable] , exec_stats('Num_sort_data_pages') as [value])"
