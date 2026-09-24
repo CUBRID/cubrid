@@ -3636,13 +3636,6 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       invalidate_user_cache ();
     }
 
-  /* flush here, so that a failure in storing the trigger is raised by this command and undone to its savepoint
-   * rather than surfacing at commit */
-  if (locator_all_flush () != NO_ERROR)
-    {
-      goto error;
-    }
-
   return object;
 
 error:
