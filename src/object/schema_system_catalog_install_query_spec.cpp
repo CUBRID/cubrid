@@ -1549,7 +1549,6 @@ sm_define_view_user_spec (void)
 	  "(SELECT COALESCE (SUM (SET {[g].[name]}), SET {}) "
 	   "FROM TABLE ([u].[groups]) AS [t] ([g])) AS [groups], "
 	  "NULL AS [authorization], "
-	  "[u].[triggers] AS [triggers], "
 	  "CASE [u].[is_loginable] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_loginable], "
 	  "CASE [u].[is_system_created] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_system_created], "
 	  "[u].[comment] AS [comment], "

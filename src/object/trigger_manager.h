@@ -224,6 +224,10 @@ extern const char *TR_ATT_COMMENT;
 extern const char *TR_ATT_CREATED_TIME;
 extern const char *TR_ATT_UPDATED_TIME;
 
+/* TRIGGER CATALOG QUERIES */
+
+extern const char *TR_QUERY_ALL_TRIGGERS;
+
 extern int tr_Current_depth;
 extern int tr_Maximum_depth;
 extern bool tr_Invalid_transaction;
@@ -273,6 +277,7 @@ extern DB_OBJECT *tr_create_trigger (const char *name, DB_TRIGGER_STATUS status,
 /* Trigger location */
 
 extern int tr_find_all_triggers (DB_OBJLIST ** list);
+extern int tr_find_trigger_objects (const char *query, DB_OBJLIST ** objects);
 extern DB_OBJECT *tr_find_trigger (const char *name);
 extern int tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attribute, bool active,
 				   DB_OBJLIST ** list);
@@ -377,16 +382,12 @@ extern int tr_unmap_trigger (TR_TRIGGER * trigger);
 /* Cache control */
 
 extern int tr_update_user_cache (void);
-extern void tr_invalidate_user_cache (void);
 
 /* Migration and information functions */
 
 extern const char *tr_time_as_string (DB_TRIGGER_TIME time);
 extern const char *tr_event_as_string (DB_TRIGGER_EVENT event);
 extern const char *tr_status_as_string (DB_TRIGGER_STATUS status);
-#if defined(ENABLE_UNUSED_FUNCTION)
-extern int tr_dump_all_triggers (FILE * fp, bool quoted_id_flag);
-#endif
 extern void tr_free_trigger_list (TR_TRIGLIST * list);
 extern const char *tr_get_class_name (void);
 
