@@ -277,8 +277,8 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 	      output_ctx (";\n");
 	    }
 
-	  /* export the login capability. INFORMATION_SCHEMA is created non-loginable and its login clause is refused. */
-	  if (!au_ctx ()->is_loginable_user (user) && !ws_is_same_object (user, Au_information_schema_user))
+	  /* export the login capability. the login clause of a non-loginable system user is refused. */
+	  if (!au_ctx ()->is_loginable_user (user) && !au_ctx ()->is_nologin_system_user (user))
 	    {
 	      output_ctx ("ALTER USER [%s] NOLOGIN;\n", uname);
 	    }
