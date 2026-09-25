@@ -41,6 +41,7 @@ option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
+option (UNIT_TEST_PGBUF_INSPECTOR "Unit testing: page buffer inspector wire contract and conformance corpus")
 
 message("  unit_tests/...")
 
@@ -121,6 +122,11 @@ if (UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
   message("    json_builder")
   add_subdirectory(json_builder)
 endif(UNIT_TESTS OR UNIT_TEST_JSON_BUILDER)
+
+if (UNIT_TESTS OR UNIT_TEST_PGBUF_INSPECTOR)
+  message("    pgbuf_inspector")
+  add_subdirectory(pgbuf_inspector)
+endif(UNIT_TESTS OR UNIT_TEST_PGBUF_INSPECTOR)
 
 #[[
 TODO compilation fails

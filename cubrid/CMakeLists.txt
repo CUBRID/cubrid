@@ -605,6 +605,15 @@ set(LOADDB_HEADERS
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND STORAGE_SOURCES
+    ${STORAGE_DIR}/pgbuf_inspector.cpp
+    ${STORAGE_DIR}/pgbuf_inspector_socket.cpp
+    ${STORAGE_DIR}/pgbuf_inspector_scan.cpp
+    ${STORAGE_DIR}/pgbuf_inspector_wire.cpp
+    ${STORAGE_DIR}/pgbuf_inspector_protocol.cpp)
+endif()
+
 if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/cubrid_getopt_long.c)
   list(APPEND BASE_SOURCES ${BASE_DIR}/variable_string.c)
