@@ -100,7 +100,7 @@ class print_output;
 
 // FIXME: To migrate legacy
 // AU_DISABLE_PASSWORDS () is called in serveral places without calling au_init ()
-#define AU_DISABLE_PASSWORDS()          au_ctx ()->disable_passwords ();
+#define AU_DISABLE_PASSWORDS()          au_ctx ()->disable_passwords ()
 
 /* Au_disable: true skips authorization checks, false performs them.
    Pair every AU_SAVE_AND_* with AU_RESTORE on each exit path or the state leaks. */
