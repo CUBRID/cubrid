@@ -414,6 +414,12 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
+  /* keep the client's text so a demote at execute time runs the original query */
+  if (replace_rule_idx >= 0 && srv_handle != NULL && srv_handle->qr_app_sql == NULL)
+    {
+      ALLOC_COPY_STRLEN (srv_handle->qr_app_sql, sql_stmt);
+    }
+
   /* when the query was rewritten, effective_sql points into the read-only (SHM_RDONLY)
    * replace rule segment, but cas_log_compile_end_write_query_string() hides passwords
    * by temporarily NUL-terminating its argument in place (hide_password.cpp) -- writing
@@ -893,7 +899,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
    * replace in place. */
   if (qr_demote && srv_handle->replace_rule_idx >= 0)
     {
-      const char *orig_query = qr_get_orig_query (srv_handle->replace_rule_idx);
+      const char *orig_query = (srv_handle->qr_app_sql != NULL)
+	? srv_handle->qr_app_sql : qr_get_orig_query (srv_handle->replace_rule_idx);
       char *orig_dup = NULL;
 
       if (orig_query != NULL)
@@ -1943,7 +1950,8 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
    * (same ordering rule as fn_execute_internal). */
   if (srv_handle->qr_demote_pending)
     {
-      const char *orig_query = qr_get_orig_query (srv_handle->replace_rule_idx);
+      const char *orig_query = (srv_handle->qr_app_sql != NULL)
+	? srv_handle->qr_app_sql : qr_get_orig_query (srv_handle->replace_rule_idx);
       char *orig_dup = NULL;
 
       srv_handle->qr_demote_pending = 0;
