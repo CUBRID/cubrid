@@ -31,6 +31,7 @@ namespace cubmethod
     : m_thread (thread_p)
     , m_is_oid_included (oid_included)
     , m_is_opened (false)
+    , m_is_query_ended (false)
     , m_fetch_count (1000) // FIXME: change the fixed value, 1000
   {
     reset (query_entry_p);
@@ -38,6 +39,15 @@ namespace cubmethod
 
   query_cursor::~query_cursor ()
   {
+    if (m_is_opened == false && m_is_query_ended == false)
+      {
+	// The cursor has never been opened (e.g. no fetch was requested before the method ended).
+	// End the query here to release the list file whose qlist_count was incremented in create_cursor ().
+	qfile_close_list (m_thread, m_list_id);
+	xqmgr_end_query (m_thread, m_query_id);
+	m_is_query_ended = true;
+      }
+
     close();
   }
 
@@ -76,6 +86,7 @@ namespace cubmethod
 	qfile_close_list (m_thread, m_list_id);
 	xqmgr_end_query (m_thread, m_query_id);
 	m_is_opened = false;
+	m_is_query_ended = true;
       }
   }
 
