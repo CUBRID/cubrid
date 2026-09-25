@@ -6921,7 +6921,7 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
  *
  * A column the compiler left open takes the plan's domain for this execution (#341, S-14): the list holds that domain
  * from its first tuple on. Only a column the row types keeps its compiled domain, for the list's first tuples
- * (qexec_generate_tuple_descriptor): a session variable read (D-336-E) or a string the gate left undecided (D-338-02).
+ * (qexec_generate_tuple_descriptor): a session variable read (D-336-E).
  * Any other open column is the execution boundary (b).
  */
 int

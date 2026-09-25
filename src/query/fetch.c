@@ -663,7 +663,7 @@ enum FETCH_GATE_READING
 {
   FETCH_GATE_DECIDED,		/* the gate's decision, or a cast's compiled target */
   FETCH_GATE_NO_VALUE,		/* the gate found the node takes no value: a NULL operand, a pair its operator rejects, a
-				 * collation pair that does not merge (D-338-02), a cast into a target left open (L-18);
+				 * collation pair that does not merge (#343), a cast into a target left open (L-18);
 				 * the row computes as develop's unbound node does and gives NULL or the operator's error */
   FETCH_GATE_LATE,		/* develop's binding from the first value: a session variable read under the node left
 				 * the gate's decision before the node's first value (D-336-E), or the node is fetched
@@ -726,12 +726,12 @@ fetch_arith_gate_reading (const VAL_DESCR * vd, const ARITH_TYPE * arithptr, con
  *   the row, where the plan hands that reading to it (S-02, S-05)
  *   return: false where the gate should have a decision: the execution boundary (b)
  *
- * The row reads the value's domain as develop does only for: a node the gate left undecided (D-338-02) - collations
- * that do not merge raise their error before a value forms, so the undecided node that reaches here is a branch whose
- * picked operands carry different domains, or a function with more strings than a node links; #343 removes this
- * reading with the collation pair conditions - a decision over a session variable read that left the gate's within
- * the statement (D-336-E), and a regu fetched without a value descriptor (a temporary regu an analytic function makes,
- * #341). A descriptor without gate state is the boundary: a hash join worker inherits the state (F-334-01).
+ * The row reads the value's domain as develop does only for a decision over a session variable read that left the
+ * gate's within the statement (D-336-E), and for a regu fetched without a value descriptor (a temporary regu an
+ * analytic function makes, #341 -> dpin-17b). The gate decides every other string: collations that do not merge give
+ * no value (the row raises their error before a value forms), and a branch a row picks is the gate's pick or the
+ * branches' merged domain (D-343-01, #343). A descriptor without gate state is the boundary: a hash join worker
+ * inherits the state (F-334-01).
  */
 static bool
 fetch_row_reads_string_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
@@ -749,7 +749,7 @@ fetch_row_reads_string_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * it
     {
       return false;
     }
-  return !RESOLVED_VOLATILE_HOLDS (resolved, item) || resolved.table[item->slot].domain == NULL;
+  return !RESOLVED_VOLATILE_HOLDS (resolved, item);
 }
 
 /*
@@ -841,6 +841,59 @@ fetch_assert_resolved_common_value (int opcode, const TP_DOMAIN * common, int n_
   assert (error != NO_ERROR || resolved.domain == common || resolved.domain == domain_as_value_domain (common));
 }
 #endif
+
+/*
+ * fetch_convert_to_branch_value () - a value a row picked among branches whose collations the gate merged into one
+ *   domain (D-343-01, domain_resolve_branch_merge), brought into it by the converter the gate chose for its string type
+ *   return: NO_ERROR, the conversion's error, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b)) for a value of a type
+ *	     the gate chose no converter for
+ */
+static int
+fetch_convert_to_branch_value (THREAD_ENTRY * thread_p, const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
+			       const RESOLVED_DOMAIN * decision, DB_VALUE * value)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  const DOMAIN_CONV_FUNC converter = type == DB_TYPE_VARCHAR ? decision->conv[0]
+    : type == DB_TYPE_CHAR ? decision->conv[1] : NULL;
+  if (converter == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
+	      vd->xasl_state->resolved.plan != NULL ? (int) (item - vd->xasl_state->resolved.plan->items) : -1,
+	      pr_type_name (type));
+      return ER_QPROC_DOMAIN_UNRESOLVED;
+    }
+  DB_VALUE converted;
+  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
+  if (domain_run_converter (converter, decision->domain, value, &converted) != DOMAIN_COMPATIBLE)
+    {
+      pr_clear_value (&converted);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type),
+	      pr_type_name (TP_DOMAIN_TYPE (decision->domain)));
+      return ER_TP_CANT_COERCE;
+    }
+  pr_clear_value (value);
+  *value = converted;
+  return NO_ERROR;
+}
+
+/* The row's test before fetch_convert_to_branch_value, inline: a collation gate node's decision carries converters only
+ * for merged branches (a type-dependent node's are its operands', D-328-03), so any other node costs a flag test. */
+static inline int
+fetch_convert_to_branch_decision (THREAD_ENTRY * thread_p, const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
+				  DB_VALUE * value)
+{
+  if (item == NULL || !(item->flags & DOMAIN_PLAN_COLLATION_GATE))
+    {
+      return NO_ERROR;
+    }
+  const RESOLVED_DOMAIN *decision = RESOLVED_GATE_NODE (vd, item);
+  if (decision == NULL || (decision->conv[0] == NULL && decision->conv[1] == NULL) || DB_IS_NULL (value))
+    {
+      return NO_ERROR;
+    }
+  return fetch_convert_to_branch_value (thread_p, vd, item, decision, value);
+}
 
 /* Whether the gate already evaluated this constant subtree (#352, interface §10): its value is in the gate's array.
  * It replaces fetch's FETCH_ALL_CONST mark, which the first computation set on the plan. */
@@ -3508,6 +3561,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, regu_var->domain);
 	  goto error;
 	}
+      /* branches whose collations the gate merged: the picked value takes the merged domain (D-343-01) */
+      if (fetch_convert_to_branch_decision (thread_p, vd, arithptr->domain_plan, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
       break;
 
     case T_PREDICATE:
@@ -4928,9 +4986,9 @@ error:
  * The gate recorded a slot's bound value domain (codeset and collation included), and a derived consumer or a string
  * function reads its producer's or its own decision, so the domain develop took from the first value is already
  * there. The value's domain is read instead only where the plan hands it to the row: a decision over a session
- * variable read that left the gate's (D-336-E), a string the gate left undecided (D-338-02, #343), and a regu fetched
- * without a value descriptor (a temporary regu an analytic function makes, #341). A bind value is the one the gate
- * saw: a comparison converts its constant into a value of its own, not in place (#352).
+ * variable read that left the gate's (D-336-E), and a regu fetched without a value descriptor (a temporary regu an
+ * analytic function makes, #341). A bind value is the one the gate saw: a comparison converts its constant into a
+ * value of its own, not in place (#352).
  */
 static int
 fetch_read_plan_domain (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE * value)
@@ -5255,6 +5313,12 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
       funcp = regu_var->value.funcp;
       assert (funcp != NULL);
+
+      /* ELT over branches whose collations the gate merged: the picked value takes the merged domain (D-343-01) */
+      if (fetch_convert_to_branch_decision (thread_p, vd, regu_var->domain_plan, funcp->value) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
 
       *peek_dbval = funcp->value;
 

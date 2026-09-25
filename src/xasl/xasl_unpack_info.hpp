@@ -75,6 +75,8 @@ struct xasl_unpack_info
   int track_allocated_bufers;
 
   bool use_xasl_clone;		/* true, if uses xasl clone */
+  bool index_stream;		/* a filter or function index predicate: loaded without the execution gate (S-42) */
+  bool index_stream_gate;	/* such a stream holds a regu the gate would decide: the load boundary (a) (#343) */
 };
 
 XASL_UNPACK_INFO *get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);

@@ -90,10 +90,15 @@ struct DOMAIN_LOAD_RECORD
   bool follows_producer;	/* after resolution: this record carries its producer's answer (a link source goes
 				 * through it to the producer, a bind's value included) */
   DOMAIN_LOAD_RECORD *producer;	/* CONSUMER / ARITH_REGU: whose answer this record reads */
-  /* NODE / FIXED_AGG: the operands in operand order, and the literal a TYPE_DBVAL operand carries */
-  DOMAIN_PLAN_ITEM *link[3];
-  const DB_VALUE *literal[3];
+  /* NODE / FIXED_AGG: the operands in operand order, and the literal a TYPE_DBVAL operand carries; the inline arrays
+   * hold three, a function with more operands allocates its own (#343) */
+  DOMAIN_PLAN_ITEM **link;
+  const DB_VALUE **literal;
+  DOMAIN_PLAN_ITEM *link_inline[3];
+  const DB_VALUE *literal_inline[3];
   int n_link;
+  bool elt_index;		/* ELT: link[0] is the index, a bind or a literal (DOMAIN_GATE_LINK) */
+  const TP_DOMAIN *elt_index_cast;	/* ELT: the cast the compiler wraps that index in (DOMAIN_GATE_LINK) */
   const TP_DOMAIN *consumer;
   const TP_DOMAIN *argument;	/* FIXED_AGG: the argument's compiled domain when it is not open (DOMAIN_GATE_LINK) */
   int gate_order;		/* index into plan->gate_nodes once this record is a gate-dependent node */
@@ -214,13 +219,33 @@ domain_gate_context (OPERATOR_TYPE opcode)
     }
 }
 
-/* Records the operands a node the compiler left without a type is decided from (resolution pass, #337). */
+/* Records the operands a node the compiler left without a type is decided from (resolution pass, #337). A record links
+ * three operands in place; a function with more links an array of its own, freed with the load records (#343). */
 static void
-domain_set_links (DOMAIN_LOAD_RECORD * record, REGU_VARIABLE * const *operands, int n_operands,
-		  const TP_DOMAIN * consumer)
+domain_set_links (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record, REGU_VARIABLE * const *operands,
+		  int n_operands, const TP_DOMAIN * consumer)
 {
-  assert (n_operands <= 3);
   record->n_link = 0;
+  if (n_operands > 3 && record->link == record->link_inline)
+    {
+      DOMAIN_PLAN_ITEM **link = (DOMAIN_PLAN_ITEM **) db_private_alloc (ctx->thread_p, n_operands * sizeof (*link));
+      const DB_VALUE **literal = (const DB_VALUE **) db_private_alloc (ctx->thread_p, n_operands * sizeof (*literal));
+      if (link == NULL || literal == NULL)
+	{
+	  if (link != NULL)
+	    {
+	      db_private_free (ctx->thread_p, link);
+	    }
+	  if (literal != NULL)
+	    {
+	      db_private_free (ctx->thread_p, literal);
+	    }
+	  ctx->failed = true;
+	  return;
+	}
+      record->link = link;
+      record->literal = literal;
+    }
   for (int i = 0; i < n_operands; i++)
     {
       if (operands[i] != NULL && operands[i]->domain_plan != NULL)
@@ -272,6 +297,8 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
       return NULL;
     }
   memset (record, 0, sizeof (*record));
+  record->link = record->link_inline;
+  record->literal = record->literal_inline;
   record->owner = owner;
   record->gate_order = -1;
   record->index = ctx->plan->n_items++;
@@ -745,7 +772,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	{
 	  item->flags |= DOMAIN_PLAN_COLLATION_GATE;
 	}
-      domain_set_links (record, operands, n_value_operands, arith->domain);
+      domain_set_links (ctx, record, operands, n_value_operands, arith->domain);
       for (int i = 0; i < n_value_operands; i++)
 	{
 	  if (operands[i] != NULL && operands[i]->domain_plan == NULL)
@@ -969,24 +996,47 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
   else if (regu->type == TYPE_FUNC && domain_character_open (regu->domain) && regu->value.funcp->operand != NULL)
     {
       /* #338: a function the compiler typed as a string whose collation its values give is decided by the gate from
-       * its string operands. A node links three operands; a function with more strings than that is left to the row
-       * (cold opcode -1: the gate records no decision). */
-      REGU_VARIABLE *operands[3] = { NULL, NULL, NULL };
+       * its string operands, every one of them (#343: a node links as many as it has). ELT links all its operands in
+       * order: the gate picks the branch its index names, or merges the branches' collations (D-343-01). */
+      const bool elt = regu->value.funcp->ftype == F_ELT;
+      REGU_VARIABLE_LIST index = regu->value.funcp->operand;
+      /* the index joins the links only where the gate reads its value: a bind or a literal, which the compiler wraps
+       * in a cast to BIGINT when its type is another (func_type.cpp) - the gate applies that cast as the row does */
+      REGU_VARIABLE *index_value = &index->value;
+      const TP_DOMAIN *index_cast = NULL;
+      if (elt && (index_value->type == TYPE_INARITH || index_value->type == TYPE_OUTARITH)
+	  && index_value->value.arithptr->rightptr != NULL
+	  && (index_value->value.arithptr->opcode == T_CAST || index_value->value.arithptr->opcode == T_CAST_WRAP
+	      || index_value->value.arithptr->opcode == T_CAST_NOFAIL))
+	{
+	  index_cast = index_value->value.arithptr->domain;
+	  index_value = index_value->value.arithptr->rightptr;
+	}
+      const bool elt_index = elt && (index_value->type == TYPE_DBVAL
+				     || (index_value->type == TYPE_POS_VALUE && index_value->domain != NULL));
+      int n_all = 0;
+      for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+	{
+	  n_all++;
+	}
+      REGU_VARIABLE *inline_operands[8];
+      REGU_VARIABLE **operands = n_all <= 8 ? inline_operands
+	: (REGU_VARIABLE **) db_private_alloc (ctx->thread_p, n_all * sizeof (*operands));
+      if (operands == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
       int n_operands = 0;
-      bool overflow = false;
       for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
 	{
 	  const TP_DOMAIN *d = op->value.domain;
-	  if (d != NULL && TP_DOMAIN_TYPE (d) != DB_TYPE_VARIABLE && !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d)))
+	  if (elt ? (op == index && !elt_index)
+	      : (d != NULL && TP_DOMAIN_TYPE (d) != DB_TYPE_VARIABLE && !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d))))
 	    {
 	      continue;
 	    }
-	  if (n_operands == 3)
-	    {
-	      overflow = true;
-	      break;
-	    }
-	  operands[n_operands++] = &op->value;
+	  operands[n_operands++] = elt && op == index ? index_value : &op->value;
 	}
       if (n_operands == 0)
 	{
@@ -994,14 +1044,20 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
 	}
       record->kind = DOMAIN_LOAD_NODE;
       item->flags |= DOMAIN_PLAN_COLLATION_GATE;
-      record->cold.opcode = overflow ? -1 : regu->value.funcp->ftype;
-      domain_set_links (record, operands, n_operands, regu->domain);
+      record->cold.opcode = regu->value.funcp->ftype;
+      record->elt_index = elt_index;
+      record->elt_index_cast = elt_index ? index_cast : NULL;
+      domain_set_links (ctx, record, operands, n_operands, regu->domain);
       for (int i = 0; i < n_operands; i++)
 	{
 	  if (operands[i]->domain_plan == NULL)
 	    {
 	      record->n_link = -1;
 	    }
+	}
+      if (operands != inline_operands)
+	{
+	  db_private_free (ctx->thread_p, operands);
 	}
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
@@ -1202,7 +1258,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	       * it decides the argument or the compiler left the function open; a compiled one gets its accumulator
 	       * derived once (resolution pass) */
 	      record->kind = DOMAIN_LOAD_FIXED_AGG;
-	      domain_set_links (record, &operand, 1, agg->domain);
+	      domain_set_links (ctx, record, &operand, 1, agg->domain);
 	      record->argument = agg->opr_dbtype != DB_TYPE_VARIABLE && domain_type_is_fixed (operand->domain)
 		? operand->domain : NULL;
 	      if (operand->domain_plan == NULL)
@@ -1257,7 +1313,7 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	      domain_fixed_operand (item, 0, operand->domain, operand->domain, DOMAIN_CTX_FUNC_ARG);
 	      /* as an aggregate's: the operand is a value pointer into a_val_list, so its producer decides (#337) */
 	      record->kind = DOMAIN_LOAD_FIXED_AGG;
-	      domain_set_links (record, &operand, 1, analytic->domain);
+	      domain_set_links (ctx, record, &operand, 1, analytic->domain);
 	      record->argument = analytic->opr_dbtype != DB_TYPE_VARIABLE && domain_type_is_fixed (operand->domain)
 		? operand->domain : NULL;
 	      if (operand->domain_plan == NULL)
@@ -2958,7 +3014,16 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  DOMAIN_LOAD_RECORD *r = ctx.gate_order[g];
 	  DOMAIN_GATE_LINK *link = &plan->gate_links[g];
 	  memset (link, 0, sizeof (*link));
+	  link->operands = (const DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, r->n_link, sizeof (*link->operands));
+	  link->literal = (const DB_VALUE **) domain_plan_alloc (thread_p, r->n_link, sizeof (*link->literal));
+	  if (link->operands == NULL || link->literal == NULL)
+	    {
+	      ctx.failed = true;
+	      break;
+	    }
 	  link->n_operands = r->n_link;
+	  link->elt_index = r->elt_index;
+	  link->elt_index_cast = r->elt_index_cast;
 	  link->consumer = r->consumer;
 	  link->argument = r->argument;
 	  /* a node's decision inherits its sources' limits (producers come first, so theirs are set) */
@@ -3038,6 +3103,11 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     {
       DOMAIN_LOAD_RECORD *r = ctx.head;
       ctx.head = r->next;
+      if (r->link != r->link_inline)
+	{
+	  db_private_free (thread_p, r->link);
+	  db_private_free (thread_p, (void *) r->literal);
+	}
       db_private_free (thread_p, r);
     }
   if (ctx.failed)

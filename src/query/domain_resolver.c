@@ -2585,3 +2585,46 @@ domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n_ope
     }
   return domain_character_result (opcode, operands, n_operands, compiled, result);
 }
+
+int
+domain_resolve_branch_pick (const DOMAIN_OPERAND * operands, int n_operands, int branch, RESOLVED_DOMAIN * result)
+{
+  *result = RESOLVED_DOMAIN
+  {
+  };
+  const TP_DOMAIN *domain = branch > 0 && branch < n_operands
+    ? domain_as_value_domain (domain_operand_domain (&operands[branch])) : NULL;
+  /* no branch, or a branch without a string value (a NULL bind): every row gives NULL (qdata_elt) */
+  result->domain = domain != NULL && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)) ? domain : &tp_Null_domain;
+  return NO_ERROR;
+}
+
+int
+domain_resolve_branch_merge (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
+{
+  *result = RESOLVED_DOMAIN
+  {
+  };
+  int collation_id = -1;
+  if (!domain_merge_collations (operands, n_operands, &collation_id))
+    {
+      return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+    }
+  if (collation_id < 0)
+    {
+      result->domain = &tp_Null_domain;
+      return NO_ERROR;
+    }
+  /* the branches' string type (the compiler casts every branch to it) of the value's own length (D-338-03) */
+  const TP_DOMAIN *first = domain_first_character_operand (operands, n_operands);
+  const DB_TYPE type = first != NULL && TP_DOMAIN_TYPE (first) == DB_TYPE_CHAR ? DB_TYPE_CHAR : DB_TYPE_VARCHAR;
+  const TP_DOMAIN *domain = tp_domain_resolve (type, NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL, collation_id);
+  if (domain == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  result->domain = domain_as_value_domain (domain);
+  result->conv[0] = domain_lookup_converter (DB_TYPE_VARCHAR, result->domain, DOMAIN_CTX_ASSIGN);
+  result->conv[1] = domain_lookup_converter (DB_TYPE_CHAR, result->domain, DOMAIN_CTX_ASSIGN);
+  return NO_ERROR;
+}

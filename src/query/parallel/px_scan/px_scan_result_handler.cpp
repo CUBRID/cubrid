@@ -40,8 +40,6 @@
 #include "object_domain.h"
 #include "query_executor.h"
 #include "px_scan_trace_handler.hpp"
-
-#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -57,35 +55,35 @@ namespace parallel_scan
   thread_local QFILE_TUPLE_RECORD result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_tpl_buf;
   thread_local OR_BUF result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_or_buf;
 
-  int update_domains_on_type_list_by_val_list (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id_p, VAL_LIST *val_list_p)
+  /* A function that sees a value has its accumulator domain from the setup before the first row
+   * (qexec_setup_parallel_aggregates, #341); a worker neither decides one nor falls back to its values (S-36 is gone,
+   * #343): no domain here is the execution boundary (b). */
+  /* A worker's list opens with the plan's domains (qdata_get_valptr_type_list): no column waits for a first tuple to
+   * type it - PX keeps session variable reads off (px_scan_checker) and the gate decides every other column (S-37 is
+   * gone, #343). An open column here is the execution boundary (b). */
+  static bool list_columns_unresolved (const qfile_tuple_value_type_list &type_list)
   {
-    assert (thread_p != nullptr);
-    assert (list_id_p != nullptr);
-    assert (val_list_p != nullptr);
-    int i;
-    QPROC_DB_VALUE_LIST valp = val_list_p->valp;
-    list_id_p->is_domain_resolved = true;
-
-    for (i=0; i<val_list_p->val_cnt; i++, valp = valp->next)
+    for (int i = 0; i < type_list.type_cnt; i++)
       {
-	assert (i >= 0 && i < val_list_p->val_cnt);
-	assert (valp != nullptr);
-	assert (valp->val != nullptr);
-	assert (i >= 0 && i < list_id_p->type_list.type_cnt);
-	if (valp->val->domain.general_info.is_null)
+	const TP_DOMAIN *domain = type_list.domp[i];
+	if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
+	    || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 	  {
-	    list_id_p->is_domain_resolved = false;
-	  }
-	else
-	  {
-	    if (list_id_p->type_list.domp[i] != valp->dom)
-	      {
-	        perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
-	      }
-	    list_id_p->type_list.domp[i] = valp->dom;
+	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", i,
+		    pr_type_name (domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL));
+	    return true;
 	  }
       }
-    return NO_ERROR;
+    return false;
+  }
+
+  static bool accumulator_domain_unresolved (const AGGREGATE_TYPE *agg_node)
+  {
+    assert (false);
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
+	    pr_type_name (agg_node->domain != NULL ? TP_DOMAIN_TYPE (agg_node->domain) : DB_TYPE_NULL));
+    return false;
   }
 
   template <RESULT_TYPE result_type>
@@ -101,7 +99,6 @@ namespace parallel_scan
       {
 	m_.orig_xasl = orig_xasl_tree_for_domain_resolve;
 	m_.active_results = parallelism;
-	m_.is_list_id_domain_resolved = false;
 	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
 
 	m_.instnum_mode = parallel_scan::detect_instnum_mode (orig_xasl_tree_for_domain_resolve,
@@ -243,6 +240,14 @@ namespace parallel_scan
 	  int err_code = NO_ERROR;
 	  QFILE_LIST_ID *list_id;
 	  err_code = qdata_get_valptr_type_list (thread_p, outptr_list, &type_list, vd);
+	  if (err_code == NO_ERROR && list_columns_unresolved (type_list))
+	    {
+	      err_code = ER_QPROC_DOMAIN_UNRESOLVED;
+	      if (type_list.domp != nullptr)
+		{
+		  db_private_free_and_init (thread_p, type_list.domp);
+		}
+	    }
 	  if (err_code != NO_ERROR)
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
@@ -480,11 +485,6 @@ namespace parallel_scan
 	if (tl.list_id_header_p->m_list_id_p != nullptr)
 	  {
 	    qfile_close_list (thread_p, tl.list_id_header_p->m_list_id_p);
-	    for (int i = 0; i < tl.list_id_header_p->m_type_cnt; i++)
-	      {
-		tl.list_id_header_p->m_type_list[i]->store ((TP_DOMAIN *)tl.list_id_header_p->m_list_id_p->type_list.domp[i],
-		    std::memory_order_release);
-	      }
 	    last_vpid.vpid = tl.list_id_header_p->m_list_id_p->last_vpid;
 	    tl.list_id_header_p->m_last_vpid.store (last_vpid, std::memory_order_release);
 	    if (VPID_EQ (&tl.list_id_header_p->m_list_id_p->last_vpid, &tl.list_id_header_p->m_list_id_p->first_vpid))
@@ -935,17 +935,6 @@ namespace parallel_scan
 
 	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, & (tl.writer_result_p->tpl_descr));
 
-	if (unlikely (!m_.is_list_id_domain_resolved))
-	  {
-	    /* #341: the worker's list opened with the plan's domains; only a column the row types waits here */
-	    if (qexec_type_open_list_columns (thread_p, tl.writer_result_p, input, tl.vd) != NO_ERROR)
-	      {
-		m_err_messages_p->move_top_error_message_to_this();
-		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		return false;
-	      }
-	    m_.is_list_id_domain_resolved = tl.writer_result_p->is_domain_resolved;
-	  }
 	if (unlikely (!tl.val_list_domain_resolved))
 	  {
 	    XASL_NODE *xptr = tl.xasl;
@@ -1145,15 +1134,6 @@ namespace parallel_scan
 	    m_err_messages_p->move_top_error_message_to_this();
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return false;
-	  }
-	if (unlikely (!tl_list_id_header->m_list_id_p->is_domain_resolved))
-	  {
-	    (void) update_domains_on_type_list_by_val_list (thread_p, tl_list_id_header->m_list_id_p, input);
-	    for (int i = 0; i < tl_list_id_header->m_type_cnt; i++)
-	      {
-		tl_list_id_header->m_type_list[i]->store ((TP_DOMAIN *)tl_list_id_header->m_list_id_p->type_list.domp[i],
-		    std::memory_order_release);
-	      }
 	  }
 	if (unlikely (!VPID_EQ (&old_last_vpid, &tl_list_id_header->m_list_id_p->last_vpid)
 		      && old_last_vpid.pageid != NULL_PAGEID))
@@ -1723,29 +1703,21 @@ namespace parallel_scan
 
     if constexpr (F == PT_COUNT)
       {
-	/* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	/* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    if (agg_node->domain != NULL)
-	      {
-		acc_dom->value_dom = agg_node->domain;
-	      }
-	    else
-	      {
-		perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
-		acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
-	      }
-	    acc_dom->value2_dom = &tp_Null_domain;
+	    return accumulator_domain_unresolved (agg_node);
 	  }
 	acc->curr_cnt++;
       }
     else if constexpr (F == PT_MIN)
       {
-	/* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	/* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    acc_dom->value_dom = agg_node->domain;
-	    acc_dom->value2_dom = &tp_Null_domain;
+	    return accumulator_domain_unresolved (agg_node);
 	  }
 	int coll_id = acc_dom->value_dom->collation_id;
 	if (acc->curr_cnt < 1
@@ -1772,11 +1744,11 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_MAX)
       {
-	/* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	/* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    acc_dom->value_dom = agg_node->domain;
-	    acc_dom->value2_dom = &tp_Null_domain;
+	    return accumulator_domain_unresolved (agg_node);
 	  }
 	int coll_id = acc_dom->value_dom->collation_id;
 	if (acc->curr_cnt < 1
@@ -1803,40 +1775,11 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_SUM || F == PT_AVG)
       {
-	/* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	/* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    if (TP_IS_NUMERIC_TYPE (DB_VALUE_DOMAIN_TYPE (db_value_p)))
-	      {
-		if (agg_node->domain != NULL && TP_DOMAIN_TYPE (agg_node->domain) == DB_TYPE_NUMERIC)
-		  {
-		    acc_dom->value_dom =
-			    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
-					       agg_node->domain->scale, NULL, 0);
-		  }
-		else if (DB_VALUE_DOMAIN_TYPE (db_value_p) == DB_TYPE_NUMERIC)
-		  {
-		    acc_dom->value_dom =
-			    tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION,
-					       DB_VALUE_SCALE (db_value_p), NULL, 0);
-		  }
-		else if (DB_VALUE_DOMAIN_TYPE (db_value_p) == DB_TYPE_FLOAT)
-		  {
-		    acc_dom->value_dom =
-			    tp_domain_resolve (DB_TYPE_DOUBLE, NULL, DB_DOUBLE_DECIMAL_PRECISION,
-					       DB_VALUE_SCALE (db_value_p), NULL, 0);
-		  }
-		else
-		  {
-		    perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
-		    acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
-		  }
-	      }
-	    else
-	      {
-		acc_dom->value_dom = agg_node->domain;
-	      }
-	    acc_dom->value2_dom = &tp_Null_domain;
+	    return accumulator_domain_unresolved (agg_node);
 	  }
 	/* Supported types use the word accumulator, as on the serial path.
 	 * Each worker owns its accumulator; finalize_node () merges it through
@@ -1905,11 +1848,11 @@ namespace parallel_scan
     else if constexpr (F == PT_STDDEV || F == PT_STDDEV_POP || F == PT_STDDEV_SAMP
 		       || F == PT_VARIANCE || F == PT_VAR_POP || F == PT_VAR_SAMP)
       {
-	/* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	/* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    acc_dom->value_dom = &tp_Double_domain;
-	    acc_dom->value2_dom = &tp_Double_domain;
+	    return accumulator_domain_unresolved (agg_node);
 	  }
 	DB_VALUE coerced, squared;
 	db_make_null (&coerced);
@@ -1956,11 +1899,11 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_AGG_BIT_AND || F == PT_AGG_BIT_OR || F == PT_AGG_BIT_XOR)
       {
-	/* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	/* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    acc_dom->value_dom = agg_node->domain;
-	    acc_dom->value2_dom = &tp_Null_domain;
+	    return accumulator_domain_unresolved (agg_node);
 	  }
 	DB_VALUE tmp_val;
 	db_make_bigint (&tmp_val, (DB_BIGINT) 0);
@@ -2025,11 +1968,11 @@ namespace parallel_scan
 	else
 	  {
 	    /* sort_list == NULL case; ORDER BY case is handled above */
-	    /* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	    /* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	     * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	    if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	      {
-		acc_dom->value_dom = agg_node->domain;
-		acc_dom->value2_dom = &tp_Null_domain;
+	        return accumulator_domain_unresolved (agg_node);
 	      }
 	    int gc_err;
 	    if (acc->curr_cnt < 1)
@@ -2049,19 +1992,11 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_JSON_ARRAYAGG)
       {
-	/* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	/* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    if (agg_node->domain != NULL)
-	      {
-		acc_dom->value_dom = agg_node->domain;
-	      }
-	    else
-	      {
-		perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
-		acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
-	      }
-	    acc_dom->value2_dom = &tp_Null_domain;
+	    return accumulator_domain_unresolved (agg_node);
 	  }
 	if (db_accumulate_json_arrayagg (db_value_p, acc->value) != NO_ERROR)
 	  {
@@ -2071,19 +2006,11 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_JSON_OBJECTAGG)
       {
-	/* per-row domain fallback (S-36, workspace#343): the setup (qexec_setup_parallel_aggregates) leaves no domain to a function whose decision has no value. */
+	/* S-36 is gone (#343): the setup gives every function that sees a value its accumulator domain before the
+	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    if (agg_node->domain != NULL)
-	      {
-		acc_dom->value_dom = agg_node->domain;
-	      }
-	    else
-	      {
-		perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
-		acc_dom->value_dom = tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (db_value_p));
-	      }
-	    acc_dom->value2_dom = &tp_Null_domain;
+	    return accumulator_domain_unresolved (agg_node);
 	  }
 	REGU_VARIABLE_LIST second_operand = agg_node->operands->next;
 	if (second_operand == nullptr)
@@ -2762,14 +2689,9 @@ namespace parallel_scan
 	      break;
 	    }
 
-	  /* The host variable's domain is resolved only in worker clones that scan rows.
-	   * Copy the resolved domain to the main agg node before merging the accumulators. */
-	  if (orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
-	      orig_agg_p->domain = cur_agg_p->domain;
-	      orig_agg_p->opr_dbtype = cur_agg_p->opr_dbtype;
-	    }
+	  /* S-35 is gone (#343): the leader set its aggregates up before its scan from the decisions its workers inherited
+	   * (qexec_setup_aggregate_domains, qexec_setup_parallel_aggregates), so a worker has no domain to hand back */
+	  assert (!(orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE));
 
 	  switch (orig_agg_p->function)
 	    {

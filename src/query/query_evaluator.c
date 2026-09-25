@@ -257,7 +257,7 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
   if (site->kind == DOMAIN_ELEMENTS_PAIR)
     {
       elements->all = eval_site_compare (&site->pair, vd);
-      if (elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_UNDECIDED)
+      if (elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_VOLATILE)
 	{
 	  /* a map exception holds for any value the right side has */
 	  elements->each = elements->all;
@@ -295,7 +295,7 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
       break;
     case DOMAIN_READ_PAIR:
       elements->all = &decided->compares[0];
-      if (elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_UNDECIDED)
+      if (elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_VOLATILE)
 	{
 	  elements->each = elements->all;
 	}
@@ -547,7 +547,7 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 					 (DB_VALUE_COMPARE_RESULT) result, comparable, et_comp, vd);
 #endif
 	  }
-	else if (compare->reason < DOMAIN_REASON_UNDECIDED && eval_compare_decides (dbval1, dbval2))
+	else if (compare->reason < DOMAIN_REASON_VOLATILE && eval_compare_decides (dbval1, dbval2))
 	  {
 	    /* the execution boundary (b): no plan holds this comparison, and develop would decide it from the values
 	     * (#352) */

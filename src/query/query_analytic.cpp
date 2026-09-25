@@ -64,8 +64,8 @@ qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p, const VAL_DESCR *v
     {
       /* #337: the gate decided the domain before the first row, so the domain does not block the fast path. The
        * first non-NULL value still takes the general path (curr_cnt < 1, sum_acc inactive), which applies that
-       * decision before the accumulator is activated. #341 (S-29): a domain the row gives (D-336-E, D-338-02) keeps
-       * the general path, which reads it there and counts it; a decision without a value leaves only NULLs. */
+       * decision before the accumulator is activated. #341 (S-29): a domain the row gives (D-336-E) keeps the general
+       * path, which reads it there and counts it; a decision without a value leaves only NULLs. */
       return qexec_gate_domain (val_desc_p, func_p->domain_plan, false) != NULL;
     }
   return true;
@@ -200,7 +200,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   /* #337: the gate decided the function once for the execution; the first value no longer decides it. #341 (S-27): a
    * MEDIAN / PERCENTILE value read through a session variable keeps the gate's class unless its content changed it
    * (D-336-E), and a value the gate could not classify is classified, or rejected, by the first execution below as
-   * develop's was. Only a function the row decides takes the first value's domain here (D-336-E, D-338-02; counted). */
+   * develop's was. Only a function the row decides takes the first value's domain here (D-336-E; counted). */
   const TP_DOMAIN *gate_decided = NULL;
   bool first_binding = (func_p->opr_dbtype == DB_TYPE_VARIABLE
 			|| TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL) && !DB_IS_NULL (&dbval);
@@ -769,9 +769,9 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 				|| TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) == DB_TYPE_VARIABLE)))
 		       && qexec_row_domain_counts (val_desc_p, func_p->domain_plan))
 		{
-		  /* #341 (S-28): a decision the row gives (D-336-E, D-338-02): the open function's type, or a string's
-		   * class. A value the gate could not classify is classified or rejected below as develop's was; a
-		   * function whose decision has no value sees only NULLs. */
+		  /* #341 (S-28): a decision the row gives (D-336-E): the open function's type, or a string's class. A
+		   * value the gate could not classify is classified or rejected below as develop's was; a function whose
+		   * decision has no value sees only NULLs. */
 		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
 		}
 	      /* determine domain based on first value */

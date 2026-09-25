@@ -4507,8 +4507,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
 
-	  /* #341 (S-16): the key's domain is the plan's (a key the row types, D-336-E / D-338-02, took its column's once a
-	   * value resolved it; a key no value resolved compares only NULLs) */
+	  /* #341 (S-16): the key's domain is the plan's (a key the row types, D-336-E, took its column's once a value
+	   * resolved it; a key no value resolved compares only NULLs) */
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;

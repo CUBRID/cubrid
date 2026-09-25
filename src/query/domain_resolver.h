@@ -80,11 +80,24 @@ DB_TYPE domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, co
  * (D-338-03). opcode is OPERATOR_TYPE for an arithmetic node and FUNC_CODE for a function node; compiled is the
  * node's compiled domain.
  * return: NO_ERROR, ER_QSTR_INCOMPATIBLE_COLLATIONS when the operands' collations do not merge (the row raises it, as
- *	   develop does), or ER_QPROC_DOMAIN_UNRESOLVED when the value's domain depends on the row (a branch chosen per
- *	   row whose domains differ): the gate then leaves the node undecided.
+ *	   develop does), or ER_QPROC_DOMAIN_UNRESOLVED when the branch a row picks decides the value's domain (a branch
+ *	   chosen per row whose domains differ): the gate then decides the branch (domain_resolve_branch_pick,
+ *	   domain_resolve_branch_merge).
  */
 int domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n_operands, const TP_DOMAIN * compiled,
 			      RESOLVED_DOMAIN * result);
+
+/*
+ * A node whose row takes one branch's value, over branches whose string domains differ (D-343-01, #343):
+ * domain_resolve_branch_pick () - the branch whose value every row takes: ELT's index the gate read names it (operand 0
+ *   is the index, operands 1..n the branches); NULL when no branch has the index
+ * domain_resolve_branch_merge () - the branches' collations merged as the string operators merge their values'
+ *   (LANG_RT_COMMON_COLL, D-338-04), with the converters that bring a picked value into the merged domain: conv[0]
+ *   for a VARCHAR value, conv[1] for a CHAR value
+ *   return: NO_ERROR, or ER_QSTR_INCOMPATIBLE_COLLATIONS when they do not merge (a pre-execution error)
+ */
+int domain_resolve_branch_pick (const DOMAIN_OPERAND * operands, int n_operands, int branch, RESOLVED_DOMAIN * result);
+int domain_resolve_branch_merge (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result);
 
 /* The domain tp_domain_resolve_value gives a value of this domain: a variable string's floating precision reads as
  * its maximum, and an ENUM value keeps no element list (#338). */
@@ -115,7 +128,8 @@ enum DOMAIN_COMPARE_KERNEL
 /*
  * Why a comparison keeps develop's comparison of the values (kernel DOMAIN_COMPARE_VALUES, #352). Up to
  * DOMAIN_REASON_UNPLANNED the execution boundary (b) holds: develop may not decide anything from the values there;
- * from DOMAIN_REASON_UNDECIDED on, the map's exceptions keep develop's comparison, counted.
+ * from DOMAIN_REASON_VOLATILE on, the map's exceptions keep develop's comparison, counted. The gate leaves no side
+ * undecided (#343).
  */
 enum DOMAIN_COMPARE_REASON
 {
@@ -123,7 +137,6 @@ enum DOMAIN_COMPARE_REASON
   DOMAIN_REASON_OPEN,		/* a side the plan leaves open */
   DOMAIN_REASON_UNPLANNED,	/* a term the load gave no record, a gate decision read without the gate's state, an
 				 * element whose key the plan does not hold */
-  DOMAIN_REASON_UNDECIDED,	/* a side the gate left undecided (D-338-02, workspace#343) */
   DOMAIN_REASON_VOLATILE,	/* a session variable read that left the gate's decision (D-336-E) */
   DOMAIN_REASON_PRED_STREAM,	/* a predicate stream: a filter index predicate evaluated outside any execution (S-42,
 				 * workspace#343) */

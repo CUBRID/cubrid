@@ -78,15 +78,20 @@ struct DOMAIN_PLAN_ITEM_COLD
 static_assert (sizeof (DOMAIN_PLAN_ITEM_COLD) == 32, "cold domain plan item layout");
 
 /* What the gate reads to resolve one gate-dependent node (#335): its operand items in operand order, the value of
- * a literal operand, and the compiled domain AGG/ANALYTIC resolve against (the node's own domain otherwise). */
+ * a literal operand, and the compiled domain AGG/ANALYTIC resolve against (the node's own domain otherwise). A
+ * function links every operand its rule reads, however many (#343): the arrays are the plan's. */
 struct DOMAIN_GATE_LINK
 {
-  const DOMAIN_PLAN_ITEM *operands[3];
-  const DB_VALUE *literal[3];
+  const DOMAIN_PLAN_ITEM **operands;
+  const DB_VALUE **literal;
   const TP_DOMAIN *consumer;
   const TP_DOMAIN *argument;	/* AGG / ANALYTIC: the argument's compiled domain when it is not open (opr_dbtype); NULL
 				 * when the function is late-bound from its argument (#337) */
   int n_operands;
+  bool elt_index;		/* ELT: operands[0] is the index, a bind or a literal whose value picks the branch; the
+				 * other operands are the branches in order (D-343-01) */
+  const TP_DOMAIN *elt_index_cast;	/* ELT: the domain the compiler casts that index to (BIGINT for an index of
+					 * another type, func_type.cpp); NULL: the index as it is */
 };
 
 /*
@@ -214,8 +219,8 @@ struct DOMAIN_KEY_DECISION
 				 * constant subtree the row computes, D-352-05) */
   const TP_DOMAIN *keep_elem;	/* DECIDED: the element's domain in the column's direction */
   DOMAIN_CONV_FUNC strict_conv;	/* DECIDED STRICT */
-  unsigned char rule;		/* DECIDED: INDEX, STRICT or KEEP; DECIDED itself when the gate has no domain for it
-				 * (a session variable's or a string's the row gives, D-336-E, D-338-02) */
+  unsigned char rule;		/* DECIDED: INDEX, STRICT or KEEP; DECIDED itself when the gate has no domain for it:
+				 * its values are NULL (a value there is the boundary (b), #343) */
   bool kept;			/* CONSTANT: its column is kept, so its key is mixed */
   bool invalid;			/* CONSTANT: no index key type (tp_valid_indextype): the range raises develop's error */
 };

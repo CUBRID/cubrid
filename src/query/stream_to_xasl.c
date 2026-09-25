@@ -291,6 +291,28 @@ end:
 }
 
 /*
+ * stx_index_stream_rejected () - the load boundary (a) of a filter or function index stream (S-42, #343)
+ *   return: true when the stream is rejected (error set, unpack info freed)
+ *
+ * Such a stream is loaded and evaluated without the execution gate, so a regu the gate would decide - a GATE slot or
+ * node - has no decision anywhere. The catalog streams carry none (no host variable reaches a stored predicate); one is
+ * refused rather than evaluated with an open domain.
+ */
+static bool
+stx_index_stream_rejected (THREAD_ENTRY * thread_p, XASL_UNPACK_INFO * unpack_info_p)
+{
+  if (!unpack_info_p->index_stream_gate)
+    {
+      return false;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load", "", -1,
+	  pr_type_name (DB_TYPE_VARIABLE));
+  stx_set_xasl_errcode (thread_p, ER_QPROC_DOMAIN_UNRESOLVED);
+  free_xasl_unpack_info (thread_p, unpack_info_p);
+  return true;
+}
+
+/*
  * stx_map_stream_to_filter_pred () -
  *   return: if successful, return 0, otherwise non-zero error code
  *   pred(in): pointer to where to return the root of the unpacked
@@ -326,6 +348,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
   unpack_info_p->use_xasl_clone = true;
   unpack_info_p->track_allocated_bufers = 1;
+  unpack_info_p->index_stream = true;
 
   /* calculate offset to filter predicate in the stream buffer */
   p = or_unpack_int (pred_stream, &header_size);
@@ -339,6 +362,10 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   if (pwc == NULL)
     {
       free_xasl_unpack_info (thread_p, unpack_info_p);
+      goto end;
+    }
+  if (stx_index_stream_rejected (thread_p, unpack_info_p))
+    {
       goto end;
     }
 
@@ -384,6 +411,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   unpack_info_p = get_xasl_unpack_info_ptr (thread_p);
   unpack_info_p->use_xasl_clone = false;
   unpack_info_p->track_allocated_bufers = 1;
+  unpack_info_p->index_stream = true;
 
   /* calculate offset to expr XASL in the stream buffer */
   p = or_unpack_int (xasl_stream, &header_size);
@@ -397,6 +425,10 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   if (p_xasl == NULL)
     {
       free_xasl_unpack_info (thread_p, unpack_info_p);
+      goto end;
+    }
+  if (stx_index_stream_rejected (thread_p, unpack_info_p))
+    {
       goto end;
     }
 
@@ -5649,6 +5681,11 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
+  if (xasl_unpack_info->index_stream && REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_GATE))
+    {
+      /* S-42 (#343): a filter or function index stream has no gate to decide it (stx_index_stream_rejected) */
+      xasl_unpack_info->index_stream_gate = true;
+    }
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
