@@ -2436,7 +2436,8 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
 
   while (true)
     {
-      scan = heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
+      scan = heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK,
+			HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan == S_SUCCESS)
 	{
 	  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
