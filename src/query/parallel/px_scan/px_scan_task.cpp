@@ -610,12 +610,7 @@ namespace parallel_scan
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
 
-    /* The agg-expr marking is a run-time decision and is not inherited by XASL
-     * clones. Re-derive it here for each worker; the fixed query shape yields the
-     * same result.
-     */
-    qexec_mark_aggregate_operand_expressions (m_xasl);
-
+    /* #341: the agg-expr marking is the clone's load's (domain_mark_aggregate_operands) */
     m_scan_id = &m_xasl->spec_list->s_id;
 
     for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)

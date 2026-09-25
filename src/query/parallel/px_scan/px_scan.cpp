@@ -1951,17 +1951,18 @@ namespace parallel_scan
 	  }
 
 	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
-	if (m_g_agg_domain_resolve_need)
+	if (m_g_agg_domain_resolve_need && scan_code == S_SUCCESS)
 	  {
-	    perfmon_inc_stat (m_thread_p, PSTAT_QM_NUM_DOMAIN_PX_RESOLVE);
-	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (m_thread_p, m_xasl, m_vd,
-		&m_xasl->proc.buildlist.g_agg_domains_resolved);
-
-	    if (m_xasl->proc.buildlist.g_agg_domains_resolved)
+	    /* #341: what the leader's aggregates still take from their first values (its setup ran before the scan) */
+	    if (qexec_parallel_aggregate_first_values (m_thread_p, m_xasl, m_vd,
+		&m_xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
 	      {
-		/* Sharing needs the resolved accumulator domains, so it is linked here,
-		 * at the parallel BUILDLIST's resolve point. The sort-based group-by
-		 * after the gather reads the links. */
+		scan_code = S_ERROR;
+	      }
+	    else if (m_xasl->proc.buildlist.g_agg_domains_resolved)
+	      {
+		/* Sharing needs the accumulator domains, so it is linked once they are set.
+		 * The sort-based group-by after the gather reads the links. */
 		qdata_link_shared_accumulators (m_xasl->proc.buildlist.g_agg_list);
 		m_g_agg_domain_resolve_need = false;
 	      }

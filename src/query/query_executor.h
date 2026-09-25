@@ -141,6 +141,8 @@ extern const TP_DOMAIN *qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PL
 extern const TP_DOMAIN *qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled,
 					       const DOMAIN_PLAN_ITEM * item, bool before_rows, bool * row_reads);
 extern bool qexec_row_domain_counts (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);
+extern bool qexec_interpolation_class_holds (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, int function,
+					     const DB_VALUE * value, const TP_DOMAIN * decided);
 extern int qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled);
 extern int qexec_type_open_list_columns (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 					 valptr_list_node * outptr_list, const VAL_DESCR * vd);
@@ -157,12 +159,10 @@ extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p, pred_expr_with_con
 				     bool dealloc_dbvalues);
 extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p, func_pred * pred_filter);
 extern int qexec_clear_partition_expression (THREAD_ENTRY * thread_p, regu_variable_node * expr);
-extern int qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (THREAD_ENTRY * thread_p,
-									       xasl_node * xasl, void *vd,
-									       int *resolved);
-extern int qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (THREAD_ENTRY * thread_p,
-											 xasl_node * xasl, void *vd,
-											 int *resolved);
+extern int qexec_setup_parallel_aggregates (THREAD_ENTRY * thread_p, xasl_node * xasl, const VAL_DESCR * vd,
+					    int *resolved);
+extern int qexec_parallel_aggregate_first_values (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL_DESCR * vd,
+						  int *resolved);
 extern int qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final);
 extern qfile_list_id *qexec_get_xasl_list_id (xasl_node * xasl);
 extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
@@ -193,7 +193,6 @@ extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p,
 extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					    QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
 					    QFILE_LIST_ID * groupby_list, bool * output_tuple);
-extern void qexec_mark_aggregate_operand_expressions (xasl_node * xasl);
 extern int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL_DESCR * vd);
 extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items,
 					    QFILE_TUPLE_DESCRIPTOR * tpldescr);

@@ -28,6 +28,8 @@
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
 #include "query_hash_join.h"
+#include "fetch.h"
+#include "system_parameter.h"
 #include <climits>
 #include <cstdlib>
 #include <cstring>
@@ -1185,8 +1187,8 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	}
       if (QPROC_IS_INTERPOLATION_FUNC (agg) && agg->domain_plan != NULL)
 	{
-	  /* MEDIAN / PERCENTILE sort values cast to the function's domain
-	   * (qdata_update_agg_interpolation_func_value_and_domain sets the key to it): the key reads the aggregate */
+	  /* MEDIAN / PERCENTILE sort values cast to the function's domain, which their list opens with (#341): the
+	   * key reads the aggregate */
 	  for (SORT_LIST * key = agg->sort_list; key != NULL && !ctx->failed; key = key->next)
 	    {
 	      domain_bind_item (ctx, &key->pos_descr.domain_plan, agg->domain_plan);
@@ -1369,6 +1371,58 @@ domain_fix_connect_by_probe (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   probe->domain = probe->original_domain = tp_domain_cache (domain);
 }
 
+/*
+ * domain_mark_aggregate_operands () - flag the expressions that only feed a SUM / AVG (REGU_VARIABLE_AGG_OPERAND), once
+ *   at load (#341, D-341-07; each execution marked them before its scan, and each PX worker its own copy)
+ *
+ * BUILDLIST reaches the aggregate through a TYPE_CONSTANT operand pointing to the DB_VALUE the scan's expression writes
+ * (regu->vfetch_to); BUILDVALUE's operand is the expression itself. fetch_peek_arith evaluates a flagged expression in
+ * one register pass; the shape check reads the compiled domains, which an execution's regus hold again before its scan
+ * (qexec_clear_regu_var). Analytic functions read their operands from list columns: nothing to mark there.
+ */
+static void
+domain_mark_aggregate_operands (XASL_NODE * xasl)
+{
+  const int budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+  if (xasl->type == BUILDVALUE_PROC)
+    {
+      for (AGGREGATE_TYPE * agg = xasl->proc.buildvalue.agg_list; agg != NULL; agg = agg->next)
+	{
+	  if ((agg->function == PT_SUM || agg->function == PT_AVG) && agg->option != Q_DISTINCT
+	      && agg->operands != NULL && agg->operands->value.type == TYPE_INARITH
+	      && fetch_is_agg_expr_shape (&agg->operands->value, budget))
+	    {
+	      REGU_VARIABLE_SET_FLAG (&agg->operands->value, REGU_VARIABLE_AGG_OPERAND);
+	    }
+	}
+      return;
+    }
+  if (xasl->type != BUILDLIST_PROC || xasl->proc.buildlist.g_agg_list == NULL || xasl->outptr_list == NULL)
+    {
+      return;
+    }
+  for (REGU_VARIABLE_LIST regu = xasl->outptr_list->valptrp; regu != NULL; regu = regu->next)
+    {
+      if (regu->value.type != TYPE_INARITH || regu->value.vfetch_to == NULL)
+	{
+	  continue;
+	}
+      for (AGGREGATE_TYPE * agg = xasl->proc.buildlist.g_agg_list; agg != NULL; agg = agg->next)
+	{
+	  if ((agg->function == PT_SUM || agg->function == PT_AVG) && agg->option != Q_DISTINCT
+	      && agg->operands != NULL && agg->operands->value.type == TYPE_CONSTANT
+	      && agg->operands->value.value.dbvalptr == regu->value.vfetch_to)
+	    {
+	      if (fetch_is_agg_expr_shape (&regu->value, budget))
+		{
+		  REGU_VARIABLE_SET_FLAG (&regu->value, REGU_VARIABLE_AGG_OPERAND);
+		}
+	      break;
+	    }
+	}
+    }
+}
+
 static void
 domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 {
@@ -1468,12 +1522,14 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 	domain_walk_out (ctx, b->a_outptr_list);
 	domain_walk_out (ctx, b->a_outptr_list_ex);
 	domain_walk_out (ctx, b->a_outptr_list_interm);
+	domain_mark_aggregate_operands (xasl);
       }
       break;
     case BUILDVALUE_PROC:
       domain_walk_agg (ctx, xasl->proc.buildvalue.agg_list);
       domain_walk_arith (ctx, xasl->proc.buildvalue.outarith_list);
       domain_walk_pred (ctx, xasl->proc.buildvalue.having_pred);
+      domain_mark_aggregate_operands (xasl);
       break;
     case OBJFETCH_PROC:
       domain_walk_pred (ctx, xasl->proc.fetch.set_pred);

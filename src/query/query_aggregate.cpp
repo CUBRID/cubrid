@@ -34,6 +34,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "query_executor.h"
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
@@ -1877,7 +1878,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      && (TP_DOMAIN_TYPE (agg_p->sort_list->pos_descr.dom) == DB_TYPE_VARIABLE
 		  || TP_DOMAIN_COLLATION_FLAG (agg_p->sort_list->pos_descr.dom) != TP_DOMAIN_COLL_NORMAL))
 	    {
-	      /* set domain of SORT LIST same as the domain from agg list */
+	      /* #341 (S-25): the key sorts the list's column, which the plan typed (a MEDIAN / PERCENTILE list whose
+	       * values did not change its type: qdata_update_agg_interpolation_func_value_and_domain) */
 	      assert (agg_p->sort_list->pos_descr.pos_no < agg_p->list_id->type_list.type_cnt);
 	      agg_p->sort_list->pos_descr.dom = agg_p->list_id->type_list.domp[agg_p->sort_list->pos_descr.pos_no];
 	    }
@@ -3321,75 +3323,50 @@ qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table
 }
 
 /*
- * qdata_update_agg_interpolation_func_value_and_domain () -
- *   return: NO_ERROR, or error code
- *   agg_p(in): aggregate type
- *   val(in):
+ * qdata_update_agg_interpolation_func_value_and_domain () - a MEDIAN / PERCENTILE value converted to the function's
+ *   domain before it goes into the function's list (#341, S-26)
+ *   return: NO_ERROR, or the conversion's error (a later value of a string that does not convert: -181)
+ *   agg_p(in): the function; its domain is the plan's, or the class its first value gave it (qexec_aggregate_first_values)
+ *   dbval(in/out): the value, converted in place
  *
+ * The function's domain is DOUBLE for a number or a string (D-335-10), a date or time type's own, or any number for
+ * PERCENTILE_DISC; a value's class is decided before its value reaches here. The list opened with the argument's
+ * domain: it takes the function's, and its key with it, once the values convert to that.
  */
 int
 qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *dbval)
 {
-  int error = NO_ERROR;
-  DB_TYPE dbval_type;
-
   assert (dbval != NULL && agg_p != NULL && QPROC_IS_INTERPOLATION_FUNC (agg_p) && agg_p->sort_list != NULL
 	  && agg_p->list_id != NULL && agg_p->list_id->type_list.type_cnt == 1);
 
   if (DB_IS_NULL (dbval))
     {
-      goto end;
+      return NO_ERROR;
     }
 
-  dbval_type = TP_DOMAIN_TYPE (agg_p->domain);
-  if (dbval_type == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL)
+  const DB_TYPE domain_type = TP_DOMAIN_TYPE (agg_p->domain);
+  if (TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL
+      || ! (TP_IS_DATE_OR_TIME_TYPE (domain_type)
+	    || (agg_p->function == PT_PERCENTILE_DISC ? TP_IS_NUMERIC_TYPE (domain_type) : domain_type == DB_TYPE_DOUBLE)))
     {
-      if (perfmon_is_perf_tracking ())
-        {
-          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
-        }
-      dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
-      agg_p->domain = tp_domain_resolve_default (dbval_type);
+      return qexec_domain_unresolved (NULL, agg_p->domain_plan, agg_p->domain);
     }
 
-  if (!TP_IS_DATE_OR_TIME_TYPE (dbval_type)
-      && ((agg_p->function == PT_PERCENTILE_DISC && !TP_IS_NUMERIC_TYPE (dbval_type))
-	  || (agg_p->function != PT_PERCENTILE_DISC && dbval_type != DB_TYPE_DOUBLE)))
+  if (DB_VALUE_DOMAIN_TYPE (dbval) != domain_type)
     {
-      error = qdata_update_interpolation_func_value_and_domain (dbval, dbval, &agg_p->domain);
+      int error = db_value_coerce (dbval, dbval, agg_p->domain);
       if (error != NO_ERROR)
 	{
-	  assert (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN);
-
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (agg_p->function),
-		  "DOUBLE, DATETIME, TIME");
-	  goto end;
-	}
-    }
-  else
-    {
-      dbval_type = DB_VALUE_DOMAIN_TYPE (dbval);
-      if (dbval_type != TP_DOMAIN_TYPE (agg_p->domain))
-	{
-	  /* cast */
-	  error = db_value_coerce (dbval, dbval, agg_p->domain);
-	  if (error != NO_ERROR)
-	    {
-	      goto end;
-	    }
+	  return error;
 	}
     }
 
-  /* set list_id domain, if it's not set */
-  if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != TP_DOMAIN_TYPE (agg_p->domain))
+  if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != domain_type)
     {
       agg_p->list_id->type_list.domp[0] = agg_p->domain;
       agg_p->sort_list->pos_descr.dom = agg_p->domain;
     }
-
-end:
-
-  return error;
+  return NO_ERROR;
 }
 
 /*
