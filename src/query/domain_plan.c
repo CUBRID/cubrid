@@ -1187,8 +1187,8 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	}
       if (QPROC_IS_INTERPOLATION_FUNC (agg) && agg->domain_plan != NULL)
 	{
-	  /* MEDIAN / PERCENTILE sort values cast to the function's domain, which their list opens with (#341): the
-	   * key reads the aggregate */
+	  /* MEDIAN / PERCENTILE sort values cast to the function's domain, the type their list holds (#341): the key
+	   * reads the aggregate */
 	  for (SORT_LIST * key = agg->sort_list; key != NULL && !ctx->failed; key = key->next)
 	    {
 	      domain_bind_item (ctx, &key->pos_descr.domain_plan, agg->domain_plan);

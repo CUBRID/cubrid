@@ -687,6 +687,7 @@ static int qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYP
 					  int *resolved);
 static int qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, VAL_DESCR * vd,
 					 QFILE_TUPLE_RECORD * tplrec, REGU_VARIABLE_LIST regu_list, int *resolved);
+static void qexec_type_accumulator_outputs (XASL_NODE * xasl);
 static int query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state);
@@ -1341,6 +1342,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+	      /* #341 (S-24): an aggregate its first value decided (D-336-E, D-338-02) gives its output columns that domain */
+	      qexec_type_accumulator_outputs (xasl);
 
 	      if (xasl->proc.buildvalue.agg_domains_resolved)
 		{
@@ -1357,8 +1360,8 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  /* #341 (S-24): an output column that reads an accumulator takes its function's domain once, when the
-	   * aggregates are final (qexec_end_buildvalueblock_iterations), not after each row */
+	  /* #341 (S-24): the output columns over an accumulator took their domains before the first row
+	   * (qexec_type_accumulator_outputs), not after each row */
 	}
     }
 
@@ -4900,21 +4903,15 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
 }
 
 /* Whether a NULL decision leaves the domain to execution instead of meaning NULL values (#341): a set-operation or CTE
- * column whose branches the gate could not unify, which the lists' unification types (#337); a LEAD / LAG over a
- * NULL operand, which still returns its default for the rows past its window's end. */
+ * column whose branches the gate could not unify, which the lists' unification types (#337). A LEAD / LAG over a NULL
+ * operand holds only NULLs as well: a row past its window's end converts the default to the function's domain, the
+ * NULL or the variable one, which rejects a value as develop's did (ER_TP_CANT_COERCE). */
 static bool
 qexec_null_decision_open (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
 {
   const DOMAIN_PLAN *plan = resolved.plan;
   const int node = plan->slot_gate_node[item->slot];
-  if (node < 0)
-    {
-      return false;
-    }
-  const DOMAIN_PLAN_ITEM *producer = plan->gate_nodes[node];
-  const DOMAIN_PLAN_ITEM_COLD *cold = &plan->items_cold[producer - plan->items];
-  return (producer->flags & DOMAIN_PLAN_SET_COLUMN)
-    || (cold->ctx == DOMAIN_CTX_ANALYTIC && (cold->opcode == PT_LEAD || cold->opcode == PT_LAG));
+  return node >= 0 && (plan->gate_nodes[node]->flags & DOMAIN_PLAN_SET_COLUMN);
 }
 
 /*
@@ -16991,28 +16988,11 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* #341 (S-24): an output column that reads an accumulator takes its function's domain once the aggregates are
-   * final - the plan's decision, which develop's copy after each row gave it - and its value converts to that
-   * (qdata_get_dbval_from_constant_regu_variable): a GROUP_CONCAT of a CHAR bind builds a VARCHAR */
-  for (REGU_VARIABLE_LIST out = buildvalue->agg_list != NULL ? xasl->outptr_list->valptrp : NULL; out != NULL;
-       out = out->next)
+  /* #341 (S-24): the output columns over an accumulator took their function's domain before the first row, or when a
+   * row decided it; a PX leader's aggregate whose workers' rows decided it (D-338-02) gives it as they merged */
+  if (buildvalue->agg_list != NULL)
     {
-      if (out->value.type != TYPE_CONSTANT
-	  || (TP_DOMAIN_TYPE (out->value.domain) != DB_TYPE_VARIABLE
-	      && TP_DOMAIN_COLLATION_FLAG (out->value.domain) == TP_DOMAIN_COLL_NORMAL))
-	{
-	  continue;
-	}
-      for (AGGREGATE_TYPE * agg_p = buildvalue->agg_list; agg_p != NULL; agg_p = agg_p->next)
-	{
-	  if (out->value.value.dbvalptr == agg_p->accumulator.value
-	      && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_NULL
-	      && TP_DOMAIN_COLLATION_FLAG (agg_p->domain) == TP_DOMAIN_COLL_NORMAL)
-	    {
-	      out->value.domain = agg_p->domain;
-	      break;
-	    }
-	}
+      qexec_type_accumulator_outputs (xasl);
     }
 
   /* evaluate having predicate */
@@ -17908,6 +17888,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+	      /* #341 (S-24): the output columns over an accumulator take the plan's decision before the first row */
+	      qexec_type_accumulator_outputs (xasl);
 	      if (xasl->proc.buildvalue.agg_domains_resolved)
 		{
 		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list);
@@ -22904,6 +22886,19 @@ qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
     && !TP_IS_DATE_OR_TIME_TYPE (agg_p->opr_dbtype) && !qexec_interpolation_sees_nulls (vd, agg_p);
 }
 
+/* Whether a MEDIAN / PERCENTILE value the gate gave no class is a literal or a bind it could not classify (#341): the
+ * plan typed the argument as the string the gate saw, and no session variable read can change it within the statement,
+ * so the function's first non-NULL value is that string (D-335-10). */
+static bool
+qexec_interpolation_value_unclassified (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
+{
+  const DOMAIN_PLAN_ITEM *argument = agg_p->operands->value.domain_plan;
+  bool row_reads;
+  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, argument, false, &row_reads);
+  return domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) && !qexec_reads_session_variable (vd, argument)
+    && !qexec_reads_session_variable (vd, agg_p->domain_plan);
+}
+
 /*
  * qexec_setup_aggregate_accumulators () - the accumulator domains of an aggregate whose function domain is set (#337)
  *   return: error code or NO_ERROR
@@ -22991,9 +22986,8 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
  *   column(in): the list's domain; NULL: the argument's, from the plan
  *
  * The list opens with the argument regu's domain after this setup (qdata_process_distinct_or_sort), and GROUP BY opens
- * one per group; the list holds that one column, which its keys sort. A MEDIAN / PERCENTILE list takes the function's
- * domain, and its key with it, once its values convert to it
- * (qdata_update_agg_interpolation_func_value_and_domain).
+ * one per group; the list holds that one column, which its keys sort. A MEDIAN / PERCENTILE list is set up with its
+ * function (qexec_setup_interpolation_list).
  */
 static int
 qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const TP_DOMAIN * column)
@@ -23027,6 +23021,35 @@ qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const
 }
 
 /*
+ * qexec_setup_interpolation_list () - the domain a MEDIAN / PERCENTILE list opens with, and its key sorts, once the
+ *   function has its domain (#341, S-26)
+ *
+ * The values convert to the function's domain before they go into the list
+ * (qdata_update_agg_interpolation_func_value_and_domain), so the list holds that type: the argument's domain where it
+ * is of that type - a NUMERIC column keeps its precision and scale (F-341-03) - and the function's otherwise. This is
+ * the domain develop's list took from its first value. A function without a domain (the gate could not classify its
+ * value; a session variable's value classifies it, D-336-E) keeps the argument's until its first value. A function over
+ * a constant or a host variable has no sort list and no list: its one value is kept (qdata_evaluate_aggregate_list).
+ */
+static void
+qexec_setup_interpolation_list (AGGREGATE_TYPE * agg_p)
+{
+  assert (QPROC_IS_INTERPOLATION_FUNC (agg_p));
+  if (agg_p->sort_list == NULL)
+    {
+      return;
+    }
+  assert (agg_p->sort_list->pos_descr.pos_no == 0);
+  const TP_DOMAIN *list = agg_p->operands->value.domain;
+  if (TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_NULL
+      && (list == NULL || TP_DOMAIN_TYPE (list) != TP_DOMAIN_TYPE (agg_p->domain)))
+    {
+      list = agg_p->domain;
+    }
+  agg_p->sort_list->pos_descr.dom = (TP_DOMAIN *) list;
+}
+
+/*
  * qexec_setup_aggregate_domains () - the function, accumulator and list domains of a block's aggregates, set from the
  *   plan before the first row (#337, L-43; #341, S-23)
  *   return: error code, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b)) at an aggregate the plan should have decided
@@ -23037,8 +23060,9 @@ qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const
  * The domains are the ones the first non-NULL value gave in develop: the gate's decision for a function the gate
  * decides (its accumulator is the resolver's), the compiled function and the accumulator the load derived from the
  * argument for a compiled one. A function whose decision has no value (a NULL bind, a node over one) sees only NULLs:
- * its accumulators stay unset, as develop's never resolved. What waits for a first value: a MEDIAN / PERCENTILE string
- * (qexec_interpolation_waits), and an aggregate the plan hands to its row (qexec_aggregate_row_decides).
+ * its accumulators stay unset, as develop's never resolved. A MEDIAN / PERCENTILE list takes its domain here too
+ * (qexec_setup_interpolation_list). What waits for a first value: a MEDIAN / PERCENTILE string, whose first value is
+ * checked (qexec_interpolation_waits), and an aggregate the plan hands to its row (qexec_aggregate_row_decides).
  */
 static int
 qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, int *resolved)
@@ -23112,8 +23136,16 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	{
 	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
 	}
-      /* a MEDIAN / PERCENTILE the gate gave no class (no value, a value it could not classify, a string it left
-       * undecided) takes it from its first value, or rejects that value */
+      /* a MEDIAN / PERCENTILE the gate gave no class: it sees only NULLs (no value), its first value is rejected (a
+       * value the gate could not classify) or classifies it (a session variable read, D-336-E). A string column or
+       * expression the gate left undecided (D-338-02) is a number all the same (D-335-10): its values are cast to
+       * DOUBLE, the first one checked (qexec_interpolation_first_value). */
+      if (interpolation && accumulator == NULL && !(agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
+	  && (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NULL)
+	  && !qexec_interpolation_sees_nulls (vd, agg_p))
+	{
+	  agg_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	}
 
       error = qexec_setup_aggregate_accumulators (vd, agg_p, accumulator);
       if (error == NO_ERROR)
@@ -23124,9 +23156,13 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	{
 	  return error;
 	}
-      if (interpolation && qexec_interpolation_waits (vd, agg_p))
+      if (interpolation)
 	{
-	  *resolved = 0;
+	  qexec_setup_interpolation_list (agg_p);
+	  if (qexec_interpolation_waits (vd, agg_p))
+	    {
+	      *resolved = 0;
+	    }
 	}
     }
   return NO_ERROR;
@@ -23136,12 +23172,14 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
  * qexec_interpolation_first_value () - a MEDIAN / PERCENTILE string's first non-NULL value (#341, S-23)
  *   return: error code or NO_ERROR
  *
- * A string column or expression is cast to its DOUBLE (D-335-10): a first value that does not convert reports
- * ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN (-1118) here, while a later one fails as the row's conversion does (-181),
- * as develop's did. A value takes the first of DOUBLE, DATETIME and TIME its content converts to, or -1118: the class
- * the gate gave it, unless a session variable changed it within the statement or the gate had none for it (D-336-E,
- * D-338-02; counted). The cast goes into a value of its own: the operand may be a shared bind or a cached column
- * value (S-39).
+ * The function's domain and its list's were set before the first row (qexec_setup_aggregate_domains): the first value
+ * checks them. A string column or expression is cast to its DOUBLE (D-335-10): a first value that does not convert
+ * reports ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN (-1118) here, while a later one fails as the row's conversion
+ * does (-181), as develop's did. A literal or a bind the gate could not classify is that value: -1118, as develop's
+ * first value. A value read through a session variable takes the first of DOUBLE, DATETIME and TIME its content
+ * converts to, or -1118: the class the gate gave it, unless the variable changed it within the statement or held no
+ * value when the statement began (D-336-E; counted), and its list with it. The cast goes into a value of its own: the
+ * operand may be a shared bind or a cached column value (S-39).
  */
 static int
 qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p,
@@ -23149,14 +23187,17 @@ qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
 {
   const bool gate_class = TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE
     && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_NULL;
-  TP_DOMAIN *target;
   if (agg_p->domain_plan == NULL || !(agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT))
     {
-      /* the compiled DOUBLE, or the gate's for a gate-dependent string; DOUBLE where the gate left it undecided */
-      target = tp_domain_resolve_default (gate_class ? TP_DOMAIN_TYPE (agg_p->domain) : DB_TYPE_DOUBLE);
+      /* the compiled DOUBLE, the gate's for a gate-dependent string, or the setup's where the gate left it undecided */
+      if (!gate_class)
+	{
+	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
+	}
       DB_VALUE cast_value;
       db_make_null (&cast_value);
-      const TP_DOMAIN_STATUS status = tp_value_cast (dbval, &cast_value, target, false);
+      const TP_DOMAIN_STATUS status =
+	tp_value_cast (dbval, &cast_value, tp_domain_resolve_default (TP_DOMAIN_TYPE (agg_p->domain)), false);
       pr_clear_value (&cast_value);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -23164,6 +23205,12 @@ qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
 		  fcode_get_uppercase_name (agg_p->function), "DOUBLE");
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
+    }
+  else if (!gate_class && qexec_interpolation_value_unclassified (vd, agg_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
+	      fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME or TIME");
+      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
     }
   else
     {
@@ -23174,27 +23221,18 @@ qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
 		  fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME or TIME");
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
-      target = tp_domain_resolve_default (class_type);
-      if (gate_class && !qexec_interpolation_class_holds (vd, agg_p->domain_plan, agg_p->function, dbval,
-							  agg_p->domain))
+      if (!gate_class
+	  || !qexec_interpolation_class_holds (vd, agg_p->domain_plan, agg_p->function, dbval, agg_p->domain))
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
-	  agg_p->domain = target;
-	}
-      else if (!gate_class)
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
+	  agg_p->domain = tp_domain_resolve_default (class_type);
+	  qexec_setup_interpolation_list (agg_p);
 	}
     }
   /* clear errors from failed casts once one succeeds */
   if (er_errid () != NO_ERROR)
     {
       er_clear ();
-    }
-  if (!gate_class)
-    {
-      /* its list takes the class as its values convert to it */
-      agg_p->domain = target;
     }
   agg_p->accumulator_domain.value_dom = agg_p->domain;
   agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
@@ -23308,6 +23346,42 @@ qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list
 	}
     }
   return NO_ERROR;
+}
+
+/*
+ * qexec_type_accumulator_outputs () - the output columns of a BUILDVALUE block that read an accumulator take its
+ *   function's domain once the function has one (#341, S-24)
+ *   xasl(in/out): the BUILDVALUE block
+ *
+ * The value converts to that domain when the column is fetched (qdata_get_dbval_from_constant_regu_variable), as
+ * develop's copy after each row made it: a GROUP_CONCAT of a CHAR bind builds a VARCHAR. The setup gives a column the
+ * plan's decision before the first row; a column over an aggregate its row decides (D-336-E, D-338-02) takes the
+ * domain the first value gave, which may also change a session variable's class (D-336-E). A column the compiler
+ * typed keeps its domain.
+ */
+static void
+qexec_type_accumulator_outputs (XASL_NODE * xasl)
+{
+  for (REGU_VARIABLE_LIST out = xasl->outptr_list != NULL ? xasl->outptr_list->valptrp : NULL; out != NULL;
+       out = out->next)
+    {
+      if (out->value.type != TYPE_CONSTANT
+	  || (TP_DOMAIN_TYPE (out->value.original_domain) != DB_TYPE_VARIABLE
+	      && TP_DOMAIN_COLLATION_FLAG (out->value.original_domain) == TP_DOMAIN_COLL_NORMAL))
+	{
+	  continue;
+	}
+      for (AGGREGATE_TYPE * agg_p = xasl->proc.buildvalue.agg_list; agg_p != NULL; agg_p = agg_p->next)
+	{
+	  if (out->value.value.dbvalptr == agg_p->accumulator.value
+	      && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_NULL
+	      && TP_DOMAIN_COLLATION_FLAG (agg_p->domain) == TP_DOMAIN_COLL_NORMAL)
+	    {
+	      out->value.domain = agg_p->domain;
+	      break;
+	    }
+	}
+    }
 }
 
 /*

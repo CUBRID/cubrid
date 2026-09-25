@@ -103,7 +103,7 @@ qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_l
       return ER_FAILED;
     }
 
-  type_list.domp[0] = agg_p->operands->value.domain;
+  type_list.domp[0] = qdata_aggregate_list_domain (agg_p);
   /* if the agg has ORDER BY force setting 'QFILE_FLAG_ALL' : in this case, no additional SORT_LIST will be created,
    * but the one in the aggregate_list_node structure will be used */
   if (agg_p->sort_list != NULL)
@@ -1337,26 +1337,17 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
 			      || agg_p->operands->value.type == TYPE_POS_VALUE);
 
-		      /* try to cast dbval to double, datetime then time */
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-
+		      /* #341: the setup gave the function the class the gate took from this value (D-335-10) - a value it
+		       * could not classify was rejected at the first value (qexec_interpolation_first_value) - so the value
+		       * converts to that class; no cascade decides it here */
+		      if (TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_DOUBLE && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_DATETIME
+			  && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_TIME)
+			{
+			  qdata_clear_value_array (stack_values, n_values);
+			  return qexec_domain_unresolved (val_desc_p, agg_p->domain_plan, agg_p->domain);
+			}
+		      tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (agg_p->domain));
 		      status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
-		      if (status != DOMAIN_COMPATIBLE)
-			{
-			  /* try datetime */
-			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
-
-			  status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
-			}
-
-		      /* try time */
-		      if (status != DOMAIN_COMPATIBLE)
-			{
-			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
-
-			  status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
-			}
-
 		      if (status != DOMAIN_COMPATIBLE)
 			{
 			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
@@ -1366,15 +1357,6 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			  qdata_clear_value_array (stack_values, n_values);
 			  return error;
 			}
-
-		      /* clear errors from failed casts if any cast attempt succeeds. */
-		      if (er_errid () != NO_ERROR)
-			{
-			  er_clear ();
-			}
-
-		      /* update domain */
-		      agg_p->domain = tmp_domain_p;
 		    }
 
 		  pr_clear_value (agg_p->accumulator.value);
@@ -1878,8 +1860,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      && (TP_DOMAIN_TYPE (agg_p->sort_list->pos_descr.dom) == DB_TYPE_VARIABLE
 		  || TP_DOMAIN_COLLATION_FLAG (agg_p->sort_list->pos_descr.dom) != TP_DOMAIN_COLL_NORMAL))
 	    {
-	      /* #341 (S-25): the key sorts the list's column, which the plan typed (a MEDIAN / PERCENTILE list whose
-	       * values did not change its type: qdata_update_agg_interpolation_func_value_and_domain) */
+	      /* #341 (S-25): the key sorts the list's column, which the plan typed (a MEDIAN / PERCENTILE key was set
+	       * with its list: qexec_setup_interpolation_list) */
 	      assert (agg_p->sort_list->pos_descr.pos_no < agg_p->list_id->type_list.type_cnt);
 	      agg_p->sort_list->pos_descr.dom = agg_p->list_id->type_list.domp[agg_p->sort_list->pos_descr.pos_no];
 	    }
@@ -3323,15 +3305,29 @@ qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table
 }
 
 /*
+ * qdata_aggregate_list_domain () - the domain an aggregate's DISTINCT or sorted list opens with (#341, S-26)
+ *   return: a MEDIAN / PERCENTILE's list domain, which its key sorts (qexec_setup_interpolation_list); the argument's
+ *	     for any other aggregate (qexec_setup_aggregate_lists), and for a MEDIAN / PERCENTILE over a constant or a
+ *	     host variable, which has no sort list
+ */
+tp_domain *
+qdata_aggregate_list_domain (const cubxasl::aggregate_list_node *agg_p)
+{
+  return QPROC_IS_INTERPOLATION_FUNC (agg_p) && agg_p->sort_list != NULL ? agg_p->sort_list->pos_descr.dom
+	 : agg_p->operands->value.domain;
+}
+
+/*
  * qdata_update_agg_interpolation_func_value_and_domain () - a MEDIAN / PERCENTILE value converted to the function's
  *   domain before it goes into the function's list (#341, S-26)
- *   return: NO_ERROR, or the conversion's error (a later value of a string that does not convert: -181)
- *   agg_p(in): the function; its domain is the plan's, or the class its first value gave it (qexec_aggregate_first_values)
+ *   return: NO_ERROR, the conversion's error (a later value of a string that does not convert: -181), or
+ *	     ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b)) where the function or its list has no class
+ *   agg_p(in): the function; its domain and its list's were set before the first row, or when a session variable's
+ *		first value gave it its class (qexec_interpolation_first_value, D-336-E)
  *   dbval(in/out): the value, converted in place
  *
  * The function's domain is DOUBLE for a number or a string (D-335-10), a date or time type's own, or any number for
- * PERCENTILE_DISC; a value's class is decided before its value reaches here. The list opened with the argument's
- * domain: it takes the function's, and its key with it, once the values convert to that.
+ * PERCENTILE_DISC; the list holds that type (qexec_setup_interpolation_list). Neither changes here.
  */
 int
 qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *dbval)
@@ -3352,6 +3348,17 @@ qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_no
       return qexec_domain_unresolved (NULL, agg_p->domain_plan, agg_p->domain);
     }
 
+  if (agg_p->list_id->type_list.domp[0] != agg_p->sort_list->pos_descr.dom)
+    {
+      /* a session variable's first value gave the function its class after the list opened - a BUILDVALUE opens its
+       * lists before the scan - and the key with it (D-336-E); no value is in the list yet */
+      agg_p->list_id->type_list.domp[0] = agg_p->sort_list->pos_descr.dom;
+    }
+  if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != domain_type)
+    {
+      return qexec_domain_unresolved (NULL, agg_p->domain_plan, agg_p->list_id->type_list.domp[0]);
+    }
+
   if (DB_VALUE_DOMAIN_TYPE (dbval) != domain_type)
     {
       int error = db_value_coerce (dbval, dbval, agg_p->domain);
@@ -3359,12 +3366,6 @@ qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_no
 	{
 	  return error;
 	}
-    }
-
-  if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != domain_type)
-    {
-      agg_p->list_id->type_list.domp[0] = agg_p->domain;
-      agg_p->sort_list->pos_descr.dom = agg_p->domain;
     }
   return NO_ERROR;
 }
