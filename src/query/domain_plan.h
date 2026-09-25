@@ -109,6 +109,52 @@ struct DOMAIN_COMPARE_PLAN
 				 * subtree, from the subtree's value (a compiled domain need not describe it, F-352-17) */
 };
 
+/* What an ALL/SOME term compares its item with (#352, D-352-03). */
+enum DOMAIN_ELEMENTS_KIND
+{
+  DOMAIN_ELEMENTS_PAIR,		/* a list's column, or a right side whose values are no collection: the record `pair` */
+  DOMAIN_ELEMENTS_TABLE,	/* a collection the row computes: the load's table of the keys its elements can have */
+  DOMAIN_ELEMENTS_GATE		/* the gate's decisions (resolved.elements[site]): a constant right side's elements by
+				 * position, the table of an item the gate decides, or the record of a right side the
+				 * gate types */
+};
+
+/*
+ * One ALL/SOME term's comparisons (#352, D-352-03): the item against each value of a list or each element of a
+ * collection, decided before any row. The term points at it through a pointer the stream does not carry (F-352-10).
+ */
+struct DOMAIN_ELEMENT_COMPARE_PLAN
+{
+  DOMAIN_COMPARE_PLAN pair;	/* side 0 the item, side 1 the list's column or the right side; PAIR: their record */
+  const DOMAIN_ELEMENT_TABLE *table;	/* TABLE: the load's table */
+  const DOMAIN_COMPARE_KEY *keys;	/* TABLE, GATE: the keys a computed collection's elements can have; NULL: any */
+  int n_keys;
+  int site;			/* GATE: resolved.elements index; -1 */
+  unsigned long long volatile_reads;	/* GATE: the session variable reads the gate's decisions depend on */
+  unsigned char kind;		/* DOMAIN_ELEMENTS_KIND */
+};
+
+/* What the gate decided for an ALL/SOME term in one execution (#352, D-352-03). */
+enum DOMAIN_ELEMENTS_READ
+{
+  DOMAIN_READ_NONE,		/* nothing: a NULL constant, or a constant subtree the row computes (D-352-05) */
+  DOMAIN_READ_POSITIONS,	/* a constant right side: each element's decision and the gate's own value, by position */
+  DOMAIN_READ_TABLE,		/* a collection the row computes: `table` */
+  DOMAIN_READ_PAIR		/* a right side whose values are no collection: compares[0] */
+};
+
+struct DOMAIN_ELEMENTS
+{
+  DB_VALUE *value;		/* POSITIONS: [n] each element, the gate's own copy, converted where its decision
+				 * converts it; one block with decision and compares */
+  int *decision;		/* POSITIONS: [n] the element's decision in compares */
+  DOMAIN_COMPARE *compares;	/* POSITIONS: the decisions of the elements' keys; PAIR: the one decision */
+  DOMAIN_ELEMENT_TABLE *table;	/* TABLE */
+  int n;
+  int n_compares;
+  unsigned char read;		/* DOMAIN_ELEMENTS_READ */
+};
+
 /* A constant subtree the gate evaluates once before the main block (interface §10): its item holds the value's
  * resolved.vals index (ref), and the regu is what the gate fetches (#352). */
 struct DOMAIN_PLAN_CONSTANT
@@ -143,6 +189,9 @@ struct domain_plan
   DOMAIN_COMPARE_PLAN **compares;	/* the comparison sites the gate decides, in resolved.compares order (#352) */
   int n_constants;
   DOMAIN_PLAN_CONSTANT *constants;	/* the constant subtrees, operands before their consumers (#352) */
+  int n_element_sites;
+  DOMAIN_ELEMENT_COMPARE_PLAN **element_sites;	/* the ALL/SOME terms the gate decides, in resolved.elements order
+						 * (#352) */
 };
 
 struct RESOLVED_DOMAIN_TABLE
@@ -150,7 +199,7 @@ struct RESOLVED_DOMAIN_TABLE
   const DB_VALUE *in;
   DB_VALUE *vals;
   RESOLVED_DOMAIN *table;
-  int n_vals, n_slots, n_compares;
+  int n_vals, n_slots, n_compares, n_elements;
   THREAD_ENTRY *owner;
   const DOMAIN_PLAN *plan;
   bool sealed;
@@ -159,6 +208,8 @@ struct RESOLVED_DOMAIN_TABLE
   unsigned long long changed_reads;	/* the session variable reads whose value left the gate's decision within the
 					 * execution (D-336-E): a decision that depends on one is not taken (#340) */
   DOMAIN_COMPARE *compares;	/* [plan->n_compares] this execution's comparison decisions (#352) */
+  DOMAIN_ELEMENTS *elements;	/* [plan->n_element_sites] this execution's ALL/SOME decisions; their arrays are the
+				 * owner's (#352) */
   unsigned char *ready;		/* [n_vals] a constant subtree's value is in vals (the gate evaluated it, #352) */
 };
 

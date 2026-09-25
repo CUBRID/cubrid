@@ -46,6 +46,7 @@
 #include "dbtype.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "set_object.h"
 #include "list_file.h"
 #include "extendible_hash.h"
 #include "xasl_cache.h"
@@ -3756,19 +3757,114 @@ qexec_get_xasl_list_id (xasl_node * xasl)
   return list_id;
 }
 
+/* Releases one execution's decisions for an ALL/SOME term (#352): the gate's values and arrays are the owner's. */
+static void
+qexec_clear_elements (THREAD_ENTRY * thread_p, DOMAIN_ELEMENTS * elements)
+{
+  for (int i = 0; elements->value != NULL && i < elements->n; i++)
+    {
+      pr_clear_value (&elements->value[i]);
+    }
+  if (elements->value != NULL)
+    {
+      /* the values, the decision indices and the decisions are one block */
+      db_private_free (thread_p, elements->value);
+    }
+  else if (elements->compares != NULL)
+    {
+      db_private_free (thread_p, elements->compares);
+    }
+  if (elements->table != NULL)
+    {
+      db_private_free (thread_p, elements->table);
+    }
+  memset (elements, 0, sizeof (*elements));
+}
+
+/* The bytes of a constant's element decisions (#352): n values, n decision indices, then n_compares decisions. */
+static size_t
+qexec_positions_bytes (int n, int n_compares, size_t * decision_offset, size_t * compares_offset)
+{
+  static_assert (sizeof (DB_VALUE) % alignof (int) == 0, "element decision indices alignment");
+  *decision_offset = sizeof (DB_VALUE) * (size_t) n;
+  *compares_offset = *decision_offset + sizeof (int) * (size_t) n;
+  /* the decisions are 8-byte aligned */
+  *compares_offset = (*compares_offset + alignof (DOMAIN_COMPARE) - 1) & ~(alignof (DOMAIN_COMPARE) - 1);
+  return *compares_offset + sizeof (DOMAIN_COMPARE) * (size_t) n_compares;
+}
+
+/* A PX copy of one execution's decisions for an ALL/SOME term (#352), on the worker's heap: its own values; the
+ * decisions and the table carry no pointers into themselves. */
+static int
+qexec_copy_elements (THREAD_ENTRY * thread_p, const DOMAIN_ELEMENTS * src, DOMAIN_ELEMENTS * dest)
+{
+  memset (dest, 0, sizeof (*dest));
+  dest->read = src->read;
+  dest->n = src->n;
+  dest->n_compares = src->n_compares;
+  if (src->value != NULL)
+    {
+      size_t decision_offset, compares_offset;
+      const size_t bytes = qexec_positions_bytes (src->n, src->n_compares, &decision_offset, &compares_offset);
+      char *block = (char *) db_private_alloc (thread_p, bytes);
+      if (block == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      dest->value = (DB_VALUE *) block;
+      dest->decision = (int *) (block + decision_offset);
+      dest->compares = (DOMAIN_COMPARE *) (block + compares_offset);
+      for (int i = 0; i < src->n; i++)
+	{
+	  db_make_null (&dest->value[i]);
+	}
+      memcpy (dest->decision, src->decision, sizeof (int) * (size_t) src->n);
+      memcpy (dest->compares, src->compares, sizeof (DOMAIN_COMPARE) * (size_t) src->n_compares);
+      for (int i = 0; i < src->n; i++)
+	{
+	  if (pr_clone_value (&src->value[i], &dest->value[i]) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+  else if (src->compares != NULL)
+    {
+      dest->compares = (DOMAIN_COMPARE *) db_private_alloc (thread_p, sizeof (DOMAIN_COMPARE) * src->n_compares);
+      if (dest->compares == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memcpy (dest->compares, src->compares, sizeof (DOMAIN_COMPARE) * src->n_compares);
+    }
+  if (src->table != NULL)
+    {
+      dest->table = (DOMAIN_ELEMENT_TABLE *) db_private_alloc (thread_p, src->table->bytes);
+      if (dest->table == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memcpy (dest->table, src->table, src->table->bytes);
+    }
+  return NO_ERROR;
+}
+
 /* Allocate values and the sparse domain table as one owner-local block.
  * Every value starts as NULL so the common error exit can clear a partial fill. */
 static int
-qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, int n_compares,
+qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, int n_compares, int n_elements,
 			      RESOLVED_DOMAIN_TABLE & resolved)
 {
-  assert (resolved.vals == NULL && n_vals >= 0 && n_slots >= 0 && n_compares >= 0);
+  assert (resolved.vals == NULL && n_vals >= 0 && n_slots >= 0 && n_compares >= 0 && n_elements >= 0);
   static_assert (sizeof (DB_VALUE) % alignof (RESOLVED_DOMAIN) == 0, "gate table alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
   static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
-  /* values, gate table, comparison decisions (#352), then the constant flags (#352) */
+  static_assert (sizeof (DOMAIN_COMPARE) % alignof (DOMAIN_ELEMENTS) == 0, "element decisions alignment");
+  static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_ELEMENTS) == 0, "element decisions alignment");
+  static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_ELEMENTS) == 0, "element decisions alignment");
+  /* values, gate table, comparison decisions, ALL/SOME decisions (#352), then the constant flags (#352) */
   const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_slots
-    + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + (size_t) n_vals;
+    + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + sizeof (DOMAIN_ELEMENTS) * (size_t) n_elements + (size_t) n_vals;
   if (bytes == 0)
     {
       return NO_ERROR;
@@ -3786,6 +3882,7 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
   resolved.n_vals = n_vals;
   resolved.n_slots = n_slots;
   resolved.n_compares = n_compares;
+  resolved.n_elements = n_elements;
   char *next = (char *) (resolved.vals + n_vals);
   if (n_slots != 0)
     {
@@ -3798,6 +3895,12 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
       resolved.compares = (DOMAIN_COMPARE *) next;
       memset (resolved.compares, 0, sizeof (*resolved.compares) * n_compares);
       next += sizeof (*resolved.compares) * n_compares;
+    }
+  if (n_elements != 0)
+    {
+      resolved.elements = (DOMAIN_ELEMENTS *) next;
+      memset (resolved.elements, 0, sizeof (*resolved.elements) * n_elements);
+      next += sizeof (*resolved.elements) * n_elements;
     }
   if (n_vals != 0)
     {
@@ -3833,10 +3936,21 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
     }
   RESOLVED_DOMAIN_TABLE &resolved = new_xasl_state->resolved;
   memset (&resolved, 0, sizeof (resolved));
-  if (qexec_alloc_resolved_domains (thread_p, src.n_vals, src.n_slots, src.n_compares, resolved) != NO_ERROR)
+  if (qexec_alloc_resolved_domains (thread_p, src.n_vals, src.n_slots, src.n_compares, src.n_elements, resolved)
+      != NO_ERROR)
     {
       db_private_free (thread_p, new_xasl_state);
       return NULL;
+    }
+  resolved.owner = thread_p;
+  for (int k = 0; k < src.n_elements; k++)
+    {
+      if (qexec_copy_elements (thread_p, &src.elements[k], &resolved.elements[k]) != NO_ERROR)
+	{
+	  qexec_clear_resolved_domains (thread_p, new_xasl_state);
+	  db_private_free (thread_p, new_xasl_state);
+	  return NULL;
+	}
     }
   for (int i = 0; i < src.n_vals; i++)
     {
@@ -3892,7 +4006,8 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_vals = plan == NULL || plan->n_refs < dbval_cnt ? dbval_cnt : plan->n_refs;
   const int n_slots = plan == NULL ? 0 : plan->n_slots;
   const int n_compares = plan == NULL ? 0 : plan->n_compares;
-  return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, n_compares, resolved);
+  const int n_elements = plan == NULL ? 0 : plan->n_element_sites;
+  return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, n_compares, n_elements, resolved);
 }
 
 /* Whether the resolver takes this operand's class from its value (D-328-06): an interpolation argument, the ADDTIME
@@ -4198,6 +4313,7 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
       {
       };
       compare->kernel = DOMAIN_COMPARE_VALUES;
+      compare->reason = DOMAIN_REASON_UNDECIDED;
       compare->value[0] = compare->value[1] = compare->codeset_side = compare->site = -1;
       return NO_ERROR;
     }
@@ -4272,6 +4388,263 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
     {
       compare->kernel = DOMAIN_COMPARE_CONVERT;
     }
+  return NO_ERROR;
+}
+
+/* Element i of a constant right side of an ALL/SOME term: the collection's, or the constant itself when it is none. */
+static int
+qexec_constant_element (const DB_VALUE * constant, int i, DB_VALUE * element)
+{
+  if (TP_IS_SET_TYPE (DB_VALUE_TYPE (constant)))
+    {
+      return set_get_element (db_get_set (constant), i, element);
+    }
+  assert (i == 0);
+  return pr_clone_value (constant, element);
+}
+
+/* An ALL/SOME term whose item or right side the gate left undecided (D-338-02): the row compares by value, counted
+ * (workspace#343). */
+static int
+qexec_elements_undecided (THREAD_ENTRY * thread_p, DOMAIN_ELEMENTS * out)
+{
+  out->compares = (DOMAIN_COMPARE *) db_private_alloc (thread_p, sizeof (DOMAIN_COMPARE));
+  if (out->compares == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DOMAIN_COMPARE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  *out->compares = DOMAIN_COMPARE
+  {
+  };
+  out->compares->kernel = DOMAIN_COMPARE_VALUES;
+  out->compares->reason = DOMAIN_REASON_UNDECIDED;
+  out->compares->value[0] = out->compares->value[1] = out->compares->codeset_side = out->compares->site = -1;
+  out->n_compares = 1;
+  out->read = DOMAIN_READ_PAIR;
+  return NO_ERROR;
+}
+
+/*
+ * qexec_resolve_positions () - G1: a constant right side of an ALL/SOME term, element by element (#352, D-352-03)
+ *   return: NO_ERROR, or ER_code
+ *   item(in): the item's key in this execution
+ *   constant(in): the constant: a collection, or a value that is its one element
+ *
+ * Each element gets its decision - the gate resolves each element key once - and a value of its own, converted when
+ * its decision converts it: the row reads both by position and decides nothing. An element whose conversion fails
+ * gives develop's failure outcome at every row, as a constant comparison side does (D-352-01).
+ */
+static int
+qexec_resolve_positions (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * pair, const DOMAIN_COMPARE_KEY * item,
+			 const DB_VALUE * constant, DOMAIN_ELEMENTS * out)
+{
+  const bool collection = TP_IS_SET_TYPE (DB_VALUE_TYPE (constant));
+  const int n = collection ? set_size (db_get_set (constant)) : 1;
+  out->read = DOMAIN_READ_POSITIONS;
+  if (n <= 0)
+    {
+      /* an empty collection: the row answers before any comparison */
+      return NO_ERROR;
+    }
+  /* each element's key, and each distinct key once */
+  const size_t scratch_bytes = (sizeof (DOMAIN_COMPARE_KEY) + sizeof (int)) * (size_t) n;
+  DOMAIN_COMPARE_KEY *distinct = (DOMAIN_COMPARE_KEY *) db_private_alloc (thread_p, scratch_bytes);
+  if (distinct == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, scratch_bytes);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  int *key_of = (int *) (distinct + n);
+  int n_distinct = 0;
+  int error = NO_ERROR;
+  for (int i = 0; i < n && error == NO_ERROR; i++)
+    {
+      DB_VALUE element;
+      db_make_null (&element);
+      error = qexec_constant_element (constant, i, &element);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      DOMAIN_COMPARE_KEY key;
+      domain_compare_key_of (DB_IS_NULL (&element) ? &tp_Null_domain : tp_domain_resolve_value (&element, NULL), &key);
+      if (!collection)
+	{
+	  domain_compare_key_collate (&key, pair->collate[1]);
+	}
+      pr_clear_value (&element);
+      int d = 0;
+      while (d < n_distinct && (distinct[d].type != key.type || distinct[d].codeset != key.codeset
+				|| distinct[d].collation != key.collation))
+	{
+	  d++;
+	}
+      if (d == n_distinct)
+	{
+	  distinct[n_distinct++] = key;
+	}
+      key_of[i] = d;
+    }
+  if (error == NO_ERROR)
+    {
+      /* per key: [2d] the decision with the element converted (or as it is), [2d + 1] with its conversion failed */
+      size_t decision_offset, compares_offset;
+      const size_t bytes = qexec_positions_bytes (n, 2 * n_distinct, &decision_offset, &compares_offset);
+      char *block = (char *) db_private_alloc (thread_p, bytes);
+      if (block == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      else
+	{
+	  out->value = (DB_VALUE *) block;
+	  out->decision = (int *) (block + decision_offset);
+	  out->compares = (DOMAIN_COMPARE *) (block + compares_offset);
+	  out->n = n;
+	  out->n_compares = 2 * n_distinct;
+	  for (int i = 0; i < n; i++)
+	    {
+	      db_make_null (&out->value[i]);
+	    }
+	}
+    }
+  for (int d = 0; d < n_distinct && error == NO_ERROR; d++)
+    {
+      DOMAIN_COMPARE *as_is = &out->compares[2 * d];
+      DOMAIN_COMPARE *failed = &out->compares[2 * d + 1];
+      error = domain_resolve_comparison (item, &distinct[d], as_is);
+      if (error != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
+	  break;
+	}
+      /* the row's right operand is the gate's own value of the element */
+      as_is->value[1] = -2;
+      *failed = *as_is;
+      if (as_is->kernel == DOMAIN_COMPARE_DIRECT || as_is->kernel == DOMAIN_COMPARE_CONVERT)
+	{
+	  /* the failed decision keeps the element's converter: the gate runs it below */
+	  failed->failed |= 2;
+	  failed->kernel = DOMAIN_COMPARE_CONVERT;
+	  as_is->conv[1] = NULL;
+	  as_is->kernel = as_is->conv[0] == NULL && as_is->codeset_side < 0 ? DOMAIN_COMPARE_DIRECT
+	    : DOMAIN_COMPARE_CONVERT;
+	}
+    }
+  for (int i = 0; i < n && error == NO_ERROR; i++)
+    {
+      error = qexec_constant_element (constant, i, &out->value[i]);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      const DOMAIN_COMPARE *failed = &out->compares[2 * key_of[i] + 1];
+      out->decision[i] = 2 * key_of[i];
+      if (DB_IS_NULL (&out->value[i]))
+	{
+	  continue;
+	}
+      if ((failed->failed & 2) != 0 && failed->conv[1] != NULL)
+	{
+	  DB_VALUE converted;
+	  const int saved_error = er_errid ();
+	  if (domain_run_converter (failed->conv[1], failed->target[1], &out->value[i], &converted) ==
+	      DOMAIN_COMPATIBLE)
+	    {
+	      pr_clear_value (&out->value[i]);
+	      out->value[i] = converted;
+	    }
+	  else
+	    {
+	      /* develop's coercion of this element fails at every row: its outcome, not an error of the gate */
+	      pr_clear_value (&converted);
+	      out->decision[i] = 2 * key_of[i] + 1;
+	      if (er_errid () != saved_error)
+		{
+		  er_clear ();
+		}
+	    }
+	}
+      else if (!collection && pair->collate[1] != NULL)
+	{
+	  /* the codeset and collation a COLLATE modifier gives the constant at the fetch */
+	  const TP_DOMAIN *collate = pair->collate[1];
+	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&out->value[i])))
+	    {
+	      db_string_put_cs_and_collation (&out->value[i], TP_DOMAIN_CODESET (collate),
+					      TP_DOMAIN_COLLATION (collate));
+	    }
+	  else if (DB_VALUE_DOMAIN_TYPE (&out->value[i]) == DB_TYPE_ENUMERATION)
+	    {
+	      db_enum_put_cs_and_collation (&out->value[i], TP_DOMAIN_CODESET (collate), TP_DOMAIN_COLLATION (collate));
+	    }
+	}
+    }
+  db_private_free (thread_p, distinct);
+  return error;
+}
+
+/*
+ * qexec_resolve_elements () - G1: this execution's decisions for an ALL/SOME term the gate decides (#352, D-352-03);
+ *   step 5, or step 7 when a side is a constant subtree
+ *   return: NO_ERROR, or ER_code
+ *
+ * A constant right side is decided element by element; a collection the row computes gets the table of its element
+ * keys against this execution's item key (a slot's collection: any key, F-352-18); a right side the gate typed that
+ * is no collection gets one decision.
+ */
+static int
+qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+			const DOMAIN_ELEMENT_COMPARE_PLAN * site)
+{
+  DOMAIN_ELEMENTS *out = &resolved.elements[site->site];
+  const DOMAIN_COMPARE_PLAN *pair = &site->pair;
+  DOMAIN_COMPARE_KEY key[2];
+  if (!qexec_compare_side_key (resolved, pair, 0, &key[0]))
+    {
+      return qexec_elements_undecided (thread_p, out);
+    }
+  if (pair->literal[1] != NULL || pair->constant[1] != NULL)
+    {
+      const DB_VALUE *constant = qexec_compare_constant (resolved, pair, 1);
+      if (constant == NULL || DB_IS_NULL (constant))
+	{
+	  /* a NULL constant compares nothing; a constant subtree the gate did not evaluate is computed by the row, which
+	   * raises its error before any comparison (D-352-05) */
+	  out->read = DOMAIN_READ_NONE;
+	  return NO_ERROR;
+	}
+      return qexec_resolve_positions (thread_p, pair, &key[0], constant, out);
+    }
+  if (!qexec_compare_side_key (resolved, pair, 1, &key[1]))
+    {
+      return qexec_elements_undecided (thread_p, out);
+    }
+  if (TP_IS_SET_TYPE (key[1].type))
+    {
+      const bool slot = pair->operand[1] != NULL && pair->operand[1]->slot >= 0;
+      const DOMAIN_COMPARE_KEY *keys = slot ? NULL : site->keys;
+      const int n_keys = slot ? 0 : site->n_keys;
+      const size_t bytes = domain_element_table_bytes (&key[0], keys, n_keys);
+      out->table = (DOMAIN_ELEMENT_TABLE *) db_private_alloc (thread_p, bytes);
+      if (out->table == NULL || domain_resolve_element_table (&key[0], keys, n_keys, out->table, bytes) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      out->read = DOMAIN_READ_TABLE;
+      return NO_ERROR;
+    }
+  out->compares = (DOMAIN_COMPARE *) db_private_alloc (thread_p, sizeof (DOMAIN_COMPARE));
+  if (out->compares == NULL || domain_resolve_comparison (&key[0], &key[1], out->compares) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DOMAIN_COMPARE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  out->n_compares = 1;
+  out->read = DOMAIN_READ_PAIR;
   return NO_ERROR;
 }
 
@@ -4456,6 +4829,19 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	  return error;
 	}
     }
+  /* likewise every ALL/SOME term the gate decides (D-352-03): a constant right side element by element */
+  for (int k = 0; plan != NULL && k < plan->n_element_sites; k++)
+    {
+      if (plan->element_sites[k]->pair.after_constants)
+	{
+	  continue;
+	}
+      error = qexec_resolve_elements (thread_p, resolved, plan->element_sites[k]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
 
   if (dbval_cnt > 0)
     {
@@ -4478,6 +4864,18 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	  continue;
 	}
       error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  for (int k = 0; plan != NULL && k < plan->n_element_sites; k++)
+    {
+      if (!plan->element_sites[k]->pair.after_constants)
+	{
+	  continue;
+	}
+      error = qexec_resolve_elements (thread_p, resolved, plan->element_sites[k]);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4563,6 +4961,10 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
   RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
   assert (resolved.owner == thread_p || resolved.vals == NULL);
+  for (int k = 0; k < resolved.n_elements; k++)
+    {
+      qexec_clear_elements (thread_p, &resolved.elements[k]);
+    }
   for (int i = 0; i < resolved.n_vals; i++)
     {
       pr_clear_value (&resolved.vals[i]);

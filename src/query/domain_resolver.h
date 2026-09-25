@@ -104,13 +104,29 @@ enum DOMAIN_COMPARE_KERNEL
   DOMAIN_COMPARE_AT_GATE,	/* a plan record the gate decides: this execution's decision is resolved.compares[site] */
   DOMAIN_COMPARE_AT_GATE_VOLATILE,	/* likewise, over a session variable read: develop's value comparison once a
 					 * read it depends on left the gate's decision (D-336-E) */
-  DOMAIN_COMPARE_VALUES,	/* develop's value comparison: a side whose values are NULL (answered before develop
-				 * counts), a side the gate left undecided (D-338-02, workspace#343, counted), or a side
-				 * the plan leaves open */
+  DOMAIN_COMPARE_VALUES,	/* develop's value comparison, for the record's reason (DOMAIN_COMPARE_REASON) */
   DOMAIN_COMPARE_DIRECT,	/* comparable as they are: cmpval under the planned collation */
   DOMAIN_COMPARE_CONVERT,	/* the planned converters in develop's order, then cmpval */
   DOMAIN_COMPARE_COLLATIONS,	/* strings whose collations do not merge: develop's -1150 at every row */
   DOMAIN_COMPARE_OBJECT		/* an OBJECT side: develop's comparison (an OID on the server, OBJECT/OID on the client) */
+};
+
+/*
+ * Why a comparison keeps develop's comparison of the values (kernel DOMAIN_COMPARE_VALUES, #352). Up to
+ * DOMAIN_REASON_UNPLANNED the execution boundary (b) holds: develop may not decide anything from the values there;
+ * from DOMAIN_REASON_UNDECIDED on, the map's exceptions keep develop's comparison, counted.
+ */
+enum DOMAIN_COMPARE_REASON
+{
+  DOMAIN_REASON_NULL,		/* a side whose values are NULL: develop answers before it decides anything */
+  DOMAIN_REASON_OPEN,		/* a side the plan leaves open */
+  DOMAIN_REASON_UNPLANNED,	/* a term the load gave no record, a gate decision read without the gate's state, an
+				 * element whose key the plan does not hold */
+  DOMAIN_REASON_UNDECIDED,	/* a side the gate left undecided (D-338-02, workspace#343) */
+  DOMAIN_REASON_VOLATILE,	/* a session variable read that left the gate's decision (D-336-E) */
+  DOMAIN_REASON_PRED_STREAM,	/* a predicate stream: a filter index predicate evaluated outside any execution (S-42,
+				 * workspace#343) */
+  DOMAIN_REASON_COLLECTION	/* an element comparison of a set or list comparison (workspace#343) */
 };
 
 /*
@@ -127,8 +143,10 @@ struct DOMAIN_COMPARE
   unsigned char source[2];	/* DB_TYPE of each side before conversion: develop's failure outcome names these */
   unsigned char converted_first;	/* DB_TYPE the first side has once converted (the second conversion failing) */
   unsigned char failed;		/* bit i: the gate could not convert constant side i (develop's failure at every row) */
+  unsigned char reason;		/* kernel VALUES: DOMAIN_COMPARE_REASON */
   int collation;		/* the collation cmpval compares under; 0 for a non-string */
-  int value[2];			/* resolved.vals index of a constant side the gate converted once; -1: the row's value */
+  int value[2];			/* resolved.vals index of a constant side the gate converted once; -1: the row's value;
+				 * -2: the gate's own value of a constant's element, the row's operand (#352) */
   int codeset_side;		/* an ENUM against a string of another codeset: the side brought into the ENUM's
 				 * codeset at the row (develop's tmp_char_conv); -1 none */
   int site;			/* AT_GATE*: resolved.compares index of this execution's decision; -1 */
@@ -155,5 +173,31 @@ int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMP
  * cell (the domain, and a string target's codeset and collation). */
 TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, const DB_VALUE * source,
 				       DB_VALUE * result);
+
+/* The element types a table covers, by DB_TYPE, and the collation ids it tells apart (LANG_MAX_COLLATIONS). */
+#define DOMAIN_ELEMENT_TYPES (DB_TYPE_LAST + 1)
+#define DOMAIN_ELEMENT_COLLATIONS 256
+
+/*
+ * DOMAIN_ELEMENT_TABLE - an item's comparisons against the elements of a collection the row computes, decided before
+ *   any row (#352, D-352-03): an entry for each key an element can have, found by the element's type and, for a
+ *   string or an ENUM, its collation (a type's entries in ordinal order). The row reads it; it decides nothing. One
+ *   block without pointers into itself: a PX copy takes its bytes.
+ */
+struct DOMAIN_ELEMENT_TABLE
+{
+  int bytes;			/* the block's size */
+  int n_entries;
+  short first[DOMAIN_ELEMENT_TYPES];	/* an element type's entry, a string or ENUM type's first; -1: a type the
+					 * collection does not hold */
+  short ordinal[DOMAIN_ELEMENT_COLLATIONS];	/* a collation's entry among its type's; -1: not one the table covers */
+  DOMAIN_COMPARE entry[1];	/* [n_entries] */
+};
+
+/* The table of an item's comparisons against elements of these keys (NULL: any key an element can have): its size,
+ * then the table itself (#352). */
+size_t domain_element_table_bytes (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys);
+int domain_resolve_element_table (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys,
+				  DOMAIN_ELEMENT_TABLE * table, size_t bytes);
 
 #endif /* _DOMAIN_RESOLVER_H_ */

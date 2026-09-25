@@ -4510,6 +4510,7 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
 
   ptr = or_unpack_int (ptr, &tmp);
   alsm_eval_term->item_type = (DB_TYPE) tmp;
+  alsm_eval_term->domain_compare = NULL;
 
   return ptr;
 }

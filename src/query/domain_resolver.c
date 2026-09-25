@@ -1370,7 +1370,16 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
       result->collation = -1;
     }
 
-  if (result->collation == -1)
+  /* develop checks the collations of the coerced values: a conversion implicit coercion refuses fails before that,
+   * into a string type too (its outcome, not -1150) */
+  bool refused = false;
+  for (int side = 0; side < 2; side++)
+    {
+      refused = refused || (result->conv[side] != NULL
+			    && domain_implicit_coercion_refused (key[side]->type,
+								 TP_DOMAIN_TYPE (result->target[side])));
+    }
+  if (result->collation == -1 && !refused)
     {
       result->kernel = DOMAIN_COMPARE_COLLATIONS;
     }
@@ -1378,6 +1387,190 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
     {
       result->kernel = DOMAIN_COMPARE_CONVERT;
     }
+  return NO_ERROR;
+}
+
+static_assert (DOMAIN_ELEMENT_COLLATIONS == LANG_MAX_COLLATIONS, "element table collations");
+
+/* A type a collection element can have as a value: NULL answers before any comparison, and the national character
+ * types have no values (the parser takes NCHAR for CHAR). */
+static bool
+domain_element_type (int type)
+{
+  switch (type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_OBJECT:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_ELO:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_VOBJ:
+    case DB_TYPE_OID:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+    case DB_TYPE_ENUMERATION:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_JSON:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* A collation a value can carry: a registered one (an id nothing registered holds ISO binary's placeholder). */
+static bool
+domain_collation_registered (int collation)
+{
+  const LANG_COLLATION *lang_coll = lang_get_collation (collation);
+  return lang_coll != NULL && lang_coll->coll.coll_id == collation;
+}
+
+/* The element types a table covers and the collations its string and ENUM entries go by (#352). */
+struct DOMAIN_ELEMENT_LAYOUT
+{
+  bool type[DOMAIN_ELEMENT_TYPES];
+  short ordinal[DOMAIN_ELEMENT_COLLATIONS];
+  int collation_of[DOMAIN_ELEMENT_COLLATIONS];	/* an ordinal's collation: a representative one when one entry serves
+						 * every collation */
+  int n_collations;
+  int n_entries;
+};
+
+static void
+domain_element_layout (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys,
+		       DOMAIN_ELEMENT_LAYOUT * layout)
+{
+  layout->n_collations = 0;
+  layout->n_entries = 0;
+  for (int c = 0; c < DOMAIN_ELEMENT_COLLATIONS; c++)
+    {
+      layout->ordinal[c] = -1;
+    }
+  for (int t = 0; t < DOMAIN_ELEMENT_TYPES; t++)
+    {
+      layout->type[t] = keys == NULL && domain_element_type (t);
+    }
+  for (int i = 0; keys != NULL && i < n_keys; i++)
+    {
+      if (domain_element_type (keys[i].type))
+	{
+	  layout->type[keys[i].type] = true;
+	  /* the server holds an object as its OID */
+	  layout->type[DB_TYPE_OID] = layout->type[DB_TYPE_OID] || keys[i].type == DB_TYPE_OBJECT;
+	}
+    }
+  if (!TP_TYPE_HAS_COLLATION (item->type))
+    {
+      /* an element's collation changes nothing in its comparison with this item: one entry serves every collation */
+      for (int c = 0; c < DOMAIN_ELEMENT_COLLATIONS; c++)
+	{
+	  if (domain_collation_registered (c))
+	    {
+	      layout->ordinal[c] = 0;
+	      if (layout->n_collations == 0)
+		{
+		  layout->collation_of[layout->n_collations++] = c;
+		}
+	    }
+	}
+    }
+  else
+    {
+      /* each collation an element can have: the keys', or every registered one */
+      for (int i = 0; i < (keys == NULL ? DOMAIN_ELEMENT_COLLATIONS : n_keys); i++)
+	{
+	  const int c = keys == NULL ? i : TP_TYPE_HAS_COLLATION (keys[i].type) ? keys[i].collation : -1;
+	  if (c >= 0 && c < DOMAIN_ELEMENT_COLLATIONS && layout->ordinal[c] < 0
+	      && (keys != NULL || domain_collation_registered (c)))
+	    {
+	      layout->ordinal[c] = (short) layout->n_collations;
+	      layout->collation_of[layout->n_collations++] = c;
+	    }
+	}
+    }
+  for (int t = 0; t < DOMAIN_ELEMENT_TYPES; t++)
+    {
+      if (layout->type[t])
+	{
+	  layout->n_entries += TP_TYPE_HAS_COLLATION (t) ? layout->n_collations : 1;
+	}
+    }
+}
+
+size_t
+domain_element_table_bytes (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys)
+{
+  DOMAIN_ELEMENT_LAYOUT layout;
+  domain_element_layout (item, keys, n_keys, &layout);
+  const size_t n_entries = layout.n_entries > 0 ? layout.n_entries : 1;
+  return offsetof (DOMAIN_ELEMENT_TABLE, entry) + sizeof (DOMAIN_COMPARE) * n_entries;
+}
+
+/*
+ * domain_resolve_element_table () - the comparisons of an item of key `item` (the left side) against every element
+ *   key a collection can hold (the right side), decided now (#352, D-352-03)
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when a target domain cannot be cached
+ *   keys(in): the keys the collection's elements can have (its element domains', a set function's operands'); NULL:
+ *	       any key
+ *   table(out): a block of `bytes`, domain_element_table_bytes of the same keys
+ *
+ * A string or ENUM type has an entry per collation the table covers - the keys' collations, or every registered one
+ * when any key can come - and a single entry when the item's comparison does not depend on it.
+ */
+int
+domain_resolve_element_table (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys,
+			      DOMAIN_ELEMENT_TABLE * table, size_t bytes)
+{
+  DOMAIN_ELEMENT_LAYOUT layout;
+  domain_element_layout (item, keys, n_keys, &layout);
+  assert (bytes == domain_element_table_bytes (item, keys, n_keys));
+  table->bytes = (int) bytes;
+  table->n_entries = layout.n_entries;
+  memcpy (table->ordinal, layout.ordinal, sizeof (table->ordinal));
+  int next = 0;
+  for (int t = 0; t < DOMAIN_ELEMENT_TYPES; t++)
+    {
+      table->first[t] = -1;
+      const int n = !layout.type[t] ? 0 : TP_TYPE_HAS_COLLATION (t) ? layout.n_collations : 1;
+      if (n == 0)
+	{
+	  continue;
+	}
+      table->first[t] = (short) next;
+      for (int o = 0; o < n; o++)
+	{
+	  DOMAIN_COMPARE_KEY element = { (DB_TYPE) t, -1, -1 };
+	  if (TP_TYPE_HAS_COLLATION (t))
+	    {
+	      element.collation = layout.collation_of[o];
+	      element.codeset = lang_get_collation (element.collation)->codeset;
+	    }
+	  const int error = domain_resolve_comparison (item, &element, &table->entry[next++]);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+  assert (next == layout.n_entries);
   return NO_ERROR;
 }
 

@@ -198,6 +198,8 @@ namespace cubxasl
     dest->eq_flag = src->eq_flag;
     dest->rel_op = src->rel_op;
     dest->item_type = src->item_type;
+    /* the leader's element comparisons, as the copied operands take the leader's plan items (F-334-01) */
+    dest->domain_compare = src->domain_compare;
 
     return er_errid ();
   }

@@ -1391,6 +1391,7 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * ar
 	  et_alsm->rel_op = rop;
 	  et_alsm->item_type = data_type;
 	  et_alsm->eq_flag = some_all;
+	  et_alsm->domain_compare = NULL;	/* the server's load derives it (workspace#352) */
 	}
     }
 

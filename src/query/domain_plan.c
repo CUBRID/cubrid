@@ -103,6 +103,13 @@ struct DOMAIN_LOAD_BINDING
   DOMAIN_PLAN_ITEM **owner;
   DOMAIN_PLAN_ITEM *target;
 };
+/* An ALL/SOME term the walk met (#352): the list column its item compares with, bound to the published item. */
+struct DOMAIN_LOAD_ELEMENT_TERM
+{
+  DOMAIN_LOAD_ELEMENT_TERM *next;
+  ALSM_EVAL_TERM *term;
+  DOMAIN_PLAN_ITEM *list_column;
+};
 /* A set-operation or CTE list column, unified from its branches (X-3), made once per (list, column). */
 struct DOMAIN_LOAD_LIST_COLUMN
 {
@@ -130,6 +137,8 @@ struct DOMAIN_LOAD_CONTEXT
   COMP_EVAL_TERM **compare_terms;	/* the comparison terms met, in walk order (#352) */
   int n_compare_terms;
   int max_compare_terms;
+  DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first (#352) */
+  int n_element_terms;
 };
 
 static void domain_walk_xasl (DOMAIN_LOAD_CONTEXT *, XASL_NODE *);
@@ -1033,6 +1042,32 @@ domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
   ctx->compare_terms[ctx->n_compare_terms++] = term;
 }
 
+/* An ALL/SOME term (#352, D-352-03): its comparisons are published with the plan; a list's column is found now. */
+static void
+domain_add_element_term (DOMAIN_LOAD_CONTEXT * ctx, ALSM_EVAL_TERM * term)
+{
+  if (term->elem == NULL || term->elemset == NULL || ctx->failed)
+    {
+      return;
+    }
+  DOMAIN_LOAD_ELEMENT_TERM *entry = (DOMAIN_LOAD_ELEMENT_TERM *) db_private_alloc (ctx->thread_p, sizeof (*entry));
+  if (entry == NULL)
+    {
+      ctx->failed = true;
+      return;
+    }
+  entry->term = term;
+  entry->list_column = NULL;
+  entry->next = ctx->element_terms;
+  ctx->element_terms = entry;
+  ctx->n_element_terms++;
+  if (term->elemset->type == TYPE_LIST_ID)
+    {
+      /* the item compares with column 0 of the list its subquery produces (eval_some_list_eval) */
+      domain_bind_item (ctx, &entry->list_column, domain_list_column (ctx, term->elemset->xasl, 0));
+    }
+}
+
 static void
 domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
 {
@@ -1062,6 +1097,7 @@ domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
 	    case T_ALSM_EVAL_TERM:
 	      domain_walk_regu (ctx, term->et.et_alsm.elem, DOMAIN_CTX_COMPARE);
 	      domain_walk_regu (ctx, term->et.et_alsm.elemset, DOMAIN_CTX_COMPARE);
+	      domain_add_element_term (ctx, &term->et.et_alsm);
 	      break;
 	    case T_LIKE_EVAL_TERM:
 	      domain_walk_regu (ctx, term->et.et_like.src, DOMAIN_CTX_COMPARE);
@@ -1958,43 +1994,303 @@ domain_compare_constant_side (const DOMAIN_COMPARE_PLAN * site, int side)
 }
 
 /*
- * domain_publish_compares () - every comparison term gets its comparison record (D-352-01): the load's decision when
- *   both sides' keys are the plan's and no constant side needs converting, otherwise a gate site the gate decides
- *   once per execution (and converts its constant sides into values of their own). A side whose values the plan
- *   leaves open keeps develop's comparison (kernel VALUES).
+ * domain_publish_record () - one comparison record's decision (D-352-01): the load's when both sides' keys are the
+ *   plan's and no constant side needs converting, otherwise a gate site the gate decides once per execution (and
+ *   converts its constant sides into values of their own). A side whose values the plan leaves open keeps develop's
+ *   comparison (kernel VALUES, the boundary (b) reason OPEN).
+ */
+static bool
+domain_publish_record (DOMAIN_PLAN * plan, DOMAIN_COMPARE_PLAN * site, DOMAIN_COMPARE_SIDE lhs, DOMAIN_COMPARE_SIDE rhs,
+		       const DOMAIN_COMPARE_KEY * key, unsigned long long volatile_reads,
+		       DOMAIN_COMPARE_PLAN ** gate_sites, int *n_gate)
+{
+  bool at_gate = false;
+  if (lhs == DOMAIN_SIDE_OPEN || rhs == DOMAIN_SIDE_OPEN)
+    {
+      site->fixed = DOMAIN_COMPARE
+      {
+      };
+      site->fixed.kernel = DOMAIN_COMPARE_VALUES;
+      site->fixed.reason = DOMAIN_REASON_OPEN;
+      site->fixed.site = -1;
+      site->fixed.value[0] = site->fixed.value[1] = site->fixed.codeset_side = -1;
+    }
+  else if (lhs == DOMAIN_SIDE_KNOWN && rhs == DOMAIN_SIDE_KNOWN)
+    {
+      if (domain_resolve_comparison (&key[0], &key[1], &site->fixed) != NO_ERROR)
+	{
+	  return false;
+	}
+      /* a constant side the comparison converts is converted once, by the gate */
+      at_gate = (domain_compare_constant_side (site, 0) && site->fixed.conv[0] != NULL)
+	|| (domain_compare_constant_side (site, 1) && site->fixed.conv[1] != NULL);
+    }
+  else
+    {
+      at_gate = true;
+    }
+  if (at_gate)
+    {
+      site->fixed = DOMAIN_COMPARE
+      {
+      };
+      site->fixed.kernel = volatile_reads != 0 ? DOMAIN_COMPARE_AT_GATE_VOLATILE : DOMAIN_COMPARE_AT_GATE;
+      site->fixed.volatile_reads = volatile_reads;
+      site->fixed.site = *n_gate;
+      site->fixed.value[0] = site->fixed.value[1] = site->fixed.codeset_side = -1;
+      for (int side = 0; side < 2; side++)
+	{
+	  if (domain_compare_constant_side (site, side))
+	    {
+	      site->value[side] = plan->n_refs++;
+	    }
+	}
+      gate_sites[(*n_gate)++] = site;
+    }
+  return true;
+}
+
+/* A list column side of an ALL/SOME term (#352): the gate's slot, a DOUBLE for a reader of AVG, STDDEV* or VAR*
+ * (F-352-16), or its plan domain; open when the plan leaves its values' type or collation open. */
+static DOMAIN_COMPARE_SIDE
+domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records,
+			    const DOMAIN_PLAN_ITEM * column, DOMAIN_COMPARE_PLAN * site, int side,
+			    DOMAIN_COMPARE_KEY * key, unsigned long long *volatile_reads)
+{
+  site->operand[side] = column;
+  site->domain[side] = NULL;
+  site->value[side] = -1;
+  if (column == NULL)
+    {
+      return DOMAIN_SIDE_OPEN;
+    }
+  if (domain_reads_double_aggregate (records[column - plan->items]))
+    {
+      site->operand[side] = NULL;
+      site->domain[side] = &tp_Double_domain;
+      domain_compare_key_of (&tp_Double_domain, key);
+      return DOMAIN_SIDE_KNOWN;
+    }
+  if (column->slot >= 0)
+    {
+      if (plan->slot_flags[column->slot] & DOMAIN_SLOT_VOLATILE)
+	{
+	  *volatile_reads |= plan->slot_volatile_reads[column->slot];
+	}
+      return DOMAIN_SIDE_AT_GATE;
+    }
+  if (!domain_fixes_values (column->fixed.domain))
+    {
+      return DOMAIN_SIDE_OPEN;
+    }
+  site->domain[side] = column->fixed.domain;
+  domain_compare_key_of (column->fixed.domain, key);
+  return DOMAIN_SIDE_KNOWN;
+}
+
+/*
+ * domain_element_keys () - the keys the elements of a collection the row computes can have (#352, D-352-03)
+ *   return: false on an allocation failure
+ *   keys(out): the keys; NULL for any key
+ *
+ * A set function's elements are its operand values as they are (qdata_convert_dbvals_to_set puts them with
+ * col_put / col_add, which convert nothing): its operands' keys, when the plan has every one. A set attribute's stored
+ * elements were coerced into its element domains. Anything else - a value pointer, a set expression, a stored
+ * procedure's result - can hold elements its compiled element domains do not describe (a SEQUENCE OF CHAR function
+ * holding VARCHAR operands, F-352-18): any key.
+ */
+static bool
+domain_element_keys (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records,
+		     int constant_base, REGU_VARIABLE * elemset, const DOMAIN_COMPARE_KEY ** keys, int *n_keys)
+{
+  *keys = NULL;
+  *n_keys = 0;
+  const bool set_function = elemset->type == TYPE_FUNC
+    && (elemset->value.funcp->ftype == F_SET || elemset->value.funcp->ftype == F_MULTISET
+	|| elemset->value.funcp->ftype == F_SEQUENCE);
+  const bool set_attribute = (elemset->type == TYPE_ATTR_ID || elemset->type == TYPE_SHARED_ATTR_ID
+			      || elemset->type == TYPE_CLASS_ATTR_ID) && elemset->domain != NULL;
+  int n = 0;
+  if (set_function)
+    {
+      for (REGU_VARIABLE_LIST op = elemset->value.funcp->operand; op != NULL; op = op->next)
+	{
+	  n++;
+	}
+    }
+  else if (set_attribute)
+    {
+      for (const TP_DOMAIN * d = elemset->domain->setdomain; d != NULL; d = d->next)
+	{
+	  if (!domain_fixes_values (d))
+	    {
+	      return true;
+	    }
+	  n++;
+	}
+    }
+  if (n == 0)
+    {
+      return true;
+    }
+  DOMAIN_COMPARE_KEY *list = (DOMAIN_COMPARE_KEY *) domain_plan_alloc (thread_p, n, sizeof (*list));
+  if (list == NULL)
+    {
+      return false;
+    }
+  int k = 0;
+  if (set_function)
+    {
+      for (REGU_VARIABLE_LIST op = elemset->value.funcp->operand; op != NULL; op = op->next)
+	{
+	  DOMAIN_COMPARE_PLAN scratch;
+	  memset (&scratch, 0, sizeof (scratch));
+	  unsigned long long reads = 0;
+	  if (domain_compare_side (plan, records, constant_base, &op->value, &scratch, 0, &list[k], &reads)
+	      != DOMAIN_SIDE_KNOWN || reads != 0)
+	    {
+	      /* an operand the gate types - a bind, a slot, a constant subtree - or leaves open: any key */
+	      return true;
+	    }
+	  k++;
+	}
+    }
+  else
+    {
+      for (const TP_DOMAIN * d = elemset->domain->setdomain; d != NULL; d = d->next)
+	{
+	  domain_compare_key_of (d, &list[k++]);
+	}
+    }
+  *keys = list;
+  *n_keys = k;
+  return true;
+}
+
+/* The load's element table of a collection the row computes, for an item whose key is the plan's (#352). */
+static const DOMAIN_ELEMENT_TABLE *
+domain_publish_element_table (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys,
+			      int n_keys)
+{
+  const size_t bytes = domain_element_table_bytes (item, keys, n_keys);
+  DOMAIN_ELEMENT_TABLE *table = (DOMAIN_ELEMENT_TABLE *) domain_plan_alloc (thread_p, 1, bytes);
+  if (table == NULL || domain_resolve_element_table (item, keys, n_keys, table, bytes) != NO_ERROR)
+    {
+      return NULL;
+    }
+  return table;
+}
+
+/*
+ * domain_publish_elements () - one ALL/SOME term's comparisons (#352, D-352-03), each decided before any row
+ *
+ * The item against a list's column or a right side that is no collection: a comparison record, as a comparison
+ * term's. Against a collection the row computes: the load's table of every key its elements can have, or the gate's
+ * when the gate decides the item. Against a constant (a literal, a bind, a constant subtree): the gate decides and
+ * converts each element once, by position. A right side the gate types is the gate's too.
+ */
+static bool
+domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records,
+			 int constant_base, DOMAIN_LOAD_ELEMENT_TERM * entry, DOMAIN_COMPARE_PLAN ** gate_sites,
+			 int *n_gate, DOMAIN_ELEMENT_COMPARE_PLAN ** element_sites, int *n_element_gate)
+{
+  ALSM_EVAL_TERM *term = entry->term;
+  DOMAIN_ELEMENT_COMPARE_PLAN *site = (DOMAIN_ELEMENT_COMPARE_PLAN *) domain_plan_alloc (thread_p, 1, sizeof (*site));
+  if (site == NULL)
+    {
+      return false;
+    }
+  memset (site, 0, sizeof (*site));
+  site->site = -1;
+  DOMAIN_COMPARE_PLAN *pair = &site->pair;
+  DOMAIN_COMPARE_KEY key[2];
+  unsigned long long volatile_reads = 0;
+  const DOMAIN_COMPARE_SIDE item = domain_compare_side (plan, records, constant_base, term->elem, pair, 0, &key[0],
+							&volatile_reads);
+  DOMAIN_COMPARE_SIDE right;
+  site->kind = DOMAIN_ELEMENTS_PAIR;
+  if (term->elemset->type == TYPE_LIST_ID)
+    {
+      right = domain_compare_column_side (plan, records, entry->list_column, pair, 1, &key[1], &volatile_reads);
+    }
+  else
+    {
+      right = domain_compare_side (plan, records, constant_base, term->elemset, pair, 1, &key[1], &volatile_reads);
+      if (domain_compare_constant_side (pair, 1))
+	{
+	  /* a literal, a bind or a constant subtree: the gate decides its elements by position */
+	  site->kind = DOMAIN_ELEMENTS_GATE;
+	}
+      else if (right == DOMAIN_SIDE_AT_GATE)
+	{
+	  /* a slot: the gate's decision says whether its values are collections */
+	  site->kind = DOMAIN_ELEMENTS_GATE;
+	}
+      else if (right == DOMAIN_SIDE_KNOWN && TP_IS_SET_TYPE (key[1].type))
+	{
+	  site->kind = item == DOMAIN_SIDE_KNOWN ? DOMAIN_ELEMENTS_TABLE : DOMAIN_ELEMENTS_GATE;
+	  if (!domain_element_keys (thread_p, plan, records, constant_base, term->elemset, &site->keys, &site->n_keys))
+	    {
+	      return false;
+	    }
+	}
+    }
+  if (item == DOMAIN_SIDE_OPEN || right == DOMAIN_SIDE_OPEN)
+    {
+      site->kind = DOMAIN_ELEMENTS_PAIR;
+    }
+  switch (site->kind)
+    {
+    case DOMAIN_ELEMENTS_PAIR:
+      if (!domain_publish_record (plan, pair, item, right, key, volatile_reads, gate_sites, n_gate))
+	{
+	  return false;
+	}
+      break;
+    case DOMAIN_ELEMENTS_TABLE:
+      site->table = domain_publish_element_table (thread_p, &key[0], site->keys, site->n_keys);
+      if (site->table == NULL)
+	{
+	  return false;
+	}
+      break;
+    default:
+      site->site = *n_element_gate;
+      site->volatile_reads = volatile_reads;
+      element_sites[(*n_element_gate)++] = site;
+      break;
+    }
+  term->domain_compare = site;
+  return true;
+}
+
+/*
+ * domain_publish_compares () - every comparison term gets its comparison record (D-352-01), and every ALL/SOME term
+ *   its element comparisons (D-352-03)
  */
 static bool
 domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, int constant_base)
 {
-  if (ctx->n_compare_terms == 0)
+  const int n_terms = ctx->n_compare_terms + ctx->n_element_terms;
+  if (n_terms == 0)
     {
       return true;
     }
   DOMAIN_COMPARE_PLAN **gate_sites =
-    (DOMAIN_COMPARE_PLAN **) db_private_alloc (thread_p, sizeof (*gate_sites) * ctx->n_compare_terms);
+    (DOMAIN_COMPARE_PLAN **) db_private_alloc (thread_p, sizeof (*gate_sites) * n_terms);
+  DOMAIN_ELEMENT_COMPARE_PLAN **element_sites =
+    (DOMAIN_ELEMENT_COMPARE_PLAN **) db_private_alloc (thread_p, sizeof (*element_sites) * n_terms);
   DOMAIN_LOAD_RECORD **records =
     (DOMAIN_LOAD_RECORD **) db_private_alloc (thread_p, sizeof (*records) * (plan->n_items > 0 ? plan->n_items : 1));
-  if (gate_sites == NULL || records == NULL)
-    {
-      if (gate_sites != NULL)
-	{
-	  db_private_free (thread_p, gate_sites);
-	}
-      if (records != NULL)
-	{
-	  db_private_free (thread_p, records);
-	}
-      return false;
-    }
-  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
+  bool ok = gate_sites != NULL && element_sites != NULL && records != NULL;
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; ok && r != NULL; r = r->next)
     {
       if (r->alias == NULL)
 	{
 	  records[r->index] = r;
 	}
     }
-  int n_gate = 0;
-  bool ok = true;
+  int n_gate = 0, n_element_gate = 0;
   for (int t = 0; t < ctx->n_compare_terms && ok; t++)
     {
       COMP_EVAL_TERM *term = ctx->compare_terms[t];
@@ -2016,50 +2312,16 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 							   &volatile_reads);
       const DOMAIN_COMPARE_SIDE rhs = domain_compare_side (plan, records, constant_base, term->rhs, site, 1, &key[1],
 							   &volatile_reads);
-      bool at_gate = false;
-      if (lhs == DOMAIN_SIDE_OPEN || rhs == DOMAIN_SIDE_OPEN)
-	{
-	  site->fixed = DOMAIN_COMPARE
-	  {
-	  };
-	  site->fixed.kernel = DOMAIN_COMPARE_VALUES;
-	  site->fixed.site = -1;
-	  site->fixed.value[0] = site->fixed.value[1] = site->fixed.codeset_side = -1;
-	}
-      else if (lhs == DOMAIN_SIDE_KNOWN && rhs == DOMAIN_SIDE_KNOWN)
-	{
-	  if (domain_resolve_comparison (&key[0], &key[1], &site->fixed) != NO_ERROR)
-	    {
-	      ok = false;
-	      break;
-	    }
-	  /* a constant side the comparison converts is converted once, by the gate */
-	  at_gate = (domain_compare_constant_side (site, 0) && site->fixed.conv[0] != NULL)
-	    || (domain_compare_constant_side (site, 1) && site->fixed.conv[1] != NULL);
-	}
-      else
-	{
-	  at_gate = true;
-	}
-      if (at_gate)
-	{
-	  site->fixed = DOMAIN_COMPARE
-	  {
-	  };
-	  site->fixed.kernel = volatile_reads != 0 ? DOMAIN_COMPARE_AT_GATE_VOLATILE : DOMAIN_COMPARE_AT_GATE;
-	  site->fixed.volatile_reads = volatile_reads;
-	  site->fixed.site = n_gate;
-	  site->fixed.value[0] = site->fixed.value[1] = site->fixed.codeset_side = -1;
-	  for (int side = 0; side < 2; side++)
-	    {
-	      if (domain_compare_constant_side (site, side))
-		{
-		  site->value[side] = plan->n_refs++;
-		}
-	    }
-	  gate_sites[n_gate++] = site;
-	}
+      ok = domain_publish_record (plan, site, lhs, rhs, key, volatile_reads, gate_sites, &n_gate);
       term->domain_compare = site;
+    }
+  for (DOMAIN_LOAD_ELEMENT_TERM * e = ctx->element_terms; e != NULL && ok; e = e->next)
+    {
+      if (e->term->domain_compare == NULL)
+	{
+	  ok = domain_publish_elements (thread_p, plan, records, constant_base, e, gate_sites, &n_gate, element_sites,
+					&n_element_gate);
+	}
     }
   if (ok && n_gate > 0)
     {
@@ -2071,8 +2333,29 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	  plan->n_compares = n_gate;
 	}
     }
-  db_private_free (thread_p, gate_sites);
-  db_private_free (thread_p, records);
+  if (ok && n_element_gate > 0)
+    {
+      plan->element_sites =
+	(DOMAIN_ELEMENT_COMPARE_PLAN **) domain_plan_alloc (thread_p, n_element_gate, sizeof (*plan->element_sites));
+      ok = plan->element_sites != NULL;
+      if (ok)
+	{
+	  memcpy (plan->element_sites, element_sites, sizeof (*plan->element_sites) * n_element_gate);
+	  plan->n_element_sites = n_element_gate;
+	}
+    }
+  if (gate_sites != NULL)
+    {
+      db_private_free (thread_p, gate_sites);
+    }
+  if (element_sites != NULL)
+    {
+      db_private_free (thread_p, element_sites);
+    }
+  if (records != NULL)
+    {
+      db_private_free (thread_p, records);
+    }
   return ok;
 }
 
@@ -2332,6 +2615,12 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   if (ctx.compare_terms != NULL)
     {
       db_private_free (thread_p, ctx.compare_terms);
+    }
+  while (ctx.element_terms != NULL)
+    {
+      DOMAIN_LOAD_ELEMENT_TERM *e = ctx.element_terms;
+      ctx.element_terms = e->next;
+      db_private_free (thread_p, e);
     }
   while (ctx.list_columns != NULL)
     {

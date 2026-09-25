@@ -92,6 +92,7 @@ typedef enum
 } QL_FLAG;
 
 struct DOMAIN_COMPARE_PLAN;
+struct DOMAIN_ELEMENT_COMPARE_PLAN;
 
 namespace cubxasl
 {
@@ -123,6 +124,9 @@ namespace cubxasl
     QL_FLAG eq_flag;
     REL_OP rel_op;
     DB_TYPE item_type;
+    /* load-derived, not serialized (workspace#352): the element comparisons the load or the gate decided; the union
+     * grows to 40 bytes in memory, the stream is unchanged (F-352-10) */
+    const DOMAIN_ELEMENT_COMPARE_PLAN *domain_compare;
   };
 
   struct like_eval_term

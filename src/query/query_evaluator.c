@@ -51,17 +51,31 @@
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
+/* What an ALL/SOME term compares its item with in this execution (#352, D-352-03): a constant right side's elements
+ * by position (`constant`), else a computed collection's elements by their keys (`table`), else `each` for every
+ * element; `all` for every value of a list or a right side that is no collection. */
+struct EVAL_ELEMENTS
+{
+  const DOMAIN_COMPARE *all;
+  const DOMAIN_COMPARE *each;
+  const DOMAIN_ELEMENT_TABLE *table;
+  const DOMAIN_ELEMENTS *constant;
+};
+
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
 static DB_LOGICAL eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2,
-				      REL_OP rel_operator, const COMP_EVAL_TERM * et_comp, const val_descr * vd);
-static DB_LOGICAL eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
-static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
+				      REL_OP rel_operator, const COMP_EVAL_TERM * et_comp, const val_descr * vd,
+				      const DOMAIN_COMPARE * compare, const DB_VALUE * develop2);
+static DB_LOGICAL eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator,
+				  const EVAL_ELEMENTS * elements, const val_descr * vd);
+static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator,
+				 const EVAL_ELEMENTS * elements, const val_descr * vd);
 static int eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static DB_LOGICAL eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
-				       REL_OP rel_operator);
+				       REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd);
 static DB_LOGICAL eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id,
-				      REL_OP rel_operator);
+				      REL_OP rel_operator, const DOMAIN_COMPARE * compare, const val_descr * vd);
 static int eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id);
 static DB_LOGICAL eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_LIST_ID * list_id);
 static DB_LOGICAL eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, DB_SET * set);
@@ -150,28 +164,41 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  * cmpval compares, the collation, and develop's outcome when a conversion fails. The row runs them; it decides nothing.
  */
 
+/* develop's comparison of the values, for a reason no record carries (#352) */
+static DOMAIN_COMPARE
+eval_values_decision (DOMAIN_COMPARE_REASON reason)
+{
+  DOMAIN_COMPARE compare;
+  compare = DOMAIN_COMPARE
+  {
+  };
+  compare.kernel = DOMAIN_COMPARE_VALUES;
+  compare.reason = (unsigned char) reason;
+  compare.value[0] = compare.value[1] = compare.codeset_side = compare.site = -1;
+  return compare;
+}
+
+static const DOMAIN_COMPARE eval_Compare_null = eval_values_decision (DOMAIN_REASON_NULL);
+static const DOMAIN_COMPARE eval_Compare_unplanned = eval_values_decision (DOMAIN_REASON_UNPLANNED);
+static const DOMAIN_COMPARE eval_Compare_volatile = eval_values_decision (DOMAIN_REASON_VOLATILE);
+static const DOMAIN_COMPARE eval_Compare_pred_stream = eval_values_decision (DOMAIN_REASON_PRED_STREAM);
+static const DOMAIN_COMPARE eval_Compare_collection = eval_values_decision (DOMAIN_REASON_COLLECTION);
+
 /*
- * eval_planned_compare () - the comparison this execution makes for a term: its record's, or the gate's decision for a
- *			     site the gate decides
- *   return: NULL where the row compares by value (kernel VALUES): a side whose values are NULL, a side the gate left
- *	     undecided (D-338-02, #343), a decision over a session variable read that left the gate's within the
- *	     statement (D-336-E); and a term without a record (a predicate stream, S-42) or a gate site evaluated
- *	     without the gate's state
+ * eval_site_compare () - the decision of a comparison record in this execution: the load's, or the gate's for a site
+ *			  the gate decides
+ *   return: kernel VALUES with its reason where the row compares by value: a decision over a session variable read
+ *	     that left the gate's within the statement (D-336-E), a gate site read without the gate's state
  */
 static inline const DOMAIN_COMPARE *
-eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
+eval_site_compare (const DOMAIN_COMPARE_PLAN * site, const val_descr * vd)
 {
-  const DOMAIN_COMPARE_PLAN *site = et_comp != NULL ? et_comp->domain_compare : NULL;
-  if (site == NULL)
-    {
-      return NULL;
-    }
   const DOMAIN_COMPARE *compare = &site->fixed;
   if (compare->kernel == DOMAIN_COMPARE_AT_GATE || compare->kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE)
     {
       if (vd == NULL || vd->xasl_state == NULL || vd->xasl_state->resolved.compares == NULL)
 	{
-	  return NULL;
+	  return &eval_Compare_unplanned;
 	}
       const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
       /* a PX worker's own XASL clone loaded the same stream: its sites number the leader's decisions as the leader's
@@ -183,11 +210,134 @@ eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
 		  : resolved.plan->compares[compare->site] == site));
       if ((compare->volatile_reads & resolved.changed_reads) != 0)
 	{
-	  return NULL;
+	  return &eval_Compare_volatile;
 	}
       compare = &resolved.compares[compare->site];
     }
-  return compare->kernel == DOMAIN_COMPARE_VALUES ? NULL : compare;
+  return compare;
+}
+
+/*
+ * eval_planned_compare () - the comparison this execution makes for a term (D-352-01/02)
+ *   return: its record's decision; a term without a record is a predicate stream's (a filter index predicate,
+ *	     evaluated outside any execution, S-42) or the load's omission
+ */
+static inline const DOMAIN_COMPARE *
+eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
+{
+  const DOMAIN_COMPARE_PLAN *site = et_comp->domain_compare;
+  if (site == NULL)
+    {
+      return vd == NULL ? &eval_Compare_pred_stream : &eval_Compare_unplanned;
+    }
+  return eval_site_compare (site, vd);
+}
+
+/*
+ * eval_planned_elements () - what an ALL/SOME term compares its item with in this execution (#352, D-352-03)
+ *
+ * The load's record or table, or the gate's decisions: the row reads them and decides nothing. Where neither holds,
+ * the comparisons keep develop's with the reason (the execution boundary (b) for an unplanned one).
+ */
+static inline void
+eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVAL_ELEMENTS * elements)
+{
+  const DOMAIN_ELEMENT_COMPARE_PLAN *site = et_alsm->domain_compare;
+  elements->all = elements->each = &eval_Compare_unplanned;
+  elements->table = NULL;
+  elements->constant = NULL;
+  if (site == NULL)
+    {
+      if (vd == NULL)
+	{
+	  elements->all = elements->each = &eval_Compare_pred_stream;
+	}
+      return;
+    }
+  if (site->kind == DOMAIN_ELEMENTS_PAIR)
+    {
+      elements->all = eval_site_compare (&site->pair, vd);
+      if (elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_UNDECIDED)
+	{
+	  /* a map exception holds for any value the right side has */
+	  elements->each = elements->all;
+	}
+      return;
+    }
+  if (site->kind == DOMAIN_ELEMENTS_TABLE)
+    {
+      elements->table = site->table;
+      return;
+    }
+  if (vd == NULL || vd->xasl_state == NULL || vd->xasl_state->resolved.elements == NULL)
+    {
+      return;
+    }
+  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  /* a PX worker's own XASL clone numbers its sites as the leader's plan does (D-M3) */
+  assert (site->site >= 0 && site->site < resolved.n_elements && resolved.plan != NULL
+	  && site->site < resolved.plan->n_element_sites
+	  && (resolved.inherited ? resolved.plan->element_sites[site->site]->kind == site->kind
+	      : resolved.plan->element_sites[site->site] == site));
+  if ((site->volatile_reads & resolved.changed_reads) != 0)
+    {
+      elements->all = elements->each = &eval_Compare_volatile;
+      return;
+    }
+  const DOMAIN_ELEMENTS *decided = &resolved.elements[site->site];
+  switch (decided->read)
+    {
+    case DOMAIN_READ_POSITIONS:
+      elements->constant = decided;
+      break;
+    case DOMAIN_READ_TABLE:
+      elements->table = decided->table;
+      break;
+    case DOMAIN_READ_PAIR:
+      elements->all = &decided->compares[0];
+      if (elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_UNDECIDED)
+	{
+	  elements->each = elements->all;
+	}
+      break;
+    default:
+      /* nothing decided: a NULL constant compares nothing, and a constant the row computes raises its error first
+       * (D-352-05) */
+      break;
+    }
+}
+
+/* The decision a table holds for an element: by its type and, for a string or an ENUM, its collation. */
+static inline const DOMAIN_COMPARE *
+eval_element_compare (const DOMAIN_ELEMENT_TABLE * table, const DB_VALUE * element)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (element);
+  int entry = type >= 0 && type < DOMAIN_ELEMENT_TYPES ? table->first[type] : -1;
+  if (entry >= 0 && TP_TYPE_HAS_COLLATION (type))
+    {
+      const int collation = type == DB_TYPE_ENUMERATION ? db_get_enum_collation (element)
+	: db_get_string_collation (element);
+      const int ordinal = collation >= 0 && collation < DOMAIN_ELEMENT_COLLATIONS ? table->ordinal[collation] : -1;
+      entry = ordinal >= 0 ? entry + ordinal : -1;
+    }
+  return entry >= 0 ? &table->entry[entry] : &eval_Compare_unplanned;
+}
+
+/* Whether develop's comparison of two values decides anything: a coercion between their types or a merge of their
+ * string collations. */
+static bool
+eval_compare_decides (const DB_VALUE * dbval1, const DB_VALUE * dbval2)
+{
+  if (DB_IS_NULL (dbval1) || DB_IS_NULL (dbval2))
+    {
+      return false;
+    }
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (dbval1);
+  if (type != DB_VALUE_DOMAIN_TYPE (dbval2))
+    {
+      return true;
+    }
+  return TP_IS_CHAR_TYPE (type) && db_get_string_collation (dbval1) != db_get_string_collation (dbval2);
 }
 
 /* The value side i compares: the constant the gate converted once, or the row's value. */
@@ -363,11 +513,11 @@ eval_report_planned_compare (const char *what, const DOMAIN_COMPARE * compare, c
 	: type == DB_TYPE_ENUMERATION ? db_get_enum_codeset (values[i]) : -1;
       snprintf (sides[i], sizeof (sides[i]), "type=%d collation=%d codeset=%d", (int) type, collation, codeset);
     }
-  fprintf (stderr, "planned comparison %s: kernel=%d first=%d source=%d,%d converted_first=%d collation=%d "
-	   "codeset_side=%d value=%d,%d failed=%d | lhs %s | rhs %s\n", what, (int) compare->kernel,
-	   (int) compare->first, (int) compare->source[0], (int) compare->source[1], (int) compare->converted_first,
-	   compare->collation, compare->codeset_side, compare->value[0], compare->value[1], (int) compare->failed,
-	   sides[0], sides[1]);
+  fprintf (stderr, "planned comparison %s: kernel=%d reason=%d first=%d source=%d,%d converted_first=%d "
+	   "collation=%d codeset_side=%d value=%d,%d failed=%d | lhs %s | rhs %s\n", what, (int) compare->kernel,
+	   (int) compare->reason, (int) compare->first, (int) compare->source[0], (int) compare->source[1],
+	   (int) compare->converted_first, compare->collation, compare->codeset_side, compare->value[0],
+	   compare->value[1], (int) compare->failed, sides[0], sides[1]);
   if (et_comp != NULL)
     {
       const DOMAIN_COMPARE_PLAN *site = et_comp->domain_compare;
@@ -392,9 +542,9 @@ eval_assert_planned_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbva
     {
       return;
     }
-  const bool lhs = compare->value[0] >= 0 || DB_IS_NULL (dbval1)
+  const bool lhs = compare->value[0] != -1 || DB_IS_NULL (dbval1)
     || DB_VALUE_DOMAIN_TYPE (dbval1) == (DB_TYPE) compare->source[0];
-  const bool rhs = compare->value[1] >= 0 || DB_IS_NULL (dbval2)
+  const bool rhs = compare->value[1] != -1 || DB_IS_NULL (dbval2)
     || DB_VALUE_DOMAIN_TYPE (dbval2) == (DB_TYPE) compare->source[1];
   if (!lhs || !rhs)
     {
@@ -444,10 +594,14 @@ eval_assert_planned_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * db
  *   rel_operator(in): Relational operator
  *   et_comp(in): compound evaluation term
  *   vd(in): value descriptor of the term's execution (the gate's decisions and converted constants, #352)
+ *   compare(in): the decision of an element comparison (#352, D-352-03); NULL: the term's
+ *   develop2(in): the right side develop compares where dbval2 is the gate's converted copy of it (the shadow checks
+ *		   compare that one); NULL: dbval2
  */
 static DB_LOGICAL
 eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
-		    const COMP_EVAL_TERM * et_comp, const val_descr * vd)
+		    const COMP_EVAL_TERM * et_comp, const val_descr * vd, const DOMAIN_COMPARE * compare,
+		    const DB_VALUE * develop2)
 {
   int result;
   bool comparable = true;
@@ -473,8 +627,11 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
       {
 	/* R_EQ_TORDER compares in total order; the others compare ordinally, and NULL's still yield UNKNOWN */
 	const int total_order = rel_operator == R_EQ_TORDER;
-	const DOMAIN_COMPARE *compare = eval_planned_compare (et_comp, vd);
-	if (compare != NULL)
+	if (compare == NULL)
+	  {
+	    compare = et_comp != NULL ? eval_planned_compare (et_comp, vd) : &eval_Compare_unplanned;
+	  }
+	if (compare->kernel != DOMAIN_COMPARE_VALUES)
 	  {
 	    /* S-09, S-10: the comparison the load or the gate planned (D-352-01/02); a constant is converted once,
 	     * into a value of its own, and the shared value stays as it is */
@@ -483,12 +640,25 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 #endif
 	    result = eval_compare_planned (thread_p, compare, vd, dbval1, dbval2, total_order, &comparable);
 #if !defined (NDEBUG)
-	    eval_assert_planned_compare (compare, dbval1, dbval2, total_order, (DB_VALUE_COMPARE_RESULT) result,
-					 comparable, et_comp, vd);
+	    eval_assert_planned_compare (compare, dbval1, develop2 != NULL ? develop2 : dbval2, total_order,
+					 (DB_VALUE_COMPARE_RESULT) result, comparable, et_comp, vd);
 #endif
+	  }
+	else if (compare->reason < DOMAIN_REASON_UNDECIDED && eval_compare_decides (dbval1, dbval2))
+	  {
+	    /* the execution boundary (b): no plan holds this comparison, and develop would decide it from the values
+	     * (#352) */
+#if !defined (NDEBUG)
+	    eval_report_planned_compare ("boundary", compare, dbval1, dbval2, et_comp, vd);
+#endif
+	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
+		    pr_type_name (DB_VALUE_DOMAIN_TYPE (dbval2)));
+	    return V_ERROR;
 	  }
 	else
 	  {
+	    /* NULL answers first; the map's exceptions keep develop's comparison, counted */
 	    result = tp_value_compare_with_error (dbval1, dbval2, 1, total_order, &comparable);
 	  }
       }
@@ -564,10 +734,13 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
  *   item(in): db_value item
  *   set(in): collection of elements
  *   rel_operator(in): relational comparison operator
+ *   elements(in): the element comparisons planned for this execution (#352, D-352-03)
+ *   vd(in): value descriptor of the term's execution
  */
 
 static DB_LOGICAL
-eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
+eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator,
+		const EVAL_ELEMENTS * elements, const val_descr * vd)
 {
   int i;
   DB_LOGICAL res, t_res;
@@ -577,14 +750,38 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
 
   res = V_FALSE;
 
-  for (i = 0; i < set_size (set); i++)
+  const int size = set_size (set);
+  /* a constant's elements: the gate decided each one and holds its own value of it, by position */
+  assert (elements->constant == NULL || elements->constant->n == size);
+  for (i = 0; i < size; i++)
     {
-      if (set_get_element (set, i, &elem_val) != NO_ERROR)
+      DB_VALUE *element = &elem_val;
+      const DOMAIN_COMPARE *compare;
+      const DB_VALUE *develop2 = NULL;
+      if (elements->constant != NULL)
 	{
-	  return V_ERROR;
+	  element = &elements->constant->value[i];
+	  compare = &elements->constant->compares[elements->constant->decision[i]];
+#if !defined (NDEBUG)
+	  /* the shadow checks compare the element as the set holds it */
+	  if (set_get_element (set, i, &elem_val) != NO_ERROR)
+	    {
+	      return V_ERROR;
+	    }
+	  develop2 = &elem_val;
+#endif
+	}
+      else
+	{
+	  if (set_get_element (set, i, &elem_val) != NO_ERROR)
+	    {
+	      return V_ERROR;
+	    }
+	  compare = DB_IS_NULL (&elem_val) ? &eval_Compare_null
+	    : elements->table != NULL ? eval_element_compare (elements->table, &elem_val) : elements->each;
 	}
 
-      t_res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL);
+      t_res = eval_value_rel_cmp (thread_p, item, element, rel_operator, NULL, vd, compare, develop2);
       pr_clear_value (&elem_val);
       if (t_res == V_TRUE)
 	{
@@ -609,6 +806,8 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
  *   item(in): db_value item
  *   set(in): collection of elements
  *   rel_operator(in): relational comparison operator
+ *   elements(in): the element comparisons planned for this execution (#352, D-352-03)
+ *   vd(in): value descriptor of the term's execution
  *
  * Note: This routine tries to determine whether a specific relation
  *              as determined by the relational operator rel_operator holds between
@@ -631,7 +830,8 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
  *
  */
 static DB_LOGICAL
-eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator)
+eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator,
+	       const EVAL_ELEMENTS * elements, const val_descr * vd)
 {
   DB_LOGICAL some_res;
 
@@ -670,7 +870,7 @@ eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP re
       return V_ERROR;
     }
 
-  some_res = eval_some_eval (thread_p, item, set, rel_operator);
+  some_res = eval_some_eval (thread_p, item, set, rel_operator, elements, vd);
   /* negate the some result */
   return eval_negative (some_res);
 }
@@ -715,7 +915,7 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
 	  return UNKNOWN_CARD;
 	}
 
-      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL);
+      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL, &eval_Compare_collection, NULL);
       pr_clear_value (&elem_val);
 
       if (res == V_ERROR)
@@ -742,6 +942,8 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
  *   item(in): db_value item
  *   list_id(in): list file identifier
  *   rel_operator(in): relational comparison operator
+ *   compare(in): the comparison of the item with the list's column planned for this execution (#352, D-352-03)
+ *   vd(in): value descriptor of the term's execution
  *
  * Note: This routine tries to determine whether a specific relation
  *              as determined by the relational operator rel_operator holds between
@@ -763,7 +965,8 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
  *        one of the list elements.
  */
 static DB_LOGICAL
-eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator)
+eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator,
+		     const DOMAIN_COMPARE * compare, const val_descr * vd)
 {
   DB_LOGICAL res, t_res;
   QFILE_LIST_SCAN_ID s_id;
@@ -817,7 +1020,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 	      return V_ERROR;
 	    }
 
-	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL, NULL);
+	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL, vd, compare, NULL);
 	  if (t_res == V_TRUE || t_res == V_ERROR)
 	    {
 	      pr_clear_value (&list_val);
@@ -843,6 +1046,8 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
  *   item(in): db_value
  *   list_id(in): list file identifier
  *   rel_operator(in): relational comparison operator
+ *   compare(in): the comparison of the item with the list's column planned for this execution (#352, D-352-03)
+ *   vd(in): value descriptor of the term's execution
  *
  * Note: This routine tries to determine whether a specific relation
  *              as determined by the relational operator rel_operator holds between
@@ -862,7 +1067,8 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
  *
  */
 static DB_LOGICAL
-eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator)
+eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id, REL_OP rel_operator,
+		    const DOMAIN_COMPARE * compare, const val_descr * vd)
 {
   DB_LOGICAL some_res;
 
@@ -892,7 +1098,7 @@ eval_all_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * li
       return V_ERROR;
     }
 
-  some_res = eval_some_list_eval (thread_p, item, list_id, rel_operator);
+  some_res = eval_some_list_eval (thread_p, item, list_id, rel_operator, compare, vd);
   /* negate the result */
   return eval_negative (some_res);
 }
@@ -955,7 +1161,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
       pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL, NULL, &eval_Compare_collection, NULL);
       if (rc == V_ERROR)
 	{
 	  pr_clear_value (&list_val);
@@ -968,7 +1174,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 	  continue;
 	}
 
-      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL, NULL, &eval_Compare_collection, NULL);
       pr_clear_value (&list_val);
 
       if (rc == V_ERROR)
@@ -1050,7 +1256,7 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_L
 	      continue;
 	    }
 
-	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL, NULL, &eval_Compare_collection, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      pr_clear_value (&elem_val);
@@ -1192,7 +1398,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_collection, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      res = V_ERROR;
@@ -1368,7 +1574,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
-	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_collection, NULL);
 
 	  if (rc == V_ERROR)
 	    {
@@ -2179,7 +2385,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	       * general case: compare values, db_value_compare will
 	       * take care of any coercion necessary.
 	       */
-	      result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp, vd);
+	      result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp, vd, NULL, NULL);
 	    }
 	  break;
 
@@ -2251,17 +2457,21 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 		goto exit;
 	      }
 
+	    EVAL_ELEMENTS elements;
+	    eval_planned_elements (et_alsm, vd, &elements);
 	    if (et_alsm->elemset->type == TYPE_LIST_ID)
 	      {
 		/* rhs value is a list, use list evaluation routines */
 		srlist_id = et_alsm->elemset->value.srlist_id;
 		if (et_alsm->eq_flag == F_ALL)
 		  {
-		    result = eval_all_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op);
+		    result = eval_all_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op,
+						 elements.all, vd);
 		  }
 		else
 		  {
-		    result = eval_some_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op);
+		    result = eval_some_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op,
+						  elements.all, vd);
 		  }
 	      }
 	    else if (rhs_is_set)
@@ -2269,17 +2479,28 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 		/* rhs value is a set, use set evaluation routines */
 		if (et_alsm->eq_flag == F_ALL)
 		  {
-		    result = eval_all_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
+		    result =
+		      eval_all_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op, &elements, vd);
 		  }
 		else
 		  {
-		    result = eval_some_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
+		    result =
+		      eval_some_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op, &elements, vd);
 		  }
+	      }
+	    else if (elements.constant != NULL)
+	      {
+		/* a constant that is no collection: its one element, the gate's own value */
+		assert (elements.constant->n == 1);
+		result =
+		  eval_value_rel_cmp (thread_p, peek_val1, &elements.constant->value[0], et_alsm->rel_op, NULL, vd,
+				      &elements.constant->compares[elements.constant->decision[0]], peek_val2);
 	      }
 	    else
 	      {
 		/* other cases, use general evaluation routines */
-		result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_alsm->rel_op, NULL, NULL);
+		result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_alsm->rel_op, NULL, vd, elements.all,
+					     NULL);
 	      }
 	  }
 	  break;
@@ -2400,7 +2621,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
    * general case: compare values, db_value_compare will
    * take care of any coercion necessary.
    */
-  return eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp, vd);
+  return eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp, vd, NULL, NULL);
 }
 
 /*
@@ -2613,13 +2834,15 @@ eval_pred_alsm4 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
     }
 
   /* rhs value is a set, use set evaluation routines */
+  EVAL_ELEMENTS elements;
+  eval_planned_elements (et_alsm, vd, &elements);
   if (et_alsm->eq_flag == F_ALL)
     {
-      return eval_all_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
+      return eval_all_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op, &elements, vd);
     }
   else
     {
-      return eval_some_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op);
+      return eval_some_eval (thread_p, peek_val1, db_get_set (peek_val2), et_alsm->rel_op, &elements, vd);
     }
 }
 
@@ -2671,13 +2894,15 @@ eval_pred_alsm5 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
       return V_UNKNOWN;
     }
 
+  EVAL_ELEMENTS elements;
+  eval_planned_elements (et_alsm, vd, &elements);
   if (et_alsm->eq_flag == F_ALL)
     {
-      return eval_all_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op);
+      return eval_all_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op, elements.all, vd);
     }
   else
     {
-      return eval_some_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op);
+      return eval_some_list_eval (thread_p, peek_val1, srlist_id->list_id, et_alsm->rel_op, elements.all, vd);
     }
 }
 
