@@ -4841,6 +4841,10 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   ptr = or_unpack_int (ptr, &indx_info->func_idx_col_id);
 
+  /* the B-tree's key domain (#342); the key plan is derived from it once the tree is loaded */
+  ptr = or_unpack_domain (ptr, &indx_info->key_type, NULL);
+  indx_info->domain_plan = NULL;
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

@@ -347,93 +347,6 @@ eval_compare_side (const DOMAIN_COMPARE * compare, const val_descr * vd, int sid
   return compare->value[side] >= 0 ? vd->dbval_ptr + compare->value[side] : row_value;
 }
 
-/* develop's outcome of a conversion that failed: the rank of the two sides' types at that point, and -181 */
-static DB_VALUE_COMPARE_RESULT
-eval_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_converted, bool * can_compare)
-{
-  DB_TYPE type[2] = { (DB_TYPE) compare->source[0], (DB_TYPE) compare->source[1] };
-  if (first_converted)
-    {
-      type[compare->first] = (DB_TYPE) compare->converted_first;
-    }
-  *can_compare = false;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type[0]), pr_type_name (type[1]));
-  return tp_more_general_type (type[0], type[1]) > 0 ? DB_GT : DB_LT;
-}
-
-/*
- * eval_compare_converted () - kernel CONVERT: develop's coercion with its converters planned - the first side, then
- *			       the other, then an ENUM's codeset for the string it meets - and cmpval
- *
- * A constant side the gate converted comes in converted; one whose conversion failed gives develop's outcome at its
- * turn. Every conversion the row runs is counted (Num_planned_convert).
- */
-static DB_VALUE_COMPARE_RESULT
-eval_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
-			const DB_VALUE * value2, int total_order, bool * can_compare)
-{
-  const DB_VALUE *side[2] = { value1, value2 };
-  DB_VALUE converted[2], codeset_value;
-  int used = 0;			/* bit i: converted[i] holds a value, bit 2: codeset_value */
-  DB_VALUE_COMPARE_RESULT result;
-
-  for (int k = 0; k < 2; k++)
-    {
-      const int s = k == 0 ? compare->first : 1 - compare->first;
-      if (compare->failed & (1 << s))
-	{
-	  result = eval_compare_conversion_failed (compare, k == 1, can_compare);
-	  goto end;
-	}
-      if (compare->conv[s] == NULL)
-	{
-	  continue;
-	}
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
-      used |= 1 << s;
-      if (domain_run_converter (compare->conv[s], compare->target[s], side[s], &converted[s]) != DOMAIN_COMPATIBLE)
-	{
-	  result = eval_compare_conversion_failed (compare, k == 1, can_compare);
-	  goto end;
-	}
-      side[s] = &converted[s];
-    }
-  if (compare->codeset_side >= 0)
-    {
-      /* an ENUM compared as a string of another codeset: develop brings the other string into the ENUM's */
-      const DB_VALUE *text = side[compare->codeset_side];
-      DB_DATA_STATUS data_status;
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
-      used |= 4;
-      db_value_domain_init (&codeset_value, DB_VALUE_DOMAIN_TYPE (text), DB_VALUE_PRECISION (text), 0);
-      db_string_put_cs_and_collation (&codeset_value, lang_get_collation (compare->collation)->codeset,
-				      compare->collation);
-      if (db_char_string_coerce (text, &codeset_value, &data_status) != NO_ERROR)
-	{
-	  result = DB_UNK;
-	  goto end;
-	}
-      assert (data_status == DATA_STATUS_OK);
-      side[compare->codeset_side] = &codeset_value;
-    }
-  result = compare->cmp->cmpval (side[0], side[1], 1, total_order, NULL, compare->collation);
-
-end:
-  if (used & 1)
-    {
-      pr_clear_value (&converted[0]);
-    }
-  if (used & 2)
-    {
-      pr_clear_value (&converted[1]);
-    }
-  if (used & 4)
-    {
-      pr_clear_value (&codeset_value);
-    }
-  return result;
-}
-
 /*
  * eval_compare_planned () - a comparison planned before any row (D-352-02): develop's NULL rule, then the kernel the
  *			     record names, on the row's values and the gate's own values of the constant sides
@@ -452,22 +365,12 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
     {
       return total_order ? DB_GT : DB_UNK;
     }
-  switch (compare->kernel)
+  if (compare->kernel == DOMAIN_COMPARE_OBJECT)
     {
-    case DOMAIN_COMPARE_DIRECT:
-      return compare->cmp->cmpval (value1, value2, 1, total_order, NULL, compare->collation);
-    case DOMAIN_COMPARE_CONVERT:
-      return eval_compare_converted (thread_p, compare, value1, value2, total_order, can_compare);
-    case DOMAIN_COMPARE_COLLATIONS:
-      /* strings whose collations do not merge: develop's outcome at every row */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
-      *can_compare = false;
-      return DB_UNK;
-    default:
       /* an object side: develop's comparison, which meets OIDs on the server */
-      assert (compare->kernel == DOMAIN_COMPARE_OBJECT);
       return tp_value_compare_with_error (dbval1, dbval2, 1, total_order, can_compare);
     }
+  return domain_compare_values (thread_p, compare, value1, value2, total_order, can_compare);
 }
 
 #if !defined (NDEBUG)

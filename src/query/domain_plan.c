@@ -141,6 +141,9 @@ struct DOMAIN_LOAD_CONTEXT
   int max_compare_terms;
   DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first (#352) */
   int n_element_terms;
+  INDX_INFO **indexes;		/* the index scans met, in walk order (#342) */
+  int n_indexes;
+  int max_indexes;
 };
 
 static void domain_walk_xasl (DOMAIN_LOAD_CONTEXT *, XASL_NODE *);
@@ -1267,6 +1270,32 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
     }
 }
 
+/* An index scan the walk meets: its key plan is published once its elements' items are (#342). */
+static void
+domain_add_index (DOMAIN_LOAD_CONTEXT * ctx, INDX_INFO * index)
+{
+  for (int i = 0; i < ctx->n_indexes; i++)
+    {
+      if (ctx->indexes[i] == index)
+	{
+	  return;
+	}
+    }
+  if (ctx->n_indexes == ctx->max_indexes)
+    {
+      const int max = ctx->max_indexes == 0 ? 4 : ctx->max_indexes * 2;
+      INDX_INFO **indexes = (INDX_INFO **) db_private_realloc (ctx->thread_p, ctx->indexes, max * sizeof (*indexes));
+      if (indexes == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->indexes = indexes;
+      ctx->max_indexes = max;
+    }
+  ctx->indexes[ctx->n_indexes++] = index;
+}
+
 static void
 domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 {
@@ -1274,6 +1303,7 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
     {
       if (spec->indexptr != NULL)
 	{
+	  domain_add_index (ctx, spec->indexptr);
 	  KEY_INFO *key = &spec->indexptr->key_info;
 	  for (int i = 0; i < key->key_cnt; i++)
 	    {
@@ -2494,6 +2524,232 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
   return ok;
 }
 
+/*
+ * domain_plan_key_element () - how one column of a search key takes its value (#342, interface section 5)
+ *
+ * A constant is the gate's (its value, once per execution); so is an element whose domain the gate decides (its rule,
+ * from that domain). The load derives the rule of any other element from its domain: the column's type, strict or kept
+ * (domain_key_rule). keep_elem is the element's domain in the column's direction, which a multi-column key writes the
+ * value with once any column is kept.
+ */
+static bool
+domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE * regu, const TP_DOMAIN * column,
+			 bool skip_value, domain_plan_key_elem * elem)
+{
+  elem->regu = regu;
+  elem->index_elem = column;
+  elem->keep_elem = column;
+  elem->strict_conv = NULL;
+  elem->decision = -1;
+  elem->rule = DOMAIN_KEY_INDEX;
+  if (skip_value)
+    {
+      /* an index skip scan's skip value is read from the index */
+      return true;
+    }
+  const DOMAIN_PLAN_ITEM *item = regu != NULL ? regu->domain_plan : NULL;
+  if (item != NULL && item->operand_class == OPERAND_CONST)
+    {
+      elem->rule = DOMAIN_KEY_CONSTANT;
+      elem->decision = index->n_decisions++;
+      return true;
+    }
+  const TP_DOMAIN *domain = item != NULL && item->slot < 0 ? item->fixed.domain : NULL;
+  if (item == NULL || item->operand_class == OPERAND_VOLATILE || !domain_fixes_values (domain))
+    {
+      elem->rule = DOMAIN_KEY_DECIDED;
+      elem->decision = index->n_decisions++;
+      return true;
+    }
+  domain = domain_key_value_domain (domain);
+  elem->rule = domain_key_rule (domain, column, midxkey, &elem->strict_conv);
+  elem->keep_elem = domain_in_key_direction (domain, column);
+  return elem->keep_elem != NULL;
+}
+
+/* One bound of a key range (#342): the columns of a multi-column key's F_MIDXKEY, or the single-column key itself. */
+static bool
+domain_plan_key_bound (THREAD_ENTRY * thread_p, domain_plan_index * index, REGU_VARIABLE * bound_regu, bool skip_first,
+		       domain_plan_key * bound)
+{
+  memset (bound, 0, sizeof (*bound));
+  bound->scratch = -1;
+  if (bound_regu == NULL)
+    {
+      return true;
+    }
+  bound->midxkey = TP_DOMAIN_TYPE (index->key_type) == DB_TYPE_MIDXKEY;
+  REGU_VARIABLE_LIST operand = NULL;
+  int n = 1;
+  if (bound->midxkey)
+    {
+      assert (bound_regu->type == TYPE_FUNC && bound_regu->value.funcp->ftype == F_MIDXKEY);
+      operand = bound_regu->value.funcp->operand;
+      n = 0;
+      for (REGU_VARIABLE_LIST op = operand; op != NULL; op = op->next)
+	{
+	  n++;
+	}
+    }
+  bound->elems = (domain_plan_key_elem *) domain_plan_alloc (thread_p, n, sizeof (*bound->elems));
+  if (n > 0 && bound->elems == NULL)
+    {
+      return false;
+    }
+  bool mixes = false, constant = false, row = false;
+  for (int i = 0; i < n; i++)
+    {
+      REGU_VARIABLE *regu = bound->midxkey ? &operand->value : bound_regu;
+      const TP_DOMAIN *column = domain_key_column (index->key_type, i);
+      if (column == NULL)
+	{
+	  /* more columns than the index has: not a key of this index */
+	  assert (false);
+	  return false;
+	}
+      domain_plan_key_elem *elem = &bound->elems[bound->n_elems++];
+      if (!domain_plan_key_element (index, bound->midxkey, regu, column, skip_first && i == 0, elem))
+	{
+	  return false;
+	}
+      mixes = mixes || elem->rule != DOMAIN_KEY_INDEX;
+      constant = constant || elem->rule == DOMAIN_KEY_CONSTANT;
+      row = row || (elem->rule != DOMAIN_KEY_INDEX && elem->rule != DOMAIN_KEY_CONSTANT);
+      operand = operand != NULL ? operand->next : NULL;
+    }
+  if (bound->midxkey && mixes)
+    {
+      /* constants only: the gate writes the domain once per execution; the scan fills a scratch chain otherwise, and
+       * for a constant the row computes (D-352-05) */
+      bound->constant = constant && !row;
+      bound->scratch = index->n_scratch++;
+    }
+  return true;
+}
+
+/* domain_key_compare_keys () - the key comparison table's input (#342): each key column's own key, and the key its
+ * values take under each load-fixed element */
+int
+domain_key_compare_keys (const domain_plan_index * index, int *columns, DOMAIN_COMPARE_KEY * keys)
+{
+  int n = 0;
+  for (int b = 0; b < 2 * index->n_ranges + 1; b++)
+    {
+      const domain_plan_key *bound = &index->bounds[b];
+      for (int i = 0; i < bound->n_elems; i++)
+	{
+	  const domain_plan_key_elem *elem = &bound->elems[i];
+	  columns[n] = i;
+	  domain_compare_key_of (elem->index_elem, &keys[n++]);
+	  if (elem->rule != DOMAIN_KEY_CONSTANT && elem->rule != DOMAIN_KEY_DECIDED && elem->keep_elem != NULL)
+	    {
+	      columns[n] = i;
+	      domain_compare_key_of (elem->keep_elem, &keys[n++]);
+	    }
+	}
+    }
+  return n;
+}
+
+/* An index's key comparison table the load can build: none of its elements waits for the gate (#342). */
+static bool
+domain_publish_key_compares (THREAD_ENTRY * thread_p, domain_plan_index * index)
+{
+  int n_elems = 0;
+  for (int b = 0; b < 2 * index->n_ranges + 1; b++)
+    {
+      n_elems += index->bounds[b].n_elems;
+    }
+  if (n_elems == 0)
+    {
+      return true;
+    }
+  int *columns = (int *) db_private_alloc (thread_p, sizeof (int) * 2 * n_elems);
+  DOMAIN_COMPARE_KEY *keys = (DOMAIN_COMPARE_KEY *) db_private_alloc (thread_p, sizeof (*keys) * 2 * n_elems);
+  bool ok = columns != NULL && keys != NULL;
+  if (ok)
+    {
+      const int n = domain_key_compare_keys (index, columns, keys);
+      const size_t bytes = domain_key_compares_bytes (columns, keys, n);
+      DOMAIN_KEY_COMPARES *table = (DOMAIN_KEY_COMPARES *) domain_plan_alloc (thread_p, 1, bytes);
+      ok = table != NULL && domain_resolve_key_compares (columns, keys, n, table, bytes) == NO_ERROR;
+      index->compares = ok && table->n_entries > 0 ? table : NULL;
+    }
+  if (columns != NULL)
+    {
+      db_private_free (thread_p, columns);
+    }
+  if (keys != NULL)
+    {
+      db_private_free (thread_p, keys);
+    }
+  return ok;
+}
+
+/*
+ * domain_publish_indexes () - every index scan's key plan (#342, interface section 5): its bounds' elements and their
+ *   rules, from INDX_INFO.key_type (D-318 decision 5); the scan finds it through INDX_INFO.domain_plan
+ */
+static bool
+domain_publish_indexes (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
+{
+  plan->n_indexes = ctx->n_indexes;
+  plan->indexes = (domain_plan_index *) domain_plan_alloc (thread_p, plan->n_indexes, sizeof (*plan->indexes));
+  if (plan->n_indexes > 0 && plan->indexes == NULL)
+    {
+      return false;
+    }
+  for (int j = 0; j < ctx->n_indexes; j++)
+    {
+      INDX_INFO *indx_info = ctx->indexes[j];
+      domain_plan_index *index = &plan->indexes[j];
+      memset (index, 0, sizeof (*index));
+      index->site = -1;
+      indx_info->domain_plan = NULL;
+      if (indx_info->key_type == NULL)
+	{
+	  /* no key domain in the stream: the scan meets the execution boundary (b) */
+	  continue;
+	}
+      index->key_type = indx_info->key_type;
+      index->asc_key_type = domain_ascending_key_type (index->key_type);
+      index->n_ranges = indx_info->key_info.key_cnt;
+      index->bounds =
+	(domain_plan_key *) domain_plan_alloc (thread_p, 2 * index->n_ranges + 1, sizeof (*index->bounds));
+      if (index->asc_key_type == NULL || index->bounds == NULL)
+	{
+	  return false;
+	}
+      const bool iss = indx_info->use_iss != 0;
+      for (int i = 0; i < index->n_ranges; i++)
+	{
+	  KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
+	  /* an index skip scan's ranges start with its skip value */
+	  if (!domain_plan_key_bound (thread_p, index, range->key1, iss, &index->bounds[2 * i])
+	      || !domain_plan_key_bound (thread_p, index, range->key2, iss, &index->bounds[2 * i + 1]))
+	    {
+	      return false;
+	    }
+	}
+      /* the index skip scan's fetch range: its one column is the skip value */
+      if (!domain_plan_key_bound (thread_p, index, iss ? indx_info->iss_range.key1 : NULL, true,
+				  &index->bounds[2 * index->n_ranges]))
+	{
+	  return false;
+	}
+      if (index->n_decisions > 0)
+	{
+	  index->site = plan->n_index_sites++;
+	}
+      else if (!domain_publish_key_compares (thread_p, index))
+	{
+	  return false;
+	}
+      indx_info->domain_plan = index;
+    }
+  return true;
+}
+
 int
 stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_INFO * unpack_info, bool is_pred_stream)
 {
@@ -2741,11 +2997,16 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
       /* #352: constant subtrees before comparisons, whose constant sides read them */
       const int constant_base = plan->n_refs;
       ctx.failed = !domain_publish_constants (thread_p, &ctx, plan)
-	|| !domain_publish_compares (thread_p, &ctx, plan, constant_base);
+	|| !domain_publish_compares (thread_p, &ctx, plan, constant_base)
+	|| !domain_publish_indexes (thread_p, &ctx, plan);
     }
   if (ctx.gate_order != NULL)
     {
       db_private_free (thread_p, ctx.gate_order);
+    }
+  if (ctx.indexes != NULL)
+    {
+      db_private_free (thread_p, ctx.indexes);
     }
   if (ctx.compare_terms != NULL)
     {

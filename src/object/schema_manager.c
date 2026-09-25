@@ -10508,6 +10508,37 @@ mem_error:
 }
 
 /*
+ * sm_constraint_key_domain() - the key domain the B-tree of a constraint's index was allocated with (allocate_index)
+ *   return: a cached domain, or NULL on error
+ *   con(in): the constraint
+ *
+ * The query compiler streams it with an index scan when the index statistics carry no key type (#342, L-45 (f)).
+ */
+TP_DOMAIN *
+sm_constraint_key_domain (const SM_CLASS_CONSTRAINT * con)
+{
+  const int *asc_desc = con->type == SM_CONSTRAINT_FOREIGN_KEY ? NULL : con->asc_desc;
+  const SM_FUNCTION_INFO *function_index = con->func_index_info;
+  int n_attrs = 0;
+
+  while (con->attributes[n_attrs] != NULL)
+    {
+      n_attrs++;
+    }
+  if (function_index != NULL)
+    {
+      if (function_index->attr_index_start == 0)
+	{
+	  /* a single column function index: the key domain is the domain of the function result */
+	  return function_index->fi_domain;
+	}
+      return construct_index_key_domain (function_index->attr_index_start, con->attributes, asc_desc,
+					 con->attrs_prefix_length, function_index->col_id, function_index->fi_domain);
+    }
+  return construct_index_key_domain (n_attrs, con->attributes, asc_desc, con->attrs_prefix_length, -1, NULL);
+}
+
+/*
  * collect_hier_class_info() - calling this function in which case *n_classes
  *   			       will equal to 1 upon entry.
  *   return: NO_ERROR on success, non-zero for ERROR

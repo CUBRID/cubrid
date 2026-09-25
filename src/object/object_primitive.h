@@ -306,6 +306,15 @@ extern int pr_free_ext_value (DB_VALUE * value);
 extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
 						   int total_order, int num_index_term, int *start_colp,
 						   int *diff_column, bool * dom_is_desc, int *result_size);
+/* The comparison of two midxkey elements whose domains differ, when the caller planned it (#342): an index scan's
+ * comparisons of its search key values. */
+typedef DB_VALUE_COMPARE_RESULT (*PR_MIDXKEY_ELEMENT_COMPARE) (const void *arg, int column, DB_VALUE * value1,
+							       DB_VALUE * value2, int do_coercion, int total_order,
+							       bool * can_compare);
+extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare_planned (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
+							   int total_order, int num_index_term, int *start_colp,
+							   int *diff_column, bool * dom_is_desc, int *result_size,
+							   PR_MIDXKEY_ELEMENT_COMPARE element_compare, const void *arg);
 STATIC_INLINE int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);

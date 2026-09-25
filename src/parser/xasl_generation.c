@@ -12354,6 +12354,19 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       return NULL;
     }
 
+  /* the B-tree's key domain, from which the server derives its key plan (#342, L-45 (f)): the bytes of its root header
+   * the index statistics carry, or else the domain the index was allocated with */
+  indx_infop->key_type = index_entryp->key_type;
+  if (indx_infop->key_type == NULL || TP_DOMAIN_TYPE (indx_infop->key_type) == DB_TYPE_NULL)
+    {
+      indx_infop->key_type = sm_constraint_key_domain (index_entryp->constraints);
+    }
+  if (indx_infop->key_type == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - index key domain");
+      return NULL;
+    }
+
   /* key limits */
   key_infop = &indx_infop->key_info;
   if (pt_to_key_limit (parser, index_entryp->key_limit, NULL, key_infop, false) != NO_ERROR)

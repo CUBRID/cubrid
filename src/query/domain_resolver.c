@@ -29,6 +29,11 @@
 #include "storage_common.h"
 #include "system_parameter.h"
 #include "language_support.h"
+#include "error_manager.h"
+#include "perf_monitor.h"
+#include "string_opfunc.h"
+#include "thread_manager.hpp"
+#include <cstddef>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1241,6 +1246,422 @@ domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, cons
       db_string_put_cs_and_collation (result, TP_DOMAIN_CODESET (target), TP_DOMAIN_COLLATION (target));
     }
   return converter (source, result, target);
+}
+
+/* develop's outcome of a conversion that failed: the rank of the two sides' types at that point, and -181 */
+static DB_VALUE_COMPARE_RESULT
+domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_converted, bool * can_compare)
+{
+  DB_TYPE type[2] = { (DB_TYPE) compare->source[0], (DB_TYPE) compare->source[1] };
+  if (first_converted)
+    {
+      type[compare->first] = (DB_TYPE) compare->converted_first;
+    }
+  *can_compare = false;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type[0]), pr_type_name (type[1]));
+  return tp_more_general_type (type[0], type[1]) > 0 ? DB_GT : DB_LT;
+}
+
+/*
+ * domain_compare_converted () - kernel CONVERT: develop's coercion with its converters planned - the first side, then
+ *				 the other, then an ENUM's codeset for the string it meets - and cmpval
+ *
+ * A constant side the gate converted comes in converted; one whose conversion failed gives develop's outcome at its
+ * turn. Every conversion the row runs is counted (Num_planned_convert).
+ */
+static DB_VALUE_COMPARE_RESULT
+domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
+			  const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  const DB_VALUE *side[2] = { value1, value2 };
+  DB_VALUE converted[2], codeset_value;
+  int used = 0;			/* bit i: converted[i] holds a value, bit 2: codeset_value */
+  DB_VALUE_COMPARE_RESULT result;
+
+  for (int k = 0; k < 2; k++)
+    {
+      const int s = k == 0 ? compare->first : 1 - compare->first;
+      if (compare->failed & (1 << s))
+	{
+	  result = domain_compare_conversion_failed (compare, k == 1, can_compare);
+	  goto end;
+	}
+      if (compare->conv[s] == NULL)
+	{
+	  continue;
+	}
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
+      used |= 1 << s;
+      if (domain_run_converter (compare->conv[s], compare->target[s], side[s], &converted[s]) != DOMAIN_COMPATIBLE)
+	{
+	  result = domain_compare_conversion_failed (compare, k == 1, can_compare);
+	  goto end;
+	}
+      side[s] = &converted[s];
+    }
+  if (compare->codeset_side >= 0)
+    {
+      /* an ENUM compared as a string of another codeset: develop brings the other string into the ENUM's */
+      const DB_VALUE *text = side[compare->codeset_side];
+      DB_DATA_STATUS data_status;
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
+      used |= 4;
+      db_value_domain_init (&codeset_value, DB_VALUE_DOMAIN_TYPE (text), DB_VALUE_PRECISION (text), 0);
+      db_string_put_cs_and_collation (&codeset_value, lang_get_collation (compare->collation)->codeset,
+				      compare->collation);
+      if (db_char_string_coerce (text, &codeset_value, &data_status) != NO_ERROR)
+	{
+	  result = DB_UNK;
+	  goto end;
+	}
+      assert (data_status == DATA_STATUS_OK);
+      side[compare->codeset_side] = &codeset_value;
+    }
+  result = compare->cmp->cmpval (side[0], side[1], 1, total_order, NULL, compare->collation);
+
+end:
+  if (used & 1)
+    {
+      pr_clear_value (&converted[0]);
+    }
+  if (used & 2)
+    {
+      pr_clear_value (&converted[1]);
+    }
+  if (used & 4)
+    {
+      pr_clear_value (&codeset_value);
+    }
+  return result;
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
+		       const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  switch (compare->kernel)
+    {
+    case DOMAIN_COMPARE_DIRECT:
+      return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, total_order, NULL, compare->collation);
+    case DOMAIN_COMPARE_CONVERT:
+      return domain_compare_converted (thread_p, compare, value1, value2, total_order, can_compare);
+    default:
+      /* strings whose collations do not merge: develop's outcome at every row */
+      assert (compare->kernel == DOMAIN_COMPARE_COLLATIONS);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+      *can_compare = false;
+      return DB_UNK;
+    }
+}
+
+void
+domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key)
+{
+  key->type = DB_VALUE_DOMAIN_TYPE (value);
+  key->codeset = key->collation = -1;
+  if (TP_IS_CHAR_TYPE (key->type))
+    {
+      key->codeset = db_get_string_codeset (value);
+      key->collation = db_get_string_collation (value);
+    }
+  else if (key->type == DB_TYPE_ENUMERATION)
+    {
+      key->codeset = db_get_enum_codeset (value);
+      key->collation = db_get_enum_collation (value);
+    }
+}
+
+static bool
+domain_compare_key_equal (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs)
+{
+  return lhs->type == rhs->type && lhs->codeset == rhs->codeset && lhs->collation == rhs->collation;
+}
+
+/* Whether keys[i] is the first of its (column, key) among keys[0..i]. */
+static bool
+domain_key_first (const int *columns, const DOMAIN_COMPARE_KEY * keys, int i)
+{
+  for (int j = 0; j < i; j++)
+    {
+      if (columns[j] == columns[i] && domain_compare_key_equal (&keys[j], &keys[i]))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/* Whether (keys[i], keys[j]) is an entry of the table: two different keys of one column, each met first there. A
+ * NULL key compares nothing (its values are NULL, which the B-tree and the range build answer first). */
+static bool
+domain_key_pair (const int *columns, const DOMAIN_COMPARE_KEY * keys, int i, int j)
+{
+  return j != i && columns[j] == columns[i] && keys[i].type != DB_TYPE_NULL && keys[j].type != DB_TYPE_NULL
+    && domain_key_first (columns, keys, i) && domain_key_first (columns, keys, j)
+    && !domain_compare_key_equal (&keys[i], &keys[j]);
+}
+
+static int
+domain_key_compares_count (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys)
+{
+  int n_entries = 0;
+  for (int i = 0; i < n_keys; i++)
+    {
+      for (int j = 0; j < n_keys; j++)
+	{
+	  if (domain_key_pair (columns, keys, i, j))
+	    {
+	      n_entries++;
+	    }
+	}
+    }
+  return n_entries;
+}
+
+size_t
+domain_key_compares_bytes (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys)
+{
+  const int n_entries = domain_key_compares_count (columns, keys, n_keys);
+  const size_t n_slots = n_entries > 0 ? (size_t) n_entries : 1;
+  return offsetof (DOMAIN_KEY_COMPARES, entry) + sizeof (DOMAIN_KEY_COMPARE_ENTRY) * n_slots;
+}
+
+int
+domain_resolve_key_compares (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys,
+			     DOMAIN_KEY_COMPARES * table, size_t bytes)
+{
+  assert (bytes == domain_key_compares_bytes (columns, keys, n_keys));
+  table->bytes = (int) bytes;
+  table->n_entries = 0;
+  for (int i = 0; i < n_keys; i++)
+    {
+      for (int j = 0; j < n_keys; j++)
+	{
+	  if (!domain_key_pair (columns, keys, i, j))
+	    {
+	      continue;
+	    }
+	  DOMAIN_KEY_COMPARE_ENTRY *entry = &table->entry[table->n_entries++];
+	  entry->column = columns[i];
+	  entry->key[0] = keys[i];
+	  entry->key[1] = keys[j];
+	  const int error = domain_resolve_comparison (&keys[i], &keys[j], &entry->compare);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+static const DOMAIN_COMPARE *
+domain_key_compare_find_keys (const DOMAIN_KEY_COMPARES * table, int column, const DOMAIN_COMPARE_KEY * key)
+{
+  for (int i = 0; table != NULL && i < table->n_entries; i++)
+    {
+      const DOMAIN_KEY_COMPARE_ENTRY *entry = &table->entry[i];
+      if (entry->column == column && domain_compare_key_equal (&entry->key[0], &key[0])
+	  && domain_compare_key_equal (&entry->key[1], &key[1]))
+	{
+	  return &entry->compare;
+	}
+    }
+  return NULL;
+}
+
+const DOMAIN_COMPARE *
+domain_key_compare_find (const DOMAIN_KEY_COMPARES * table, int column, const DB_VALUE * value1,
+			 const DB_VALUE * value2)
+{
+  DOMAIN_COMPARE_KEY key[2];
+  domain_compare_key_of_value (value1, &key[0]);
+  domain_compare_key_of_value (value2, &key[1]);
+  return domain_key_compare_find_keys (table, column, key);
+}
+
+const TP_DOMAIN *
+domain_key_value_domain (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT ? tp_domain_resolve_default (DB_TYPE_OID) : domain;
+}
+
+const TP_DOMAIN *
+domain_key_column (const TP_DOMAIN * key_type, int column)
+{
+  if (key_type == NULL || TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY)
+    {
+      return column == 0 ? key_type : NULL;
+    }
+  const TP_DOMAIN *domain = key_type->setdomain;
+  for (; domain != NULL && column > 0; column--)
+    {
+      domain = domain->next;
+    }
+  return domain;
+}
+
+const TP_DOMAIN *
+domain_in_key_direction (const TP_DOMAIN * domain, const TP_DOMAIN * column)
+{
+  if (domain == NULL || column == NULL || domain->is_desc == column->is_desc)
+    {
+      return domain;
+    }
+  TP_DOMAIN *copy = domain_copy_one (domain);
+  if (copy == NULL)
+    {
+      return NULL;
+    }
+  copy->is_desc = column->is_desc;
+  return tp_domain_cache (copy);
+}
+
+const TP_DOMAIN *
+domain_ascending_key_type (const TP_DOMAIN * key_type)
+{
+  bool descending = false;
+  const bool midxkey = TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY;
+  for (const TP_DOMAIN * column = midxkey ? key_type->setdomain : key_type; column != NULL;
+       column = midxkey ? column->next : NULL)
+    {
+      descending = descending || column->is_desc;
+    }
+  if (!descending)
+    {
+      return key_type;
+    }
+  if (!midxkey)
+    {
+      TP_DOMAIN *ascending = tp_domain_copy (key_type, false);
+      if (ascending == NULL)
+	{
+	  return NULL;
+	}
+      ascending->is_desc = 0;
+      return tp_domain_cache (ascending);
+    }
+  TP_DOMAIN *columns = tp_domain_copy (key_type->setdomain, false);
+  if (columns == NULL)
+    {
+      return NULL;
+    }
+  for (TP_DOMAIN * column = columns; column != NULL; column = column->next)
+    {
+      column->is_desc = 0;
+    }
+  TP_DOMAIN *ascending = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, key_type->precision, key_type->scale, columns);
+  if (ascending == NULL)
+    {
+      while (columns != NULL)
+	{
+	  TP_DOMAIN *next = columns->next;
+	  tp_domain_free (columns);
+	  columns = next;
+	}
+      return NULL;
+    }
+  return tp_domain_cache (ascending);
+}
+
+TP_DOMAIN *
+domain_copy_one (const TP_DOMAIN * domain)
+{
+  TP_DOMAIN one = *domain;
+  one.next = NULL;
+  return tp_domain_copy (&one, false);
+}
+
+DOMAIN_CONV_FUNC
+domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column)
+{
+  const DB_TYPE target = TP_DOMAIN_TYPE (column);
+  /* tp_value_coerce_strict refuses any other target */
+  if (!TP_IS_NUMERIC_TYPE (target) && !TP_IS_DATE_OR_TIME_TYPE (target))
+    {
+      return NULL;
+    }
+  return domain_lookup_converter (source, column, DOMAIN_CTX_KEY_ELEM);
+}
+
+DOMAIN_KEY_RULE
+domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey, DOMAIN_CONV_FUNC * strict_conv)
+{
+  *strict_conv = NULL;
+  if (!midxkey)
+    {
+      /* a single-column key takes its value as it is (#321 section 4.2) */
+      return DOMAIN_KEY_INDEX;
+    }
+  const DB_TYPE type = TP_DOMAIN_TYPE (element);
+  const DB_TYPE column_type = TP_DOMAIN_TYPE (column);
+  if (type != column_type)
+    {
+      *strict_conv = domain_key_strict_converter (type, column);
+      return *strict_conv != NULL ? DOMAIN_KEY_STRICT : DOMAIN_KEY_KEEP;
+    }
+  if (column_type == DB_TYPE_NUMERIC || column_type == DB_TYPE_CHAR || column_type == DB_TYPE_BIT)
+    {
+      /* the parameters too: precision and scale, length, collation */
+      return tp_domain_match_ignore_order (column, element, TP_EXACT_MATCH) ? DOMAIN_KEY_INDEX : DOMAIN_KEY_KEEP;
+    }
+  return DOMAIN_KEY_INDEX;
+}
+
+bool
+domain_key_compares_as_is (const DOMAIN_COMPARE_KEY * a, const DOMAIN_COMPARE_KEY * b)
+{
+  if (!TP_ARE_COMPARABLE_KEY_TYPES (a->type, b->type))
+    {
+      return false;
+    }
+  return !(TP_IS_CHAR_TYPE (a->type) && TP_IS_CHAR_TYPE (b->type) && a->collation != b->collation);
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1, DB_VALUE * value2,
+			   int do_coercion, int total_order, bool * can_compare)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  DOMAIN_COMPARE_KEY key[2];
+  domain_compare_key_of_value (value1, &key[0]);
+  domain_compare_key_of_value (value2, &key[1]);
+  if (domain_compare_key_equal (&key[0], &key[1]))
+    {
+      /* one type and one collation: nothing to coerce or merge (a kept column of the index column's type with other
+       * parameters, whose precision or length alone differs) */
+      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    }
+  const DOMAIN_COMPARE *compare = domain_key_compare_find_keys (keys != NULL ? keys->compares : NULL, column, key);
+  if (compare != NULL)
+    {
+      if (compare->kernel == DOMAIN_COMPARE_OBJECT)
+	{
+	  /* an object side: develop's comparison, which meets OIDs on the server */
+	  return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+	}
+      return domain_compare_values (thread_p, compare, value1, value2, total_order, can_compare);
+    }
+  if (keys != NULL && keys->values_decide)
+    {
+      /* a column took develop's rule from its value in this scan (D-336-E): develop's comparison, counted */
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
+      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    }
+  /* the execution boundary (b): the plan knows every key a column's values take */
+  assert (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", column,
+	  pr_type_name (key[0].type));
+  *can_compare = false;
+  return DB_UNK;
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+				   int total_order, bool * can_compare)
+{
+  return domain_search_key_compare ((const DOMAIN_SEARCH_KEYS *) arg, column, value1, value2, do_coercion,
+				    total_order, can_compare);
 }
 
 /*

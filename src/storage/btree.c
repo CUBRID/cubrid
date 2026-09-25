@@ -1393,6 +1393,9 @@ static int btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTI
 static void btree_write_default_split_info (BTREE_NODE_SPLIT_INFO * info);
 static int btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p, VPID * prev);
 static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
+static DB_VALUE_COMPARE_RESULT btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
+						       const DOMAIN_SEARCH_KEYS * search_keys, int do_coercion,
+						       int total_order, int *start_colp);
 static int btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * next_vpid);
 static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
@@ -5348,7 +5351,7 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	  start_col = MIN (left_start_col, right_start_col);
 	}
 
-      c = btree_compare_key (key, &temp_key, btid->key_type, 1, 1, &start_col);
+      c = btree_compare_search_key (btid, key, &temp_key, &start_col);
 
       if (c == DB_UNK)
 	{
@@ -5502,7 +5505,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
     }
 
   /* Compare with first key. */
-  c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
+  c = btree_compare_search_key (btid_int, key, &border_key, NULL);
   btree_clear_key_value (&clear_key, &border_key);
   if (c == DB_EQ)
     {
@@ -5554,7 +5557,7 @@ btree_leaf_is_key_between_min_max (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
       return error_code;
     }
   /* Compare with last key. */
-  c = btree_compare_key (key, &border_key, btid_int->key_type, 1, 1, NULL);
+  c = btree_compare_search_key (btid_int, key, &border_key, NULL);
   btree_clear_key_value (&clear_key, &border_key);
   if (c == DB_EQ)
     {
@@ -5720,7 +5723,7 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	}
 
       /* Compare searched key with current middle key. */
-      c = btree_compare_key (key, &temp_key, btid->key_type, 1, 1, &start_col);
+      c = btree_compare_search_key (btid, key, &temp_key, &start_col);
 
       /* Clear current middle key. */
       btree_clear_key_value (&clear_key, &temp_key);
@@ -6078,6 +6081,7 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
   /* init index key copy_buf info */
   btid->copy_buf = NULL;
   btid->copy_buf_len = 0;
+  btid->search_keys = NULL;
 
   if (is_key_type)
     {
@@ -18422,6 +18426,8 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       /* TODO: Use index_scan_id_p->copy_buf directly. */
       bts->btid_int.copy_buf = index_scan_id_p->copy_buf;
       bts->btid_int.copy_buf_len = index_scan_id_p->copy_buf_len;
+      /* the comparisons of the scan's search key values (#342) */
+      bts->btid_int.search_keys = scan_index_search_keys (index_scan_id_p);
     }
 
   /* initialize the key range with given information */
@@ -19038,19 +19044,19 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	  int start_col = 0;
 	  if (start_col < bts->common_prefix_size)
 	    {
-	      c = btree_compare_key (bts->key_range.upper_key, &bts->common_prefix_key, bts->btid_int.key_type, 1, 1,
-				     &start_col);
+	      c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, &bts->common_prefix_key,
+					    &start_col);
 	    }
 
 	  if (start_col >= bts->common_prefix_size)
 	    {
 	      start_col = bts->common_prefix_size;
-	      c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, &start_col);
+	      c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, &bts->cur_key, &start_col);
 	    }
 	}
       else
 	{
-	  c = btree_compare_key (bts->key_range.upper_key, &bts->cur_key, bts->btid_int.key_type, 1, 1, NULL);
+	  c = btree_compare_search_key (&bts->btid_int, bts->key_range.upper_key, &bts->cur_key, NULL);
 	}
 
       if (c == DB_UNK)
@@ -22008,6 +22014,30 @@ DB_VALUE_COMPARE_RESULT
 btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int do_coercion, int total_order,
 		   int *start_colp)
 {
+  return btree_compare_key_with (key1, key2, key_domain, NULL, do_coercion, total_order, start_colp);
+}
+
+/*
+ * btree_compare_search_key () - an index scan's comparison of a key with a key of its search (#342): the columns whose
+ *   values do not compare as they are compare as the scan's key plan decided before any row (B30, B31)
+ */
+DB_VALUE_COMPARE_RESULT
+btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key2, int *start_colp)
+{
+  return btree_compare_key_with (key1, key2, btid->key_type, btid->search_keys, 1, 1, start_colp);
+}
+
+/*
+ * btree_compare_key_with () - btree_compare_key, with an index scan's search keys (#342)
+ *
+ * search_keys NULL is a B-tree search outside a query plan, whose keys are the index's own: a column whose values do
+ * not compare as they are compares by value. An index scan's search keys compare such columns as its key plan says;
+ * one the plan has no comparison for is the execution boundary (b).
+ */
+static DB_VALUE_COMPARE_RESULT
+btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
+			const DOMAIN_SEARCH_KEYS * search_keys, int do_coercion, int total_order, int *start_colp)
+{
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_TYPE key1_type, key2_type;
   DB_TYPE dom_type;
@@ -22062,8 +22092,9 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
       bool dom_is_desc[2];
       int dummy_diff_column;
       c =
-	pr_midxkey_compare (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1, start_colp,
-			    &dummy_diff_column, dom_is_desc, NULL);
+	pr_midxkey_compare_planned (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1,
+				    start_colp, &dummy_diff_column, dom_is_desc, NULL,
+				    search_keys != NULL ? domain_search_key_compare_element : NULL, search_keys);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc[0])
@@ -22112,11 +22143,19 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 	}
       else
 	{
-	  if (perfmon_is_perf_tracking ())
+	  if (search_keys != NULL)
 	    {
-	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
+	      /* a search key value of a type the index does not compare as it is (B30, S-12) */
+	      c = domain_search_key_compare (search_keys, 0, key1, key2, do_coercion, total_order, &comparable);
 	    }
-	  c = tp_value_compare_with_error (key1, key2, do_coercion, total_order, &comparable);
+	  else
+	    {
+	      if (perfmon_is_perf_tracking ())
+		{
+		  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
+		}
+	      c = tp_value_compare_with_error (key1, key2, do_coercion, total_order, &comparable);
+	    }
 
 	  if (!comparable)
 	    {
@@ -22220,7 +22259,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
   DB_VALUE *new_key_value = NULL;
   int error = NO_ERROR, i = 0;
   TP_DOMAIN *domain;
-  bool has_null_domain;
 
   assert (multi_range_opt->use == true);
 
@@ -22284,9 +22322,20 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	}
     }
 
-  /* resolve domains */
+  /* the sort columns' domains: the index's columns, ascending (the sort order is is_desc_order's), from the scan's key
+   * plan once (S-32, L-44) */
   if (multi_range_opt->sort_col_dom == NULL)
     {
+      const domain_plan_index *key_plan = bts->index_scan_idp != NULL ? bts->index_scan_idp->key_plan : NULL;
+      if (key_plan == NULL)
+	{
+	  /* the execution boundary (b): every index scan has its key plan */
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
+		  pr_type_name (DB_TYPE_MIDXKEY));
+	  error = ER_QPROC_DOMAIN_UNRESOLVED;
+	  goto exit;
+	}
       multi_range_opt->sort_col_dom =
 	(TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
       if (multi_range_opt->sort_col_dom == NULL)
@@ -22297,32 +22346,10 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 
       for (i = 0; i < multi_range_opt->num_attrs; i++)
 	{
-	  multi_range_opt->sort_col_dom[i] = &tp_Null_domain;
+	  domain = (TP_DOMAIN *) domain_key_column (key_plan->asc_key_type, multi_range_opt->sort_att_idx[i]);
+	  assert (domain != NULL);
+	  multi_range_opt->sort_col_dom[i] = domain;
 	}
-      multi_range_opt->has_null_domain = true;
-    }
-
-  if (multi_range_opt->has_null_domain)
-    {
-      has_null_domain = false;
-      for (i = 0; i < multi_range_opt->num_attrs; i++)
-	{
-	  assert (multi_range_opt->sort_col_dom[i] != NULL);
-	  if (multi_range_opt->sort_col_dom[i] == &tp_Null_domain)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
-	      domain = tp_domain_resolve_value (&new_key_value[i], NULL);
-	      if (domain != &tp_Null_domain)
-		{
-		  multi_range_opt->sort_col_dom[i] = domain;
-		}
-	      else
-		{
-		  has_null_domain = true;
-		}
-	    }
-	}
-      multi_range_opt->has_null_domain = has_null_domain;
     }
 
   if (multi_range_opt->cnt == multi_range_opt->size)
@@ -23316,8 +23343,8 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     {
       int cmp_res;
 
-      /* range did not modify, check if we're advancing */
-      cmp_res = btree_compare_key (target_key, &new_key, midxkey.domain, 1, 1, NULL);
+      /* range did not modify, check if we're advancing (the target is a search key, #342) */
+      cmp_res = btree_compare_search_key (&bts->btid_int, target_key, &new_key, NULL);
       if (use_desc_index)
 	{
 	  assert (cmp_res == DB_GT);

@@ -106,30 +106,16 @@ namespace parallel_index_scan
 	return NO_ERROR;
       }
 
-    /* scan_id needs coordinator's prebuilt_midxkey_domains; scan_dbvals_to_midxkey NULL-derefs on F_MIDXKEY otherwise. */
-    if (worker_scan_id == nullptr)
+    /* the coordinator's scan holds the key plan storage its ranges are built with (#342): scan_open_index_scan made it */
+    if (worker_scan_id == nullptr || worker_scan_id->s.isid.key_plan == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
 	return ER_FAILED;
       }
     INDX_SCAN_ID *isidp = &worker_scan_id->s.isid;
     TP_DOMAIN *btree_domainp = m_btid_int.key_type;
-
-    /* lazy-alloc prebuilt_midxkey_domains (parallel path bypasses scan_open_index_scan); scan_dbvals_to_midxkey would NULL-deref otherwise. */
-    if (isidp->prebuilt_midxkey_domains == NULL)
-      {
-	size_t alloc_size = (size_t) key_cnt * sizeof (TP_DOMAIN *);
-	isidp->prebuilt_midxkey_domains = (TP_DOMAIN **) db_private_alloc (thread_p, alloc_size);
-	if (isidp->prebuilt_midxkey_domains == NULL)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
-	    return ER_FAILED;
-	  }
-	for (int j = 0; j < key_cnt; j++)
-	  {
-	    isidp->prebuilt_midxkey_domains[j] = NULL;
-	  }
-      }
+    /* the workers' comparisons of these ranges' values read the coordinator's search keys, which outlive them */
+    m_btid_int.search_keys = scan_index_search_keys (isidp);
 
     m_part_key_desc = false;
     m_key_val_ranges.resize (key_cnt);
@@ -224,7 +210,7 @@ namespace parallel_index_scan
     if (m_key_val_ranges.size () > 1 && m_indx_info != nullptr)
       {
 	int new_cnt = scan_dedup_or_merge_key_ranges (m_indx_info->range_type, m_key_val_ranges.data (),
-		      static_cast<int> (m_key_val_ranges.size ()));
+		      static_cast<int> (m_key_val_ranges.size ()), m_btid_int.search_keys);
 	if (new_cnt < 0)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);

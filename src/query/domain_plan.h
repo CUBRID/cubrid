@@ -26,7 +26,6 @@
 
 struct xasl_node;
 struct xasl_unpack_info;
-struct domain_plan_key;
 struct regu_variable_node;
 
 enum DOMAIN_FAIL_POLICY { DOMAIN_FAIL_ERROR, DOMAIN_FAIL_NULL, DOMAIN_FAIL_KEEP };
@@ -163,6 +162,76 @@ struct DOMAIN_PLAN_CONSTANT
   struct regu_variable_node *regu;
 };
 
+/* One column of one bound of a key range (#342). */
+struct domain_plan_key_elem
+{
+  struct regu_variable_node *regu;	/* the element; NULL: an index skip scan's skip value, read from the index */
+  const TP_DOMAIN *index_elem;	/* the index column's domain */
+  const TP_DOMAIN *keep_elem;	/* STRICT, KEEP: the element's domain in the column's direction */
+  DOMAIN_CONV_FUNC strict_conv;	/* STRICT: the element's type into index_elem, COMPARE mode (tp_value_coerce_strict) */
+  int decision;			/* CONSTANT, DECIDED: the element's decision in its index's decisions; -1 */
+  unsigned char rule;		/* DOMAIN_KEY_RULE */
+};
+
+/* One bound of a key range, key1 or key2 (#342): the two bounds of a range are planned apart (L-45 (c)). */
+struct domain_plan_key
+{
+  domain_plan_key_elem *elems;	/* [n_elems]: the key columns in index order; one for a single-column key */
+  int n_elems;			/* 0: no bound */
+  int scratch;			/* a multi-column bound with an element that may be kept: its chain in the scan's key
+				 * scratch; -1 */
+  bool midxkey;			/* a multi-column key (F_MIDXKEY) */
+  bool constant;		/* every element CONSTANT: the gate assembles its domain once per execution */
+};
+
+/*
+ * An index scan's key plan (#342): the load derives it from INDX_INFO.key_type, the one stream item it adds (D-318
+ * decision 5), and INDX_INFO points at it. Its bounds are each key range's key1 and key2, then the index skip scan's
+ * fetch range (its one element is the skip value).
+ */
+struct domain_plan_index
+{
+  const TP_DOMAIN *key_type;	/* the B-tree's key domain */
+  const TP_DOMAIN *asc_key_type;	/* key_type with every column ascending: a multi-range optimization's sort
+					 * column domains (L-44) */
+  domain_plan_key *bounds;	/* [2 * n_ranges + 1] */
+  int n_ranges;
+  int n_decisions;		/* the CONSTANT and DECIDED elements */
+  int n_scratch;		/* the bounds with a scratch chain */
+  int site;			/* resolved.indexes index: the gate decides the CONSTANT and DECIDED elements and builds
+				 * the key comparison table once per execution; -1 none */
+  const DOMAIN_KEY_COMPARES *compares;	/* site -1: the load's key comparison table; NULL when every value compares
+					 * with its index column as it is */
+};
+
+/* One execution's decision for a key element the gate decides (#342). */
+struct DOMAIN_KEY_DECISION
+{
+  DB_VALUE value;		/* CONSTANT: the value the key writes - converted into the index column's domain, or
+				 * as it is - the owner's */
+  const TP_DOMAIN *domain;	/* CONSTANT: the domain a mixed key writes the value with (its own, in the column's
+				 * direction; the column's once converted); NULL: the gate has no value for it (a
+				 * constant subtree the row computes, D-352-05) */
+  const TP_DOMAIN *keep_elem;	/* DECIDED: the element's domain in the column's direction */
+  DOMAIN_CONV_FUNC strict_conv;	/* DECIDED STRICT */
+  unsigned char rule;		/* DECIDED: INDEX, STRICT or KEEP; DECIDED itself when the gate has no domain for it
+				 * (a session variable's or a string's the row gives, D-336-E, D-338-02) */
+  bool kept;			/* CONSTANT: its column is kept, so its key is mixed */
+  bool invalid;			/* CONSTANT: no index key type (tp_valid_indextype): the range raises develop's error */
+};
+
+/* One execution's key decisions for an index scan (#342): one block with the element decisions, the bounds' domains and
+ * the key comparison table; the owner's. */
+struct DOMAIN_INDEX_DECISIONS
+{
+  DOMAIN_KEY_DECISION *decisions;	/* [n_decisions] */
+  const TP_DOMAIN **domains;	/* [2 * n_ranges + 1] a constant multi-column bound's domain (the index's, or its kept
+				 * columns' mix, cached) */
+  DOMAIN_KEY_COMPARES *compares;	/* NULL: no value compares with its index column other than as it is */
+  int n_decisions;
+  int n_bounds;
+};
+
 typedef struct domain_plan DOMAIN_PLAN;
 struct domain_plan
 {
@@ -183,8 +252,9 @@ struct domain_plan
   DOMAIN_PLAN_ITEM **const_refs;
   int n_volatile;
   DOMAIN_PLAN_ITEM **volatile_refs;
-  int n_keys;
-  domain_plan_key *keys;
+  int n_indexes;
+  domain_plan_index *indexes;	/* the index scans' key plans, in walk order (#342) */
+  int n_index_sites;		/* the key plans the gate decides something for (their site) */
   int n_compares;
   DOMAIN_COMPARE_PLAN **compares;	/* the comparison sites the gate decides, in resolved.compares order (#352) */
   int n_constants;
@@ -211,10 +281,16 @@ struct RESOLVED_DOMAIN_TABLE
   DOMAIN_ELEMENTS *elements;	/* [plan->n_element_sites] this execution's ALL/SOME decisions; their arrays are the
 				 * owner's (#352) */
   unsigned char *ready;		/* [n_vals] a constant subtree's value is in vals (the gate evaluated it, #352) */
+  DOMAIN_INDEX_DECISIONS *indexes;	/* [n_indexes] this execution's key decisions by index site; their blocks are
+					 * the owner's (#342) */
+  int n_indexes;
 };
 
 int stx_build_domain_plan (THREAD_ENTRY *thread_p, xasl_node *root, xasl_unpack_info *unpack_info,
                           bool is_pred_stream);
 bool domain_plan_validate (const DOMAIN_PLAN *plan);
+/* The keys an index's key columns and its load-fixed elements give their values (#342): columns and keys hold at most
+ * two per element; the gate adds its decided elements' before it builds the key comparison table. */
+int domain_key_compare_keys (const domain_plan_index * index, int *columns, DOMAIN_COMPARE_KEY * keys);
 
 #endif /* _DOMAIN_PLAN_H_ */

@@ -58,6 +58,10 @@ struct regu_variable_list_node;
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct valptr_list_node;
+struct domain_plan_index;
+struct DOMAIN_INDEX_DECISIONS;
+struct DOMAIN_SEARCH_KEYS;
+struct scan_key_state;
 
 // *INDENT-OFF*
 namespace cubxasl
@@ -208,7 +212,6 @@ typedef struct multi_range_opt MULTI_RANGE_OPT;
 struct multi_range_opt
 {
   bool use;			/* true/false */
-  bool has_null_domain;		/* true, if sort col has null domain */
   int cnt;			/* current number of entries */
   int size;			/* expected number of entries */
   int num_attrs;		/* number of order by attributes */
@@ -288,7 +291,10 @@ struct indx_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
-  TP_DOMAIN **prebuilt_midxkey_domains;
+  const domain_plan_index *key_plan;	/* the key plan the load derived, INDX_INFO.domain_plan (#342) */
+  const DOMAIN_INDEX_DECISIONS *key_decisions;	/* this execution's decisions for it; NULL: the plan's alone */
+  scan_key_state *key_state;	/* the scan's key plan storage (scratch chains, the search keys the B-tree reads); NULL
+				 * when the plan needs none */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
@@ -342,7 +348,9 @@ struct parallel_index_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
-  TP_DOMAIN **prebuilt_midxkey_domains;
+  const domain_plan_index *key_plan;	/* mirror of INDX_SCAN_ID::key_plan */
+  const DOMAIN_INDEX_DECISIONS *key_decisions;	/* mirror of INDX_SCAN_ID::key_decisions */
+  scan_key_state *key_state;	/* mirror of INDX_SCAN_ID::key_state */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   /* parallel-only fields (must follow all isid fields) */
   // *INDENT-OFF*
@@ -369,6 +377,7 @@ static_assert (offsetof (INDX_SCAN_ID, indx_cov)         == offsetof (PARALLEL_I
 static_assert (offsetof (INDX_SCAN_ID, multi_range_opt)  == offsetof (PARALLEL_INDEX_SCAN_ID, multi_range_opt),  "pisid mirror: multi_range_opt");
 static_assert (offsetof (INDX_SCAN_ID, iss)              == offsetof (PARALLEL_INDEX_SCAN_ID, iss),              "pisid mirror: iss");
 static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order)  == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),  "pisid mirror: iscan_oid_order");
+static_assert (offsetof (INDX_SCAN_ID, key_state)        == offsetof (PARALLEL_INDEX_SCAN_ID, key_state),        "pisid mirror: key_state");
 static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending), "pisid mirror: parallel_pending");
 #if !WINDOWS
 static_assert (offsetof (PARALLEL_INDEX_SCAN_ID, result_type) >= sizeof (INDX_SCAN_ID),
@@ -591,7 +600,10 @@ extern int scan_open_index_node_info_scan (THREAD_ENTRY * thread_p, SCAN_ID * sc
 extern int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY_VAL_RANGE * key_val_range,
 				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd,
 				       int key_range_idx);
-extern int scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt);
+extern int scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt,
+					   const DOMAIN_SEARCH_KEYS * search_keys);
+extern const DOMAIN_SEARCH_KEYS *scan_index_search_keys (const INDX_SCAN_ID * isidp);
+extern void scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp);
 
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				/* fields of SCAN_ID */

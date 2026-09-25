@@ -24,6 +24,7 @@
 #endif
 
 #include "object_domain.h" /* TP_DOMAIN_STATUS and shared value types, no client API. */
+#include "thread_compat.hpp"
 
 typedef TP_DOMAIN_STATUS (*DOMAIN_CONV_FUNC) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *);
 
@@ -173,6 +174,118 @@ int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMP
  * cell (the domain, and a string target's codeset and collation). */
 TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, const DB_VALUE * source,
 				       DB_VALUE * result);
+
+/*
+ * domain_compare_values () - a comparison decided before any row, on the two values it compares (#352 D-352-02; the
+ *   index keys, #342): kernel DIRECT, CONVERT or COLLATIONS. The NULL rule and the other kernels are the caller's.
+ *   return: the result; *can_compare false, with develop's error, where a conversion fails or collations do not merge
+ */
+DB_VALUE_COMPARE_RESULT domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
+					       const DB_VALUE * value1, const DB_VALUE * value2, int total_order,
+					       bool * can_compare);
+
+/* The key of a value: its type and, for a string or an ENUM, its codeset and collation (#342). */
+void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key);
+
+/*
+ * DOMAIN_KEY_COMPARES - an index scan's comparisons of values of a key column whose types or collations do not compare
+ *   as they are (#342): a search key value against an index key, or two search key values (the ranges' sort and
+ *   merge), each develop's tp_value_compare_with_error decided before any row. The B-tree and the range build read it
+ *   by the values' keys; they decide nothing. One block without pointers into itself: a PX copy takes its bytes.
+ */
+struct DOMAIN_KEY_COMPARE_ENTRY
+{
+  int column;			/* the key column; 0 for a single-column key */
+  DOMAIN_COMPARE_KEY key[2];	/* the first value's key, the second's */
+  DOMAIN_COMPARE compare;
+};
+
+struct DOMAIN_KEY_COMPARES
+{
+  int bytes;			/* the block's size */
+  int n_entries;
+  DOMAIN_KEY_COMPARE_ENTRY entry[1];	/* [n_entries] */
+};
+
+/* The comparisons among the keys a scan's key columns take - every ordered pair of different keys of one column - as a
+ * table: its size, then the table itself (#342). columns[i] is keys[i]'s column; a key may repeat. */
+size_t domain_key_compares_bytes (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys);
+int domain_resolve_key_compares (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys,
+				 DOMAIN_KEY_COMPARES * table, size_t bytes);
+
+/* The table's comparison of two values of a key column, found by their keys (#342); NULL: the table has none. */
+const DOMAIN_COMPARE *domain_key_compare_find (const DOMAIN_KEY_COMPARES * table, int column, const DB_VALUE * value1,
+					       const DB_VALUE * value2);
+
+/*
+ * How a column of a search key takes its value (#342, interface section 5). A multi-column key follows develop's
+ * scan_dbvals_to_midxkey: a value of another type is converted strictly into the index column's domain or else kept
+ * under its own domain (B31), a NUMERIC, CHAR or BIT value of the column's type with other parameters is kept, any
+ * other value is written under the column's domain; once a column is kept, every column is written under its value's
+ * domain. A single-column key takes its value as it is (#321 section 4.2, F-342-01): only the comparisons of a value
+ * its index column does not compare as it is are planned (B30, the key comparison table).
+ */
+enum DOMAIN_KEY_RULE
+{
+  DOMAIN_KEY_INDEX,		/* the value under the index column's domain */
+  DOMAIN_KEY_STRICT,		/* the strict converter brings it into the index column's domain, or else it is kept */
+  DOMAIN_KEY_KEEP,		/* the value under its own domain */
+  DOMAIN_KEY_CONSTANT,		/* a constant: the gate converts or keeps its value once per execution */
+  DOMAIN_KEY_DECIDED		/* an element whose domain the gate decides (a gate slot or node, a session variable
+				 * read): the gate derives its rule from that domain once per execution */
+};
+
+/* The domain of the values an element of this plan domain gives on the server (#342): an OBJECT's are OIDs. */
+const TP_DOMAIN *domain_key_value_domain (const TP_DOMAIN * domain);
+
+/* Column i of a B-tree key domain: a multi-column key's i-th element, the domain itself for a single column. */
+const TP_DOMAIN *domain_key_column (const TP_DOMAIN * key_type, int column);
+
+/* A value's domain in an index column's direction, as develop writes a kept column (is_desc the column's): cached. */
+const TP_DOMAIN *domain_in_key_direction (const TP_DOMAIN * domain, const TP_DOMAIN * column);
+
+/* A key domain with every column ascending, a multi-range optimization's sort domains (L-44): cached. */
+const TP_DOMAIN *domain_ascending_key_type (const TP_DOMAIN * key_type);
+
+/* A new copy of one domain node without its siblings (tp_domain_copy copies a sibling list whole): the caller links or
+ * frees it. */
+TP_DOMAIN *domain_copy_one (const TP_DOMAIN * domain);
+
+/* The cell develop's tp_value_coerce_strict runs to bring a value of a type into an index column's domain; NULL where
+ * it refuses the column's type (only a number or a date and time is a strict target). */
+DOMAIN_CONV_FUNC domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column);
+
+/* The rule a column of a search key follows for values of an element's domain (DOMAIN_KEY_INDEX, _STRICT or _KEEP),
+ * and the strict converter of rule STRICT. */
+DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey,
+				 DOMAIN_CONV_FUNC * strict_conv);
+
+/* Whether the B-tree compares a value of key a with an index key of key b as they are (btree_compare_key): comparable
+ * key types and, for strings, the same collation. */
+bool domain_key_compares_as_is (const DOMAIN_COMPARE_KEY * a, const DOMAIN_COMPARE_KEY * b);
+
+/*
+ * DOMAIN_SEARCH_KEYS - what an index scan's comparisons of its search key values read (#342): the scan's key
+ *   comparison table (NULL: none planned), and whether a key column took develop's rule from its value in this scan
+ *   (a session variable read that left the gate's decision, D-336-E) - its comparisons then keep develop's, counted.
+ *   A B-tree search outside a query plan has none.
+ */
+struct DOMAIN_SEARCH_KEYS
+{
+  const DOMAIN_KEY_COMPARES *compares;
+  bool values_decide;
+};
+
+/* A search key comparison of two values of a key column whose keys do not compare as they are: the table's, develop's
+ * where the scan's values decide, the execution boundary (b) otherwise (#342). */
+DB_VALUE_COMPARE_RESULT domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1,
+						   DB_VALUE * value2, int do_coercion, int total_order,
+						   bool * can_compare);
+
+/* domain_search_key_compare for pr_midxkey_compare_planned: arg is the scan's DOMAIN_SEARCH_KEYS. */
+DB_VALUE_COMPARE_RESULT domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value1,
+							   DB_VALUE * value2, int do_coercion, int total_order,
+							   bool * can_compare);
 
 /* The element types a table covers, by DB_TYPE, and the collation ids it tells apart (LANG_MAX_COLLATIONS). */
 #define DOMAIN_ELEMENT_TYPES (DB_TYPE_LAST + 1)

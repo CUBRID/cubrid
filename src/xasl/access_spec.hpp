@@ -29,6 +29,8 @@
 
 // forward definitions
 class regu_variable_node;
+struct tp_domain;
+struct domain_plan_index;
 
 typedef enum			/* range search option */
 {
@@ -101,6 +103,8 @@ struct indx_info
   int func_idx_col_id;		/* function expression column position, if the index is a function index */
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */
   int ils_prefix_len;		/* index loose scan prefix length */
+  tp_domain *key_type;		/* the B-tree's key domain, its root header's (#342, L-45 (f)) */
+  const domain_plan_index *domain_plan;	/* the key plan the load derives from key_type (#342); not streamed */
 };				/* index information structure */
 
 // TODO - move access specification code here; note - this is supposed to be common to both client and server.
