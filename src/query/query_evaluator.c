@@ -41,6 +41,8 @@
 #include "query_executor.h"
 #include "query_opfunc.h"
 #include "dbtype.h"
+#include "language_support.h"
+#include "string_opfunc.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
 #include "perf_monitor.h"
@@ -52,7 +54,7 @@
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
 static DB_LOGICAL eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2,
-				      REL_OP rel_operator, const COMP_EVAL_TERM * et_comp);
+				      REL_OP rel_operator, const COMP_EVAL_TERM * et_comp, const val_descr * vd);
 static DB_LOGICAL eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
 static int eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator);
@@ -140,66 +142,296 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  * Predicate Evaluation
  */
 
-#if !defined (NDEBUG)
 /*
- * eval_assert_resolved_compare () - dpin-07 shadow check: comparing the values converted by the planned comparison
- *				     converters of domain_resolve (DOMAIN_CTX_COMPARE, ASSIGN cells) gives the result
- *				     tp_value_compare_with_error just gave (D-328-05)
+ * Planned comparisons (#352, D-352-01/02)
+ *
+ * A comparison term's record holds the comparison develop's tp_value_compare_with_error makes between its sides'
+ * values, decided by the load or, once per execution, by the gate: the converters in develop's order, the type whose
+ * cmpval compares, the collation, and develop's outcome when a conversion fails. The row runs them; it decides nothing.
+ */
+
+/*
+ * eval_planned_compare () - the comparison this execution makes for a term: its record's, or the gate's decision for a
+ *			     site the gate decides
+ *   return: NULL where the row compares by value (kernel VALUES): a side whose values are NULL, a side the gate left
+ *	     undecided (D-338-02, #343), a decision over a session variable read that left the gate's within the
+ *	     statement (D-336-E); and a term without a record (a predicate stream, S-42) or a gate site evaluated
+ *	     without the gate's state
+ */
+static inline const DOMAIN_COMPARE *
+eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
+{
+  const DOMAIN_COMPARE_PLAN *site = et_comp != NULL ? et_comp->domain_compare : NULL;
+  if (site == NULL)
+    {
+      return NULL;
+    }
+  const DOMAIN_COMPARE *compare = &site->fixed;
+  if (compare->kernel == DOMAIN_COMPARE_AT_GATE || compare->kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE)
+    {
+      if (vd == NULL || vd->xasl_state == NULL || vd->xasl_state->resolved.compares == NULL)
+	{
+	  return NULL;
+	}
+      const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+      /* a PX worker's own XASL clone loaded the same stream: its sites number the leader's decisions as the leader's
+       * plan does, and it reads them by that number (D-M3, #340) */
+      assert (compare->site >= 0 && compare->site < resolved.n_compares && resolved.plan != NULL
+	      && (resolved.inherited
+		  ? resolved.plan->compares[compare->site]->value[0] == site->value[0]
+		  && resolved.plan->compares[compare->site]->value[1] == site->value[1]
+		  : resolved.plan->compares[compare->site] == site));
+      if ((compare->volatile_reads & resolved.changed_reads) != 0)
+	{
+	  return NULL;
+	}
+      compare = &resolved.compares[compare->site];
+    }
+  return compare->kernel == DOMAIN_COMPARE_VALUES ? NULL : compare;
+}
+
+/* The value side i compares: the constant the gate converted once, or the row's value. */
+static inline const DB_VALUE *
+eval_compare_side (const DOMAIN_COMPARE * compare, const val_descr * vd, int side, const DB_VALUE * row_value)
+{
+  return compare->value[side] >= 0 ? vd->dbval_ptr + compare->value[side] : row_value;
+}
+
+/* develop's outcome of a conversion that failed: the rank of the two sides' types at that point, and -181 */
+static DB_VALUE_COMPARE_RESULT
+eval_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_converted, bool * can_compare)
+{
+  DB_TYPE type[2] = { (DB_TYPE) compare->source[0], (DB_TYPE) compare->source[1] };
+  if (first_converted)
+    {
+      type[compare->first] = (DB_TYPE) compare->converted_first;
+    }
+  *can_compare = false;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type[0]), pr_type_name (type[1]));
+  return tp_more_general_type (type[0], type[1]) > 0 ? DB_GT : DB_LT;
+}
+
+/*
+ * eval_compare_converted () - kernel CONVERT: develop's coercion with its converters planned - the first side, then
+ *			       the other, then an ENUM's codeset for the string it meets - and cmpval
+ *
+ * A constant side the gate converted comes in converted; one whose conversion failed gives develop's outcome at its
+ * turn. Every conversion the row runs is counted (Num_planned_convert).
+ */
+static DB_VALUE_COMPARE_RESULT
+eval_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
+			const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  const DB_VALUE *side[2] = { value1, value2 };
+  DB_VALUE converted[2], codeset_value;
+  int used = 0;			/* bit i: converted[i] holds a value, bit 2: codeset_value */
+  DB_VALUE_COMPARE_RESULT result;
+
+  for (int k = 0; k < 2; k++)
+    {
+      const int s = k == 0 ? compare->first : 1 - compare->first;
+      if (compare->failed & (1 << s))
+	{
+	  result = eval_compare_conversion_failed (compare, k == 1, can_compare);
+	  goto end;
+	}
+      if (compare->conv[s] == NULL)
+	{
+	  continue;
+	}
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
+      used |= 1 << s;
+      if (domain_run_converter (compare->conv[s], compare->target[s], side[s], &converted[s]) != DOMAIN_COMPATIBLE)
+	{
+	  result = eval_compare_conversion_failed (compare, k == 1, can_compare);
+	  goto end;
+	}
+      side[s] = &converted[s];
+    }
+  if (compare->codeset_side >= 0)
+    {
+      /* an ENUM compared as a string of another codeset: develop brings the other string into the ENUM's */
+      const DB_VALUE *text = side[compare->codeset_side];
+      DB_DATA_STATUS data_status;
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
+      used |= 4;
+      db_value_domain_init (&codeset_value, DB_VALUE_DOMAIN_TYPE (text), DB_VALUE_PRECISION (text), 0);
+      db_string_put_cs_and_collation (&codeset_value, lang_get_collation (compare->collation)->codeset,
+				      compare->collation);
+      if (db_char_string_coerce (text, &codeset_value, &data_status) != NO_ERROR)
+	{
+	  result = DB_UNK;
+	  goto end;
+	}
+      assert (data_status == DATA_STATUS_OK);
+      side[compare->codeset_side] = &codeset_value;
+    }
+  result = compare->cmp->cmpval (side[0], side[1], 1, total_order, NULL, compare->collation);
+
+end:
+  if (used & 1)
+    {
+      pr_clear_value (&converted[0]);
+    }
+  if (used & 2)
+    {
+      pr_clear_value (&converted[1]);
+    }
+  if (used & 4)
+    {
+      pr_clear_value (&codeset_value);
+    }
+  return result;
+}
+
+/*
+ * eval_compare_planned () - a comparison planned before any row (D-352-02): develop's NULL rule, then the kernel the
+ *			     record names, on the row's values and the gate's own values of the constant sides
+ */
+static DB_VALUE_COMPARE_RESULT
+eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const val_descr * vd,
+		      const DB_VALUE * dbval1, const DB_VALUE * dbval2, int total_order, bool * can_compare)
+{
+  const DB_VALUE *value1 = eval_compare_side (compare, vd, 0, dbval1);
+  const DB_VALUE *value2 = eval_compare_side (compare, vd, 1, dbval2);
+  if (DB_IS_NULL (value1))
+    {
+      return DB_IS_NULL (value2) ? (total_order ? DB_EQ : DB_UNK) : (total_order ? DB_LT : DB_UNK);
+    }
+  if (DB_IS_NULL (value2))
+    {
+      return total_order ? DB_GT : DB_UNK;
+    }
+  switch (compare->kernel)
+    {
+    case DOMAIN_COMPARE_DIRECT:
+      return compare->cmp->cmpval (value1, value2, 1, total_order, NULL, compare->collation);
+    case DOMAIN_COMPARE_CONVERT:
+      return eval_compare_converted (thread_p, compare, value1, value2, total_order, can_compare);
+    case DOMAIN_COMPARE_COLLATIONS:
+      /* strings whose collations do not merge: develop's outcome at every row */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+      *can_compare = false;
+      return DB_UNK;
+    default:
+      /* an object side: develop's comparison, which meets OIDs on the server */
+      assert (compare->kernel == DOMAIN_COMPARE_OBJECT);
+      return tp_value_compare_with_error (dbval1, dbval2, 1, total_order, can_compare);
+    }
+}
+
+#if !defined (NDEBUG)
+/* One side of a planned comparison in the shadow checks' report: the regu, its domain, and the plan's view of it. */
+static void
+eval_report_planned_side (const char *name, const REGU_VARIABLE * regu, const DOMAIN_PLAN_ITEM * item,
+			  const val_descr * vd)
+{
+  const TP_DOMAIN *domain = regu != NULL ? regu->domain : NULL;
+  const TP_DOMAIN *decided = NULL;
+  if (item != NULL && item->slot >= 0 && vd != NULL && vd->xasl_state != NULL
+      && item->slot < vd->xasl_state->resolved.n_slots)
+    {
+      decided = vd->xasl_state->resolved.table[item->slot].domain;
+    }
+  const TP_DOMAIN *fixed = item != NULL ? item->fixed.domain : NULL;
+  const int opcode = regu != NULL && (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
+    && regu->value.arithptr != NULL ? (int) regu->value.arithptr->opcode : -1;
+  fprintf (stderr, "planned comparison   %s regu type=%d opcode=%d flags=0x%x domain=%d/%d/%d item slot=%d ref=%d "
+	   "fixed=%d/%d/%d decided=%d/%d/%d\n", name, regu != NULL ? (int) regu->type : -1, opcode,
+	   regu != NULL ? regu->flags : 0,
+	   domain != NULL ? (int) TP_DOMAIN_TYPE (domain) : -1, domain != NULL ? domain->collation_id : -1,
+	   domain != NULL ? (int) domain->collation_flag : -1, item != NULL ? item->slot : -2,
+	   item != NULL ? item->ref : -2, fixed != NULL ? (int) TP_DOMAIN_TYPE (fixed) : -1,
+	   fixed != NULL ? fixed->collation_id : -1, fixed != NULL ? (int) fixed->collation_flag : -1,
+	   decided != NULL ? (int) TP_DOMAIN_TYPE (decided) : -1, decided != NULL ? decided->collation_id : -1,
+	   decided != NULL ? (int) decided->collation_flag : -1);
+}
+
+/* The shadow checks' report of a planned comparison and its values (optdebug), before they assert. */
+static void
+eval_report_planned_compare (const char *what, const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1,
+			     const DB_VALUE * dbval2, const COMP_EVAL_TERM * et_comp, const val_descr * vd)
+{
+  const DB_VALUE *values[2] = { dbval1, dbval2 };
+  char sides[2][96];
+  for (int i = 0; i < 2; i++)
+    {
+      const DB_TYPE type = DB_IS_NULL (values[i]) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (values[i]);
+      const int collation = TP_IS_CHAR_TYPE (type) ? db_get_string_collation (values[i])
+	: type == DB_TYPE_ENUMERATION ? db_get_enum_collation (values[i]) : -1;
+      const int codeset = TP_IS_CHAR_TYPE (type) ? db_get_string_codeset (values[i])
+	: type == DB_TYPE_ENUMERATION ? db_get_enum_codeset (values[i]) : -1;
+      snprintf (sides[i], sizeof (sides[i]), "type=%d collation=%d codeset=%d", (int) type, collation, codeset);
+    }
+  fprintf (stderr, "planned comparison %s: kernel=%d first=%d source=%d,%d converted_first=%d collation=%d "
+	   "codeset_side=%d value=%d,%d failed=%d | lhs %s | rhs %s\n", what, (int) compare->kernel,
+	   (int) compare->first, (int) compare->source[0], (int) compare->source[1], (int) compare->converted_first,
+	   compare->collation, compare->codeset_side, compare->value[0], compare->value[1], (int) compare->failed,
+	   sides[0], sides[1]);
+  if (et_comp != NULL)
+    {
+      const DOMAIN_COMPARE_PLAN *site = et_comp->domain_compare;
+      fprintf (stderr, "planned comparison   site fixed.kernel=%d site=%d constant=%d,%d literal=%d,%d\n",
+	       site != NULL ? (int) site->fixed.kernel : -1, site != NULL ? site->fixed.site : -2,
+	       site != NULL && site->constant[0] != NULL, site != NULL && site->constant[1] != NULL,
+	       site != NULL && site->literal[0] != NULL, site != NULL && site->literal[1] != NULL);
+      eval_report_planned_side ("lhs", et_comp->lhs, site != NULL ? site->operand[0] : NULL, vd);
+      eval_report_planned_side ("rhs", et_comp->rhs, site != NULL ? site->operand[1] : NULL, vd);
+    }
+}
+
+/*
+ * eval_assert_planned_sides () - #352 shadow check before the kernel: a side read from the row has the type its
+ *				  converters and cmpval were planned for (a constant side compares the gate's own value)
  */
 static void
-eval_assert_resolved_compare (const DB_VALUE * dbval1, const DB_VALUE * dbval2, int total_order, int result,
-			      bool comparable)
+eval_assert_planned_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
+			   const COMP_EVAL_TERM * et_comp, const val_descr * vd)
 {
-  DB_TYPE type1 = DB_VALUE_DOMAIN_TYPE (dbval1);
-  DB_TYPE type2 = DB_VALUE_DOMAIN_TYPE (dbval2);
-
-  /* ENUM names carry the ENUM collation (collation axis, dpin-12); collections and objects compare elsewhere */
-  if (!comparable || DB_IS_NULL (dbval1) || DB_IS_NULL (dbval2) || type1 == type2 || type1 == DB_TYPE_ENUMERATION
-      || type2 == DB_TYPE_ENUMERATION || TP_IS_SET_TYPE (type1) || TP_IS_SET_TYPE (type2) || type1 == DB_TYPE_OID
-      || type2 == DB_TYPE_OID || type1 == DB_TYPE_OBJECT || type2 == DB_TYPE_OBJECT)
+  if (compare->kernel == DOMAIN_COMPARE_OBJECT)
     {
       return;
     }
-
-  DOMAIN_OPERAND operands[2] = {
-    {tp_domain_resolve_default (type1), type1, -1, -1, false}
-    ,
-    {tp_domain_resolve_default (type2), type2, -1, -1, false}
-  };
-  RESOLVED_DOMAIN resolved;
-  bool needs_gate;
-  int error = domain_resolve (DOMAIN_CTX_COMPARE, 0, operands, 2, NULL, &resolved, &needs_gate);
-  assert (error == NO_ERROR && !needs_gate);
-  if (error != NO_ERROR || (resolved.conv[0] == NULL && resolved.conv[1] == NULL))
+  const bool lhs = compare->value[0] >= 0 || DB_IS_NULL (dbval1)
+    || DB_VALUE_DOMAIN_TYPE (dbval1) == (DB_TYPE) compare->source[0];
+  const bool rhs = compare->value[1] >= 0 || DB_IS_NULL (dbval2)
+    || DB_VALUE_DOMAIN_TYPE (dbval2) == (DB_TYPE) compare->source[1];
+  if (!lhs || !rhs)
     {
-      /* nothing converted: comparing again would only count PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE twice */
+      eval_report_planned_compare ("side type", compare, dbval1, dbval2, et_comp, vd);
+    }
+  assert (lhs && rhs);
+}
+
+/*
+ * eval_assert_planned_compare () - #352 shadow check after the kernel: develop's comparison of the same values,
+ *				    uncounted, gives the planned comparison's result, comparability and error
+ */
+static void
+eval_assert_planned_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
+			     int total_order, DB_VALUE_COMPARE_RESULT result, bool comparable,
+			     const COMP_EVAL_TERM * et_comp, const val_descr * vd)
+{
+  if (compare->kernel == DOMAIN_COMPARE_OBJECT)
+    {
       return;
     }
-
-  const DB_VALUE *sides[2] = { dbval1, dbval2 };
-  DB_VALUE converted[2];
-  bool converted_ok = true;
-  db_make_null (&converted[0]);
-  db_make_null (&converted[1]);
-  for (int i = 0; i < 2 && converted_ok; i++)
+  const int error = comparable ? NO_ERROR : er_errid ();
+  bool develop_comparable = true;
+  er_stack_push ();
+  const DB_VALUE_COMPARE_RESULT develop =
+    tp_value_compare_uncounted (dbval1, dbval2, 1, total_order, &develop_comparable);
+  const int develop_error = develop_comparable ? NO_ERROR : er_errid ();
+  er_stack_pop ();
+  const bool same = develop == result && develop_comparable == comparable && develop_error == error;
+  if (!same)
     {
-      if (resolved.conv[i] != NULL)
-	{
-	  const TP_DOMAIN *target = resolved.operand_domain[i];
-	  db_value_domain_init (&converted[i], TP_DOMAIN_TYPE (target), target->precision, target->scale);
-	  /* a failed conversion is the KEEP path of the gate, which this check does not model */
-	  converted_ok = resolved.conv[i] (sides[i], &converted[i], target) == DOMAIN_COMPATIBLE;
-	  sides[i] = &converted[i];
-	}
+      eval_report_planned_compare ("result", compare, dbval1, dbval2, et_comp, vd);
+      fprintf (stderr, "planned comparison result: planned=%d comparable=%d error=%d develop=%d comparable=%d "
+	       "error=%d\n",
+	       (int) result, (int) comparable, error, (int) develop, (int) develop_comparable, develop_error);
     }
-  if (converted_ok)
-    {
-      bool planned_comparable = true;
-      int planned = tp_value_compare_with_error (sides[0], sides[1], 1, total_order, &planned_comparable);
-      assert (planned_comparable && planned == result);
-    }
-  pr_clear_value (&converted[0]);
-  pr_clear_value (&converted[1]);
+  assert (same);
 }
 #endif
 
@@ -211,15 +443,14 @@ eval_assert_resolved_compare (const DB_VALUE * dbval1, const DB_VALUE * dbval2, 
  *   dbval2(in): second db_value
  *   rel_operator(in): Relational operator
  *   et_comp(in): compound evaluation term
+ *   vd(in): value descriptor of the term's execution (the gate's decisions and converted constants, #352)
  */
 static DB_LOGICAL
 eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
-		    const COMP_EVAL_TERM * et_comp)
+		    const COMP_EVAL_TERM * et_comp, const val_descr * vd)
 {
   int result;
   bool comparable = true;
-  DB_TYPE vtype1, vtype2;
-  TP_DOMAIN *dom;
 
   /*
    * we get here for either an ordinal comparison or a set comparison.
@@ -239,110 +470,28 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
       break;
 
     default:
-      /* check for constant values to coerce 1-time, then reduce many-times coerce at tp_value_compare_with_error () */
-      if (et_comp != NULL)
-	{
-	  assert (et_comp->lhs != NULL);
-	  assert (et_comp->rhs != NULL);
-
-#if 0				/* TODO - do not delete me for future */
-	  /* check iff value_1 is constant to coerce */
-	  if (REGU_VARIABLE_IS_FLAGED (et_comp->lhs, REGU_VARIABLE_FETCH_ALL_CONST))
-	    {
-	      assert (!REGU_VARIABLE_IS_FLAGED (et_comp->lhs, REGU_VARIABLE_FETCH_NOT_CONST));
-	      vtype1 = DB_VALUE_DOMAIN_TYPE (dbval1);
-	      vtype2 = DB_VALUE_DOMAIN_TYPE (dbval2);
-	      if (vtype1 != vtype2)
-		{
-		  if (vtype1 == DB_TYPE_OBJECT)
-		    {
-		      ;		/* do nothing */
-		    }
-		  else if (TP_IS_CHAR_TYPE (vtype1) && TP_IS_NUMERIC_TYPE (vtype2))
-		    {
-		      /* try to coerce value_1 to double */
-		      dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-		      (void) tp_value_coerce (dbval1, dbval1, dom);
-		    }
-		  else if (TP_IS_CHAR_TYPE (vtype1) && TP_IS_DATE_OR_TIME_TYPE (vtype2))
-		    {
-		      /* vtype2 is the date or time type, try to coerce value_1 */
-		      dom = tp_domain_resolve_default (vtype2);
-		      (void) tp_value_coerce (dbval1, dbval1, dom);
-		    }
-		  else if (TP_IS_NUMERIC_TYPE (vtype1) && TP_IS_NUMERIC_TYPE (vtype2)
-			   && tp_more_general_type (vtype1, vtype2) < 0)
-		    {
-		      /* vtype2 is more general, try to coerce value_1 */
-		      dom = tp_domain_resolve_default (vtype2);
-		      (void) tp_value_coerce (dbval1, dbval1, dom);
-		    }
-		}
-	    }
-#endif
-
-	  /* check iff value_2 is constant to coerce */
-	  if (REGU_VARIABLE_IS_FLAGED (et_comp->rhs, REGU_VARIABLE_FETCH_ALL_CONST))
-	    {
-	      assert (!REGU_VARIABLE_IS_FLAGED (et_comp->rhs, REGU_VARIABLE_FETCH_NOT_CONST));
-	      vtype1 = DB_VALUE_DOMAIN_TYPE (dbval1);
-	      vtype2 = DB_VALUE_DOMAIN_TYPE (dbval2);
-	      if (vtype1 != vtype2)
-		{
-		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE);
-		  HL_HEAPID save_heapid = 0;
-
-		  if (REGU_VARIABLE_IS_FLAGED (et_comp->rhs, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-		    {
-		      save_heapid = db_change_private_heap (thread_p, 0);
-		    }
-
-		  if (vtype2 == DB_TYPE_OBJECT)
-		    {
-		      ;		/* do nothing */
-		    }
-		  else if (TP_IS_NUMERIC_TYPE (vtype1) && TP_IS_CHAR_TYPE (vtype2))
-		    {
-		      /* try to coerce value_2 to double */
-		      dom = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-		      (void) tp_value_coerce (dbval2, dbval2, dom);
-		    }
-		  else if (TP_IS_DATE_OR_TIME_TYPE (vtype1) && TP_IS_CHAR_TYPE (vtype2))
-		    {
-		      /* vtype1 is the date or time type, try to coerce value_2 */
-		      dom = tp_domain_resolve_default (vtype1);
-		      (void) tp_value_coerce (dbval2, dbval2, dom);
-		    }
-		  else if (TP_IS_NUMERIC_TYPE (vtype1) && TP_IS_NUMERIC_TYPE (vtype2)
-			   && tp_more_general_type (vtype1, vtype2) > 0)
-		    {
-		      /* vtype1 is more general, try to coerce value_2 */
-		      dom = tp_domain_resolve_default (vtype1);
-		      (void) tp_value_coerce (dbval2, dbval2, dom);
-		    }
-
-		  if (save_heapid != 0)
-		    {
-		      (void) db_change_private_heap (thread_p, save_heapid);
-		    }
-		}
-	    }
-
-	}
-
-      if (rel_operator == R_EQ_TORDER)
-	{
-	  /* do total order comparison */
-	  result = tp_value_compare_with_error (dbval1, dbval2, 1, 1, &comparable);
-	}
-      else
-	{
-	  /* do ordinal comparison, but NULL's still yield UNKNOWN */
-	  result = tp_value_compare_with_error (dbval1, dbval2, 1, 0, &comparable);
-	}
+      {
+	/* R_EQ_TORDER compares in total order; the others compare ordinally, and NULL's still yield UNKNOWN */
+	const int total_order = rel_operator == R_EQ_TORDER;
+	const DOMAIN_COMPARE *compare = eval_planned_compare (et_comp, vd);
+	if (compare != NULL)
+	  {
+	    /* S-09, S-10: the comparison the load or the gate planned (D-352-01/02); a constant is converted once,
+	     * into a value of its own, and the shared value stays as it is */
 #if !defined (NDEBUG)
-      eval_assert_resolved_compare (dbval1, dbval2, rel_operator == R_EQ_TORDER, result, comparable);
+	    eval_assert_planned_sides (compare, dbval1, dbval2, et_comp, vd);
 #endif
+	    result = eval_compare_planned (thread_p, compare, vd, dbval1, dbval2, total_order, &comparable);
+#if !defined (NDEBUG)
+	    eval_assert_planned_compare (compare, dbval1, dbval2, total_order, (DB_VALUE_COMPARE_RESULT) result,
+					 comparable, et_comp, vd);
+#endif
+	  }
+	else
+	  {
+	    result = tp_value_compare_with_error (dbval1, dbval2, 1, total_order, &comparable);
+	  }
+      }
       break;
     }
 
@@ -435,7 +584,7 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
 	  return V_ERROR;
 	}
 
-      t_res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL);
+      t_res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL);
       pr_clear_value (&elem_val);
       if (t_res == V_TRUE)
 	{
@@ -566,7 +715,7 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
 	  return UNKNOWN_CARD;
 	}
 
-      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL);
+      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL);
       pr_clear_value (&elem_val);
 
       if (res == V_ERROR)
@@ -668,7 +817,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 	      return V_ERROR;
 	    }
 
-	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL);
+	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL, NULL);
 	  if (t_res == V_TRUE || t_res == V_ERROR)
 	    {
 	      pr_clear_value (&list_val);
@@ -806,7 +955,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
       pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL, NULL);
       if (rc == V_ERROR)
 	{
 	  pr_clear_value (&list_val);
@@ -819,7 +968,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 	  continue;
 	}
 
-      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL, NULL);
       pr_clear_value (&list_val);
 
       if (rc == V_ERROR)
@@ -901,7 +1050,7 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_L
 	      continue;
 	    }
 
-	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      pr_clear_value (&elem_val);
@@ -1043,7 +1192,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      res = V_ERROR;
@@ -1219,7 +1368,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
-	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL);
 
 	  if (rc == V_ERROR)
 	    {
@@ -2030,7 +2179,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	       * general case: compare values, db_value_compare will
 	       * take care of any coercion necessary.
 	       */
-	      result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp);
+	      result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp, vd);
 	    }
 	  break;
 
@@ -2130,7 +2279,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	    else
 	      {
 		/* other cases, use general evaluation routines */
-		result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_alsm->rel_op, NULL);
+		result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_alsm->rel_op, NULL, NULL);
 	      }
 	  }
 	  break;
@@ -2251,7 +2400,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
    * general case: compare values, db_value_compare will
    * take care of any coercion necessary.
    */
-  return eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp);
+  return eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp, vd);
 }
 
 /*

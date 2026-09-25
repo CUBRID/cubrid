@@ -1353,6 +1353,7 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 	  et_comp->rhs = (REGU_VARIABLE *) arg2;
 	  et_comp->rel_op = rop;
 	  et_comp->type = data_type;
+	  et_comp->domain_compare = NULL;	/* the server's load derives it (workspace#352) */
 	}
     }
 

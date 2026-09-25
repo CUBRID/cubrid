@@ -24,6 +24,7 @@
 #include "dbtype.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "object_representation.h"
 #include "chartype.h"
 #include "storage_common.h"
 #include "system_parameter.h"
@@ -1171,6 +1172,212 @@ domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RES
 	}
     }
   result->domain = result->operand_domain[0] = domain != NULL ? domain : &tp_Null_domain;
+  return NO_ERROR;
+}
+
+/* develop compares through tp_value_coerce, which refuses these pairs before it converts
+ * (TP_IMPLICIT_COERCION_NOT_ALLOWED): a comparison's converter fails there as develop's coercion does, where the ASSIGN
+ * cell would convert (F-352-08) */
+static bool
+domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
+{
+  if (source == DB_TYPE_BLOB || source == DB_TYPE_CLOB || target == DB_TYPE_BLOB || target == DB_TYPE_CLOB)
+    {
+      return true;
+    }
+  if (TP_IS_CHAR_TYPE (source))
+    {
+      return !(TP_IS_CHAR_TYPE (target) || TP_IS_DATE_OR_TIME_TYPE (target) || TP_IS_NUMERIC_TYPE (target)
+	       || target == DB_TYPE_ENUMERATION);
+    }
+  return source != DB_TYPE_ENUMERATION && TP_IS_CHAR_TYPE (target);
+}
+
+/* The converter a comparison runs on a side: the ASSIGN cell (D-328-05, today's tp_value_coerce on the cells a
+ * comparison reaches), failing what implicit coercion refuses. */
+static DOMAIN_CONV_FUNC
+domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target)
+{
+  if (domain_implicit_coercion_refused (source, TP_DOMAIN_TYPE (target)))
+    {
+      /* the incompatible cell */
+      return domain_lookup_converter (source, NULL, DOMAIN_CONVERT_ASSIGN);
+    }
+  return domain_lookup_converter (source, target, DOMAIN_CONVERT_ASSIGN);
+}
+
+bool
+domain_fixes_values (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+    && (!TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)) || TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL);
+}
+
+void
+domain_compare_key_of (const TP_DOMAIN * domain, DOMAIN_COMPARE_KEY * key)
+{
+  key->type = domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL;
+  const bool has_collation = domain != NULL && TP_TYPE_HAS_COLLATION (key->type);
+  key->codeset = has_collation ? TP_DOMAIN_CODESET (domain) : -1;
+  key->collation = has_collation ? TP_DOMAIN_COLLATION (domain) : -1;
+}
+
+void
+domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate)
+{
+  if (collate != NULL && TP_TYPE_HAS_COLLATION (key->type))
+    {
+      key->codeset = TP_DOMAIN_CODESET (collate);
+      key->collation = TP_DOMAIN_COLLATION (collate);
+    }
+}
+
+TP_DOMAIN_STATUS
+domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, const DB_VALUE * source, DB_VALUE * result)
+{
+  db_value_domain_init (result, TP_DOMAIN_TYPE (target), target->precision, target->scale);
+  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (target)))
+    {
+      db_string_put_cs_and_collation (result, TP_DOMAIN_CODESET (target), TP_DOMAIN_COLLATION (target));
+    }
+  return converter (source, result, target);
+}
+
+/*
+ * domain_resolve_comparison () - the comparison develop's tp_value_compare_with_error makes between a value of each
+ *   key, decided before any row (D-352-01)
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when a target domain cannot be cached
+ *
+ * Follows od:tp_value_compare_with_error step by step: the direction of tp_value_compare_common_domain (TO_DOUBLE
+ * converts the string first and the other side only after it), the target a string or an ENUM keeps its codeset and
+ * collation in, the collation rule of its tail (equal collations, the ENUM's, LANG_RT_COMMON_COLL on one codeset,
+ * otherwise -1), and the type whose cmpval compares. A NULL key (a side whose values are NULL) and an OBJECT key keep
+ * develop's comparison: NULL answers before any coercion, and the server holds an object as its OID.
+ */
+int
+domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result)
+{
+  const DOMAIN_COMPARE_KEY *key[2] = { lhs, rhs };
+  DB_TYPE after[2] = { lhs->type, rhs->type };
+  int enum_side = -1;
+
+  *result = DOMAIN_COMPARE
+  {
+  };
+  result->value[0] = result->value[1] = -1;
+  result->codeset_side = -1;
+  result->site = -1;
+  result->source[0] = (unsigned char) lhs->type;
+  result->source[1] = (unsigned char) rhs->type;
+  result->kernel = DOMAIN_COMPARE_DIRECT;
+
+  if (lhs->type == DB_TYPE_NULL || rhs->type == DB_TYPE_NULL)
+    {
+      /* its value is NULL, and develop's comparison answers NULL before it counts or coerces */
+      result->kernel = DOMAIN_COMPARE_VALUES;
+      return NO_ERROR;
+    }
+  if (lhs->type == DB_TYPE_OBJECT || rhs->type == DB_TYPE_OBJECT)
+    {
+      /* an OBJECT domain's values are OIDs on the server (and OID against OBJECT compares by OID on the client) */
+      result->kernel = DOMAIN_COMPARE_OBJECT;
+      return NO_ERROR;
+    }
+  if (lhs->type != rhs->type)
+    {
+      const TP_COMPARE_COERCION coercion = tp_value_compare_common_domain (lhs->type, rhs->type);
+      const TP_DOMAIN *target = NULL;
+      int side = 0;
+      switch (coercion)
+	{
+	case TP_COMPARE_COERCE_NONE:
+	  break;
+
+	case TP_COMPARE_COERCE_TO_DOUBLE:
+	  side = TP_IS_CHAR_TYPE (lhs->type) ? 0 : 1;
+	  target = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  result->first = (unsigned char) side;
+	  result->target[side] = target;
+	  result->conv[side] = domain_compare_converter (key[side]->type, target);
+	  if (key[1 - side]->type != DB_TYPE_DOUBLE)
+	    {
+	      result->target[1 - side] = target;
+	      result->conv[1 - side] = domain_compare_converter (key[1 - side]->type, target);
+	    }
+	  after[0] = after[1] = DB_TYPE_DOUBLE;
+	  break;
+
+	case TP_COMPARE_COERCE_FIRST_TO_DATE:
+	case TP_COMPARE_COERCE_SECOND_TO_DATE:
+	  side = coercion == TP_COMPARE_COERCE_FIRST_TO_DATE ? 0 : 1;
+	  target = tp_domain_resolve_default (key[1 - side]->type);
+	  result->first = (unsigned char) side;
+	  result->target[side] = target;
+	  result->conv[side] = domain_compare_converter (key[side]->type, target);
+	  after[side] = key[1 - side]->type;
+	  break;
+
+	case TP_COMPARE_COERCE_SECOND_TO_FIRST:
+	case TP_COMPARE_COERCE_FIRST_TO_SECOND:
+	  side = coercion == TP_COMPARE_COERCE_SECOND_TO_FIRST ? 1 : 0;
+	  target = tp_domain_resolve_default (key[1 - side]->type);
+	  if (TP_TYPE_HAS_COLLATION (key[side]->type) && TP_IS_CHAR_TYPE (key[1 - side]->type))
+	    {
+	      /* the coerced string or ENUM keeps its codeset and collation; an ENUM's collation is the comparison's */
+	      target = domain_char_with_collation (key[1 - side]->type, key[side]->codeset, key[side]->collation);
+	      if (key[side]->type == DB_TYPE_ENUMERATION)
+		{
+		  enum_side = side;
+		}
+	    }
+	  if (target == NULL)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  result->first = (unsigned char) side;
+	  result->target[side] = target;
+	  result->conv[side] = domain_compare_converter (key[side]->type, target);
+	  after[side] = key[1 - side]->type;
+	  break;
+	}
+    }
+  result->converted_first = (unsigned char) after[result->first];
+
+  /* the tail on the converted values: the first side's cmpval under the comparison's collation */
+  result->cmp = pr_type_from_id (after[0]);
+  if (!TP_IS_CHAR_TYPE (after[0]))
+    {
+      result->collation = 0;
+    }
+  else if (key[0]->collation == key[1]->collation)
+    {
+      result->collation = key[0]->collation;
+    }
+  else if (enum_side >= 0)
+    {
+      const int codeset = lang_get_collation (key[enum_side]->collation)->codeset;
+      result->collation = key[enum_side]->collation;
+      result->codeset_side = key[0]->codeset != codeset ? 0 : key[1]->codeset != codeset ? 1 : -1;
+    }
+  else if (key[0]->codeset == key[1]->codeset)
+    {
+      int common;
+      LANG_RT_COMMON_COLL (key[0]->collation, key[1]->collation, common);
+      result->collation = common;
+    }
+  else
+    {
+      result->collation = -1;
+    }
+
+  if (result->collation == -1)
+    {
+      result->kernel = DOMAIN_COMPARE_COLLATIONS;
+    }
+  else if (result->conv[0] != NULL || result->conv[1] != NULL || result->codeset_side >= 0)
+    {
+      result->kernel = DOMAIN_COMPARE_CONVERT;
+    }
   return NO_ERROR;
 }
 

@@ -30783,9 +30783,34 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_co
  *    error will be logged and the boolean that is pointed by "can_compare"
  *    will be set to false.
  */
+static DB_VALUE_COMPARE_RESULT tp_value_compare_counted (const DB_VALUE * value1, const DB_VALUE * value2,
+							   int do_coercion, int total_order, bool * can_compare,
+							   bool count);
+
 DB_VALUE_COMPARE_RESULT
 tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
 			     bool * can_compare)
+{
+  return tp_value_compare_counted (value1, value2, do_coercion, total_order, can_compare, true);
+}
+
+/*
+ * tp_value_compare_uncounted - tp_value_compare_with_error without the Num_domain_coerce_compare count
+ *    return: as tp_value_compare_with_error
+ * Note:
+ *    The optdebug shadow of the server's planned comparisons (workspace#352) compares with develop's rule through
+ *    this, so the shadow does not count as a comparison that decides its coercion from the values.
+ */
+DB_VALUE_COMPARE_RESULT
+tp_value_compare_uncounted (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
+			    bool * can_compare)
+{
+  return tp_value_compare_counted (value1, value2, do_coercion, total_order, can_compare, false);
+}
+
+static DB_VALUE_COMPARE_RESULT
+tp_value_compare_counted (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
+			  bool * can_compare, bool count)
 {
   DB_VALUE temp1, temp2, tmp_char_conv;
   int coercion, char_conv;
@@ -30893,7 +30918,7 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 	   * tp_domain_resolve_value here ?
 	   */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-	  if (perfmon_is_perf_tracking ())
+	  if (count && perfmon_is_perf_tracking ())
 	    {
 	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE);
 	    }

@@ -91,6 +91,8 @@ typedef enum
   F_SOME
 } QL_FLAG;
 
+struct DOMAIN_COMPARE_PLAN;
+
 namespace cubxasl
 {
   // forward definitions
@@ -109,6 +111,9 @@ namespace cubxasl
     regu_variable_node *rhs;
     REL_OP rel_op;
     DB_TYPE type;
+    /* load-derived, not serialized (workspace#352): the comparison the load or the gate decided; the union already
+     * holds rlike_eval_term's four pointers, so this changes neither the node's size nor the stream */
+    const DOMAIN_COMPARE_PLAN *domain_compare;
   };
 
   struct alsm_eval_term

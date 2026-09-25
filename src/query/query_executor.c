@@ -422,6 +422,7 @@ static void qexec_reset_pred_expr (PRED_EXPR * pred);
 static void qexec_clear_xasl_head (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_clear_arith_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ARITH_TYPE * list, bool is_final,
 				   bool for_parallel_aptr);
+static void qexec_clear_function_tmp_obj (FUNCTION_TYPE * funcp);
 static int qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE * regu_var, bool is_final,
 				 bool for_parallel_aptr);
 static int qexec_clear_regu_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE_LIST list, bool is_final,
@@ -1534,6 +1535,39 @@ qexec_clear_arith_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ARITH_TYPE 
   return pg_cnt;
 }
 
+/* A function's cached evaluation state: a regular expression's compiled pattern. */
+static void
+qexec_clear_function_tmp_obj (FUNCTION_TYPE * funcp)
+{
+  if (funcp->tmp_obj == NULL)
+    {
+      return;
+    }
+  switch (funcp->ftype)
+    {
+    case F_REGEXP_COUNT:
+    case F_REGEXP_INSTR:
+    case F_REGEXP_LIKE:
+    case F_REGEXP_REPLACE:
+    case F_REGEXP_SUBSTR:
+      {
+	if (funcp->tmp_obj->compiled_regex)
+	  {
+	    delete funcp->tmp_obj->compiled_regex;
+	    funcp->tmp_obj->compiled_regex = NULL;
+	  }
+      }
+      break;
+    default:
+      // any member of union func_tmp_obj may have been erased
+      assert (false);
+      break;
+    }
+
+  delete funcp->tmp_obj;
+  funcp->tmp_obj = NULL;
+}
+
 /*
  * qexec_clear_regu_var () - clear the db_values in the regu_variable
  *   return:
@@ -1560,21 +1594,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     }
   regu_var->domain = regu_var->original_domain;
 
-#if !defined(NDEBUG)
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
-    {
-      assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
-    }
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST))
-    {
-      assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-    }
-#endif
-
-  /* clear run-time setting info */
-  REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
-  REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
-  /* pair with FETCH_*_CONST: clear so a reused (pooled) XASL clone rebuilds it via the slow path next time */
+  /* clear run-time setting info: a reused (pooled) XASL clone rebuilds it via the slow path next time */
   REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
 
   switch (regu_var->type)
@@ -1657,34 +1677,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_FUNC:
       pr_clear_value (regu_var->value.funcp->value);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl_p, regu_var->value.funcp->operand, is_final, for_parallel_aptr);
-
-      if (regu_var->value.funcp->tmp_obj != NULL)
-	{
-	  switch (regu_var->value.funcp->ftype)
-	    {
-	    case F_REGEXP_COUNT:
-	    case F_REGEXP_INSTR:
-	    case F_REGEXP_LIKE:
-	    case F_REGEXP_REPLACE:
-	    case F_REGEXP_SUBSTR:
-	      {
-		if (regu_var->value.funcp->tmp_obj->compiled_regex)
-		  {
-		    delete regu_var->value.funcp->tmp_obj->compiled_regex;
-		    regu_var->value.funcp->tmp_obj->compiled_regex = NULL;
-		  }
-	      }
-	      break;
-	    default:
-	      // any member of union func_tmp_obj may have been erased
-	      assert (false);
-	      break;
-	    }
-
-	  delete regu_var->value.funcp->tmp_obj;
-	  regu_var->value.funcp->tmp_obj = NULL;
-	}
-
+      qexec_clear_function_tmp_obj (regu_var->value.funcp);
       break;
     case TYPE_REGUVAL_LIST:
       pg_cnt +=
@@ -3766,11 +3759,16 @@ qexec_get_xasl_list_id (xasl_node * xasl)
 /* Allocate values and the sparse domain table as one owner-local block.
  * Every value starts as NULL so the common error exit can clear a partial fill. */
 static int
-qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, RESOLVED_DOMAIN_TABLE & resolved)
+qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, int n_compares,
+			      RESOLVED_DOMAIN_TABLE & resolved)
 {
-  assert (resolved.vals == NULL && n_vals >= 0 && n_slots >= 0);
+  assert (resolved.vals == NULL && n_vals >= 0 && n_slots >= 0 && n_compares >= 0);
   static_assert (sizeof (DB_VALUE) % alignof (RESOLVED_DOMAIN) == 0, "gate table alignment");
-  const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_slots;
+  static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
+  static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
+  /* values, gate table, comparison decisions (#352), then the constant flags (#352) */
+  const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_slots
+    + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + (size_t) n_vals;
   if (bytes == 0)
     {
       return NO_ERROR;
@@ -3787,10 +3785,24 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
     }
   resolved.n_vals = n_vals;
   resolved.n_slots = n_slots;
+  resolved.n_compares = n_compares;
+  char *next = (char *) (resolved.vals + n_vals);
   if (n_slots != 0)
     {
-      resolved.table = (RESOLVED_DOMAIN *) (resolved.vals + n_vals);
+      resolved.table = (RESOLVED_DOMAIN *) next;
       memset (resolved.table, 0, sizeof (*resolved.table) * n_slots);
+      next += sizeof (*resolved.table) * n_slots;
+    }
+  if (n_compares != 0)
+    {
+      resolved.compares = (DOMAIN_COMPARE *) next;
+      memset (resolved.compares, 0, sizeof (*resolved.compares) * n_compares);
+      next += sizeof (*resolved.compares) * n_compares;
+    }
+  if (n_vals != 0)
+    {
+      resolved.ready = (unsigned char *) next;
+      memset (resolved.ready, 0, (size_t) n_vals);
     }
   return NO_ERROR;
 }
@@ -3821,7 +3833,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
     }
   RESOLVED_DOMAIN_TABLE &resolved = new_xasl_state->resolved;
   memset (&resolved, 0, sizeof (resolved));
-  if (qexec_alloc_resolved_domains (thread_p, src.n_vals, src.n_slots, resolved) != NO_ERROR)
+  if (qexec_alloc_resolved_domains (thread_p, src.n_vals, src.n_slots, src.n_compares, resolved) != NO_ERROR)
     {
       db_private_free (thread_p, new_xasl_state);
       return NULL;
@@ -3833,6 +3845,15 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
   if (src.n_slots != 0)
     {
       memcpy (resolved.table, src.table, sizeof (*resolved.table) * src.n_slots);
+    }
+  if (src.n_compares != 0)
+    {
+      /* the decisions name converters, cached domains and value indices: valid for the worker as they are */
+      memcpy (resolved.compares, src.compares, sizeof (*resolved.compares) * src.n_compares);
+    }
+  if (src.n_vals != 0)
+    {
+      memcpy (resolved.ready, src.ready, (size_t) src.n_vals);
     }
   resolved.in = src.in;
   resolved.plan = src.plan;
@@ -3870,7 +3891,8 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int dbval_cnt = xasl_state->vd.dbval_cnt;
   const int n_vals = plan == NULL || plan->n_refs < dbval_cnt ? dbval_cnt : plan->n_refs;
   const int n_slots = plan == NULL ? 0 : plan->n_slots;
-  return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, resolved);
+  const int n_compares = plan == NULL ? 0 : plan->n_compares;
+  return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, n_compares, resolved);
 }
 
 /* Whether the resolver takes this operand's class from its value (D-328-06): an interpolation argument, the ADDTIME
@@ -4100,6 +4122,209 @@ qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const 
     }
 }
 
+/* The value a constant side holds at the gate: a literal, a bind's reference value, or a constant subtree's value once
+ * step 7 evaluated it; NULL when there is none (a subtree whose evaluation was left to the row). */
+static const DB_VALUE *
+qexec_compare_constant (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site, int side)
+{
+  if (site->literal[side] != NULL)
+    {
+      return site->literal[side];
+    }
+  const DOMAIN_PLAN_ITEM *constant = site->constant[side];
+  if (constant == NULL || constant->ref < 0)
+    {
+      return NULL;
+    }
+  const bool bind = resolved.plan->items_cold[constant - resolved.plan->items].val_pos >= 0;
+  return bind || resolved.ready[constant->ref] ? &resolved.vals[constant->ref] : NULL;
+}
+
+/*
+ * qexec_compare_side_key () - the key of one side of a comparison site at the gate (#352)
+ *   return: false when the gate left the side undecided (D-338-02): the row compares by value then
+ *
+ * A constant side - a bind or a literal (F-335-06), a constant subtree the gate evaluated (F-352-17) - compares with
+ * its value's key, a slot or gate-dependent side with the gate's decision, anything else with its plan domain.
+ */
+static bool
+qexec_compare_side_key (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site, int side,
+			DOMAIN_COMPARE_KEY * key)
+{
+  const DOMAIN_PLAN_ITEM *item = site->operand[side];
+  const DB_VALUE *value = qexec_compare_constant (resolved, site, side);
+  if (value != NULL)
+    {
+      domain_compare_key_of (DB_IS_NULL (value) ? &tp_Null_domain : tp_domain_resolve_value (value, NULL), key);
+      domain_compare_key_collate (key, site->collate[side]);
+      return true;
+    }
+  if (item != NULL && item->slot >= 0)
+    {
+      const TP_DOMAIN *decided = resolved.table[item->slot].domain;
+      if (!domain_fixes_values (decided))
+	{
+	  return false;
+	}
+      domain_compare_key_of (decided, key);
+      domain_compare_key_collate (key, site->collate[side]);
+      return true;
+    }
+  /* the load gave a gate site only sides the plan fixes besides the gate's */
+  assert (domain_fixes_values (item != NULL ? item->fixed.domain : site->domain[side]));
+  domain_compare_key_of (item != NULL ? item->fixed.domain : site->domain[side], key);
+  domain_compare_key_collate (key, site->collate[side]);
+  return true;
+}
+
+/*
+ * qexec_resolve_compare () - G1: this execution's decision for one comparison site, and its constant sides converted
+ *   once into values of their own (#352, D-352-01); step 5 for a site over binds and literals, step 7 for a site over
+ *   a constant subtree, once the subtree is evaluated
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
+ *
+ * Every constant side gets a value of its own, converted or copied: the value it came from stays as it is (S-09's
+ * in-place coercion is gone), and a reader that coerces a shared bind or a cached value in place cannot change what
+ * the comparison compares. A constant whose conversion fails gives develop's failure outcome at every row.
+ */
+static int
+qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site)
+{
+  DOMAIN_COMPARE *compare = &resolved.compares[site->fixed.site];
+  DOMAIN_COMPARE_KEY key[2];
+  if (!qexec_compare_side_key (resolved, site, 0, &key[0]) || !qexec_compare_side_key (resolved, site, 1, &key[1]))
+    {
+      *compare = DOMAIN_COMPARE
+      {
+      };
+      compare->kernel = DOMAIN_COMPARE_VALUES;
+      compare->value[0] = compare->value[1] = compare->codeset_side = compare->site = -1;
+      return NO_ERROR;
+    }
+  int error = domain_resolve_comparison (&key[0], &key[1], compare);
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
+      return error;
+    }
+  compare->volatile_reads = site->fixed.volatile_reads;
+  if (compare->kernel != DOMAIN_COMPARE_DIRECT && compare->kernel != DOMAIN_COMPARE_CONVERT)
+    {
+      return NO_ERROR;
+    }
+  for (int side = 0; side < 2; side++)
+    {
+      const DB_VALUE *constant = qexec_compare_constant (resolved, site, side);
+      if (constant == NULL || site->value[side] < 0)
+	{
+	  continue;
+	}
+      DB_VALUE *converted = &resolved.vals[site->value[side]];
+      if (compare->conv[side] == NULL || DB_IS_NULL (constant))
+	{
+	  /* nothing to convert (a NULL answers before any coercion): a copy of its own, in the codeset and collation
+	   * a COLLATE modifier gives it at the fetch */
+	  if (pr_clone_value (constant, converted) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  const TP_DOMAIN *collate = site->collate[side];
+	  if (collate != NULL && !DB_IS_NULL (converted))
+	    {
+	      if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (converted)))
+		{
+		  db_string_put_cs_and_collation (converted, TP_DOMAIN_CODESET (collate),
+						  TP_DOMAIN_COLLATION (collate));
+		}
+	      else if (DB_VALUE_DOMAIN_TYPE (converted) == DB_TYPE_ENUMERATION)
+		{
+		  db_enum_put_cs_and_collation (converted, TP_DOMAIN_CODESET (collate), TP_DOMAIN_COLLATION (collate));
+		}
+	    }
+	  compare->value[side] = site->value[side];
+	  compare->conv[side] = NULL;
+	  resolved.ready[site->value[side]] = 1;
+	  continue;
+	}
+      const int saved_error = er_errid ();
+      if (domain_run_converter (compare->conv[side], compare->target[side], constant, converted) == DOMAIN_COMPATIBLE)
+	{
+	  compare->value[side] = site->value[side];
+	  compare->conv[side] = NULL;
+	  resolved.ready[site->value[side]] = 1;
+	}
+      else
+	{
+	  /* develop's coercion of this constant fails at every row: its outcome, not an error of the gate */
+	  pr_clear_value (converted);
+	  compare->failed |= (unsigned char) (1 << side);
+	  if (er_errid () != saved_error)
+	    {
+	      er_clear ();
+	    }
+	}
+    }
+  if (compare->conv[0] == NULL && compare->conv[1] == NULL && compare->codeset_side < 0 && compare->failed == 0)
+    {
+      compare->kernel = DOMAIN_COMPARE_DIRECT;
+    }
+  else
+    {
+      compare->kernel = DOMAIN_COMPARE_CONVERT;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * qexec_release_constant_node () - what computing a constant subtree left in its own node, released on the gate's
+ *   thread (#352)
+ *
+ * The node is not computed again (the gate's array holds its value), and a PX job clears the XASL nodes of the block it
+ * runs on its own thread (qexec_clear_xasl_for_parallel_aptr): a value or a compiled pattern the gate left there would
+ * be freed across heaps.
+ */
+static void
+qexec_release_constant_node (REGU_VARIABLE * regu)
+{
+  if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
+    {
+      pr_clear_value (regu->value.arithptr->value);
+    }
+  else if (regu->type == TYPE_FUNC)
+    {
+      pr_clear_value (regu->value.funcp->value);
+      qexec_clear_function_tmp_obj (regu->value.funcp);
+    }
+}
+
+/*
+ * qexec_evaluate_constant () - G1 step 7: a constant subtree once, into its own value (#352, interface §10)
+ *
+ * The fetch computes it as the first row would; its value goes to the gate's array and every fetch after this reads it.
+ * An error stays with the row: the value is left out and the row computes the node as develop does, raising the error
+ * there (0 rows, a branch never taken or a short-circuited predicate raise none, as in develop) (D-352-05).
+ */
+static void
+qexec_evaluate_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const DOMAIN_PLAN_CONSTANT * constant)
+{
+  RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved;
+  DB_VALUE *value = NULL;
+  const int saved_error = er_errid ();
+  if (fetch_peek_dbval (thread_p, constant->regu, &xasl_state->vd, NULL, NULL, NULL, &value) != NO_ERROR
+      || value == NULL || pr_clone_value (value, &resolved.vals[constant->item->ref]) != NO_ERROR)
+    {
+      if (er_errid () != saved_error)
+	{
+	  er_clear ();
+	}
+      pr_clear_value (&resolved.vals[constant->item->ref]);
+      qexec_release_constant_node (constant->regu);
+      return;
+    }
+  resolved.ready[constant->item->ref] = 1;
+  qexec_release_constant_node (constant->regu);
+}
+
 /*
  * qexec_resolve_domains () - the execution gate G1, once per execution before
  *   the main block.
@@ -4147,7 +4372,9 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
   int next = 0;
   for (int ref = 0; ref < resolved.n_vals; ref++)
     {
-      while (next < n_const_refs && plan->const_refs[next]->ref < ref)
+      /* a constant subtree's value (#352) is not a bind reference: step 7 evaluates it */
+      while (next < n_const_refs && (plan->const_refs[next]->ref < ref
+				     || plan->items_cold[plan->const_refs[next] - plan->items].val_pos < 0))
 	{
 	  next++;
 	}
@@ -4158,6 +4385,10 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	  error = pr_clone_value (&resolved.in[val_pos], &resolved.vals[ref]);
 	  for (; error == NO_ERROR && next < n_const_refs && plan->const_refs[next]->ref == ref; next++)
 	    {
+	      if (plan->items_cold[plan->const_refs[next] - plan->items].val_pos < 0)
+		{
+		  continue;
+		}
 	      const DOMAIN_PLAN_ITEM *item = plan->const_refs[next];
 	      const DB_VALUE *source = &resolved.in[plan->items_cold[item - plan->items].val_pos];
 	      if (item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_COLLATION_GATE))
@@ -4185,9 +4416,12 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 		}
 	    }
 	}
-      else if (ref < dbval_cnt)
+      else if (ref < dbval_cnt && (plan == NULL || ref < plan->dbval_cnt))
 	{
-	  /* A value no item references: a bind the tree does not read, or a surplus one. */
+	  /* A value no item references: a bind the tree does not read. A surplus one past the plan's positions (a
+	   * host variable the client folded away) is not copied: the plan numbers its own values there (constant
+	   * subtrees, comparison constants, #352), and no reader takes a surplus position from this array (DBLINK and
+	   * the result cache read resolved.in). */
 	  error = pr_clone_value (&resolved.in[ref], &resolved.vals[ref]);
 	}
       if (error != NO_ERROR)
@@ -4208,12 +4442,47 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     }
   assert (plan == NULL || plan->n_keys == 0);
 
+  /* G1 step 5 (#352, D-352-01): every comparison site over binds, literals and decisions, from its sides' values and
+   * decisions; each constant side gets a value of its own now. A site over a constant subtree waits for step 7. */
+  for (int k = 0; plan != NULL && k < plan->n_compares; k++)
+    {
+      if (plan->compares[k]->after_constants)
+	{
+	  continue;
+	}
+      error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
   if (dbval_cnt > 0)
     {
       perfmon_add_stat (thread_p, PSTAT_QM_NUM_DOMAIN_GATE_CONVERT, dbval_cnt);
     }
   resolved.changed_reads = 0;
   resolved.sealed = true;
+
+  /* G1 step 7 (#352, interface §10): the decisions are sealed; each constant subtree is evaluated once into its own
+   * value, and a comparison site over one is decided from that value (F-352-17). An evaluation error is not raised
+   * here: develop raises it where it computes the node, at the first row (D-352-05) */
+  for (int i = 0; plan != NULL && i < plan->n_constants; i++)
+    {
+      qexec_evaluate_constant (thread_p, xasl_state, &plan->constants[i]);
+    }
+  for (int k = 0; plan != NULL && k < plan->n_compares; k++)
+    {
+      if (!plan->compares[k]->after_constants)
+	{
+	  continue;
+	}
+      error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
   return NO_ERROR;
 }
 
@@ -4588,6 +4857,7 @@ static int
 qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, int *limit_ptr)
 {
   DB_VALUE *dbvalp = NULL;
+  DB_VALUE limit_value;
   TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_INTEGER);
   DB_TYPE orig_type;
   int error = NO_ERROR;
@@ -4617,7 +4887,9 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
     {
       TP_DOMAIN_STATUS dom_status;
 
-      dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
+      /* into a value of its own: the limit is a bind value other readers share (the gate's value array, #352) */
+      db_make_null (&limit_value);
+      dom_status = tp_value_coerce (dbvalp, &limit_value, domainp);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  if (dom_status == DOMAIN_OVERFLOW)
@@ -4634,6 +4906,7 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 	      return error;
 	    }
 	}
+      dbvalp = &limit_value;
 
       if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_INTEGER)
 	{

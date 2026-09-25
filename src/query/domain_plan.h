@@ -27,6 +27,7 @@
 struct xasl_node;
 struct xasl_unpack_info;
 struct domain_plan_key;
+struct regu_variable_node;
 
 enum DOMAIN_FAIL_POLICY { DOMAIN_FAIL_ERROR, DOMAIN_FAIL_NULL, DOMAIN_FAIL_KEEP };
 enum DOMAIN_OPERAND_CLASS { OPERAND_CONST = 1, OPERAND_ROW, OPERAND_CORRELATED, OPERAND_VOLATILE };
@@ -89,6 +90,33 @@ struct DOMAIN_GATE_LINK
   int n_operands;
 };
 
+/*
+ * One comparison of a predicate term (D-352-01, D-323-07 amended): the load's decision, or the site whose decision the
+ * gate makes for each execution. The term points at it through a pointer the stream does not carry (F-352-04).
+ */
+struct DOMAIN_COMPARE_PLAN
+{
+  DOMAIN_COMPARE fixed;		/* the load's decision; kernel AT_GATE / AT_GATE_VOLATILE when the gate decides it */
+  const DOMAIN_PLAN_ITEM *operand[2];	/* each side's plan item; NULL: the side's key is domain[] */
+  const TP_DOMAIN *domain[2];	/* a side without an item: its compiled domain, or the domain the load fixed for its
+				 * values (a reader of an aggregate that finalizes to DOUBLE, F-352-16) */
+  const DB_VALUE *literal[2];	/* a literal side's value */
+  const TP_DOMAIN *collate[2];	/* a side the fetch gives this domain's codeset and collation (a COLLATE modifier,
+				 * REGU_VARIABLE_APPLY_COLLATION): its key and a constant's own value take them */
+  const DOMAIN_PLAN_ITEM *constant[2];	/* a constant side: its bind item (vals[ref]) or its cached subtree item */
+  int value[2];			/* resolved.vals index reserved for a constant side's converted value; -1 */
+  bool after_constants;		/* a side is a constant subtree: the gate decides the site once it evaluated the
+				 * subtree, from the subtree's value (a compiled domain need not describe it, F-352-17) */
+};
+
+/* A constant subtree the gate evaluates once before the main block (interface §10): its item holds the value's
+ * resolved.vals index (ref), and the regu is what the gate fetches (#352). */
+struct DOMAIN_PLAN_CONSTANT
+{
+  DOMAIN_PLAN_ITEM *item;
+  struct regu_variable_node *regu;
+};
+
 typedef struct domain_plan DOMAIN_PLAN;
 struct domain_plan
 {
@@ -111,6 +139,10 @@ struct domain_plan
   DOMAIN_PLAN_ITEM **volatile_refs;
   int n_keys;
   domain_plan_key *keys;
+  int n_compares;
+  DOMAIN_COMPARE_PLAN **compares;	/* the comparison sites the gate decides, in resolved.compares order (#352) */
+  int n_constants;
+  DOMAIN_PLAN_CONSTANT *constants;	/* the constant subtrees, operands before their consumers (#352) */
 };
 
 struct RESOLVED_DOMAIN_TABLE
@@ -118,7 +150,7 @@ struct RESOLVED_DOMAIN_TABLE
   const DB_VALUE *in;
   DB_VALUE *vals;
   RESOLVED_DOMAIN *table;
-  int n_vals, n_slots;
+  int n_vals, n_slots, n_compares;
   THREAD_ENTRY *owner;
   const DOMAIN_PLAN *plan;
   bool sealed;
@@ -126,6 +158,8 @@ struct RESOLVED_DOMAIN_TABLE
 				 * numbers its items and slots as the plan does (D-318-06, #340) */
   unsigned long long changed_reads;	/* the session variable reads whose value left the gate's decision within the
 					 * execution (D-336-E): a decision that depends on one is not taken (#340) */
+  DOMAIN_COMPARE *compares;	/* [plan->n_compares] this execution's comparison decisions (#352) */
+  unsigned char *ready;		/* [n_vals] a constant subtree's value is in vals (the gate evaluated it, #352) */
 };
 
 int stx_build_domain_plan (THREAD_ENTRY *thread_p, xasl_node *root, xasl_unpack_info *unpack_info,

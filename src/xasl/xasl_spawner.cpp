@@ -179,6 +179,8 @@ namespace cubxasl
     dest->rhs = spawner::spawn (src->rhs);
     dest->rel_op = src->rel_op;
     dest->type = src->type;
+    /* the leader's comparison record, as the copied operands take the leader's plan items (F-334-01) */
+    dest->domain_compare = src->domain_compare;
 
     return er_errid ();
   }

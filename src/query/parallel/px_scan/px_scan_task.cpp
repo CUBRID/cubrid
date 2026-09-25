@@ -611,8 +611,8 @@ namespace parallel_scan
       }
 
     /* The agg-expr marking is a run-time decision and is not inherited by XASL
-     * clones. Re-derive it here for each worker; FETCH_ALL_CONST and FETCH_NOT_CONST
-     * must not be carried across, and the fixed query shape yields the same result.
+     * clones. Re-derive it here for each worker; the fixed query shape yields the
+     * same result.
      */
     qexec_mark_aggregate_operand_expressions (m_xasl);
 

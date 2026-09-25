@@ -4461,6 +4461,7 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
 
   ptr = or_unpack_int (ptr, &tmp);
   comp_eval_term->type = (DB_TYPE) tmp;
+  comp_eval_term->domain_compare = NULL;
 
   return ptr;
 }
@@ -5643,8 +5644,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

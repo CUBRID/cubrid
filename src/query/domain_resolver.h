@@ -89,4 +89,71 @@ int domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n
  * its maximum, and an ENUM value keeps no element list (#338). */
 const TP_DOMAIN *domain_as_value_domain (const TP_DOMAIN * domain);
 
+/* One side of a comparison as the load or the gate knows it before any row (#352): the type of its values and, for a
+ * string or an ENUM, their codeset and collation (-1 otherwise). */
+struct DOMAIN_COMPARE_KEY
+{
+  DB_TYPE type;
+  int codeset;
+  int collation;
+};
+
+/* The row path of a comparison decided before any row (D-352-02). */
+enum DOMAIN_COMPARE_KERNEL
+{
+  DOMAIN_COMPARE_AT_GATE,	/* a plan record the gate decides: this execution's decision is resolved.compares[site] */
+  DOMAIN_COMPARE_AT_GATE_VOLATILE,	/* likewise, over a session variable read: develop's value comparison once a
+					 * read it depends on left the gate's decision (D-336-E) */
+  DOMAIN_COMPARE_VALUES,	/* develop's value comparison: a side whose values are NULL (answered before develop
+				 * counts), a side the gate left undecided (D-338-02, workspace#343, counted), or a side
+				 * the plan leaves open */
+  DOMAIN_COMPARE_DIRECT,	/* comparable as they are: cmpval under the planned collation */
+  DOMAIN_COMPARE_CONVERT,	/* the planned converters in develop's order, then cmpval */
+  DOMAIN_COMPARE_COLLATIONS,	/* strings whose collations do not merge: develop's -1150 at every row */
+  DOMAIN_COMPARE_OBJECT	/* an OBJECT side: develop's comparison (an OID on the server, OBJECT/OID on the client) */
+};
+
+/*
+ * DOMAIN_COMPARE - develop's tp_value_compare_with_error with its coercion decided before any row (D-352-01): which
+ *   side becomes what (tp_value_compare_common_domain and the implicit coercion rules), the type whose cmpval compares,
+ *   the collation, and the outcome develop gives when a conversion fails. The row runs the planned converters and
+ *   cmpval; it decides nothing.
+ */
+struct DOMAIN_COMPARE
+{
+  /* what every row reads first (kernel DIRECT reads no more than this and cmp) */
+  unsigned char kernel;		/* DOMAIN_COMPARE_KERNEL */
+  unsigned char first;		/* the side develop converts first */
+  unsigned char source[2];	/* DB_TYPE of each side before conversion: develop's failure outcome names these */
+  unsigned char converted_first;	/* DB_TYPE the first side has once converted (the second conversion failing) */
+  unsigned char failed;		/* bit i: the gate could not convert constant side i (develop's failure at every row) */
+  int collation;		/* the collation cmpval compares under; 0 for a non-string */
+  int value[2];			/* resolved.vals index of a constant side the gate converted once; -1: the row's value */
+  int codeset_side;		/* an ENUM against a string of another codeset: the side brought into the ENUM's
+				 * codeset at the row (develop's tmp_char_conv); -1 none */
+  int site;			/* AT_GATE*: resolved.compares index of this execution's decision; -1 */
+  const struct pr_type *cmp;	/* cmpval of the compared values */
+  DOMAIN_CONV_FUNC conv[2];	/* side i's converter at the row, NULL none; develop's order: first, then the other */
+  const TP_DOMAIN *target[2];	/* the domain side i is converted into */
+  unsigned long long volatile_reads;	/* AT_GATE_VOLATILE: the session variable reads the decision depends on */
+};
+
+/* Whether a domain fixes the type and collation of its values: not VARIABLE, and a string or an ENUM whose collation
+ * flag is NORMAL (F-336-01). */
+bool domain_fixes_values (const TP_DOMAIN * domain);
+
+/* The key a domain gives its values. */
+void domain_compare_key_of (const TP_DOMAIN * domain, DOMAIN_COMPARE_KEY * key);
+
+/* A key whose values the fetch gives another codeset and collation (a COLLATE modifier): the key takes them. */
+void domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate);
+
+/* The comparison develop's tp_value_compare_with_error makes between a value of each key (#352). */
+int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result);
+
+/* A planned converter on a value, with the target initialized as tp_value_cast_internal initializes it before its
+ * cell (the domain, and a string target's codeset and collation). */
+TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, const DB_VALUE * source,
+				       DB_VALUE * result);
+
 #endif /* _DOMAIN_RESOLVER_H_ */

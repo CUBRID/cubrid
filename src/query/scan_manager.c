@@ -183,8 +183,8 @@ static int scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX
 						   REGU_VARIABLE * key_limit_u, VAL_DESCR * vd,
 						   bool is_user_given_keylimit);
 static int scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp,
-						  REGU_VARIABLE * key_limit_u, VAL_DESCR * vd, DB_VALUE ** out_dbvalp,
-						  bool is_user_given_keylimit);
+						  REGU_VARIABLE * key_limit_u, VAL_DESCR * vd, DB_VALUE * coerced,
+						  DB_VALUE ** out_dbvalp, bool is_user_given_keylimit);
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -1127,6 +1127,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
  *   isidp (out)    : index scan id — key_limit_upper is set directly on overflow
  *   key_limit_u(in): regu variable for upper key limit
  *   vd (in)        : value descriptor
+ *   coerced (out)  : the caller's value the fetched limit is coerced into
  *   out_dbvalp(out): set to NULL when overflow is handled (key_limit_upper already set);
  *                    set to the coerced BIGINT DB_VALUE otherwise (caller reads the value)
  *
@@ -1138,7 +1139,8 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
  */
 static int
 scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, REGU_VARIABLE * key_limit_u,
-				       VAL_DESCR * vd, DB_VALUE ** out_dbvalp, bool is_user_given_keylimit)
+				       VAL_DESCR * vd, DB_VALUE * coerced, DB_VALUE ** out_dbvalp,
+				       bool is_user_given_keylimit)
 {
   TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
   TP_DOMAIN_STATUS dom_status;
@@ -1192,8 +1194,9 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 	}
     }
 
-  /* coerce fetched value to BIGINT */
-  dom_status = tp_value_coerce (*out_dbvalp, *out_dbvalp, domainp);
+  /* coerce fetched value to BIGINT, into the caller's value: the fetched one can be a bind value other readers share
+   * (the gate's value array, #352) */
+  dom_status = tp_value_coerce (*out_dbvalp, coerced, domainp);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (*out_dbvalp) == DB_TYPE_NUMERIC)
@@ -1211,6 +1214,7 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, *out_dbvalp, domainp);
       return ER_FAILED;
     }
+  *out_dbvalp = coerced;
 
   if (DB_VALUE_DOMAIN_TYPE (*out_dbvalp) != DB_TYPE_BIGINT)
     {
@@ -1266,8 +1270,10 @@ scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_IN
   if (key_infop->key_limit_u != NULL)
     {
       DB_VALUE *dbvalp;
+      DB_VALUE coerced;
+      db_make_null (&coerced);
       error_code =
-	scan_fetch_and_coerce_key_limit_upper (thread_p, isidp, key_infop->key_limit_u, vd, &dbvalp,
+	scan_fetch_and_coerce_key_limit_upper (thread_p, isidp, key_infop->key_limit_u, vd, &coerced, &dbvalp,
 					       key_infop->is_user_given_keylimit);
       if (error_code != NO_ERROR)
 	{

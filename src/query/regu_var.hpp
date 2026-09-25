@@ -168,8 +168,6 @@ const int REGU_VARIABLE_APPLY_COLLATION = 0x08;	/* Apply collation from domain; 
 						 * modifier */
 const int REGU_VARIABLE_ANALYTIC_WINDOW = 0x10;	/* for analytic window func */
 const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* infer collation for default parameter */
-const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant */
-const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
 const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */

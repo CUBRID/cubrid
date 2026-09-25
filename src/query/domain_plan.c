@@ -18,6 +18,7 @@
 
 #include "config.h"
 #include "domain_plan.h"
+#include "dbtype.h"
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "xasl.h"
@@ -126,6 +127,9 @@ struct DOMAIN_LOAD_CONTEXT
   DOMAIN_LOAD_RECORD **gate_order;	/* gate-dependent nodes in resolution order (producers first) */
   int n_gate_order;
   int max_gate_order;
+  COMP_EVAL_TERM **compare_terms;	/* the comparison terms met, in walk order (#352) */
+  int n_compare_terms;
+  int max_compare_terms;
 };
 
 static void domain_walk_xasl (DOMAIN_LOAD_CONTEXT *, XASL_NODE *);
@@ -351,6 +355,110 @@ domain_volatile_operator (OPERATOR_TYPE opcode)
       return true;
     default:
       return false;
+    }
+}
+
+/* develop's fetch cached a function over constant operands only for these (the FETCH_ALL_CONST decision of
+ * TYPE_FUNC); every other function computed each time it was fetched, so it is no constant the gate evaluates (#352) */
+static bool
+domain_function_caches (FUNC_CODE ftype)
+{
+  switch (ftype)
+    {
+    case F_JSON_ARRAY:
+    case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_CONTAINS:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
+    case F_JSON_EXTRACT:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_OBJECT:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
+    case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
+    case F_JSON_SET:
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
+    case F_REGEXP_COUNT:
+    case F_REGEXP_INSTR:
+    case F_REGEXP_LIKE:
+    case F_REGEXP_REPLACE:
+    case F_REGEXP_SUBSTR:
+    case F_INSERT_SUBSTRING:
+    case F_ELT:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* develop recomputed a BENCHMARK target and a stored procedure's arguments at every call: fetch marked them not
+ * constant through regu_variable_node::map_regu (arithmetic left and right operands, function operands, procedure
+ * arguments, value and regu lists), so none of them is a constant the gate evaluates once (#352) */
+static void
+domain_force_row (REGU_VARIABLE * regu)
+{
+  if (regu == NULL)
+    {
+      return;
+    }
+  /* only the nodes develop marked: a bind or a literal under them stays a constant */
+  const bool node = regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH || regu->type == TYPE_FUNC
+    || regu->type == TYPE_SP;
+  if (node && regu->domain_plan != NULL && regu->domain_plan->operand_class == OPERAND_CONST)
+    {
+      regu->domain_plan->operand_class = OPERAND_ROW;
+    }
+  switch (regu->type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu->value.arithptr != NULL)
+	{
+	  DOMAIN_PLAN_ITEM *arith = regu->value.arithptr->domain_plan;
+	  if (arith != NULL && arith->operand_class == OPERAND_CONST)
+	    {
+	      arith->operand_class = OPERAND_ROW;
+	    }
+	  domain_force_row (regu->value.arithptr->leftptr);
+	  domain_force_row (regu->value.arithptr->rightptr);
+	}
+      break;
+    case TYPE_FUNC:
+      for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+	{
+	  domain_force_row (&op->value);
+	}
+      break;
+    case TYPE_SP:
+      for (REGU_VARIABLE_LIST arg = regu->value.sp_ptr->args; arg != NULL; arg = arg->next)
+	{
+	  domain_force_row (&arg->value);
+	}
+      break;
+    case TYPE_REGUVAL_LIST:
+      for (REGU_VALUE_ITEM * item = regu->value.reguval_list->regu_list; item != NULL; item = item->next)
+	{
+	  domain_force_row (item->value);
+	}
+      break;
+    case TYPE_REGU_VAR_LIST:
+      for (REGU_VARIABLE_LIST node = regu->value.regu_var_list; node != NULL; node = node->next)
+	{
+	  domain_force_row (&node->value);
+	}
+      break;
+    default:
+      break;
     }
 }
 
@@ -719,9 +827,9 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       break;
     case TYPE_FUNC:
       domain_walk_list (ctx, regu->value.funcp->operand, context);
-      cls = OPERAND_CONST;
-      /* These functions are unconditionally FETCH_NOT_CONST in fetch.c, even
-       * when their argument list consists entirely of constants. */
+      cls = domain_function_caches (regu->value.funcp->ftype) ? OPERAND_CONST : OPERAND_ROW;
+      /* develop's fetch never cached these functions, even when their
+       * argument list consists entirely of constants. */
       switch (regu->value.funcp->ftype)
 	{
 	case F_SET:
@@ -739,6 +847,12 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
 	default:
 	  break;
 	}
+      if (regu->value.funcp->ftype == F_BENCHMARK && regu->value.funcp->operand != NULL
+	  && regu->value.funcp->operand->next != NULL)
+	{
+	  /* the target, recomputed at every iteration */
+	  domain_force_row (&regu->value.funcp->operand->next->value);
+	}
       for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
 	{
 	  cls = domain_merge_class (cls, op->value.domain_plan);
@@ -746,6 +860,10 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       break;
     case TYPE_SP:
       domain_walk_list (ctx, regu->value.sp_ptr->args, DOMAIN_CTX_FUNC_ARG);
+      for (REGU_VARIABLE_LIST arg = regu->value.sp_ptr->args; arg != NULL; arg = arg->next)
+	{
+	  domain_force_row (&arg->value);
+	}
       cls = OPERAND_VOLATILE;
       break;
     case TYPE_REGUVAL_LIST:
@@ -876,6 +994,45 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     }
 }
 
+/* A comparison term of two values (#352): the load decides it or gives it a gate site when the plan is published.
+ * The set comparisons (subset and superset, tp_set_compare) and a list side (eval_set_list_cmp) are not these. */
+static void
+domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
+{
+  switch (term->rel_op)
+    {
+    case R_EQ:
+    case R_NE:
+    case R_GT:
+    case R_GE:
+    case R_LT:
+    case R_LE:
+    case R_EQ_TORDER:
+    case R_NULLSAFE_EQ:
+      break;
+    default:
+      return;
+    }
+  if (term->lhs == NULL || term->rhs == NULL || term->lhs->type == TYPE_LIST_ID || term->rhs->type == TYPE_LIST_ID)
+    {
+      return;
+    }
+  if (ctx->n_compare_terms == ctx->max_compare_terms)
+    {
+      int max = ctx->max_compare_terms == 0 ? 16 : ctx->max_compare_terms * 2;
+      COMP_EVAL_TERM **terms =
+	(COMP_EVAL_TERM **) db_private_realloc (ctx->thread_p, ctx->compare_terms, max * sizeof (*terms));
+      if (terms == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->compare_terms = terms;
+      ctx->max_compare_terms = max;
+    }
+  ctx->compare_terms[ctx->n_compare_terms++] = term;
+}
+
 static void
 domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
 {
@@ -900,6 +1057,7 @@ domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
 	    case T_COMP_EVAL_TERM:
 	      domain_walk_regu (ctx, term->et.et_comp.lhs, DOMAIN_CTX_COMPARE);
 	      domain_walk_regu (ctx, term->et.et_comp.rhs, DOMAIN_CTX_COMPARE);
+	      domain_add_compare_term (ctx, &term->et.et_comp);
 	      break;
 	    case T_ALSM_EVAL_TERM:
 	      domain_walk_regu (ctx, term->et.et_alsm.elem, DOMAIN_CTX_COMPARE);
@@ -1605,6 +1763,319 @@ domain_compare_refs (const void *lhs, const void *rhs)
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+/* The constant subtree a record's regu computes, if the gate evaluates it once (#352): a constant arithmetic node (its
+ * value is the node's item's) or a constant function that caches. */
+static DOMAIN_PLAN_ITEM *
+domain_constant_of (const DOMAIN_LOAD_RECORD * record)
+{
+  const REGU_VARIABLE *regu = record->regu;
+  if (regu == NULL)
+    {
+      return NULL;
+    }
+  DOMAIN_PLAN_ITEM *item = NULL;
+  if ((regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL)
+    {
+      item = regu->value.arithptr->domain_plan;
+    }
+  else if (regu->type == TYPE_FUNC)
+    {
+      item = regu->domain_plan;
+    }
+  return item != NULL && item->operand_class == OPERAND_CONST ? item : NULL;
+}
+
+/*
+ * domain_publish_constants () - every constant subtree gets a value of its own in the gate's array, which the gate
+ *   fills once before the main block (interface §10, #352): this replaces fetch's FETCH_ALL_CONST marking.
+ *   Nested constants come first, in the order the walk appended them.
+ */
+static bool
+domain_publish_constants (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
+{
+  const int base = plan->n_refs;
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
+    {
+      DOMAIN_PLAN_ITEM *item = domain_constant_of (r);
+      if (item != NULL && item->ref < 0)
+	{
+	  item->ref = plan->n_refs++;
+	}
+    }
+  plan->n_constants = plan->n_refs - base;
+  if (plan->n_constants == 0)
+    {
+      return true;
+    }
+  plan->constants = (DOMAIN_PLAN_CONSTANT *) domain_plan_alloc (thread_p, plan->n_constants, sizeof (*plan->constants));
+  if (plan->constants == NULL)
+    {
+      return false;
+    }
+  memset (plan->constants, 0, sizeof (*plan->constants) * plan->n_constants);
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
+    {
+      DOMAIN_PLAN_ITEM *item = domain_constant_of (r);
+      if (item != NULL && item->ref >= base && plan->constants[item->ref - base].item == NULL)
+	{
+	  plan->constants[item->ref - base].item = item;
+	  plan->constants[item->ref - base].regu = r->regu;
+	}
+    }
+  return true;
+}
+
+/* Whether a record reads an aggregate that finalizes to DOUBLE whatever its function domain says: AVG, STDDEV* and
+ * VAR* (qdata_finalize_aggregate_list), whose function domain over a late-bound argument is the argument's, as develop
+ * binds it (F-352-16). Through value pointers and list positions to the producer. */
+static bool
+domain_reads_double_aggregate (const DOMAIN_LOAD_RECORD * record)
+{
+  for (int guard = 0; record != NULL && guard < 256; guard++)
+    {
+      if (record->alias != NULL)
+	{
+	  record = record->alias;
+	  continue;
+	}
+      if (record->kind == DOMAIN_LOAD_FIXED_AGG)
+	{
+	  if (record->cold.ctx != DOMAIN_CTX_AGG)
+	    {
+	      return false;
+	    }
+	  switch (record->cold.opcode)
+	    {
+	    case PT_AVG:
+	    case PT_STDDEV:
+	    case PT_STDDEV_POP:
+	    case PT_STDDEV_SAMP:
+	    case PT_VARIANCE:
+	    case PT_VAR_POP:
+	    case PT_VAR_SAMP:
+	      return true;
+	    default:
+	      return false;
+	    }
+	}
+      if (record->kind != DOMAIN_LOAD_CONSUMER || record->producer == NULL)
+	{
+	  return false;
+	}
+      record = record->producer;
+    }
+  return false;
+}
+
+/* What the load knows of one side of a comparison (#352). */
+enum DOMAIN_COMPARE_SIDE
+{
+  DOMAIN_SIDE_KNOWN,		/* its key is the plan's */
+  DOMAIN_SIDE_AT_GATE,		/* a bind (it compares with its value's type, F-335-06), a slot or gate-dependent side */
+  DOMAIN_SIDE_OPEN		/* the plan leaves its values' type or collation open: the row compares by value */
+};
+
+/* One side of a comparison at publication: a literal gives its value's key, a bind, a slot or a gate-dependent side
+ * is the gate's, a reader of an aggregate that finalizes to DOUBLE a DOUBLE, anything else its plan domain (#352).
+ * records(in): the load record of each published item, by index */
+static DOMAIN_COMPARE_SIDE
+domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records, int constant_base,
+		     REGU_VARIABLE * regu, DOMAIN_COMPARE_PLAN * site, int side, DOMAIN_COMPARE_KEY * key,
+		     unsigned long long *volatile_reads)
+{
+  const DOMAIN_PLAN_ITEM *item = regu->domain_plan;
+  site->operand[side] = item;
+  site->domain[side] = regu->domain;
+  site->value[side] = -1;
+  /* a COLLATE modifier on the side itself: the fetch overwrites its value's codeset and collation with the domain's
+   * (xasl_generation.c drops the T_CAST and flags the operand's regu) */
+  site->collate[side] = REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION) && regu->domain != NULL
+    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (regu->domain)) ? regu->domain : NULL;
+  if (item != NULL && regu->type != TYPE_DBVAL && regu->type != TYPE_POS_VALUE
+      && domain_reads_double_aggregate (records[item - plan->items]))
+    {
+      /* F-352-16: the value is a DOUBLE (or NULL) whatever the aggregate's decided domain says; the gate reads the
+       * side's domain, not its item */
+      site->operand[side] = NULL;
+      site->domain[side] = &tp_Double_domain;
+      domain_compare_key_of (&tp_Double_domain, key);
+      return DOMAIN_SIDE_KNOWN;
+    }
+  if (regu->type == TYPE_POS_VALUE && item != NULL)
+    {
+      site->constant[side] = item;
+      return DOMAIN_SIDE_AT_GATE;
+    }
+  if (regu->type == TYPE_DBVAL)
+    {
+      const DB_VALUE *literal = &regu->value.dbval;
+      site->literal[side] = literal;
+      domain_compare_key_of (DB_IS_NULL (literal) ? &tp_Null_domain : tp_domain_resolve_value (literal, NULL), key);
+      domain_compare_key_collate (key, site->collate[side]);
+      return DOMAIN_SIDE_KNOWN;
+    }
+  const DOMAIN_PLAN_ITEM *cached = NULL;
+  if ((regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL)
+    {
+      cached = regu->value.arithptr->domain_plan;
+    }
+  else if (regu->type == TYPE_FUNC)
+    {
+      cached = item;
+    }
+  if (cached != NULL && cached->ref >= constant_base)
+    {
+      /* a constant subtree compares with its value's key, as a bind or a literal does: the gate evaluates it before
+       * any row, and its compiled domain need not describe its value (a LIKE bound's collation is its pattern
+       * value's, F-352-17) */
+      site->constant[side] = cached;
+      site->after_constants = true;
+      return DOMAIN_SIDE_AT_GATE;
+    }
+  if (item != NULL && item->slot >= 0)
+    {
+      if (plan->slot_flags[item->slot] & DOMAIN_SLOT_VOLATILE)
+	{
+	  *volatile_reads |= plan->slot_volatile_reads[item->slot];
+	}
+      return DOMAIN_SIDE_AT_GATE;
+    }
+  const TP_DOMAIN *domain = item != NULL ? item->fixed.domain : regu->domain;
+  if (!domain_fixes_values (domain))
+    {
+      return DOMAIN_SIDE_OPEN;
+    }
+  domain_compare_key_of (domain, key);
+  domain_compare_key_collate (key, site->collate[side]);
+  return DOMAIN_SIDE_KNOWN;
+}
+
+/* A side the gate converts once when its comparison converts it: a literal, a bind or a constant subtree. */
+static bool
+domain_compare_constant_side (const DOMAIN_COMPARE_PLAN * site, int side)
+{
+  return site->literal[side] != NULL || site->constant[side] != NULL;
+}
+
+/*
+ * domain_publish_compares () - every comparison term gets its comparison record (D-352-01): the load's decision when
+ *   both sides' keys are the plan's and no constant side needs converting, otherwise a gate site the gate decides
+ *   once per execution (and converts its constant sides into values of their own). A side whose values the plan
+ *   leaves open keeps develop's comparison (kernel VALUES).
+ */
+static bool
+domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, int constant_base)
+{
+  if (ctx->n_compare_terms == 0)
+    {
+      return true;
+    }
+  DOMAIN_COMPARE_PLAN **gate_sites =
+    (DOMAIN_COMPARE_PLAN **) db_private_alloc (thread_p, sizeof (*gate_sites) * ctx->n_compare_terms);
+  DOMAIN_LOAD_RECORD **records =
+    (DOMAIN_LOAD_RECORD **) db_private_alloc (thread_p, sizeof (*records) * (plan->n_items > 0 ? plan->n_items : 1));
+  if (gate_sites == NULL || records == NULL)
+    {
+      if (gate_sites != NULL)
+	{
+	  db_private_free (thread_p, gate_sites);
+	}
+      if (records != NULL)
+	{
+	  db_private_free (thread_p, records);
+	}
+      return false;
+    }
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
+    {
+      if (r->alias == NULL)
+	{
+	  records[r->index] = r;
+	}
+    }
+  int n_gate = 0;
+  bool ok = true;
+  for (int t = 0; t < ctx->n_compare_terms && ok; t++)
+    {
+      COMP_EVAL_TERM *term = ctx->compare_terms[t];
+      if (term->domain_compare != NULL)
+	{
+	  /* a term the walk met twice */
+	  continue;
+	}
+      DOMAIN_COMPARE_PLAN *site = (DOMAIN_COMPARE_PLAN *) domain_plan_alloc (thread_p, 1, sizeof (*site));
+      if (site == NULL)
+	{
+	  ok = false;
+	  break;
+	}
+      memset (site, 0, sizeof (*site));
+      DOMAIN_COMPARE_KEY key[2];
+      unsigned long long volatile_reads = 0;
+      const DOMAIN_COMPARE_SIDE lhs = domain_compare_side (plan, records, constant_base, term->lhs, site, 0, &key[0],
+							   &volatile_reads);
+      const DOMAIN_COMPARE_SIDE rhs = domain_compare_side (plan, records, constant_base, term->rhs, site, 1, &key[1],
+							   &volatile_reads);
+      bool at_gate = false;
+      if (lhs == DOMAIN_SIDE_OPEN || rhs == DOMAIN_SIDE_OPEN)
+	{
+	  site->fixed = DOMAIN_COMPARE
+	  {
+	  };
+	  site->fixed.kernel = DOMAIN_COMPARE_VALUES;
+	  site->fixed.site = -1;
+	  site->fixed.value[0] = site->fixed.value[1] = site->fixed.codeset_side = -1;
+	}
+      else if (lhs == DOMAIN_SIDE_KNOWN && rhs == DOMAIN_SIDE_KNOWN)
+	{
+	  if (domain_resolve_comparison (&key[0], &key[1], &site->fixed) != NO_ERROR)
+	    {
+	      ok = false;
+	      break;
+	    }
+	  /* a constant side the comparison converts is converted once, by the gate */
+	  at_gate = (domain_compare_constant_side (site, 0) && site->fixed.conv[0] != NULL)
+	    || (domain_compare_constant_side (site, 1) && site->fixed.conv[1] != NULL);
+	}
+      else
+	{
+	  at_gate = true;
+	}
+      if (at_gate)
+	{
+	  site->fixed = DOMAIN_COMPARE
+	  {
+	  };
+	  site->fixed.kernel = volatile_reads != 0 ? DOMAIN_COMPARE_AT_GATE_VOLATILE : DOMAIN_COMPARE_AT_GATE;
+	  site->fixed.volatile_reads = volatile_reads;
+	  site->fixed.site = n_gate;
+	  site->fixed.value[0] = site->fixed.value[1] = site->fixed.codeset_side = -1;
+	  for (int side = 0; side < 2; side++)
+	    {
+	      if (domain_compare_constant_side (site, side))
+		{
+		  site->value[side] = plan->n_refs++;
+		}
+	    }
+	  gate_sites[n_gate++] = site;
+	}
+      term->domain_compare = site;
+    }
+  if (ok && n_gate > 0)
+    {
+      plan->compares = (DOMAIN_COMPARE_PLAN **) domain_plan_alloc (thread_p, n_gate, sizeof (*plan->compares));
+      ok = plan->compares != NULL;
+      if (ok)
+	{
+	  memcpy (plan->compares, gate_sites, sizeof (*plan->compares) * n_gate);
+	  plan->n_compares = n_gate;
+	}
+    }
+  db_private_free (thread_p, gate_sites);
+  db_private_free (thread_p, records);
+  return ok;
+}
+
 int
 stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_INFO * unpack_info, bool is_pred_stream)
 {
@@ -1847,9 +2318,20 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  plan->slot_volatile_reads[r->item.slot] = reads;
 	}
     }
+  if (!ctx.failed)
+    {
+      /* #352: constant subtrees before comparisons, whose constant sides read them */
+      const int constant_base = plan->n_refs;
+      ctx.failed = !domain_publish_constants (thread_p, &ctx, plan)
+	|| !domain_publish_compares (thread_p, &ctx, plan, constant_base);
+    }
   if (ctx.gate_order != NULL)
     {
       db_private_free (thread_p, ctx.gate_order);
+    }
+  if (ctx.compare_terms != NULL)
+    {
+      db_private_free (thread_p, ctx.compare_terms);
     }
   while (ctx.list_columns != NULL)
     {
