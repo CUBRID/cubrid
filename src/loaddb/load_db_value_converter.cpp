@@ -52,7 +52,6 @@ namespace cubload
   int to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_short (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
-  int to_db_int_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_bigint (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_generic_char (DB_TYPE type, const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_char (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -74,16 +73,23 @@ namespace cubload
   int to_db_monetary (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
-  int to_db_varbit_from_bin_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
-  int to_db_varbit_from_hex_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_elem_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_elem_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_ext (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_int_generic (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_elem_null (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  template <data_type LDR>
+  int to_db_fallback (const char *str, const size_t str_size, const attribute *attr, db_value *val);
 
   using conv_setters = std::array<std::array<conv_func, NUM_LDR_TYPES>, NUM_DB_TYPES>;
+  using elem_conv_setters = std::array<conv_func, NUM_LDR_TYPES>;
 
   static conv_setters init_setters ();
   static conv_setters setters = init_setters ();
+
+  static elem_conv_setters init_elem_setters ();
+  static elem_conv_setters elem_setters = init_elem_setters ();
 
   static conv_setters
   init_setters ()
@@ -103,29 +109,18 @@ namespace cubload
 	setters_[i][LDR_NULL] = &to_db_null;
       }
 
-    // used within collection
-    DB_TYPE set_types[3] = {DB_TYPE_SET, DB_TYPE_MULTISET, DB_TYPE_SEQUENCE};
-    for (DB_TYPE &set_type : set_types)
+    /*
+     * Allow loaddb to support the typecasts implicitly permitted by INSERT.
+     * These 5 literal kinds fall back to their natural type plus the engine's cast for every target
+     * that has no converter of its own, instead of being refused by the table.
+     */
+    for (int i = 0; i < NUM_DB_TYPES; i++)
       {
-	setters_[set_type][LDR_INT] = &to_db_int_set;
-	setters_[set_type][LDR_STR] = &to_db_string;
-	setters_[set_type][LDR_NUMERIC] = &to_db_numeric;
-	setters_[set_type][LDR_DOUBLE] = &to_db_double;
-	setters_[set_type][LDR_FLOAT] = &to_db_float;
-	setters_[set_type][LDR_DATE] = &to_db_date;
-	setters_[set_type][LDR_TIME] = &to_db_time;
-	setters_[set_type][LDR_TIMESTAMP] = &to_db_timestamp;
-	setters_[set_type][LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
-	setters_[set_type][LDR_TIMESTAMPTZ] = &to_db_timestamptz;
-	setters_[set_type][LDR_DATETIME] = &to_db_datetime;
-	setters_[set_type][LDR_DATETIMELTZ] = &to_db_datetimeltz;
-	setters_[set_type][LDR_DATETIMETZ] = &to_db_datetimetz;
-	setters_[set_type][LDR_BSTR] = &to_db_varbit_from_bin_str_set;
-	setters_[set_type][LDR_XSTR] = &to_db_varbit_from_hex_str_set;
-	setters_[set_type][LDR_MONETARY] = &to_db_monetary;
-	setters_[set_type][LDR_ELO_EXT] = &to_db_elo_ext;
-	setters_[set_type][LDR_ELO_INT] = &to_db_elo_int;
-	setters_[set_type][LDR_JSON] = &to_db_json;
+	setters_[i][LDR_INT] = &to_db_fallback<LDR_INT>;
+	setters_[i][LDR_STR] = &to_db_fallback<LDR_STR>;
+	setters_[i][LDR_NUMERIC] = &to_db_fallback<LDR_NUMERIC>;
+	setters_[i][LDR_DOUBLE] = &to_db_fallback<LDR_DOUBLE>;
+	setters_[i][LDR_FLOAT] = &to_db_fallback<LDR_FLOAT>;
       }
 
     setters_[DB_TYPE_CHAR][LDR_STR] = &to_db_char;
@@ -144,12 +139,10 @@ namespace cubload
     setters_[DB_TYPE_DOUBLE][LDR_INT] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_NUMERIC] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_DOUBLE] = &to_db_double;
-    setters_[DB_TYPE_DOUBLE][LDR_FLOAT] = &to_db_double;
 
     setters_[DB_TYPE_NUMERIC][LDR_INT] = &to_int_generic;
     setters_[DB_TYPE_NUMERIC][LDR_NUMERIC] = &to_db_numeric;
     setters_[DB_TYPE_NUMERIC][LDR_DOUBLE] = &to_db_double;
-    setters_[DB_TYPE_NUMERIC][LDR_FLOAT] = &to_db_double;
 
     setters_[DB_TYPE_BIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
     setters_[DB_TYPE_BIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
@@ -166,7 +159,6 @@ namespace cubload
     setters_[DB_TYPE_MONETARY][LDR_INT] = &to_db_monetary;
     setters_[DB_TYPE_MONETARY][LDR_NUMERIC] = &to_db_monetary;
     setters_[DB_TYPE_MONETARY][LDR_DOUBLE] = &to_db_monetary;
-    setters_[DB_TYPE_MONETARY][LDR_FLOAT] = &to_db_monetary;
     setters_[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
 
     setters_[DB_TYPE_DATE][LDR_STR] = &to_db_string;
@@ -193,6 +185,126 @@ namespace cubload
     return setters_;
   }
 
+  /*
+   * A collection element is converted to the literal's natural type. The collection
+   * checks it against its own set domain when the element is added, which is the only
+   * thing that works for a heterogeneous collection, where there is no single element
+   * domain to look up. This is why the varbit entries below stop at
+   * make_varbit_value () while the attribute table casts into the attribute domain.
+   */
+  static elem_conv_setters
+  init_elem_setters ()
+  {
+    elem_conv_setters setters_;
+
+    for (int i = 0; i < NUM_LDR_TYPES; i++)
+      {
+	setters_[i] = &mismatch;
+      }
+
+    setters_[LDR_NULL] = &to_elem_null;
+    setters_[LDR_INT] = &to_int_generic;
+    setters_[LDR_STR] = &to_db_string;
+    setters_[LDR_NUMERIC] = &to_db_numeric;
+    setters_[LDR_DOUBLE] = &to_db_double;
+    setters_[LDR_FLOAT] = &to_db_float;
+    setters_[LDR_DATE] = &to_db_date;
+    setters_[LDR_TIME] = &to_db_time;
+    setters_[LDR_TIMESTAMP] = &to_db_timestamp;
+    setters_[LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
+    setters_[LDR_TIMESTAMPTZ] = &to_db_timestamptz;
+    setters_[LDR_DATETIME] = &to_db_datetime;
+    setters_[LDR_DATETIMELTZ] = &to_db_datetimeltz;
+    setters_[LDR_DATETIMETZ] = &to_db_datetimetz;
+    setters_[LDR_BSTR] = &to_elem_varbit_from_bin_str;
+    setters_[LDR_XSTR] = &to_elem_varbit_from_hex_str;
+    setters_[LDR_MONETARY] = &to_db_monetary;
+    setters_[LDR_ELO_EXT] = &to_db_elo_ext;
+    setters_[LDR_ELO_INT] = &to_db_elo_int;
+    setters_[LDR_JSON] = &to_db_json;
+
+    return setters_;
+  }
+
+  /*
+   * to_elem_null - null as a collection element
+   * Note:
+   *    Not to_db_null (), which applies the attribute's NOT NULL constraint.
+   *    An element being null does not make the attribute null.
+   */
+  int
+  to_elem_null (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return db_make_null (val);
+  }
+
+  /*
+   * fallback_convert - convert through the literal's natural type and let the engine cast
+   *    return: NO_ERROR or an error code
+   *    ldr_type(in): parser type of the token
+   *    str(in), str_size(in): the token
+   *    attr(in): attribute being set
+   *    val(out): value in the attribute's domain
+   * Note:
+   *    The value is built with the literal's natural type and handed to tp_value_cast() against the attribute domain.
+   *    The same cast SQL INSERT performs on the same literal.
+   */
+  static int
+  fallback_convert (const data_type ldr_type, const char *str, const size_t str_size, const attribute *attr,
+		    db_value *val)
+  {
+    db_value natural;
+    const tp_domain &domain = attr->get_domain ();
+
+    db_make_null (&natural);
+    db_make_null (val);
+
+    int error_code = get_elem_conv_func (ldr_type) (str, str_size, attr, &natural);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
+    if (error_code != NO_ERROR)
+      {
+	db_value_clear (&natural);
+	return error_code;
+      }
+
+    bool implicit_coercion = !TP_IS_CHAR_TYPE (domain.type->id);
+
+    if (tp_value_cast (&natural, val, const_cast<tp_domain *> (&domain), implicit_coercion) != DOMAIN_COMPATIBLE)
+      {
+	db_value_clear (&natural);
+	db_value_clear (val);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	return error_code;
+      }
+
+    db_value_clear (&natural);
+
+    return NO_ERROR;
+  }
+
+  /* template for fallback_convert () */
+  template <data_type LDR>
+  int
+  to_db_fallback (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return fallback_convert (LDR, str, str_size, attr, val);
+  }
+
+  conv_func &
+  get_elem_conv_func (const data_type ldr_type)
+  {
+    conv_func &c_func = elem_setters[ldr_type];
+    return c_func;
+  }
+
   conv_func &
   get_conv_func (const data_type ldr_type, const DB_TYPE db_type)
   {
@@ -211,7 +323,7 @@ namespace cubload
   int
   to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    if (attr->get_repr ().is_notnull)
+    if (attr->is_not_null ())
       {
 	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
       }
@@ -299,23 +411,6 @@ namespace cubload
     return NO_ERROR;
   }
 
-  /**
-   * Used in case of collection when if int overflows fallback to bigint
-   */
-  int
-  to_db_int_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
-  {
-    int error_code = to_db_int (str, str_size, attr, val);
-    if (error_code == ER_IT_DATA_OVERFLOW)
-      {
-	// if there is overflow on integer, try as bigint
-	er_clear ();
-	error_code = to_db_bigint (str, str_size, attr, val);
-      }
-
-    return error_code;
-  }
-
   int
   to_db_bigint (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
@@ -371,21 +466,25 @@ namespace cubload
 	if (char_count > precision)
 	  {
 	    /*
-	     * May be a violation, but first we have to check for trailing pad
-	     * characters that might allow us to successfully truncate the
-	     * thing.
+	     * May be a violation, but the overflow can be nothing but trailing pad
+	     * characters, and then the value is truncated rather than refused.
+	     *
+	     * Ask the same question INSERT asks, through the same call it makes -
+	     * see varchar_truncated () in string_opfunc.c. A real space always
+	     * pads, and so does the codeset's own pad character, which is the wide
+	     * space 0xa1a1 under EUC-KR. A tab or a carriage return does not pad,
+	     * in either place.
 	     */
-	    const char *p;
+	    unsigned char pad[2];
+	    int pad_size = 0;
+	    int trim_length = 0, trim_size = 0;
 	    int truncate_size;
 
-	    intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
+	    intl_pad_char (codeset, pad, &pad_size);
+	    qstr_trim_trailing (pad, pad_size, (const unsigned char *) str, type, char_count, str_len, codeset,
+				&trim_length, &trim_size, true);
 
-	    p = intl_skip_spaces (&str[truncate_size], &str[str_len], codeset);
-	    if (p >= &str[str_len])
-	      {
-		str_len = truncate_size;
-	      }
-	    else
+	    if (trim_length > precision)
 	      {
 		/*
 		 * It's a genuine violation; raise an error.
@@ -393,6 +492,9 @@ namespace cubload
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
 		return ER_IT_DATA_OVERFLOW;
 	      }
+
+	    intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
+	    str_len = truncate_size;
 	  }
       }
 
@@ -605,6 +707,19 @@ namespace cubload
     const unsigned char *p = (const unsigned char *) str;
     const unsigned char *token = (const unsigned char *) str;
 
+    if (token == NULL || str_size == 0)
+      {
+	if (er_errid() != NO_ERROR)
+	  {
+	    return er_errid();
+	  }
+	else
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	    return ER_LDR_MEMORY_ERROR;
+	  }
+      }
+
     if (str_size >= 2
 	&& intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
 				    (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
@@ -748,13 +863,13 @@ namespace cubload
    * ldr_bstr_elem () / ldr_xstr_elem () of the SA loader do.
    */
   int
-  to_db_varbit_from_bin_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  to_elem_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     return make_varbit_value (str, str_size, false, attr, val);
   }
 
   int
-  to_db_varbit_from_hex_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  to_elem_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     return make_varbit_value (str, str_size, true, attr, val);
   }
