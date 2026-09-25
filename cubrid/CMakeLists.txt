@@ -736,15 +736,21 @@ if(UNIX)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
   target_link_libraries(cubrid PUBLIC rt)
-  target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
+  target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a:libstdc++.a")
   # keep the replaced global operator new and delete local to libcubrid (see memory_wrapper.cpp)
   target_link_options(cubrid PRIVATE "LINKER:--version-script=${BASE_DIR}/memory_wrapper.map")
-  set_target_properties(cubrid PROPERTIES LINK_DEPENDS ${BASE_DIR}/memory_wrapper.map)
+  set_property(TARGET cubrid APPEND PROPERTY LINK_DEPENDS ${BASE_DIR}/memory_wrapper.map)
 
   # Add TBB
   target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})
   target_link_libraries(cubrid LINK_PRIVATE ${TBB_LIBS})
   add_dependencies(cubrid ${TBB_TARGETS})
+
+  # take libstdc++ from its own archive ahead of cascci, which exports the copy it links statically
+  target_link_libraries(cubrid LINK_PRIVATE -Wl,-Bstatic stdc++ -Wl,-Bdynamic)
+  # bind libcubrid's own function references at link time, so the template instances of the executable
+  # or of cascci do not take them over with a different operator new and delete
+  target_link_options(cubrid PRIVATE "LINKER:-Bsymbolic-functions")
 else(UNIX)
   target_link_libraries(cubrid LINK_PRIVATE ${EP_LIBS})
 endif(UNIX)

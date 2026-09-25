@@ -32,29 +32,21 @@
  * every block in libcubrid is allocated by cub_alloc () or malloc () and released by cub_free ().
  *
  * The replacement functions must not be inline and must be defined only once, so they are defined
- * in this file instead of memory_wrapper.hpp. memory_wrapper.map keeps them local to libcubrid. */
-
-/* memory_monitor::add_stat () builds std::string keys, and they are allocated by the operator new
- * below. While add_stat () is running for an operator new, the allocations are not tracked,
- * so that add_stat () is not entered again. */
-static thread_local bool mmon_in_operator_new = false;
+ * in this file instead of memory_wrapper.hpp. memory_wrapper.map keeps them local to libcubrid, and
+ * libcubrid links its own copy of libstdc++ (cubrid/CMakeLists.txt), so the out-of-line members of
+ * std::string and the other standard library code call them too. */
 
 static void *
 wrapped_operator_new (size_t size)
 {
-  void *p = NULL;
-
-  if (!mmon_is_memory_monitor_enabled () || mmon_in_operator_new)
+  /* the allocations of mmon_add_stat () itself are not tracked, so that it is not entered again */
+  if (!mmon_is_memory_monitor_enabled () || mmon_in_add_stat)
     {
       /* (malloc) is not expanded by the malloc () macro of memory_cwrapper.h */
       return (malloc) (size);
     }
 
-  mmon_in_operator_new = true;
-  p = cub_alloc (size, __FILE__, __LINE__);
-  mmon_in_operator_new = false;
-
-  return p;
+  return cub_alloc (size, __FILE__, __LINE__);
 }
 
 void *

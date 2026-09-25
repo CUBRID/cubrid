@@ -77,6 +77,8 @@ struct mmon_debug_info
 #endif
 
 extern bool mmon_disabled;
+// true while mmon_add_stat () runs on this thread; the global operator new does not track then (memory_wrapper.cpp)
+extern thread_local bool mmon_in_add_stat;
 
 namespace cubmem
 {
@@ -272,7 +274,10 @@ inline bool mmon_is_memory_monitor_enabled ()
 
 inline void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
 {
+  // add_stat () builds std::string keys, which come back into the global operator new
+  mmon_in_add_stat = true;
   cubmem::mmon_Gl->add_stat (ptr, size, file, line);
+  mmon_in_add_stat = false;
 }
 
 inline void mmon_sub_stat (char *ptr)

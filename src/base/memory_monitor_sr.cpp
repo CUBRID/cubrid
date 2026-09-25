@@ -28,6 +28,7 @@
 #include "memory_monitor_sr.hpp"
 
 bool mmon_disabled = true;
+thread_local bool mmon_in_add_stat = false;
 
 namespace cubmem
 {
