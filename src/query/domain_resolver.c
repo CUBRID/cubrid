@@ -1144,9 +1144,9 @@ copy_operands:
  *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES when the branches differ
  *
  * A branch without a value (a NULL bind) takes the other's domain; one domain, or one variable string type, keeps
- * the first branch's. Two different domains have no answer before execution: qfile_unify_types raises the error when
- * both branch lists hold rows and takes the other branch's domain when one is empty, so the gate records no value
- * and execution unifies the lists as develop does.
+ * the first branch's. Two different domains are rejected before execution (#341, the user's decision): develop's
+ * qfile_unify_types raised the error only when both branch lists held rows and took the other branch's domain when
+ * one was empty, which no decision before the rows can follow.
  */
 static int
 domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)

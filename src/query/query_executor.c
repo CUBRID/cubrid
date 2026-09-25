@@ -4057,7 +4057,8 @@ qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RES
 /*
  * qexec_resolve_gate_node () - G1 step 4 for one gate-dependent node: the grid's answer for this execution's operand
  *   types goes into the node's slot once (D-327-08)
- *   return: NO_ERROR, or the pre-execution error of an arithmetic pair the operator rejects (D-335-02)
+ *   return: NO_ERROR, or the pre-execution error of an arithmetic pair the operator rejects (D-335-02) or of a
+ *	     set-operation or CTE column whose branches have different domains (#341)
  *
  * The other contexts raise their errors when they evaluate, as develop does; the slot then holds "no value". An
  * operator the grid does not know is an error, not a guess.
@@ -4176,8 +4177,10 @@ qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const 
       {
       };
       entry->domain = &tp_Null_domain;
-      if (context == DOMAIN_CTX_ARITH)
+      if (context == DOMAIN_CTX_ARITH || context == DOMAIN_CTX_LIST_COLUMN)
 	{
+	  /* #341: a set-operation or CTE column whose branches the gate cannot unify is rejected before any row, where
+	   * develop's unification of the branch lists rejected it only when both held rows (the user's decision) */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  return error;
 	}
@@ -4902,18 +4905,6 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
   return domain;
 }
 
-/* Whether a NULL decision leaves the domain to execution instead of meaning NULL values (#341): a set-operation or CTE
- * column whose branches the gate could not unify, which the lists' unification types (#337). A LEAD / LAG over a NULL
- * operand holds only NULLs as well: a row past its window's end converts the default to the function's domain, the
- * NULL or the variable one, which rejects a value as develop's did (ER_TP_CANT_COERCE). */
-static bool
-qexec_null_decision_open (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
-{
-  const DOMAIN_PLAN *plan = resolved.plan;
-  const int node = plan->slot_gate_node[item->slot];
-  return node >= 0 && (plan->gate_nodes[node]->flags & DOMAIN_PLAN_SET_COLUMN);
-}
-
 /*
  * qexec_consumer_domain () - the domain a derived consumer takes for this execution: a list column, a sort key, a list
  *   position, an aggregate's list (#341)
@@ -4928,10 +4919,11 @@ qexec_null_decision_open (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_P
  * A compiled domain that fixes the value's type and collation is the consumer's. Otherwise the plan's: the gate's
  * decision, or the domain the load derived from the producer (qexec_plan_domain). A producer the gate decided has no
  * value holds only NULLs - a NULL bind, a node over one (#340 D-340-01: a value there is the fetch boundary) - so its
- * consumers take the NULL domain, as a NULL bind's list column does (#337, D6). A decision over a session variable read
- * holds until a read leaves it; before any row it cannot be known to hold, so the row gives it then. A set-operation
- * column whose branches the gate could not unify has no decision either: the lists' unification gives its domain,
- * the non-empty branch's (#337, domain_resolve_list_column).
+ * consumers take the NULL domain, as a NULL bind's list column does (#337, D6) - a LEAD / LAG over a NULL operand
+ * too: a row past its window's end converts the default to the function's NULL or variable domain, which rejects a
+ * value as develop's did (ER_TP_CANT_COERCE). A decision over a session variable read holds until a read leaves it;
+ * before any row it cannot be known to hold, so the row gives it then. A set-operation column whose branches the gate
+ * cannot unify never gets here: the gate rejects it (#341).
  */
 const TP_DOMAIN *
 qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item,
@@ -4968,19 +4960,13 @@ qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const D
     {
       return NULL;
     }
-  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL && qexec_null_decision_open (resolved, item))
-    {
-      *row_reads = true;
-      return NULL;
-    }
   return TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? &tp_Null_domain : domain;
 }
 
 /*
  * qexec_row_domain_counts () - whether a consumer the row gives its domain (qexec_consumer_domain) takes another
- *   domain than the gate's: a string the gate left undecided, a session variable read that left the decision, or a
- *   set-operation column the lists' unification types (#341); these readings are Num_domain_resolve_list's (D-336-E,
- *   D-338-02 -> #343, #337)
+ *   domain than the gate's: a string the gate left undecided, or a session variable read that left the decision
+ *   (#341); these readings are Num_domain_resolve_list's (D-336-E, D-338-02 -> #343)
  */
 bool
 qexec_row_domain_counts (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
@@ -4991,8 +4977,7 @@ qexec_row_domain_counts (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
   const TP_DOMAIN *domain = resolved.table[item->slot].domain;
-  return domain == NULL || !RESOLVED_VOLATILE_HOLDS (resolved, item)
-    || (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL && qexec_null_decision_open (resolved, item));
+  return domain == NULL || !RESOLVED_VOLATILE_HOLDS (resolved, item);
 }
 
 /*
@@ -22543,8 +22528,8 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
  *
  * A key's item is its column's: the gate decided that column once for the execution (#337). A key the row types - a
  * session variable read that left the gate's decision (D-336-E), a string the gate left undecided (D-338-02, #343) -
- * takes its column regu's domain, as develop's late binding did; a set operation's key over branches the gate could
- * not unify takes its list's unified domain (#337).
+ * takes its column regu's domain, as develop's late binding did, or for a set operation's own sort its list's domain,
+ * unified from its branches (#337).
  */
 static int
 qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
@@ -22741,8 +22726,7 @@ qexec_reads_session_variable (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * ite
  *
  * A string the gate left undecided (D-338-02, workspace#343), or a value it could not type (a VARIABLE decision); a
  * decision over a session variable read that left the gate's within the statement, or that had no value when the
- * statement began, which the statement can assign (D-336-E); a set-operation column whose branches the gate could not
- * unify (#337). Everything else is decided before the first row.
+ * statement began, which the statement can assign (D-336-E). Everything else is decided before the first row.
  */
 static bool
 qexec_row_decides (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
@@ -22754,10 +22738,6 @@ qexec_row_decides (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
   const TP_DOMAIN *domain = resolved.table[item->slot].domain;
   if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-    {
-      return true;
-    }
-  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL && qexec_null_decision_open (resolved, item))
     {
       return true;
     }

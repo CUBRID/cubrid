@@ -618,7 +618,6 @@ domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos)
   entry->next = ctx->list_columns;
   ctx->list_columns = entry;
   record->kind = DOMAIN_LOAD_NODE;
-  record->item.flags |= DOMAIN_PLAN_SET_COLUMN;
   record->n_link = 0;
   for (int i = 0; i < 2; i++)
     {
@@ -653,6 +652,30 @@ domain_block_output (XASL_NODE * xasl)
 	}
     }
   return xasl->outptr_list;
+}
+
+/* Every column of a set operation's or a CTE's list is a node over its branches' columns, read or not (#341): the gate
+ * rejects branches it cannot unify before execution (qexec_resolve_gate_node), whether a reader asks for the column
+ * or the list is the statement's result. */
+static void
+domain_walk_set_columns (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
+{
+  /* the list holds the columns of its first branch */
+  XASL_NODE *first = xasl;
+  while (first != NULL && (first->type == UNION_PROC || first->type == DIFFERENCE_PROC
+			   || first->type == INTERSECTION_PROC || first->type == CTE_PROC))
+    {
+      first = first->type == CTE_PROC ? first->proc.cte.non_recursive_part : first->proc.union_.left;
+    }
+  OUTPTR_LIST *output = first == NULL ? NULL : domain_block_output (first);
+  int pos = 0;
+  for (REGU_VARIABLE_LIST col = output == NULL ? NULL : output->valptrp; col != NULL && !ctx->failed; col = col->next)
+    {
+      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  (void) domain_list_column (ctx, xasl, pos++);
+	}
+    }
 }
 
 /* The producer of a TYPE_POSITION regu being walked: the column of the list it reads. */
@@ -1453,6 +1476,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     case INTERSECTION_PROC:
       domain_walk_xasl (ctx, xasl->proc.union_.left);
       domain_walk_xasl (ctx, xasl->proc.union_.right);
+      domain_walk_set_columns (ctx, xasl);
       break;
     case MERGELIST_PROC:
       domain_walk_xasl (ctx, xasl->proc.mergelist.outer_xasl);
@@ -1469,6 +1493,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     case CTE_PROC:
       domain_walk_xasl (ctx, xasl->proc.cte.non_recursive_part);
       domain_walk_xasl (ctx, xasl->proc.cte.recursive_part);
+      domain_walk_set_columns (ctx, xasl);
       break;
     case MERGE_PROC:
       domain_walk_xasl (ctx, xasl->proc.merge.update_xasl);
@@ -2508,7 +2533,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  if ((p->output[0] == r->regu->value.dbvalptr || p->output[1] == r->regu->value.dbvalptr)
 	      && p->item.fixed.domain == r->item.fixed.domain
 	      && p->item.operand_class == r->item.operand_class
-	      && (p->item.flags & ~DOMAIN_PLAN_SET_COLUMN) == r->item.flags && p->item.fail[0] == r->item.fail[0]
+	      && p->item.flags == r->item.flags && p->item.fail[0] == r->item.fail[0]
 	      && !domain_reads_group_concat_value (r, p))
 	    {
 	      r->alias = p;

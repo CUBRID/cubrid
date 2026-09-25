@@ -41,12 +41,9 @@ enum DOMAIN_PLAN_FLAGS
   DOMAIN_PLAN_COLLATION_GATE = 0x100,	/* the type is compiled, the collation is the values': a slot records the bound
 					 * value's domain (C3/C12 slot rows, #336); a node is decided by the gate from
 					 * its operands' decided domains (#338) */
-  DOMAIN_PLAN_VALUE_ARGUMENT = 0x200,	/* a MEDIAN / PERCENTILE whose argument carries a value (a literal, a bind, a
+  DOMAIN_PLAN_VALUE_ARGUMENT = 0x200	/* a MEDIAN / PERCENTILE whose argument carries a value (a literal, a bind, a
 					 * session variable read) through value pointers and list positions: its first
 					 * value is classified as develop does (D-335-10, #337) */
-  DOMAIN_PLAN_SET_COLUMN = 0x400	/* a set-operation or CTE list column over its branches' columns (X-3): a NULL
-					 * decision means the branches did not unify, and the lists' unification types
-					 * it at execution (#337, #341) */
 };
 
 /* What execution must know before it takes a slot's decision in place of a value-driven late binding (#337): a
