@@ -110,7 +110,7 @@ enum DOMAIN_COMPARE_KERNEL
   DOMAIN_COMPARE_DIRECT,	/* comparable as they are: cmpval under the planned collation */
   DOMAIN_COMPARE_CONVERT,	/* the planned converters in develop's order, then cmpval */
   DOMAIN_COMPARE_COLLATIONS,	/* strings whose collations do not merge: develop's -1150 at every row */
-  DOMAIN_COMPARE_OBJECT	/* an OBJECT side: develop's comparison (an OID on the server, OBJECT/OID on the client) */
+  DOMAIN_COMPARE_OBJECT		/* an OBJECT side: develop's comparison (an OID on the server, OBJECT/OID on the client) */
 };
 
 /*

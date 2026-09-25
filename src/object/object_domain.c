@@ -5663,6 +5663,7 @@ tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desire
 }
 
 /* Numeric cells share the legacy formulas; source, destination and mode are compile-time parameters. */
+/* *INDENT-OFF* */
 template <DB_TYPE TYPE> struct tp_numeric_value;
 
 template <> struct tp_numeric_value<DB_TYPE_SHORT>
@@ -6005,6 +6006,7 @@ tp_make_numeric_convert_table (std::index_sequence<I...>)
 
 const DOMAIN_NUMERIC_CONVERTERS tp_numeric_convert_table =
   tp_make_numeric_convert_table (std::make_index_sequence<3 * 9 * 7> {});
+/* *INDENT-ON* */
 
 static TP_DOMAIN_STATUS
 tp_value_convert_blob_to_varchar_core (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *, date_conversion_error *)
@@ -28064,6 +28066,7 @@ for (const auto & entry:names)
     }
   return "unknown";
 }
+
 /*
  * tp_value_coerce_strict () - convert a value to desired domain without loss
  *			       of precision
@@ -30784,8 +30787,8 @@ tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_co
  *    will be set to false.
  */
 static DB_VALUE_COMPARE_RESULT tp_value_compare_counted (const DB_VALUE * value1, const DB_VALUE * value2,
-							   int do_coercion, int total_order, bool * can_compare,
-							   bool count);
+							 int do_coercion, int total_order, bool * can_compare,
+							 bool count);
 
 DB_VALUE_COMPARE_RESULT
 tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
