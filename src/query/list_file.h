@@ -228,7 +228,7 @@ extern int qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, QFILE_TUPLE_DESCRIPTOR * tpl_descr,
 					    QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
-extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
+extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2, bool list1_empty);
 #if !defined(NDEBUG)
 extern void qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);
@@ -256,8 +256,6 @@ extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value (QFILE_TUPLE tpl, int ind
 extern QFILE_TUPLE_VALUE_FLAG qfile_locate_tuple_value_r (QFILE_TUPLE tpl, int index, char **tpl_val, int *val_size);
 extern int qfile_locate_tuple_next_value (OR_BUF * iterator, OR_BUF * buf, QFILE_TUPLE_VALUE_FLAG * flag);
 extern bool qfile_has_next_page (PAGE_PTR page_p);
-extern int qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p,
-					      valptr_list_node * valptr_list_p);
 extern int qfile_set_tuple_column_value (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR curr_page_p,
 					 VPID * vpid_p, QFILE_TUPLE tuple_p, int col_num, DB_VALUE * value_p,
 					 TP_DOMAIN * domain);

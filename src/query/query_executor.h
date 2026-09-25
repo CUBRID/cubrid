@@ -138,6 +138,12 @@ RESOLVED_VOLATILE_HOLDS (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PL
 
 extern const TP_DOMAIN *qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind);
 extern const TP_DOMAIN *qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind);
+extern const TP_DOMAIN *qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled,
+					       const DOMAIN_PLAN_ITEM * item, bool before_rows, bool * row_reads);
+extern bool qexec_row_domain_counts (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);
+extern int qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled);
+extern int qexec_type_open_list_columns (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
+					 valptr_list_node * outptr_list, const VAL_DESCR * vd);
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr, QUERY_ID query_id);

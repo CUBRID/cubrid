@@ -6918,10 +6918,15 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
  * type list.  Regu variables that are hidden columns are not
  * entered as part of the type list because they are not entered
  * in the list file.
+ *
+ * A column the compiler left open takes the plan's domain for this execution (#341, S-14): the list holds that domain
+ * from its first tuple on. Only a column the row types keeps its compiled domain, for the list's first tuples
+ * (qexec_generate_tuple_descriptor): a session variable read (D-336-E) or a string the gate left undecided (D-338-02).
+ * Any other open column is the execution boundary (b).
  */
 int
 qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
-			    qfile_tuple_value_type_list * type_list_p)
+			    qfile_tuple_value_type_list * type_list_p, const VAL_DESCR * vd)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i, count;
@@ -6962,7 +6967,15 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
     {
       if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
-	  type_list_p->domp[i++] = reg_var_p->value.domain;
+	  bool row_reads;
+	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, reg_var_p->value.domain, reg_var_p->value.domain_plan,
+							   true, &row_reads);
+	  if (domain == NULL && !row_reads)
+	    {
+	      db_private_free_and_init (thread_p, type_list_p->domp);
+	      return qexec_domain_unresolved (vd, reg_var_p->value.domain_plan, reg_var_p->value.domain);
+	    }
+	  type_list_p->domp[i++] = domain != NULL ? (TP_DOMAIN *) domain : reg_var_p->value.domain;
 	}
 
       reg_var_p = reg_var_p->next;

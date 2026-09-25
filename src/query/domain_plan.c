@@ -511,7 +511,7 @@ domain_walk_position_list (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST list, X
 }
 
 /* The item of column `pos` of a column list. A list file does not store hidden columns; a sort list numbers the
- * output list with them (qexec_resolve_domains_on_sort_list). */
+ * output list with them (qexec_plan_sort_list_domains). */
 static DOMAIN_PLAN_ITEM *
 domain_column_item (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST columns, int pos, bool skip_hidden)
 {
@@ -616,6 +616,7 @@ domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos)
   entry->next = ctx->list_columns;
   ctx->list_columns = entry;
   record->kind = DOMAIN_LOAD_NODE;
+  record->item.flags |= DOMAIN_PLAN_SET_COLUMN;
   record->n_link = 0;
   for (int i = 0; i < 2; i++)
     {
@@ -1320,6 +1321,54 @@ domain_walk_assignments (DOMAIN_LOAD_CONTEXT * ctx, UPDATE_ASSIGNMENT * assignme
     }
 }
 
+/*
+ * domain_fix_connect_by_probe () - the probe domain of a START WITH ... CONNECT BY hash list scan (#341, S-21)
+ *
+ * The scan coerces its probe values to the first probe item's domain. When the join widened that domain to a float
+ * NUMERIC, the first fixed-precision NUMERIC of the rest list gives its precision and scale, so integers scale the way
+ * the fixed numeric column's hash keys do. Only compiled domains decide this: the load sets it once, where develop's
+ * qexec_execute_connect_by set a copy at every execution.
+ */
+static void
+domain_fix_connect_by_probe (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+  if (spec == NULL || spec->type != TARGET_LIST || spec->s.list_node.list_regu_list_probe == NULL)
+    {
+      return;
+    }
+  REGU_VARIABLE *probe = &spec->s.list_node.list_regu_list_probe->value;
+  if (REGU_VARIABLE_GET_TYPE (probe) != DB_TYPE_NUMERIC || probe->domain == NULL
+      || probe->domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      return;
+    }
+  const TP_DOMAIN *fixed = NULL;
+  for (REGU_VARIABLE_LIST rest = spec->s.list_node.list_regu_list_rest; rest != NULL && fixed == NULL;
+       rest = rest->next)
+    {
+      if (TP_DOMAIN_TYPE (rest->value.domain) == DB_TYPE_NUMERIC
+	  && rest->value.domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  fixed = rest->value.domain;
+	}
+    }
+  if (fixed == NULL)
+    {
+      return;
+    }
+  TP_DOMAIN *domain = tp_domain_copy (probe->domain, false);
+  if (domain == NULL)
+    {
+      ctx->failed = true;
+      return;
+    }
+  domain->precision = fixed->precision;
+  domain->scale = fixed->scale;
+  /* the clone restores original_domain at every clear (qexec_clear_regu_var) */
+  probe->domain = probe->original_domain = tp_domain_cache (domain);
+}
+
 static void
 domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 {
@@ -1330,6 +1379,11 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   XASL_NODE *previous_block = ctx->block;
   ctx->block = xasl;
   xasl->domain_plan = ctx->plan;
+  if (xasl->type == CONNECTBY_PROC)
+    {
+      /* before its specs are walked: the probe item records the domain the scan coerces to */
+      domain_fix_connect_by_probe (ctx, xasl);
+    }
   domain_walk_xasl (ctx, xasl->aptr_list);
   domain_walk_xasl (ctx, xasl->bptr_list);
   domain_walk_xasl (ctx, xasl->dptr_list);
@@ -2398,7 +2452,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  if ((p->output[0] == r->regu->value.dbvalptr || p->output[1] == r->regu->value.dbvalptr)
 	      && p->item.fixed.domain == r->item.fixed.domain
 	      && p->item.operand_class == r->item.operand_class
-	      && p->item.flags == r->item.flags && p->item.fail[0] == r->item.fail[0]
+	      && (p->item.flags & ~DOMAIN_PLAN_SET_COLUMN) == r->item.flags && p->item.fail[0] == r->item.fail[0]
 	      && !domain_reads_group_concat_value (r, p))
 	    {
 	      r->alias = p;

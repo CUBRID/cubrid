@@ -51,7 +51,6 @@
 #if defined (SERVER_MODE)
 #include "bit.h"
 #endif /* SERVER_MODE */
-#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -882,17 +881,23 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
  *   return:
  *   list_id1(in/out): Destination list identifier
  *   list_id2(in): Source list identifier
+ *   list1_empty(in): the rows list_id1 stands for are none (a destination opened with a branch's types: that branch's)
  *
  * Note: For every destination type which is DB_TYPE_NULL,
  *       set it to the source type.
  *       This should probably set an error for non-null mismatches.
+ *
+ * A list opens with the plan's domains (#341, S-15): an empty side contributes no values, so its domain does not
+ * constrain the other side's, as its columns did not when no first tuple typed them (develop's DB_TYPE_VARIABLE).
+ * A column its first tuples type (qexec_type_open_list_columns) but no value resolved still holds only NULLs.
  */
 int
-qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
+qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p, bool list1_empty)
 {
   int i;
   int max_count = list_id1_p->type_list.type_cnt;
   DB_TYPE type1, type2;
+  const bool list2_empty = list_id2_p->tuple_cnt == 0;
 
   if (max_count != list_id2_p->type_list.type_cnt)
     {
@@ -908,21 +913,16 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
       type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
       type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
 
-      if (type1 == DB_TYPE_VARIABLE)
+      if (type1 == DB_TYPE_VARIABLE || (list1_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
 	{
-	  /* The domain of list1 is not resolved, because there is no tuple. */
-	  if (perfmon_is_perf_tracking ())
-	    {
-	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	    }
-	  assert_release (list_id1_p->tuple_cnt == 0);
+	  /* list1 holds no value of this column */
 	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
 	  continue;
 	}
-      else if (type2 == DB_TYPE_VARIABLE)
+      else if (type2 == DB_TYPE_VARIABLE
+	       || (list2_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
 	{
-	  /* The domain of list2 is not resolved, because there is no tuple. */
-	  assert_release (list_id2_p->tuple_cnt == 0);
+	  /* list2 holds no value of this column */
 	  continue;
 	}
 
@@ -2777,7 +2777,7 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       goto error;
     }
 
-  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p) != NO_ERROR)
+  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p, lhs_file_p->tuple_cnt == 0) != NO_ERROR)
     {
       goto error;
     }
@@ -3398,7 +3398,7 @@ qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1_p, QFILE_LIS
 	  goto error;
 	}
 
-      if (qfile_unify_types (result_list_id_p, tail) != NO_ERROR)
+      if (qfile_unify_types (result_list_id_p, tail, false) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4507,18 +4507,9 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
 
-	  if (p->pos_descr.dom->type->id == DB_TYPE_VARIABLE)
-	    {
-	      if (perfmon_is_perf_tracking ())
-	        {
-	          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	        }
-	      subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
-	    }
-	  else
-	    {
-	      subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
-	    }
+	  /* #341 (S-16): the key's domain is the plan's (a key the row types, D-336-E / D-338-02, took its column's once a
+	   * value resolved it; a key no value resolved compares only NULLs) */
+	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
 	  subkey->is_nulls_first = (p->s_nulls == S_NULLS_LAST) ? 0 : 1;
@@ -7038,93 +7029,6 @@ bool
 qfile_has_next_page (PAGE_PTR page_p)
 {
   return (QFILE_GET_NEXT_PAGE_ID (page_p) != NULL_PAGEID && QFILE_GET_NEXT_PAGE_ID (page_p) != NULL_PAGEID_IN_PROGRESS);
-}
-
-/*
- * qfile_update_domains_on_type_list() - Update domain pointers belongs to
- *   type list of a given list file
- *  return: error code
- *
- */
-int
-qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, valptr_list_node * valptr_list_p)
-{
-  REGU_VARIABLE_LIST reg_var_p;
-  int i, count = 0;
-
-  assert (list_id_p != NULL);
-
-  list_id_p->is_domain_resolved = true;
-
-  reg_var_p = valptr_list_p->valptrp;
-
-  for (i = 0; i < valptr_list_p->valptr_cnt; i++, reg_var_p = reg_var_p->next)
-    {
-      if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
-	{
-	  continue;
-	}
-
-      if (count >= list_id_p->type_list.type_cnt)
-	{
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  goto exit_on_error;
-	}
-
-      if (TP_DOMAIN_TYPE (list_id_p->type_list.domp[count]) == DB_TYPE_VARIABLE)
-	{
-	  if (TP_DOMAIN_TYPE (reg_var_p->value.domain) == DB_TYPE_VARIABLE)
-	    {
-	      /* In this case, we cannot resolve the value's domain. We will try to do for the next tuple. */
-	      if (list_id_p->is_domain_resolved)
-		{
-		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-		  list_id_p->is_domain_resolved = false;
-		}
-	    }
-	  else
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
-	    }
-	}
-
-      if (list_id_p->type_list.domp[count]->collation_flag != TP_DOMAIN_COLL_NORMAL)
-	{
-	  if (reg_var_p->value.domain->collation_flag != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      /* In this case, we cannot resolve the value's domain. We will try to do for the next tuple. */
-	      if (list_id_p->is_domain_resolved)
-		{
-		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-		  list_id_p->is_domain_resolved = false;
-		}
-	    }
-	  else
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
-	    }
-	}
-
-      count++;
-    }
-
-  /* The number of columns should be same. */
-  if (count != list_id_p->type_list.type_cnt)
-    {
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      goto exit_on_error;
-    }
-
-  return NO_ERROR;
-
-exit_on_error:
-
-  list_id_p->is_domain_resolved = false;
-  return ER_FAILED;
 }
 
 /*

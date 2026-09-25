@@ -1020,13 +1020,14 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 
   memset (coerce_domains, 0, domain_cnt * sizeof (TP_DOMAIN *));
 
-  /* This code references tp_infer_common_domain but reduces unnecessary calls to tp_domain_new. */
+  /* This code references tp_infer_common_domain but reduces unnecessary calls to tp_domain_new.
+   * #341 (S-22): the key columns' domains are the plan's - the join's lists opened with them (qdata_get_valptr_type_list)
+   * - so the common domain follows from decisions made before any row. */
   for (domain_index = 0; domain_index < domain_cnt; domain_index++)
     {
       outer_value_index = outer_value_indexes[domain_index];
       inner_value_index = inner_value_indexes[domain_index];
 
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
       outer_domains[domain_index] = outer_list_id->type_list.domp[outer_value_index];
       inner_domains[domain_index] = inner_list_id->type_list.domp[inner_value_index];
       assert (outer_domains[domain_index] != NULL);

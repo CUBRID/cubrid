@@ -38,7 +38,6 @@
 #include "system_parameter.h"
 #include "btree_load.h"
 #include "perf_monitor.h"
-#include "thread_manager.hpp"
 #include "query_manager.h"
 #include "query_evaluator.h"
 #include "query_opfunc.h"
@@ -205,10 +204,7 @@ static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static bool scan_apply_list_scan_gate_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp);
-static void resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list);
-static void resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
-					    QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list);
+static int scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp);
 static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * multi_range_opt,
 					       bool use_range_opt, int max_size);
 static int scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_VALUE * key, OID * oid,
@@ -727,7 +723,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
       goto exit_on_error;
     }
 
-  if (qdata_get_valptr_type_list (thread_p, output_val_list, indx_cov->type_list) != NO_ERROR)
+  if (qdata_get_valptr_type_list (thread_p, output_val_list, indx_cov->type_list, vd) != NO_ERROR)
     {
       err = ER_FAILED;
       goto exit_on_error;
@@ -7171,9 +7167,9 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
 
-  if (scan_apply_list_scan_gate_domains (scan_id->vd, llsidp))
+  if (scan_plan_list_scan_domains (thread_p, scan_id->vd, llsidp) != NO_ERROR)
     {
-      resolve_domains_on_list_scan (llsidp, scan_id->val_list);
+      return S_ERROR;
     }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
@@ -8217,36 +8213,48 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt)
 }
 
 /*
- * scan_apply_list_scan_gate_domains () - the gate's decisions for the positions and predicate operands of a list scan
- *   (#337)
- *   return: true when one of them still waits for the list's values (resolve_domains_on_list_scan, develop's late
- *	     binding), false when the plan decided them all
+ * scan_plan_list_scan_domains () - the domains of a list scan's positions and predicate operands the compiler left
+ *   open, read from the plan (#337, #341 S-20)
+ *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b))
  *
  * A list position reads its list's column and a value pointer its producer: the gate decided both once for the
- * execution, so the per-row late binding below has nothing left to resolve.
+ * execution. A position over a column the row types - a session variable read that left the gate's decision
+ * (D-336-E), a string the gate left undecided (D-338-02, #343) - reads what the list's first tuples typed; a value
+ * pointer of that kind is read by fetch from its value (#340).
  */
-static bool
-scan_apply_list_scan_gate_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
+static int
+scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
 {
-  bool pending = false;
   regu_variable_list_node *lists[] = { llsidp->scan_pred.regu_list, llsidp->rest_regu_list };
-  for (regu_variable_list_node * list:lists)
+  for (int l = 0; l < 2; l++)
     {
-      for (regu_variable_list_node * scan_regu = list; scan_regu != NULL; scan_regu = scan_regu->next)
+      for (regu_variable_list_node * scan_regu = lists[l]; scan_regu != NULL; scan_regu = scan_regu->next)
 	{
+	  QFILE_TUPLE_VALUE_POSITION *pos_descr = &scan_regu->value.value.pos_descr;
 	  if (scan_regu->value.type != TYPE_POSITION
 	      || (TP_DOMAIN_TYPE (scan_regu->value.domain) != DB_TYPE_VARIABLE
-		  && TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain) == TP_DOMAIN_COLL_NORMAL))
+		  && TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain) == TP_DOMAIN_COLL_NORMAL
+		  && TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE
+		  && TP_DOMAIN_COLLATION_FLAG (pos_descr->dom) == TP_DOMAIN_COLL_NORMAL))
 	    {
 	      continue;
 	    }
-	  const TP_DOMAIN *planned = qexec_plan_domain (vd, scan_regu->value.domain_plan, false);
+	  bool row_reads;
+	  const TP_DOMAIN *planned = qexec_consumer_domain (vd, NULL, scan_regu->value.domain_plan, false, &row_reads);
+	  if (planned == NULL && row_reads && llsidp->list_id != NULL
+	      && pos_descr->pos_no < llsidp->list_id->type_list.type_cnt)
+	    {
+	      if (qexec_row_domain_counts (vd, scan_regu->value.domain_plan))
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
+		}
+	      planned = llsidp->list_id->type_list.domp[pos_descr->pos_no];
+	    }
 	  if (planned == NULL)
 	    {
-	      pending = true;
-	      continue;
+	      return qexec_domain_unresolved (vd, scan_regu->value.domain_plan, pos_descr->dom);
 	    }
-	  scan_regu->value.value.pos_descr.dom = (TP_DOMAIN *) planned;
+	  pos_descr->dom = (TP_DOMAIN *) planned;
 	  scan_regu->value.domain = (TP_DOMAIN *) planned;
 	}
     }
@@ -8255,165 +8263,19 @@ scan_apply_list_scan_gate_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
     {
       COMP_EVAL_TERM *comp = &llsidp->scan_pred.pred_expr->pe.m_eval_term.et.et_comp;
       REGU_VARIABLE *operands[] = { comp->lhs, comp->rhs };
-      for (REGU_VARIABLE * operand:operands)
+      for (int k = 0; k < 2; k++)
 	{
-	  if (operand == NULL || (TP_DOMAIN_TYPE (operand->domain) != DB_TYPE_VARIABLE
-				  && TP_DOMAIN_COLLATION_FLAG (operand->domain) == TP_DOMAIN_COLL_NORMAL))
+	  REGU_VARIABLE *operand = operands[k];
+	  bool row_reads;
+	  const TP_DOMAIN *planned = operand == NULL ? NULL
+	    : qexec_consumer_domain (vd, operand->domain, operand->domain_plan, false, &row_reads);
+	  if (planned != NULL)
 	    {
-	      continue;
-	    }
-	  const TP_DOMAIN *planned = qexec_plan_domain (vd, operand->domain_plan, false);
-	  if (planned == NULL)
-	    {
-	      pending = true;
-	      continue;
-	    }
-	  operand->domain = (TP_DOMAIN *) planned;
-	}
-    }
-  return pending;
-}
-
-/*
- * resolve_domains_on_list_scan () - scans the structures in a list scan id
- *   and resolves the domains in sub-components like regu variables from scan
- *   predicates;
- *
- *   llsidp (in/out): pointer to list scan id structure
- *   ref_val_list (in): list of DB_VALUEs (val_list_node) used as reference
- *
- *  Note : this function is used in context of HV late binding
- */
-static void
-resolve_domains_on_list_scan (LLIST_SCAN_ID * llsidp, val_list_node * ref_val_list)
-{
-  regu_variable_list_node *scan_regu = NULL;
-
-  if (perfmon_is_perf_tracking ())
-    {
-      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-    }
-
-  assert (llsidp != NULL);
-
-  if (llsidp->list_id == NULL || ref_val_list == NULL)
-    {
-      return;
-    }
-
-  /* resolve domains on regu_list of scan predicate */
-  for (scan_regu = llsidp->scan_pred.regu_list; scan_regu != NULL; scan_regu = scan_regu->next)
-    {
-      if ((TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
-	   || TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain)) && scan_regu->value.type == TYPE_POSITION)
-	{
-	  int pos = scan_regu->value.value.pos_descr.pos_no;
-	  TP_DOMAIN *new_dom = NULL;
-
-	  assert (pos < llsidp->list_id->type_list.type_cnt);
-	  new_dom = llsidp->list_id->type_list.domp[pos];
-
-	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (new_dom) != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      continue;
-	    }
-
-	  scan_regu->value.value.pos_descr.dom = new_dom;
-	  scan_regu->value.domain = new_dom;
-	}
-    }
-
-  /* resolve domains on rest_regu_list of scan predicate */
-  for (scan_regu = llsidp->rest_regu_list; scan_regu != NULL; scan_regu = scan_regu->next)
-    {
-      if ((TP_DOMAIN_TYPE (scan_regu->value.domain) == DB_TYPE_VARIABLE
-	   || TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain) != TP_DOMAIN_COLL_NORMAL)
-	  && scan_regu->value.type == TYPE_POSITION)
-	{
-	  int pos = scan_regu->value.value.pos_descr.pos_no;
-	  TP_DOMAIN *new_dom = NULL;
-
-	  assert (pos < llsidp->list_id->type_list.type_cnt);
-	  new_dom = llsidp->list_id->type_list.domp[pos];
-
-	  if (TP_DOMAIN_TYPE (new_dom) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (new_dom) != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      continue;
-	    }
-	  scan_regu->value.value.pos_descr.dom = new_dom;
-	  scan_regu->value.domain = new_dom;
-	}
-    }
-
-  /* resolve domains on predicate expression of scan predicate */
-  if (llsidp->scan_pred.pred_expr == NULL)
-    {
-      return;
-    }
-
-  if (llsidp->scan_pred.pred_expr->type == T_EVAL_TERM)
-    {
-      EVAL_TERM ev_t = llsidp->scan_pred.pred_expr->pe.m_eval_term;
-
-      if (ev_t.et_type == T_COMP_EVAL_TERM)
-	{
-	  if (ev_t.et.et_comp.lhs != NULL
-	      && (TP_DOMAIN_TYPE (ev_t.et.et_comp.lhs->domain) == DB_TYPE_VARIABLE
-		  || TP_DOMAIN_COLLATION_FLAG (ev_t.et.et_comp.lhs->domain) != TP_DOMAIN_COLL_NORMAL))
-	    {
-	      resolve_domain_on_regu_operand (ev_t.et.et_comp.lhs, ref_val_list, &(llsidp->list_id->type_list));
-	    }
-	  if (ev_t.et.et_comp.rhs != NULL
-	      && (TP_DOMAIN_TYPE (ev_t.et.et_comp.rhs->domain) == DB_TYPE_VARIABLE
-		  || TP_DOMAIN_COLLATION_FLAG (ev_t.et.et_comp.rhs->domain) != TP_DOMAIN_COLL_NORMAL))
-	    {
-	      resolve_domain_on_regu_operand (ev_t.et.et_comp.rhs, ref_val_list, &(llsidp->list_id->type_list));
+	      operand->domain = (TP_DOMAIN *) planned;
 	    }
 	}
     }
-}
-
-/*
- * resolve_domain_on_regu_operand () - resolves a domain on a regu variable
- *    from a scan list; helper functions for 'resolve_domains_on_list_scan'
- *
- *   regu_var (in/out): regulator variable with unresolved domain
- *   ref_val_list (in): list of DB_VALUEs (val_list_node) used for cross-checking
- *   p_type_list (in): list of domains used as reference
- *
- *  Note : this function is used in context of HV late binding
- */
-static void
-resolve_domain_on_regu_operand (REGU_VARIABLE * regu_var, val_list_node * ref_val_list,
-				QFILE_TUPLE_VALUE_TYPE_LIST * p_type_list)
-{
-  assert (regu_var != NULL);
-  assert (ref_val_list != NULL);
-
-  if (regu_var->type == TYPE_CONSTANT)
-    {
-      QPROC_DB_VALUE_LIST value_list;
-      int pos = 0;
-      bool found = false;
-
-      /* search in ref_val_list for the corresponding DB_VALUE */
-      for (value_list = ref_val_list->valp; value_list != NULL; value_list = value_list->next, pos++)
-	{
-	  if (regu_var->value.dbvalptr == ref_val_list->valp->val)
-	    {
-	      found = true;
-	      break;
-	    }
-	}
-
-      if (found)
-	{
-	  assert (pos < p_type_list->type_cnt);
-	  regu_var->domain = p_type_list->domp[pos];
-	}
-    }
+  return NO_ERROR;
 }
 
 /*
@@ -8869,9 +8731,9 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
 
-  if (scan_apply_list_scan_gate_domains (scan_id->vd, llsidp))
+  if (scan_plan_list_scan_domains (thread_p, scan_id->vd, llsidp) != NO_ERROR)
     {
-      resolve_domains_on_list_scan (llsidp, scan_id->val_list);
+      return S_ERROR;
     }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)

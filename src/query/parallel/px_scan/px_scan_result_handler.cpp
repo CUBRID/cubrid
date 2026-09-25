@@ -242,7 +242,7 @@ namespace parallel_scan
 	  qfile_tuple_value_type_list type_list;
 	  int err_code = NO_ERROR;
 	  QFILE_LIST_ID *list_id;
-	  err_code = qdata_get_valptr_type_list (thread_p, outptr_list, &type_list);
+	  err_code = qdata_get_valptr_type_list (thread_p, outptr_list, &type_list, vd);
 	  if (err_code != NO_ERROR)
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
@@ -927,7 +927,13 @@ namespace parallel_scan
 
 	if (unlikely (!m_.is_list_id_domain_resolved))
 	  {
-	    qfile_update_domains_on_type_list (thread_p, tl.writer_result_p, input);
+	    /* #341: the worker's list opened with the plan's domains; only a column the row types waits here */
+	    if (qexec_type_open_list_columns (thread_p, tl.writer_result_p, input, tl.vd) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return false;
+	      }
 	    m_.is_list_id_domain_resolved = tl.writer_result_p->is_domain_resolved;
 	  }
 	if (unlikely (!tl.val_list_domain_resolved))

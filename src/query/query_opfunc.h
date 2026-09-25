@@ -85,7 +85,7 @@ extern void qdata_assert_resolved_arith (int opcode, int n_operands, const DB_TY
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
-				       qfile_tuple_value_type_list * type_list);
+				       qfile_tuple_value_type_list * type_list, const val_descr * vd);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
 				    QFILE_TUPLE tpl);
 extern int qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list,

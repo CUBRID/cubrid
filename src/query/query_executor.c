@@ -677,8 +677,9 @@ static DB_VALUE_COMPARE_RESULT bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOM
 						  int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 						 int *start_colp, int collation);
-static void qexec_resolve_domains_on_sort_list (const VAL_DESCR * vd, SORT_LIST * order_list,
-						REGU_VARIABLE_LIST reference_regu_list);
+static int qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
+					 REGU_VARIABLE_LIST reference_regu_list,
+					 const QFILE_TUPLE_VALUE_TYPE_LIST * list_types);
 static void qexec_resolve_domains_for_group_by (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist,
 						OUTPTR_LIST * reference_out_list);
 static bool qexec_apply_group_by_gate_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist);
@@ -1003,34 +1004,10 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
       goto exit_on_error;
     }
 
-  if (list_id->is_domain_resolved == false)
+  if (list_id->is_domain_resolved == false
+      && qexec_type_open_list_columns (thread_p, list_id, outptr_list, vd) != NO_ERROR)
     {
-      /* #337: a column the gate decided takes that domain; only the others wait for their values below. A column
-       * holding a NULL bind is NULL-typed rather than left open, so a set operation or a CTE unifies it with the
-       * other branch (qfile_unify_types) the way it does an empty branch (D6). */
-      REGU_VARIABLE_LIST column = outptr_list->valptrp;
-      for (int i = 0; column != NULL && i < list_id->type_list.type_cnt; column = column->next)
-	{
-	  if (REGU_VARIABLE_IS_FLAGED (&column->value, REGU_VARIABLE_HIDDEN_COLUMN))
-	    {
-	      continue;
-	    }
-	  TP_DOMAIN *listed = list_id->type_list.domp[i];
-	  if (TP_DOMAIN_TYPE (listed) == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (listed) != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      const TP_DOMAIN *planned = qexec_plan_domain (vd, column->value.domain_plan, true);
-	      if (planned != NULL)
-		{
-		  list_id->type_list.domp[i] = (TP_DOMAIN *) planned;
-		}
-	    }
-	  i++;
-	}
-      /* Resolve DB_TYPE_VARIABLE domains. It will be done when generating the first tuple. */
-      if (qfile_update_domains_on_type_list (thread_p, list_id, outptr_list) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
     }
 
   return status;
@@ -4954,6 +4931,175 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
   return domain;
 }
 
+/* Whether a NULL decision leaves the domain to execution instead of meaning NULL values (#341): a set-operation or CTE
+ * column whose branches the gate could not unify, which the lists' unification types (#337); a LEAD / LAG over a
+ * NULL operand, which still returns its default for the rows past its window's end. */
+static bool
+qexec_null_decision_open (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
+{
+  const DOMAIN_PLAN *plan = resolved.plan;
+  const int node = plan->slot_gate_node[item->slot];
+  if (node < 0)
+    {
+      return false;
+    }
+  const DOMAIN_PLAN_ITEM *producer = plan->gate_nodes[node];
+  const DOMAIN_PLAN_ITEM_COLD *cold = &plan->items_cold[producer - plan->items];
+  return (producer->flags & DOMAIN_PLAN_SET_COLUMN)
+    || (cold->ctx == DOMAIN_CTX_ANALYTIC && (cold->opcode == PT_LEAD || cold->opcode == PT_LAG));
+}
+
+/*
+ * qexec_consumer_domain () - the domain a derived consumer takes for this execution: a list column, a sort key, a list
+ *   position, an aggregate's list (#341)
+ *   return: the domain; NULL when the row gives it (*row_reads) or when the plan has no answer (the boundary (b))
+ *   vd(in): the execution's value descriptor
+ *   compiled(in): the consumer's compiled domain
+ *   item(in): its plan item
+ *   before_rows(in): the consumer takes its domain before any row forms (a list file it opens), not after its rows
+ *   row_reads(out): the plan hands the domain to the row: a decision over a session variable read, whose type may
+ *		     change within the statement (D-336-E), or a string the gate left undecided (D-338-02, #343)
+ *
+ * A compiled domain that fixes the value's type and collation is the consumer's. Otherwise the plan's: the gate's
+ * decision, or the domain the load derived from the producer (qexec_plan_domain). A producer the gate decided has no
+ * value holds only NULLs - a NULL bind, a node over one (#340 D-340-01: a value there is the fetch boundary) - so its
+ * consumers take the NULL domain, as a NULL bind's list column does (#337, D6). A decision over a session variable read
+ * holds until a read leaves it; before any row it cannot be known to hold, so the row gives it then. A set-operation
+ * column whose branches the gate could not unify has no decision either: the lists' unification gives its domain,
+ * the non-empty branch's (#337, domain_resolve_list_column).
+ */
+const TP_DOMAIN *
+qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item,
+		       bool before_rows, bool * row_reads)
+{
+  *row_reads = false;
+  if (compiled != NULL && TP_DOMAIN_TYPE (compiled) != DB_TYPE_VARIABLE
+      && TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_NORMAL)
+    {
+      return compiled;
+    }
+  if (item == NULL)
+    {
+      return NULL;
+    }
+  if (item->slot < 0)
+    {
+      return qexec_plan_domain (vd, item, false);
+    }
+  if (vd == NULL || vd->xasl_state == NULL || !RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item))
+    {
+      return NULL;
+    }
+  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  const TP_DOMAIN *domain = resolved.table[item->slot].domain;
+  if (domain == NULL
+      || ((resolved.plan->slot_flags[item->slot] & DOMAIN_SLOT_VOLATILE)
+	  && (before_rows || !RESOLVED_VOLATILE_HOLDS (resolved, item))))
+    {
+      *row_reads = true;
+      return NULL;
+    }
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+    {
+      return NULL;
+    }
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL && qexec_null_decision_open (resolved, item))
+    {
+      *row_reads = true;
+      return NULL;
+    }
+  return TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? &tp_Null_domain : domain;
+}
+
+/*
+ * qexec_row_domain_counts () - whether a consumer the row gives its domain (qexec_consumer_domain) takes another
+ *   domain than the gate's: a string the gate left undecided, a session variable read that left the decision, or a
+ *   set-operation column the lists' unification types (#341); these readings are Num_domain_resolve_list's (D-336-E,
+ *   D-338-02 -> #343, #337)
+ */
+bool
+qexec_row_domain_counts (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  if (vd == NULL || vd->xasl_state == NULL || item == NULL || !RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item))
+    {
+      return true;
+    }
+  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  const TP_DOMAIN *domain = resolved.table[item->slot].domain;
+  return domain == NULL || !RESOLVED_VOLATILE_HOLDS (resolved, item)
+    || (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL && qexec_null_decision_open (resolved, item));
+}
+
+/*
+ * qexec_type_open_list_columns () - a list's first tuples type the columns the row types (#341, S-13)
+ *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED at an open column the plan should have typed
+ *   list_id(in/out): the list whose tuples are being generated
+ *   outptr_list(in): the regus producing its columns
+ *   vd(in): the execution's value descriptor
+ *
+ * The list opened with the plan's domains (qdata_get_valptr_type_list): only a column the row types kept its compiled
+ * domain there, a session variable read (D-336-E) or a string the gate left undecided (D-338-02, #343). As develop's
+ * late binding did, such a column takes its regu's domain once a value resolved it; the list is resolved when no column
+ * is open any more.
+ */
+int
+qexec_type_open_list_columns (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, VALPTR_LIST * outptr_list,
+			      const VAL_DESCR * vd)
+{
+  bool open = false;
+  REGU_VARIABLE_LIST column = outptr_list->valptrp;
+  for (int i = 0; column != NULL && i < list_id->type_list.type_cnt; column = column->next)
+    {
+      if (REGU_VARIABLE_IS_FLAGED (&column->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  continue;
+	}
+      TP_DOMAIN **listed = &list_id->type_list.domp[i++];
+      if (TP_DOMAIN_TYPE (*listed) != DB_TYPE_VARIABLE && TP_DOMAIN_COLLATION_FLAG (*listed) == TP_DOMAIN_COLL_NORMAL)
+	{
+	  continue;
+	}
+      bool row_reads;
+      (void) qexec_consumer_domain (vd, NULL, column->value.domain_plan, true, &row_reads);
+      if (!row_reads)
+	{
+	  return qexec_domain_unresolved (vd, column->value.domain_plan, *listed);
+	}
+      TP_DOMAIN *regu_domain = column->value.domain;
+      if (TP_DOMAIN_TYPE (regu_domain) == DB_TYPE_VARIABLE
+	  || TP_DOMAIN_COLLATION_FLAG (regu_domain) != TP_DOMAIN_COLL_NORMAL)
+	{
+	  /* no value resolved it yet: the next tuple tries again */
+	  open = true;
+	  continue;
+	}
+      if (qexec_row_domain_counts (vd, column->value.domain_plan))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
+	}
+      *listed = regu_domain;
+    }
+  list_id->is_domain_resolved = !open;
+  return NO_ERROR;
+}
+
+/*
+ * qexec_domain_unresolved () - the execution boundary (b) (interface section 6): a consumer the plan should have
+ *   decided has no domain (#341)
+ *   return: ER_QPROC_DOMAIN_UNRESOLVED; optdebug stops here
+ */
+int
+qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled)
+{
+  const DOMAIN_PLAN *plan = vd != NULL && vd->xasl_state != NULL ? vd->xasl_state->resolved.plan : NULL;
+  assert (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
+	  item != NULL && plan != NULL && item >= plan->items && item < plan->items + plan->n_items
+	  ? (int) (item - plan->items) : -1,
+	  pr_type_name (compiled != NULL ? TP_DOMAIN_TYPE (compiled) : DB_TYPE_NULL));
+  return ER_QPROC_DOMAIN_UNRESOLVED;
+}
+
 /* The connection owns the gate block and all cloned payloads, including
  * secondary references. The input may alias an SA client's host variables. */
 void
@@ -5442,10 +5588,18 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
       outptr_list = xasl->outptr_list;
     }
 
-  /* late binding : resolve sort list */
+  /* the sort keys the compiler left open: the plan's domains */
   if (outptr_list != NULL)
     {
-      qexec_resolve_domains_on_sort_list (&xasl_state->vd, order_list, outptr_list->valptrp);
+      error = qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, order_list, outptr_list->valptrp, NULL);
+    }
+  else
+    {
+      error = qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, order_list, NULL, &list_id->type_list);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   if (order_list == NULL && option != Q_DISTINCT)
@@ -6789,7 +6943,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
     QFILE_TUPLE_VALUE_TYPE_LIST output_type_list;
     QFILE_LIST_ID *output_list_id;
 
-    if (qdata_get_valptr_type_list (thread_p, buildlist->g_outptr_list, &output_type_list) != NO_ERROR)
+    if (qdata_get_valptr_type_list (thread_p, buildlist->g_outptr_list, &output_type_list, &xasl_state->vd) != NO_ERROR)
       {
 	GOTO_EXIT_ON_ERROR;
       }
@@ -16622,7 +16776,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
       {
 	if (xasl->list_id->type_list.type_cnt == 0)
 	  {
-	    if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+	    if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list, &xasl_state->vd) != NO_ERROR)
 	      {
 		if (type_list.domp)
 		  {
@@ -16674,7 +16828,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
 
 	if (xasl->list_id->type_list.type_cnt == 0)
 	  {
-	    if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+	    if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list, &xasl_state->vd) != NO_ERROR)
 	      {
 		if (type_list.domp)
 		  {
@@ -16724,7 +16878,7 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
       {
 	if (xasl->list_id->type_list.type_cnt == 0)
 	  {
-	    if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+	    if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list, &xasl_state->vd) != NO_ERROR)
 	      {
 		if (type_list.domp)
 		  {
@@ -16891,7 +17045,7 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   else
     {
       /* a list of one tuple with a single value needs to be produced */
-      if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+      if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list, &xasl_state->vd) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -19250,61 +19404,13 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (xasl->spec_list->type == TARGET_LIST && xasl->spec_list->s.list_node.list_regu_list_probe)
     {
       regu_list = xasl->spec_list->s.list_node.list_regu_list_probe;
-      REGU_VARIABLE_LIST probe_regu = regu_list;	/* Save first probe item before loop */
 
       while (regu_list)
 	{
 	  qexec_replace_prior_regu_vars (thread_p, &regu_list->value, xasl);
 	  regu_list = regu_list->next;
 	}
-
-      /* Adjust probe domain precision/scale from rest_regu_list for hash list scan */
-      if (probe_regu && xasl->spec_list->s.list_node.list_regu_list_rest)
-	{
-	  REGU_VARIABLE_LIST rest_regu_numeric = NULL;
-
-	  /* Find first numeric item in rest_regu_list with fixed precision */
-	  for (REGU_VARIABLE_LIST rest_iter = xasl->spec_list->s.list_node.list_regu_list_rest;
-	       rest_iter != NULL; rest_iter = rest_iter->next)
-	    {
-	      if (TP_DOMAIN_TYPE (rest_iter->value.domain) == DB_TYPE_NUMERIC &&
-		  rest_iter->value.domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
-		{
-		  rest_regu_numeric = rest_iter;
-		  break;
-		}
-	    }
-
-	  /* Adjust first numeric probe item if found */
-	  if (rest_regu_numeric)
-	    {
-	      DB_TYPE vtype1 = REGU_VARIABLE_GET_TYPE (&probe_regu->value);
-
-	      if (vtype1 == DB_TYPE_NUMERIC &&
-		  probe_regu->value.domain && probe_regu->value.domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
-		{
-		  /* in START WITH ... CONNECT BY, join and expression evaluation may widen
-		   * probe_regu_list domain to float numeric.
-		   *
-		   * since tp_value_coerce() always casts values to the probe domain,
-		   * the cast behavior depends on probe_regu_list->value.domain (vtype1's domain).
-		   * when the probe domain is float numeric, integer values are not scaled,
-		   * which can produce different hash keys from fixed numeric columns.
-		   *
-		   * to avoid this mismatch, restore precision/scale from rest_regu_list
-		   * when it represents a fixed numeric domain.
-		   */
-		  TP_DOMAIN *new_domain = tp_domain_copy (probe_regu->value.domain, false);
-		  if (new_domain != NULL)
-		    {
-		      new_domain->precision = rest_regu_numeric->value.domain->precision;
-		      new_domain->scale = rest_regu_numeric->value.domain->scale;
-		      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-		      probe_regu->value.domain = new_domain;
-		    }
-		}
-	    }
-	}
+      /* the probe domain the hash list scan coerces to was fixed at load (#341, S-21: domain_fix_connect_by_probe) */
     }
 
   if (xasl->spec_list->access == ACCESS_METHOD_INDEX && xasl->spec_list->indexptr)
@@ -19320,7 +19426,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     }
 
   /* get the domains for the list files */
-  if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+  if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list, &xasl_state->vd) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -20083,7 +20189,8 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	  if (first_iteration)
 	    {
 	      /* unify list_id types after the first execution of the recursive part */
-	      if (qfile_unify_types (non_recursive_part->list_id, recursive_part->list_id) != NO_ERROR)
+	      if (qfile_unify_types (non_recursive_part->list_id, recursive_part->list_id,
+				     non_recursive_part->list_id->tuple_cnt == 0) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -21246,7 +21353,7 @@ qexec_start_connect_by_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   QFILE_LIST_ID *t_list_id = NULL;
   CONNECTBY_PROC_NODE *connect_by = &xasl->proc.connect_by;
 
-  if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list) != NO_ERROR)
+  if (qdata_get_valptr_type_list (thread_p, xasl->outptr_list, &type_list, &xasl_state->vd) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -22451,59 +22558,58 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 }
 
 /*
- * qexec_resolve_domains_on_sort_list () - checks if the domains in the
- *	'order_list' are all solved, and if any is still unresolved (VARIABLE)
- *	it will be replaced with the domain of corresponding element from
- *      'reference_regu_list'
- * order_list(in/out): sort list to be checked, may be empty (NULL)
- * reference_regu_list(in): reference list of regu variable with concrete
- *			    domains
+ * qexec_plan_sort_list_domains () - the domains of the sort keys the compiler left open, read from the plan once the
+ *   sorted list is built (#341, S-17)
+ *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b))
+ *   vd(in): the execution's value descriptor
+ *   order_list(in/out): the sort list; may be NULL
+ *   reference_regu_list(in): the regus producing the sorted list's columns, numbered as the keys' positions; NULL for
+ *			      a set operation, which sorts its own list file
+ *   list_types(in): that list file's domains (a set operation's, unified from its branches)
+ *
+ * A key's item is its column's: the gate decided that column once for the execution (#337). A key the row types - a
+ * session variable read that left the gate's decision (D-336-E), a string the gate left undecided (D-338-02, #343) -
+ * takes its column regu's domain, as develop's late binding did; a set operation's key over branches the gate could
+ * not unify takes its list's unified domain (#337).
  */
-static void
-qexec_resolve_domains_on_sort_list (const VAL_DESCR * vd, SORT_LIST * order_list,
-				    REGU_VARIABLE_LIST reference_regu_list)
+static int
+qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
+			      REGU_VARIABLE_LIST reference_regu_list, const QFILE_TUPLE_VALUE_TYPE_LIST * list_types)
 {
-  int ref_curr_pos = 0;
-  SORT_LIST *orderby_ptr = NULL;
-  REGU_VARIABLE_LIST regu_list;
+  assert (reference_regu_list != NULL || list_types != NULL);
 
-  assert (reference_regu_list != NULL);
-
-  if (order_list == NULL)
+  for (SORT_LIST * key = order_list; key != NULL; key = key->next)
     {
-      /* nothing to check */
-      return;
-    }
-
-  for (orderby_ptr = order_list; orderby_ptr != NULL; orderby_ptr = orderby_ptr->next)
-    {
-      if (TP_DOMAIN_TYPE (orderby_ptr->pos_descr.dom) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_COLLATION_FLAG (orderby_ptr->pos_descr.dom) != TP_DOMAIN_COLL_NORMAL)
+      bool row_reads;
+      const TP_DOMAIN *planned = qexec_consumer_domain (vd, key->pos_descr.dom, key->pos_descr.domain_plan, false,
+							&row_reads);
+      if (planned == NULL && row_reads)
 	{
-	  /* #337: a sort key's item is its column's; the gate decided that column once for the execution */
-	  const TP_DOMAIN *planned = qexec_plan_domain (vd, orderby_ptr->pos_descr.domain_plan, false);
-	  if (planned != NULL)
+	  if (reference_regu_list != NULL)
 	    {
-	      orderby_ptr->pos_descr.dom = (TP_DOMAIN *) planned;
-	      continue;
+	      REGU_VARIABLE_LIST column = reference_regu_list;
+	      for (int pos = key->pos_descr.pos_no; pos > 0 && column != NULL; pos--)
+		{
+		  column = column->next;
+		}
+	      planned = column != NULL ? column->value.domain : NULL;
 	    }
-	  ref_curr_pos = orderby_ptr->pos_descr.pos_no;
-	  regu_list = reference_regu_list;
-	  while (ref_curr_pos > 0 && regu_list)
+	  else if (key->pos_descr.pos_no < list_types->type_cnt)
 	    {
-	      regu_list = regu_list->next;
-	      ref_curr_pos--;
+	      planned = list_types->domp[key->pos_descr.pos_no];
 	    }
-	  if (regu_list)
+	  if (planned != NULL && qexec_row_domain_counts (vd, key->pos_descr.domain_plan))
 	    {
-	      if (perfmon_is_perf_tracking ())
-	        {
-	          perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	        }
-	      orderby_ptr->pos_descr.dom = regu_list->value.domain;
+	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
 	    }
 	}
+      if (planned == NULL)
+	{
+	  return qexec_domain_unresolved (vd, key->pos_descr.domain_plan, key->pos_descr.dom);
+	}
+      key->pos_descr.dom = (TP_DOMAIN *) planned;
     }
+  return NO_ERROR;
 }
 
 /*
@@ -22590,7 +22696,8 @@ qexec_resolve_domains_for_group_by (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * 
   assert (buildlist != NULL && reference_regu_list != NULL);
 
   /* domains in GROUP BY list (this is a SORT_LIST) */
-  qexec_resolve_domains_on_sort_list (vd, buildlist->groupby_list, reference_regu_list);
+  (void) qexec_plan_sort_list_domains (thread_get_thread_entry_info (), vd, buildlist->groupby_list,
+				       reference_regu_list, NULL);
 
   /* following code aims to resolve VARIABLE domains in GROUP BY lists: g_regu_list, g_agg_list, g_outprr_list,
    * g_hk_regu_list; pointer values are used to match the REGU VARIABLES */
@@ -23714,7 +23821,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
     QFILE_TUPLE_VALUE_TYPE_LIST output_type_list;
     QFILE_LIST_ID *output_list_id;
 
-    if (qdata_get_valptr_type_list (thread_p, buildlist->g_outptr_list, &output_type_list) != NO_ERROR)
+    if (qdata_get_valptr_type_list (thread_p, buildlist->g_outptr_list, &output_type_list, &xasl_state->vd) != NO_ERROR)
       {
 	GOTO_EXIT_ON_ERROR;
       }
@@ -24193,9 +24300,12 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   /* fetch regulist and outlist */
   a_outptr_list = (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
 
-  /* resolve late bindings in analytic sort list */
-  qexec_resolve_domains_on_sort_list (&xasl_state->vd, analytic_eval->sort_list,
-				      buildlist->a_outptr_list_ex->valptrp);
+  /* the analytic sort keys the compiler left open: the plan's domains */
+  if (qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, analytic_eval->sort_list,
+				    buildlist->a_outptr_list_ex->valptrp, NULL) != NO_ERROR)
+    {
+      GOTO_EXIT_ON_ERROR;
+    }
 
   /* initialized analytic functions state structure */
   if (qexec_initialize_analytic_state (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list,
@@ -24234,7 +24344,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     else
       {
 	/* open intermediate file */
-	if (qdata_get_valptr_type_list (thread_p, buildlist->a_outptr_list_interm, &interm_type_list) != NO_ERROR)
+	if (qdata_get_valptr_type_list (thread_p, buildlist->a_outptr_list_interm, &interm_type_list, &xasl_state->vd)
+	    != NO_ERROR)
 	  {
 	    GOTO_EXIT_ON_ERROR;
 	  }
@@ -24267,7 +24378,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       }
 
     /* open output file */
-    if (qdata_get_valptr_type_list (thread_p, a_outptr_list, &output_type_list) != NO_ERROR)
+    if (qdata_get_valptr_type_list (thread_p, a_outptr_list, &output_type_list, &xasl_state->vd) != NO_ERROR)
       {
 	GOTO_EXIT_ON_ERROR;
       }
@@ -24875,29 +24986,35 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
     }
 
 resolve_domain:
-  /* resolve domains in regulist */
+  /* #341 (S-19): a position the compiler left open reads the column the plan decided; a column the row types
+   * (D-336-E, D-338-02 -> #343) is what the sorted list's first tuples typed */
   for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
     {
-      /* if it's position, resolve domain */
-      if (regu_list->value.type == TYPE_POSITION
-	  && (TP_DOMAIN_TYPE (regu_list->value.value.pos_descr.dom) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (regu_list->value.value.pos_descr.dom) != TP_DOMAIN_COLL_NORMAL))
+      QFILE_TUPLE_VALUE_POSITION *pos_descr = &regu_list->value.value.pos_descr;
+      if (regu_list->value.type != TYPE_POSITION
+	  || (TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE
+	      && TP_DOMAIN_COLLATION_FLAG (pos_descr->dom) == TP_DOMAIN_COLL_NORMAL))
 	{
-	  /* #337: the gate decided the column this position reads */
-	  const TP_DOMAIN *planned = qexec_plan_domain (&xasl_state->vd, regu_list->value.domain_plan, false);
-	  int pos = regu_list->value.value.pos_descr.pos_no;
-	  if (planned != NULL)
-	    {
-	      regu_list->value.value.pos_descr.dom = (TP_DOMAIN *) planned;
-	      regu_list->value.domain = (TP_DOMAIN *) planned;
-	    }
-	  else if (pos <= type_list->type_cnt)
+	  continue;
+	}
+      bool row_reads;
+      const TP_DOMAIN *planned = qexec_consumer_domain (&xasl_state->vd, pos_descr->dom, regu_list->value.domain_plan,
+							false, &row_reads);
+      if (planned == NULL && row_reads && pos_descr->pos_no < type_list->type_cnt)
+	{
+	  if (qexec_row_domain_counts (&xasl_state->vd, regu_list->value.domain_plan))
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	      regu_list->value.value.pos_descr.dom = type_list->domp[pos];
-	      regu_list->value.domain = type_list->domp[pos];
 	    }
+	  planned = type_list->domp[pos_descr->pos_no];
 	}
+      if (planned == NULL)
+	{
+	  (void) qexec_domain_unresolved (&xasl_state->vd, regu_list->value.domain_plan, pos_descr->dom);
+	  return NULL;
+	}
+      pos_descr->dom = (TP_DOMAIN *) planned;
+      regu_list->value.domain = (TP_DOMAIN *) planned;
     }
 
   return analytic_state;
