@@ -371,6 +371,9 @@ struct mergelist_proc_node
   VAL_LIST *inner_val_list;	/* output-value list for inner */
 
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
+  /* load-derived, not serialized (workspace#354): [ls_merge.ls_column_cnt] each merge column pair's comparison, as the
+   * load or the gate decided it */
+  const struct DOMAIN_COMPARE_PLAN **merge_compares;
 };
 
 typedef struct hashjoin_proc_node
@@ -1167,6 +1170,9 @@ struct xasl_node
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi- tuted for ordbynum_val; */
   REGU_VARIABLE *limit_offset;	/* offset of limit clause */
   REGU_VARIABLE *limit_row_count;	/* the record count from limit clause */
+  /* load-derived, not serialized (workspace#354): the row count's comparison with 0, as the load or the gate decided
+   * it */
+  const struct DOMAIN_COMPARE_PLAN *limit_compare;
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 

@@ -666,8 +666,7 @@ enum FETCH_GATE_READING
 				 * collation pair that does not merge (#343), a cast into a target left open (L-18);
 				 * the row computes as develop's unbound node does and gives NULL or the operator's error */
   FETCH_GATE_LATE,		/* develop's binding from the first value: a session variable read under the node left
-				 * the gate's decision before the node's first value (D-336-E), or the node is fetched
-				 * without a value descriptor (a temporary regu an analytic function makes, #341) */
+				 * the gate's decision before the node's first value (D-336-E) */
   FETCH_GATE_UNRESOLVED		/* no decision where the plan promised one: the execution boundary (b) */
 };
 
@@ -692,14 +691,11 @@ fetch_arith_gate_reading (const VAL_DESCR * vd, const ARITH_TYPE * arithptr, con
 	}
       return FETCH_GATE_NO_VALUE;
     }
-  if (vd == NULL)
-    {
-      return FETCH_GATE_LATE;
-    }
   /* every execution-time descriptor carries its gate state: a PX worker's and a hash join worker's inherit it through
-   * qexec_deep_copy_xasl_state (D-318-06, F-334-01) */
+   * qexec_deep_copy_xasl_state (D-318-06, F-334-01). A regu fetched without one is a stream's, whose domains are all
+   * fixed, or a temporary one over a typed list: none has an open domain (#354) */
   const DOMAIN_PLAN_ITEM *item = arithptr->domain_plan;
-  if (vd->xasl_state == NULL)
+  if (vd == NULL || vd->xasl_state == NULL)
     {
       return FETCH_GATE_UNRESOLVED;
     }
@@ -727,20 +723,16 @@ fetch_arith_gate_reading (const VAL_DESCR * vd, const ARITH_TYPE * arithptr, con
  *   return: false where the gate should have a decision: the execution boundary (b)
  *
  * The row reads the value's domain as develop does only for a decision over a session variable read that left the
- * gate's within the statement (D-336-E), and for a regu fetched without a value descriptor (a temporary regu an
- * analytic function makes, #341 -> dpin-17b). The gate decides every other string: collations that do not merge give
- * no value (the row raises their error before a value forms), and a branch a row picks is the gate's pick or the
- * branches' merged domain (D-343-01, #343). A descriptor without gate state is the boundary: a hash join worker
- * inherits the state (F-334-01).
+ * gate's within the statement (D-336-E). The gate decides every other string: collations that do not merge give no
+ * value (the row raises their error before a value forms), and a branch a row picks is the gate's pick or the
+ * branches' merged domain (D-343-01, #343). A descriptor without gate state is the boundary - a hash join worker
+ * inherits the state (F-334-01) - and so is none at all: a stream's regus and a temporary regu over a typed list have
+ * no open domain (#354).
  */
 static bool
 fetch_row_reads_string_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  if (vd == NULL)
-    {
-      return true;
-    }
-  if (vd->xasl_state == NULL)
+  if (vd == NULL || vd->xasl_state == NULL)
     {
       return false;
     }
@@ -906,6 +898,21 @@ fetch_constant_ready (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
   return resolved.ready != NULL && item->ref < resolved.n_vals && resolved.ready[item->ref] != 0;
+}
+
+/*
+ * fetch_least_or_greatest () - LEAST or GREATEST of an arithmetic node's two operands, compared as the load or the gate
+ *				planned (#354)
+ *   return: NO_ERROR, or ER_FAILED where they do not compare
+ */
+static int
+fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_descr * vd, DB_VALUE * peek_left,
+			 DB_VALUE * peek_right, bool least)
+{
+  bool can_compare = true;
+  const DB_VALUE_COMPARE_RESULT cmp_result =
+    eval_compare_values_planned (thread_p, arithptr->domain_compare[0], vd, peek_left, peek_right, 0, &can_compare);
+  return db_least_or_greatest_by (peek_left, peek_right, cmp_result, can_compare, arithptr->value, least);
 }
 
 /*
@@ -1637,7 +1644,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	default:
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
-		  arithptr->domain_plan != NULL && vd->xasl_state->resolved.plan != NULL
+		  arithptr->domain_plan != NULL && vd != NULL && vd->xasl_state != NULL
+		  && vd->xasl_state->resolved.plan != NULL
 		  ? (int) (arithptr->domain_plan - vd->xasl_state->resolved.plan->items) : -1,
 		  pr_type_name (DB_TYPE_VARIABLE));
 	  goto error;
@@ -3844,7 +3852,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  bool can_compare = false;
 	  int cmp_res = DB_UNK;
 
-	  cmp_res = tp_value_compare_with_error (peek_third, peek_left, 1, 0, &can_compare);
+	  /* the comparisons the load or the gate planned (#354) */
+	  cmp_res = eval_compare_values_planned (thread_p, arithptr->domain_compare[0], vd, peek_third, peek_left, 0,
+						 &can_compare);
 	  if (cmp_res == DB_EQ)
 	    {
 	      db_make_int (arithptr->value, 1);
@@ -3856,7 +3866,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 
 
-	  cmp_res = tp_value_compare_with_error (peek_third, peek_right, 1, 0, &can_compare);
+	  cmp_res = eval_compare_values_planned (thread_p, arithptr->domain_compare[1], vd, peek_third, peek_right, 0,
+						 &can_compare);
 	  if (cmp_res == DB_EQ)
 	    {
 	      db_make_int (arithptr->value, 2);
@@ -3890,7 +3901,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      bool can_compare = false;
 	      int cmp_res = DB_UNK;
 
-	      cmp_res = tp_value_compare_with_error (peek_third, peek_right, 1, 0, &can_compare);
+	      cmp_res =
+		eval_compare_values_planned (thread_p, arithptr->domain_compare[1], vd, peek_third, peek_right, 0,
+					     &can_compare);
 	      if (cmp_res == DB_EQ)
 		{
 		  /* match */
@@ -4223,7 +4236,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 #endif
 	  }
 
-	cmp_res = tp_value_compare_with_error (peek_left, peek_right, 1, 0, &can_compare);
+	/* the comparison the load or the gate planned (#354) */
+	cmp_res = eval_compare_values_planned (thread_p, arithptr->domain_compare[0], vd, peek_left, peek_right, 0,
+					       &can_compare);
 	if (cmp_res == DB_EQ)
 	  {
 	    PRIM_SET_NULL (arithptr->value);
@@ -4256,7 +4271,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	int error;
 	TP_DOMAIN *target_domain;
 
-	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, true);
+	error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, true);
 	if (error != NO_ERROR)
 	  {
 	    goto error;
@@ -4297,7 +4312,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	int error;
 	TP_DOMAIN *target_domain;
 
-	error = db_least_or_greatest (peek_left, peek_right, arithptr->value, false);
+	error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, false);
 	if (error != NO_ERROR)
 	  {
 	    goto error;
@@ -4986,14 +5001,13 @@ error:
  * The gate recorded a slot's bound value domain (codeset and collation included), and a derived consumer or a string
  * function reads its producer's or its own decision, so the domain develop took from the first value is already
  * there. The value's domain is read instead only where the plan hands it to the row: a decision over a session
- * variable read that left the gate's (D-336-E), and a regu fetched without a value descriptor (a temporary regu an
- * analytic function makes, #341). A bind value is the one the gate saw: a comparison converts its constant into a
- * value of its own, not in place (#352).
+ * variable read that left the gate's (D-336-E). A bind value is the one the gate saw: a comparison converts its
+ * constant into a value of its own, not in place (#352).
  */
 static int
 fetch_read_plan_domain (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE * value)
 {
-  /* a regu made during execution (qdata_get_interpolation_function_result) has no vd and no plan item */
+  /* a regu fetched without a descriptor with gate state has no decision to read: the boundary (#354) */
   const DOMAIN_PLAN_ITEM *item = vd != NULL && vd->xasl_state != NULL ? regu_var->domain_plan : NULL;
   const TP_DOMAIN *planned = qexec_plan_domain (vd, item, false);
   if (planned != NULL)

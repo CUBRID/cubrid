@@ -181,8 +181,18 @@ eval_values_decision (DOMAIN_COMPARE_REASON reason)
 static const DOMAIN_COMPARE eval_Compare_null = eval_values_decision (DOMAIN_REASON_NULL);
 static const DOMAIN_COMPARE eval_Compare_unplanned = eval_values_decision (DOMAIN_REASON_UNPLANNED);
 static const DOMAIN_COMPARE eval_Compare_volatile = eval_values_decision (DOMAIN_REASON_VOLATILE);
-static const DOMAIN_COMPARE eval_Compare_pred_stream = eval_values_decision (DOMAIN_REASON_PRED_STREAM);
-static const DOMAIN_COMPARE eval_Compare_collection = eval_values_decision (DOMAIN_REASON_COLLECTION);
+
+/* The element comparisons of a set or list comparison: the collections' elements are their data, so the comparison
+ * reads the key pair table by the two values' keys (#354, D-354-01). */
+static DOMAIN_COMPARE
+eval_keys_decision (void)
+{
+  DOMAIN_COMPARE compare = eval_values_decision (DOMAIN_REASON_UNPLANNED);
+  compare.kernel = DOMAIN_COMPARE_KEYS;
+  return compare;
+}
+
+static const DOMAIN_COMPARE eval_Compare_elements = eval_keys_decision ();
 
 /*
  * eval_site_compare () - the decision of a comparison record in this execution: the load's, or the gate's for a site
@@ -219,8 +229,8 @@ eval_site_compare (const DOMAIN_COMPARE_PLAN * site, const val_descr * vd)
 
 /*
  * eval_planned_compare () - the comparison this execution makes for a term (D-352-01/02)
- *   return: its record's decision; a term without a record is a predicate stream's (a filter index predicate,
- *	     evaluated outside any execution, S-42) or the load's omission
+ *   return: its record's decision; a term without a record is the load's omission: every load plans its terms, a
+ *	     predicate stream's included (#354)
  */
 static inline const DOMAIN_COMPARE *
 eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
@@ -228,7 +238,7 @@ eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
   const DOMAIN_COMPARE_PLAN *site = et_comp->domain_compare;
   if (site == NULL)
     {
-      return vd == NULL ? &eval_Compare_pred_stream : &eval_Compare_unplanned;
+      return &eval_Compare_unplanned;
     }
   return eval_site_compare (site, vd);
 }
@@ -248,18 +258,15 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
   elements->constant = NULL;
   if (site == NULL)
     {
-      if (vd == NULL)
-	{
-	  elements->all = elements->each = &eval_Compare_pred_stream;
-	}
       return;
     }
   if (site->kind == DOMAIN_ELEMENTS_PAIR)
     {
       elements->all = eval_site_compare (&site->pair, vd);
-      if (elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_VOLATILE)
+      if ((elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_VOLATILE)
+	  || elements->all->kernel == DOMAIN_COMPARE_KEYS)
 	{
-	  /* a map exception holds for any value the right side has */
+	  /* a map exception, and the key pair table (a stream's item, #354), hold for any value the right side has */
 	  elements->each = elements->all;
 	}
       return;
@@ -365,10 +372,11 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
     {
       return total_order ? DB_GT : DB_UNK;
     }
-  if (compare->kernel == DOMAIN_COMPARE_OBJECT)
+  if (compare->kernel == DOMAIN_COMPARE_OBJECT || compare->kernel == DOMAIN_COMPARE_KEYS)
     {
-      /* an object side: develop's comparison, which meets OIDs on the server */
-      return tp_value_compare_with_error (dbval1, dbval2, 1, total_order, can_compare);
+      /* an object side meets OIDs on the server, and a collection's elements are its data: the key pair table's
+       * comparison of the two values' keys (#354) */
+      return domain_compare_by_keys (dbval1, dbval2, 1, total_order, can_compare);
     }
   return domain_compare_values (thread_p, compare, value1, value2, total_order, can_compare);
 }
@@ -441,8 +449,9 @@ static void
 eval_assert_planned_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
 			   const COMP_EVAL_TERM * et_comp, const val_descr * vd)
 {
-  if (compare->kernel == DOMAIN_COMPARE_OBJECT)
+  if (compare->kernel == DOMAIN_COMPARE_OBJECT || compare->kernel == DOMAIN_COMPARE_KEYS)
     {
+      /* the key pair table reads the values' own keys */
       return;
     }
   const bool lhs = compare->value[0] != -1 || DB_IS_NULL (dbval1)
@@ -459,21 +468,19 @@ eval_assert_planned_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbva
 /*
  * eval_assert_planned_compare () - #352 shadow check after the kernel: develop's comparison of the same values,
  *				    uncounted, gives the planned comparison's result, comparability and error
+ *   asks_comparable(in): the caller asks whether the values compare (tp_value_compare_with_error's contract); false
+ *			  for tp_value_compare's, which asks nothing (#354)
  */
 static void
 eval_assert_planned_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
 			     int total_order, DB_VALUE_COMPARE_RESULT result, bool comparable,
-			     const COMP_EVAL_TERM * et_comp, const val_descr * vd)
+			     const COMP_EVAL_TERM * et_comp, const val_descr * vd, bool asks_comparable = true)
 {
-  if (compare->kernel == DOMAIN_COMPARE_OBJECT)
-    {
-      return;
-    }
   const int error = comparable ? NO_ERROR : er_errid ();
   bool develop_comparable = true;
   er_stack_push ();
   const DB_VALUE_COMPARE_RESULT develop =
-    tp_value_compare_uncounted (dbval1, dbval2, 1, total_order, &develop_comparable);
+    tp_value_compare_uncounted (dbval1, dbval2, 1, total_order, asks_comparable ? &develop_comparable : NULL);
   const int develop_error = develop_comparable ? NO_ERROR : er_errid ();
   er_stack_pop ();
   const bool same = develop == result && develop_comparable == comparable && develop_error == error;
@@ -487,6 +494,57 @@ eval_assert_planned_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * db
   assert (same);
 }
 #endif
+
+/*
+ * eval_compare_values_planned () - a comparison of two values planned before any row outside a predicate term (#354):
+ *				    the site's decision in this execution, develop's NULL rule and the kernel it names
+ *   return: the result; *can_compare false with develop's error where the values do not compare, and at the execution
+ *	     boundary (b) (ER_QPROC_DOMAIN_UNRESOLVED)
+ *   site(in): the comparison's record; NULL is the load's omission
+ *   vd(in): value descriptor of the execution (the gate's decisions and converted constants)
+ *   can_compare(out): NULL for tp_value_compare's contract, which asks nothing: values that do not compare answer by
+ *		       their rank without an error
+ */
+DB_VALUE_COMPARE_RESULT
+eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * site, const val_descr * vd,
+			     const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  if (can_compare != NULL)
+    {
+      *can_compare = true;
+    }
+  const DOMAIN_COMPARE *compare = site != NULL ? eval_site_compare (site, vd) : &eval_Compare_unplanned;
+  if (compare->kernel != DOMAIN_COMPARE_VALUES)
+    {
+#if !defined (NDEBUG)
+      eval_assert_planned_sides (compare, value1, value2, NULL, vd);
+#endif
+      const DB_VALUE_COMPARE_RESULT result =
+	eval_compare_planned (thread_p, compare, vd, value1, value2, total_order, can_compare);
+#if !defined (NDEBUG)
+      eval_assert_planned_compare (compare, value1, value2, total_order, result,
+				   can_compare != NULL ? *can_compare : true, NULL, vd, can_compare != NULL);
+#endif
+      return result;
+    }
+  if (compare->reason < DOMAIN_REASON_VOLATILE && eval_compare_decides (value1, value2))
+    {
+      /* the execution boundary (b): no plan holds this comparison, and develop would decide it from the values */
+#if !defined (NDEBUG)
+      eval_report_planned_compare ("boundary", compare, value1, value2, NULL, vd);
+#endif
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
+	      pr_type_name (DB_VALUE_DOMAIN_TYPE (value2)));
+      if (can_compare != NULL)
+	{
+	  *can_compare = false;
+	}
+      return DB_UNK;
+    }
+  /* NULL answers first; the map's exception keeps develop's comparison, counted */
+  return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
+}
 
 /*
  * eval_value_rel_cmp () - Compare two db_values according to the given
@@ -818,7 +876,7 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
 	  return UNKNOWN_CARD;
 	}
 
-      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL, &eval_Compare_collection, NULL);
+      res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, NULL, &eval_Compare_elements, NULL);
       pr_clear_value (&elem_val);
 
       if (res == V_ERROR)
@@ -1064,7 +1122,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
       pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL, NULL, &eval_Compare_collection, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL, NULL, &eval_Compare_elements, NULL);
       if (rc == V_ERROR)
 	{
 	  pr_clear_value (&list_val);
@@ -1077,7 +1135,7 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 	  continue;
 	}
 
-      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL, NULL, &eval_Compare_collection, NULL);
+      rc = eval_value_rel_cmp (thread_p, item, &list_val, R_EQ, NULL, NULL, &eval_Compare_elements, NULL);
       pr_clear_value (&list_val);
 
       if (rc == V_ERROR)
@@ -1159,7 +1217,7 @@ eval_sub_multi_set_to_sort_list (THREAD_ENTRY * thread_p, DB_SET * set1, QFILE_L
 	      continue;
 	    }
 
-	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL, NULL, &eval_Compare_collection, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &elem_val, &elem_val2, R_EQ, NULL, NULL, &eval_Compare_elements, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      pr_clear_value (&elem_val);
@@ -1301,7 +1359,7 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
 
-	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_collection, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_elements, NULL);
 	  if (rc == V_ERROR)
 	    {
 	      res = V_ERROR;
@@ -1477,7 +1535,7 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
 	  pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
 
-	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_collection, NULL);
+	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL, NULL, &eval_Compare_elements, NULL);
 
 	  if (rc == V_ERROR)
 	    {

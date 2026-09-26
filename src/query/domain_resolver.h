@@ -122,25 +122,26 @@ enum DOMAIN_COMPARE_KERNEL
   DOMAIN_COMPARE_DIRECT,	/* comparable as they are: cmpval under the planned collation */
   DOMAIN_COMPARE_CONVERT,	/* the planned converters in develop's order, then cmpval */
   DOMAIN_COMPARE_COLLATIONS,	/* strings whose collations do not merge: develop's -1150 at every row */
-  DOMAIN_COMPARE_OBJECT		/* an OBJECT side: develop's comparison (an OID on the server, OBJECT/OID on the client) */
+  DOMAIN_COMPARE_OBJECT,	/* an OBJECT side: develop's comparison (an OID on the server, OBJECT/OID on the client) */
+  DOMAIN_COMPARE_RANK,		/* no coercion between types that do not compare as they are: the result their rank
+				 * gives (rank), develop's tp_value_compare without coercion (#354) */
+  DOMAIN_COMPARE_KEYS		/* values whose keys only the data knows (a collection's elements, #354): the key pair
+				 * table's entry for the two values' keys (domain_compare_by_keys) */
 };
 
 /*
  * Why a comparison keeps develop's comparison of the values (kernel DOMAIN_COMPARE_VALUES, #352). Up to
  * DOMAIN_REASON_UNPLANNED the execution boundary (b) holds: develop may not decide anything from the values there;
- * from DOMAIN_REASON_VOLATILE on, the map's exceptions keep develop's comparison, counted. The gate leaves no side
- * undecided (#343).
+ * DOMAIN_REASON_VOLATILE is the map's one exception, which keeps develop's comparison, counted. The gate leaves no side
+ * undecided (#343), and a predicate stream's load plans its comparisons too (#354).
  */
 enum DOMAIN_COMPARE_REASON
 {
   DOMAIN_REASON_NULL,		/* a side whose values are NULL: develop answers before it decides anything */
   DOMAIN_REASON_OPEN,		/* a side the plan leaves open */
-  DOMAIN_REASON_UNPLANNED,	/* a term the load gave no record, a gate decision read without the gate's state, an
-				 * element whose key the plan does not hold */
-  DOMAIN_REASON_VOLATILE,	/* a session variable read that left the gate's decision (D-336-E) */
-  DOMAIN_REASON_PRED_STREAM,	/* a predicate stream: a filter index predicate evaluated outside any execution (S-42,
-				 * workspace#343) */
-  DOMAIN_REASON_COLLECTION	/* an element comparison of a set or list comparison (workspace#343) */
+  DOMAIN_REASON_UNPLANNED,	/* a comparison the load gave no record, a gate decision read without the gate's
+				 * state, an element whose key the plan does not hold */
+  DOMAIN_REASON_VOLATILE	/* a session variable read that left the gate's decision (D-336-E) */
 };
 
 /*
@@ -158,6 +159,9 @@ struct DOMAIN_COMPARE
   unsigned char converted_first;	/* DB_TYPE the first side has once converted (the second conversion failing) */
   unsigned char failed;		/* bit i: the gate could not convert constant side i (develop's failure at every row) */
   unsigned char reason;		/* kernel VALUES: DOMAIN_COMPARE_REASON */
+  unsigned char coercion;	/* the do_coercion develop's comparison passes cmpval: 1, or 0 for a comparison without
+				 * coercion (a collection's order, #354) */
+  signed char rank;		/* kernel RANK: DB_LT or DB_GT */
   int collation;		/* the collation cmpval compares under; 0 for a non-string */
   int value[2];			/* resolved.vals index of a constant side the gate converted once; -1: the row's value;
 				 * -2: the gate's own value of a constant's element, the row's operand (#352) */
@@ -183,6 +187,11 @@ void domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * col
 /* The comparison develop's tp_value_compare_with_error makes between a value of each key (#352). */
 int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result);
 
+/* The same comparison without coercion (do_coercion 0, #354): types that compare as they are by the first one's cmpval,
+ * any other pair by the types' rank. */
+void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
+					  DOMAIN_COMPARE * result);
+
 /* A planned converter on a value, with the target initialized as tp_value_cast_internal initializes it before its
  * cell (the domain, and a string target's codeset and collation). */
 TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, const DB_VALUE * source,
@@ -190,12 +199,31 @@ TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMA
 
 /*
  * domain_compare_values () - a comparison decided before any row, on the two values it compares (#352 D-352-02; the
- *   index keys, #342): kernel DIRECT, CONVERT or COLLATIONS. The NULL rule and the other kernels are the caller's.
+ *   index keys, #342; the key pair table, #354): kernel DIRECT, CONVERT, COLLATIONS or RANK. The NULL rule and the
+ *   other kernels are the caller's.
  *   return: the result; *can_compare false, with develop's error, where a conversion fails or collations do not merge
+ *   can_compare(out): NULL for tp_value_compare's contract: a failed conversion or a rank answers without an error
+ *		       (collations that do not merge still set -1150, as develop does)
  */
 DB_VALUE_COMPARE_RESULT domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
 					       const DB_VALUE * value1, const DB_VALUE * value2, int total_order,
 					       bool * can_compare);
+
+/*
+ * domain_compare_by_keys () - develop's tp_value_compare_with_error on two values whose keys only the data knows - a
+ *   collection's elements, JSON scalars, partition bounds, hash group keys (#354, D-354-01) - decided before any row:
+ *   the key pair table holds the comparison of every pair of keys a value can have, and the row reads the entry of
+ *   its two values' keys. It decides nothing.
+ *   return: as tp_value_compare_with_error
+ *   do_coercion(in): the caller's; 0 compares without coercion (domain_resolve_comparison_uncoerced)
+ *   can_compare(out): as tp_value_compare_with_error's; NULL: tp_value_compare's contract
+ */
+DB_VALUE_COMPARE_RESULT domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion,
+						int total_order, bool * can_compare);
+
+/* The key pair table's life (#354): made once, when the first comparison needs it after the language and type modules
+ * are up; freed before the type module (tp_final), whose cached domains its string targets are. */
+void domain_key_pairs_final (void);
 
 /* The key of a value: its type and, for a string or an ENUM, its codeset and collation (#342). */
 void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key);

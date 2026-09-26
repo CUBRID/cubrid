@@ -84,6 +84,9 @@
 #include "crypt_opfunc.h"
 #include "string_opfunc.h"
 #include "upgrade_checksums.h"
+#if defined (SA_MODE)
+#include "domain_resolver.h"
+#endif
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -2114,6 +2117,10 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
     }
 
   /* Remove domain area */
+#if defined (SA_MODE)
+  /* the key pair table's string targets are cached domains (#354) */
+  domain_key_pairs_final ();
+#endif
   tp_final ();
   switch (status)
     {

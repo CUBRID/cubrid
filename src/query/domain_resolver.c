@@ -33,7 +33,9 @@
 #include "perf_monitor.h"
 #include "string_opfunc.h"
 #include "thread_manager.hpp"
+#include <atomic>
 #include <cstddef>
+#include <mutex>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1248,7 +1250,8 @@ domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, cons
   return converter (source, result, target);
 }
 
-/* develop's outcome of a conversion that failed: the rank of the two sides' types at that point, and -181 */
+/* develop's outcome of a conversion that failed: the rank of the two sides' types at that point, and -181 where the
+ * caller asks whether the values compare (tp_value_compare asks nothing and gets no error) */
 static DB_VALUE_COMPARE_RESULT
 domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_converted, bool * can_compare)
 {
@@ -1257,8 +1260,11 @@ domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_con
     {
       type[compare->first] = (DB_TYPE) compare->converted_first;
     }
-  *can_compare = false;
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type[0]), pr_type_name (type[1]));
+  if (can_compare != NULL)
+    {
+      *can_compare = false;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type[0]), pr_type_name (type[1]));
+    }
   return tp_more_general_type (type[0], type[1]) > 0 ? DB_GT : DB_LT;
 }
 
@@ -1317,7 +1323,7 @@ domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compar
       assert (data_status == DATA_STATUS_OK);
       side[compare->codeset_side] = &codeset_value;
     }
-  result = compare->cmp->cmpval (side[0], side[1], 1, total_order, NULL, compare->collation);
+  result = compare->cmp->cmpval (side[0], side[1], compare->coercion, total_order, NULL, compare->collation);
 
 end:
   if (used & 1)
@@ -1342,14 +1348,35 @@ domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, 
   switch (compare->kernel)
     {
     case DOMAIN_COMPARE_DIRECT:
-      return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, total_order, NULL, compare->collation);
+      return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, total_order, NULL,
+				   compare->collation);
     case DOMAIN_COMPARE_CONVERT:
       return domain_compare_converted (thread_p, compare, value1, value2, total_order, can_compare);
+    case DOMAIN_COMPARE_RANK:
+      /* types that do not compare as they are, without coercion: develop answers by their rank */
+      if (can_compare != NULL)
+	{
+	  *can_compare = false;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name ((DB_TYPE) compare->source[0]),
+		  pr_type_name ((DB_TYPE) compare->source[1]));
+	}
+      return (DB_VALUE_COMPARE_RESULT) compare->rank;
     default:
       /* strings whose collations do not merge: develop's outcome at every row */
+#if !defined (NDEBUG)
+      if (compare->kernel != DOMAIN_COMPARE_COLLATIONS)
+	{
+	  fprintf (stderr, "planned comparison kernel: kernel=%d site=%d source=%d,%d values=%d,%d\n",
+		   (int) compare->kernel, compare->site, (int) compare->source[0], (int) compare->source[1],
+		   (int) DB_VALUE_DOMAIN_TYPE (value1), (int) DB_VALUE_DOMAIN_TYPE (value2));
+	}
+#endif
       assert (compare->kernel == DOMAIN_COMPARE_COLLATIONS);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
-      *can_compare = false;
+      if (can_compare != NULL)
+	{
+	  *can_compare = false;
+	}
       return DB_UNK;
     }
 }
@@ -1691,6 +1718,7 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
   result->source[0] = (unsigned char) lhs->type;
   result->source[1] = (unsigned char) rhs->type;
   result->kernel = DOMAIN_COMPARE_DIRECT;
+  result->coercion = 1;
 
   if (lhs->type == DB_TYPE_NULL || rhs->type == DB_TYPE_NULL)
     {
@@ -1993,6 +2021,340 @@ domain_resolve_element_table (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMP
     }
   assert (next == layout.n_entries);
   return NO_ERROR;
+}
+
+void
+domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
+				     DOMAIN_COMPARE * result)
+{
+  *result = DOMAIN_COMPARE
+  {
+  };
+  result->value[0] = result->value[1] = -1;
+  result->codeset_side = -1;
+  result->site = -1;
+  result->source[0] = (unsigned char) lhs->type;
+  result->source[1] = (unsigned char) rhs->type;
+  result->coercion = 0;
+
+  if (lhs->type == DB_TYPE_NULL || rhs->type == DB_TYPE_NULL)
+    {
+      /* its value is NULL, and develop's comparison answers NULL first */
+      result->kernel = DOMAIN_COMPARE_VALUES;
+      return;
+    }
+  if (lhs->type == DB_TYPE_OBJECT || rhs->type == DB_TYPE_OBJECT)
+    {
+      /* an OBJECT's values are OIDs on the server (and OID against OBJECT compares by OID on the client) */
+      result->kernel = DOMAIN_COMPARE_OBJECT;
+      return;
+    }
+  if (lhs->type != rhs->type && !(TP_IS_CHAR_TYPE (lhs->type) && TP_IS_CHAR_TYPE (rhs->type)))
+    {
+      /* od:tp_value_compare_with_error without coercion: types that do not compare as they are answer by their rank */
+      result->kernel = DOMAIN_COMPARE_RANK;
+      result->rank = (signed char) (tp_more_general_type (lhs->type, rhs->type) > 0 ? DB_GT : DB_LT);
+      return;
+    }
+  /* the first value's cmpval under the collation of the tail, as with coercion when nothing is converted */
+  result->kernel = DOMAIN_COMPARE_DIRECT;
+  result->cmp = pr_type_from_id (lhs->type);
+  if (!TP_IS_CHAR_TYPE (lhs->type))
+    {
+      result->collation = 0;
+    }
+  else if (lhs->collation == rhs->collation)
+    {
+      result->collation = lhs->collation;
+    }
+  else if (lhs->codeset == rhs->codeset)
+    {
+      int common;
+      LANG_RT_COMMON_COLL (lhs->collation, rhs->collation, common);
+      result->collation = common;
+    }
+  else
+    {
+      result->collation = -1;
+    }
+  if (result->collation == -1)
+    {
+      result->kernel = DOMAIN_COMPARE_COLLATIONS;
+    }
+}
+
+/*
+ * The key pair table (#354, D-354-01): the comparison of every pair of keys a value can have - an element type
+ * (domain_element_type) and, for a string or an ENUM, a registered collation - with coercion and without. A pair's
+ * entry indexes a pool of the distinct decisions: most pairs share one (a string's collation does not change how it
+ * compares with a number). Its entries depend on no value and no plan, so it is made once, the first time a comparison
+ * needs it, and freed before the type module whose cached domains its string targets are (domain_key_pairs_final).
+ */
+struct DOMAIN_KEY_PAIRS
+{
+  short first[DOMAIN_ELEMENT_TYPES];	/* a type's key, a string or ENUM type's first; -1: no element type */
+  short ordinal[DOMAIN_ELEMENT_COLLATIONS];	/* a registered collation's key among its type's; -1 */
+  int n_keys;
+  int *entry[2];		/* [coercion][key1 * n_keys + key2]: the pair's decision in pool; the diagonal is unused */
+  DOMAIN_COMPARE *pool;
+  int n_pool;
+};
+
+/* *INDENT-OFF* */
+static std::atomic<DOMAIN_KEY_PAIRS *> domain_Key_pairs (NULL);
+static std::mutex domain_Key_pairs_mutex;
+/* *INDENT-ON* */
+
+static bool
+domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b)
+{
+  return a->kernel == b->kernel && a->first == b->first && a->source[0] == b->source[0]
+    && a->source[1] == b->source[1] && a->converted_first == b->converted_first && a->failed == b->failed
+    && a->reason == b->reason && a->coercion == b->coercion && a->rank == b->rank && a->collation == b->collation
+    && a->value[0] == b->value[0] && a->value[1] == b->value[1] && a->codeset_side == b->codeset_side
+    && a->site == b->site && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
+    && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->volatile_reads == b->volatile_reads;
+}
+
+static void
+domain_key_pairs_free (DOMAIN_KEY_PAIRS * pairs)
+{
+  if (pairs != NULL)
+    {
+      free (pairs->entry[0]);
+      free (pairs->entry[1]);
+      free (pairs->pool);
+      free (pairs);
+    }
+}
+
+/* The table itself: NULL when it cannot be made (no memory). */
+static DOMAIN_KEY_PAIRS *
+domain_key_pairs_make (void)
+{
+  DOMAIN_KEY_PAIRS *pairs = (DOMAIN_KEY_PAIRS *) calloc (1, sizeof (*pairs));
+  if (pairs == NULL)
+    {
+      return NULL;
+    }
+  int collation_of[DOMAIN_ELEMENT_COLLATIONS];
+  int n_collations = 0;
+  for (int c = 0; c < DOMAIN_ELEMENT_COLLATIONS; c++)
+    {
+      pairs->ordinal[c] = -1;
+      if (domain_collation_registered (c))
+	{
+	  pairs->ordinal[c] = (short) n_collations;
+	  collation_of[n_collations++] = c;
+	}
+    }
+  for (int t = 0; t < DOMAIN_ELEMENT_TYPES; t++)
+    {
+      pairs->first[t] = -1;
+      if (domain_element_type (t))
+	{
+	  pairs->first[t] = (short) pairs->n_keys;
+	  pairs->n_keys += TP_TYPE_HAS_COLLATION (t) ? n_collations : 1;
+	}
+    }
+  const int n = pairs->n_keys;
+  DOMAIN_COMPARE_KEY *keys = (DOMAIN_COMPARE_KEY *) malloc (sizeof (*keys) * n);
+  pairs->entry[0] = (int *) malloc (sizeof (int) * n * n);
+  pairs->entry[1] = (int *) malloc (sizeof (int) * n * n);
+  pairs->pool = (DOMAIN_COMPARE *) malloc (sizeof (DOMAIN_COMPARE) * 2 * n * n);
+  bool ok = keys != NULL && pairs->entry[0] != NULL && pairs->entry[1] != NULL && pairs->pool != NULL;
+  for (int t = 0; ok && t < DOMAIN_ELEMENT_TYPES; t++)
+    {
+      for (int o = 0; pairs->first[t] >= 0 && o < (TP_TYPE_HAS_COLLATION (t) ? n_collations : 1); o++)
+	{
+	  DOMAIN_COMPARE_KEY *key = &keys[pairs->first[t] + o];
+	  key->type = (DB_TYPE) t;
+	  key->codeset = key->collation = -1;
+	  if (TP_TYPE_HAS_COLLATION (t))
+	    {
+	      key->collation = collation_of[o];
+	      key->codeset = lang_get_collation (key->collation)->codeset;
+	    }
+	}
+    }
+  /* type pair by type pair, so the decisions of one pair are contiguous in the pool and a key pair looks for its
+   * decision only among its type pair's */
+  for (int mode = 0; ok && mode < 2; mode++)
+    {
+      for (int t1 = 0; ok && t1 < DOMAIN_ELEMENT_TYPES; t1++)
+	{
+	  for (int t2 = 0; ok && pairs->first[t1] >= 0 && t2 < DOMAIN_ELEMENT_TYPES; t2++)
+	    {
+	      if (pairs->first[t2] < 0)
+		{
+		  continue;
+		}
+	      const int pair_first = pairs->n_pool;
+	      const int n1 = TP_TYPE_HAS_COLLATION (t1) ? n_collations : 1;
+	      const int n2 = TP_TYPE_HAS_COLLATION (t2) ? n_collations : 1;
+	      for (int i = pairs->first[t1]; ok && i < pairs->first[t1] + n1; i++)
+		{
+		  for (int j = pairs->first[t2]; ok && j < pairs->first[t2] + n2; j++)
+		    {
+		      int *entry = &pairs->entry[mode][i * n + j];
+		      *entry = -1;
+		      if (i == j)
+			{
+			  /* one key: the comparison's own reading (domain_compare_by_keys) */
+			  continue;
+			}
+		      DOMAIN_COMPARE decision;
+		      if (mode == 1)
+			{
+			  ok = domain_resolve_comparison (&keys[i], &keys[j], &decision) == NO_ERROR;
+			}
+		      else
+			{
+			  domain_resolve_comparison_uncoerced (&keys[i], &keys[j], &decision);
+			}
+		      for (int p = pair_first; ok && p < pairs->n_pool && *entry < 0; p++)
+			{
+			  if (domain_compare_equal (&pairs->pool[p], &decision))
+			    {
+			      *entry = p;
+			    }
+			}
+		      if (ok && *entry < 0)
+			{
+			  pairs->pool[pairs->n_pool] = decision;
+			  *entry = pairs->n_pool++;
+			}
+		    }
+		}
+	    }
+	}
+    }
+  free (keys);
+  if (!ok)
+    {
+      domain_key_pairs_free (pairs);
+      return NULL;
+    }
+  DOMAIN_COMPARE *pool = (DOMAIN_COMPARE *) realloc (pairs->pool, sizeof (DOMAIN_COMPARE) * pairs->n_pool);
+  if (pool != NULL)
+    {
+      pairs->pool = pool;
+    }
+  return pairs;
+}
+
+/* The table, made the first time a comparison needs it. */
+static const DOMAIN_KEY_PAIRS *
+domain_key_pairs (void)
+{
+  DOMAIN_KEY_PAIRS *pairs = domain_Key_pairs.load (std::memory_order_acquire);
+  if (pairs == NULL)
+    {
+      std::lock_guard < std::mutex > lock (domain_Key_pairs_mutex);
+      pairs = domain_Key_pairs.load (std::memory_order_relaxed);
+      if (pairs == NULL)
+	{
+	  pairs = domain_key_pairs_make ();
+	  domain_Key_pairs.store (pairs, std::memory_order_release);
+	}
+    }
+  return pairs;
+}
+
+void
+domain_key_pairs_final (void)
+{
+  std::lock_guard < std::mutex > lock (domain_Key_pairs_mutex);
+  domain_key_pairs_free (domain_Key_pairs.exchange (NULL));
+}
+
+/* A key's row and column in the table; -1 for a key no value of an element type carries. */
+static inline int
+domain_key_pair_index (const DOMAIN_KEY_PAIRS * pairs, const DOMAIN_COMPARE_KEY * key)
+{
+  const int first = key->type >= 0 && key->type < DOMAIN_ELEMENT_TYPES ? pairs->first[key->type] : -1;
+  if (first < 0 || !TP_TYPE_HAS_COLLATION (key->type))
+    {
+      return first;
+    }
+  const int ordinal = key->collation >= 0 && key->collation < DOMAIN_ELEMENT_COLLATIONS
+    ? pairs->ordinal[key->collation] : -1;
+  return ordinal >= 0 ? first + ordinal : -1;
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
+			bool * can_compare)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
+  if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))
+    {
+      /* one type without a collation, a homogeneous collection's elements: develop compares them as they are, and
+       * decides nothing */
+      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    }
+  if (can_compare != NULL)
+    {
+      *can_compare = true;
+    }
+  if (DB_IS_NULL (value1))
+    {
+      return DB_IS_NULL (value2) ? (total_order ? DB_EQ : DB_UNK) : (total_order ? DB_LT : DB_UNK);
+    }
+  if (DB_IS_NULL (value2))
+    {
+      return total_order ? DB_GT : DB_UNK;
+    }
+  DOMAIN_COMPARE_KEY key[2];
+  domain_compare_key_of_value (value1, &key[0]);
+  domain_compare_key_of_value (value2, &key[1]);
+  if (key[0].type == key[1].type && key[0].collation == key[1].collation)
+    {
+      /* one type and one collation: develop compares them as they are, and decides nothing */
+      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    }
+  const DOMAIN_KEY_PAIRS *pairs = domain_key_pairs ();
+  const int row = pairs != NULL ? domain_key_pair_index (pairs, &key[0]) : -1;
+  const int column = pairs != NULL ? domain_key_pair_index (pairs, &key[1]) : -1;
+  if (row < 0 || column < 0)
+    {
+      /* every value of an element type has a key the table covers: the table is missing only when it could not be
+       * made (no memory), and develop's comparison answers, counted */
+      assert (pairs == NULL);
+      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    }
+  const DOMAIN_COMPARE *compare = &pairs->pool[pairs->entry[do_coercion ? 1 : 0][row * pairs->n_keys + column]];
+  if (compare->kernel == DOMAIN_COMPARE_OBJECT)
+    {
+      /* an object side: develop's comparison, which meets OIDs on the server */
+      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    }
+  const DB_VALUE_COMPARE_RESULT result =
+    domain_compare_values (thread_get_thread_entry_info (), compare, value1, value2, total_order, can_compare);
+#if !defined (NDEBUG)
+  {
+    /* shadow check (optdebug): develop's comparison of the same values, uncounted, gives the table's result,
+     * comparability and error */
+    const bool comparable = can_compare != NULL ? *can_compare : true;
+    const int error = comparable ? NO_ERROR : er_errid ();
+    bool develop_comparable = true;
+    bool *const develop_comparable_p = can_compare != NULL ? &develop_comparable : NULL;
+    er_stack_push ();
+    const DB_VALUE_COMPARE_RESULT develop =
+      tp_value_compare_uncounted (value1, value2, do_coercion, total_order, develop_comparable_p);
+    const int develop_error = develop_comparable ? NO_ERROR : er_errid ();
+    er_stack_pop ();
+    if (develop != result || develop_comparable != comparable || develop_error != error)
+      {
+	fprintf (stderr, "key pair comparison: types %d/%d collations %d/%d coercion=%d kernel=%d result=%d/%d "
+		 "comparable=%d/%d error=%d/%d\n", (int) key[0].type, (int) key[1].type, key[0].collation,
+		 key[1].collation, do_coercion, (int) compare->kernel, (int) result, (int) develop, (int) comparable,
+		 (int) develop_comparable, error, develop_error);
+      }
+    assert (develop == result && develop_comparable == comparable && develop_error == error);
+  }
+#endif
+  return result;
 }
 
 int

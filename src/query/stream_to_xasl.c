@@ -368,6 +368,13 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
     {
       goto end;
     }
+  /* the predicate's comparisons, decided from the stream's fixed domains (#354) */
+  if (domain_plan_stream_compares (thread_p, pwc->pred, NULL) != NO_ERROR)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      free_xasl_unpack_info (thread_p, unpack_info_p);
+      goto end;
+    }
 
   /* set result */
   pwc->unpack_info = unpack_info_p;
@@ -429,6 +436,13 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
     }
   if (stx_index_stream_rejected (thread_p, unpack_info_p))
     {
+      goto end;
+    }
+  /* the expression's comparisons, decided from the stream's fixed domains (#354) */
+  if (domain_plan_stream_compares (thread_p, NULL, p_xasl->func_regu) != NO_ERROR)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
 
@@ -1782,6 +1796,7 @@ static char *
 stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
   xasl->domain_plan = NULL;
+  xasl->limit_compare = NULL;
   int offset;
   int tmp, i;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
@@ -3245,6 +3260,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
     }
 
   ptr = stx_build_ls_merge_info (thread_p, ptr, &merge_list_info->ls_merge);
+  merge_list_info->merge_compares = NULL;
 
   return ptr;
 
@@ -5940,6 +5956,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   /* save the original domain */
   arith_type->original_domain = arith_type->domain;
   arith_type->domain_plan = NULL;
+  arith_type->domain_compare[0] = arith_type->domain_compare[1] = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

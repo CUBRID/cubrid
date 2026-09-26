@@ -24,6 +24,7 @@
 #define _REGU_VAR_HPP_
 
 struct domain_plan_item;
+struct DOMAIN_COMPARE_PLAN;
 
 #include "heap_attrinfo.h"
 #include "object_domain.h"
@@ -132,6 +133,10 @@ struct arith_list_node
   TP_DOMAIN *domain;		/* resultant domain */
   TP_DOMAIN *original_domain;	/* original resultant domain, used at execution in case of XASL clones  */
   domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
+  /* load-derived, not serialized (workspace#354): the comparisons FIELD, NULLIF, LEAST and GREATEST make, as the load
+   * or the gate decided them - [0] the left operand (FIELD: the third against the left), [1] FIELD's third against
+   * the right */
+  const DOMAIN_COMPARE_PLAN *domain_compare[2] = { nullptr, nullptr };
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */

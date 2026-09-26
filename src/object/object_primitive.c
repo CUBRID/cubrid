@@ -47,6 +47,9 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "tz_support.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "domain_resolver.h"
+#endif
 
 #include <utility>
 
@@ -15502,7 +15505,13 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	}
     }
 
+  /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
+   * every pair of keys a value can have, decided before any row (workspace#354) */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  cmp_result = domain_compare_by_keys (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+#else
   cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+#endif
 
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);

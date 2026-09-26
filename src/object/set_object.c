@@ -39,6 +39,9 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "set_object.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "domain_resolver.h"
+#endif
 
 #if !defined(SERVER_MODE)
 #include "locator_cl.h"
@@ -310,11 +313,35 @@ set_final (void)
  *
  */
 
+/*
+ * col_element_compare() - the comparison of two collection elements, as
+ *                         tp_value_compare makes it
+ *      return: DB_VALUE_COMPARE_RESULT
+ *  a(in) : first value
+ *  b(in) : second value
+ *  do_coerce(in) :
+ *  total_order(in) :
+ *
+ *  Note :
+ *      The server reads the key pair table, which holds the comparison of
+ *      every pair of keys an element can have, decided before any row
+ *      (workspace#354): the elements' types are the collection's data.
+ */
+static DB_VALUE_COMPARE_RESULT
+col_element_compare (DB_VALUE * a, DB_VALUE * b, int do_coerce, int total_order)
+{
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  return domain_compare_by_keys (a, b, do_coerce, total_order, NULL);
+#else
+  return tp_value_compare (a, b, do_coerce, total_order);
+#endif
+}
+
 int
 col_value_compare (DB_VALUE * a, DB_VALUE * b)
 {
   /* note that the coerce flag is OFF */
-  return tp_value_compare (a, b, 0, 1);
+  return col_element_compare (a, b, 0, 1);
 }
 
 /*
@@ -977,12 +1004,12 @@ col_bsearch (COL * col, long lower, long upper, long *found, DB_VALUE * val, int
   while (lowblock < highblock)
     {
       midblock = (lowblock + highblock) / 2;
-      if (tp_value_compare (val, &col->array[midblock][0], do_coerce, 1) < 0)
+      if (col_element_compare (val, &col->array[midblock][0], do_coerce, 1) < 0)
 	{
 	  /* value is left of/lower than the middle block */
 	  highblock = midblock - 1;
 	}
-      else if (tp_value_compare (val, &col->array[midblock][BLOCKING_LESS1], do_coerce, 1) > 0)
+      else if (col_element_compare (val, &col->array[midblock][BLOCKING_LESS1], do_coerce, 1) > 0)
 	{
 	  /* value is right of/higher than middle block */
 	  lowblock = midblock + 1;
@@ -1009,7 +1036,7 @@ col_bsearch (COL * col, long lower, long upper, long *found, DB_VALUE * val, int
 
   while (offset <= midoffset && compare > 0)
     {
-      compare = tp_value_compare (val, &col->array[lowblock][offset], do_coerce, 1);
+      compare = col_element_compare (val, &col->array[lowblock][offset], do_coerce, 1);
       if (compare > 0)
 	{
 	  offset++;		/* have not found position yet */
@@ -1199,7 +1226,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	      else
 		{
 		  /* determine which side of last insertion index to search from. */
-		  compare = tp_value_compare (val, INDEX (col, insertindex), do_coerce, 1);
+		  compare = col_element_compare (val, INDEX (col, insertindex), do_coerce, 1);
 		  if (compare == DB_UNK)
 		    {
 		      insertindex = ER_GENERIC_ERROR;
@@ -1236,7 +1263,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 			  while (insertindex < rightindex - 1)
 			    {
 			      temp = (insertindex + rightindex) / 2;
-			      compare = tp_value_compare (val, INDEX (col, temp), do_coerce, 1);
+			      compare = col_element_compare (val, INDEX (col, temp), do_coerce, 1);
 			      if (compare == 0)
 				{
 				  insertindex = temp;
@@ -1256,7 +1283,7 @@ col_find (COL * col, long *found, DB_VALUE * val, int do_coerce)
 	      /* sequence of unordered values. Must do sequential search */
 	      while (insertindex < col->size)
 		{
-		  if (tp_value_compare (val, INDEX (col, insertindex), do_coerce, 1) == 0)
+		  if (col_element_compare (val, INDEX (col, insertindex), do_coerce, 1) == 0)
 		    {
 		      *found = 1;
 		      break;
@@ -1883,11 +1910,11 @@ setvobj_compare (COL * set1, COL * set2, int do_coercion, int total_order)
       cmp = DB_EQ;
       if (DB_VALUE_DOMAIN_TYPE (&set1->array[0][2]) != DB_TYPE_OID)
 	{
-	  cmp = tp_value_compare (&set1->array[0][1], &set2->array[0][1], do_coercion, 1);
+	  cmp = col_element_compare (&set1->array[0][1], &set2->array[0][1], do_coercion, 1);
 	}
       if (cmp == DB_EQ)
 	{
-	  cmp = tp_value_compare (&set1->array[0][2], &set2->array[0][2], do_coercion, total_order);
+	  cmp = col_element_compare (&set1->array[0][2], &set2->array[0][2], do_coercion, total_order);
 	}
       else
 	{
@@ -5157,7 +5184,7 @@ setobj_compare (COL * set1, COL * set2, int do_coercion)
 	      while (index1 < set1->size && index2 < set2->size && (set1_could_be_subset || set2_could_be_subset)
 		     && status == DB_EQ)
 		{
-		  rc = tp_value_compare (INDEX (set1, index1), INDEX (set2, index2), do_coercion, 0);
+		  rc = col_element_compare (INDEX (set1, index1), INDEX (set2, index2), do_coercion, 0);
 		  switch (rc)
 		    {
 		    case DB_EQ:	/* element appears in both sets */
@@ -5274,7 +5301,7 @@ setobj_compare_order (COL * set1, COL * set2, int do_coercion, int total_order)
   /* same size, compare elements until order is determined */
   for (i = 0; i < set1->size; i++)
     {
-      rc = tp_value_compare (INDEX (set1, i), INDEX (set2, i), do_coercion, total_order);
+      rc = col_element_compare (INDEX (set1, i), INDEX (set2, i), do_coercion, total_order);
       if (rc != DB_EQ)
 	{
 	  return rc;
@@ -5323,7 +5350,7 @@ setobj_difference (COL * set1, COL * set2, COL * result)
 	}
       else
 	{
-	  rc = tp_value_compare (val1, val2, 1, 0);
+	  rc = col_element_compare (val1, val2, 1, 0);
 
 	  switch (rc)
 	    {
@@ -5343,7 +5370,7 @@ setobj_difference (COL * set1, COL * set2, COL * result)
 				 * result SHOULD be added to the result. */
 	      /* At least one of these must be a collection with an embedded NULL, we need to increment to the next
 	       * pair of values, but must check again to see which index to increase for total ordering. */
-	      rc = tp_value_compare (val1, val2, 1, 1);
+	      rc = col_element_compare (val1, val2, 1, 1);
 	      if (rc == DB_GT)
 		{
 		  index2++;
@@ -5432,7 +5459,7 @@ setobj_union (COL * set1, COL * set2, COL * result)
 	    }
 	  else
 	    {
-	      rc = tp_value_compare (val1, val2, 1, 0);
+	      rc = col_element_compare (val1, val2, 1, 0);
 
 	      switch (rc)
 		{
@@ -5516,7 +5543,7 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
 	}
       else
 	{
-	  rc = tp_value_compare (val1, val2, 1, 0);
+	  rc = col_element_compare (val1, val2, 1, 0);
 
 	  switch (rc)
 	    {
@@ -5536,7 +5563,7 @@ setobj_intersection (COL * set1, COL * set2, COL * result)
 				 * be added to the result. */
 	      /* At least one of these must be a collection with an embedded NULL, we need to increment to the next
 	       * pair of values, but must check again to see which side to increase for total ordering. */
-	      rc = tp_value_compare (val1, val2, 1, 1);
+	      rc = col_element_compare (val1, val2, 1, 1);
 	      if (rc == DB_GT)
 		{
 		  index2++;
@@ -5580,7 +5607,7 @@ setobj_issome (DB_VALUE * value, COL * set, PT_OP_TYPE op, int do_coercion)
 
   for (i = 0; i < set->size; i++)
     {
-      status = tp_value_compare (value, INDEX (set, i), do_coercion, 0);
+      status = col_element_compare (value, INDEX (set, i), do_coercion, 0);
       if (status == DB_UNK)
 	{
 	  has_null = 1;

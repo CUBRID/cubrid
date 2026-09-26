@@ -406,6 +406,9 @@ namespace cubxasl
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
     dest->original_domain = dest->domain;
     dest->domain_plan = src->domain_plan;
+    /* the plan's comparison records, as a term's (workspace#354) */
+    dest->domain_compare[0] = src->domain_compare[0];
+    dest->domain_compare[1] = src->domain_compare[1];
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
     dest->rightptr = spawn (src->rightptr);

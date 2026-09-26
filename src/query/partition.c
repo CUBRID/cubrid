@@ -990,8 +990,9 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
   switch (left->type)
     {
     case TYPE_DBVAL:
-      /* use dbval */
-      if (tp_value_compare (&left->value.dbval, &right->value.dbval, 1, 0) != DB_EQ)
+      /* use dbval; a query's constant against the partition expression's: the key pair table's comparison of their
+       * types (workspace#354) */
+      if (domain_compare_by_keys (&left->value.dbval, &right->value.dbval, 1, 0, NULL) != DB_EQ)
 	{
 	  return false;
 	}
@@ -1002,7 +1003,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_CONSTANT:
       /* use varptr */
-      if (tp_value_compare (left->value.dbvalptr, right->value.dbvalptr, 1, 1) != DB_EQ)
+      if (domain_compare_by_keys (left->value.dbvalptr, right->value.dbvalptr, 1, 1, NULL) != DB_EQ)
 	{
 	  return false;
 	}
@@ -1019,7 +1020,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 	val_left = REGU_RESOLVED_VALUE (pinfo->vd, left);
 	val_right = REGU_RESOLVED_VALUE (pinfo->vd, right);
 
-	if (tp_value_compare (val_left, val_right, 1, 1) != DB_EQ)
+	if (domain_compare_by_keys (val_left, val_right, 1, 1, NULL) != DB_EQ)
 	  {
 	    return false;
 	  }
@@ -1429,7 +1430,9 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	}
       else
 	{
-	  rmin = tp_value_compare (&min, val, 1, 1);
+	  /* the bounds are the partition expression's type, the catalog's and not the plan's: the key pair table's
+	   * comparison of the two types (workspace#354) */
+	  rmin = domain_compare_by_keys (&min, val, 1, 1, NULL);
 	}
 
       if (DB_IS_NULL (&max))
@@ -1445,7 +1448,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	       * some limit cases like val > max-- which should not match any partition */
 	      (void) partition_decrement_value (&max);
 	    }
-	  rmax = tp_value_compare (val, &max, 1, 1);
+	  rmax = domain_compare_by_keys (val, &max, 1, 1, NULL);
 	}
 
       status = MATCH_OK;

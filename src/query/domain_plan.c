@@ -117,6 +117,17 @@ struct DOMAIN_LOAD_ELEMENT_TERM
   ALSM_EVAL_TERM *term;
   DOMAIN_PLAN_ITEM *list_column;
 };
+/* A comparison of two values outside a predicate term the walk met (#354): FIELD, NULLIF, LEAST and GREATEST over
+ * their operands, LIMIT's row count against 0, a merge join's column pair. A side is a regu, a list column (bound to
+ * the published item) or a literal no regu holds; the published record goes to owner. */
+struct DOMAIN_LOAD_COMPARE_PAIR
+{
+  DOMAIN_LOAD_COMPARE_PAIR *next;
+  REGU_VARIABLE *regu[2];
+  DOMAIN_PLAN_ITEM *column[2];
+  const DB_VALUE *literal[2];
+  const DOMAIN_COMPARE_PLAN **owner;
+};
 /* A set-operation or CTE list column, unified from its branches (X-3), made once per (list, column). */
 struct DOMAIN_LOAD_LIST_COLUMN
 {
@@ -146,12 +157,15 @@ struct DOMAIN_LOAD_CONTEXT
   int max_compare_terms;
   DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first (#352) */
   int n_element_terms;
+  DOMAIN_LOAD_COMPARE_PAIR *compare_pairs;	/* the comparisons outside a term met, last first (#354) */
+  int n_compare_pairs;
   INDX_INFO **indexes;		/* the index scans met, in walk order (#342) */
   int n_indexes;
   int max_indexes;
 };
 
 static void domain_walk_xasl (DOMAIN_LOAD_CONTEXT *, XASL_NODE *);
+static void *domain_plan_alloc (THREAD_ENTRY * thread_p, int count, size_t size);
 static void domain_walk_pred (DOMAIN_LOAD_CONTEXT *, PRED_EXPR *);
 static void domain_walk_regu (DOMAIN_LOAD_CONTEXT *, REGU_VARIABLE *, DOMAIN_CTX = DOMAIN_CTX_FUNC_ARG);
 static OUTPTR_LIST *domain_block_output (XASL_NODE * xasl);
@@ -346,6 +360,53 @@ domain_bind_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, DOMAIN_P
   binding->next = ctx->bindings;
   ctx->bindings = binding;
   *owner = target;
+}
+
+/*
+ * domain_add_compare_pair () - a comparison of two values outside a predicate term (#354): its record is published
+ *   with the terms' (domain_publish_compares) into *owner
+ *   regu(in), column(in), literal(in): per side, the regu, the list column item or the literal it compares; one each
+ */
+static void
+domain_add_compare_pair (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * const regu[2], DOMAIN_PLAN_ITEM * const column[2],
+			 const DB_VALUE * const literal[2], const DOMAIN_COMPARE_PLAN ** owner)
+{
+  if (ctx->failed || *owner != NULL)
+    {
+      return;
+    }
+  DOMAIN_LOAD_COMPARE_PAIR *pair = (DOMAIN_LOAD_COMPARE_PAIR *) db_private_alloc (ctx->thread_p, sizeof (*pair));
+  if (pair == NULL)
+    {
+      ctx->failed = true;
+      return;
+    }
+  for (int side = 0; side < 2; side++)
+    {
+      pair->regu[side] = regu[side];
+      pair->column[side] = NULL;
+      pair->literal[side] = literal[side];
+      domain_bind_item (ctx, &pair->column[side], column[side]);
+    }
+  pair->owner = owner;
+  pair->next = ctx->compare_pairs;
+  ctx->compare_pairs = pair;
+  ctx->n_compare_pairs++;
+}
+
+/* A comparison of two regus outside a predicate term (#354). */
+static void
+domain_add_regu_compare (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * lhs, REGU_VARIABLE * rhs,
+			 const DOMAIN_COMPARE_PLAN ** owner)
+{
+  if (lhs == NULL || rhs == NULL)
+    {
+      return;
+    }
+  REGU_VARIABLE *const regu[2] = { lhs, rhs };
+  DOMAIN_PLAN_ITEM *const column[2] = { NULL, NULL };
+  const DB_VALUE *const literal[2] = { NULL, NULL };
+  domain_add_compare_pair (ctx, regu, column, literal, owner);
 }
 
 static DOMAIN_OPERAND_CLASS
@@ -728,8 +789,10 @@ domain_walk_out (DOMAIN_LOAD_CONTEXT * ctx, OUTPTR_LIST * list)
     }
 }
 
+/* field_bottom: a FIELD node whose left operand is a value, not a nested FIELD (REGU_VARIABLE_FIELD_COMPARE); a node
+ * met without its regu plans both of its comparisons */
 static void
-domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_gate = false)
+domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_gate = false, bool field_bottom = true)
 {
   if (arith == NULL || arith->domain_plan != NULL || ctx->failed)
     {
@@ -749,6 +812,25 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	}
     }
   domain_walk_pred (ctx, arith->pred);
+  /* the comparisons the node makes are planned like a term's (#354): FIELD compares its third operand with each value,
+   * NULLIF and LEAST / GREATEST their two operands */
+  switch (arith->opcode)
+    {
+    case T_NULLIF:
+    case T_LEAST:
+    case T_GREATEST:
+      domain_add_regu_compare (ctx, arith->leftptr, arith->rightptr, &arith->domain_compare[0]);
+      break;
+    case T_FIELD:
+      if (field_bottom)
+	{
+	  domain_add_regu_compare (ctx, arith->thirdptr, arith->leftptr, &arith->domain_compare[0]);
+	}
+      domain_add_regu_compare (ctx, arith->thirdptr, arith->rightptr, &arith->domain_compare[1]);
+      break;
+    default:
+      break;
+    }
   DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &arith->domain_plan, arith->domain, cls,
 					    is_cast ? DOMAIN_CTX_ASSIGN : DOMAIN_CTX_ARITH, arith->opcode, "arith");
   if (item != NULL)
@@ -884,7 +966,8 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       break;
     case TYPE_INARITH:
     case TYPE_OUTARITH:
-      domain_walk_arith (ctx, regu->value.arithptr, REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_GATE));
+      domain_walk_arith (ctx, regu->value.arithptr, REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_GATE),
+			 REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_FIELD_COMPARE));
       if (regu->value.arithptr->domain_plan != NULL)
 	{
 	  cls = (DOMAIN_OPERAND_CLASS) regu->value.arithptr->domain_plan->operand_class;
@@ -1302,6 +1385,11 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	      continue;
 	    }
 	  domain_walk_regu (ctx, &analytic->operand, DOMAIN_CTX_ANALYTIC);
+	  if (analytic->function == PT_PERCENTILE_CONT || analytic->function == PT_PERCENTILE_DISC)
+	    {
+	      /* the ratio, fetched with the execution's descriptor as an aggregate's is (#354) */
+	      domain_walk_regu (ctx, analytic->info.percentile.percentile_reguvar);
+	    }
 	  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &analytic->domain_plan, analytic->domain, OPERAND_ROW,
 						    DOMAIN_CTX_ANALYTIC, analytic->function, "analytic");
 	  if (item != NULL)
@@ -1532,6 +1620,49 @@ domain_mark_aggregate_operands (XASL_NODE * xasl)
     }
 }
 
+/* The INT 0 a LIMIT row count is compared with (qexec_check_limit_clause, #354). */
+/* *INDENT-OFF* */
+static const DB_VALUE domain_Int_zero = []
+{
+  DB_VALUE zero;
+  db_make_int (&zero, 0);
+  return zero;
+} ();
+/* *INDENT-ON* */
+
+/* A merge join compares each pair of merge columns, the outer list's with the inner list's (qexec_cmp_tpl_vals_merge):
+ * one record per pair (#354). */
+static void
+domain_add_merge_compares (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
+{
+  MERGELIST_PROC_NODE *merge = &xasl->proc.mergelist;
+  const QFILE_LIST_MERGE_INFO *info = &merge->ls_merge;
+  merge->merge_compares = NULL;
+  if (info->ls_column_cnt <= 0 || ctx->failed)
+    {
+      return;
+    }
+  merge->merge_compares =
+    (const DOMAIN_COMPARE_PLAN **) domain_plan_alloc (ctx->thread_p, info->ls_column_cnt,
+						      sizeof (*merge->merge_compares));
+  if (merge->merge_compares == NULL)
+    {
+      ctx->failed = true;
+      return;
+    }
+  for (int k = 0; k < info->ls_column_cnt; k++)
+    {
+      merge->merge_compares[k] = NULL;
+      REGU_VARIABLE *const regu[2] = { NULL, NULL };
+      DOMAIN_PLAN_ITEM *const column[2] = {
+	domain_list_column (ctx, merge->outer_xasl, info->ls_outer_column[k]),
+	domain_list_column (ctx, merge->inner_xasl, info->ls_inner_column[k])
+      };
+      const DB_VALUE *const literal[2] = { NULL, NULL };
+      domain_add_compare_pair (ctx, regu, column, literal, &merge->merge_compares[k]);
+    }
+}
+
 static void
 domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 {
@@ -1569,6 +1700,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
       domain_walk_xasl (ctx, xasl->proc.mergelist.inner_xasl);
       domain_walk_specs (ctx, xasl->proc.mergelist.outer_spec_list);
       domain_walk_specs (ctx, xasl->proc.mergelist.inner_spec_list);
+      domain_add_merge_compares (ctx, xasl);
       break;
     case HASHJOIN_PROC:
       domain_walk_xasl (ctx, xasl->proc.hashjoin.outer.xasl);
@@ -1598,6 +1730,14 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_regu (ctx, xasl->orderby_limit);
   domain_walk_regu (ctx, xasl->limit_offset);
   domain_walk_regu (ctx, xasl->limit_row_count);
+  if (xasl->limit_row_count != NULL)
+    {
+      /* qexec_check_limit_clause runs the query only for a row count greater than an INT 0 (#354) */
+      REGU_VARIABLE *const regu[2] = { xasl->limit_row_count, NULL };
+      DOMAIN_PLAN_ITEM *const column[2] = { NULL, NULL };
+      const DB_VALUE *const literal[2] = { NULL, &domain_Int_zero };
+      domain_add_compare_pair (ctx, regu, column, literal, &xasl->limit_compare);
+    }
   domain_walk_regu (ctx, xasl->level_regu);
   domain_walk_regu (ctx, xasl->isleaf_regu);
   domain_walk_regu (ctx, xasl->iscycle_regu);
@@ -2309,6 +2449,30 @@ domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const
   return DOMAIN_SIDE_KNOWN;
 }
 
+/* One side of a comparison outside a term (#354): a regu as a term's side, a list column as an ALL/SOME term's list
+ * side, a literal no regu holds by its value's key. */
+static DOMAIN_COMPARE_SIDE
+domain_compare_pair_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records, int constant_base,
+			  const DOMAIN_LOAD_COMPARE_PAIR * pair, DOMAIN_COMPARE_PLAN * site, int side,
+			  DOMAIN_COMPARE_KEY * key, unsigned long long *volatile_reads)
+{
+  if (pair->regu[side] != NULL)
+    {
+      return domain_compare_side (plan, records, constant_base, pair->regu[side], site, side, key, volatile_reads);
+    }
+  if (pair->literal[side] != NULL)
+    {
+      const DB_VALUE *literal = pair->literal[side];
+      site->operand[side] = NULL;
+      site->domain[side] = NULL;
+      site->value[side] = -1;
+      site->literal[side] = literal;
+      domain_compare_key_of (DB_IS_NULL (literal) ? &tp_Null_domain : tp_domain_resolve_value (literal, NULL), key);
+      return DOMAIN_SIDE_KNOWN;
+    }
+  return domain_compare_column_side (plan, records, pair->column[side], site, side, key, volatile_reads);
+}
+
 /*
  * domain_element_keys () - the keys the elements of a collection the row computes can have (#352, D-352-03)
  *   return: false on an allocation failure
@@ -2486,13 +2650,13 @@ domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOA
 }
 
 /*
- * domain_publish_compares () - every comparison term gets its comparison record (D-352-01), and every ALL/SOME term
- *   its element comparisons (D-352-03)
+ * domain_publish_compares () - every comparison term gets its comparison record (D-352-01), every ALL/SOME term its
+ *   element comparisons (D-352-03), and every comparison outside a term its record (#354)
  */
 static bool
 domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, int constant_base)
 {
-  const int n_terms = ctx->n_compare_terms + ctx->n_element_terms;
+  const int n_terms = ctx->n_compare_terms + ctx->n_element_terms + ctx->n_compare_pairs;
   if (n_terms == 0)
     {
       return true;
@@ -2543,6 +2707,28 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	  ok = domain_publish_elements (thread_p, plan, records, constant_base, e, gate_sites, &n_gate, element_sites,
 					&n_element_gate);
 	}
+    }
+  for (DOMAIN_LOAD_COMPARE_PAIR * pair = ctx->compare_pairs; pair != NULL && ok; pair = pair->next)
+    {
+      if (*pair->owner != NULL)
+	{
+	  continue;
+	}
+      DOMAIN_COMPARE_PLAN *site = (DOMAIN_COMPARE_PLAN *) domain_plan_alloc (thread_p, 1, sizeof (*site));
+      if (site == NULL)
+	{
+	  ok = false;
+	  break;
+	}
+      memset (site, 0, sizeof (*site));
+      DOMAIN_COMPARE_KEY key[2];
+      unsigned long long volatile_reads = 0;
+      const DOMAIN_COMPARE_SIDE lhs = domain_compare_pair_side (plan, records, constant_base, pair, site, 0, &key[0],
+								&volatile_reads);
+      const DOMAIN_COMPARE_SIDE rhs = domain_compare_pair_side (plan, records, constant_base, pair, site, 1, &key[1],
+								&volatile_reads);
+      ok = domain_publish_record (plan, site, lhs, rhs, key, volatile_reads, gate_sites, &n_gate);
+      *pair->owner = site;
     }
   if (ok && n_gate > 0)
     {
@@ -2804,6 +2990,252 @@ domain_publish_indexes (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMA
       indx_info->domain_plan = index;
     }
   return true;
+}
+
+/*
+ * Predicate and function streams (#354, S-42): a filter index predicate, a function index expression and a partition
+ * expression are loaded without an execution and evaluated without the gate. A regu the gate would decide refuses the
+ * stream at its load (stx_index_stream_rejected), but the stream's domains need not describe its values either: the
+ * catalog keeps a stream compiled against a column's type across an ALTER that changes that type
+ * (filtered_index_basicfunction_delete_004: a SMALLINT column MODIFY'd to CHAR(10) under its filter predicate). So the
+ * load decides a comparison of two literals, and any comparison over another side reads the key pair table by the two
+ * values' keys (kernel KEYS, D-354-01) - decided before any row, the stream's domains unused.
+ */
+struct DOMAIN_STREAM_CONTEXT
+{
+  THREAD_ENTRY *thread_p;
+  bool failed;
+};
+
+static void domain_stream_walk_regu (DOMAIN_STREAM_CONTEXT * ctx, REGU_VARIABLE * regu);
+static void domain_stream_walk_pred (DOMAIN_STREAM_CONTEXT * ctx, PRED_EXPR * pred);
+
+/* A literal side's key, its value's (and the codeset and collation a COLLATE modifier gives it); false for any other
+ * side, whose values are the catalog's. */
+static bool
+domain_stream_literal_key (const REGU_VARIABLE * regu, DOMAIN_COMPARE_PLAN * site, int side, DOMAIN_COMPARE_KEY * key)
+{
+  site->operand[side] = NULL;
+  site->domain[side] = regu->domain;
+  site->value[side] = -1;
+  if (regu->type != TYPE_DBVAL)
+    {
+      return false;
+    }
+  site->collate[side] = REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION) && regu->domain != NULL
+    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (regu->domain)) ? regu->domain : NULL;
+  const DB_VALUE *literal = &regu->value.dbval;
+  site->literal[side] = literal;
+  domain_compare_key_of (DB_IS_NULL (literal) ? &tp_Null_domain : tp_domain_resolve_value (literal, NULL), key);
+  domain_compare_key_collate (key, site->collate[side]);
+  return true;
+}
+
+/* A stream comparison over a side the catalog gives its values: the key pair table by the values' keys. */
+static void
+domain_stream_by_keys (DOMAIN_COMPARE * fixed)
+{
+  *fixed = DOMAIN_COMPARE
+  {
+  };
+  fixed->kernel = DOMAIN_COMPARE_KEYS;
+  fixed->site = -1;
+  fixed->value[0] = fixed->value[1] = fixed->codeset_side = -1;
+}
+
+/* A comparison of two stream regus, decided now. */
+static const DOMAIN_COMPARE_PLAN *
+domain_stream_compare (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * lhs, const REGU_VARIABLE * rhs)
+{
+  DOMAIN_COMPARE_PLAN *site = (DOMAIN_COMPARE_PLAN *) stx_alloc_struct (ctx->thread_p, sizeof (*site));
+  if (site == NULL)
+    {
+      ctx->failed = true;
+      return NULL;
+    }
+  memset (site, 0, sizeof (*site));
+  DOMAIN_COMPARE_KEY key[2];
+  const bool lhs_literal = domain_stream_literal_key (lhs, site, 0, &key[0]);
+  const bool rhs_literal = domain_stream_literal_key (rhs, site, 1, &key[1]);
+  if (!lhs_literal || !rhs_literal)
+    {
+      domain_stream_by_keys (&site->fixed);
+      return site;
+    }
+  if (domain_resolve_comparison (&key[0], &key[1], &site->fixed) != NO_ERROR)
+    {
+      ctx->failed = true;
+      return NULL;
+    }
+  return site;
+}
+
+/* An ALL/SOME term of a stream: a literal item against the elements of its collection by the table of every key an
+ * element can have (D-352-07), any other item by the key pair table. */
+static const DOMAIN_ELEMENT_COMPARE_PLAN *
+domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
+{
+  DOMAIN_ELEMENT_COMPARE_PLAN *site = (DOMAIN_ELEMENT_COMPARE_PLAN *) stx_alloc_struct (ctx->thread_p, sizeof (*site));
+  if (site == NULL)
+    {
+      ctx->failed = true;
+      return NULL;
+    }
+  memset (site, 0, sizeof (*site));
+  site->site = -1;
+  DOMAIN_COMPARE_KEY item;
+  if (!domain_stream_literal_key (elem, &site->pair, 0, &item))
+    {
+      site->kind = DOMAIN_ELEMENTS_PAIR;
+      domain_stream_by_keys (&site->pair.fixed);
+      return site;
+    }
+  const size_t bytes = domain_element_table_bytes (&item, NULL, 0);
+  DOMAIN_ELEMENT_TABLE *table = (DOMAIN_ELEMENT_TABLE *) stx_alloc_struct (ctx->thread_p, (int) bytes);
+  if (table == NULL || domain_resolve_element_table (&item, NULL, 0, table, bytes) != NO_ERROR)
+    {
+      ctx->failed = true;
+      return NULL;
+    }
+  site->kind = DOMAIN_ELEMENTS_TABLE;
+  site->table = table;
+  return site;
+}
+
+static void
+domain_stream_walk_arith (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bottom)
+{
+  if (arith == NULL || ctx->failed)
+    {
+      return;
+    }
+  domain_stream_walk_regu (ctx, arith->leftptr);
+  domain_stream_walk_regu (ctx, arith->rightptr);
+  domain_stream_walk_regu (ctx, arith->thirdptr);
+  domain_stream_walk_pred (ctx, arith->pred);
+  switch (arith->opcode)
+    {
+    case T_NULLIF:
+    case T_LEAST:
+    case T_GREATEST:
+      if (arith->domain_compare[0] == NULL && arith->leftptr != NULL && arith->rightptr != NULL)
+	{
+	  arith->domain_compare[0] = domain_stream_compare (ctx, arith->leftptr, arith->rightptr);
+	}
+      break;
+    case T_FIELD:
+      if (field_bottom && arith->domain_compare[0] == NULL && arith->thirdptr != NULL && arith->leftptr != NULL)
+	{
+	  arith->domain_compare[0] = domain_stream_compare (ctx, arith->thirdptr, arith->leftptr);
+	}
+      if (arith->domain_compare[1] == NULL && arith->thirdptr != NULL && arith->rightptr != NULL)
+	{
+	  arith->domain_compare[1] = domain_stream_compare (ctx, arith->thirdptr, arith->rightptr);
+	}
+      break;
+    default:
+      break;
+    }
+}
+
+static void
+domain_stream_walk_regu (DOMAIN_STREAM_CONTEXT * ctx, REGU_VARIABLE * regu)
+{
+  if (regu == NULL || ctx->failed)
+    {
+      return;
+    }
+  switch (regu->type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      domain_stream_walk_arith (ctx, regu->value.arithptr, REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_FIELD_COMPARE));
+      break;
+    case TYPE_FUNC:
+      for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+	{
+	  domain_stream_walk_regu (ctx, &op->value);
+	}
+      break;
+    case TYPE_REGU_VAR_LIST:
+      for (REGU_VARIABLE_LIST op = regu->value.regu_var_list; op != NULL; op = op->next)
+	{
+	  domain_stream_walk_regu (ctx, &op->value);
+	}
+      break;
+    default:
+      break;
+    }
+}
+
+static void
+domain_stream_walk_pred (DOMAIN_STREAM_CONTEXT * ctx, PRED_EXPR * pred)
+{
+  while (pred != NULL && !ctx->failed)
+    {
+      if (pred->type == T_PRED)
+	{
+	  domain_stream_walk_pred (ctx, pred->pe.m_pred.lhs);
+	  pred = pred->pe.m_pred.rhs;
+	  continue;
+	}
+      if (pred->type == T_NOT_TERM)
+	{
+	  pred = pred->pe.m_not_term;
+	  continue;
+	}
+      EVAL_TERM *term = &pred->pe.m_eval_term;
+      switch (term->et_type)
+	{
+	case T_COMP_EVAL_TERM:
+	  {
+	    COMP_EVAL_TERM *comp = &term->et.et_comp;
+	    domain_stream_walk_regu (ctx, comp->lhs);
+	    domain_stream_walk_regu (ctx, comp->rhs);
+	    /* as domain_add_compare_term: the value comparisons, not a set comparison or a list side */
+	    const bool value_comparison = comp->rel_op == R_EQ || comp->rel_op == R_NE || comp->rel_op == R_GT
+	      || comp->rel_op == R_GE || comp->rel_op == R_LT || comp->rel_op == R_LE || comp->rel_op == R_EQ_TORDER
+	      || comp->rel_op == R_NULLSAFE_EQ;
+	    if (value_comparison && comp->domain_compare == NULL && comp->lhs != NULL && comp->rhs != NULL
+		&& comp->lhs->type != TYPE_LIST_ID && comp->rhs->type != TYPE_LIST_ID)
+	      {
+		comp->domain_compare = domain_stream_compare (ctx, comp->lhs, comp->rhs);
+	      }
+	  }
+	  break;
+	case T_ALSM_EVAL_TERM:
+	  {
+	    ALSM_EVAL_TERM *alsm = &term->et.et_alsm;
+	    domain_stream_walk_regu (ctx, alsm->elem);
+	    domain_stream_walk_regu (ctx, alsm->elemset);
+	    if (alsm->domain_compare == NULL && alsm->elem != NULL && alsm->elemset != NULL)
+	      {
+		alsm->domain_compare = domain_stream_elements (ctx, alsm->elem);
+	      }
+	  }
+	  break;
+	case T_LIKE_EVAL_TERM:
+	  domain_stream_walk_regu (ctx, term->et.et_like.src);
+	  domain_stream_walk_regu (ctx, term->et.et_like.pattern);
+	  domain_stream_walk_regu (ctx, term->et.et_like.esc_char);
+	  break;
+	case T_RLIKE_EVAL_TERM:
+	  domain_stream_walk_regu (ctx, term->et.et_rlike.src);
+	  domain_stream_walk_regu (ctx, term->et.et_rlike.pattern);
+	  domain_stream_walk_regu (ctx, term->et.et_rlike.case_sensitive);
+	  break;
+	}
+      return;
+    }
+}
+
+int
+domain_plan_stream_compares (THREAD_ENTRY * thread_p, PRED_EXPR * pred, REGU_VARIABLE * regu)
+{
+  DOMAIN_STREAM_CONTEXT ctx = { thread_p, false };
+  domain_stream_walk_pred (&ctx, pred);
+  domain_stream_walk_regu (&ctx, regu);
+  return ctx.failed ? ER_OUT_OF_VIRTUAL_MEMORY : NO_ERROR;
 }
 
 int
@@ -3098,6 +3530,17 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  *b->owner = NULL;
 	}
       db_private_free (thread_p, b);
+    }
+  /* after the bindings, which write into the pairs' column sides */
+  while (ctx.compare_pairs != NULL)
+    {
+      DOMAIN_LOAD_COMPARE_PAIR *pair = ctx.compare_pairs;
+      ctx.compare_pairs = pair->next;
+      if (ctx.failed)
+	{
+	  *pair->owner = NULL;
+	}
+      db_private_free (thread_p, pair);
     }
   while (ctx.head != NULL)
     {

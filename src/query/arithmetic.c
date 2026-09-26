@@ -6585,11 +6585,24 @@ db_evaluate_json_get_all_paths (DB_VALUE * result, DB_VALUE * const *arg, int co
 int
 db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least)
 {
-  int error_code = NO_ERROR;
   bool can_compare = false;
   DB_VALUE_COMPARE_RESULT cmp_result = DB_UNK;
 
   cmp_result = tp_value_compare_with_error (arg1, arg2, 1, 0, &can_compare);
+
+  return db_least_or_greatest_by (arg1, arg2, cmp_result, can_compare, result, least);
+}
+
+/*
+ * db_least_or_greatest_by () - LEAST or GREATEST of two values, once they are compared
+ *   return: NO_ERROR, or ER_FAILED where they do not compare
+ *   cmp_result(in), can_compare(in): the comparison of arg1 with arg2 (the server's is planned, workspace#354)
+ */
+int
+db_least_or_greatest_by (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE_COMPARE_RESULT cmp_result, bool can_compare,
+			 DB_VALUE * result, bool least)
+{
+  int error_code = NO_ERROR;
 
   if (cmp_result == DB_EQ)
     {

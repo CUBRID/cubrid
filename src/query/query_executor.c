@@ -516,7 +516,7 @@ static int qexec_analytic_evaluate_ntile_function (THREAD_ENTRY * thread_p, ANAL
 static int qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
 						    ANALYTIC_STATE * analytic_state);
 static int qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p,
-							   ANALYTIC_FUNCTION_STATE * func_state);
+							   ANALYTIC_FUNCTION_STATE * func_state, VAL_DESCR * vd);
 static int qexec_analytic_group_header_load (ANALYTIC_FUNCTION_STATE * func_state);
 static int qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool load_value);
 static int qexec_analytic_value_advance (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state, int amount,
@@ -526,8 +526,11 @@ static int qexec_analytic_value_lookup (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTI
 static int qexec_analytic_group_header_next (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state);
 static int qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
 static int qexec_collection_has_null (DB_VALUE * colval);
-static DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom,
-							 QFILE_TUPLE * rght_tval, TP_DOMAIN ** rght_dom, int tval_cnt);
+static DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE * left_tval,
+							 TP_DOMAIN ** left_dom, QFILE_TUPLE * rght_tval,
+							 TP_DOMAIN ** rght_dom, int tval_cnt,
+							 const DOMAIN_COMPARE_PLAN * const *compares,
+							 const VAL_DESCR * vd);
 static long qexec_size_remaining (QFILE_TUPLE_RECORD * tplrec1, QFILE_TUPLE_RECORD * tplrec2,
 				  QFILE_LIST_MERGE_INFO * merge_info, int k);
 static int qexec_merge_tuple (QFILE_TUPLE_RECORD * tplrec1, QFILE_TUPLE_RECORD * tplrec2,
@@ -537,10 +540,11 @@ static int qexec_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * 
 				       QFILE_TUPLE_RECORD * tplrec);
 static QFILE_LIST_ID *qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
 					QFILE_LIST_ID * inner_list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
-					int ls_flag);
+					int ls_flag, const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd);
 static QFILE_LIST_ID *qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * inner_sid,
 					      QFILE_LIST_MERGE_INFO * merge_infop, PRED_EXPR * other_outer_join_pred,
-					      XASL_STATE * xasl_state, int ls_flag);
+					      XASL_STATE * xasl_state, int ls_flag,
+					      const DOMAIN_COMPARE_PLAN * const *compares);
 static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 
 static int qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST * val_list, VAL_DESCR * vd,
@@ -4706,6 +4710,65 @@ qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolve
   return NO_ERROR;
 }
 
+/* Whether every constant subtree a comparison site compares has its value (#354): a bind or a literal always has. */
+static bool
+qexec_compare_constants_ready (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site)
+{
+  for (int side = 0; side < 2; side++)
+    {
+      const DOMAIN_PLAN_ITEM *constant = site->constant[side];
+      if (constant != NULL && constant->ref >= 0
+	  && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0 && !resolved.ready[constant->ref])
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * qexec_resolve_constant_compares () - G1 step 7: the comparison and ALL/SOME sites over constant subtrees whose
+ *   subtrees have their values, each decided once (#354)
+ *   decided(in/out): [n_compares + n_element_sites] the sites decided so far
+ *   all(in): every site left, whatever its subtrees gave (after the last constant)
+ */
+static int
+qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN * plan,
+				 unsigned char *decided, bool all)
+{
+  for (int k = 0; k < plan->n_compares; k++)
+    {
+      const DOMAIN_COMPARE_PLAN *site = plan->compares[k];
+      if (!site->after_constants || decided[k] || !(all || qexec_compare_constants_ready (resolved, site)))
+	{
+	  continue;
+	}
+      decided[k] = 1;
+      const int error = qexec_resolve_compare (thread_p, resolved, site);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  for (int k = 0; k < plan->n_element_sites; k++)
+    {
+      const DOMAIN_ELEMENT_COMPARE_PLAN *site = plan->element_sites[k];
+      unsigned char *site_decided = &decided[plan->n_compares + k];
+      if (!site->pair.after_constants || *site_decided
+	  || !(all || qexec_compare_constants_ready (resolved, &site->pair)))
+	{
+	  continue;
+	}
+      *site_decided = 1;
+      const int error = qexec_resolve_elements (thread_p, resolved, site);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  return NO_ERROR;
+}
+
 /*
  * qexec_release_constant_node () - what computing a constant subtree left in its own node, released on the gate's
  *   thread (#352)
@@ -5326,34 +5389,41 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 
   /* G1 step 7 (#352, interface §10): the decisions are sealed; each constant subtree is evaluated once into its own
    * value, and a comparison site over one is decided from that value (F-352-17). An evaluation error is not raised
-   * here: develop raises it where it computes the node, at the first row (D-352-05) */
-  for (int i = 0; plan != NULL && i < plan->n_constants; i++)
+   * here: develop raises it where it computes the node, at the first row (D-352-05). A site is decided as soon as its
+   * subtrees have their values, before the next constant is evaluated: that constant may be the site's own node
+   * (GREATEST (GREATEST (?, ?), ?), #354) */
+  const int n_sites = plan == NULL ? 0 : plan->n_compares + plan->n_element_sites;
+  unsigned char *decided = NULL;
+  if (n_sites > 0)
     {
-      qexec_evaluate_constant (thread_p, xasl_state, &plan->constants[i]);
+      decided = (unsigned char *) db_private_alloc (thread_p, n_sites);
+      if (decided == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n_sites);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (decided, 0, n_sites);
     }
-  for (int k = 0; plan != NULL && k < plan->n_compares; k++)
+  for (int i = 0; plan != NULL && i < plan->n_constants && error == NO_ERROR; i++)
     {
-      if (!plan->compares[k]->after_constants)
+      error = qexec_resolve_constant_compares (thread_p, resolved, plan, decided, false);
+      if (error == NO_ERROR)
 	{
-	  continue;
-	}
-      error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
-      if (error != NO_ERROR)
-	{
-	  return error;
+	  qexec_evaluate_constant (thread_p, xasl_state, &plan->constants[i]);
 	}
     }
-  for (int k = 0; plan != NULL && k < plan->n_element_sites; k++)
+  if (error == NO_ERROR && plan != NULL)
     {
-      if (!plan->element_sites[k]->pair.after_constants)
-	{
-	  continue;
-	}
-      error = qexec_resolve_elements (thread_p, resolved, plan->element_sites[k]);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
+      /* the sites left: over a subtree the gate left to the row */
+      error = qexec_resolve_constant_compares (thread_p, resolved, plan, decided, true);
+    }
+  if (decided != NULL)
+    {
+      db_private_free (thread_p, decided);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   /* G1 step 8 (#342, interface section 5): every index scan's constant key elements are converted or kept once, the
@@ -7813,6 +7883,8 @@ qexec_collection_has_null (DB_VALUE * colval)
  *   rght_tval(in)      : right tuple values
  *   rght_dom(in)       : Domains of rght_tval
  *   tval_cnt(in)       : tuple values count
+ *   compares(in)       : [tval_cnt] each column pair's comparison, as the load or the gate planned it (#354)
+ *   vd(in)             : value descriptor of the execution
  *
  * Note: This routine checks if two tuple values are equal. Coercion
  * is done if necessary. This must give a totally
@@ -7828,8 +7900,9 @@ qexec_collection_has_null (DB_VALUE * colval)
  * then the next comparison will discard the other side.
  */
 static DB_VALUE_COMPARE_RESULT
-qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_TUPLE * rght_tval,
-			  TP_DOMAIN ** rght_dom, int tval_cnt)
+qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom,
+			  QFILE_TUPLE * rght_tval, TP_DOMAIN ** rght_dom, int tval_cnt,
+			  const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd)
 {
   OR_BUF buf;
   DB_VALUE left_dbval, right_dbval;
@@ -7889,8 +7962,10 @@ qexec_cmp_tpl_vals_merge (QFILE_TUPLE * left_tval, TP_DOMAIN ** left_dom, QFILE_
 	  goto clear;
 	}
 
-      /* both left_dbval, right_dbval is non-null */
-      cmp = tp_value_compare (&left_dbval, &right_dbval, 1, 0);
+      /* both left_dbval, right_dbval is non-null: the comparison the load or the gate planned for the column pair, as
+       * tp_value_compare asks it (#354) */
+      cmp = eval_compare_values_planned (thread_p, compares != NULL ? compares[i] : NULL, vd, &left_dbval, &right_dbval,
+					 0, NULL);
 
       if (left_is_set && cmp == DB_UNK && qexec_collection_has_null (&left_dbval))
 	{
@@ -8243,7 +8318,8 @@ qexec_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QF
  */
 static QFILE_LIST_ID *
 qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_LIST_ID * inner_list_idp,
-		  QFILE_LIST_MERGE_INFO * merge_infop, int ls_flag)
+		  QFILE_LIST_MERGE_INFO * merge_infop, int ls_flag, const DOMAIN_COMPARE_PLAN * const *compares,
+		  const VAL_DESCR * vd)
 {
   /* outer -> left scan, inner -> right scan */
 
@@ -8401,7 +8477,8 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
       /* compare two tuple values, if they have not been compared yet */
       if (!already_compared)
 	{
-	  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+	  val_cmp =
+	    qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals, compares, vd);
 	  if (val_cmp == DB_UNK)
 	    {			/* is error */
 	      goto exit_on_error;
@@ -8460,7 +8537,9 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
 		    }
 
 		  /* and compare */
-		  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		  val_cmp =
+		    qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals, compares,
+					      vd);
 		  if (val_cmp != DB_EQ)
 		    {
 		      if (val_cmp == DB_UNK)
@@ -8504,7 +8583,9 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
 	      else
 		{
 		  /* and compare */
-		  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		  val_cmp =
+		    qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals, compares,
+					      vd);
 		  if (val_cmp == DB_UNK)
 		    {		/* is error */
 		      goto exit_on_error;
@@ -8516,7 +8597,9 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
 		      QEXEC_MERGE_REV_SCAN_PVALS (thread_p, inner);
 
 		      /* and compare */
-		      val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		      val_cmp =
+			qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals,
+						  compares, vd);
 		      if (val_cmp == DB_UNK)
 			{	/* is error */
 			  goto exit_on_error;
@@ -8581,7 +8664,8 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
 	  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, outer, true);
 
 	  /* and compare */
-	  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+	  val_cmp =
+	    qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals, compares, vd);
 	  if (val_cmp == DB_UNK)
 	    {			/* is error */
 	      goto exit_on_error;
@@ -8675,8 +8759,9 @@ exit_on_error:
 static QFILE_LIST_ID *
 qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * inner_sid,
 			QFILE_LIST_MERGE_INFO * merge_infop, PRED_EXPR * other_outer_join_pred, XASL_STATE * xasl_state,
-			int ls_flag)
+			int ls_flag, const DOMAIN_COMPARE_PLAN * const *compares)
 {
+  const VAL_DESCR *vd = &xasl_state->vd;
   /* outer -> left scan, inner -> right scan */
 
   /* pre-defined vars: */
@@ -8871,7 +8956,8 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
       /* compare two tuple values, if they have not been compared yet */
       if (!already_compared)
 	{
-	  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+	  val_cmp =
+	    qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals, compares, vd);
 	  if (val_cmp == DB_UNK)
 	    {			/* is error */
 	      goto exit_on_error;
@@ -9000,7 +9086,9 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 		    }
 
 		  /* and compare */
-		  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		  val_cmp =
+		    qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals, compares,
+					      vd);
 		  if (val_cmp != DB_EQ)
 		    {
 		      if (val_cmp == DB_UNK)
@@ -9065,7 +9153,9 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 	      else
 		{
 		  /* and compare */
-		  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		  val_cmp =
+		    qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals, compares,
+					      vd);
 		  if (val_cmp == DB_UNK)
 		    {		/* is error */
 		      goto exit_on_error;
@@ -9077,7 +9167,9 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 		      QEXEC_MERGE_OUTER_PREV_SCAN_PVALS (thread_p, inner);
 
 		      /* and compare */
-		      val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		      val_cmp =
+			qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals,
+						  compares, vd);
 		      if (val_cmp == DB_UNK)
 			{	/* is error */
 			  goto exit_on_error;
@@ -9169,7 +9261,8 @@ qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * 
 	  QEXEC_MERGE_OUTER_NEXT_SCAN_PVALS (thread_p, outer, true);
 
 	  /* and compare */
-	  val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+	  val_cmp =
+	    qexec_cmp_tpl_vals_merge (thread_p, outer_valp, outer_domp, inner_valp, inner_domp, nvals, compares, vd);
 	  if (val_cmp == DB_UNK)
 	    {			/* is error */
 	      goto exit_on_error;
@@ -9363,7 +9456,8 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
   if (merge_infop->join_type == JOIN_INNER)
     {
       /* call list file merge routine */
-      list_id = qexec_merge_list (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag);
+      list_id = qexec_merge_list (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag,
+				  xasl->proc.mergelist.merge_compares, &xasl_state->vd);
     }
   else
     {
@@ -9388,7 +9482,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       /* call outer join merge routine */
       list_id =
 	qexec_merge_list_outer (thread_p, &outer_spec->s_id, &inner_spec->s_id, merge_infop, xasl->during_join_pred,
-				xasl_state, ls_flag);
+				xasl_state, ls_flag, xasl->proc.mergelist.merge_compares);
 
       qexec_close_scan (thread_p, outer_spec);
       outer_spec = NULL;
@@ -18035,7 +18129,9 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  return ER_FAILED;
 	}
 
-      cmp_with_zero = tp_value_compare (limit_valp, &zero_val, 1, 0);
+      /* the comparison the load or the gate planned (#354), as tp_value_compare asks it */
+      cmp_with_zero =
+	eval_compare_values_planned (thread_p, xasl->limit_compare, &xasl_state->vd, limit_valp, &zero_val, 0, NULL);
       if (cmp_with_zero == DB_GT)
 	{
 	  /* validated */
@@ -26162,7 +26258,8 @@ qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY * thread_p
  *   tuple_idx(in): current position of main scan in group
  */
 static int
-qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state)
+qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
+						VAL_DESCR * vd)
 {
   ANALYTIC_TYPE *func_p = NULL;
   double f_row_num_d, c_row_num_d, row_num_d, percentile_d;
@@ -26199,8 +26296,9 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
     }
   else
     {
+      /* the execution's descriptor: a constant ratio reads the gate's value (#354) */
       error =
-	fetch_peek_dbval (thread_p, func_p->info.percentile.percentile_reguvar, NULL, NULL, NULL, NULL, &peek_value_p);
+	fetch_peek_dbval (thread_p, func_p->info.percentile.percentile_reguvar, vd, NULL, NULL, NULL, &peek_value_p);
       if (error != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -26835,7 +26933,7 @@ qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * an
 	    case PT_MEDIAN:
 	    case PT_PERCENTILE_CONT:
 	    case PT_PERCENTILE_DISC:
-	      rc = qexec_analytic_evaluate_interpolation_function (thread_p, func_state);
+	      rc = qexec_analytic_evaluate_interpolation_function (thread_p, func_state, &xasl_state->vd);
 	      if (rc != NO_ERROR)
 		{
 		  goto cleanup;
@@ -30330,7 +30428,9 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  goto cleanup;
 	}
 
-      cmp = tp_value_compare (&left_bound, &right_bound, 1, 1);
+      /* a bound has its term's type and an AND keeps the smaller one, so only the values know the keys: the key pair
+       * table's comparison of the two bounds (#354) */
+      cmp = domain_compare_by_keys (&left_bound, &right_bound, 1, 1, NULL);
       if (cmp == DB_GT)
 	{
 	  error = pr_clone_value (&left_bound, ubound);

@@ -2825,7 +2825,9 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
 
   for (i = 0; i < ckey1->val_count; i++)
     {
-      result = tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
+      /* a key from the scan against one read back from a partial list: two sources whose types can differ, compared
+       * by the key pair table (workspace#354) */
+      result = domain_compare_by_keys (ckey1->values[i], ckey2->values[i], 0, 1, NULL);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;
