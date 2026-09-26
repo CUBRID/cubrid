@@ -120,7 +120,7 @@ namespace parallel_query_execute
     cur_thread_p->on_trace = parent_thread_p->on_trace;
     cur_thread_p->m_px_orig_thread_entry = parent_thread_p;
     is_on_root_thread = cur_thread_p == parent_thread_p;
-    new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state);
+    new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state, false);
     assert (new_xasl_state != nullptr);
     if (on_trace)
       {

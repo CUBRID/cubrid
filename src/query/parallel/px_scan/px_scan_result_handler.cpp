@@ -1490,7 +1490,7 @@ namespace parallel_scan
 		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		    return false;
 		  }
-		type_list.domp[0] = qdata_aggregate_list_domain (agg_node);
+		type_list.domp[0] = qdata_aggregate_list_domain (tl_vd, agg_node);
 		agg_node->list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, ls_flag, agg_node->list_id);
 		db_private_free_and_init (thread_p, type_list.domp);
 		if (agg_node->list_id == nullptr)
@@ -1516,7 +1516,7 @@ namespace parallel_scan
 		return false;
 	      }
 	    /* #341 (S-26): the list domain the setup chose */
-	    type_list.domp[0] = qdata_aggregate_list_domain (agg_node);
+	    type_list.domp[0] = qdata_aggregate_list_domain (tl_vd, agg_node);
 	    agg_node->list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, ls_flag, agg_node->list_id);
 	    db_private_free_and_init (thread_p, type_list.domp);
 	    if (agg_node->list_id == nullptr)
@@ -1542,7 +1542,8 @@ namespace parallel_scan
 		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		    return false;
 		  }
-		type_list.domp[0] = agg_node->operands->value.domain;
+		type_list.domp[0] =
+			qexec_node_domain (tl_vd, agg_node->operands->value.domain, agg_node->operands->value.domain_plan);
 		agg_node->list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, ls_flag, agg_node->list_id);
 		db_private_free_and_init (thread_p, type_list.domp);
 		if (agg_node->list_id == nullptr)
@@ -1977,11 +1978,11 @@ namespace parallel_scan
 	    int gc_err;
 	    if (acc->curr_cnt < 1)
 	      {
-		gc_err = qdata_group_concat_first_value (thread_p, agg_node, db_value_p);
+		gc_err = qdata_group_concat_first_value (thread_p, tl_vd, agg_node, db_value_p);
 	      }
 	    else
 	      {
-		gc_err = qdata_group_concat_value (thread_p, agg_node, db_value_p);
+		gc_err = qdata_group_concat_value (thread_p, tl_vd, agg_node, db_value_p);
 	      }
 	    if (gc_err != NO_ERROR)
 	      {
@@ -2107,7 +2108,7 @@ namespace parallel_scan
 	  {
 	    return false;
 	  }
-	if (qdata_update_agg_interpolation_func_value_and_domain (agg_node, &median_cast_val) != NO_ERROR)
+	if (qdata_update_agg_interpolation_func_value_and_domain (tl_vd, agg_node, &median_cast_val) != NO_ERROR)
 	  {
 	    pr_clear_value (&median_cast_val);
 	    return false;
@@ -2577,7 +2578,7 @@ namespace parallel_scan
 	    HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
 	    if (orig_agg_p->accumulator.curr_cnt > 0)
 	      {
-		if (qdata_group_concat_value (thread_p, orig_agg_p,
+		if (qdata_group_concat_value (thread_p, tl_vd, orig_agg_p,
 					      cur_agg_p->accumulator.value) != NO_ERROR)
 		  {
 		    db_change_private_heap (thread_p, prev_heap_id);
@@ -2631,9 +2632,11 @@ namespace parallel_scan
 	  }
 
 	HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
+	/* the worker's state holds the leader's aggregate's domain under the same cell: the worker set its clone up
+	 * from the decisions it inherited, as the leader did (#355) */
 	int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
 		  &orig_agg_p->accumulator_domain, orig_agg_p->function,
-		  orig_agg_p->domain, &cur_agg_p->accumulator);
+		  qexec_node_domain (tl_vd, orig_agg_p->domain, orig_agg_p->domain_plan), &cur_agg_p->accumulator);
 	db_change_private_heap (thread_p, prev_heap_id);
 	if (err != NO_ERROR)
 	  {
@@ -2691,7 +2694,9 @@ namespace parallel_scan
 
 	  /* S-35 is gone (#343): the leader set its aggregates up before its scan from the decisions its workers inherited
 	   * (qexec_setup_aggregate_domains, qexec_setup_parallel_aggregates), so a worker has no domain to hand back */
-	  assert (!(orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE));
+	  assert (! (qexec_node_operand_type (tl_vd, orig_agg_p->opr_dbtype, orig_agg_p->domain_plan) == DB_TYPE_VARIABLE
+		     && qexec_node_operand_type (tl_vd, cur_agg_p->opr_dbtype, cur_agg_p->domain_plan)
+		     != DB_TYPE_VARIABLE));
 
 	  switch (orig_agg_p->function)
 	    {

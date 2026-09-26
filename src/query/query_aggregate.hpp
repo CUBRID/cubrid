@@ -117,7 +117,7 @@ using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 using HIERARCHY_AGGREGATE_HELPER = cubquery::hierarchy_aggregate_helper;
 
 int qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
-				     QUERY_ID query_id);
+				     QUERY_ID query_id, const struct val_descr *vd);
 int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_CODE func_type,
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc);
@@ -129,9 +129,9 @@ int qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggr
 bool qdata_evaluate_aggregate_min_max_finished (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p);
 int qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_ptr,
 					HFID *root_hfid, BTID *root_btid,
-					cubquery::hierarchy_aggregate_helper *helper);
+					cubquery::hierarchy_aggregate_helper *helper, const struct val_descr *vd);
 int qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
-				   bool keep_list_file);
+				   bool keep_list_file, const struct val_descr *vd);
 
 cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals);
 void qdata_free_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
@@ -159,15 +159,15 @@ SCAN_CODE qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_lis
     tp_domain **key_dom, cubxasl::aggregate_accumulator_domain **acc_dom);
 int qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table, qfile_list_id *tuple_list_id,
 				   qfile_list_id *partial_list_id, db_value *temp_dbval_array);
-int qdata_group_concat_first_value (cubthread::entry *thread_p,
+int qdata_group_concat_first_value (cubthread::entry *thread_p, const struct val_descr *vd,
 				    cubxasl::aggregate_list_node *agg_p,
 				    db_value *dbvalue);
-int qdata_group_concat_value (cubthread::entry *thread_p,
+int qdata_group_concat_value (cubthread::entry *thread_p, const struct val_descr *vd,
 			      cubxasl::aggregate_list_node *agg_p,
 			      db_value *dbvalue);
-tp_domain *qdata_aggregate_list_domain (const cubxasl::aggregate_list_node *agg_p);
-int qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p,
-    db_value *val);
+tp_domain *qdata_aggregate_list_domain (const struct val_descr *vd, const cubxasl::aggregate_list_node *agg_p);
+int qdata_update_agg_interpolation_func_value_and_domain (const struct val_descr *vd,
+    cubxasl::aggregate_list_node *agg_p, db_value *val);
 int qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p,
     cubxasl::aggregate_list_node *agg_p,
     struct val_descr *val_desc_p);

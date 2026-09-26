@@ -131,12 +131,7 @@ typedef struct arith_list_node ARITH_TYPE;
 struct arith_list_node
 {
   TP_DOMAIN *domain;		/* resultant domain */
-  TP_DOMAIN *original_domain;	/* original resultant domain, used at execution in case of XASL clones  */
   domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
-  /* load-derived, not serialized (workspace#354): the comparisons FIELD, NULLIF, LEAST and GREATEST make, as the load
-   * or the gate decided them - [0] the left operand (FIELD: the third against the left), [1] FIELD's third against
-   * the right */
-  const DOMAIN_COMPARE_PLAN *domain_compare[2] = { nullptr, nullptr };
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
@@ -177,10 +172,14 @@ const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable 
 const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
-const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
+const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly: set
+						 * at load for a stable regu (#355, D-355-03) */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
 const int REGU_VARIABLE_GATE = 0x4000; /* the execution gate takes this host variable's domain from its value */
+const int REGU_VARIABLE_OPEN = 0x8000;	/* load-derived: the regu's compiled domain is open, so the inline
+					 * fetch_peek_dbval () peeks it only once it took its domain in this execution
+					 * (qexec_node_took_domain, #355, D-355-03) */
 
 class regu_variable_node
 {
@@ -189,7 +188,6 @@ class regu_variable_node
 
     int flags;			/* flags */
     TP_DOMAIN *domain;		/* domain of the value in this regu variable */
-    TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
     domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */

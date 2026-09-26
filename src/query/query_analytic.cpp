@@ -38,8 +38,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-static int qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::analytic_list_node *ana_p,
-    QFILE_LIST_SCAN_ID *scan_id);
+static int qdata_analytic_interpolation (cubthread::entry *thread_p, const VAL_DESCR *vd,
+    cubxasl::analytic_list_node *ana_p, QFILE_LIST_SCAN_ID *scan_id);
 
 /*
  * qdata_analytic_is_plain_sum_avg () - is this a plain SUM/AVG the peek path may take?
@@ -60,7 +60,9 @@ qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p, const VAL_DESCR *v
     {
       return false;
     }
-  if (func_p->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL)
+  if (qexec_node_operand_type (val_desc_p, func_p->opr_dbtype, func_p->domain_plan) == DB_TYPE_VARIABLE
+      || TP_DOMAIN_COLLATION_FLAG (qexec_node_domain (val_desc_p, func_p->domain, func_p->domain_plan))
+      != TP_DOMAIN_COLL_NORMAL)
     {
       /* #337: the gate decided the domain before the first row, so the domain does not block the fast path. The
        * first non-NULL value still takes the general path (curr_cnt < 1, sum_acc inactive), which applies that
@@ -76,10 +78,12 @@ qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p, const VAL_DESCR *v
  *   return: NO_ERROR, or ER_code
  *   func_p(in): Analytic expression node
  *   query_id(in): Associated query id
+ *   vd(in): Value descriptor
  *
  */
 int
-qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p, QUERY_ID query_id)
+qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p, QUERY_ID query_id,
+				const VAL_DESCR *vd)
 {
   func_p->curr_cnt = 0;
   func_p->sum_acc.is_active = false;
@@ -113,7 +117,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
 	{
 	  return ER_FAILED;
 	}
-      type_list.domp[0] = func_p->operand.domain;
+      type_list.domp[0] = qexec_node_domain (vd, func_p->operand.domain, func_p->operand.domain_plan);
 
       list_id_p = qfile_open_list (thread_p, &type_list, NULL, query_id, QFILE_FLAG_DISTINCT, NULL);
       if (list_id_p == NULL)
@@ -160,6 +164,9 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   int coll_id;
   ANALYTIC_PERCENTILE_FUNCTION_INFO *percentile_info_p = NULL;
   DB_VALUE *peek_value_p = NULL;
+  /* the function's domain and operand type in this execution: what its first binding took into its cells (#355) */
+  TP_DOMAIN *domain = qexec_node_domain (val_desc_p, func_p->domain, func_p->domain_plan);
+  DB_TYPE opr_type = qexec_node_operand_type (val_desc_p, func_p->opr_dbtype, func_p->domain_plan);
 
   db_make_null (&dbval);
   db_make_null (&sqr_val);
@@ -202,8 +209,8 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
    * (D-336-E), and a value the gate could not classify is classified, or rejected, by the first execution below as
    * develop's was. Only a function the row decides takes the first value's domain here (D-336-E; counted). */
   const TP_DOMAIN *gate_decided = NULL;
-  bool first_binding = (func_p->opr_dbtype == DB_TYPE_VARIABLE
-			|| TP_DOMAIN_COLLATION_FLAG (func_p->domain) != TP_DOMAIN_COLL_NORMAL) && !DB_IS_NULL (&dbval);
+  bool first_binding = (opr_type == DB_TYPE_VARIABLE
+			|| TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL) && !DB_IS_NULL (&dbval);
   if (first_binding)
     {
       gate_decided = qexec_gate_domain (val_desc_p, func_p->domain_plan, false);
@@ -218,12 +225,12 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   if (first_binding)
     {
 #if !defined (NDEBUG)
-      const TP_DOMAIN *shadow_compiled = func_p->domain;
-      bool shadow_late_bound = func_p->opr_dbtype == DB_TYPE_VARIABLE;
+      const TP_DOMAIN *shadow_compiled = domain;
+      bool shadow_late_bound = opr_type == DB_TYPE_VARIABLE;
 #endif
       if (gate_decided != NULL)
 	{
-	  func_p->domain = (TP_DOMAIN *) gate_decided;
+	  domain = (TP_DOMAIN *) gate_decided;
 	}
       else
 	{
@@ -238,7 +245,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
 	case PT_COUNT:
 	case PT_COUNT_STAR:
-	  func_p->domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
+	  domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
 	  break;
 
 	case PT_AVG:
@@ -248,17 +255,17 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	case PT_VARIANCE:
 	case PT_VAR_POP:
 	case PT_VAR_SAMP:
-	  func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	  break;
 
 	case PT_SUM:
 	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
 	    {
-	      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	      domain = tp_domain_resolve_value (&dbval, NULL);
 	    }
 	  else
 	    {
-	      func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	      domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	    }
 	  break;
 
@@ -266,20 +273,20 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	case PT_PERCENTILE_CONT:
 	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
 	    {
-	      func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	      domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 	    }
 	  else
 	    {
-	      func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	      domain = tp_domain_resolve_value (&dbval, NULL);
 	    }
 	  break;
 
 	default:
-	  func_p->domain = tp_domain_resolve_value (&dbval, NULL);
+	  domain = tp_domain_resolve_value (&dbval, NULL);
 	  break;
 	}
 
-      if (func_p->domain == NULL)
+      if (domain == NULL)
 	{
 	  error = ER_FAILED;
 	  goto exit;
@@ -297,15 +304,15 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	int shadow_error = domain_resolve (DOMAIN_CTX_ANALYTIC, func_p->function, &operand, 1, shadow_compiled,
 					   &resolved, &needs_gate);
 	assert (shadow_error == NO_ERROR && !needs_gate);
-	assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == TP_DOMAIN_TYPE (func_p->domain));
+	assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == TP_DOMAIN_TYPE (domain));
 	/* #335: the gate decided the same function domain before execution */
 	const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (val_desc_p, func_p->domain_plan);
-	assert (gate_node == NULL || TP_DOMAIN_TYPE (gate_node->domain) == TP_DOMAIN_TYPE (func_p->domain));
+	assert (gate_node == NULL || TP_DOMAIN_TYPE (gate_node->domain) == TP_DOMAIN_TYPE (domain));
       }
 #endif
 
       /* coerce operand */
-      if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)
+      if (tp_value_coerce (&dbval, &dbval, domain) != DOMAIN_COMPATIBLE)
 	{
 	  /* D4 (#337): the failure used to leave no error, so the query ended silently with no rows (an assertion in
 	   * qexec_analytic_add_tuple under optdebug) */
@@ -314,20 +321,22 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    {
 	      error = ER_TP_CANT_COERCE;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (&dbval)),
-		      pr_type_name (TP_DOMAIN_TYPE (func_p->domain)));
+		      pr_type_name (TP_DOMAIN_TYPE (domain)));
 	    }
 	  goto exit;
 	}
 
-      func_p->opr_dbtype = TP_DOMAIN_TYPE (func_p->domain);
-      db_value_domain_init (func_p->value, func_p->opr_dbtype, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      opr_type = TP_DOMAIN_TYPE (domain);
+      qexec_take_domain (val_desc_p, func_p->domain_plan, func_p->domain, domain);
+      qexec_take_operand_type (val_desc_p, func_p->domain_plan, func_p->opr_dbtype, opr_type);
+      db_value_domain_init (func_p->value, opr_type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
       /* set the distinct list file domain for finalize; a *variable* readval
        * is a no-op and would silently drop all values. */
       if (func_p->option == Q_DISTINCT && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
 	{
-	  /* values are written after coercion to func_p->domain. */
-	  func_p->list_id->type_list.domp[0] = func_p->domain;
+	  /* values are written after coercion to domain. */
+	  func_p->list_id->type_list.domp[0] = domain;
 	}
     }
 
@@ -409,7 +418,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
     }
 
   copy_opr = false;
-  coll_id = func_p->domain->collation_id;
+  coll_id = domain->collation_id;
   switch (func_p->function)
     {
     case PT_CUME_DIST:
@@ -480,7 +489,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
     case PT_MIN:
       opr_dbval_p = &dbval;
       if ((func_p->curr_cnt < 1 || DB_IS_NULL (func_p->value))
-	  || func_p->domain->type->cmpval (func_p->value, &dbval, 1, 1, NULL, coll_id) > 0)
+	  || domain->type->cmpval (func_p->value, &dbval, 1, 1, NULL, coll_id) > 0)
 	{
 	  copy_opr = true;
 	}
@@ -489,7 +498,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
     case PT_MAX:
       opr_dbval_p = &dbval;
       if ((func_p->curr_cnt < 1 || DB_IS_NULL (func_p->value))
-	  || func_p->domain->type->cmpval (func_p->value, &dbval, 1, 1, NULL, coll_id) < 0)
+	  || domain->type->cmpval (func_p->value, &dbval, 1, 1, NULL, coll_id) < 0)
 	{
 	  copy_opr = true;
 	}
@@ -506,10 +515,10 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       if (func_p->sum_acc.is_active
 	  && func_p->sum_acc.sum_type != sum_acc_analytic_sum_type_for (DB_VALUE_DOMAIN_TYPE (&dbval)))
 	{
-	  dom_status = tp_value_coerce (&dbval, &dbval, func_p->domain);
+	  dom_status = tp_value_coerce (&dbval, &dbval, domain);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, func_p->domain);
+	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, domain);
 	      goto exit;
 	    }
 	}
@@ -526,7 +535,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    {
 	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand
 	       */
-	      if (tp_value_coerce (&dbval, &dbval, func_p->domain) != DOMAIN_COMPATIBLE)
+	      if (tp_value_coerce (&dbval, &dbval, domain) != DOMAIN_COMPATIBLE)
 		{
 		  error = ER_FAILED;
 		  goto exit;
@@ -547,7 +556,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  TP_DOMAIN *result_domain;
 	  DB_TYPE type =
 		  (func_p->function ==
-		   PT_AVG) ? (DB_TYPE) func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain);
+		   PT_AVG) ? (DB_TYPE) func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (domain);
 
 	  if (func_p->sum_acc.is_active)
 	    {
@@ -558,7 +567,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	      goto exit;
 	    }
 
-	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
+	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : domain);
 	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, result_domain) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
@@ -758,14 +767,14 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    {
 	      func_p->is_first_exec_time = false;
 	      /* #337: an open function the gate decided takes that class; the value is coerced to it below */
-	      const TP_DOMAIN *planned = TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE
+	      const TP_DOMAIN *planned = TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
 		? qexec_gate_domain (val_desc_p, func_p->domain_plan, false) : NULL;
 	      if (planned != NULL)
 		{
-		  func_p->domain = (TP_DOMAIN *) planned;
+		  domain = (TP_DOMAIN *) planned;
 		}
-	      else if ((TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE
-			|| (!TP_IS_NUMERIC_TYPE (func_p->opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (func_p->opr_dbtype)
+	      else if ((TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
+			|| (!TP_IS_NUMERIC_TYPE (opr_type) && !TP_IS_DATE_OR_TIME_TYPE (opr_type)
 			    && (func_p->domain_plan == NULL || func_p->domain_plan->fixed.domain == NULL
 				|| TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) == DB_TYPE_VARIABLE)))
 		       && qexec_row_domain_counts (val_desc_p, func_p->domain_plan))
@@ -777,7 +786,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		}
 	      /* determine domain based on first value */
 	      if (planned == NULL)
-	      switch (func_p->opr_dbtype)
+	      switch (opr_type)
 		{
 
 		case DB_TYPE_SHORT:
@@ -787,14 +796,14 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		case DB_TYPE_DOUBLE:
 		case DB_TYPE_MONETARY:
 		case DB_TYPE_NUMERIC:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
 		      if (func_p->is_const_operand || func_p->function == PT_PERCENTILE_DISC)
 			{
 			  /* percentile_disc returns the same type as operand while median and percentile_cont return
 			   * double */
-			  func_p->domain = tp_domain_resolve_value (&dbval, NULL);
-			  if (func_p->domain == NULL)
+			  domain = tp_domain_resolve_value (&dbval, NULL);
+			  if (domain == NULL)
 			    {
 			      error = er_errid ();
 			      assert (error != NO_ERROR);
@@ -804,69 +813,69 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			}
 		      else
 			{
-			  func_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+			  domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 			}
 		    }
 		  break;
 
 		case DB_TYPE_DATE:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_DATE);
+		      domain = tp_domain_resolve_default (DB_TYPE_DATE);
 		    }
 		  break;
 
 		case DB_TYPE_DATETIME:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_DATETIME);
+		      domain = tp_domain_resolve_default (DB_TYPE_DATETIME);
 		    }
 		  break;
 
 		case DB_TYPE_DATETIMETZ:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_DATETIMETZ);
+		      domain = tp_domain_resolve_default (DB_TYPE_DATETIMETZ);
 		    }
 		  break;
 
 		case DB_TYPE_DATETIMELTZ:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_DATETIMELTZ);
+		      domain = tp_domain_resolve_default (DB_TYPE_DATETIMELTZ);
 		    }
 		  break;
 
 		case DB_TYPE_TIMESTAMP:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMP);
+		      domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMP);
 		    }
 		  break;
 
 		case DB_TYPE_TIMESTAMPTZ:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
+		      domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
 		    }
 		  break;
 
 		case DB_TYPE_TIMESTAMPLTZ:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPLTZ);
+		      domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPLTZ);
 		    }
 		  break;
 
 		case DB_TYPE_TIME:
-		  if (TP_DOMAIN_TYPE (func_p->domain) == DB_TYPE_VARIABLE)
+		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		    {
-		      func_p->domain = tp_domain_resolve_default (DB_TYPE_TIME);
+		      domain = tp_domain_resolve_default (DB_TYPE_TIME);
 		    }
 		  break;
 
 		default:
-		  /* the compiled function domain is the plan's: func_p->domain may already hold the first value's domain
+		  /* the compiled function domain is the plan's: domain may already hold the first value's domain
 		   * from the late binding above */
 		  assert (func_p->domain_plan != NULL);
 		  if (func_p->domain_plan != NULL && func_p->domain_plan->fixed.domain != NULL
@@ -914,8 +923,9 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		    }
 
 		  /* update domain */
-		  func_p->domain = tmp_domain_p;
+		  domain = tmp_domain_p;
 		}
+	      qexec_take_domain (val_desc_p, func_p->domain_plan, func_p->domain, domain);
 	    }
 	}
 
@@ -943,7 +953,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       /* copy value */
       pr_clear_value (func_p->value);
-      error = db_value_coerce (&dbval, func_p->value, func_p->domain);
+      error = db_value_coerce (&dbval, func_p->value, domain);
       if (error != NO_ERROR)
 	{
 	  goto exit;
@@ -987,7 +997,8 @@ exit:
  *
  */
 int
-qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p, bool is_same_group)
+qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p, bool is_same_group,
+			      const VAL_DESCR *vd)
 {
   DB_VALUE dbval;
   QFILE_LIST_ID *list_id_p;
@@ -1068,7 +1079,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  /* median and percentile funcs don't need to read all rows */
 	  if (list_id_p->tuple_cnt > 0 && QPROC_IS_INTERPOLATION_FUNC (func_p))
 	    {
-	      err = qdata_analytic_interpolation (thread_p, func_p, &scan_id);
+	      err = qdata_analytic_interpolation (thread_p, vd, func_p, &scan_id);
 	      if (err != NO_ERROR)
 		{
 		  qfile_close_scan (thread_p, &scan_id);
@@ -1181,7 +1192,8 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			    }
 			}
 
-		      domain_ptr = tmp_domain_ptr != NULL ? tmp_domain_ptr : func_p->domain;
+		      domain_ptr = tmp_domain_ptr != NULL ? tmp_domain_ptr
+				   : qexec_node_domain (vd, func_p->domain, func_p->domain_plan);
 		      if ((func_p->function == PT_AVG) && (dbval.domain.general_info.type == DB_TYPE_NUMERIC))
 			{
 			  domain_ptr = NULL;
@@ -1342,7 +1354,7 @@ error:
 }
 
 static int
-qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::analytic_list_node *ana_p,
+qdata_analytic_interpolation (cubthread::entry *thread_p, const VAL_DESCR *vd, cubxasl::analytic_list_node *ana_p,
 			      QFILE_LIST_SCAN_ID *scan_id)
 {
   int error = NO_ERROR;
@@ -1389,14 +1401,17 @@ qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::analytic_list
       c_row_num_d = ceil (row_num_d);
     }
 
+  /* the function takes the domain the interpolation gives, and its type as the operand type, into its cells (#355) */
+  TP_DOMAIN *domain = qexec_node_domain (vd, ana_p->domain, ana_p->domain_plan);
   error =
 	  qdata_get_interpolation_function_result (thread_p, scan_id, scan_id->list_id.type_list.domp[0], 0, row_num_d,
-	      f_row_num_d, c_row_num_d, ana_p->value, &ana_p->domain,
+	      f_row_num_d, c_row_num_d, ana_p->value, &domain,
 	      ana_p->function);
 
   if (error == NO_ERROR)
     {
-      ana_p->opr_dbtype = TP_DOMAIN_TYPE (ana_p->domain);
+      qexec_take_domain (vd, ana_p->domain_plan, ana_p->domain, domain);
+      qexec_take_operand_type (vd, ana_p->domain_plan, ana_p->opr_dbtype, TP_DOMAIN_TYPE (domain));
     }
 
   return error;

@@ -64,9 +64,10 @@ extern int fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, regu_variable_node * 
 
 /*
  * fetch_peek_dbval () - returns a POINTER to an existing db_value
- *   Inline fast-path for the dominant per-row cases: a regu_var previously confirmed simple
- *   (REGU_VARIABLE_FAST_PEEK set by fetch_peek_dbval_slow () on the first fetch). Returns the value
- *   pointer directly - no call frame, no type switch, no domain dereference:
+ *   Inline fast-path for the dominant per-row cases: a regu_var the load confirmed simple
+ *   (REGU_VARIABLE_FAST_PEEK; a regu whose domain is open once it took its domain in this execution,
+ *   REGU_VARIABLE_OPEN, #355). Returns the value pointer directly - no call frame, no type switch, no
+ *   domain dereference:
  *     TYPE_DBVAL     -> the embedded constant db_value;
  *     TYPE_CONSTANT  -> the value-pointer slot, only when there is no linked subquery to execute;
  *     TYPE_POS_VALUE -> the reference's value in the gate's value array (REGU_RESOLVED_VALUE);
@@ -79,7 +80,9 @@ inline int
 fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_descr * vd, OID * class_oid,
 		  OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
 {
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FAST_PEEK))
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FAST_PEEK)
+      && (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_OPEN)
+	  || qexec_node_took_domain (vd, regu_var->domain_plan)))
     {
       switch (regu_var->type)
 	{

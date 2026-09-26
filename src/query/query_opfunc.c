@@ -6968,14 +6968,15 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
       if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  bool row_reads;
-	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, reg_var_p->value.domain, reg_var_p->value.domain_plan,
-							   true, &row_reads);
+	  /* the column regu's domain now: its cell once this execution gave it one (#355) */
+	  TP_DOMAIN *now = qexec_node_domain (vd, reg_var_p->value.domain, reg_var_p->value.domain_plan);
+	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, now, reg_var_p->value.domain_plan, true, &row_reads);
 	  if (domain == NULL && !row_reads)
 	    {
 	      db_private_free_and_init (thread_p, type_list_p->domp);
 	      return qexec_domain_unresolved (vd, reg_var_p->value.domain_plan, reg_var_p->value.domain);
 	    }
-	  type_list_p->domp[i++] = domain != NULL ? (TP_DOMAIN *) domain : reg_var_p->value.domain;
+	  type_list_p->domp[i++] = domain != NULL ? (TP_DOMAIN *) domain : now;
 	}
 
       reg_var_p = reg_var_p->next;
@@ -7061,7 +7062,9 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
       val_type = DB_VALUE_TYPE (peek_value_p);
       assert (val_type != DB_TYPE_NULL);
 
-      dom_type = TP_DOMAIN_TYPE (regu_var_p->domain);
+      /* the column's domain in this execution: the one its fetch took, or its compiled one (#355) */
+      TP_DOMAIN *domain = qexec_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->domain_plan);
+      dom_type = TP_DOMAIN_TYPE (domain);
       if (dom_type != DB_TYPE_NULL)
 	{
 	  assert (dom_type != DB_TYPE_NULL);
@@ -7072,8 +7075,8 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 	    }
 	  else if (val_type != dom_type
 		   || (val_type == DB_TYPE_NUMERIC
-		       && (peek_value_p->domain.numeric_info.precision != regu_var_p->domain->precision
-			   || peek_value_p->domain.numeric_info.scale != regu_var_p->domain->scale)))
+		       && (peek_value_p->domain.numeric_info.precision != domain->precision
+			   || peek_value_p->domain.numeric_info.scale != domain->scale)))
 	    {
 	      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW))
 		{
@@ -7087,7 +7090,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		      save_heapid = db_change_private_heap (thread_p, 0);
 		    }
 
-		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, domain);
 		  if (save_heapid != 0)
 		    {
 		      (void) db_change_private_heap (thread_p, save_heapid);
@@ -7095,7 +7098,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		    }
 		  if (dom_status != DOMAIN_COMPATIBLE)
 		    {
-		      result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
+		      result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, domain);
 		      return NULL;
 		    }
 		  assert (dom_type == DB_VALUE_TYPE (peek_value_p)
@@ -7133,7 +7136,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
 
   result_p = regu_func_p->value.funcp->value;
   operand = regu_func_p->value.funcp->operand;
-  domain_p = regu_func_p->domain;
+  domain_p = qexec_node_domain (val_desc_p, regu_func_p->domain, regu_func_p->domain_plan);
   db_make_null (&dbval);
 
   if (stype == DB_TYPE_SET)
@@ -7520,7 +7523,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
       return ER_FAILED;
     }
 
-  domain_p = function_p->domain;
+  domain_p = qexec_node_domain (val_desc_p, function_p->domain, function_p->domain_plan);
   list_id_p = operand->value.value.srlist_id->list_id;
   db_make_null (&dbval);
 
@@ -7724,7 +7727,8 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 
   if (i < xptr->val_list->val_cnt)
     {
-      if (qexec_get_tuple_column_value (tuple_rec.tpl, i, result_val_p, regu_p->domain) != NO_ERROR)
+      if (qexec_get_tuple_column_value (tuple_rec.tpl, i, result_val_p,
+					qexec_node_domain (vd, regu_p->domain, regu_p->domain_plan)) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -8043,7 +8047,9 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	  /* get the required column */
 	  if (i < xptr->val_list->val_cnt)
 	    {
-	      if (qexec_get_tuple_column_value (tuple_rec.tpl, i, arg_dbval_p, regu_p->domain) != NO_ERROR)
+	      if (qexec_get_tuple_column_value (tuple_rec.tpl, i, arg_dbval_p,
+						qexec_node_domain (vd, regu_p->domain,
+								   regu_p->domain_plan)) != NO_ERROR)
 		{
 		  goto error;
 		}

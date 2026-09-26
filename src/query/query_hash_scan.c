@@ -562,11 +562,13 @@ qdata_hscan_key_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key, R
 	{
 	  if (producer->value.type == TYPE_POSITION && producer->value.vfetch_to == key->value.dbvalptr)
 	    {
-	      return producer->value.value.pos_descr.dom;
+	      return qexec_node_domain (vd, producer->value.value.pos_descr.dom,
+					producer->value.value.pos_descr.domain_plan);
 	    }
 	}
     }
-  return qexec_consumer_domain (vd, key->domain, key->domain_plan, true, row_reads);
+  return qexec_consumer_domain (vd, qexec_node_domain (vd, key->domain, key->domain_plan), key->domain_plan, true,
+				row_reads);
 }
 
 /*
@@ -609,7 +611,9 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
     {
       HASH_SCAN_KEY_ENTRY *key = &plan->key[i];
       key->conv = NULL;
-      key->target = probe->value.domain;
+      /* the probe key's domain now: the one it took if this execution computed it before, as develop read the node
+       * (#356 handover, #355) */
+      key->target = qexec_node_domain (vd, probe->value.domain, probe->value.domain_plan);
       key->source = DB_TYPE_NULL;
       const DB_TYPE target = TP_DOMAIN_TYPE (key->target);
       if (key->target == NULL || target == DB_TYPE_VARIABLE)

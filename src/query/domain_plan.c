@@ -89,6 +89,9 @@ struct DOMAIN_LOAD_RECORD
   bool literal_value;		/* a bind or a literal: the gate reads its value */
   bool follows_producer;	/* after resolution: this record carries its producer's answer (a link source goes
 				 * through it to the producer, a bind's value included) */
+  bool needs_cell;		/* the node gets a cell in an execution's state (domain_give_cell, #355) */
+  bool open;			/* its compiled domain is open: DOMAIN_PLAN_OPEN once published (#355) */
+  bool open_position;		/* a list position whose pos_descr.dom is open: DOMAIN_PLAN_OPEN_POSITION (#355) */
   DOMAIN_LOAD_RECORD *producer;	/* CONSUMER / ARITH_REGU: whose answer this record reads */
   /* NODE / FIXED_AGG: the operands in operand order, and the literal a TYPE_DBVAL operand carries; the inline arrays
    * hold three, a function with more operands allocates its own (#343) */
@@ -194,12 +197,44 @@ domain_character_open (const TP_DOMAIN * domain)
     && TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL;
 }
 
+/* A domain the execution used to complete in the plan node itself: a VARIABLE type, or a collation the values give
+ * (LEAVE, ENFORCE). The pair condition of 26 execution sites (VARIABLE || collation flag != NORMAL) asked this of the
+ * node's domain at every row; the load asks it once (#355, D-355-06). */
+static bool
+domain_is_open (const TP_DOMAIN * domain)
+{
+  return domain != NULL && (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
+			    || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL);
+}
+
 /* The load record an item lives in: every item is a record's embedded item until the plan is published. */
 static DOMAIN_LOAD_RECORD *
 domain_record_of (const DOMAIN_PLAN_ITEM * item)
 {
   return item == NULL ? NULL
     : (DOMAIN_LOAD_RECORD *) ((char *) const_cast < DOMAIN_PLAN_ITEM * >(item) - offsetof (DOMAIN_LOAD_RECORD, item));
+}
+
+/*
+ * domain_give_cell () - the node of an item gets a cell in an execution's state (#355, D-355-01)
+ *   open(in): the node's compiled domain is open (domain_is_open): DOMAIN_PLAN_OPEN, set when the plan is published so
+ *	       that it does not change which value pointers share their producer's item (D-355-09)
+ *
+ * The domain an execution gives a node - a gate decision the node reads at its first computation or its consumer's
+ * setup, a value's domain where the plan hands it to the row (D-336-E) - lives in the cell, never in the node: the
+ * plan stays what the stream loaded (ADR 0020, G-02). An aggregate or an analytic function gets one whether or not its
+ * domain is open: its execution also records the operand type it evaluates with.
+ */
+static void
+domain_give_cell (DOMAIN_PLAN_ITEM * item, bool open)
+{
+  if (item == NULL)
+    {
+      return;
+    }
+  DOMAIN_LOAD_RECORD *record = domain_record_of (item);
+  record->needs_cell = true;
+  record->open = record->open || open;
 }
 
 /* The resolver context of a gate-dependent operator node. */
@@ -320,11 +355,8 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
   record->item.ref = -1;
   record->item.operand_class = operand_class;
   record->item.fixed.domain = domain;
-  for (int i = 0; i < 3; i++)
-    {
-      record->item.fail[i] = context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_FAIL_KEEP
-	: context == DOMAIN_CTX_ASSIGN ? DOMAIN_FAIL_ERROR : DOMAIN_FAIL_NULL;
-    }
+  record->item.fail = context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_FAIL_KEEP
+    : context == DOMAIN_CTX_ASSIGN ? DOMAIN_FAIL_ERROR : DOMAIN_FAIL_NULL;
   record->cold.val_pos = -1;
   record->cold.ctx = context;
   record->cold.opcode = opcode;
@@ -392,6 +424,32 @@ domain_add_compare_pair (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * const regu[2
   pair->next = ctx->compare_pairs;
   ctx->compare_pairs = pair;
   ctx->n_compare_pairs++;
+}
+
+/* The two comparison record slots of a FIELD, NULLIF, LEAST or GREATEST node, in the plan's arena (#354): the node's
+ * item carries them (#355, D-355-04); NULL for any other operator */
+static const DOMAIN_COMPARE_PLAN **
+domain_arith_compares (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, bool * failed)
+{
+  switch (opcode)
+    {
+    case T_NULLIF:
+    case T_LEAST:
+    case T_GREATEST:
+    case T_FIELD:
+      break;
+    default:
+      return NULL;
+    }
+  const DOMAIN_COMPARE_PLAN **compares =
+    (const DOMAIN_COMPARE_PLAN **) stx_alloc_struct (thread_p, (int) (2 * sizeof (*compares)));
+  if (compares == NULL)
+    {
+      *failed = true;
+      return NULL;
+    }
+  compares[0] = compares[1] = NULL;
+  return compares;
 }
 
 /* A comparison of two regus outside a predicate term (#354). */
@@ -813,29 +871,33 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     }
   domain_walk_pred (ctx, arith->pred);
   /* the comparisons the node makes are planned like a term's (#354): FIELD compares its third operand with each value,
-   * NULLIF and LEAST / GREATEST their two operands */
-  switch (arith->opcode)
+   * NULLIF and LEAST / GREATEST their two operands; the node's item carries them (#355) */
+  const DOMAIN_COMPARE_PLAN **compares = domain_arith_compares (ctx->thread_p, arith->opcode, &ctx->failed);
+  if (compares != NULL)
     {
-    case T_NULLIF:
-    case T_LEAST:
-    case T_GREATEST:
-      domain_add_regu_compare (ctx, arith->leftptr, arith->rightptr, &arith->domain_compare[0]);
-      break;
-    case T_FIELD:
-      if (field_bottom)
+      if (arith->opcode == T_FIELD)
 	{
-	  domain_add_regu_compare (ctx, arith->thirdptr, arith->leftptr, &arith->domain_compare[0]);
+	  if (field_bottom)
+	    {
+	      domain_add_regu_compare (ctx, arith->thirdptr, arith->leftptr, &compares[0]);
+	    }
+	  domain_add_regu_compare (ctx, arith->thirdptr, arith->rightptr, &compares[1]);
 	}
-      domain_add_regu_compare (ctx, arith->thirdptr, arith->rightptr, &arith->domain_compare[1]);
-      break;
-    default:
-      break;
+      else
+	{
+	  domain_add_regu_compare (ctx, arith->leftptr, arith->rightptr, &compares[0]);
+	}
     }
   DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &arith->domain_plan, arith->domain, cls,
 					    is_cast ? DOMAIN_CTX_ASSIGN : DOMAIN_CTX_ARITH, arith->opcode, "arith");
   if (item != NULL)
     {
+      item->compares = compares;
       ctx->tail->output[0] = arith->value;
+      if (domain_is_open (arith->domain))
+	{
+	  domain_give_cell (item, true);
+	}
     }
   /* A node the compiler left without a result type (a late-bound operator over a slot, A8'') is decided by the gate
    * once per execution when every operand gives it a type the gate knows (#335). Whether an operand is known is
@@ -1031,6 +1093,26 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
   if (item == NULL)
     {
       return;
+    }
+  /* a list position's value descriptor shares the regu's item: one cell for both, which develop wrote together; each
+   * half keeps its own openness (#355) */
+  const bool position_open = regu->type == TYPE_POSITION && domain_is_open (regu->value.pos_descr.dom);
+  const bool open = domain_is_open (regu->domain) || position_open;
+  if (open)
+    {
+      domain_give_cell (item, domain_is_open (regu->domain));
+      domain_record_of (item)->open_position = position_open;
+      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_OPEN);
+    }
+  /* D-355-03: the load marks what the inline fetch_peek_dbval () may peek directly - a bind reference with its item, and
+   * a stable regu whose domain is open, once it took its domain (the stream load marked the fixed ones) */
+  if (!REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION)
+      && ((regu->type == TYPE_POS_VALUE)
+	  || (open && (regu->type == TYPE_DBVAL || regu->type == TYPE_ATTR_ID || regu->type == TYPE_SHARED_ATTR_ID
+		       || regu->type == TYPE_CLASS_ATTR_ID
+		       || (regu->type == TYPE_CONSTANT && regu->xasl == NULL && regu->value.dbvalptr != NULL)))))
+    {
+      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_FAST_PEEK);
     }
   DOMAIN_LOAD_RECORD *record = domain_record_of (item);
   record->regu = regu;
@@ -1329,6 +1411,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	}
       DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &agg->domain_plan, agg->domain, OPERAND_ROW,
 						DOMAIN_CTX_AGG, agg->function, "aggregate");
+      domain_give_cell (item, domain_is_open (agg->domain));
       if (item != NULL)
 	{
 	  DOMAIN_LOAD_RECORD *record = domain_record_of (item);
@@ -1392,6 +1475,7 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	    }
 	  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &analytic->domain_plan, analytic->domain, OPERAND_ROW,
 						    DOMAIN_CTX_ANALYTIC, analytic->function, "analytic");
+	  domain_give_cell (item, domain_is_open (analytic->domain));
 	  if (item != NULL)
 	    {
 	      DOMAIN_LOAD_RECORD *record = domain_record_of (item);
@@ -1564,8 +1648,8 @@ domain_fix_connect_by_probe (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     }
   domain->precision = fixed->precision;
   domain->scale = fixed->scale;
-  /* the clone restores original_domain at every clear (qexec_clear_regu_var) */
-  probe->domain = probe->original_domain = tp_domain_cache (domain);
+  /* the load's fix of the stream: every execution of this clone reads it (S-21) */
+  probe->domain = tp_domain_cache (domain);
 }
 
 /*
@@ -2183,6 +2267,29 @@ domain_constant_of (const DOMAIN_LOAD_RECORD * record)
 }
 
 /*
+ * domain_publish_item_copies () - the item copy of a value pointer that does not share its producer's cell (#355,
+ *   D-355-09): the producer's published item - its slot, reference and answers, so the consumer reads the same
+ *   decisions - with the consumer's cell and openness; after the constant references, which the producer's item takes
+ */
+static void
+domain_publish_item_copies (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
+{
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
+    {
+      if (r->alias == NULL || r->index == r->alias->index)
+	{
+	  continue;
+	}
+      DOMAIN_PLAN_ITEM *item = &plan->items[r->index];
+      *item = plan->items[r->alias->index];
+      item->flags &= ~(DOMAIN_PLAN_OPEN | DOMAIN_PLAN_OPEN_POSITION);
+      item->flags |= r->open ? DOMAIN_PLAN_OPEN : 0;
+      item->cell = r->item.cell;
+      plan->items_cold[r->index] = r->cold;
+    }
+}
+
+/*
  * domain_publish_constants () - every constant subtree gets a value of its own in the gate's array, which the gate
  *   fills once before the main block (interface §10, #352): this replaces fetch's FETCH_ALL_CONST marking.
  *   Nested constants come first, in the order the walk appended them.
@@ -2674,6 +2781,11 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	{
 	  records[r->index] = r;
 	}
+      else if (r->index != r->alias->index)
+	{
+	  /* a value pointer's item copy answers as the producer's item it shared (D-355-09) */
+	  records[r->index] = r->alias;
+	}
     }
   int n_gate = 0, n_element_gate = 0;
   for (int t = 0; t < ctx->n_compare_terms && ok; t++)
@@ -3102,6 +3214,36 @@ domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
   return site;
 }
 
+/* A stream has no plan items: a FIELD, NULLIF, LEAST or GREATEST node gets a bare one to carry its comparison records
+ * (#355, D-355-04); NULL for any other operator */
+static const DOMAIN_COMPARE_PLAN **
+domain_stream_arith_compares (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
+{
+  if (arith->domain_plan != NULL)
+    {
+      return arith->domain_plan->compares;
+    }
+  const DOMAIN_COMPARE_PLAN **compares = domain_arith_compares (ctx->thread_p, arith->opcode, &ctx->failed);
+  if (compares == NULL)
+    {
+      return NULL;
+    }
+  DOMAIN_PLAN_ITEM *item = (DOMAIN_PLAN_ITEM *) stx_alloc_struct (ctx->thread_p, (int) sizeof (*item));
+  if (item == NULL)
+    {
+      ctx->failed = true;
+      return NULL;
+    }
+  memset (item, 0, sizeof (*item));
+  item->slot = -1;
+  item->ref = -1;
+  item->operand_class = OPERAND_ROW;
+  item->fixed.domain = arith->domain;
+  item->compares = compares;
+  arith->domain_plan = item;
+  return compares;
+}
+
 static void
 domain_stream_walk_arith (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bottom)
 {
@@ -3113,28 +3255,25 @@ domain_stream_walk_arith (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith, bool 
   domain_stream_walk_regu (ctx, arith->rightptr);
   domain_stream_walk_regu (ctx, arith->thirdptr);
   domain_stream_walk_pred (ctx, arith->pred);
-  switch (arith->opcode)
+  const DOMAIN_COMPARE_PLAN **compares = domain_stream_arith_compares (ctx, arith);
+  if (compares == NULL)
     {
-    case T_NULLIF:
-    case T_LEAST:
-    case T_GREATEST:
-      if (arith->domain_compare[0] == NULL && arith->leftptr != NULL && arith->rightptr != NULL)
+      return;
+    }
+  if (arith->opcode == T_FIELD)
+    {
+      if (field_bottom && compares[0] == NULL && arith->thirdptr != NULL && arith->leftptr != NULL)
 	{
-	  arith->domain_compare[0] = domain_stream_compare (ctx, arith->leftptr, arith->rightptr);
+	  compares[0] = domain_stream_compare (ctx, arith->thirdptr, arith->leftptr);
 	}
-      break;
-    case T_FIELD:
-      if (field_bottom && arith->domain_compare[0] == NULL && arith->thirdptr != NULL && arith->leftptr != NULL)
+      if (compares[1] == NULL && arith->thirdptr != NULL && arith->rightptr != NULL)
 	{
-	  arith->domain_compare[0] = domain_stream_compare (ctx, arith->thirdptr, arith->leftptr);
+	  compares[1] = domain_stream_compare (ctx, arith->thirdptr, arith->rightptr);
 	}
-      if (arith->domain_compare[1] == NULL && arith->thirdptr != NULL && arith->rightptr != NULL)
-	{
-	  arith->domain_compare[1] = domain_stream_compare (ctx, arith->thirdptr, arith->rightptr);
-	}
-      break;
-    default:
-      break;
+    }
+  else if (compares[0] == NULL && arith->leftptr != NULL && arith->rightptr != NULL)
+    {
+      compares[0] = domain_stream_compare (ctx, arith->leftptr, arith->rightptr);
     }
 }
 
@@ -3277,7 +3416,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  if ((p->output[0] == r->regu->value.dbvalptr || p->output[1] == r->regu->value.dbvalptr)
 	      && p->item.fixed.domain == r->item.fixed.domain
 	      && p->item.operand_class == r->item.operand_class
-	      && p->item.flags == r->item.flags && p->item.fail[0] == r->item.fail[0]
+	      && p->item.flags == r->item.flags && p->item.fail == r->item.fail
 	      && !domain_reads_group_concat_value (r, p))
 	    {
 	      r->alias = p;
@@ -3317,19 +3456,26 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     {
       domain_resolve_record (&ctx, r);
     }
+  /* D-355-09: a value pointer reads its producer's decisions through the producer's item, but develop wrote each node's
+   * domain on its own - an aggregate's late binding, say, left the column over its accumulator as compiled. Where either
+   * has a cell, the consumer's node gets its own copy of the item (domain_publish_item_copies) and its own cell. */
   plan->n_items = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
     {
-      if (r->alias == NULL)
+      if (r->alias == NULL || r->needs_cell || r->alias->needs_cell)
 	{
 	  r->index = plan->n_items++;
 	}
     }
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
     {
-      if (r->alias != NULL)
+      if (r->alias != NULL && !r->needs_cell && !r->alias->needs_cell)
 	{
 	  r->index = r->alias->index;
+	}
+      else if (r->needs_cell)
+	{
+	  r->item.cell = ++plan->n_cells;
 	}
     }
   /* A nested parser_generate_xasl () restarts parser->dbval_cnt, so root->dbval_cnt can
@@ -3361,7 +3507,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 		  continue;
 		}
 	      first = false;
-	      if (p->item.fixed.domain == r->item.fixed.domain && p->item.fail[0] == r->item.fail[0])
+	      if (p->item.fixed.domain == r->item.fixed.domain && p->item.fail == r->item.fail)
 		{
 		  r->item.ref = p->item.ref;
 		  break;
@@ -3408,6 +3554,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  if (r->alias == NULL)
 	    {
 	      *item = r->item;
+	      item->flags |= (r->open ? DOMAIN_PLAN_OPEN : 0) | (r->open_position ? DOMAIN_PLAN_OPEN_POSITION : 0);
 	      plan->items_cold[r->index] = r->cold;
 	      if (item->operand_class == OPERAND_CONST)
 		{
@@ -3493,8 +3640,12 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     {
       /* #352: constant subtrees before comparisons, whose constant sides read them */
       const int constant_base = plan->n_refs;
-      ctx.failed = !domain_publish_constants (thread_p, &ctx, plan)
-	|| !domain_publish_compares (thread_p, &ctx, plan, constant_base)
+      ctx.failed = !domain_publish_constants (thread_p, &ctx, plan);
+      if (!ctx.failed)
+	{
+	  domain_publish_item_copies (&ctx, plan);
+	}
+      ctx.failed = ctx.failed || !domain_publish_compares (thread_p, &ctx, plan, constant_base)
 	|| !domain_publish_indexes (thread_p, &ctx, plan);
     }
   if (ctx.gate_order != NULL)

@@ -136,6 +136,148 @@ RESOLVED_VOLATILE_HOLDS (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PL
   return (resolved.plan->slot_volatile_reads[item->slot] & resolved.changed_reads) == 0;
 }
 
+/* The index of a node's cell in this execution's state, or -1 when it has none here: an item without a cell, a node
+ * of another tree, a descriptor without gate state. A PX worker's copy reads the cells of its own load's items, which
+ * number them as the plan does (#355, D-355-01, D-355-07). The descriptor comes first: a temporary regu fetched
+ * without one (qdata_get_interpolation_function_result) leaves its position's item pointer unset. */
+inline int
+RESOLVED_CELL (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  if (vd == NULL || vd->xasl_state == NULL || item == NULL || item->cell <= 0)
+    {
+      return -1;
+    }
+  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  const DOMAIN_PLAN *plan = resolved.plan;
+  if (plan == NULL || item->cell > resolved.n_cells
+      || (!resolved.inherited && (item < plan->items || item >= plan->items + plan->n_items)))
+    {
+      return -1;
+    }
+  return item->cell - 1;
+}
+
+/*
+ * qexec_node_domain () - the domain a plan node has now in this execution (#355, D-355-01)
+ *   return: the domain the node took in this execution, or its compiled domain
+ *   compiled(in): the node's domain field, as the stream loaded it; the execution never writes it (ADR 0020)
+ *   item(in): the node's plan item
+ */
+inline TP_DOMAIN *
+qexec_node_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
+{
+  const int cell = RESOLVED_CELL (vd, item);
+  if (cell < 0)
+    {
+      return compiled;
+    }
+  const TP_DOMAIN *taken = vd->xasl_state->resolved.taken[cell];
+  return taken != NULL ? (TP_DOMAIN *) taken : compiled;
+}
+
+/* Whether a node with a cell took its domain in this execution (qexec_take_domain): the inline fetch_peek_dbval () peeks
+ * an open regu directly from then on (#355, D-355-03) */
+inline bool
+qexec_node_took_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  const int cell = RESOLVED_CELL (vd, item);
+  return cell >= 0 && vd->xasl_state->resolved.taken[cell] != NULL;
+}
+
+/*
+ * qexec_node_open () - whether a plan node's domain is still open in this execution (#355, D-355-06)
+ *   return: its compiled domain is open - the load's answer to VARIABLE || collation flag != NORMAL, DOMAIN_PLAN_OPEN -
+ *	     and the node took no domain yet
+ *
+ * The execution sites that asked the pair condition of the node's domain at every row, which the execution wrote a
+ * decision into, ask this: the plan item and the execution's cell answer it, the node never changes.
+ */
+inline bool
+qexec_node_open (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  return item != NULL && (item->flags & DOMAIN_PLAN_OPEN) && !qexec_node_took_domain (vd, item);
+}
+
+/* The same for a list position's value descriptor, which shares the position's cell: its own compiled domain is open
+ * (DOMAIN_PLAN_OPEN_POSITION) and the position took no domain yet (#355, D-355-09) */
+inline bool
+qexec_position_open (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  return item != NULL && (item->flags & DOMAIN_PLAN_OPEN_POSITION) && !qexec_node_took_domain (vd, item);
+}
+
+/*
+ * qexec_take_domain () - a plan node takes a domain for the rest of this execution, where develop wrote it into the
+ *   node and the XASL clear restored it (#355, D-355-01)
+ *   compiled(in): the node's domain field; a node without a cell keeps it, and then takes nothing else
+ *   domain(in): the domain; NULL takes the compiled one back
+ *
+ * Only the execution's owner thread writes its cells, as it writes changed_reads.
+ */
+inline void
+qexec_take_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled,
+		   const TP_DOMAIN * domain)
+{
+  const int cell = RESOLVED_CELL (vd, item);
+  if (cell < 0)
+    {
+      /* a node the load gave no cell has a domain its execution cannot change */
+      assert (domain == NULL || domain == compiled);
+      return;
+    }
+  vd->xasl_state->resolved.taken[cell] = domain == compiled ? NULL : domain;
+}
+
+/* The domain a MEDIAN / PERCENTILE list holds and its sort key sorts in this execution (qexec_setup_interpolation_list):
+ * the key's compiled domain until the setup gives the function its class (#355, D-355-02). The key shares the
+ * function's item, so the list domain has a cell array of its own. */
+inline TP_DOMAIN *
+qexec_interpolation_list_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
+{
+  const int cell = RESOLVED_CELL (vd, item);
+  if (cell < 0 || vd->xasl_state->resolved.taken_list[cell] == NULL)
+    {
+      return compiled;
+    }
+  return (TP_DOMAIN *) vd->xasl_state->resolved.taken_list[cell];
+}
+
+inline void
+qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * domain)
+{
+  const int cell = RESOLVED_CELL (vd, item);
+  assert (cell >= 0);
+  if (cell >= 0)
+    {
+      vd->xasl_state->resolved.taken_list[cell] = domain;
+    }
+}
+
+/* An aggregate's or an analytic function's operand type now in this execution (#355, D-355-01): the one it took, or
+ * its compiled opr_dbtype. */
+inline DB_TYPE
+qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, const DOMAIN_PLAN_ITEM * item)
+{
+  const int cell = RESOLVED_CELL (vd, item);
+  if (cell < 0 || vd->xasl_state->resolved.taken_type[cell] < 0)
+    {
+      return compiled;
+    }
+  return (DB_TYPE) vd->xasl_state->resolved.taken_type[cell];
+}
+
+inline void
+qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB_TYPE compiled, DB_TYPE type)
+{
+  const int cell = RESOLVED_CELL (vd, item);
+  if (cell < 0)
+    {
+      assert (type == compiled);
+      return;
+    }
+  vd->xasl_state->resolved.taken_type[cell] = type == compiled ? -1 : (int) type;
+}
+
 extern const TP_DOMAIN *qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind);
 extern const TP_DOMAIN *qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind);
 extern const TP_DOMAIN *qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled,
@@ -165,7 +307,7 @@ extern int qexec_parallel_aggregate_first_values (THREAD_ENTRY * thread_p, xasl_
 						  int *resolved);
 extern int qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final);
 extern qfile_list_id *qexec_get_xasl_list_id (xasl_node * xasl);
-extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
+extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state, bool own_load);
 extern void qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 extern int qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state);
 extern void qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, xasl_state * xasl_state);

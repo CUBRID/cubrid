@@ -87,12 +87,10 @@ namespace cubxasl
   {
     aggregate_list_node *next;		/* next aggregate node */
     tp_domain *domain;		/* domain of the result */
-    tp_domain *original_domain;	/* original domain of the result */
     domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
     FUNC_CODE function;		/* aggregate function name */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     DB_TYPE opr_dbtype;		/* Operand values data type */
-    DB_TYPE original_opr_dbtype;	/* Original operand values data type */
     regu_variable_list_node *operands;	/* list of operands (one operand per function argument) */
     qfile_list_id *list_id;	/* used for distinct handling */
     BTID btid;

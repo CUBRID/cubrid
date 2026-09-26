@@ -387,7 +387,7 @@ static void
 eval_report_planned_side (const char *name, const REGU_VARIABLE * regu, const DOMAIN_PLAN_ITEM * item,
 			  const val_descr * vd)
 {
-  const TP_DOMAIN *domain = regu != NULL ? regu->domain : NULL;
+  const TP_DOMAIN *domain = regu != NULL ? qexec_node_domain (vd, regu->domain, regu->domain_plan) : NULL;
   const TP_DOMAIN *decided = NULL;
   if (item != NULL && item->slot >= 0 && vd != NULL && vd->xasl_state != NULL
       && item->slot < vd->xasl_state->resolved.n_slots)

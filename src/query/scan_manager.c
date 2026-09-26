@@ -224,7 +224,8 @@ static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_ter
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
-static HASH_METHOD check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type);
+static HASH_METHOD check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type,
+					 const VAL_DESCR * vd);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -1036,7 +1037,8 @@ scan_check_user_given_keylimit_overflow (THREAD_ENTRY * thread_p, REGU_VARIABLE 
   DB_VALUE *dbvalp = NULL;
 
   assert (numeric_operand != NULL);
-  assert (TP_DOMAIN_TYPE (numeric_operand->domain) == DB_TYPE_NUMERIC);
+  assert (TP_DOMAIN_TYPE (qexec_node_domain (vd, numeric_operand->domain, numeric_operand->domain_plan))
+	  == DB_TYPE_NUMERIC);
 
   if (fetch_peek_dbval (thread_p, numeric_operand, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR || dbvalp == NULL)
     {
@@ -1147,7 +1149,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
   assert (left && right);
 
   left_is_inarith = (left->type == TYPE_INARITH || left->type == TYPE_OUTARITH);
-  left_is_numeric = (TP_DOMAIN_TYPE (left->domain) == DB_TYPE_NUMERIC);
+  left_is_numeric = (TP_DOMAIN_TYPE (qexec_node_domain (vd, left->domain, left->domain_plan)) == DB_TYPE_NUMERIC);
 
   if (left_is_inarith)
     {
@@ -4372,7 +4374,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->is_read_only = is_read_only;
 
   /* check if hash list scan is possible? */
-  llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
+  llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn, vd);
   if (llsidp->hlsid.hash_list_scan_type != HASH_METH_NOT_USE)
     {
       bool on_trace;
@@ -8444,11 +8446,13 @@ scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIS
       for (regu_variable_list_node * scan_regu = lists[l]; scan_regu != NULL; scan_regu = scan_regu->next)
 	{
 	  QFILE_TUPLE_VALUE_POSITION *pos_descr = &scan_regu->value.value.pos_descr;
-	  if (scan_regu->value.type != TYPE_POSITION
-	      || (TP_DOMAIN_TYPE (scan_regu->value.domain) != DB_TYPE_VARIABLE
-		  && TP_DOMAIN_COLLATION_FLAG (scan_regu->value.domain) == TP_DOMAIN_COLL_NORMAL
-		  && TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE
-		  && TP_DOMAIN_COLLATION_FLAG (pos_descr->dom) == TP_DOMAIN_COLL_NORMAL))
+	  if (scan_regu->value.type != TYPE_POSITION)
+	    {
+	      continue;
+	    }
+	  /* the position and its value descriptor share one item: open until an open of this execution planned it (#355) */
+	  if (!qexec_node_open (vd, scan_regu->value.domain_plan)
+	      && !qexec_position_open (vd, scan_regu->value.domain_plan))
 	    {
 	      continue;
 	    }
@@ -8467,8 +8471,8 @@ scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIS
 	    {
 	      return qexec_domain_unresolved (vd, scan_regu->value.domain_plan, pos_descr->dom);
 	    }
-	  pos_descr->dom = (TP_DOMAIN *) planned;
-	  scan_regu->value.domain = (TP_DOMAIN *) planned;
+	  /* the position and its value descriptor share one item: the cell holds the domain for both */
+	  qexec_take_domain (vd, scan_regu->value.domain_plan, NULL, planned);
 	}
     }
   if (llsidp->scan_pred.pred_expr != NULL && llsidp->scan_pred.pred_expr->type == T_EVAL_TERM
@@ -8479,12 +8483,21 @@ scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIS
       for (int k = 0; k < 2; k++)
 	{
 	  REGU_VARIABLE *operand = operands[k];
+	  if (operand == NULL)
+	    {
+	      continue;
+	    }
+	  if (operand->domain != NULL && !qexec_node_open (vd, operand->domain_plan))
+	    {
+	      /* a fixed domain is its own plan */
+	      continue;
+	    }
 	  bool row_reads;
-	  const TP_DOMAIN *planned = operand == NULL ? NULL
-	    : qexec_consumer_domain (vd, operand->domain, operand->domain_plan, false, &row_reads);
+	  const TP_DOMAIN *planned = qexec_consumer_domain (vd, NULL, operand->domain_plan, false, &row_reads);
 	  if (planned != NULL)
 	    {
-	      operand->domain = (TP_DOMAIN *) planned;
+	      qexec_take_domain (vd, operand->domain_plan, operand->type == TYPE_POSITION ? NULL : operand->domain,
+				 planned);
 	    }
 	}
     }
@@ -9323,6 +9336,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  * check_hash_list_scan () - Check if hash list scan is possible
  *   return: int  1: in-memory 2: hybrid in-memory
  *   llsidp (in): list scan id pointer
+ *   vd (in): the execution's value descriptor: the keys' domains in this execution (#355)
  *   node :
  *      1. count of tuple of list file > 0
  *      2. list file size check
@@ -9332,7 +9346,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  *      6. list file from dptr is not allowed
 */
 static HASH_METHOD
-check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn)
+check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn, const VAL_DESCR * vd)
 {
   int build_cnt;
   regu_variable_list_node *build, *probe;
@@ -9370,8 +9384,10 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       /* type of regu var is not oid && vobj */
       /* This is the case when type coercion is impossible. so use list scan */
       /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
-      vtype1 = REGU_VARIABLE_GET_TYPE (&probe->value);
-      vtype2 = REGU_VARIABLE_GET_TYPE (&build->value);
+      /* the keys' domains now, as develop read them from the nodes: a node computed earlier in this execution holds
+       * the domain it took there (its cell), any other its compiled one (#356 handover, #355) */
+      vtype1 = TP_DOMAIN_TYPE (qexec_node_domain (vd, probe->value.domain, probe->value.domain_plan));
+      vtype2 = TP_DOMAIN_TYPE (qexec_node_domain (vd, build->value.domain, build->value.domain_plan));
 
       if ((vtype1 == DB_TYPE_OBJECT && vtype2 == DB_TYPE_OID) || (vtype2 == DB_TYPE_OBJECT && vtype1 == DB_TYPE_OID)
 	  || (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ))

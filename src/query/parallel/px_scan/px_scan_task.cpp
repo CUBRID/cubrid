@@ -624,7 +624,7 @@ namespace parallel_scan
 
     /* The worker's own copy on its own heap (D-318-06): it frees it in finalize. */
     assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
-    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state);
+    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state, true);
     if (m_xasl_state == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);

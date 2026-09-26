@@ -138,6 +138,7 @@ static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_
 #endif
 static char *stx_build_regu_variable (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
+static void stx_set_fast_peek (REGU_VARIABLE * regu_var);
 static char *stx_build_attr_descr (THREAD_ENTRY * thread_p, char *tmp, ATTR_DESCR * ptr);
 static char *stx_build_pos_descr (char *tmp, QFILE_TUPLE_VALUE_POSITION * ptr);
 static char *stx_build_arith_type (THREAD_ENTRY * thread_p, char *tmp, ARITH_TYPE * ptr);
@@ -5689,8 +5690,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
-  /* save the original domain */
-  regu_var->original_domain = regu_var->domain;
   regu_var->domain_plan = NULL;
 
   ptr = or_unpack_int (ptr, &tmp);
@@ -5732,12 +5731,50 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
     }
 
   ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu_var);
+  if (ptr != NULL)
+    {
+      stx_set_fast_peek (regu_var);
+    }
 
   return ptr;
 
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
   return NULL;
+}
+
+/*
+ * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at load (#355,
+ *   D-355-03): a cached attribute, a literal, a value pointer without a linked subquery, whose compiled domain fixes its
+ *   values. A bind reference gets it with its plan item, and a regu with an open domain gets it with its cell
+ *   (domain_plan.c). A COLLATE modifier's regu takes the slow path, which applies the collation.
+ */
+static void
+stx_set_fast_peek (REGU_VARIABLE * regu_var)
+{
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION) || regu_var->domain == NULL
+      || TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE
+      || TP_DOMAIN_COLLATION_FLAG (regu_var->domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      return;
+    }
+  switch (regu_var->type)
+    {
+    case TYPE_ATTR_ID:
+    case TYPE_SHARED_ATTR_ID:
+    case TYPE_CLASS_ATTR_ID:
+    case TYPE_DBVAL:
+      break;
+    case TYPE_CONSTANT:
+      if (regu_var->xasl != NULL || regu_var->value.dbvalptr == NULL)
+	{
+	  return;
+	}
+      break;
+    default:
+      return;
+    }
+  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
 }
 
 static char *
@@ -5940,7 +5977,6 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 {
   ptr = or_unpack_int (ptr, &position_descr->pos_no);
   ptr = or_unpack_domain (ptr, &position_descr->dom, NULL);
-  position_descr->original_domain = position_descr->dom;
   position_descr->domain_plan = NULL;
 
   return ptr;
@@ -5953,10 +5989,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
-  /* save the original domain */
-  arith_type->original_domain = arith_type->domain;
   arith_type->domain_plan = NULL;
-  arith_type->domain_compare[0] = arith_type->domain_compare[1] = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6064,7 +6097,6 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
-  aggregate->original_domain = aggregate->domain;
   aggregate->domain_plan = NULL;
 
   /* accumulator */
@@ -6137,7 +6169,6 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp);
   aggregate->opr_dbtype = (DB_TYPE) tmp;
-  aggregate->original_opr_dbtype = aggregate->opr_dbtype;
 
   ptr = stx_build_regu_variable_list (thread_p, ptr, &aggregate->operands);
   if (ptr == NULL)
@@ -6342,7 +6373,6 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 
   /* domain */
   ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
-  analytic->original_domain = analytic->domain;
   analytic->domain_plan = NULL;
 
   /* value */
@@ -6425,7 +6455,6 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
   /* opr_dbtype */
   ptr = or_unpack_int (ptr, &tmp_i);
   analytic->opr_dbtype = (DB_TYPE) tmp_i;
-  analytic->original_opr_dbtype = analytic->opr_dbtype;
 
   /* operand */
   ptr = stx_build_regu_variable (thread_p, ptr, &analytic->operand);
@@ -6927,8 +6956,6 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
       ptr = or_unpack_int (ptr, &tmp);
       regu->type = (REGU_DATATYPE) tmp;
       regu->domain = domain;
-      /* save te original domain */
-      regu->original_domain = domain;
       if (regu->type == TYPE_POS_VALUE && domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 	{
 	  /* the item stream carries no flags: a slot row of an all-slot VALUES column is a gate slot, as the
@@ -6946,6 +6973,7 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
 	{
 	  goto error;
 	}
+      stx_set_fast_peek (regu);
 
       regu_value_list->count += 1;
     }

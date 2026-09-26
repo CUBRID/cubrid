@@ -64,7 +64,7 @@
 
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
-static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl);
+static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl, const VAL_DESCR * vd);
 static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							  val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
 							  DB_VALUE ** min, DB_VALUE ** max);
@@ -658,6 +658,14 @@ fetch_value_leaves_domain (const DB_VALUE * value, const TP_DOMAIN * domain)
     || db_get_string_collation (value) != TP_DOMAIN_COLLATION (domain);
 }
 
+/* Whether a domain fixes its values' type and collation: not VARIABLE, and a NORMAL collation flag */
+static inline bool
+fetch_domain_fixed (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+    && TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL;
+}
+
 /* How a gate-dependent node takes its domain at its first computation in an execution (#340) */
 enum FETCH_GATE_READING
 {
@@ -887,6 +895,15 @@ fetch_convert_to_branch_decision (THREAD_ENTRY * thread_p, const val_descr * vd,
   return fetch_convert_to_branch_value (thread_p, vd, item, decision, value);
 }
 
+/* The comparison record k an arithmetic node makes (#354): its plan item carries them (#355, D-355-04). A stream's
+ * FIELD, NULLIF, LEAST or GREATEST has a bare item for them. */
+static inline const DOMAIN_COMPARE_PLAN *
+fetch_arith_compare (const ARITH_TYPE * arithptr, int k)
+{
+  const DOMAIN_PLAN_ITEM *item = arithptr->domain_plan;
+  return item != NULL && item->compares != NULL ? item->compares[k] : NULL;
+}
+
 /* Whether the gate already evaluated this constant subtree (#352, interface §10): its value is in the gate's array.
  * It replaces fetch's FETCH_ALL_CONST mark, which the first computation set on the plan. */
 static inline bool
@@ -911,7 +928,8 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
 {
   bool can_compare = true;
   const DB_VALUE_COMPARE_RESULT cmp_result =
-    eval_compare_values_planned (thread_p, arithptr->domain_compare[0], vd, peek_left, peek_right, 0, &can_compare);
+    eval_compare_values_planned (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_left, peek_right, 0,
+				 &can_compare);
   return db_least_or_greatest_by (peek_left, peek_right, cmp_result, can_compare, arithptr->value, least);
 }
 
@@ -944,6 +962,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       *peek_dbval = vd->dbval_ptr + arithptr->domain_plan->ref;
       return NO_ERROR;
     }
+  /* The domains the node has now in this execution: what develop kept in regu_var->domain and arithptr->domain, which
+   * the plan no longer holds - the node takes a domain into its execution's cells (#355, D-355-01). */
+  TP_DOMAIN *domain = qexec_node_domain (vd, regu_var->domain, regu_var->domain_plan);
+  TP_DOMAIN *arith_domain = qexec_node_domain (vd, arithptr->domain, arithptr->domain_plan);
 
   /* An aggregate operand expression is evaluated in one register pass.
    * Unlike the general path, which materializes a DB_VALUE at each operation,
@@ -956,7 +978,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
    * The result is written where the general path would write it, so all consumers
    * remain unchanged. NULL result domains stay on the general path. */
   if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_AGG_OPERAND)
-      && regu_var->domain != NULL && TP_DOMAIN_TYPE (regu_var->domain) != DB_TYPE_NULL)
+      && domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
     {
       bool fused = false;
 
@@ -980,7 +1002,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	    if (fetch_agg_expr_eval_int (thread_p, regu_var, vd, obj_oid, tpl, &int_val))
 	      {
-		switch (TP_DOMAIN_TYPE (regu_var->domain))
+		switch (TP_DOMAIN_TYPE (domain))
 		  {
 		  case DB_TYPE_SHORT:
 		    db_make_short (arithptr->value, (short) int_val);
@@ -1141,7 +1163,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    {
 	      /* check for result type: an open domain is the gate's decision (S-03, #340); a node the gate decided
 	       * nothing for keeps develop's open reading */
-	      const TP_DOMAIN *result_domain = regu_var->domain;
+	      const TP_DOMAIN *result_domain = domain;
 	      const TP_DOMAIN *decided = NULL;
 	      if (TP_DOMAIN_TYPE (result_domain) == DB_TYPE_VARIABLE
 		  && fetch_arith_gate_reading (vd, arithptr, &decided) == FETCH_GATE_DECIDED)
@@ -1601,10 +1623,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
   /* clear any previous result */
   pr_clear_value (arithptr->value);
-  if (regu_var->domain != NULL && TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE)
+  if (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
     {
       /* S-01: the node's first computation in this execution takes the domain the gate decided before the main block
-       * (#336, #340); qexec_clear_regu_var restores the loaded domain. A character result carries its merged
+       * (#336, #340) into its cells for the rest of the execution (#355). A character result carries its merged
        * collation (#338). */
       const TP_DOMAIN *decided = NULL;
       FETCH_GATE_READING reading = fetch_arith_gate_reading (vd, arithptr, &decided);
@@ -1622,22 +1644,24 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       switch (reading)
 	{
 	case FETCH_GATE_DECIDED:
-	  regu_var->domain = (TP_DOMAIN *) decided;
-	  if (decided != arithptr->domain)
+	  domain = (TP_DOMAIN *) decided;
+	  qexec_take_domain (vd, regu_var->domain_plan, regu_var->domain, decided);
+	  if (decided != arith_domain)
 	    {
-	      arithptr->domain = (TP_DOMAIN *) decided;
+	      arith_domain = (TP_DOMAIN *) decided;
+	      qexec_take_domain (vd, arithptr->domain_plan, arithptr->domain, decided);
 	    }
 	  break;
 
 	case FETCH_GATE_NO_VALUE:
-	  no_value_domain = regu_var->domain;
-	  regu_var->domain = NULL;
+	  no_value_domain = domain;
+	  domain = NULL;
 	  break;
 
 	case FETCH_GATE_LATE:
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
-	  original_domain = regu_var->domain;
-	  regu_var->domain = NULL;
+	  original_domain = domain;
+	  domain = NULL;
 	  break;
 
 	case FETCH_GATE_UNRESOLVED:
@@ -1660,18 +1684,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	check_empty_string = (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) ? true : false);
 
 	/* check for result type. */
-	if (check_empty_string && regu_var->domain != NULL
-	    && QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (regu_var->domain)))
+	if (check_empty_string && domain != NULL && QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
 	  {
 	    /* at here, T_ADD is really T_STRCAT */
-	    if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	    if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	      {
 		goto error;
 	      }
 	  }
 	else
 	  {
-	    if (qdata_add_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	    if (qdata_add_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -1680,28 +1703,28 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_BIT_NOT:
-      if (qdata_bit_not_dbval (peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_bit_not_dbval (peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_BIT_AND:
-      if (qdata_bit_and_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_bit_and_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_BIT_OR:
-      if (qdata_bit_or_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_bit_or_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_BIT_XOR:
-      if (qdata_bit_xor_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_bit_xor_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1709,8 +1732,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case T_BITSHIFT_LEFT:
     case T_BITSHIFT_RIGHT:
-      if (qdata_bit_shift_dbval (peek_left, peek_right, arithptr->opcode, arithptr->value, regu_var->domain) !=
-	  NO_ERROR)
+      if (qdata_bit_shift_dbval (peek_left, peek_right, arithptr->opcode, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1718,7 +1740,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     case T_INTDIV:
     case T_INTMOD:
-      if (qdata_divmod_dbval (peek_left, peek_right, arithptr->opcode, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_divmod_dbval (peek_left, peek_right, arithptr->opcode, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1732,21 +1754,21 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_SUB:
-      if (qdata_subtract_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_subtract_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_MUL:
-      if (qdata_multiply_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_multiply_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_DIV:
-      if (qdata_divide_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_divide_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1982,7 +2004,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_date_dbval (arithptr->value, peek_right, arithptr->domain) != NO_ERROR)
+      else if (db_date_dbval (arithptr->value, peek_right, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1993,7 +2015,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_time_dbval (arithptr->value, peek_right, arithptr->domain) != NO_ERROR)
+      else if (db_time_dbval (arithptr->value, peek_right, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2119,7 +2141,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  pos = db_get_int (peek_right);
 	  if (pos < 0)
 	    {
-	      if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
+	      if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_node_domain (vd, arithptr->leftptr->domain,
+								  arithptr->leftptr->domain_plan))))
 		{
 		  if (db_string_bit_length (peek_left, &tmp_len) != NO_ERROR)
 		    {
@@ -2535,7 +2558,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_from_unixtime (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
+      else if (db_from_unixtime (peek_left, peek_right, peek_third, arithptr->value, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2668,7 +2691,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_time_format (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
+      else if (db_time_format (peek_left, peek_right, peek_third, arithptr->value, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2829,7 +2852,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
-	  if (db_add_time (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	  if (db_add_time (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -2943,7 +2966,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_format (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
+      else if (db_format (peek_left, peek_right, peek_third, arithptr->value, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2954,7 +2977,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_date_format (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
+      else if (db_date_format (peek_left, peek_right, peek_third, arithptr->value, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -2966,7 +2989,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_str_to_date (peek_left, peek_right, peek_third, arithptr->value, regu_var->domain) != NO_ERROR)
+      else if (db_str_to_date (peek_left, peek_right, peek_third, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3177,7 +3200,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
-      else if (db_to_char (peek_left, peek_right, peek_third, arithptr->value, arithptr->domain) != NO_ERROR)
+      else if (db_to_char (peek_left, peek_right, peek_third, arithptr->value, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3278,7 +3301,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
 	      goto error;
 	    }
 	  if (db_to_date (&tval, peek_right, peek_third, arithptr->value) != NO_ERROR)
@@ -3307,7 +3330,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
 	      goto error;
 	    }
 	  if (db_to_time (&tval, peek_right, peek_third, DB_TYPE_TIME, arithptr->value) != NO_ERROR)
@@ -3340,7 +3363,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
 		  goto error;
 		}
 	      if (db_to_timestamp (&tval, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
@@ -3374,7 +3397,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arithptr->domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
 		  goto error;
 		}
 	      if (db_to_datetime (&tval, peek_right, peek_third, db_type, arithptr->value) != NO_ERROR)
@@ -3402,8 +3425,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    {
 	      goto error;
 	    }
-	  regu_var->domain->precision = arithptr->value->domain.numeric_info.precision;
-	  regu_var->domain->scale = arithptr->value->domain.numeric_info.scale;
+	  domain->precision = arithptr->value->domain.numeric_info.precision;
+	  domain->scale = arithptr->value->domain.numeric_info.scale;
 	}
       break;
 
@@ -3456,26 +3479,25 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  pr_clone_value (peek_right, arithptr->value);
 
-	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu_var->domain)))
+	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
 	    {
 	      if (!DB_IS_NULL (arithptr->value))
 		{
 		  assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (arithptr->value)));
-		  assert (regu_var->domain->codeset == db_get_string_codeset (arithptr->value));
+		  assert (domain->codeset == db_get_string_codeset (arithptr->value));
 		}
-	      db_string_put_cs_and_collation (arithptr->value, regu_var->domain->codeset,
-					      regu_var->domain->collation_id);
+	      db_string_put_cs_and_collation (arithptr->value, domain->codeset, domain->collation_id);
 	    }
 	  else
 	    {
-	      assert (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_ENUMERATION);
+	      assert (TP_DOMAIN_TYPE (domain) == DB_TYPE_ENUMERATION);
 
 	      if (!DB_IS_NULL (arithptr->value))
 		{
 		  assert (DB_VALUE_DOMAIN_TYPE (arithptr->value) == DB_TYPE_ENUMERATION);
-		  assert (regu_var->domain->codeset == db_get_enum_codeset (arithptr->value));
+		  assert (domain->codeset == db_get_enum_codeset (arithptr->value));
 		}
-	      db_enum_put_cs_and_collation (arithptr->value, regu_var->domain->codeset, regu_var->domain->collation_id);
+	      db_enum_put_cs_and_collation (arithptr->value, domain->codeset, domain->collation_id);
 
 	    }
 	}
@@ -3483,16 +3505,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST) && arithptr->opcode == T_CAST_WRAP)
 	    {
-	      dom_status = tp_value_cast (peek_right, arithptr->value, arithptr->domain, false);
+	      dom_status = tp_value_cast (peek_right, arithptr->value, arith_domain, false);
 	    }
 	  else
 	    {
-	      dom_status = tp_value_cast_force (peek_right, arithptr->value, arithptr->domain, false);
+	      dom_status = tp_value_cast_force (peek_right, arithptr->value, arith_domain, false);
 	    }
 
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, arithptr->domain);
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, arith_domain);
 	      goto error;
 	    }
 	}
@@ -3503,26 +3525,25 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  pr_clone_value (peek_right, arithptr->value);
 
-	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu_var->domain)))
+	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
 	    {
 	      if (!DB_IS_NULL (arithptr->value))
 		{
 		  assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (arithptr->value)));
-		  assert (regu_var->domain->codeset == db_get_string_codeset (arithptr->value));
+		  assert (domain->codeset == db_get_string_codeset (arithptr->value));
 		}
-	      db_string_put_cs_and_collation (arithptr->value, regu_var->domain->codeset,
-					      regu_var->domain->collation_id);
+	      db_string_put_cs_and_collation (arithptr->value, domain->codeset, domain->collation_id);
 	    }
 	  else
 	    {
-	      assert (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_ENUMERATION);
+	      assert (TP_DOMAIN_TYPE (domain) == DB_TYPE_ENUMERATION);
 
 	      if (!DB_IS_NULL (arithptr->value))
 		{
 		  assert (DB_VALUE_DOMAIN_TYPE (arithptr->value) == DB_TYPE_ENUMERATION);
-		  assert (regu_var->domain->codeset == db_get_enum_codeset (arithptr->value));
+		  assert (domain->codeset == db_get_enum_codeset (arithptr->value));
 		}
-	      db_enum_put_cs_and_collation (arithptr->value, regu_var->domain->codeset, regu_var->domain->collation_id);
+	      db_enum_put_cs_and_collation (arithptr->value, domain->codeset, domain->collation_id);
 
 	    }
 	}
@@ -3530,7 +3551,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  TP_DOMAIN_STATUS status;
 
-	  status = tp_value_cast (peek_right, arithptr->value, arithptr->domain, false);
+	  status = tp_value_cast (peek_right, arithptr->value, arith_domain, false);
 	  if (status != NO_ERROR)
 	    {
 	      PRIM_SET_NULL (arithptr->value);
@@ -3563,10 +3584,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  goto error;
 	}
 
-      dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
+      dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, regu_var->domain);
+	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
 	  goto error;
 	}
       /* branches whose collations the gate merged: the picked value takes the merged domain (D-343-01) */
@@ -3595,10 +3616,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  goto error;
 	}
 
-      dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
+      dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, regu_var->domain);
+	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
 	  goto error;
 	}
       break;
@@ -3610,7 +3631,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	DB_VALUE *src;
 	TP_DOMAIN *target_domain;
 
-	target_domain = regu_var->domain;
+	target_domain = domain;
 
 	if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	  {
@@ -3660,7 +3681,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	DB_VALUE *src;
 	TP_DOMAIN *target_domain;
 
-	target_domain = regu_var->domain;
+	target_domain = domain;
 
 	if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	  {
@@ -3760,17 +3781,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_CONCAT:
       if (arithptr->rightptr != NULL)
 	{
-	  if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	  if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	    {
 	      goto error;
 	    }
 	}
       else
 	{
-	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
+	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, regu_var->domain);
+	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
 	      goto error;
 	    }
 	}
@@ -3790,19 +3811,19 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  else if (DB_IS_NULL (peek_left))
 	    {
-	      dom_status = tp_value_auto_cast (peek_right, arithptr->value, regu_var->domain);
+	      dom_status = tp_value_auto_cast (peek_right, arithptr->value, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, regu_var->domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, domain);
 		  goto error;
 		}
 	    }
 	  else if (DB_IS_NULL (peek_right))
 	    {
-	      dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
+	      dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, regu_var->domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
 		  goto error;
 		}
 	    }
@@ -3811,11 +3832,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      DB_VALUE tmp_val;
 
 	      db_make_null (&tmp_val);
-	      if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, regu_var->domain) != NO_ERROR)
+	      if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, domain) != NO_ERROR)
 		{
 		  goto error;
 		}
-	      if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+	      if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, domain) != NO_ERROR)
 		{
 		  (void) pr_clear_value (&tmp_val);
 		  goto error;
@@ -3831,10 +3852,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 	  else
 	    {
-	      dom_status = tp_value_auto_cast (peek_left, arithptr->value, regu_var->domain);
+	      dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, regu_var->domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
 		  goto error;
 		}
 	    }
@@ -3853,8 +3874,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  int cmp_res = DB_UNK;
 
 	  /* the comparisons the load or the gate planned (#354) */
-	  cmp_res = eval_compare_values_planned (thread_p, arithptr->domain_compare[0], vd, peek_third, peek_left, 0,
-						 &can_compare);
+	  cmp_res =
+	    eval_compare_values_planned (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_third, peek_left, 0,
+					 &can_compare);
 	  if (cmp_res == DB_EQ)
 	    {
 	      db_make_int (arithptr->value, 1);
@@ -3866,8 +3888,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    }
 
 
-	  cmp_res = eval_compare_values_planned (thread_p, arithptr->domain_compare[1], vd, peek_third, peek_right, 0,
-						 &can_compare);
+	  cmp_res =
+	    eval_compare_values_planned (thread_p, fetch_arith_compare (arithptr, 1), vd, peek_third, peek_right, 0,
+					 &can_compare);
 	  if (cmp_res == DB_EQ)
 	    {
 	      db_make_int (arithptr->value, 2);
@@ -3902,7 +3925,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	      int cmp_res = DB_UNK;
 
 	      cmp_res =
-		eval_compare_values_planned (thread_p, arithptr->domain_compare[1], vd, peek_third, peek_right, 0,
+		eval_compare_values_planned (thread_p, fetch_arith_compare (arithptr, 1), vd, peek_third, peek_right, 0,
 					     &can_compare);
 	      if (cmp_res == DB_EQ)
 		{
@@ -3977,7 +4000,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  DB_VALUE tmp_val, tmp_val2;
 
-	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
+	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_node_domain (vd, arithptr->leftptr->domain,
+							      arithptr->leftptr->domain_plan))))
 	    {
 	      if (db_string_bit_length (peek_left, &tmp_val) != NO_ERROR)
 		{
@@ -4111,7 +4135,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	  if (pos < 0)
 	    {
-	      if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
+	      if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_node_domain (vd, arithptr->leftptr->domain,
+								  arithptr->leftptr->domain_plan))))
 		{
 		  if (db_string_bit_length (peek_left, &tmp_len) != NO_ERROR)
 		    {
@@ -4215,7 +4240,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	bool can_compare = false;
 	int cmp_res = DB_UNK;
 
-	target_domain = regu_var->domain;
+	target_domain = domain;
 	if (DB_IS_NULL (peek_left))
 	  {
 	    PRIM_SET_NULL (arithptr->value);
@@ -4237,8 +4262,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  }
 
 	/* the comparison the load or the gate planned (#354) */
-	cmp_res = eval_compare_values_planned (thread_p, arithptr->domain_compare[0], vd, peek_left, peek_right, 0,
-					       &can_compare);
+	cmp_res =
+	  eval_compare_values_planned (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_left, peek_right, 0,
+				       &can_compare);
 	if (cmp_res == DB_EQ)
 	  {
 	    PRIM_SET_NULL (arithptr->value);
@@ -4260,7 +4286,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_EXTRACT:
-      if (qdata_extract_dbval (arithptr->misc_operand, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_extract_dbval (arithptr->misc_operand, peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4277,7 +4303,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    goto error;
 	  }
 
-	target_domain = regu_var->domain;
+	target_domain = domain;
 	if (target_domain == NULL && no_value_domain != NULL && DB_IS_NULL (arithptr->value))
 	  {
 	    /* the gate found no value (#340) */
@@ -4318,7 +4344,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    goto error;
 	  }
 
-	target_domain = regu_var->domain;
+	target_domain = domain;
 	if (target_domain == NULL && no_value_domain != NULL && DB_IS_NULL (arithptr->value))
 	  {
 	    /* the gate found no value (#340) */
@@ -4356,17 +4382,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    goto error;
 	  }
 
-	dom_status = tp_value_auto_cast (arithptr->value, arithptr->value, regu_var->domain);
+	dom_status = tp_value_auto_cast (arithptr->value, arithptr->value, domain);
 	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
-	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, regu_var->domain);
+	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);
 	    goto error;
 	  }
 	break;
       }
 
     case T_STRCAT:
-      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, regu_var->domain) != NO_ERROR)
+      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4405,9 +4431,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	   * (`@v := '2.5'` on an earlier column): develop binds the read's domain from that value, and a decision over
 	   * the read is not taken at its node's first computation from now on (fetch_note_session_read) */
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
-	  original_domain = no_value_domain != NULL ? no_value_domain : regu_var->original_domain;
+	  original_domain = no_value_domain != NULL ? no_value_domain : regu_var->domain;
 	  no_value_domain = NULL;
-	  regu_var->domain = NULL;
+	  domain = NULL;
 	}
       break;
 
@@ -4532,7 +4558,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_LIST_DBS:
-      if (qdata_list_dbs (thread_p, arithptr->value, arithptr->domain) != NO_ERROR)
+      if (qdata_list_dbs (thread_p, arithptr->value, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4618,7 +4644,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_TO_ENUMERATION_VALUE:
-      if (db_value_to_enumeration_value (peek_right, arithptr->value, arithptr->domain) != NO_ERROR)
+      if (db_value_to_enumeration_value (peek_right, arithptr->value, arith_domain) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4861,7 +4887,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       assert (DB_IS_NULL (arithptr->value));
       if (!DB_IS_NULL (arithptr->value))
 	{
-	  regu_var->domain = no_value_domain;
+	  domain = no_value_domain;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
 		  vd != NULL && vd->xasl_state != NULL && vd->xasl_state->resolved.plan != NULL
 		  && arithptr->domain_plan != NULL
@@ -4869,7 +4895,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		  pr_type_name (DB_TYPE_NULL));
 	  goto error;
 	}
-      regu_var->domain = no_value_domain;
+      domain = no_value_domain;
     }
 
   if (original_domain != NULL && TP_DOMAIN_TYPE (original_domain) == DB_TYPE_VARIABLE)
@@ -4879,18 +4905,19 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* keep DB_TYPE_VARIABLE if resolved domain is NULL */
       if (TP_DOMAIN_TYPE (resolved_dom) != DB_TYPE_NULL)
 	{
-	  regu_var->domain = arithptr->domain = resolved_dom;
+	  domain = arith_domain = resolved_dom;
 	}
       else
 	{
-	  regu_var->domain = arithptr->domain = original_domain;
+	  domain = arith_domain = original_domain;
 	}
+      qexec_take_domain (vd, regu_var->domain_plan, regu_var->domain, domain);
+      qexec_take_domain (vd, arithptr->domain_plan, arithptr->domain, arith_domain);
     }
 
-  if (arithptr->domain != NULL && arithptr->domain->collation_flag != TP_DOMAIN_COLL_NORMAL
-      && !DB_IS_NULL (arithptr->value))
+  if (arith_domain != NULL && arith_domain->collation_flag != TP_DOMAIN_COLL_NORMAL && !DB_IS_NULL (arithptr->value))
     {
-      assert (TP_TYPE_HAS_COLLATION (arithptr->domain->type->id));
+      assert (TP_TYPE_HAS_COLLATION (arith_domain->type->id));
 
       const TP_DOMAIN *decided = qexec_gate_domain (vd, arithptr->domain_plan, false);
       if (decided != NULL)
@@ -4908,7 +4935,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 						     && value_domain->collation_id == decided->collation_id))));
 	  }
 #endif
-	  regu_var->domain = (TP_DOMAIN *) decided;
+	  domain = (TP_DOMAIN *) decided;
+	  qexec_take_domain (vd, regu_var->domain_plan, regu_var->domain, domain);
 	}
       else
 	{
@@ -4920,7 +4948,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 		      arithptr->domain_plan != NULL && vd != NULL && vd->xasl_state != NULL
 		      && vd->xasl_state->resolved.plan != NULL
 		      ? (int) (arithptr->domain_plan - vd->xasl_state->resolved.plan->items) : -1,
-		      pr_type_name (TP_DOMAIN_TYPE (arithptr->domain)));
+		      pr_type_name (TP_DOMAIN_TYPE (arith_domain)));
 	      goto error;
 	    }
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
@@ -4929,7 +4957,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  /* keep DB_TYPE_VARIABLE if resolved domain is NULL */
 	  if (TP_DOMAIN_TYPE (resolved_dom) != DB_TYPE_NULL)
 	    {
-	      regu_var->domain = resolved_dom;
+	      domain = resolved_dom;
+	      qexec_take_domain (vd, regu_var->domain_plan, regu_var->domain, domain);
 	    }
 	}
     }
@@ -4979,23 +5008,15 @@ fetch_peek_arith_end:
 error:
   thread_dec_recursion_depth (thread_p);
 
-  if (original_domain)
-    {
-      /* restores regu variable domain */
-      regu_var->domain = original_domain;
-    }
-  else if (no_value_domain != NULL)
-    {
-      regu_var->domain = no_value_domain;
-    }
-
+  /* nothing to restore: a late or unbound computation took no domain into the node's cells (#355) */
   return ER_FAILED;
 }
 
 /*
- * fetch_read_plan_domain () - an open regu takes the domain the gate decided for it (S-05, S-06, #340)
+ * fetch_read_plan_domain () - an open regu takes the domain the gate decided for it (S-05, S-06, #340) into its cell
+ *   for the rest of the execution (#355)
  *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED at the execution boundary (b)
- *   regu_var(in/out): a regu whose compiled domain is VARIABLE or leaves its collation open
+ *   regu_var(in): a regu whose compiled domain is VARIABLE or leaves its collation open
  *   value(in): its non-NULL value of this row
  *
  * The gate recorded a slot's bound value domain (codeset and collation included), and a derived consumer or a string
@@ -5020,7 +5041,12 @@ fetch_read_plan_domain (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_d
 					 || (from_value->codeset == planned->codeset
 					     && from_value->collation_id == planned->collation_id))));
 #endif
-      regu_var->domain = (TP_DOMAIN *) planned;
+      /* S-05 on a list position reads its list scan's planned column, which the position's cell holds already */
+      assert (regu_var->type != TYPE_POSITION
+	      || qexec_node_domain (vd, regu_var->value.pos_descr.dom, regu_var->value.pos_descr.domain_plan) == planned
+	      || TP_DOMAIN_TYPE (regu_var->value.pos_descr.dom) == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_COLLATION_FLAG (regu_var->value.pos_descr.dom) != TP_DOMAIN_COLL_NORMAL);
+      qexec_take_domain (vd, regu_var->domain_plan, regu_var->domain, planned);
       return NO_ERROR;
     }
   if (!fetch_row_reads_string_domain (vd, item))
@@ -5032,7 +5058,7 @@ fetch_read_plan_domain (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_d
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
   perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH);
-  regu_var->domain = tp_domain_resolve_value (value, NULL);
+  qexec_take_domain (vd, regu_var->domain_plan, regu_var->domain, tp_domain_resolve_value (value, NULL));
   return NO_ERROR;
 }
 
@@ -5143,7 +5169,11 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       flag = (QFILE_TUPLE_VALUE_FLAG) qfile_locate_tuple_value (tpl, regu_var->value.pos_descr.pos_no, &ptr, &length);
       if (flag == V_BOUND)
 	{
-	  pr_type = regu_var->value.pos_descr.dom->type;
+	  /* the column's domain in this execution: the list scan or the block that reads the list gave an open
+	   * position its planned domain in the position's cell (#355) */
+	  TP_DOMAIN *column_domain =
+	    qexec_node_domain (vd, regu_var->value.pos_descr.dom, regu_var->value.pos_descr.domain_plan);
+	  pr_type = column_domain->type;
 	  if (pr_type == NULL)
 	    {
 	      goto exit_on_error;
@@ -5151,7 +5181,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
 	  or_init (&buf, ptr, length);
 
-	  if (pr_type->data_readval (&buf, *peek_dbval, regu_var->value.pos_descr.dom, -1, false /* Don't copy */ ,
+	  if (pr_type->data_readval (&buf, *peek_dbval, column_domain, -1, false /* Don't copy */ ,
 				     NULL, 0) != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -5399,33 +5429,33 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
   if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION))
     {
-      if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu_var->domain)))
+      const TP_DOMAIN *collate = qexec_node_domain (vd, regu_var->domain, regu_var->domain_plan);
+      if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (collate)))
 	{
 	  if (!DB_IS_NULL (*peek_dbval))
 	    {
 	      assert (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (*peek_dbval)));
-	      assert (regu_var->domain->codeset == db_get_string_codeset (*peek_dbval));
+	      assert (collate->codeset == db_get_string_codeset (*peek_dbval));
 	    }
-	  db_string_put_cs_and_collation (*peek_dbval, regu_var->domain->codeset, regu_var->domain->collation_id);
+	  db_string_put_cs_and_collation (*peek_dbval, collate->codeset, collate->collation_id);
 	}
       else
 	{
-	  assert (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_ENUMERATION);
+	  assert (TP_DOMAIN_TYPE (collate) == DB_TYPE_ENUMERATION);
 
 	  if (!DB_IS_NULL (*peek_dbval))
 	    {
 	      assert (DB_VALUE_DOMAIN_TYPE (*peek_dbval) == DB_TYPE_ENUMERATION);
-	      assert (regu_var->domain->codeset == db_get_enum_codeset (*peek_dbval));
+	      assert (collate->codeset == db_get_enum_codeset (*peek_dbval));
 	    }
-	  db_enum_put_cs_and_collation (*peek_dbval, regu_var->domain->codeset, regu_var->domain->collation_id);
+	  db_enum_put_cs_and_collation (*peek_dbval, collate->codeset, collate->collation_id);
 
 	}
     }
 
   if (*peek_dbval != NULL && !DB_IS_NULL (*peek_dbval))
     {
-      if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_COLLATION_FLAG (regu_var->domain) != TP_DOMAIN_COLL_NORMAL)
+      if (qexec_node_open (vd, regu_var->domain_plan))
 	{
 	  /* S-05: the domain the gate decided before the main block - a slot's is its bound value's (#336), a value
 	   * pointer's or a list position's its producer's (#337), a string function's its own (#338) (#340) */
@@ -5442,8 +5472,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	  head_regu = reguval_list->regu_list->value;
 	  regu = reguval_list->current_value->value;
 
-	  if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (regu->domain) != TP_DOMAIN_COLL_NORMAL)
+	  if (regu->domain == NULL || qexec_node_open (vd, regu->domain_plan))
 	    {
 	      /* S-06: the row's own decision, as S-05 reads it (#340) */
 	      if (fetch_read_plan_domain (thread_p, regu, vd, *peek_dbval) != NO_ERROR)
@@ -5451,37 +5480,26 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 		  goto exit_on_error;
 		}
 	    }
-	  head_type = TP_DOMAIN_TYPE (head_regu->domain);
-	  cur_type = TP_DOMAIN_TYPE (regu->domain);
+	  const TP_DOMAIN *row_domain = qexec_node_domain (vd, regu->domain, regu->domain_plan);
+	  const TP_DOMAIN *head_domain = qexec_node_domain (vd, head_regu->domain, head_regu->domain_plan);
+	  head_type = TP_DOMAIN_TYPE (head_domain);
+	  cur_type = TP_DOMAIN_TYPE (row_domain);
 
 	  /* compare the type */
-	  if (head_type != DB_TYPE_NULL && cur_type != DB_TYPE_NULL && head_regu->domain != regu->domain)
+	  if (head_type != DB_TYPE_NULL && cur_type != DB_TYPE_NULL && head_domain != row_domain)
 	    {
 	      if (head_type != cur_type || !pr_is_string_type (head_type) || !pr_is_variable_type (head_type))
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
 		  goto exit_on_error;
 		}
-	      else if (TP_DOMAIN_COLLATION (head_regu->domain) != TP_DOMAIN_COLLATION (regu->domain))
+	      else if (TP_DOMAIN_COLLATION (head_domain) != TP_DOMAIN_COLLATION (row_domain))
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
 		  goto exit_on_error;
 		}
 	    }
 	}
-    }
-
-  /* flag a stable regu_var (cached attr/literal/pos/const) so inline fetch_peek_dbval () peeks it directly */
-  if ((((regu_var->type == TYPE_ATTR_ID || regu_var->type == TYPE_SHARED_ATTR_ID
-	 || regu_var->type == TYPE_CLASS_ATTR_ID) && regu_var->value.attr_descr.cache_dbvalp != NULL)
-       || regu_var->type == TYPE_DBVAL || (regu_var->type == TYPE_POS_VALUE && regu_var->domain_plan != NULL)
-       || (regu_var->type == TYPE_CONSTANT && regu_var->xasl == NULL && regu_var->value.dbvalptr != NULL))
-      && !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION)
-      && regu_var->domain != NULL
-      && TP_DOMAIN_TYPE (regu_var->domain) != DB_TYPE_VARIABLE
-      && TP_DOMAIN_COLLATION_FLAG (regu_var->domain) == TP_DOMAIN_COLL_NORMAL)
-    {
-      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
     }
 
   return NO_ERROR;
@@ -5501,7 +5519,7 @@ exit_on_error:
  *   next_tpl(out): Set to the next tuple ref
  */
 static int
-fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
+fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl, const VAL_DESCR * vd)
 {
   const PR_TYPE *pr_type;
   QFILE_TUPLE_VALUE_POSITION *pos_descr;
@@ -5535,11 +5553,13 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl)
       if (pos_descr->pos_no == i)
 	{
 	  pr_clear_value (regu_var->vfetch_to);
-	  pr_type = pos_descr->dom->type;
+	  /* the position's domains in this execution: its cell, which the list scan filled (#355) */
+	  pr_type = qexec_node_domain (vd, pos_descr->dom, pos_descr->domain_plan)->type;
 	  if (flag == V_BOUND)
 	    {
-	      if (pr_type->data_readval (&buf, regu_var->vfetch_to, regu_var->domain, -1, false /* Don't copy */ ,
-					 NULL, 0) != NO_ERROR)
+	      if (pr_type->data_readval (&buf, regu_var->vfetch_to,
+					 qexec_node_domain (vd, regu_var->domain, regu_var->domain_plan), -1,
+					 false /* Don't copy */ , NULL, 0) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -5747,7 +5767,7 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
     {
       if (regu_list && regu_list->value.type == TYPE_POSITION)
 	{
-	  rc = fetch_peek_dbval_pos (regu_list, tpl);
+	  rc = fetch_peek_dbval_pos (regu_list, tpl, vd);
 	  return rc;
 	}
       for (regup = regu_list; regup != NULL; regup = regup->next)
@@ -6067,7 +6087,7 @@ fetch_peek_leftmost_numeric_regu (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_
       return NULL;
     }
 
-  if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC)
+  if (TP_DOMAIN_TYPE (qexec_node_domain (vd, regu_var->domain, regu_var->domain_plan)) == DB_TYPE_NUMERIC)
     {
       dbvalp = NULL;
       if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &dbvalp) == NO_ERROR

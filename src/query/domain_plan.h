@@ -44,9 +44,14 @@ enum DOMAIN_PLAN_FLAGS
   DOMAIN_PLAN_COLLATION_GATE = 0x100,	/* the type is compiled, the collation is the values': a slot records the bound
 					 * value's domain (C3/C12 slot rows, #336); a node is decided by the gate from
 					 * its operands' decided domains (#338) */
-  DOMAIN_PLAN_VALUE_ARGUMENT = 0x200	/* a MEDIAN / PERCENTILE whose argument carries a value (a literal, a bind, a
+  DOMAIN_PLAN_VALUE_ARGUMENT = 0x200,	/* a MEDIAN / PERCENTILE whose argument carries a value (a literal, a bind, a
 					 * session variable read) through value pointers and list positions: its first
 					 * value is classified as develop does (D-335-10, #337) */
+  DOMAIN_PLAN_OPEN = 0x400,	/* the node's compiled domain is open - a VARIABLE type or a collation its values give:
+				 * the domain an execution gives it lives in the execution's cell, not in the node
+				 * (#355, D-355-01, D-355-06); a list position's regu */
+  DOMAIN_PLAN_OPEN_POSITION = 0x800	/* a list position's value descriptor (pos_descr.dom) is open; it shares the
+					 * position's cell (#355, D-355-09) */
 };
 
 /* What execution must know before it takes a slot's decision in place of a value-driven late binding (#337): a
@@ -56,6 +61,8 @@ enum DOMAIN_SLOT_FLAGS
   DOMAIN_SLOT_VOLATILE = 0x08	/* a session variable read: its type may change within the statement (D-336-E) */
 };
 
+struct DOMAIN_COMPARE_PLAN;
+
 typedef struct domain_plan_item DOMAIN_PLAN_ITEM;
 struct domain_plan_item
 {
@@ -63,9 +70,14 @@ struct domain_plan_item
   int ref;
   unsigned short flags;
   unsigned char operand_class;
-  unsigned char fail[3];
-  unsigned char pad[2];
+  unsigned char fail;		/* DOMAIN_FAIL_POLICY of the reference: a node's operands are references of their own */
+  int cell;			/* 1 + the index of the node's cell in an execution's state (resolved.taken): the domain
+				 * the execution gave a node develop wrote it into (#355, D-355-01); 0: none */
   RESOLVED_DOMAIN fixed;
+  /* FIELD, NULLIF, LEAST, GREATEST: the comparisons the node makes, as the load or the gate decided them (#354) -
+   * [0] the left operand (FIELD: the third against the left), [1] FIELD's third against the right; NULL otherwise.
+   * The node carries only its item (D-323-01), so ARITH_TYPE keeps develop's size (#355, D-355-04). */
+  const DOMAIN_COMPARE_PLAN **compares;
 };
 /* D-328-03 supersedes the original 64-byte limit: operand targets are distinct from the result. */
 static_assert (sizeof (DOMAIN_PLAN_ITEM) == 80, "domain plan item layout");
@@ -271,6 +283,7 @@ struct domain_plan
   int n_element_sites;
   DOMAIN_ELEMENT_COMPARE_PLAN **element_sites;	/* the ALL/SOME terms the gate decides, in resolved.elements order
 						 * (#352) */
+  int n_cells;			/* the items with a cell (#355) */
 };
 
 struct RESOLVED_DOMAIN_TABLE
@@ -293,6 +306,15 @@ struct RESOLVED_DOMAIN_TABLE
   DOMAIN_INDEX_DECISIONS *indexes;	/* [n_indexes] this execution's key decisions by index site; their blocks are
 					 * the owner's (#342) */
   int n_indexes;
+  /* [n_cells] the domain each node with a cell took in this execution, where develop wrote it into the plan node and
+   * the XASL clear restored it: a gate decision read at the node's first computation or at its consumer's setup, or
+   * a value's domain where the plan hands it to the row (D-336-E); NULL until taken. Only the owner writes them, as
+   * changed_reads (#355, D-355-01). */
+  const TP_DOMAIN **taken;
+  const TP_DOMAIN **taken_list;	/* [n_cells] the domain a MEDIAN / PERCENTILE list holds and its key sorts
+				 * (qexec_setup_interpolation_list); NULL */
+  int *taken_type;		/* [n_cells] an aggregate's or analytic function's operand type (opr_dbtype); -1 */
+  int n_cells;
 };
 
 int stx_build_domain_plan (THREAD_ENTRY *thread_p, xasl_node *root, xasl_unpack_info *unpack_info,

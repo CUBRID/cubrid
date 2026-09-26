@@ -281,7 +281,6 @@ namespace cubxasl
     dest->type = src->type;
     dest->flags = src->flags;
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    dest->original_domain = dest->domain;
     /* the leader's plan item: immutable and alive until the leader retires its clone, after every worker (F-334-01) */
     dest->domain_plan = src->domain_plan;
     dest->vfetch_to = spawn (src->vfetch_to);
@@ -404,11 +403,8 @@ namespace cubxasl
       }
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    dest->original_domain = dest->domain;
+    /* the plan item carries the node's comparison records, as a term's (workspace#354, #355) */
     dest->domain_plan = src->domain_plan;
-    /* the plan's comparison records, as a term's (workspace#354) */
-    dest->domain_compare[0] = src->domain_compare[0];
-    dest->domain_compare[1] = src->domain_compare[1];
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
     dest->rightptr = spawn (src->rightptr);
@@ -574,7 +570,6 @@ namespace cubxasl
       }
 
     dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
-    dest->original_domain = dest->dom;
     dest->domain_plan = src->domain_plan;
     dest->pos_no = src->pos_no;
 
@@ -909,7 +904,7 @@ namespace cubxasl
       {
 	/* the worker inherits the gate's decisions and values through the one PX copy (D-318-06, F-334-01): every
 	 * reference value (secondary references included) and the gate table, owned and freed by this thread */
-	xasl_state *copy = qexec_deep_copy_xasl_state (&m_thread_ref, src->xasl_state);
+	xasl_state *copy = qexec_deep_copy_xasl_state (&m_thread_ref, src->xasl_state, false);
 	if (copy == nullptr)
 	  {
 	    if (er_errid () == NO_ERROR)

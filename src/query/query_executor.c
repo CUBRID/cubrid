@@ -271,6 +271,7 @@ typedef struct analytic_function_state ANALYTIC_FUNCTION_STATE;
 struct analytic_function_state
 {
   ANALYTIC_TYPE *func_p;
+  const VAL_DESCR *vd;		/* the execution's: its cells hold the domains the function takes (#355) */
   RECDES current_key;
 
   /* result list files */
@@ -431,8 +432,6 @@ static int qexec_clear_regu_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, R
 static int qexec_clear_regu_value_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VALUE_LIST * list,
 					bool is_final, bool for_parallel_aptr);
 static void qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list);
-static void qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, bool is_final);
-static void qexec_clear_pos_desc (XASL_NODE * xasl_p, QFILE_TUPLE_VALUE_POSITION * position_descr, bool is_final);
 static int qexec_clear_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, PRED_EXPR * pr, bool is_final,
 			     bool for_parallel_aptr);
 static int qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCESS_SPEC_TYPE * list,
@@ -683,15 +682,15 @@ static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * v
 						 int *start_colp, int collation);
 static int qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
 					 REGU_VARIABLE_LIST reference_regu_list,
-					 const QFILE_TUPLE_VALUE_TYPE_LIST * list_types);
+					 const QFILE_TUPLE_VALUE_TYPE_LIST * list_types, SORT_LIST ** planned_list);
 static int qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist,
-					OUTPTR_LIST * reference_out_list);
-static void qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist);
+					OUTPTR_LIST * reference_out_list, SORT_LIST ** planned_groupby);
+static void qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist);
 static int qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd,
 					  int *resolved);
 static int qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, VAL_DESCR * vd,
 					 QFILE_TUPLE_RECORD * tplrec, REGU_VARIABLE_LIST regu_list, int *resolved);
-static void qexec_type_accumulator_outputs (XASL_NODE * xasl);
+static void qexec_type_accumulator_outputs (const VAL_DESCR * vd, XASL_NODE * xasl);
 static int query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static ACCESS_SPEC_TYPE *query_multi_range_opt_check_specs (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static int qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state);
@@ -1347,7 +1346,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      /* #341 (S-24): an aggregate its first value decided (D-336-E) gives its output columns that domain */
-	      qexec_type_accumulator_outputs (xasl);
+	      qexec_type_accumulator_outputs (&xasl_state->vd, xasl);
 
 	      if (xasl->proc.buildvalue.agg_domains_resolved)
 		{
@@ -1468,12 +1467,6 @@ qexec_clear_arith_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ARITH_TYPE 
       return NO_ERROR;
     }
 
-  /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
-  if (list->domain != list->original_domain)
-    {
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESTORE_CLONE);
-    }
-  list->domain = list->original_domain;
   pr_clear_value (list->value);
   pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, list->leftptr, is_final, for_parallel_aptr);
   pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, list->rightptr, is_final, for_parallel_aptr);
@@ -1539,16 +1532,6 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     {
       return pg_cnt;
     }
-
-  /* restore the original domain, in order to avoid coerce when the XASL clones will be used again */
-  if (regu_var->domain != regu_var->original_domain)
-    {
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESTORE_CLONE);
-    }
-  regu_var->domain = regu_var->original_domain;
-
-  /* clear run-time setting info: a reused (pooled) XASL clone rebuilds it via the slow path next time */
-  REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
 
   switch (regu_var->type)
     {
@@ -1669,9 +1652,6 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 #if 0				/* TODO - */
     case TYPE_LIST_ID:
 #endif
-    case TYPE_POSITION:
-      qexec_clear_pos_desc (xasl_p, &regu_var->value.pos_descr, is_final);
-      break;
     default:
       break;
     }
@@ -1745,42 +1725,6 @@ qexec_clear_db_val_list (QPROC_DB_VALUE_LIST list)
   for (p = list; p; p = p->next)
     {
       pr_clear_value (p->val);
-    }
-}
-
-/*
- * qexec_clear_sort_list () - clear position desc
- *   return: void
- *   xasl_p(in) : xasl
- *   position_descr(in)   : position desc
- *   is_final(in)  : true, if finalize needed
- */
-static void
-qexec_clear_pos_desc (XASL_NODE * xasl_p, QFILE_TUPLE_VALUE_POSITION * position_descr, bool is_final)
-{
-  if (perfmon_is_perf_tracking () && position_descr->dom != position_descr->original_domain)
-    {
-      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESTORE_CLONE);
-    }
-  position_descr->dom = position_descr->original_domain;
-}
-
-/*
- * qexec_clear_sort_list () - clear the sort list
- *   return: void
- *   xasl_p(in) : xasl
- *   list(in)   : the sort list
- *   is_final(in)  : true, if finalize needed
- */
-static void
-qexec_clear_sort_list (XASL_NODE * xasl_p, SORT_LIST * list, bool is_final)
-{
-  SORT_LIST *p;
-
-  for (p = list; p; p = p->next)
-    {
-      /* restores the original domain */
-      qexec_clear_pos_desc (xasl_p, &p->pos_descr, is_final);
     }
 }
 
@@ -2282,12 +2226,6 @@ qexec_clear_analytic_function_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p,
 	  (void) pr_clear_value (p->value);
 	  (void) pr_clear_value (p->value2);
 	  (void) pr_clear_value (&p->part_value);
-	  if (p->domain != p->original_domain || p->opr_dbtype != p->original_opr_dbtype)
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESTORE_CLONE);
-	    }
-	  p->domain = p->original_domain;
-	  p->opr_dbtype = p->original_opr_dbtype;
 	  pg_cnt += qexec_clear_regu_var (thread_p, xasl_p, &p->operand, is_final, for_parallel_aptr);
 	  p->init ();
 	}
@@ -2341,12 +2279,6 @@ qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYP
 	}
 
       pg_cnt += qexec_clear_regu_variable_list (thread_p, xasl_p, p->operands, is_final, for_parallel_aptr);
-      if (p->domain != p->original_domain || p->opr_dbtype != p->original_opr_dbtype)
-        {
-          perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESTORE_CLONE);
-        }
-      p->domain = p->original_domain;
-      p->opr_dbtype = p->original_opr_dbtype;
     }
 
   return pg_cnt;
@@ -2533,14 +2465,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	    pg_cnt += qexec_clear_xasl (thread_p, xasl_p, is_final, false);
 	  }
 
-	if (buildlist->groupby_list)
-	  {
-	    qexec_clear_sort_list (xasl, buildlist->groupby_list, is_final);
-	  }
-	if (buildlist->after_groupby_list)
-	  {
-	    qexec_clear_sort_list (xasl, buildlist->after_groupby_list, is_final);
-	  }
 
 	if (xasl->curr_spec)
 	  {
@@ -2823,15 +2747,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	  pr_clear_value (xasl->ordbynum_val);
 	}
 
-      if (xasl->after_iscan_list)
-	{
-	  qexec_clear_sort_list (xasl, xasl->after_iscan_list, is_final);
-	}
-
-      if (xasl->orderby_list)
-	{
-	  qexec_clear_sort_list (xasl, xasl->orderby_list, is_final);
-	}
       pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->ordbynum_pred, is_final, false);
 
       if (xasl->orderby_limit)
@@ -3048,15 +2963,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  pr_clear_value (xasl->ordbynum_val);
 	}
 
-      if (xasl->after_iscan_list)
-	{
-	  qexec_clear_sort_list (xasl, xasl->after_iscan_list, is_final);
-	}
-
-      if (xasl->orderby_list)
-	{
-	  qexec_clear_sort_list (xasl, xasl->orderby_list, is_final);
-	}
       pg_cnt += qexec_clear_pred (thread_p, xasl, xasl->ordbynum_pred, is_final, true);
 
       if (xasl->orderby_limit)
@@ -3154,14 +3060,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	    pg_cnt += qexec_clear_xasl_for_parallel_aptr (thread_p, buildlist->eptr_list, is_final);
 	  }
 
-	if (buildlist->groupby_list)
-	  {
-	    qexec_clear_sort_list (xasl, buildlist->groupby_list, is_final);
-	  }
-	if (buildlist->after_groupby_list)
-	  {
-	    qexec_clear_sort_list (xasl, buildlist->after_groupby_list, is_final);
-	  }
 
 	if (xasl->curr_spec)
 	  {
@@ -3801,9 +3699,10 @@ static int qexec_copy_index_keys (THREAD_ENTRY * thread_p, const DOMAIN_INDEX_DE
  * Every value starts as NULL so the common error exit can clear a partial fill. */
 static int
 qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, int n_compares, int n_elements,
-			      int n_indexes, RESOLVED_DOMAIN_TABLE & resolved)
+			      int n_indexes, int n_cells, RESOLVED_DOMAIN_TABLE & resolved)
 {
-  assert (resolved.vals == NULL && n_vals >= 0 && n_slots >= 0 && n_compares >= 0 && n_elements >= 0 && n_indexes >= 0);
+  assert (resolved.vals == NULL && n_vals >= 0 && n_slots >= 0 && n_compares >= 0 && n_elements >= 0 && n_indexes >= 0
+	  && n_cells >= 0);
   static_assert (sizeof (DB_VALUE) % alignof (RESOLVED_DOMAIN) == 0, "gate table alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
   static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
@@ -3814,11 +3713,17 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
   static_assert (sizeof (DOMAIN_COMPARE) % alignof (DOMAIN_INDEX_DECISIONS) == 0, "key decisions alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_INDEX_DECISIONS) == 0, "key decisions alignment");
   static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_INDEX_DECISIONS) == 0, "key decisions alignment");
-  /* values, gate table, comparison decisions, ALL/SOME decisions (#352), key decisions (#342), then the constant
-   * flags (#352) */
+  static_assert (sizeof (DOMAIN_INDEX_DECISIONS) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
+  static_assert (sizeof (DOMAIN_ELEMENTS) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
+  static_assert (sizeof (DOMAIN_COMPARE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
+  static_assert (sizeof (RESOLVED_DOMAIN) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
+  static_assert (sizeof (DB_VALUE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
+  /* values, gate table, comparison decisions, ALL/SOME decisions (#352), key decisions (#342), the nodes' cells and
+   * operand types (#355), then the constant flags (#352) */
   const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_slots
     + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + sizeof (DOMAIN_ELEMENTS) * (size_t) n_elements
-    + sizeof (DOMAIN_INDEX_DECISIONS) * (size_t) n_indexes + (size_t) n_vals;
+    + sizeof (DOMAIN_INDEX_DECISIONS) * (size_t) n_indexes
+    + (2 * sizeof (const TP_DOMAIN *) + sizeof (int)) * (size_t) n_cells + (size_t) n_vals;
   if (bytes == 0)
     {
       return NO_ERROR;
@@ -3838,6 +3743,7 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
   resolved.n_compares = n_compares;
   resolved.n_elements = n_elements;
   resolved.n_indexes = n_indexes;
+  resolved.n_cells = n_cells;
   char *next = (char *) (resolved.vals + n_vals);
   if (n_slots != 0)
     {
@@ -3863,6 +3769,19 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
       memset (resolved.indexes, 0, sizeof (*resolved.indexes) * n_indexes);
       next += sizeof (*resolved.indexes) * n_indexes;
     }
+  if (n_cells != 0)
+    {
+      /* nothing taken yet: every node has its compiled domain and operand type */
+      resolved.taken = (const TP_DOMAIN **) next;
+      memset (resolved.taken, 0, sizeof (*resolved.taken) * n_cells);
+      next += sizeof (*resolved.taken) * n_cells;
+      resolved.taken_list = (const TP_DOMAIN **) next;
+      memset (resolved.taken_list, 0, sizeof (*resolved.taken_list) * n_cells);
+      next += sizeof (*resolved.taken_list) * n_cells;
+      resolved.taken_type = (int *) next;
+      memset (resolved.taken_type, 0xff, sizeof (*resolved.taken_type) * n_cells);
+      next += sizeof (*resolved.taken_type) * n_cells;
+    }
   if (n_vals != 0)
     {
       resolved.ready = (unsigned char *) next;
@@ -3880,9 +3799,13 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
  * table is copied by value (its domains are borrowed from the cache/arena), and
  * the const input, plan and seal are carried over. The copy never resolves again
  * and only thread_p may free it with qexec_free_xasl_state (ADR 0021, L-46).
+ *
+ * own_load(in): the worker runs its own load of the stream (an XASL clone or its own unpack), whose nodes start with
+ *		 their compiled domains; otherwise it runs nodes the leader's execution also runs (spawned copies, a
+ *		 parallel subquery), which hold what that execution gave them so far: its cells (#355, D-355-07)
  */
 extern xasl_state *
-qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
+qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, bool own_load)
 {
   if (!thread_p || !xasl_state_p)
     {
@@ -3898,7 +3821,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
   RESOLVED_DOMAIN_TABLE &resolved = new_xasl_state->resolved;
   memset (&resolved, 0, sizeof (resolved));
   if (qexec_alloc_resolved_domains (thread_p, src.n_vals, src.n_slots, src.n_compares, src.n_elements, src.n_indexes,
-				    resolved) != NO_ERROR)
+				    src.n_cells, resolved) != NO_ERROR)
     {
       db_private_free (thread_p, new_xasl_state);
       return NULL;
@@ -3939,6 +3862,12 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
     {
       memcpy (resolved.ready, src.ready, (size_t) src.n_vals);
     }
+  if (src.n_cells != 0 && !own_load)
+    {
+      memcpy (resolved.taken, src.taken, sizeof (*resolved.taken) * src.n_cells);
+      memcpy (resolved.taken_list, src.taken_list, sizeof (*resolved.taken_list) * src.n_cells);
+      memcpy (resolved.taken_type, src.taken_type, sizeof (*resolved.taken_type) * src.n_cells);
+    }
   resolved.in = src.in;
   resolved.plan = src.plan;
   resolved.owner = thread_p;
@@ -3978,7 +3907,8 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_compares = plan == NULL ? 0 : plan->n_compares;
   const int n_elements = plan == NULL ? 0 : plan->n_element_sites;
   const int n_indexes = plan == NULL ? 0 : plan->n_index_sites;
-  return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, n_compares, n_elements, n_indexes, resolved);
+  const int n_cells = plan == NULL ? 0 : plan->n_cells;
+  return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, n_compares, n_elements, n_indexes, n_cells, resolved);
 }
 
 /* Whether the resolver takes this operand's class from its value (D-328-06): an interpolation argument, the ADDTIME
@@ -5310,7 +5240,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 		    }
 		}
 	      if (!(item->flags & DOMAIN_PLAN_GATE) && item->fixed.domain != NULL && !DB_IS_NULL (source)
-		  && item->fail[0] != DOMAIN_FAIL_KEEP)
+		  && item->fail != DOMAIN_FAIL_KEEP)
 		{
 		  /* "value type == plan domain" for every bind the compiler typed (#336 exit condition): the client cast
 		   * the value into the plan domain; CHAR vs VARCHAR is the kept original value (D-327-01) */
@@ -5621,9 +5551,8 @@ qexec_type_open_list_columns (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, 
 	{
 	  return qexec_domain_unresolved (vd, column->value.domain_plan, *listed);
 	}
-      TP_DOMAIN *regu_domain = column->value.domain;
-      if (TP_DOMAIN_TYPE (regu_domain) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_COLLATION_FLAG (regu_domain) != TP_DOMAIN_COLL_NORMAL)
+      TP_DOMAIN *regu_domain = qexec_node_domain (vd, column->value.domain, column->value.domain_plan);
+      if (qexec_node_open (vd, column->value.domain_plan))
 	{
 	  /* no value resolved it yet: the next tuple tries again */
 	  open = true;
@@ -6148,14 +6077,18 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
       outptr_list = xasl->outptr_list;
     }
 
-  /* the sort keys the compiler left open: the plan's domains */
+  /* the sort keys the compiler left open: the plan's domains, in a copy the execution owns (#355) */
   if (outptr_list != NULL)
     {
-      error = qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, order_list, outptr_list->valptrp, NULL);
+      error =
+	qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, xasl->orderby_list, outptr_list->valptrp, NULL,
+				      &order_list);
     }
   else
     {
-      error = qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, order_list, NULL, &list_id->type_list);
+      error =
+	qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, xasl->orderby_list, NULL, &list_id->type_list,
+				      &order_list);
     }
   if (error != NO_ERROR)
     {
@@ -6319,6 +6252,11 @@ exit_on_error:
   if (orderby_alloc == true)
     {
       qfile_free_sort_list (thread_p, orderby_list);
+    }
+  if (order_list != xasl->orderby_list)
+    {
+      /* the execution's copy of the ORDER BY list (qexec_plan_sort_list_domains) */
+      qfile_free_sort_list (thread_p, order_list);
     }
 
   return error;
@@ -7083,7 +7021,8 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	      rc =
 		qdata_aggregate_accumulator_to_accumulator (thread_p, &context->curr_part_value->accumulators[i],
 							    &agg_list->accumulator_domain, agg_list->function,
-							    agg_list->domain,
+							    qexec_node_domain (&state->xasl_state->vd, agg_list->domain,
+									       agg_list->domain_plan),
 							    &context->temp_part_value->accumulators[i]);
 	      if (rc != NO_ERROR)
 		{
@@ -7366,10 +7305,12 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
 			  while (ru_agg_list)
 			    {
+			      TP_DOMAIN *ru_domain = qexec_node_domain (&info->xasl_state->vd, ru_agg_list->domain,
+									ru_agg_list->domain_plan);
 			      if (qdata_aggregate_accumulator_to_accumulator (thread_p, &ru_agg_list->accumulator,
 									      &ru_agg_list->accumulator_domain,
-									      ru_agg_list->function,
-									      ru_agg_list->domain, &acc[j]) != NO_ERROR)
+									      ru_agg_list->function, ru_domain,
+									      &acc[j]) != NO_ERROR)
 				{
 				  goto exit_on_error;
 				}
@@ -7446,6 +7387,8 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 {
   QFILE_LIST_ID *list_id = xasl->list_id;
   BUILDLIST_PROC_NODE *buildlist = &xasl->proc.buildlist;
+  SORT_LIST *groupby_list = buildlist->groupby_list;	/* the sort list the GROUP BY runs with (#355) */
+  GROUPBY_STATE *initialized;
   GROUPBY_STATE gbstate;
   QFILE_LIST_SCAN_ID input_scan_id;
   int ls_flag = 0;
@@ -7478,20 +7421,27 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   /* #341 (S-18): the GROUP BY reads the plan's domains; its aggregates were set up before the scan */
   if (xasl->outptr_list != NULL)
     {
-      if (qexec_plan_group_by_domains (thread_p, &xasl_state->vd, buildlist, xasl->outptr_list) != NO_ERROR)
+      if (qexec_plan_group_by_domains (thread_p, &xasl_state->vd, buildlist, xasl->outptr_list, &groupby_list)
+	  != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
-      qexec_finish_group_by_domains (buildlist);
+      qexec_finish_group_by_domains (&xasl_state->vd, buildlist);
     }
 
-  if (qexec_initialize_groupby_state (&gbstate, buildlist->groupby_list, buildlist->g_having_pred,
-				      buildlist->g_grbynum_pred, buildlist->g_grbynum_val, buildlist->g_grbynum_flag,
-				      buildlist->eptr_list, buildlist->g_agg_list, buildlist->g_regu_list,
-				      buildlist->g_val_list, buildlist->g_outptr_list, buildlist->g_hk_sort_regu_list,
-				      buildlist->g_with_rollup != 0, buildlist->g_hash_eligible,
-				      buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list,
-				      tplrec) == NULL)
+  initialized =
+    qexec_initialize_groupby_state (&gbstate, groupby_list, buildlist->g_having_pred, buildlist->g_grbynum_pred,
+				    buildlist->g_grbynum_val, buildlist->g_grbynum_flag, buildlist->eptr_list,
+				    buildlist->g_agg_list, buildlist->g_regu_list, buildlist->g_val_list,
+				    buildlist->g_outptr_list, buildlist->g_hk_sort_regu_list,
+				    buildlist->g_with_rollup != 0, buildlist->g_hash_eligible,
+				    buildlist->agg_hash_context, xasl, xasl_state, &list_id->type_list, tplrec);
+  /* the state's key information holds the keys' domains from here on (#355) */
+  if (groupby_list != buildlist->groupby_list)
+    {
+      qfile_free_sort_list (thread_p, groupby_list);
+    }
+  if (initialized == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17523,7 +17473,8 @@ qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
 	  }
 
 	/* initialize aggregation list */
-	if (qdata_initialize_aggregate_list (thread_p, buildvalue->agg_list, xasl_state->query_id) != NO_ERROR)
+	if (qdata_initialize_aggregate_list (thread_p, buildvalue->agg_list, xasl_state->query_id, &xasl_state->vd)
+	    != NO_ERROR)
 	  {
 	    GOTO_EXIT_ON_ERROR;
 	  }
@@ -17623,7 +17574,8 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       qdata_link_shared_accumulators (buildvalue->agg_list);
     }
 
-  if (buildvalue->agg_list && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false) != NO_ERROR)
+  if (buildvalue->agg_list
+      && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false, &xasl_state->vd) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -17632,7 +17584,7 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    * row decided it (a session variable read, D-336-E, which keeps a block off PX) */
   if (buildvalue->agg_list != NULL)
     {
-      qexec_type_accumulator_outputs (xasl);
+      qexec_type_accumulator_outputs (&xasl_state->vd, xasl);
     }
 
   /* evaluate having predicate */
@@ -18531,7 +18483,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      /* #341 (S-24): the output columns over an accumulator take the plan's decision before the first row */
-	      qexec_type_accumulator_outputs (xasl);
+	      qexec_type_accumulator_outputs (&xasl_state->vd, xasl);
 	      if (xasl->proc.buildvalue.agg_domains_resolved)
 		{
 		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list);
@@ -22456,7 +22408,8 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 
   assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
 
-  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file);
+  error_code =
+    qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file, &gbstate->xasl_state->vd);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -22753,7 +22706,8 @@ qexec_gby_start_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, const R
 
   /* (Re)initialize the various accumulator variables... */
   QEXEC_CLEAR_AGG_LIST_VALUE (gbstate->g_dim[N].d_agg_list);
-  error = qdata_initialize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, gbstate->xasl_state->query_id);
+  error = qdata_initialize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, gbstate->xasl_state->query_id,
+					   &gbstate->xasl_state->vd);
   if (error != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
@@ -23174,26 +23128,35 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
 }
 
 /*
- * qexec_plan_sort_list_domains () - the domains of the sort keys the compiler left open, read from the plan once the
- *   sorted list is built (#341, S-17)
- *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b))
+ * qexec_plan_sort_list_domains () - the sort list a sort runs with in this execution: the keys the compiler left open
+ *   take the plan's domains once the sorted list is built (#341, S-17), in a copy of the list the execution owns -
+ *   the plan's list keeps what the stream loaded (#355, D-355-02)
+ *   return: NO_ERROR, ER_FAILED (no copy), or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b))
  *   vd(in): the execution's value descriptor
- *   order_list(in/out): the sort list; may be NULL
+ *   order_list(in): the plan's sort list; may be NULL
  *   reference_regu_list(in): the regus producing the sorted list's columns, numbered as the keys' positions; NULL for
  *			      a set operation, which sorts its own list file
  *   list_types(in): that list file's domains (a set operation's, unified from its branches)
+ *   planned_list(out): order_list when every key keeps its compiled domain, or the copy, which the caller frees with
+ *			qfile_free_sort_list once the sort's key information is built
  *
  * A key's item is its column's: the gate decided that column once for the execution (#337). A key the row types - a
  * session variable read that left the gate's decision (D-336-E) - takes its column regu's domain, as develop's late
- * binding did, or for a set operation's own sort its list's domain, unified from its branches (#337).
+ * binding did, or for a set operation's own sort its list's domain, unified from its branches (#337). The sort reads
+ * the keys' domains when it builds its key information (qfile_initialize_sort_key_info): the loop's preparation
+ * point, where the interface puts the execution's domains (§3.3).
  */
 static int
 qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
-			      REGU_VARIABLE_LIST reference_regu_list, const QFILE_TUPLE_VALUE_TYPE_LIST * list_types)
+			      REGU_VARIABLE_LIST reference_regu_list, const QFILE_TUPLE_VALUE_TYPE_LIST * list_types,
+			      SORT_LIST ** planned_list)
 {
   assert (reference_regu_list != NULL || list_types != NULL);
 
-  for (SORT_LIST * key = order_list; key != NULL; key = key->next)
+  *planned_list = order_list;
+  SORT_LIST *copy = NULL;
+  SORT_LIST *copy_key = NULL;
+  for (SORT_LIST * key = order_list; key != NULL; key = key->next, copy_key = copy_key != NULL ? copy_key->next : NULL)
     {
       bool row_reads;
       const TP_DOMAIN *planned = qexec_consumer_domain (vd, key->pos_descr.dom, key->pos_descr.domain_plan, false,
@@ -23207,7 +23170,7 @@ qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SOR
 		{
 		  column = column->next;
 		}
-	      planned = column != NULL ? column->value.domain : NULL;
+	      planned = column != NULL ? qexec_node_domain (vd, column->value.domain, column->value.domain_plan) : NULL;
 	    }
 	  else if (key->pos_descr.pos_no < list_types->type_cnt)
 	    {
@@ -23220,9 +23183,44 @@ qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SOR
 	}
       if (planned == NULL)
 	{
+	  if (copy != NULL)
+	    {
+	      qfile_free_sort_list (thread_p, copy);
+	    }
 	  return qexec_domain_unresolved (vd, key->pos_descr.domain_plan, key->pos_descr.dom);
 	}
-      key->pos_descr.dom = (TP_DOMAIN *) planned;
+      if (planned != key->pos_descr.dom && copy == NULL)
+	{
+	  /* the first key whose domain the execution gives: the execution's list from here on */
+	  int n_keys = 0;
+	  for (SORT_LIST * count = order_list; count != NULL; count = count->next)
+	    {
+	      n_keys++;
+	    }
+	  copy = qfile_allocate_sort_list (thread_p, n_keys);
+	  if (copy == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+	  copy_key = copy;
+	  for (SORT_LIST * src = order_list; src != key; src = src->next, copy_key = copy_key->next)
+	    {
+	      copy_key->s_order = src->s_order;
+	      copy_key->s_nulls = src->s_nulls;
+	      copy_key->pos_descr = src->pos_descr;
+	    }
+	}
+      if (copy_key != NULL)
+	{
+	  copy_key->s_order = key->s_order;
+	  copy_key->s_nulls = key->s_nulls;
+	  copy_key->pos_descr = key->pos_descr;
+	  copy_key->pos_descr.dom = (TP_DOMAIN *) planned;
+	}
+    }
+  if (copy != NULL)
+    {
+      *planned_list = copy;
     }
   return NO_ERROR;
 }
@@ -23233,19 +23231,21 @@ qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SOR
  *   return: error code, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b)) at a key or a position the plan should have
  *	     decided
  *   reference_out_list(in): the regus that produced the sorted list's columns
+ *   planned_groupby(out): the GROUP BY sort list the sort runs with (qexec_plan_sort_list_domains); the caller frees it
+ *			   when it is not the plan's
  *
  * A key or a position over a column the row types - a session variable read that left the gate's decision
  * (D-336-E) - takes the column regu's domain, which the scan's values resolved, as develop's late binding did
  * (counted). A hash key or an output column the plan has no decision for keeps its domain: the position it follows
  * gives it (qexec_finish_group_by_domains), or its value when it is fetched. The aggregates were set up before the
- * scan (qexec_setup_aggregate_domains).
+ * scan (qexec_setup_aggregate_domains). The regus take their domains into their cells (#355).
  */
 static int
 qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist,
-			     OUTPTR_LIST * reference_out_list)
+			     OUTPTR_LIST * reference_out_list, SORT_LIST ** planned_groupby)
 {
   REGU_VARIABLE_LIST reference = reference_out_list->valptrp;
-  int error = qexec_plan_sort_list_domains (thread_p, vd, buildlist->groupby_list, reference, NULL);
+  int error = qexec_plan_sort_list_domains (thread_p, vd, buildlist->groupby_list, reference, NULL, planned_groupby);
   if (error != NO_ERROR)
     {
       return error;
@@ -23257,9 +23257,7 @@ qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUIL
     {
       for (REGU_VARIABLE_LIST regu = lists[i]; regu != NULL; regu = regu->next)
 	{
-	  if (regu->value.domain == NULL
-	      || (TP_DOMAIN_TYPE (regu->value.domain) != DB_TYPE_VARIABLE
-		  && TP_DOMAIN_COLLATION_FLAG (regu->value.domain) == TP_DOMAIN_COLL_NORMAL))
+	  if (regu->value.domain == NULL || !qexec_node_open (vd, regu->value.domain_plan))
 	    {
 	      continue;
 	    }
@@ -23272,10 +23270,12 @@ qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUIL
 		{
 		  column = column->next;
 		}
-	      if (column != NULL && TP_DOMAIN_TYPE (column->value.domain) != DB_TYPE_VARIABLE
-		  && TP_DOMAIN_COLLATION_FLAG (column->value.domain) == TP_DOMAIN_COLL_NORMAL)
+	      const TP_DOMAIN *column_domain =
+		column != NULL ? qexec_node_domain (vd, column->value.domain, column->value.domain_plan) : NULL;
+	      if (column_domain != NULL && TP_DOMAIN_TYPE (column_domain) != DB_TYPE_VARIABLE
+		  && TP_DOMAIN_COLLATION_FLAG (column_domain) == TP_DOMAIN_COLL_NORMAL)
 		{
-		  planned = column->value.domain;
+		  planned = column_domain;
 		  if (qexec_row_domain_counts (vd, regu->value.domain_plan))
 		    {
 		      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
@@ -23286,16 +23286,19 @@ qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUIL
 	    {
 	      if (i == 0 && regu->value.type == TYPE_POSITION && !row_reads)
 		{
+		  if (*planned_groupby != buildlist->groupby_list)
+		    {
+		      qfile_free_sort_list (thread_p, *planned_groupby);
+		      *planned_groupby = NULL;
+		    }
 		  return qexec_domain_unresolved (vd, regu->value.domain_plan, regu->value.domain);
 		}
 	      /* no value resolved the column yet, or the value gives it when it is fetched */
 	      continue;
 	    }
-	  regu->value.domain = (TP_DOMAIN *) planned;
-	  if (regu->value.type == TYPE_POSITION)
-	    {
-	      regu->value.value.pos_descr.dom = (TP_DOMAIN *) planned;
-	    }
+	  /* a position's value descriptor shares the regu's item and cell: the cell holds the domain for both */
+	  qexec_take_domain (vd, regu->value.domain_plan, regu->value.type == TYPE_POSITION ? NULL : regu->value.domain,
+			     planned);
 	}
     }
   return NO_ERROR;
@@ -23306,7 +23309,7 @@ qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUIL
  *   of the hash aggregation lists, once the GROUP BY domains are known (qexec_plan_group_by_domains)
  */
 static void
-qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist)
+qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist)
 {
   REGU_VARIABLE_LIST group_regu = NULL;
   AGGREGATE_TYPE *agg_p;
@@ -23338,7 +23341,7 @@ qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist)
 	  if (TP_DOMAIN_TYPE (context->key_domains[i]) == DB_TYPE_VARIABLE
 	      || TP_DOMAIN_COLLATION_FLAG (context->key_domains[i]) != TP_DOMAIN_COLL_NORMAL)
 	    {
-	      context->key_domains[i] = group_regu->value.domain;
+	      context->key_domains[i] = qexec_node_domain (vd, group_regu->value.domain, group_regu->value.domain_plan);
 	    }
 	}
 
@@ -23455,8 +23458,10 @@ qexec_apply_aggregate_gate_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
     {
       return NULL;
     }
-  if (agg_p->opr_dbtype == DB_TYPE_VARIABLE || agg_p->domain == NULL
-      || TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL)
+  /* the domains the aggregate has now: an earlier setup of this execution may have given them (#355) */
+  const TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan) == DB_TYPE_VARIABLE || domain == NULL
+      || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
     {
       if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	{
@@ -23465,14 +23470,14 @@ qexec_apply_aggregate_gate_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
 	    {
 	      return NULL;
 	    }
-	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (argument);
+	  qexec_take_operand_type (vd, agg_p->domain_plan, agg_p->opr_dbtype, TP_DOMAIN_TYPE (argument));
 	}
       else
 	{
-	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (planned);
+	  qexec_take_operand_type (vd, agg_p->domain_plan, agg_p->opr_dbtype, TP_DOMAIN_TYPE (planned));
 	}
     }
-  agg_p->domain = (TP_DOMAIN *) planned;
+  qexec_take_domain (vd, agg_p->domain_plan, agg_p->domain, planned);
   return gate_node->operand_domain[0] != NULL ? gate_node->operand_domain[0] : planned;
 }
 
@@ -23523,8 +23528,9 @@ qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg
 static bool
 qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
 {
-  return agg_p->accumulator_domain.value_dom == NULL && !TP_IS_NUMERIC_TYPE (agg_p->opr_dbtype)
-    && !TP_IS_DATE_OR_TIME_TYPE (agg_p->opr_dbtype) && !qexec_interpolation_sees_nulls (vd, agg_p);
+  const DB_TYPE operand_type = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan);
+  return agg_p->accumulator_domain.value_dom == NULL && !TP_IS_NUMERIC_TYPE (operand_type)
+    && !TP_IS_DATE_OR_TIME_TYPE (operand_type) && !qexec_interpolation_sees_nulls (vd, agg_p);
 }
 
 /* Whether a MEDIAN / PERCENTILE value the gate gave no class is a literal or a bind it could not classify (#341): the
@@ -23553,6 +23559,7 @@ qexec_interpolation_value_unclassified (const VAL_DESCR * vd, const AGGREGATE_TY
 static int
 qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const TP_DOMAIN * accumulator)
 {
+  TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
   switch (agg_p->function)
     {
     case PT_AGG_BIT_AND:
@@ -23561,7 +23568,7 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
     case PT_MIN:
     case PT_MAX:
     case PT_GROUP_CONCAT:
-      agg_p->accumulator_domain.value_dom = agg_p->domain;
+      agg_p->accumulator_domain.value_dom = domain;
       agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
       break;
 
@@ -23591,10 +23598,9 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
     case PT_PERCENTILE_DISC:
       if (qexec_interpolation_waits (vd, agg_p) && agg_p->domain_plan != NULL
 	  && (agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
-	  && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE
-	  && !qexec_reads_session_variable (vd, agg_p->domain_plan))
+	  && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && !qexec_reads_session_variable (vd, agg_p->domain_plan))
 	{
-	  agg_p->accumulator_domain.value_dom = agg_p->domain;
+	  agg_p->accumulator_domain.value_dom = domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
 	}
       break;
@@ -23642,21 +23648,21 @@ qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const
   if (column == NULL)
     {
       bool row_reads;
-      column = qexec_consumer_domain (vd, argument->domain, argument->domain_plan, false, &row_reads);
+      column = qexec_consumer_domain (vd, qexec_node_domain (vd, argument->domain, argument->domain_plan),
+				      argument->domain_plan, false, &row_reads);
       if (column == NULL)
 	{
 	  return qexec_domain_unresolved (vd, argument->domain_plan, argument->domain);
 	}
     }
-  argument->domain = (TP_DOMAIN *) column;
+  qexec_take_domain (vd, argument->domain_plan, argument->type == TYPE_POSITION ? NULL : argument->domain, column);
+  /* the keys sort the list's one column: the list opens with the argument's domain (qdata_aggregate_list_domain), and
+   * the finalization sorts it with that type (qdata_finalize_aggregate_list); the plan's keys keep theirs (#355) */
   for (SORT_LIST * key = agg_p->sort_list; key != NULL; key = key->next)
     {
-      if (TP_DOMAIN_TYPE (key->pos_descr.dom) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_COLLATION_FLAG (key->pos_descr.dom) != TP_DOMAIN_COLL_NORMAL)
-	{
-	  assert (key->pos_descr.pos_no == 0);
-	  key->pos_descr.dom = (TP_DOMAIN *) column;
-	}
+      assert (key->pos_descr.pos_no == 0 || (TP_DOMAIN_TYPE (key->pos_descr.dom) != DB_TYPE_VARIABLE
+					     && TP_DOMAIN_COLLATION_FLAG (key->pos_descr.dom) ==
+					     TP_DOMAIN_COLL_NORMAL));
     }
   return NO_ERROR;
 }
@@ -23673,7 +23679,7 @@ qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const
  * a constant or a host variable has no sort list and no list: its one value is kept (qdata_evaluate_aggregate_list).
  */
 static void
-qexec_setup_interpolation_list (AGGREGATE_TYPE * agg_p)
+qexec_setup_interpolation_list (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
 {
   assert (QPROC_IS_INTERPOLATION_FUNC (agg_p));
   if (agg_p->sort_list == NULL)
@@ -23681,13 +23687,15 @@ qexec_setup_interpolation_list (AGGREGATE_TYPE * agg_p)
       return;
     }
   assert (agg_p->sort_list->pos_descr.pos_no == 0);
-  const TP_DOMAIN *list = agg_p->operands->value.domain;
-  if (TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_NULL
-      && (list == NULL || TP_DOMAIN_TYPE (list) != TP_DOMAIN_TYPE (agg_p->domain)))
+  const TP_DOMAIN *list = qexec_node_domain (vd, agg_p->operands->value.domain, agg_p->operands->value.domain_plan);
+  const TP_DOMAIN *function = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  if (TP_DOMAIN_TYPE (function) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (function) != DB_TYPE_NULL
+      && (list == NULL || TP_DOMAIN_TYPE (list) != TP_DOMAIN_TYPE (function)))
     {
-      list = agg_p->domain;
+      list = function;
     }
-  agg_p->sort_list->pos_descr.dom = (TP_DOMAIN *) list;
+  /* the key shares the function's item: the list domain has its own cells (#355) */
+  qexec_take_interpolation_list_domain (vd, agg_p->domain_plan, list);
 }
 
 /*
@@ -23766,9 +23774,11 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	      continue;
 	    }
 	}
-      else if (agg_p->opr_dbtype != DB_TYPE_VARIABLE && agg_p->domain != NULL
-	       && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE
-	       && TP_DOMAIN_COLLATION_FLAG (agg_p->domain) == TP_DOMAIN_COLL_NORMAL && agg_p->domain_plan != NULL
+      else if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan) != DB_TYPE_VARIABLE
+	       && qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan) != NULL
+	       && TP_DOMAIN_TYPE (qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan)) != DB_TYPE_VARIABLE
+	       && TP_DOMAIN_COLLATION_FLAG (qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan))
+	       == TP_DOMAIN_COLL_NORMAL && agg_p->domain_plan != NULL
 	       && ((agg_p->domain_plan->flags & DOMAIN_PLAN_ACCUMULATOR) || interpolation))
 	{
 	  accumulator = agg_p->domain_plan->fixed.operand_domain[0];
@@ -23782,10 +23792,11 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
        * expression without a class is a number all the same (D-335-10): its values are cast to DOUBLE, the first one
        * checked (qexec_interpolation_first_value). */
       if (interpolation && accumulator == NULL && !(agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
-	  && (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NULL)
+	  && (TP_DOMAIN_TYPE (qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan)) == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_TYPE (qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan)) == DB_TYPE_NULL)
 	  && !qexec_interpolation_sees_nulls (vd, agg_p))
 	{
-	  agg_p->domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+	  qexec_take_domain (vd, agg_p->domain_plan, agg_p->domain, tp_domain_resolve_default (DB_TYPE_DOUBLE));
 	}
 
       error = qexec_setup_aggregate_accumulators (vd, agg_p, accumulator);
@@ -23799,7 +23810,7 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	}
       if (interpolation)
 	{
-	  qexec_setup_interpolation_list (agg_p);
+	  qexec_setup_interpolation_list (vd, agg_p);
 	  if (qexec_interpolation_waits (vd, agg_p))
 	    {
 	      *resolved = 0;
@@ -23826,8 +23837,8 @@ static int
 qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p,
 				 const DB_VALUE * dbval)
 {
-  const bool gate_class = TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE
-    && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_NULL;
+  TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  const bool gate_class = TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL;
   if (agg_p->domain_plan == NULL || !(agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT))
     {
       /* the compiled DOUBLE, the gate's for a gate-dependent string, or the setup's for a string without a class */
@@ -23838,7 +23849,7 @@ qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
       DB_VALUE cast_value;
       db_make_null (&cast_value);
       const TP_DOMAIN_STATUS status =
-	tp_value_cast (dbval, &cast_value, tp_domain_resolve_default (TP_DOMAIN_TYPE (agg_p->domain)), false);
+	tp_value_cast (dbval, &cast_value, tp_domain_resolve_default (TP_DOMAIN_TYPE (domain)), false);
       pr_clear_value (&cast_value);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -23862,12 +23873,12 @@ qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
 		  fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME or TIME");
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
-      if (!gate_class
-	  || !qexec_interpolation_class_holds (vd, agg_p->domain_plan, agg_p->function, dbval, agg_p->domain))
+      if (!gate_class || !qexec_interpolation_class_holds (vd, agg_p->domain_plan, agg_p->function, dbval, domain))
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
-	  agg_p->domain = tp_domain_resolve_default (class_type);
-	  qexec_setup_interpolation_list (agg_p);
+	  domain = tp_domain_resolve_default (class_type);
+	  qexec_take_domain (vd, agg_p->domain_plan, agg_p->domain, domain);
+	  qexec_setup_interpolation_list (vd, agg_p);
 	}
     }
   /* clear errors from failed casts once one succeeds */
@@ -23875,10 +23886,10 @@ qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
     {
       er_clear ();
     }
-  agg_p->accumulator_domain.value_dom = agg_p->domain;
+  agg_p->accumulator_domain.value_dom = domain;
   agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
   if (agg_p->accumulator.value != NULL && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL
-      && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (agg_p->domain), DB_DEFAULT_PRECISION,
+      && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (domain), DB_DEFAULT_PRECISION,
 			       DB_DEFAULT_SCALE) != NO_ERROR)
     {
       return ER_FAILED;
@@ -23909,20 +23920,21 @@ qexec_aggregate_row_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
     }
   else
     {
-      const bool late_bound = agg_p->opr_dbtype == DB_TYPE_VARIABLE
-	|| TP_DOMAIN_COLLATION_FLAG (agg_p->domain) != TP_DOMAIN_COLL_NORMAL;
+      const TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+      const bool late_bound = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan) == DB_TYPE_VARIABLE
+	|| TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL;
       DOMAIN_OPERAND operand = { value_domain, TP_DOMAIN_TYPE (value_domain), -1, -1, late_bound };
       RESOLVED_DOMAIN decision;
       bool needs_gate = false;
-      if (domain_resolve (DOMAIN_CTX_AGG, agg_p->function, &operand, 1, agg_p->domain, &decision, &needs_gate)
+      if (domain_resolve (DOMAIN_CTX_AGG, agg_p->function, &operand, 1, domain, &decision, &needs_gate)
 	  != NO_ERROR || needs_gate || decision.domain == NULL)
 	{
 	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
 	}
       if (late_bound)
 	{
-	  agg_p->domain = (TP_DOMAIN *) decision.domain;
-	  agg_p->opr_dbtype = TP_DOMAIN_TYPE (decision.domain);
+	  qexec_take_domain (vd, agg_p->domain_plan, agg_p->domain, decision.domain);
+	  qexec_take_operand_type (vd, agg_p->domain_plan, agg_p->opr_dbtype, TP_DOMAIN_TYPE (decision.domain));
 	}
       error = qexec_setup_aggregate_accumulators (vd, agg_p, decision.operand_domain[0]);
     }
@@ -23999,24 +24011,25 @@ qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list
  * first value gave, which may also change a session variable's class. A column the compiler typed keeps its domain.
  */
 static void
-qexec_type_accumulator_outputs (XASL_NODE * xasl)
+qexec_type_accumulator_outputs (const VAL_DESCR * vd, XASL_NODE * xasl)
 {
   for (REGU_VARIABLE_LIST out = xasl->outptr_list != NULL ? xasl->outptr_list->valptrp : NULL; out != NULL;
        out = out->next)
     {
-      if (out->value.type != TYPE_CONSTANT
-	  || (TP_DOMAIN_TYPE (out->value.original_domain) != DB_TYPE_VARIABLE
-	      && TP_DOMAIN_COLLATION_FLAG (out->value.original_domain) == TP_DOMAIN_COLL_NORMAL))
+      /* a column the compiler typed keeps its domain; the others take one into their cells (#355) */
+      if (out->value.type != TYPE_CONSTANT || out->value.domain_plan == NULL
+	  || !(out->value.domain_plan->flags & DOMAIN_PLAN_OPEN))
 	{
 	  continue;
 	}
       for (AGGREGATE_TYPE * agg_p = xasl->proc.buildvalue.agg_list; agg_p != NULL; agg_p = agg_p->next)
 	{
+	  const TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
 	  if (out->value.value.dbvalptr == agg_p->accumulator.value
-	      && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (agg_p->domain) != DB_TYPE_NULL
-	      && TP_DOMAIN_COLLATION_FLAG (agg_p->domain) == TP_DOMAIN_COLL_NORMAL)
+	      && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL
+	      && TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL)
 	    {
-	      out->value.domain = agg_p->domain;
+	      qexec_take_domain (vd, out->value.domain_plan, out->value.domain, domain);
 	      break;
 	    }
 	}
@@ -24211,7 +24224,9 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	      goto exit_on_error;
 	    }
 
-	  if (qexec_get_tuple_column_value (tuple_rec.tpl, i, &val, regu_list->value.domain) != NO_ERROR)
+	  if (qexec_get_tuple_column_value (tuple_rec.tpl, i, &val,
+					    qexec_node_domain (&xasl_state->vd, regu_list->value.domain,
+							       regu_list->value.domain_plan)) != NO_ERROR)
 	    {
 	      gbstate.state = ER_FAILED;
 	      goto exit_on_error;
@@ -24563,6 +24578,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   TSCTIMEVAL tv_diff;
   bool on_trace = false;
   ANALYTIC_STATS *new_stat = NULL;
+  SORT_LIST *sort_list = analytic_eval->sort_list;	/* the sort list the functions run with (#355) */
+  ANALYTIC_STATE *initialized;
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)
@@ -24599,18 +24616,24 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   /* fetch regulist and outlist */
   a_outptr_list = (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
 
-  /* the analytic sort keys the compiler left open: the plan's domains */
+  /* the analytic sort keys the compiler left open: the plan's domains, in a copy the execution owns (#355) */
   if (qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, analytic_eval->sort_list,
-				    buildlist->a_outptr_list_ex->valptrp, NULL) != NO_ERROR)
+				    buildlist->a_outptr_list_ex->valptrp, NULL, &sort_list) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
 
   /* initialized analytic functions state structure */
-  if (qexec_initialize_analytic_state (thread_p, &analytic_state, analytic_eval->head, analytic_eval->sort_list,
-				       buildlist->a_regu_list, buildlist->a_val_list, a_outptr_list,
-				       buildlist->a_outptr_list_interm, is_skip_sort, is_last, xasl, xasl_state,
-				       &list_id->type_list, tplrec) == NULL)
+  initialized = qexec_initialize_analytic_state (thread_p, &analytic_state, analytic_eval->head, sort_list,
+						 buildlist->a_regu_list, buildlist->a_val_list, a_outptr_list,
+						 buildlist->a_outptr_list_interm, is_skip_sort, is_last, xasl,
+						 xasl_state, &list_id->type_list, tplrec);
+  /* the state's key information holds the keys' domains from here on */
+  if (sort_list != analytic_eval->sort_list)
+    {
+      qfile_free_sort_list (thread_p, sort_list);
+    }
+  if (initialized == NULL)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -24949,7 +24972,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 
   for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
     {
-      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id, &xasl_state->vd) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -24987,7 +25010,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	      return ER_FAILED;
 	    }
 	  value_type_list.domp[0] = &tp_Integer_domain;
-	  value_type_list.domp[1] = a_func_list->domain;
+	  value_type_list.domp[1] = qexec_node_domain (&xasl_state->vd, a_func_list->domain, a_func_list->domain_plan);
 
 	  a_func_list->order_list_id =
 	    qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
@@ -25020,6 +25043,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 
   /* register function */
   func_state->func_p = func_p;
+  func_state->vd = &xasl_state->vd;
 
   /* initialize function state */
   func_state->current_key.data = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
@@ -25051,7 +25075,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   if (is_skip_sort)
     {
       /* finalize function */
-      if (qdata_finalize_analytic_func (thread_p, func_p, false) != NO_ERROR)
+      if (qdata_finalize_analytic_func (thread_p, func_p, false, &xasl_state->vd) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -25103,7 +25127,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 	  return ER_FAILED;
 	}
       value_type_list.domp[0] = &tp_Integer_domain;
-      value_type_list.domp[1] = func_state->func_p->domain;
+      value_type_list.domp[1] = qexec_node_domain (&xasl_state->vd, func_p->domain, func_p->domain_plan);
 
       func_state->value_list_id = qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, 0, NULL);
 
@@ -25266,7 +25290,8 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
       TP_DOMAIN *compiled_cmp_dom = NULL;
       for (func_p = a_func_list; func_p != NULL && compiled_cmp_dom == NULL; func_p = func_p->next)
 	{
-	  if (QPROC_IS_INTERPOLATION_FUNC (func_p) && TP_IS_STRING_TYPE (func_p->opr_dbtype)
+	  if (QPROC_IS_INTERPOLATION_FUNC (func_p)
+	      && TP_IS_STRING_TYPE (qexec_node_operand_type (&xasl_state->vd, func_p->opr_dbtype, func_p->domain_plan))
 	      && func_p->domain_plan != NULL && func_p->domain_plan->fixed.domain != NULL
 	      && TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) != DB_TYPE_VARIABLE)
 	    {
@@ -25290,14 +25315,16 @@ resolve_domain:
   for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
     {
       QFILE_TUPLE_VALUE_POSITION *pos_descr = &regu_list->value.value.pos_descr;
-      if (regu_list->value.type != TYPE_POSITION
-	  || (TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE
-	      && TP_DOMAIN_COLLATION_FLAG (pos_descr->dom) == TP_DOMAIN_COLL_NORMAL))
+      if (regu_list->value.type != TYPE_POSITION)
+	{
+	  continue;
+	}
+      if (!qexec_position_open (&xasl_state->vd, pos_descr->domain_plan))
 	{
 	  continue;
 	}
       bool row_reads;
-      const TP_DOMAIN *planned = qexec_consumer_domain (&xasl_state->vd, pos_descr->dom, regu_list->value.domain_plan,
+      const TP_DOMAIN *planned = qexec_consumer_domain (&xasl_state->vd, NULL, regu_list->value.domain_plan,
 							false, &row_reads);
       if (planned == NULL && row_reads && pos_descr->pos_no < type_list->type_cnt)
 	{
@@ -25312,8 +25339,8 @@ resolve_domain:
 	  (void) qexec_domain_unresolved (&xasl_state->vd, regu_list->value.domain_plan, pos_descr->dom);
 	  return NULL;
 	}
-      pos_descr->dom = (TP_DOMAIN *) planned;
-      regu_list->value.domain = (TP_DOMAIN *) planned;
+      /* the position's value descriptor shares the regu's item and cell: the cell holds the domain for both (#355) */
+      qexec_take_domain (&xasl_state->vd, regu_list->value.domain_plan, NULL, planned);
     }
 
   return analytic_state;
@@ -25664,7 +25691,7 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, AN
   if (reinit)
     {
       /* starting a new group */
-      error = qdata_initialize_analytic_func (thread_p, func_state->func_p, xasl_state->query_id);
+      error = qdata_initialize_analytic_func (thread_p, func_state->func_p, xasl_state->query_id, &xasl_state->vd);
       if (error != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -25711,7 +25738,7 @@ qexec_analytic_finalize_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
   tplrec.size = 0;
 
   /* finalize function */
-  if (qdata_finalize_analytic_func (thread_p, func_state->func_p, is_same_group) != NO_ERROR)
+  if (qdata_finalize_analytic_func (thread_p, func_state->func_p, is_same_group, &xasl_state->vd) != NO_ERROR)
     {
       rc = ER_FAILED;
       goto cleanup;
@@ -26186,10 +26213,11 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
   if (put_default)
     {
       /* coerce value to default domain */
-      dom_status = tp_value_coerce (default_val_p, &default_val, func_p->domain);
+      TP_DOMAIN *domain = qexec_node_domain (func_state->vd, func_p->domain, func_p->domain_plan);
+      dom_status = tp_value_coerce (default_val_p, &default_val, domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, default_val_p, func_p->domain);
+	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, default_val_p, domain);
 	  if (error == NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -26338,13 +26366,14 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 	  return ER_FAILED;
 	}
 
-      /* coerce accordingly */
-      error =
-	qdata_apply_interpolation_function_coercion (func_p->value, &func_p->domain, func_p->value, func_p->function);
+      /* coerce accordingly: the function takes the domain the coercion gives into its cell (#355) */
+      TP_DOMAIN *domain = qexec_node_domain (vd, func_p->domain, func_p->domain_plan);
+      error = qdata_apply_interpolation_function_coercion (func_p->value, &domain, func_p->value, func_p->function);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
+      qexec_take_domain (vd, func_p->domain_plan, func_p->domain, domain);
     }
   else
     {
@@ -26371,13 +26400,15 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 	}
 
       pr_clear_value (func_p->value);
+      TP_DOMAIN *domain = qexec_node_domain (vd, func_p->domain, func_p->domain_plan);
       error =
-	qdata_interpolation_function_values (&f_value, &c_value, row_num_d, f_row_num_d, c_row_num_d, &func_p->domain,
+	qdata_interpolation_function_values (&f_value, &c_value, row_num_d, f_row_num_d, c_row_num_d, &domain,
 					     func_p->value, func_p->function);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
+      qexec_take_domain (vd, func_p->domain_plan, func_p->domain, domain);
     }
 
   /* all ok */
@@ -26466,9 +26497,9 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
       tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
       or_init (&buf, tuple_p, length);
 
-      rc =
-	func_state->func_p->domain->type->data_readval (&buf, func_state->func_p->value, func_state->func_p->domain, -1,
-							false, NULL, 0);
+      TP_DOMAIN *domain = qexec_node_domain (func_state->vd, func_state->func_p->domain,
+					     func_state->func_p->domain_plan);
+      rc = domain->type->data_readval (&buf, func_state->func_p->value, domain, -1, false, NULL, 0);
       if (rc != NO_ERROR)
 	{
 	  return ER_FAILED;
@@ -27093,7 +27124,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 		}
 	    }
 
-	  if (qdata_finalize_analytic_func (thread_p, a_func_list, is_same_group) != NO_ERROR)
+	  if (qdata_finalize_analytic_func (thread_p, a_func_list, is_same_group, &xasl_state->vd) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -27117,7 +27148,8 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 		}
 
 	      pr_clear_value (a_func_list->value);
-	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
+	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id,
+						  &xasl_state->vd) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -29448,7 +29480,9 @@ qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE *
 	  continue;
 	}
       BTID_COPY (&root_btid, &agg_ptr->btid);
-      error = qdata_evaluate_aggregate_hierarchy (thread_p, agg_ptr, &ACCESS_SPEC_HFID (spec), &root_btid, &helpers[i]);
+      /* an optimized aggregate reads a column: its domain is the compiled one, no cell to read (#355) */
+      error = qdata_evaluate_aggregate_hierarchy (thread_p, agg_ptr, &ACCESS_SPEC_HFID (spec), &root_btid, &helpers[i],
+						  NULL);
       if (error != NO_ERROR)
 	{
 	  agg_ptr->flag.agg_optimized = false;
@@ -29827,12 +29861,13 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
   var_list = xasl->outptr_list->valptrp;
   while (var_list)
     {
-      if (var_list->value.domain == NULL)
+      const TP_DOMAIN *var_domain = qexec_node_domain (vd, var_list->value.domain, var_list->value.domain_plan);
+      if (var_domain == NULL)
 	{
 	  /* probably an error but just abandon top-n */
 	  return NO_ERROR;
 	}
-      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (var_list->value.domain)))
+      if (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (var_domain)))
 	{
 	  /* do not apply this to collections */
 	  return NO_ERROR;
@@ -29844,11 +29879,11 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
 	  continue;
 	}
 
-      if (var_list->value.domain->precision != TP_FLOATING_PRECISION_VALUE)
+      if (var_domain->precision != TP_FLOATING_PRECISION_VALUE)
 	{
 	  /* Ignore floating point precision domains for now. We will decide whether or not to continue with top-N
 	   * whenever we add/replace a tuple. */
-	  estimated_size += tp_domain_memory_size (var_list->value.domain);
+	  estimated_size += tp_domain_memory_size ((TP_DOMAIN *) var_domain);
 	}
       count++;
       var_list = var_list->next;
@@ -30509,7 +30544,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  /* add 1 so we can use R_LE */
 	  DB_VALUE one_val;
 	  db_make_int (&one_val, 1);
-	  error = qdata_subtract_dbval (val, &one_val, ubound, rhs->domain);
+	  error = qdata_subtract_dbval (val, &one_val, ubound, qexec_node_domain (vd, rhs->domain, rhs->domain_plan));
 	}
       else
 	{
@@ -30763,7 +30798,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   for (i = 0; i < proc->g_hkey_size; i++, regu_list = regu_list->next)
     {
       assert (regu_list);
-      proc->agg_hash_context->key_domains[i] = regu_list->value.domain;
+      proc->agg_hash_context->key_domains[i] =
+	qexec_node_domain (&xasl_state->vd, regu_list->value.domain, regu_list->value.domain_plan);
     }
 
   /*
@@ -30808,7 +30844,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   value_count = 0;
   while (regu_list)
     {
-      type_list.domp[value_count++] = regu_list->value.domain;
+      type_list.domp[value_count++] =
+	qexec_node_domain (&xasl_state->vd, regu_list->value.domain, regu_list->value.domain_plan);
       regu_list = regu_list->next;
     }
 

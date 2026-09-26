@@ -39,7 +39,6 @@ struct RESOLVED_DOMAIN
   const TP_DOMAIN *domain;
   DOMAIN_CONV_FUNC conv[3];
   const TP_DOMAIN *operand_domain[3];
-  const TP_DOMAIN *setdomain;
 };
 
 struct DOMAIN_OPERAND

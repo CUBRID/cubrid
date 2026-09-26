@@ -1662,7 +1662,7 @@ namespace parallel_scan
       }
     /* m_vd is the vd of this thread's copy, so m_vd->xasl_state is what close frees (D-318-06). */
     assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
-    xasl_state *new_xasl_state = qexec_deep_copy_xasl_state (m_thread_p, m_orig_vd->xasl_state);
+    xasl_state *new_xasl_state = qexec_deep_copy_xasl_state (m_thread_p, m_orig_vd->xasl_state, false);
     if (new_xasl_state == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
