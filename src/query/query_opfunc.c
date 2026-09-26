@@ -6920,9 +6920,8 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
  * in the list file.
  *
  * A column the compiler left open takes the plan's domain for this execution (#341, S-14): the list holds that domain
- * from its first tuple on. Only a column the row types keeps its compiled domain, for the list's first tuples
- * (qexec_generate_tuple_descriptor): a session variable read (D-336-E).
- * Any other open column is the execution boundary (b).
+ * from its first tuple on, a column over a session variable read too (#366). An open column without one is the
+ * execution boundary (b).
  */
 int
 qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
@@ -6967,16 +6966,15 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
     {
       if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
-	  bool row_reads;
 	  /* the column regu's domain now: its cell once this execution gave it one (#355) */
 	  TP_DOMAIN *now = qexec_node_domain (vd, reg_var_p->value.domain, reg_var_p->value.domain_plan);
-	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, now, reg_var_p->value.domain_plan, true, &row_reads);
-	  if (domain == NULL && !row_reads)
+	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, now, reg_var_p->value.domain_plan);
+	  if (domain == NULL)
 	    {
 	      db_private_free_and_init (thread_p, type_list_p->domp);
 	      return qexec_domain_unresolved (vd, reg_var_p->value.domain_plan, reg_var_p->value.domain);
 	    }
-	  type_list_p->domp[i++] = domain != NULL ? (TP_DOMAIN *) domain : now;
+	  type_list_p->domp[i++] = (TP_DOMAIN *) domain;
 	}
 
       reg_var_p = reg_var_p->next;

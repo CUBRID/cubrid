@@ -66,8 +66,8 @@ qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p, const VAL_DESCR *v
     {
       /* #337: the gate decided the domain before the first row, so the domain does not block the fast path. The
        * first non-NULL value still takes the general path (curr_cnt < 1, sum_acc inactive), which applies that
-       * decision before the accumulator is activated. #341 (S-29): a domain the row gives (D-336-E) keeps the general
-       * path, which reads it there and counts it; a decision without a value leaves only NULLs. */
+       * decision before the accumulator is activated (#341 S-29, a decision over a session variable read too, #366); a
+       * decision without a value leaves only NULLs. */
       return qexec_gate_domain (val_desc_p, func_p->domain_plan, false) != NULL;
     }
   return true;
@@ -204,112 +204,26 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       return ER_FAILED;
     }
 
-  /* #337: the gate decided the function once for the execution; the first value no longer decides it. #341 (S-27): a
-   * MEDIAN / PERCENTILE value read through a session variable keeps the gate's class unless its content changed it
-   * (D-336-E), and a value the gate could not classify is classified, or rejected, by the first execution below as
-   * develop's was. Only a function the row decides takes the first value's domain here (D-336-E; counted). */
+  /* #337: the gate decided the function once for the execution; the first value no longer decides it, over a session
+   * variable read too (#366). A value the gate could not classify is rejected by the first execution below, as
+   * develop's was (#341 S-27). */
   const TP_DOMAIN *gate_decided = NULL;
   bool first_binding = (opr_type == DB_TYPE_VARIABLE
 			|| TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL) && !DB_IS_NULL (&dbval);
   if (first_binding)
     {
       gate_decided = qexec_gate_domain (val_desc_p, func_p->domain_plan, false);
-      if (gate_decided != NULL && QPROC_IS_INTERPOLATION_FUNC (func_p)
-	  && !qexec_interpolation_class_holds (val_desc_p, func_p->domain_plan, func_p->function, &dbval, gate_decided))
+      if (gate_decided == NULL && !QPROC_IS_INTERPOLATION_FUNC (func_p))
 	{
-	  gate_decided = NULL;
+	  /* the gate decides every open function (#337): the execution boundary (b) */
+	  error = qexec_domain_unresolved (val_desc_p, func_p->domain_plan, domain);
+	  goto exit;
 	}
-      first_binding = gate_decided != NULL || !QPROC_IS_INTERPOLATION_FUNC (func_p)
-		      || qexec_row_domain_counts (val_desc_p, func_p->domain_plan);
+      first_binding = gate_decided != NULL;
     }
   if (first_binding)
     {
-#if !defined (NDEBUG)
-      const TP_DOMAIN *shadow_compiled = domain;
-      bool shadow_late_bound = opr_type == DB_TYPE_VARIABLE;
-#endif
-      if (gate_decided != NULL)
-	{
-	  domain = (TP_DOMAIN *) gate_decided;
-	}
-      else
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
-	}
-      /* set function default domain when late binding */
-      switch (gate_decided != NULL ? PT_TOP_AGG_FUNC : func_p->function)
-	{
-	case PT_TOP_AGG_FUNC:
-	  /* decided by the gate */
-	  break;
-
-	case PT_COUNT:
-	case PT_COUNT_STAR:
-	  domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
-	  break;
-
-	case PT_AVG:
-	case PT_STDDEV:
-	case PT_STDDEV_POP:
-	case PT_STDDEV_SAMP:
-	case PT_VARIANCE:
-	case PT_VAR_POP:
-	case PT_VAR_SAMP:
-	  domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	  break;
-
-	case PT_SUM:
-	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
-	    {
-	      domain = tp_domain_resolve_value (&dbval, NULL);
-	    }
-	  else
-	    {
-	      domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	    }
-	  break;
-
-	case PT_MEDIAN:
-	case PT_PERCENTILE_CONT:
-	  if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (&dbval)))
-	    {
-	      domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	    }
-	  else
-	    {
-	      domain = tp_domain_resolve_value (&dbval, NULL);
-	    }
-	  break;
-
-	default:
-	  domain = tp_domain_resolve_value (&dbval, NULL);
-	  break;
-	}
-
-      if (domain == NULL)
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
-
-#if !defined (NDEBUG)
-      if (!QPROC_IS_INTERPOLATION_FUNC (func_p))
-      {
-	/* dpin-07 shadow check: domain_resolve (DOMAIN_CTX_ANALYTIC) answers the late-bound operand domain; an
-	 * interpolation function's answer is the class its first execution gives it (#337), not this step's */
-	DOMAIN_OPERAND operand =
-	{ tp_domain_resolve_value (&dbval, NULL), DB_VALUE_DOMAIN_TYPE (&dbval), -1, -1, shadow_late_bound };
-	RESOLVED_DOMAIN resolved;
-	bool needs_gate;
-	int shadow_error = domain_resolve (DOMAIN_CTX_ANALYTIC, func_p->function, &operand, 1, shadow_compiled,
-					   &resolved, &needs_gate);
-	assert (shadow_error == NO_ERROR && !needs_gate);
-	assert (shadow_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == TP_DOMAIN_TYPE (domain));
-	/* #335: the gate decided the same function domain before execution */
-	const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (val_desc_p, func_p->domain_plan);
-	assert (gate_node == NULL || TP_DOMAIN_TYPE (gate_node->domain) == TP_DOMAIN_TYPE (domain));
-      }
-#endif
+      domain = (TP_DOMAIN *) gate_decided;
 
       /* coerce operand */
       if (tp_value_coerce (&dbval, &dbval, domain) != DOMAIN_COMPATIBLE)
@@ -773,17 +687,8 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		{
 		  domain = (TP_DOMAIN *) planned;
 		}
-	      else if ((TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-			|| (!TP_IS_NUMERIC_TYPE (opr_type) && !TP_IS_DATE_OR_TIME_TYPE (opr_type)
-			    && (func_p->domain_plan == NULL || func_p->domain_plan->fixed.domain == NULL
-				|| TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) == DB_TYPE_VARIABLE)))
-		       && qexec_row_domain_counts (val_desc_p, func_p->domain_plan))
-		{
-		  /* #341 (S-28): a decision the row gives (D-336-E): the open function's type, or a string's class. A
-		   * value the gate could not classify is classified or rejected below as develop's was; a function whose
-		   * decision has no value sees only NULLs. */
-		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
-		}
+	      /* #341 (S-28): a value the gate could not classify is rejected below as develop's was; a function whose
+	       * decision has no value sees only NULLs */
 	      /* determine domain based on first value */
 	      if (planned == NULL)
 	      switch (opr_type)
@@ -885,27 +790,19 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain));
 		      dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
 		    }
+		  else if (DB_IS_NULL (&dbval))
+		    {
+		      /* a NULL: develop's first cast, to DOUBLE, takes it */
+		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+		      dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+		    }
 		  else
 		    {
-		      /* a value (a literal, a bind) is classified: try to cast dbval to double, datetime then time */
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-
-		      dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
-		      if (dom_status != DOMAIN_COMPATIBLE)
-			{
-			  /* try datetime */
-			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DATETIME);
-
-			  dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
-			}
-
-		      /* try time */
-		      if (dom_status != DOMAIN_COMPATIBLE)
-			{
-			  tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
-
-			  dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
-			}
+		      /* a value the gate could not classify - a literal, a bind, a session variable read, which keeps its
+		       * value's class for the statement (#366) - fails develop's casts to DOUBLE, DATETIME then TIME: the
+		       * gate's classification is that cascade (domain_classify_interpolation, D-335-10) */
+		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
+		      dom_status = DOMAIN_INCOMPATIBLE;
 		    }
 
 		  if (dom_status != DOMAIN_COMPATIBLE)

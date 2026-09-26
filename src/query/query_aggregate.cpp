@@ -3368,8 +3368,7 @@ qdata_aggregate_list_domain (const VAL_DESCR *vd, const cubxasl::aggregate_list_
  *   domain before it goes into the function's list (#341, S-26)
  *   return: NO_ERROR, the conversion's error (a later value of a string that does not convert: -181), or
  *	     ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b)) where the function or its list has no class
- *   agg_p(in): the function; its domain and its list's were set before the first row, or when a session variable's
- *		first value gave it its class (qexec_interpolation_first_value, D-336-E)
+ *   agg_p(in): the function; its domain and its list's were set before the first row
  *   dbval(in/out): the value, converted in place
  *
  * The function's domain is DOUBLE for a number or a string (D-335-10), a date or time type's own, or any number for
@@ -3387,9 +3386,8 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
       return NO_ERROR;
     }
 
-  /* the function's domain and its list's in this execution (#355) */
+  /* the function's domain in this execution (#355) */
   TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
-  TP_DOMAIN *list_domain = qexec_interpolation_list_domain (vd, agg_p->sort_list->pos_descr.dom, agg_p->domain_plan);
 
   const DB_TYPE domain_type = TP_DOMAIN_TYPE (domain);
   if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL
@@ -3399,12 +3397,6 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
       return qexec_domain_unresolved (vd, agg_p->domain_plan, domain);
     }
 
-  if (agg_p->list_id->type_list.domp[0] != list_domain)
-    {
-      /* a session variable's first value gave the function its class after the list opened - a BUILDVALUE opens its
-       * lists before the scan - and the key with it (D-336-E); no value is in the list yet */
-      agg_p->list_id->type_list.domp[0] = list_domain;
-    }
   if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != domain_type)
     {
       return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->list_id->type_list.domp[0]);

@@ -180,7 +180,6 @@ eval_values_decision (DOMAIN_COMPARE_REASON reason)
 
 static const DOMAIN_COMPARE eval_Compare_null = eval_values_decision (DOMAIN_REASON_NULL);
 static const DOMAIN_COMPARE eval_Compare_unplanned = eval_values_decision (DOMAIN_REASON_UNPLANNED);
-static const DOMAIN_COMPARE eval_Compare_volatile = eval_values_decision (DOMAIN_REASON_VOLATILE);
 
 /* The element comparisons of a set or list comparison: the collections' elements are their data, so the comparison
  * reads the key pair table by the two values' keys (#354, D-354-01). */
@@ -197,8 +196,7 @@ static const DOMAIN_COMPARE eval_Compare_elements = eval_keys_decision ();
 /*
  * eval_site_compare () - the decision of a comparison record in this execution: the load's, or the gate's for a site
  *			  the gate decides
- *   return: kernel VALUES with its reason where the row compares by value: a decision over a session variable read
- *	     that left the gate's within the statement (D-336-E), a gate site read without the gate's state
+ *   return: kernel VALUES with its reason where the row compares by value: a gate site read without the gate's state
  */
 static inline const DOMAIN_COMPARE *
 eval_site_compare (const DOMAIN_COMPARE_PLAN * site, const val_descr * vd)
@@ -218,10 +216,6 @@ eval_site_compare (const DOMAIN_COMPARE_PLAN * site, const val_descr * vd)
 		  ? resolved.plan->compares[compare->site]->value[0] == site->value[0]
 		  && resolved.plan->compares[compare->site]->value[1] == site->value[1]
 		  : resolved.plan->compares[compare->site] == site));
-      if ((compare->volatile_reads & resolved.changed_reads) != 0)
-	{
-	  return &eval_Compare_volatile;
-	}
       compare = &resolved.compares[compare->site];
     }
   return compare;
@@ -263,10 +257,9 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
   if (site->kind == DOMAIN_ELEMENTS_PAIR)
     {
       elements->all = eval_site_compare (&site->pair, vd);
-      if ((elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_VOLATILE)
-	  || elements->all->kernel == DOMAIN_COMPARE_KEYS)
+      if (elements->all->kernel == DOMAIN_COMPARE_KEYS)
 	{
-	  /* a map exception, and the key pair table (a stream's item, #354), hold for any value the right side has */
+	  /* the key pair table (a stream's item, #354) holds for any value the right side has */
 	  elements->each = elements->all;
 	}
       return;
@@ -286,11 +279,6 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
 	  && site->site < resolved.plan->n_element_sites
 	  && (resolved.inherited ? resolved.plan->element_sites[site->site]->kind == site->kind
 	      : resolved.plan->element_sites[site->site] == site));
-  if ((site->volatile_reads & resolved.changed_reads) != 0)
-    {
-      elements->all = elements->each = &eval_Compare_volatile;
-      return;
-    }
   const DOMAIN_ELEMENTS *decided = &resolved.elements[site->site];
   switch (decided->read)
     {
@@ -302,10 +290,6 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
       break;
     case DOMAIN_READ_PAIR:
       elements->all = &decided->compares[0];
-      if (elements->all->kernel == DOMAIN_COMPARE_VALUES && elements->all->reason >= DOMAIN_REASON_VOLATILE)
-	{
-	  elements->each = elements->all;
-	}
       break;
     default:
       /* nothing decided: a NULL constant compares nothing, and a constant the row computes raises its error first
@@ -527,7 +511,7 @@ eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN 
 #endif
       return result;
     }
-  if (compare->reason < DOMAIN_REASON_VOLATILE && eval_compare_decides (value1, value2))
+  if (eval_compare_decides (value1, value2))
     {
       /* the execution boundary (b): no plan holds this comparison, and develop would decide it from the values */
 #if !defined (NDEBUG)
@@ -542,7 +526,7 @@ eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN 
 	}
       return DB_UNK;
     }
-  /* NULL answers first; the map's exception keeps develop's comparison, counted */
+  /* NULL answers first */
   return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
 }
 
@@ -605,7 +589,7 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 					 (DB_VALUE_COMPARE_RESULT) result, comparable, et_comp, vd);
 #endif
 	  }
-	else if (compare->reason < DOMAIN_REASON_VOLATILE && eval_compare_decides (dbval1, dbval2))
+	else if (eval_compare_decides (dbval1, dbval2))
 	  {
 	    /* the execution boundary (b): no plan holds this comparison, and develop would decide it from the values
 	     * (#352) */
@@ -619,7 +603,7 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 	  }
 	else
 	  {
-	    /* NULL answers first; the map's exceptions keep develop's comparison, counted */
+	    /* NULL answers first */
 	    result = tp_value_compare_with_error (dbval1, dbval2, 1, total_order, &comparable);
 	  }
       }

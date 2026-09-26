@@ -683,10 +683,9 @@ static DB_VALUE_COMPARE_RESULT bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOM
 static DB_VALUE_COMPARE_RESULT bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
 						 int *start_colp, int collation);
 static int qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
-					 REGU_VARIABLE_LIST reference_regu_list,
-					 const QFILE_TUPLE_VALUE_TYPE_LIST * list_types, SORT_LIST ** planned_list);
+					 SORT_LIST ** planned_list);
 static int qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist,
-					OUTPTR_LIST * reference_out_list, SORT_LIST ** planned_groupby);
+					SORT_LIST ** planned_groupby);
 static void qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist);
 static int qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd,
 					  int *resolved);
@@ -730,10 +729,9 @@ static int qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_
 						AGGREGATE_TYPE * agg_list, bool * is_scan_needed);
 
 static BH_CMP_RESULT qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg);
-static void qexec_topn_sort_domains (const VAL_DESCR * vd, SORT_LIST * sort_items, const TP_DOMAIN ** domains,
-				     bool * volatile_keys);
+static void qexec_topn_sort_domains (const VAL_DESCR * vd, SORT_LIST * sort_items, const TP_DOMAIN ** domains);
 static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec,
-				       const TP_DOMAIN * domain, bool volatile_key);
+					const TP_DOMAIN * domain);
 static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count);
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p, PRED_EXPR * pred, VAL_DESCR * vd,
 					     DB_VALUE * ubound);
@@ -1001,12 +999,6 @@ qexec_generate_tuple_descriptor (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   /* build tuple descriptor */
   status = qdata_generate_tuple_desc_for_valptr_list (thread_p, outptr_list, vd, &(list_id->tpl_descr));
   if (status == QPROC_TPLDESCR_FAILURE)
-    {
-      goto exit_on_error;
-    }
-
-  if (list_id->is_domain_resolved == false
-      && qexec_type_open_list_columns (thread_p, list_id, outptr_list, vd) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -1347,8 +1339,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      /* #341 (S-24): an aggregate its first value decided (D-336-E) gives its output columns that domain */
-	      qexec_type_accumulator_outputs (&xasl_state->vd, xasl);
 
 	      if (xasl->proc.buildvalue.agg_domains_resolved)
 		{
@@ -3877,7 +3867,6 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, 
   /* the worker loads the same stream (xcache clone or stx_map_stream_to_xasl), so its items number the slots as the
    * plan does: it reads the inherited decisions with its own items (D-M3, #340) */
   resolved.inherited = true;
-  resolved.changed_reads = src.changed_reads;
 
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
@@ -3914,14 +3903,17 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
 }
 
 /* Whether the resolver takes this operand's class from its value (D-328-06): an interpolation argument, the ADDTIME
- * left string, the STR_TO_DATE format. */
+ * left string, the STR_TO_DATE format. An aggregate's interpolation argument of a type that is neither a number nor a
+ * date (a string, a BIT, a LOB, a collection) is classified as develop's first value was, by the cascade to DOUBLE,
+ * DATETIME and TIME (#366: no row classifies it). */
 static bool
 qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
 {
   if (context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC)
     {
       return arg_index == 0 && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC)
-	&& TP_IS_CHAR_TYPE (type);
+	&& (TP_IS_CHAR_TYPE (type)
+	    || (context == DOMAIN_CTX_AGG && !TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type)));
     }
   return context == DOMAIN_CTX_FUNC_ARG && ((opcode == T_ADDTIME && arg_index == 0 && TP_IS_CHAR_TYPE (type))
 					    || (opcode == T_STR_TO_DATE && arg_index == 1));
@@ -3998,7 +3990,7 @@ qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RES
     }
   else if (session_name != NULL && qexec_gate_classifies (context, opcode, arg_index, operand->val_type))
     {
-      /* the value the read node found when the execution began (qexec_resolve_gate_node, S5) */
+      /* the variable's value when the execution began, which gives its class for the statement (#340, #366) */
       DB_VALUE current;
       db_make_null (&current);
       if (session_get_variable (thread_p, session_name, &current) == NO_ERROR)
@@ -4088,30 +4080,9 @@ qexec_resolve_gate_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
   RESOLVED_DOMAIN *entry = &resolved.table[node->slot];
   bool needs_gate = false;
 
-  assert (node->slot >= 0 && node->slot < resolved.n_slots && link->n_operands > 0);
-  if (cold->opcode == T_EVALUATE_VARIABLE)
-    {
-      /* S5 (#336): a session variable read with no sibling takes the type of the value stored when the execution
-       * starts; the row values are read as before (volatile). An undefined variable is unknown here and raises its
-       * error when a row reads it, as develop does. */
-      DB_VALUE current;
-      const TP_DOMAIN *domain = &tp_Null_domain;
-      db_make_null (&current);
-      if (link->literal[0] != NULL && session_get_variable (thread_p, link->literal[0], &current) == NO_ERROR)
-	{
-	  domain = DB_IS_NULL (&current) ? &tp_Null_domain : tp_domain_resolve_value (&current, NULL);
-	}
-      else
-	{
-	  er_clear ();
-	}
-      pr_clear_value (&current);
-      *entry = RESOLVED_DOMAIN
-      {
-      };
-      entry->domain = domain != NULL ? domain : &tp_Null_domain;
-      return NO_ERROR;
-    }
+  /* a session variable read takes its variable's type for the statement in step 7b (qexec_resolve_session_variables) */
+  assert (node->slot >= 0 && node->slot < resolved.n_slots && link->n_operands > 0
+	  && cold->opcode != T_EVALUATE_VARIABLE);
   for (int i = 0; i < link->n_operands; i++)
     {
       if (!qexec_gate_operand (thread_p, plan, resolved, link, i, context, cold->opcode, &operands[i]))
@@ -4255,21 +4226,144 @@ qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const 
   return error;
 }
 
+/* Whether a gate-dependent node's decision rests on a session variable read (#366): G1 decides it in step 7b, once the
+ * variable has its type for the statement. */
+static bool
+qexec_rests_on_session_read (const DOMAIN_PLAN * plan, const DOMAIN_PLAN_ITEM * node)
+{
+  return node->slot >= 0 && plan->slot_volatile_reads[node->slot] != 0;
+}
+
 /*
  * qexec_resolve_waiting_gate_node () - G1 step 7 for a gate-dependent node that waits for the constant subtrees it
  *   reads (DOMAIN_GATE_LINK.after_constants, #364), once: a constant node just before its own evaluation - its
- *   constant operands, nested, were evaluated before it - and any other node after the last constant
+ *   constant operands, nested, were evaluated before it - and any other node after the last constant. A node over a
+ *   session variable read waits for step 7b (#366).
  */
 static int
 qexec_resolve_waiting_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan, int index,
 				 RESOLVED_DOMAIN_TABLE & resolved)
 {
-  if (!plan->gate_links[index].after_constants || resolved.table[plan->gate_nodes[index]->slot].domain != NULL)
+  if (!plan->gate_links[index].after_constants || resolved.table[plan->gate_nodes[index]->slot].domain != NULL
+      || qexec_rests_on_session_read (plan, plan->gate_nodes[index]))
     {
       return NO_ERROR;
     }
   return qexec_resolve_gate_node (thread_p, xasl, plan, index, resolved);
 }
+
+/* The domain a session variable's value has when the execution starts; NULL for none: an undefined variable, whose
+ * read raises develop's error at the row, or a NULL (#366). */
+static const TP_DOMAIN *
+qexec_session_start_type (THREAD_ENTRY * thread_p, const DB_VALUE * name)
+{
+  DB_VALUE current;
+  const TP_DOMAIN *type = NULL;
+  db_make_null (&current);
+  if (session_get_variable (thread_p, name, &current) == NO_ERROR)
+    {
+      type = DB_IS_NULL (&current) ? NULL : tp_domain_resolve_value (&current, NULL);
+    }
+  else
+    {
+      er_clear ();
+    }
+  pr_clear_value (&current);
+  return type;
+}
+
+/* Whether two values are of one type for a session variable (#366, U3 and U4): a string of the same codeset and
+ * collation whatever its length or fixed or varying kind, the same type otherwise. */
+static bool
+qexec_session_same_type (const TP_DOMAIN * a, const TP_DOMAIN * b)
+{
+  const DB_TYPE type_a = TP_DOMAIN_TYPE (a);
+  const DB_TYPE type_b = TP_DOMAIN_TYPE (b);
+  if (TP_IS_CHAR_TYPE (type_a) && TP_IS_CHAR_TYPE (type_b))
+    {
+      return TP_DOMAIN_CODESET (a) == TP_DOMAIN_CODESET (b) && TP_DOMAIN_COLLATION (a) == TP_DOMAIN_COLLATION (b);
+    }
+  return type_a == type_b;
+}
+
+/* The type a session variable the statement assigns takes (#366, U4): a string takes the variable-length string of
+ * its codeset and collation, read as a value's domain reads (D-338-03); anything else its own domain. */
+static const TP_DOMAIN *
+qexec_session_assigned_type (const TP_DOMAIN * domain)
+{
+  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
+    {
+      return domain;
+    }
+  return tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, TP_DOMAIN_COLLATION (domain));
+}
+
+/* The type name a session variable type error shows: a string's collation too, which may be all that differs. */
+static const char *
+qexec_session_type_name (const TP_DOMAIN * domain, char *buffer, size_t size)
+{
+  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
+    {
+      return pr_type_name (TP_DOMAIN_TYPE (domain));
+    }
+  snprintf (buffer, size, "%s collate %s", pr_type_name (TP_DOMAIN_TYPE (domain)),
+	    lang_get_collation_name (TP_DOMAIN_COLLATION (domain)));
+  return buffer;
+}
+
+/* ER_QPROC_SESSION_VARIABLE_TYPE (#366): the variable would hold two types within a statement that reads it. */
+int
+qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other)
+{
+  char type_buffer[128], other_buffer[128];
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SESSION_VARIABLE_TYPE, 3, db_get_string (name),
+	  qexec_session_type_name (type, type_buffer, sizeof (type_buffer)),
+	  qexec_session_type_name (other, other_buffer, sizeof (other_buffer)));
+  return ER_QPROC_SESSION_VARIABLE_TYPE;
+}
+
+/*
+ * qexec_session_variable_type () - a session variable's type after the values the statement assigns it (#366)
+ *   return: NO_ERROR, or ER_QPROC_SESSION_VARIABLE_TYPE for an assignment of another type (U3: it needs a cast)
+ *   type(in/out): the variable's type so far; NULL for none
+ *   changed(in/out): set when the type changed: the decisions over the reads are made again
+ *
+ * An assignment's type is its value's planned domain: a column that is NULL in a row still assigns the column's type
+ * (U2). An explicit NULL, or a value the gate found none for, assigns no type.
+ */
+static int
+qexec_session_variable_type (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_SESSION_VARIABLE * variable,
+			     const TP_DOMAIN ** type, bool * changed)
+{
+  for (int a = 0; a < variable->n_assigns; a++)
+    {
+      const DOMAIN_PLAN_ITEM *item = variable->assigns[a];
+      const TP_DOMAIN *assigned = item->slot >= 0 ? resolved.table[item->slot].domain : item->fixed.domain;
+      if (assigned == NULL || TP_DOMAIN_TYPE (assigned) == DB_TYPE_NULL
+	  || TP_DOMAIN_TYPE (assigned) == DB_TYPE_VARIABLE)
+	{
+	  continue;
+	}
+      if (*type != NULL && !qexec_session_same_type (*type, assigned))
+	{
+	  return qexec_session_variable_type_error (variable->name, *type, assigned);
+	}
+      const TP_DOMAIN *typed = qexec_session_assigned_type (assigned);
+      if (typed == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      if (*type == NULL || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (*type)) && *type != typed))
+	{
+	  /* a first type, or a string the statement assigns: its variable-length string (U4) */
+	  *type = typed;
+	  *changed = true;
+	}
+    }
+  return NO_ERROR;
+}
+
 
 /* The value a constant side holds at the gate: a literal, a bind's reference value, or a constant subtree's value once
  * step 7 evaluated it; NULL when there is none (a subtree whose evaluation was left to the row). */
@@ -4702,7 +4796,8 @@ qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE 
   for (int k = 0; k < plan->n_compares; k++)
     {
       const DOMAIN_COMPARE_PLAN *site = plan->compares[k];
-      if (!site->after_constants || decided[k] || !(all || qexec_compare_constants_ready (resolved, site)))
+      if (!site->after_constants || decided[k] || site->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE
+	  || !(all || qexec_compare_constants_ready (resolved, site)))
 	{
 	  continue;
 	}
@@ -4717,7 +4812,7 @@ qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE 
     {
       const DOMAIN_ELEMENT_COMPARE_PLAN *site = plan->element_sites[k];
       unsigned char *site_decided = &decided[plan->n_compares + k];
-      if (!site->pair.after_constants || *site_decided
+      if (!site->pair.after_constants || *site_decided || site->volatile_reads != 0
 	  || !(all || qexec_compare_constants_ready (resolved, &site->pair)))
 	{
 	  continue;
@@ -4808,8 +4903,8 @@ qexec_key_constant_value (const XASL_STATE * xasl_state, const REGU_VARIABLE * r
     }
 }
 
-/* The domain a key element's values have in this execution when the gate decided it (#342): the gate's decision, or
- * the load's fixed domain; NULL where the row gives it (a session variable read, D-336-E) or it holds no value. */
+/* The domain a key element's values have in this execution when the gate decided it (#342): the gate's decision - a
+ * session variable read's too (#366) - or the load's fixed domain; NULL where it holds no value. */
 static const TP_DOMAIN *
 qexec_key_element_domain (const XASL_STATE * xasl_state, const DOMAIN_PLAN_ITEM * item)
 {
@@ -5191,6 +5286,90 @@ qexec_copy_index_keys (THREAD_ENTRY * thread_p, const DOMAIN_INDEX_DECISIONS * s
 }
 
 /*
+ * qexec_resolve_session_variables () - G1 step 7b (#366, D-366-02/03): one type for each session variable the
+ *   statement reads, then every decision over its reads
+ *   return: NO_ERROR, or ER_QPROC_SESSION_VARIABLE_TYPE when a variable would hold two types within the statement,
+ *	     or the error of a decision over a read
+ *
+ * A variable's type is the one its value has when the execution starts, and the one every value the statement assigns
+ * it has (qexec_session_variable_type); a variable the statement does not assign keeps its value's domain, as its
+ * reads always had. The decisions over the reads rest on that type, and an assignment's value may rest on a read
+ * (`@n := ifnull (@n, 0) + 1`): a type the assignments changed decides them again. A variable's type changes at most
+ * twice (none to a type, a string to its variable-length string), so the passes end. These decisions come after every
+ * other one, which none of them feeds, and after the constant subtrees, which a node over a read may wait for (#364).
+ */
+static int
+qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan,
+				 RESOLVED_DOMAIN_TABLE & resolved)
+{
+  const int n_variables = plan->n_session_variables;
+  if (n_variables == 0)
+    {
+      return NO_ERROR;
+    }
+  const TP_DOMAIN **types = (const TP_DOMAIN **) db_private_alloc (thread_p, n_variables * sizeof (*types));
+  if (types == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n_variables * sizeof (*types));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (int v = 0; v < n_variables; v++)
+    {
+      types[v] = qexec_session_start_type (thread_p, plan->session_variables[v].name);
+    }
+  int error = NO_ERROR;
+  bool changed = true;
+  for (int pass = 0; changed && error == NO_ERROR; pass++)
+    {
+      /* each variable's type changes at most twice */
+      assert (pass <= 2 * n_variables);
+      for (int v = 0; v < n_variables; v++)
+	{
+	  const DOMAIN_SESSION_VARIABLE *variable = &plan->session_variables[v];
+	  for (int r = 0; r < variable->n_reads; r++)
+	    {
+	      RESOLVED_DOMAIN *entry = &resolved.table[plan->gate_nodes[variable->reads[r]]->slot];
+	      *entry = RESOLVED_DOMAIN
+	      {
+	      };
+	      entry->domain = types[v] != NULL ? types[v] : &tp_Null_domain;
+	    }
+	}
+      /* every decision over the reads, producer first */
+      for (int g = 0; error == NO_ERROR && g < plan->n_gate_nodes; g++)
+	{
+	  if (qexec_rests_on_session_read (plan, plan->gate_nodes[g])
+	      && plan->items_cold[plan->gate_nodes[g] - plan->items].opcode != T_EVALUATE_VARIABLE)
+	    {
+	      error = qexec_resolve_gate_node (thread_p, xasl, plan, g, resolved);
+	    }
+	}
+      changed = false;
+      for (int v = 0; error == NO_ERROR && v < n_variables; v++)
+	{
+	  error = qexec_session_variable_type (resolved, &plan->session_variables[v], &types[v], &changed);
+	}
+    }
+  db_private_free (thread_p, types);
+  /* the comparisons over the reads */
+  for (int k = 0; error == NO_ERROR && k < plan->n_compares; k++)
+    {
+      if (plan->compares[k]->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE)
+	{
+	  error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
+	}
+    }
+  for (int k = 0; error == NO_ERROR && k < plan->n_element_sites; k++)
+    {
+      if (plan->element_sites[k]->volatile_reads != 0)
+	{
+	  error = qexec_resolve_elements (thread_p, resolved, plan->element_sites[k]);
+	}
+    }
+  return error;
+}
+
+/*
  * qexec_resolve_domains () - the execution gate G1, once per execution before
  *   the main block.
  *   return: NO_ERROR, or ER_code (a failure is a pre-execution error)
@@ -5306,10 +5485,10 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 
   /* G1 step 4: gate-dependent nodes in producer order, each once (D-327-08). Volatile gate slots (S5) come with
    * the session-variable mirror (dpin-10) and constant key ranges with the key plan (dpin-16). A node that waits for
-   * the constant subtrees it reads is decided in step 7 (#364). */
+   * the constant subtrees it reads is decided in step 7 (#364), a node over a session variable read in step 7b (#366). */
   for (int i = 0; plan != NULL && i < plan->n_gate_nodes; i++)
     {
-      if (plan->gate_links[i].after_constants)
+      if (plan->gate_links[i].after_constants || qexec_rests_on_session_read (plan, plan->gate_nodes[i]))
 	{
 	  continue;
 	}
@@ -5321,10 +5500,11 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     }
 
   /* G1 step 5 (#352, D-352-01): every comparison site over binds, literals and decisions, from its sides' values and
-   * decisions; each constant side gets a value of its own now. A site over a constant subtree waits for step 7. */
+   * decisions; each constant side gets a value of its own now. A site over a constant subtree waits for step 7, a site
+   * over a session variable read for step 7b (#366). */
   for (int k = 0; plan != NULL && k < plan->n_compares; k++)
     {
-      if (plan->compares[k]->after_constants)
+      if (plan->compares[k]->after_constants || plan->compares[k]->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE)
 	{
 	  continue;
 	}
@@ -5337,7 +5517,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
   /* likewise every ALL/SOME term the gate decides (D-352-03): a constant right side element by element */
   for (int k = 0; plan != NULL && k < plan->n_element_sites; k++)
     {
-      if (plan->element_sites[k]->pair.after_constants)
+      if (plan->element_sites[k]->pair.after_constants || plan->element_sites[k]->volatile_reads != 0)
 	{
 	  continue;
 	}
@@ -5352,7 +5532,6 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     {
       perfmon_add_stat (thread_p, PSTAT_QM_NUM_DOMAIN_GATE_CONVERT, dbval_cnt);
     }
-  resolved.changed_reads = 0;
   resolved.sealed = true;
 
   /* G1 step 7 (#352, interface §10): the decisions are sealed; each constant subtree is evaluated once into its own
@@ -5405,6 +5584,11 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     {
       db_private_free (thread_p, decided);
     }
+  /* G1 step 7b (#366): each session variable the statement reads gets one type, then every decision over its reads */
+  if (error == NO_ERROR && plan != NULL)
+    {
+      error = qexec_resolve_session_variables (thread_p, xasl, plan, resolved);
+    }
   if (error != NO_ERROR)
     {
       return error;
@@ -5431,16 +5615,16 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 /*
  * qexec_gate_domain () - the gate's domain for a derived consumer of this execution's tree, read in place of a
  *   value-driven late binding (#337)
- *   return: the domain, or NULL when execution keeps develop's late binding at this site
+ *   return: the domain, or NULL where the gate decided no value for it
  *   vd(in): the execution's value descriptor
  *   item(in): the consumer's plan item: a gate slot, a gate-dependent node, or an alias of one
  *   null_bind(in): also answer the NULL domain of a NULL bind (a list column holding only that NULL)
  *
- * The decision is the domain develop's first value gives the consumer, except a decision over a session variable read
- * whose value left the gate's within the statement (D-336-E). MySQL compatibility mode reads the decisions too: its
- * date helpers type a result by the result buffer, which holds the decided type from the first row on (#340). A node
- * without gate state has no decision here; the gate leaves no node undecided (#343). A PX worker reads the decisions
- * it inherited with its own load's items (#340).
+ * The decision is the domain develop's first value gives the consumer; a decision over a session variable read holds
+ * too, since the variable keeps the type the gate gave it for the statement (#366). MySQL compatibility mode reads the
+ * decisions too: its date helpers type a result by the result buffer, which holds the decided type from the first row
+ * on (#340). A node without gate state has no decision here; the gate leaves no node undecided (#343). A PX worker
+ * reads the decisions it inherited with its own load's items (#340).
  */
 const TP_DOMAIN *
 qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind)
@@ -5464,17 +5648,13 @@ qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
     {
       return null_bind && plan->slot_gate_node[item->slot] < 0 ? domain : NULL;
     }
-  if ((plan->slot_flags[item->slot] & DOMAIN_SLOT_VOLATILE) && !RESOLVED_VOLATILE_HOLDS (resolved, item))
-    {
-      return NULL;
-    }
   return domain;
 }
 
 /*
  * qexec_plan_domain () - the domain the plan gives a derived consumer for this execution (#337)
  *   return: its gate slot's decision (qexec_gate_domain), or the domain the load derived from its producer; NULL when
- *	     the plan leaves it to the value (a session variable read, D-336-E) or the slot has no value
+ *	     the slot has no value
  *
  * A value pointer, a list position, a sort key or an aggregate argument reads its producer: a gate slot (ALIAS) or a
  * compiled producer's domain. This is what develop's late binding would take from the first value.
@@ -5501,28 +5681,23 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
 /*
  * qexec_consumer_domain () - the domain a derived consumer takes for this execution: a list column, a sort key, a list
  *   position, an aggregate's list (#341)
- *   return: the domain; NULL when the row gives it (*row_reads) or when the plan has no answer (the boundary (b))
+ *   return: the domain; NULL when the plan has no answer (the boundary (b) at the caller)
  *   vd(in): the execution's value descriptor
  *   compiled(in): the consumer's compiled domain
  *   item(in): its plan item
- *   before_rows(in): the consumer takes its domain before any row forms (a list file it opens), not after its rows
- *   row_reads(out): the plan hands the domain to the row: a decision over a session variable read, whose type may
- *		     change within the statement (D-336-E)
  *
  * A compiled domain that fixes the value's type and collation is the consumer's. Otherwise the plan's: the gate's
  * decision, or the domain the load derived from the producer (qexec_plan_domain). A producer the gate decided has no
  * value holds only NULLs - a NULL bind, a node over one (#340 D-340-01: a value there is the fetch boundary) - so its
  * consumers take the NULL domain, as a NULL bind's list column does (#337, D6) - a LEAD / LAG over a NULL operand
  * too: a row past its window's end converts the default to the function's NULL or variable domain, which rejects a
- * value as develop's did (ER_TP_CANT_COERCE). A decision over a session variable read holds until a read leaves it;
- * before any row it cannot be known to hold, so the row gives it then. A set-operation column whose branches the gate
+ * value as develop's did (ER_TP_CANT_COERCE). A decision over a session variable read holds before any row too: the
+ * variable keeps the type the gate gave it for the statement (#366). A set-operation column whose branches the gate
  * cannot unify never gets here: the gate rejects it (#341).
  */
 const TP_DOMAIN *
-qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item,
-		       bool before_rows, bool * row_reads)
+qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
 {
-  *row_reads = false;
   if (compiled != NULL && TP_DOMAIN_TYPE (compiled) != DB_TYPE_VARIABLE
       && TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_NORMAL)
     {
@@ -5540,86 +5715,13 @@ qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const D
     {
       return NULL;
     }
-  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  const TP_DOMAIN *domain = resolved.table[item->slot].domain;
-  if ((resolved.plan->slot_flags[item->slot] & DOMAIN_SLOT_VOLATILE)
-      && (before_rows || !RESOLVED_VOLATILE_HOLDS (resolved, item)))
-    {
-      *row_reads = true;
-      return NULL;
-    }
+  const TP_DOMAIN *domain = vd->xasl_state->resolved.table[item->slot].domain;
   if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
     {
       /* no decision: the boundary (b) at the caller - the gate leaves no slot undecided (#343) */
       return NULL;
     }
   return TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? &tp_Null_domain : domain;
-}
-
-/*
- * qexec_row_domain_counts () - whether a consumer the row gives its domain (qexec_consumer_domain) takes another
- *   domain than the gate's: a session variable read that left the decision (#341); these readings are
- *   Num_domain_resolve_list's (D-336-E)
- */
-bool
-qexec_row_domain_counts (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
-{
-  if (vd == NULL || vd->xasl_state == NULL || item == NULL || !RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item))
-    {
-      return true;
-    }
-  return !RESOLVED_VOLATILE_HOLDS (vd->xasl_state->resolved, item);
-}
-
-/*
- * qexec_type_open_list_columns () - a list's first tuples type the columns the row types (#341, S-13)
- *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED at an open column the plan should have typed
- *   list_id(in/out): the list whose tuples are being generated
- *   outptr_list(in): the regus producing its columns
- *   vd(in): the execution's value descriptor
- *
- * The list opened with the plan's domains (qdata_get_valptr_type_list): only a column the row types kept its compiled
- * domain there, a session variable read (D-336-E). As develop's late binding did, such a column takes its regu's
- * domain once a value resolved it; the list is resolved when no column is open any more.
- */
-int
-qexec_type_open_list_columns (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, VALPTR_LIST * outptr_list,
-			      const VAL_DESCR * vd)
-{
-  bool open = false;
-  REGU_VARIABLE_LIST column = outptr_list->valptrp;
-  for (int i = 0; column != NULL && i < list_id->type_list.type_cnt; column = column->next)
-    {
-      if (REGU_VARIABLE_IS_FLAGED (&column->value, REGU_VARIABLE_HIDDEN_COLUMN))
-	{
-	  continue;
-	}
-      TP_DOMAIN **listed = &list_id->type_list.domp[i++];
-      if (TP_DOMAIN_TYPE (*listed) != DB_TYPE_VARIABLE && TP_DOMAIN_COLLATION_FLAG (*listed) == TP_DOMAIN_COLL_NORMAL)
-	{
-	  continue;
-	}
-      bool row_reads;
-      (void) qexec_consumer_domain (vd, NULL, column->value.domain_plan, true, &row_reads);
-      if (!row_reads)
-	{
-	  return qexec_domain_unresolved (vd, column->value.domain_plan, *listed);
-	}
-      TP_DOMAIN *regu_domain = qexec_node_domain (vd, column->value.domain, column->value.domain_plan);
-      if (qexec_node_open (vd, column->value.domain_plan))
-	{
-	  /* no value resolved it yet: the next tuple tries again */
-	  open = true;
-	  continue;
-	}
-      if (qexec_row_domain_counts (vd, column->value.domain_plan))
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	}
-      *listed = regu_domain;
-    }
-  list_id->is_domain_resolved = !open;
-  return NO_ERROR;
 }
 
 /*
@@ -6132,18 +6234,7 @@ qexec_orderby_distinct_by_sorting (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QU
     }
 
   /* the sort keys the compiler left open: the plan's domains, in a copy the execution owns (#355) */
-  if (outptr_list != NULL)
-    {
-      error =
-	qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, xasl->orderby_list, outptr_list->valptrp, NULL,
-				      &order_list);
-    }
-  else
-    {
-      error =
-	qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, xasl->orderby_list, NULL, &list_id->type_list,
-				      &order_list);
-    }
+  error = qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, xasl->orderby_list, &order_list);
   if (error != NO_ERROR)
     {
       return error;
@@ -7475,8 +7566,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   /* #341 (S-18): the GROUP BY reads the plan's domains; its aggregates were set up before the scan */
   if (xasl->outptr_list != NULL)
     {
-      if (qexec_plan_group_by_domains (thread_p, &xasl_state->vd, buildlist, xasl->outptr_list, &groupby_list)
-	  != NO_ERROR)
+      if (qexec_plan_group_by_domains (thread_p, &xasl_state->vd, buildlist, &groupby_list) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -17634,8 +17724,8 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* #341 (S-24): the output columns over an accumulator took their function's domain before the first row, or when a
-   * row decided it (a session variable read, D-336-E, which keeps a block off PX) */
+  /* #341 (S-24): the output columns over an accumulator took their function's domain before the first row; here they
+   * take the one an interpolation function's finalization writes (qdata_aggregate_interpolation) */
   if (buildvalue->agg_list != NULL)
     {
       qexec_type_accumulator_outputs (&xasl_state->vd, xasl);
@@ -23188,53 +23278,24 @@ bf2df_str_cmpval (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int tot
  *   return: NO_ERROR, ER_FAILED (no copy), or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b))
  *   vd(in): the execution's value descriptor
  *   order_list(in): the plan's sort list; may be NULL
- *   reference_regu_list(in): the regus producing the sorted list's columns, numbered as the keys' positions; NULL for
- *			      a set operation, which sorts its own list file
- *   list_types(in): that list file's domains (a set operation's, unified from its branches)
  *   planned_list(out): order_list when every key keeps its compiled domain, or the copy, which the caller frees with
  *			qfile_free_sort_list once the sort's key information is built
  *
- * A key's item is its column's: the gate decided that column once for the execution (#337). A key the row types - a
- * session variable read that left the gate's decision (D-336-E) - takes its column regu's domain, as develop's late
- * binding did, or for a set operation's own sort its list's domain, unified from its branches (#337). The sort reads
- * the keys' domains when it builds its key information (qfile_initialize_sort_key_info): the loop's preparation
- * point, where the interface puts the execution's domains (§3.3).
+ * A key's item is its column's: the gate decided that column once for the execution (#337), a column over a session
+ * variable read too (#366). The sort reads the keys' domains when it builds its key information
+ * (qfile_initialize_sort_key_info): the loop's preparation point, where the interface puts the execution's domains
+ * (§3.3).
  */
 static int
 qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
-			      REGU_VARIABLE_LIST reference_regu_list, const QFILE_TUPLE_VALUE_TYPE_LIST * list_types,
 			      SORT_LIST ** planned_list)
 {
-  assert (reference_regu_list != NULL || list_types != NULL);
-
   *planned_list = order_list;
   SORT_LIST *copy = NULL;
   SORT_LIST *copy_key = NULL;
   for (SORT_LIST * key = order_list; key != NULL; key = key->next, copy_key = copy_key != NULL ? copy_key->next : NULL)
     {
-      bool row_reads;
-      const TP_DOMAIN *planned = qexec_consumer_domain (vd, key->pos_descr.dom, key->pos_descr.domain_plan, false,
-							&row_reads);
-      if (planned == NULL && row_reads)
-	{
-	  if (reference_regu_list != NULL)
-	    {
-	      REGU_VARIABLE_LIST column = reference_regu_list;
-	      for (int pos = key->pos_descr.pos_no; pos > 0 && column != NULL; pos--)
-		{
-		  column = column->next;
-		}
-	      planned = column != NULL ? qexec_node_domain (vd, column->value.domain, column->value.domain_plan) : NULL;
-	    }
-	  else if (key->pos_descr.pos_no < list_types->type_cnt)
-	    {
-	      planned = list_types->domp[key->pos_descr.pos_no];
-	    }
-	  if (planned != NULL && qexec_row_domain_counts (vd, key->pos_descr.domain_plan))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	    }
-	}
+      const TP_DOMAIN *planned = qexec_consumer_domain (vd, key->pos_descr.dom, key->pos_descr.domain_plan);
       if (planned == NULL)
 	{
 	  if (copy != NULL)
@@ -23284,22 +23345,19 @@ qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SOR
  *   hash keys and of the output columns, from the plan once the scan wrote the list (#337; #341, S-18)
  *   return: error code, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b)) at a key or a position the plan should have
  *	     decided
- *   reference_out_list(in): the regus that produced the sorted list's columns
  *   planned_groupby(out): the GROUP BY sort list the sort runs with (qexec_plan_sort_list_domains); the caller frees it
  *			   when it is not the plan's
  *
- * A key or a position over a column the row types - a session variable read that left the gate's decision
- * (D-336-E) - takes the column regu's domain, which the scan's values resolved, as develop's late binding did
- * (counted). A hash key or an output column the plan has no decision for keeps its domain: the position it follows
- * gives it (qexec_finish_group_by_domains), or its value when it is fetched. The aggregates were set up before the
- * scan (qexec_setup_aggregate_domains). The regus take their domains into their cells (#355).
+ * A key or a position over a session variable read reads the gate's decision too (#366). A hash key or an output
+ * column the plan has no decision for keeps its domain: the position it follows gives it
+ * (qexec_finish_group_by_domains), or its value when it is fetched. The aggregates were set up before the scan
+ * (qexec_setup_aggregate_domains). The regus take their domains into their cells (#355).
  */
 static int
 qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist,
-			     OUTPTR_LIST * reference_out_list, SORT_LIST ** planned_groupby)
+			     SORT_LIST ** planned_groupby)
 {
-  REGU_VARIABLE_LIST reference = reference_out_list->valptrp;
-  int error = qexec_plan_sort_list_domains (thread_p, vd, buildlist->groupby_list, reference, NULL, planned_groupby);
+  int error = qexec_plan_sort_list_domains (thread_p, vd, buildlist->groupby_list, planned_groupby);
   if (error != NO_ERROR)
     {
       return error;
@@ -23315,30 +23373,10 @@ qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUIL
 	    {
 	      continue;
 	    }
-	  bool row_reads;
-	  const TP_DOMAIN *planned = qexec_consumer_domain (vd, NULL, regu->value.domain_plan, false, &row_reads);
-	  if (planned == NULL && row_reads && regu->value.type == TYPE_POSITION)
-	    {
-	      REGU_VARIABLE_LIST column = reference;
-	      for (int pos = regu->value.value.pos_descr.pos_no; pos > 0 && column != NULL; pos--)
-		{
-		  column = column->next;
-		}
-	      const TP_DOMAIN *column_domain =
-		column != NULL ? qexec_node_domain (vd, column->value.domain, column->value.domain_plan) : NULL;
-	      if (column_domain != NULL && TP_DOMAIN_TYPE (column_domain) != DB_TYPE_VARIABLE
-		  && TP_DOMAIN_COLLATION_FLAG (column_domain) == TP_DOMAIN_COLL_NORMAL)
-		{
-		  planned = column_domain;
-		  if (qexec_row_domain_counts (vd, regu->value.domain_plan))
-		    {
-		      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-		    }
-		}
-	    }
+	  const TP_DOMAIN *planned = qexec_consumer_domain (vd, NULL, regu->value.domain_plan);
 	  if (planned == NULL)
 	    {
-	      if (i == 0 && regu->value.type == TYPE_POSITION && !row_reads)
+	      if (i == 0 && regu->value.type == TYPE_POSITION)
 		{
 		  if (*planned_groupby != buildlist->groupby_list)
 		    {
@@ -23426,70 +23464,6 @@ qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * build
     }
 }
 
-/* Whether a plan item's decision in this execution rests on a session variable read (D-336-E). */
-static bool
-qexec_reads_session_variable (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
-{
-  return vd != NULL && vd->xasl_state != NULL && item != NULL && RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item)
-    && vd->xasl_state->resolved.plan->slot_volatile_reads[item->slot] != 0;
-}
-
-/*
- * qexec_row_decides () - whether the plan hands a consumer's domain to its first value (#341)
- *
- * A value the gate could not type (a VARIABLE decision); a decision over a session variable read that left the gate's
- * within the statement, or that had no value when the statement began, which the statement can assign (D-336-E).
- * Everything else is decided before the first row: the gate leaves no string undecided (#343).
- */
-static bool
-qexec_row_decides (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
-{
-  if (vd == NULL || vd->xasl_state == NULL || item == NULL || !RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item))
-    {
-      return false;
-    }
-  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  const TP_DOMAIN *domain = resolved.table[item->slot].domain;
-  if (domain == NULL)
-    {
-      /* no decision: the setup's boundary (b) */
-      return false;
-    }
-  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-    {
-      return true;
-    }
-  return resolved.plan->slot_volatile_reads[item->slot] != 0
-    && (!RESOLVED_VOLATILE_HOLDS (resolved, item) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL);
-}
-
-/*
- * qexec_interpolation_class_holds () - whether a MEDIAN / PERCENTILE value read through a session variable still has the
- *   class the gate took from the variable's value when the execution started (#341, D-336-E)
- *   return: false when its content gives another class; the read is marked then, so no decision over it is taken
- *   item(in): the function's plan item
- *   value(in): the function's first non-NULL value
- *   decided(in): the class the function holds
- *
- * A string's class is its content's (D-328-06): a variable that keeps its string type but changes its content within
- * the statement can change the class, which the type check of the read does not see (fetch_volatile_class_holds does
- * the same for ADDTIME and STR_TO_DATE, #340).
- */
-bool
-qexec_interpolation_class_holds (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, int function,
-				 const DB_VALUE * value, const TP_DOMAIN * decided)
-{
-  if (!qexec_reads_session_variable (vd, item) || DB_IS_NULL (value)
-      || !TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value))
-      || domain_classify_value (DOMAIN_CTX_AGG, function, 0, value) == TP_DOMAIN_TYPE (decided))
-    {
-      return true;
-    }
-  RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  resolved.changed_reads |= resolved.plan->slot_volatile_reads[item->slot];
-  return false;
-}
-
 /*
  * qexec_apply_aggregate_gate_domain () - the gate's decision for an aggregate the gate decides, applied as develop's
  *   late binding applied the first value's domain (#337)
@@ -23500,8 +23474,7 @@ qexec_interpolation_class_holds (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * 
  * operand compiled VARIABLE or a function domain that leaves collation): to the decision's type, except for
  * MEDIAN / PERCENTILE, whose operand keeps its own type there: a string's values convert to the function's class as
  * they are accumulated (qdata_update_agg_interpolation_func_value_and_domain). The gate classifies a session
- * variable's string from the value it holds when the execution starts (#340); the first value checks that class
- * (qexec_aggregate_first_values).
+ * variable's string from the value it holds when the execution starts (#340), for the whole statement (#366).
  */
 static const TP_DOMAIN *
 qexec_apply_aggregate_gate_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
@@ -23535,50 +23508,18 @@ qexec_apply_aggregate_gate_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
   return gate_node->operand_domain[0] != NULL ? gate_node->operand_domain[0] : planned;
 }
 
-/* Whether an aggregate's domains wait for its first value (#341): the plan hands its function, or the list its argument
- * goes into, to the row (qexec_row_decides). A MEDIAN / PERCENTILE takes its class from the plan or its first value
- * either way (qexec_interpolation_waits). */
-static bool
-qexec_aggregate_row_decides (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
-{
-  switch (agg_p->function)
-    {
-    case PT_COUNT_STAR:
-    case PT_GROUPBY_NUM:
-    case PT_CUME_DIST:
-    case PT_PERCENT_RANK:
-    case PT_JSON_ARRAYAGG:
-    case PT_JSON_OBJECTAGG:
-    case PT_MEDIAN:
-    case PT_PERCENTILE_CONT:
-    case PT_PERCENTILE_DISC:
-      return false;
-    default:
-      break;
-    }
-  const bool list = (agg_p->option == Q_DISTINCT || agg_p->sort_list != NULL) && agg_p->function != PT_MIN
-    && agg_p->function != PT_MAX;
-  if (list && qexec_row_decides (vd, agg_p->operands->value.domain_plan))
-    {
-      return true;
-    }
-  return agg_p->function != PT_COUNT && qexec_row_decides (vd, agg_p->domain_plan);
-}
-
-/* Whether a MEDIAN / PERCENTILE argument holds only NULLs: the gate decided it has no value, and no session variable
- * read it rests on can give it one within the statement. */
+/* Whether a MEDIAN / PERCENTILE argument holds only NULLs: the gate decided it has no value - a session variable read
+ * too, which keeps its type for the statement (#366). */
 static bool
 qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
 {
-  const DOMAIN_PLAN_ITEM *argument = agg_p->operands->value.domain_plan;
-  bool row_reads;
-  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, argument, false, &row_reads);
-  return domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL && !qexec_reads_session_variable (vd, argument);
+  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, agg_p->operands->value.domain_plan);
+  return domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL;
 }
 
 /* Whether a MEDIAN / PERCENTILE over a string waits for its first value (qexec_aggregate_first_values): a string column
- * or expression is cast to its DOUBLE there (D-335-10), a value the gate could not classify is rejected, and a value
- * read through a session variable has its class checked (D-336-E). A value the gate classified is set up. */
+ * or expression is cast to its DOUBLE there (D-335-10), and a value the gate could not classify is rejected. A value
+ * the gate classified is set up. */
 static bool
 qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
 {
@@ -23587,17 +23528,15 @@ qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
     && !TP_IS_DATE_OR_TIME_TYPE (operand_type) && !qexec_interpolation_sees_nulls (vd, agg_p);
 }
 
-/* Whether a MEDIAN / PERCENTILE value the gate gave no class is a literal or a bind it could not classify (#341): the
- * plan typed the argument as the string the gate saw, and no session variable read can change it within the statement,
- * so the function's first non-NULL value is that string (D-335-10). */
+/* Whether a MEDIAN / PERCENTILE value the gate gave no class is a literal, a bind or a session variable read it could
+ * not classify (#341): the plan typed the argument as the value the gate saw - a string, a BIT, a LOB, a collection;
+ * a variable keeps its value's class for the statement (#366) - so the function's first non-NULL value is that value,
+ * which develop's cascade rejected too (D-335-10). */
 static bool
 qexec_interpolation_value_unclassified (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
 {
-  const DOMAIN_PLAN_ITEM *argument = agg_p->operands->value.domain_plan;
-  bool row_reads;
-  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, argument, false, &row_reads);
-  return domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) && !qexec_reads_session_variable (vd, argument)
-    && !qexec_reads_session_variable (vd, agg_p->domain_plan);
+  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, agg_p->operands->value.domain_plan);
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL;
 }
 
 /*
@@ -23651,8 +23590,7 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
       if (qexec_interpolation_waits (vd, agg_p) && agg_p->domain_plan != NULL
-	  && (agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
-	  && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && !qexec_reads_session_variable (vd, agg_p->domain_plan))
+	  && (agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT) && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
 	{
 	  agg_p->accumulator_domain.value_dom = domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
@@ -23701,9 +23639,8 @@ qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const
   REGU_VARIABLE *argument = &agg_p->operands->value;
   if (column == NULL)
     {
-      bool row_reads;
       column = qexec_consumer_domain (vd, qexec_node_domain (vd, argument->domain, argument->domain_plan),
-				      argument->domain_plan, false, &row_reads);
+				      argument->domain_plan);
       if (column == NULL)
 	{
 	  return qexec_domain_unresolved (vd, argument->domain_plan, argument->domain);
@@ -23729,7 +23666,7 @@ qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const
  * (qdata_update_agg_interpolation_func_value_and_domain), so the list holds that type: the argument's domain where it
  * is of that type - a NUMERIC column keeps its precision and scale (F-341-03) - and the function's otherwise. This is
  * the domain develop's list took from its first value. A function without a domain (the gate could not classify its
- * value; a session variable's value classifies it, D-336-E) keeps the argument's until its first value. A function over
+ * value, which its first value rejects) keeps the argument's. A function over
  * a constant or a host variable has no sort list and no list: its one value is kept (qdata_evaluate_aggregate_list).
  */
 static void
@@ -23765,7 +23702,7 @@ qexec_setup_interpolation_list (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
  * argument for a compiled one. A function whose decision has no value (a NULL bind, a node over one) sees only NULLs:
  * its accumulators stay unset, as develop's never resolved. A MEDIAN / PERCENTILE list takes its domain here too
  * (qexec_setup_interpolation_list). What waits for a first value: a MEDIAN / PERCENTILE string, whose first value is
- * checked (qexec_interpolation_waits), and an aggregate the plan hands to its row (qexec_aggregate_row_decides).
+ * checked (qexec_interpolation_waits). No row decides an aggregate's domain (#366).
  */
 static int
 qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, int *resolved)
@@ -23795,11 +23732,6 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	default:
 	  break;
 	}
-      if (qexec_aggregate_row_decides (vd, agg_p))
-	{
-	  *resolved = 0;
-	  continue;
-	}
       if (agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR)
 	{
 	  agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
@@ -23814,7 +23746,14 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 
       const bool interpolation = QPROC_IS_INTERPOLATION_FUNC (agg_p);
       const TP_DOMAIN *accumulator = NULL;
-      if (RESOLVED_GATE_NODE (vd, agg_p->domain_plan) != NULL)
+      const RESOLVED_DOMAIN *gate_node = RESOLVED_GATE_NODE (vd, agg_p->domain_plan);
+      if (gate_node != NULL && !interpolation && TP_DOMAIN_TYPE (gate_node->domain) == DB_TYPE_VARIABLE)
+	{
+	  /* the gate types every aggregate (#343), and no row decides one (#366); a MEDIAN / PERCENTILE without a type
+	   * takes its class below */
+	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
+	}
+      if (gate_node != NULL)
 	{
 	  accumulator = qexec_apply_aggregate_gate_domain (vd, agg_p);
 	  if (accumulator == NULL && !interpolation)
@@ -23841,10 +23780,9 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
 	{
 	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
 	}
-      /* a MEDIAN / PERCENTILE the gate gave no class: it sees only NULLs (no value), its first value is rejected (a
-       * value the gate could not classify) or classifies it (a session variable read, D-336-E). A string column or
-       * expression without a class is a number all the same (D-335-10): its values are cast to DOUBLE, the first one
-       * checked (qexec_interpolation_first_value). */
+      /* a MEDIAN / PERCENTILE the gate gave no class: it sees only NULLs (no value), or its first value is rejected (a
+       * value the gate could not classify). A string column or expression without a class is a number all the same
+       * (D-335-10): its values are cast to DOUBLE, the first one checked (qexec_interpolation_first_value). */
       if (interpolation && accumulator == NULL && !(agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
 	  && (TP_DOMAIN_TYPE (qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan)) == DB_TYPE_VARIABLE
 	      || TP_DOMAIN_TYPE (qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan)) == DB_TYPE_NULL)
@@ -23881,15 +23819,12 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
  * The function's domain and its list's were set before the first row (qexec_setup_aggregate_domains): the first value
  * checks them. A string column or expression is cast to its DOUBLE (D-335-10): a first value that does not convert
  * reports ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN (-1118) here, while a later one fails as the row's conversion
- * does (-181), as develop's did. A literal or a bind the gate could not classify is that value: -1118, as develop's
- * first value. A value read through a session variable takes the first of DOUBLE, DATETIME and TIME its content
- * converts to, or -1118: the class the gate gave it, unless the variable changed it within the statement or held no
- * value when the statement began (D-336-E; counted), and its list with it. The cast goes into a value of its own: the
- * operand may be a shared bind or a cached column value (S-39).
+ * does (-181), as develop's did. A literal, a bind or a session variable read the gate could not classify is that
+ * value: -1118, as develop's first value; a variable keeps the class the gate gave it for the statement (#366). The
+ * cast goes into a value of its own: the operand may be a shared bind or a cached column value (S-39).
  */
 static int
-qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p,
-				 const DB_VALUE * dbval)
+qexec_interpolation_first_value (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const DB_VALUE * dbval)
 {
   TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
   const bool gate_class = TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL;
@@ -23920,20 +23855,8 @@ qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
     }
   else
     {
-      const DB_TYPE class_type = domain_classify_value (DOMAIN_CTX_AGG, agg_p->function, 0, dbval);
-      if (class_type == DB_TYPE_NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
-		  fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME or TIME");
-	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-	}
-      if (!gate_class || !qexec_interpolation_class_holds (vd, agg_p->domain_plan, agg_p->function, dbval, domain))
-	{
-	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
-	  domain = tp_domain_resolve_default (class_type);
-	  qexec_take_domain (vd, agg_p->domain_plan, agg_p->domain, domain);
-	  qexec_setup_interpolation_list (vd, agg_p);
-	}
+      /* a value argument the gate classified was set up before the first row (qexec_setup_aggregate_accumulators) */
+      return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
     }
   /* clear errors from failed casts once one succeeds */
   if (er_errid () != NO_ERROR)
@@ -23952,62 +23875,8 @@ qexec_interpolation_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, 
 }
 
 /*
- * qexec_aggregate_row_first_value () - an aggregate the plan hands to its row takes its first non-NULL value's domains,
- *   by the resolver's rule for the function (the rule of develop's late binding) (#341; D-336-E; counted)
- *   return: error code or NO_ERROR
- */
-static int
-qexec_aggregate_row_first_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p,
-				 const DB_VALUE * dbval)
-{
-  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_AGG);
-  const TP_DOMAIN *value_domain = tp_domain_resolve_value (dbval, NULL);
-  if (value_domain == NULL)
-    {
-      return ER_FAILED;
-    }
-  int error = NO_ERROR;
-  if (agg_p->function == PT_COUNT)
-    {
-      agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
-      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
-    }
-  else
-    {
-      const TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
-      const bool late_bound = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan) == DB_TYPE_VARIABLE
-	|| TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL;
-      DOMAIN_OPERAND operand = { value_domain, TP_DOMAIN_TYPE (value_domain), -1, -1, late_bound };
-      RESOLVED_DOMAIN decision;
-      bool needs_gate = false;
-      if (domain_resolve (DOMAIN_CTX_AGG, agg_p->function, &operand, 1, domain, &decision, &needs_gate)
-	  != NO_ERROR || needs_gate || decision.domain == NULL)
-	{
-	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
-	}
-      if (late_bound)
-	{
-	  qexec_take_domain (vd, agg_p->domain_plan, agg_p->domain, decision.domain);
-	  qexec_take_operand_type (vd, agg_p->domain_plan, agg_p->opr_dbtype, TP_DOMAIN_TYPE (decision.domain));
-	}
-      error = qexec_setup_aggregate_accumulators (vd, agg_p, decision.operand_domain[0]);
-    }
-  if (error == NO_ERROR)
-    {
-      error = qexec_setup_aggregate_lists (vd, agg_p, value_domain);
-    }
-  if (error == NO_ERROR && agg_p->list_id != NULL && agg_p->list_id->type_list.type_cnt > 0
-      && TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
-    {
-      /* the list opened before this value; a variable readval would drop its values */
-      agg_p->list_id->type_list.domp[0] = (TP_DOMAIN *) value_domain;
-    }
-  return error;
-}
-
-/*
- * qexec_aggregate_first_values () - what a block's aggregates still take from their first non-NULL value once the plan
- *   set them up (qexec_setup_aggregate_domains; #341, S-23)
+ * qexec_aggregate_first_values () - the check a block's MEDIAN / PERCENTILE strings still give their first non-NULL
+ *   value once the plan set them up (qexec_setup_aggregate_domains; #341, S-23)
  *   return: error code or NO_ERROR
  *   agg_list(in/out): the block's aggregates
  *   vd(in): the execution's value descriptor
@@ -24027,9 +23896,7 @@ qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list
   *resolved = 1;
   for (AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
     {
-      const bool interpolation = QPROC_IS_INTERPOLATION_FUNC (agg_p);
-      if (interpolation ? !qexec_interpolation_waits (vd, agg_p)
-	  : agg_p->accumulator_domain.value_dom != NULL || !qexec_aggregate_row_decides (vd, agg_p))
+      if (!QPROC_IS_INTERPOLATION_FUNC (agg_p) || !qexec_interpolation_waits (vd, agg_p))
 	{
 	  continue;
 	}
@@ -24044,8 +23911,7 @@ qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list
 	  *resolved = 0;
 	  continue;
 	}
-      const int error = interpolation ? qexec_interpolation_first_value (thread_p, vd, agg_p, dbval)
-	: qexec_aggregate_row_first_value (thread_p, vd, agg_p, dbval);
+      const int error = qexec_interpolation_first_value (vd, agg_p, dbval);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -24061,8 +23927,7 @@ qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list
  *
  * The value converts to that domain when the column is fetched (qdata_get_dbval_from_constant_regu_variable), as
  * develop's copy after each row made it: a GROUP_CONCAT of a CHAR bind builds a VARCHAR. The setup gives a column the
- * plan's decision before the first row; a column over an aggregate its row decides (D-336-E) takes the domain the
- * first value gave, which may also change a session variable's class. A column the compiler typed keeps its domain.
+ * plan's decision before the first row. A column the compiler typed keeps its domain.
  */
 static void
 qexec_type_accumulator_outputs (const VAL_DESCR * vd, XASL_NODE * xasl)
@@ -24671,8 +24536,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   a_outptr_list = (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
 
   /* the analytic sort keys the compiler left open: the plan's domains, in a copy the execution owns (#355) */
-  if (qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, analytic_eval->sort_list,
-				    buildlist->a_outptr_list_ex->valptrp, NULL, &sort_list) != NO_ERROR)
+  if (qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, analytic_eval->sort_list, &sort_list) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -25224,8 +25088,8 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
  * class it gave a value argument (D-328-06), DOUBLE for a gate-dependent string (D-335-10). develop took the class from
  * the first pair of values the sort compared (qfile_compare_with_interpolation_domain). A value argument the gate could
  * not classify has no class, and the sort rejects its values as develop's first value was rejected. A class over a
- * session variable read the statement can leave before any row reads the variable, so the sort's first pair confirms it
- * or gives develop's class of its first value (D-336-E). Any other key of the state - another function's ORDER BY that
+ * session variable read is the one the variable's value gave when the execution started, for the whole statement: a
+ * value of another class converts to it or fails (#366). Any other key of the state - another function's ORDER BY that
  * shares the sort - compares in its own domain (D-362-01, a user decision): develop gave it the first value's class.
  */
 static void
@@ -25256,7 +25120,9 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
 	      || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (decided)));
       subkey->use_cmp_dom = true;
       subkey->cmp_dom = decided != NULL ? tp_domain_resolve_default (TP_DOMAIN_TYPE (decided)) : NULL;
-      subkey->cmp_dom_volatile = qexec_reads_session_variable (vd, item);
+      subkey->cmp_dom_volatile = item != NULL && item->slot >= 0 && vd->xasl_state != NULL
+	&& RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item)
+	&& vd->xasl_state->resolved.plan->slot_volatile_reads[item->slot] != 0;
       return;
     }
 }
@@ -25391,8 +25257,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
     }
 
 resolve_domain:
-  /* #341 (S-19): a position the compiler left open reads the column the plan decided; a column the row types
-   * (D-336-E) is what the sorted list's first tuples typed */
+  /* #341 (S-19): a position the compiler left open reads the column the plan decided */
   for (regu_list = a_regu_list; regu_list; regu_list = regu_list->next)
     {
       QFILE_TUPLE_VALUE_POSITION *pos_descr = &regu_list->value.value.pos_descr;
@@ -25404,17 +25269,7 @@ resolve_domain:
 	{
 	  continue;
 	}
-      bool row_reads;
-      const TP_DOMAIN *planned = qexec_consumer_domain (&xasl_state->vd, NULL, regu_list->value.domain_plan,
-							false, &row_reads);
-      if (planned == NULL && row_reads && pos_descr->pos_no < type_list->type_cnt)
-	{
-	  if (qexec_row_domain_counts (&xasl_state->vd, regu_list->value.domain_plan))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	    }
-	  planned = type_list->domp[pos_descr->pos_no];
-	}
+      const TP_DOMAIN *planned = qexec_consumer_domain (&xasl_state->vd, NULL, regu_list->value.domain_plan);
       if (planned == NULL)
 	{
 	  (void) qexec_domain_unresolved (&xasl_state->vd, regu_list->value.domain_plan, pos_descr->dom);
@@ -29831,28 +29686,21 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
  *
  * A key the compiler left open (`ORDER BY val + ?`, a string whose collation its values give) reads the domain the
  * gate decided for its column (#337, #338); the values compare with that domain's cmpval, as a compiled key's do
- * (#340). A key over a session variable read compares by its values' types where a value left that domain: the
- * variable may change type within the statement (D-336-E). A NULL-only column compares its NULLs before any domain
- * is read.
+ * (#340), a key over a session variable read too (#366). A NULL-only column compares its NULLs before any domain is
+ * read.
  */
 static void
-qexec_topn_sort_domains (const VAL_DESCR * vd, SORT_LIST * sort_items, const TP_DOMAIN ** domains,
-			 bool * volatile_keys)
+qexec_topn_sort_domains (const VAL_DESCR * vd, SORT_LIST * sort_items, const TP_DOMAIN ** domains)
 {
   int i = 0;
   for (SORT_LIST * key = sort_items; key != NULL; key = key->next, i++)
     {
       const TP_DOMAIN *domain = key->pos_descr.dom;
-      bool volatile_key = false;
       if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 	{
-	  const DOMAIN_PLAN_ITEM *item = key->pos_descr.domain_plan;
-	  domain = qexec_plan_domain (vd, item, true);
-	  volatile_key = domain != NULL && item != NULL && item->slot >= 0
-	    && vd->xasl_state->resolved.plan->slot_volatile_reads[item->slot] != 0;
+	  domain = qexec_plan_domain (vd, key->pos_descr.domain_plan, true);
 	}
       domains[i] = domain;
-      volatile_keys[i] = volatile_key;
     }
 }
 
@@ -29994,16 +29842,14 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
       n_sort_items++;
     }
   /* the sort domains live in the same block, so every path that frees top_n frees them */
-  top_n = (TOPN_TUPLES *) db_private_alloc (thread_p, sizeof (TOPN_TUPLES)
-					    + n_sort_items * (sizeof (TP_DOMAIN *) + sizeof (bool)));
+  top_n = (TOPN_TUPLES *) db_private_alloc (thread_p, sizeof (TOPN_TUPLES) + n_sort_items * sizeof (TP_DOMAIN *));
   if (top_n == NULL)
     {
       error = ER_FAILED;
       goto error_return;
     }
   top_n->sort_domains = (const TP_DOMAIN **) (top_n + 1);
-  top_n->sort_volatile = (bool *) (top_n->sort_domains + n_sort_items);
-  qexec_topn_sort_domains (vd, xasl->orderby_list, top_n->sort_domains, top_n->sort_volatile);
+  qexec_topn_sort_domains (vd, xasl->orderby_list, top_n->sort_domains);
 
   top_n->max_size = max_size;
   top_n->total_size = 0;
@@ -30069,8 +29915,7 @@ qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg)
   for (key = proc->sort_items; key != NULL; key = key->next, i++)
     {
       pos = key->pos_descr.pos_no;
-      cmp = qexec_topn_cmpval (&left_tuple->values[pos], &right_tuple->values[pos], key, proc->sort_domains[i],
-			       proc->sort_volatile[i]);
+      cmp = qexec_topn_cmpval (&left_tuple->values[pos], &right_tuple->values[pos], key, proc->sort_domains[i]);
       if (cmp == BH_EQ)
 	{
 	  continue;
@@ -30091,8 +29936,7 @@ qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg)
  * Note: tp_value_compare is too complex for our case
  */
 static BH_CMP_RESULT
-qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec, const TP_DOMAIN * domain,
-		   bool volatile_key)
+qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec, const TP_DOMAIN * domain)
 {
   int cmp;
   if (DB_IS_NULL (left))
@@ -30119,12 +29963,9 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec, con
     }
   else
     {
-      if (domain == NULL
-	  || (volatile_key && (DB_VALUE_DOMAIN_TYPE (left) != TP_DOMAIN_TYPE (domain)
-			       || DB_VALUE_DOMAIN_TYPE (right) != TP_DOMAIN_TYPE (domain))))
+      if (domain == NULL)
 	{
-	  /* a key the plan gives no domain here, or a session variable value that left it (qexec_topn_sort_domains):
-	   * its values' types decide */
+	  /* a key the plan gives no domain here (qexec_topn_sort_domains): its values' types decide */
 	  if (perfmon_is_perf_tracking ())
 	    {
 	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE);
@@ -30224,8 +30065,7 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
   for (key = topn_items->sort_items; key != NULL; key = key->next, i++)
     {
       pos = key->pos_descr.pos_no;
-      res = qexec_topn_cmpval (&heap_max->values[pos], tpldescr->f_valp[pos], key, topn_items->sort_domains[i],
-			       topn_items->sort_volatile[i]);
+      res = qexec_topn_cmpval (&heap_max->values[pos], tpldescr->f_valp[pos], key, topn_items->sort_domains[i]);
       if (res == BH_EQ)
 	{
 	  continue;

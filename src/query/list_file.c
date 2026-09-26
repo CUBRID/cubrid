@@ -890,7 +890,6 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
  *
  * A list opens with the plan's domains (#341, S-15): an empty side contributes no values, so its domain does not
  * constrain the other side's, as its columns did not when no first tuple typed them (develop's DB_TYPE_VARIABLE).
- * A column its first tuples type (qexec_type_open_list_columns) but no value resolved still holds only NULLs.
  */
 int
 qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p, bool list1_empty)
@@ -4508,10 +4507,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
 	  subkey->cmp_dom_volatile = false;
-	  subkey->cmp_dom_confirmed = false;
 
-	  /* #341 (S-16): the key's domain is the plan's (a key the row types, D-336-E, took its column's once a value
-	   * resolved it; a key no value resolved compares only NULLs) */
+	  /* #341 (S-16): the key's domain is the plan's */
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
@@ -4539,7 +4536,6 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
 	  subkey->cmp_dom_volatile = false;
-	  subkey->cmp_dom_confirmed = false;
 	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
@@ -7291,8 +7287,7 @@ qfile_check_interpolation_class (DB_VALUE * value, const TP_DOMAIN * planned)
  *  NOTE: median analytic function sort string in different domain
  *
  *  #362: the analytic setup gives the key its class before the sort (qexec_plan_interpolation_sort_key), so the workers
- *  of a parallel sort, which share the key, only read it. Only a class over a session variable read is left to the
- *  first pair of values (D-336-E), which writes the key as develop's first pair did.
+ *  of a parallel sort, which share the key, only read it - a class over a session variable read too (#366).
  */
 static int
 qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * subkey, SORTKEY_INFO * key_info)
@@ -7313,7 +7308,7 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
   d0 = fp0 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
   d1 = fp1 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
 
-  if (subkey->cmp_dom == NULL || (subkey->cmp_dom_volatile && !subkey->cmp_dom_confirmed))
+  if (subkey->cmp_dom == NULL)
     {
       /* NOTE: col_dom is string type.  See qexec_plan_interpolation_sort_key */
       pr_clear_value (&val0);
@@ -7327,31 +7322,16 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
 	  goto end;
 	}
 
+      /* a value argument the gate could not classify (D-328-06): every value is that one, whose classification
+       * failed for develop's first value too; a session variable read keeps that for the statement (#366) */
+#if !defined (NDEBUG)
       if (!subkey->cmp_dom_volatile)
 	{
-	  /* a value argument the gate could not classify (D-328-06): every value is that one, whose classification
-	   * failed for develop's first value too */
-#if !defined (NDEBUG)
 	  qfile_check_interpolation_class (&val0, NULL);
+	}
 #endif
-	  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-	  goto end;
-	}
-
-      /* D-336-E: the statement may have changed the session variable before any row read it. The first pair confirms
-       * the gate's class, or takes develop's class of its first value (counted); a value no class takes leaves the next
-       * pair to try, as develop's did. */
-      error = qdata_update_interpolation_func_value_and_domain (&val0, &val0, &cast_domain);
-      if (error != NO_ERROR)
-	{
-	  goto end;
-	}
-      if (subkey->cmp_dom == NULL || TP_DOMAIN_TYPE (subkey->cmp_dom) != TP_DOMAIN_TYPE (cast_domain))
-	{
-	  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	  subkey->cmp_dom = cast_domain;
-	}
-      subkey->cmp_dom_confirmed = true;
+      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+      goto end;
     }
 
   /* cast to proper domain, then compare */

@@ -165,6 +165,9 @@ struct DOMAIN_LOAD_CONTEXT
   INDX_INFO **indexes;		/* the index scans met, in walk order (#342) */
   int n_indexes;
   int max_indexes;
+  ARITH_TYPE **defines;		/* the session variable assignments met (T_DEFINE_VARIABLE, #366) */
+  int n_defines;
+  int max_defines;
 };
 
 static void domain_walk_xasl (DOMAIN_LOAD_CONTEXT *, XASL_NODE *);
@@ -173,6 +176,7 @@ static void domain_walk_pred (DOMAIN_LOAD_CONTEXT *, PRED_EXPR *);
 static void domain_walk_regu (DOMAIN_LOAD_CONTEXT *, REGU_VARIABLE *, DOMAIN_CTX = DOMAIN_CTX_FUNC_ARG);
 static OUTPTR_LIST *domain_block_output (XASL_NODE * xasl);
 static DOMAIN_PLAN_ITEM *domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos);
+static void domain_add_define (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * define);
 
 static bool
 domain_is_fixed (const TP_DOMAIN * domain)
@@ -221,9 +225,9 @@ domain_record_of (const DOMAIN_PLAN_ITEM * item)
  *	       that it does not change which value pointers share their producer's item (D-355-09)
  *
  * The domain an execution gives a node - a gate decision the node reads at its first computation or its consumer's
- * setup, a value's domain where the plan hands it to the row (D-336-E) - lives in the cell, never in the node: the
- * plan stays what the stream loaded (ADR 0020, G-02). An aggregate or an analytic function gets one whether or not its
- * domain is open: its execution also records the operand type it evaluates with.
+ * setup - lives in the cell, never in the node: the plan stays what the stream loaded (ADR 0020, G-02). An aggregate
+ * or an analytic function gets one whether or not its domain is open: its execution also records the operand type it
+ * evaluates with.
  */
 static void
 domain_give_cell (DOMAIN_PLAN_ITEM * item, bool open)
@@ -890,6 +894,11 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     }
   DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &arith->domain_plan, arith->domain, cls,
 					    is_cast ? DOMAIN_CTX_ASSIGN : DOMAIN_CTX_ARITH, arith->opcode, "arith");
+  if (arith->opcode == T_DEFINE_VARIABLE)
+    {
+      /* #366: the gate types a variable the statement reads from the values the statement assigns it */
+      domain_add_define (ctx, arith);
+    }
   if (item != NULL)
     {
       item->compares = compares;
@@ -1522,6 +1531,25 @@ domain_add_index (DOMAIN_LOAD_CONTEXT * ctx, INDX_INFO * index)
       ctx->max_indexes = max;
     }
   ctx->indexes[ctx->n_indexes++] = index;
+}
+
+/* Records a session variable assignment (#366): the gate types the variable from the values the statement assigns. */
+static void
+domain_add_define (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * define)
+{
+  if (ctx->n_defines == ctx->max_defines)
+    {
+      const int max = ctx->max_defines == 0 ? 4 : ctx->max_defines * 2;
+      ARITH_TYPE **defines = (ARITH_TYPE **) db_private_realloc (ctx->thread_p, ctx->defines, max * sizeof (*defines));
+      if (defines == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->defines = defines;
+      ctx->max_defines = max;
+    }
+  ctx->defines[ctx->n_defines++] = define;
 }
 
 static void
@@ -2358,6 +2386,135 @@ domain_publish_gate_waits (DOMAIN_PLAN * plan, int constant_base)
 	    || (operand->slot >= 0 && domain_slot_after_constants (plan, operand->slot));
 	}
     }
+}
+
+/* A session variable's name as a read or an assignment carries it: the CHAR literal the parser writes for @name. */
+static const DB_VALUE *
+domain_session_variable_name (const DB_VALUE * value)
+{
+  return value != NULL && DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_CHAR && !DB_IS_NULL (value) ? value : NULL;
+}
+
+/* The name gate node g reads, when it is a session variable read. */
+static const DB_VALUE *
+domain_session_read_name (const DOMAIN_PLAN * plan, int g)
+{
+  return plan->items_cold[plan->gate_nodes[g] - plan->items].opcode == T_EVALUATE_VARIABLE
+    ? domain_session_variable_name (plan->gate_links[g].literal[0]) : NULL;
+}
+
+/* The variable a name refers to among the first n, compared as the session compares names; -1 none. */
+static int
+domain_find_session_variable (const DOMAIN_SESSION_VARIABLE * variables, int n, const DB_VALUE * name)
+{
+  for (int v = 0; name != NULL && v < n; v++)
+    {
+      if (intl_identifier_casecmp (db_get_string (variables[v].name), db_get_string (name)) == 0)
+	{
+	  return v;
+	}
+    }
+  return -1;
+}
+
+/* The variable an assignment writes, among the first n; -1 when the statement does not read it. */
+static int
+domain_session_define_variable (const DOMAIN_SESSION_VARIABLE * variables, int n, const ARITH_TYPE * define)
+{
+  if (define->leftptr == NULL || define->leftptr->type != TYPE_DBVAL || define->rightptr == NULL
+      || define->rightptr->domain_plan == NULL)
+    {
+      return -1;
+    }
+  return domain_find_session_variable (variables, n, domain_session_variable_name (&define->leftptr->value.dbval));
+}
+
+/*
+ * domain_publish_session_variables () - the session variables the statement reads, each with its reads and the values
+ *   its assignments store (#366, D-366-01): the gate gives each of them one type per execution. A variable the
+ *   statement only assigns is none of them: nothing here reads it.
+ */
+static bool
+domain_publish_session_variables (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
+{
+  int n_reads = 0;
+  for (int g = 0; g < plan->n_gate_nodes; g++)
+    {
+      n_reads += domain_session_read_name (plan, g) != NULL ? 1 : 0;
+    }
+  if (n_reads == 0)
+    {
+      return true;
+    }
+  DOMAIN_SESSION_VARIABLE *variables =
+    (DOMAIN_SESSION_VARIABLE *) domain_plan_alloc (thread_p, n_reads, sizeof (*variables));
+  int *reads = (int *) domain_plan_alloc (thread_p, n_reads, sizeof (*reads));
+  if (variables == NULL || reads == NULL)
+    {
+      return false;
+    }
+  /* count each variable's reads and assignments, lay them out, then fill them in */
+  int n_variables = 0;
+  for (int g = 0; g < plan->n_gate_nodes; g++)
+    {
+      const DB_VALUE *name = domain_session_read_name (plan, g);
+      if (name == NULL)
+	{
+	  continue;
+	}
+      int v = domain_find_session_variable (variables, n_variables, name);
+      if (v < 0)
+	{
+	  v = n_variables++;
+	  variables[v] = DOMAIN_SESSION_VARIABLE
+	  {
+	  name, NULL, NULL, 0, 0};
+	}
+      variables[v].n_reads++;
+    }
+  int n_assigns = 0;
+  for (int d = 0; d < ctx->n_defines; d++)
+    {
+      const int v = domain_session_define_variable (variables, n_variables, ctx->defines[d]);
+      if (v >= 0)
+	{
+	  variables[v].n_assigns++;
+	  n_assigns++;
+	}
+    }
+  const DOMAIN_PLAN_ITEM **assigns = n_assigns == 0 ? NULL
+    : (const DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, n_assigns, sizeof (*assigns));
+  if (n_assigns > 0 && assigns == NULL)
+    {
+      return false;
+    }
+  for (int v = 0, r = 0, a = 0; v < n_variables; v++)
+    {
+      variables[v].reads = reads + r;
+      variables[v].assigns = assigns != NULL ? assigns + a : NULL;
+      r += variables[v].n_reads;
+      a += variables[v].n_assigns;
+      variables[v].n_reads = variables[v].n_assigns = 0;
+    }
+  for (int g = 0; g < plan->n_gate_nodes; g++)
+    {
+      const int v = domain_find_session_variable (variables, n_variables, domain_session_read_name (plan, g));
+      if (v >= 0)
+	{
+	  variables[v].reads[variables[v].n_reads++] = g;
+	}
+    }
+  for (int d = 0; d < ctx->n_defines; d++)
+    {
+      const int v = domain_session_define_variable (variables, n_variables, ctx->defines[d]);
+      if (v >= 0)
+	{
+	  variables[v].assigns[variables[v].n_assigns++] = ctx->defines[d]->rightptr->domain_plan;
+	}
+    }
+  plan->session_variables = variables;
+  plan->n_session_variables = n_variables;
+  return true;
 }
 
 /* Whether a record reads an aggregate that finalizes to DOUBLE whatever its function domain says: AVG, STDDEV* and
@@ -3648,8 +3805,8 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	    }
 	  if (r->cold.opcode == T_EVALUATE_VARIABLE)
 	    {
-	      /* a session variable read is its own source: a decision above it holds while no read it depends on has
-	       * left the gate's decision (D-336-E, #340) */
+	      /* a session variable read is its own source: the decisions above it wait for G1 step 7b, where the
+	       * variable gets its type for the statement (#366) */
 	      reads = n_reads < 63 ? 1ULL << n_reads : 1ULL << 63;
 	      n_reads++;
 	    }
@@ -3680,6 +3837,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  domain_publish_item_copies (&ctx, plan);
 	  /* before the comparisons, whose sites wait for the nodes that wait (#364) */
 	  domain_publish_gate_waits (plan, constant_base);
+	  ctx.failed = !domain_publish_session_variables (thread_p, &ctx, plan);
 	}
       ctx.failed = ctx.failed || !domain_publish_compares (thread_p, &ctx, plan, constant_base)
 	|| !domain_publish_indexes (thread_p, &ctx, plan);
@@ -3691,6 +3849,10 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   if (ctx.indexes != NULL)
     {
       db_private_free (thread_p, ctx.indexes);
+    }
+  if (ctx.defines != NULL)
+    {
+      db_private_free (thread_p, ctx.defines);
     }
   if (ctx.compare_terms != NULL)
     {

@@ -352,7 +352,7 @@ enum SCAN_KEY_CHOICE
 {
   SCAN_KEY_COLUMN,		/* the index column's */
   SCAN_KEY_PLANNED,		/* the plan's other domain for the column: the element's own, or the gate's decision */
-  SCAN_KEY_VALUE		/* the value's, develop's rule on it (D-336-E, D-352-05): never reused */
+  SCAN_KEY_VALUE		/* the value's, develop's rule on it (a constant the row computes, D-352-05): never reused */
 };
 
 /* The search keys of an index scan whose plan keeps nothing for them: its values compare with the index as they are. */
@@ -2087,9 +2087,8 @@ scan_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const D
 #endif /* !NDEBUG */
 
 /*
- * scan_key_column_by_value () - develop's rule for a key column, from its value (#342): a session variable read that
- *   left the gate's decision (D-336-E), a constant the row computes (D-352-05); counted, and the scan's comparisons
- *   then keep develop's for keys the table does not hold
+ * scan_key_column_by_value () - develop's rule for a key column, from its value (#342): a constant the row computes
+ *   (D-352-05); counted, and the scan's comparisons then keep develop's for keys the table does not hold
  */
 static int
 scan_key_column_by_value (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const TP_DOMAIN * column, int column_index,
@@ -2160,9 +2159,14 @@ scan_key_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const domain_pla
 	   * the gate decides every string (#343) */
 	  return scan_key_plan_unresolved (column);
 	}
-      if (rule == DOMAIN_KEY_CONSTANT || !scan_key_value_holds (*value, decision->keep_elem))
+      if (rule == DOMAIN_KEY_CONSTANT)
 	{
 	  return scan_key_column_by_value (thread_p, isidp, column, column_index, value, domain, choice, kept);
+	}
+      if (!scan_key_value_holds (*value, decision->keep_elem))
+	{
+	  /* a value of another type than the gate's decision: none, a session variable read included (#366) */
+	  return scan_key_plan_unresolved (decision->keep_elem);
 	}
       rule = decision->rule;
       keep = decision->keep_elem;
@@ -2503,8 +2507,8 @@ err_exit:
 /*
  * scan_key_single_column () - a single-column search key at a range (#342): the value as it is (#321 section 4.2); the
  *   B-tree compares it with the index through the key comparison table, which the gate built for the key the element's
- *   decision gives. A value that left that decision - a session variable read (D-336-E) - or a constant the row
- *   computes (D-352-05) makes the scan's comparisons develop's where the table has none, counted.
+ *   decision gives. A constant the row computes (D-352-05) makes the scan's comparisons develop's where the table has
+ *   none, counted.
  *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the execution boundary (b)) for a value of an element the gate
  *	     derived no rule for: the gate decides every string (#343)
  */
@@ -2527,10 +2531,17 @@ scan_key_single_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, int bound
       return scan_key_plan_unresolved (elem->index_elem);
     }
   const TP_DOMAIN *decided = elem->rule == DOMAIN_KEY_CONSTANT ? decision->domain : decision->keep_elem;
-  if (decided == NULL || !scan_key_value_holds (value, decided))
+  if (decided == NULL)
     {
+      /* a constant the row computes (D-352-05) */
       perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
       isidp->key_state->search_keys.values_decide = true;
+      return NO_ERROR;
+    }
+  if (!scan_key_value_holds (value, decided))
+    {
+      /* a value of another type than the gate's decision: none, a session variable read included (#366) */
+      return scan_key_plan_unresolved (decided);
     }
   return NO_ERROR;
 }
@@ -8433,9 +8444,7 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEY
  *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b))
  *
  * A list position reads its list's column and a value pointer its producer: the gate decided both once for the
- * execution. A position over a column the row types - a session variable read that left the gate's decision
- * (D-336-E) - reads what the list's first tuples typed; a value pointer of that kind is read by fetch from its value
- * (#340).
+ * execution, a column over a session variable read too (#366).
  */
 static int
 scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
@@ -8456,17 +8465,7 @@ scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIS
 	    {
 	      continue;
 	    }
-	  bool row_reads;
-	  const TP_DOMAIN *planned = qexec_consumer_domain (vd, NULL, scan_regu->value.domain_plan, false, &row_reads);
-	  if (planned == NULL && row_reads && llsidp->list_id != NULL
-	      && pos_descr->pos_no < llsidp->list_id->type_list.type_cnt)
-	    {
-	      if (qexec_row_domain_counts (vd, scan_regu->value.domain_plan))
-		{
-		  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-		}
-	      planned = llsidp->list_id->type_list.domp[pos_descr->pos_no];
-	    }
+	  const TP_DOMAIN *planned = qexec_consumer_domain (vd, NULL, scan_regu->value.domain_plan);
 	  if (planned == NULL)
 	    {
 	      return qexec_domain_unresolved (vd, scan_regu->value.domain_plan, pos_descr->dom);
@@ -8492,8 +8491,7 @@ scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIS
 	      /* a fixed domain is its own plan */
 	      continue;
 	    }
-	  bool row_reads;
-	  const TP_DOMAIN *planned = qexec_consumer_domain (vd, NULL, operand->domain_plan, false, &row_reads);
+	  const TP_DOMAIN *planned = qexec_consumer_domain (vd, NULL, operand->domain_plan);
 	  if (planned != NULL)
 	    {
 	      qexec_take_domain (vd, operand->domain_plan, operand->type == TYPE_POSITION ? NULL : operand->domain,

@@ -127,15 +127,6 @@ RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
   return &resolved.table[item->slot];
 }
 
-/* Whether a decision still holds for this execution: none of the session variable reads it depends on has left the
- * gate's decision within the statement (D-336-E). A read's first value, or any later one, that leaves it marks the
- * read; a decision above it is then not taken where develop still binds from the first value (#340). */
-inline bool
-RESOLVED_VOLATILE_HOLDS (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
-{
-  return (resolved.plan->slot_volatile_reads[item->slot] & resolved.changed_reads) == 0;
-}
-
 /* The index of a node's cell in this execution's state, or -1 when it has none here: an item without a cell, a node
  * of another tree, a descriptor without gate state. A PX worker's copy reads the cells of its own load's items, which
  * number them as the plan does (#355, D-355-01, D-355-07). The descriptor comes first: a temporary regu fetched
@@ -212,7 +203,7 @@ qexec_position_open (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
  *   compiled(in): the node's domain field; a node without a cell keeps it, and then takes nothing else
  *   domain(in): the domain; NULL takes the compiled one back
  *
- * Only the execution's owner thread writes its cells, as it writes changed_reads.
+ * Only the execution's owner thread writes its cells.
  */
 inline void
 qexec_take_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled,
@@ -281,13 +272,9 @@ qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB
 extern const TP_DOMAIN *qexec_gate_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind);
 extern const TP_DOMAIN *qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind);
 extern const TP_DOMAIN *qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled,
-					       const DOMAIN_PLAN_ITEM * item, bool before_rows, bool * row_reads);
-extern bool qexec_row_domain_counts (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);
-extern bool qexec_interpolation_class_holds (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, int function,
-					     const DB_VALUE * value, const TP_DOMAIN * decided);
+					       const DOMAIN_PLAN_ITEM * item);
 extern int qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled);
-extern int qexec_type_open_list_columns (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
-					 valptr_list_node * outptr_list, const VAL_DESCR * vd);
+extern int qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other);
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr, QUERY_ID query_id);

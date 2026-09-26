@@ -445,7 +445,6 @@ struct qfile_list_id
   VFID temp_vfid;		/* temp file id; duplicated from tfile_vfid */
   struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
-  bool is_domain_resolved;	/* domains for host var is resolved or not */
   bool is_result_cached;	/* for subquery result cache */
   QFILE_LIST_ID *dependent_list_id;	/* Linked as dependent by qfile_connect_list; cleared together. */
 };
@@ -479,7 +478,6 @@ struct qfile_list_id
       (list_id)->tpl_descr.tplrec1 = NULL; \
       (list_id)->tpl_descr.tplrec2 = NULL; \
       (list_id)->tpl_descr.merge_info = NULL; \
-      (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
       (list_id)->dependent_list_id = NULL; \
     } \

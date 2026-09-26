@@ -520,10 +520,8 @@ enum hash_scan_key_rule
   HASH_SCAN_KEY_COERCE,		/* tp_value_coerce brings each value into the probe key's domain: a JSON value, which
 				 * its scalar converts, or a string domain whose collation is the values' (LEAVE,
 				 * ENFORCE) */
-  HASH_SCAN_KEY_FAIL,		/* the probe key's domain is open (a node not computed yet in this execution):
+  HASH_SCAN_KEY_FAIL		/* the probe key's domain is open (a node not computed yet in this execution):
 				 * develop's coercion into it refuses every value (ER_TP_CANT_COERCE) */
-  HASH_SCAN_KEY_ROW		/* a key over a session variable read, whose type may change within the statement
-				 * (D-336-E): each row compares its value's type as develop did, counted */
 };
 
 typedef struct hash_scan_key_entry HASH_SCAN_KEY_ENTRY;
@@ -543,19 +541,17 @@ struct hash_scan_key_plan
 
 /*
  * qdata_hscan_key_value_domain () - the domain of the values a build key gives in this open (#356)
- *   return: the domain; NULL when the row gives it (*row_reads) or the plan has no answer (the boundary (b))
+ *   return: the domain; NULL when the plan has no answer (the boundary (b))
  *   key(in): the build key
  *   producers(in): the scan's predicate regus: the list positions the build reads before it builds a key
  *
  * A value pointer holds what the position that writes it read, under the domain the list scan gave that position
- * (scan_plan_list_scan_domains: the gate's decision, a load-fixed domain, or the list's own type for a column the row
- * types). Any other key gives the domain the plan gives it; a key over a session variable read leaves it to the row.
+ * (scan_plan_list_scan_domains: the gate's decision or a load-fixed domain). Any other key gives the domain the plan
+ * gives it, a key over a session variable read too (#366).
  */
 static const TP_DOMAIN *
-qdata_hscan_key_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key, REGU_VARIABLE_LIST producers,
-			      bool * row_reads)
+qdata_hscan_key_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key, REGU_VARIABLE_LIST producers)
 {
-  *row_reads = false;
   if (key->type == TYPE_CONSTANT)
     {
       for (REGU_VARIABLE_LIST producer = producers; producer != NULL; producer = producer->next)
@@ -567,8 +563,7 @@ qdata_hscan_key_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key, R
 	    }
 	}
     }
-  return qexec_consumer_domain (vd, qexec_node_domain (vd, key->domain, key->domain_plan), key->domain_plan, true,
-				row_reads);
+  return qexec_consumer_domain (vd, qexec_node_domain (vd, key->domain, key->domain_plan), key->domain_plan);
 }
 
 /*
@@ -621,15 +616,9 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
 	  key->rule = HASH_SCAN_KEY_FAIL;
 	  continue;
 	}
-      bool row_reads;
-      const TP_DOMAIN *values = qdata_hscan_key_value_domain (vd, &build->value, producers, &row_reads);
+      const TP_DOMAIN *values = qdata_hscan_key_value_domain (vd, &build->value, producers);
       if (values == NULL)
 	{
-	  if (row_reads)
-	    {
-	      key->rule = HASH_SCAN_KEY_ROW;
-	      continue;
-	    }
 	  return qexec_domain_unresolved (vd, build->value.domain_plan, build->value.domain);
 	}
       key->source = TP_DOMAIN_TYPE (values);
@@ -706,20 +695,10 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 	{
 	  const HASH_SCAN_KEY_ENTRY *entry = &plan->key[i];
 	  const DB_VALUE *value = key->values[i];
-	  unsigned char rule = DB_IS_NULL (value) ? (unsigned char) HASH_SCAN_KEY_COPY : entry->rule;
-	  if (rule == HASH_SCAN_KEY_ROW)
-	    {
-	      /* D-336-E: develop's comparison of the value's type */
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
-	      rule = DB_VALUE_DOMAIN_TYPE (value) == TP_DOMAIN_TYPE (entry->target) ? HASH_SCAN_KEY_COPY
-		: HASH_SCAN_KEY_COERCE;
-	    }
-	  else
-	    {
-	      /* the plan's type is the value's (NULL aside) */
-	      assert (DB_IS_NULL (value) || entry->rule == HASH_SCAN_KEY_FAIL
-		      || DB_VALUE_DOMAIN_TYPE (value) == entry->source);
-	    }
+	  const unsigned char rule = DB_IS_NULL (value) ? (unsigned char) HASH_SCAN_KEY_COPY : entry->rule;
+	  /* the plan's type is the value's (NULL aside) */
+	  assert (DB_IS_NULL (value) || entry->rule == HASH_SCAN_KEY_FAIL
+		  || DB_VALUE_DOMAIN_TYPE (value) == entry->source);
 	  pr_clear_value (new_key->values[i]);
 	  TP_DOMAIN_STATUS status;
 	  switch (rule)

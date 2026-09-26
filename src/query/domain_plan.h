@@ -58,7 +58,8 @@ enum DOMAIN_PLAN_FLAGS
  * decision from these sources is not always the domain develop's first value would give. */
 enum DOMAIN_SLOT_FLAGS
 {
-  DOMAIN_SLOT_VOLATILE = 0x08	/* a session variable read: its type may change within the statement (D-336-E) */
+  DOMAIN_SLOT_VOLATILE = 0x08	/* a source develop's fetch never caches, a session variable read among them: a
+				 * decision over a read waits for G1 step 7b (slot_volatile_reads, #366) */
 };
 
 struct DOMAIN_COMPARE_PLAN;
@@ -178,6 +179,18 @@ struct DOMAIN_ELEMENTS
   unsigned char read;		/* DOMAIN_ELEMENTS_READ */
 };
 
+/* A session variable the statement reads (#366, D-366-01): its reads and the values its assignments store. The gate
+ * gives it one type per execution, from the value it holds when the execution starts and those assignments. */
+struct DOMAIN_SESSION_VARIABLE
+{
+  const DB_VALUE *name;
+  int *reads;			/* [n_reads] the gate_nodes indices of its reads (T_EVALUATE_VARIABLE) */
+  const DOMAIN_PLAN_ITEM **assigns;	/* [n_assigns] the items of the values its assignments store
+					 * (T_DEFINE_VARIABLE's value operand) */
+  int n_reads;
+  int n_assigns;
+};
+
 /* A constant subtree the gate evaluates once before the main block (interface §10): its item holds the value's
  * resolved.vals index (ref), and the regu is what the gate fetches (#352). */
 struct DOMAIN_PLAN_CONSTANT
@@ -271,7 +284,8 @@ struct domain_plan
   int *slot_gate_node;		/* [n_slots] the gate_nodes index deciding the slot; -1 for a bind slot (#337) */
   unsigned char *slot_flags;	/* [n_slots] DOMAIN_SLOT_FLAGS of the decision's sources (#337) */
   unsigned long long *slot_volatile_reads;	/* [n_slots] the session variable reads a decision depends on: bit i is the
-						 * i-th read, the last bit every read past it (#340) */
+						 * i-th read, the last bit every read past it (#340); G1 step 7b decides
+						 * a decision with any (#366) */
   int n_const_refs;
   DOMAIN_PLAN_ITEM **const_refs;
   int n_volatile;
@@ -287,6 +301,8 @@ struct domain_plan
   DOMAIN_ELEMENT_COMPARE_PLAN **element_sites;	/* the ALL/SOME terms the gate decides, in resolved.elements order
 						 * (#352) */
   int n_cells;			/* the items with a cell (#355) */
+  int n_session_variables;
+  DOMAIN_SESSION_VARIABLE *session_variables;	/* the session variables the statement reads (#366) */
 };
 
 struct RESOLVED_DOMAIN_TABLE
@@ -300,8 +316,6 @@ struct RESOLVED_DOMAIN_TABLE
   bool sealed;
   bool inherited;		/* a PX worker's copy (qexec_deep_copy_xasl_state): the worker's own load of the same stream
 				 * numbers its items and slots as the plan does (D-318-06, #340) */
-  unsigned long long changed_reads;	/* the session variable reads whose value left the gate's decision within the
-					 * execution (D-336-E): a decision that depends on one is not taken (#340) */
   DOMAIN_COMPARE *compares;	/* [plan->n_compares] this execution's comparison decisions (#352) */
   DOMAIN_ELEMENTS *elements;	/* [plan->n_element_sites] this execution's ALL/SOME decisions; their arrays are the
 				 * owner's (#352) */
@@ -310,9 +324,8 @@ struct RESOLVED_DOMAIN_TABLE
 					 * the owner's (#342) */
   int n_indexes;
   /* [n_cells] the domain each node with a cell took in this execution, where develop wrote it into the plan node and
-   * the XASL clear restored it: a gate decision read at the node's first computation or at its consumer's setup, or
-   * a value's domain where the plan hands it to the row (D-336-E); NULL until taken. Only the owner writes them, as
-   * changed_reads (#355, D-355-01). */
+   * the XASL clear restored it: a gate decision read at the node's first computation or at its consumer's setup;
+   * NULL until taken. Only the owner writes them (#355, D-355-01). */
   const TP_DOMAIN **taken;
   const TP_DOMAIN **taken_list;	/* [n_cells] the domain a MEDIAN / PERCENTILE list holds and its key sorts
 				 * (qexec_setup_interpolation_list); NULL */

@@ -1671,7 +1671,8 @@ domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE
     }
   if (keys != NULL && keys->values_decide)
     {
-      /* a column took develop's rule from its value in this scan (D-336-E): develop's comparison, counted */
+      /* a column took develop's rule from its value in this scan (a constant the row computes, D-352-05): develop's
+       * comparison, counted */
       perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }

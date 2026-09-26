@@ -1492,7 +1492,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
-1384 Last Error
+1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
+
+1385 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

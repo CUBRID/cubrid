@@ -115,8 +115,8 @@ struct DOMAIN_COMPARE_KEY
 enum DOMAIN_COMPARE_KERNEL
 {
   DOMAIN_COMPARE_AT_GATE,	/* a plan record the gate decides: this execution's decision is resolved.compares[site] */
-  DOMAIN_COMPARE_AT_GATE_VOLATILE,	/* likewise, over a session variable read: develop's value comparison once a
-					 * read it depends on left the gate's decision (D-336-E) */
+  DOMAIN_COMPARE_AT_GATE_VOLATILE,	/* likewise, over a session variable read: the gate decides it once the variable
+					 * has its type for the statement (G1 step 7b, #366) */
   DOMAIN_COMPARE_VALUES,	/* develop's value comparison, for the record's reason (DOMAIN_COMPARE_REASON) */
   DOMAIN_COMPARE_DIRECT,	/* comparable as they are: cmpval under the planned collation */
   DOMAIN_COMPARE_CONVERT,	/* the planned converters in develop's order, then cmpval */
@@ -129,18 +129,16 @@ enum DOMAIN_COMPARE_KERNEL
 };
 
 /*
- * Why a comparison keeps develop's comparison of the values (kernel DOMAIN_COMPARE_VALUES, #352). Up to
- * DOMAIN_REASON_UNPLANNED the execution boundary (b) holds: develop may not decide anything from the values there;
- * DOMAIN_REASON_VOLATILE is the map's one exception, which keeps develop's comparison, counted. The gate leaves no side
- * undecided (#343), and a predicate stream's load plans its comparisons too (#354).
+ * Why a comparison keeps develop's comparison of the values (kernel DOMAIN_COMPARE_VALUES, #352). The execution
+ * boundary (b) holds for every reason: develop may not decide anything from the values there (#366: no exception is
+ * left). The gate leaves no side undecided (#343), and a predicate stream's load plans its comparisons too (#354).
  */
 enum DOMAIN_COMPARE_REASON
 {
   DOMAIN_REASON_NULL,		/* a side whose values are NULL: develop answers before it decides anything */
   DOMAIN_REASON_OPEN,		/* a side the plan leaves open */
-  DOMAIN_REASON_UNPLANNED,	/* a comparison the load gave no record, a gate decision read without the gate's
+  DOMAIN_REASON_UNPLANNED	/* a comparison the load gave no record, a gate decision read without the gate's
 				 * state, an element whose key the plan does not hold */
-  DOMAIN_REASON_VOLATILE	/* a session variable read that left the gate's decision (D-336-E) */
 };
 
 /*
@@ -307,8 +305,8 @@ bool domain_key_compares_as_is (const DOMAIN_COMPARE_KEY * a, const DOMAIN_COMPA
 /*
  * DOMAIN_SEARCH_KEYS - what an index scan's comparisons of its search key values read (#342): the scan's key
  *   comparison table (NULL: none planned), and whether a key column took develop's rule from its value in this scan
- *   (a session variable read that left the gate's decision, D-336-E) - its comparisons then keep develop's, counted.
- *   A B-tree search outside a query plan has none.
+ *   (a constant the row computes, D-352-05) - its comparisons then keep develop's, counted. A B-tree search outside a
+ *   query plan has none.
  */
 struct DOMAIN_SEARCH_KEYS
 {
