@@ -41,6 +41,7 @@
 #include "log_append.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "perf_monitor.h"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
@@ -4506,6 +4507,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
+	  subkey->cmp_dom_volatile = false;
+	  subkey->cmp_dom_confirmed = false;
 
 	  /* #341 (S-16): the key's domain is the plan's (a key the row types, D-336-E, took its column's once a value
 	   * resolved it; a key no value resolved compares only NULLs) */
@@ -4535,6 +4538,8 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
+	  subkey->cmp_dom_volatile = false;
+	  subkey->cmp_dom_confirmed = false;
 	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
@@ -7239,6 +7244,43 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
   return NO_ERROR;
 }
 
+#if !defined (NDEBUG)
+/*
+ * qfile_check_interpolation_class () - shadow check (optdebug, #362): the class the analytic setup gave the key before
+ *   the sort is the one develop's first value gave it, unless that class rejects the value (a string column or
+ *   expression is DOUBLE, D-335-10: the function's evaluation rejects the value too); a key without a class holds values
+ *   develop could not classify either
+ */
+static void
+qfile_check_interpolation_class (DB_VALUE * value, const TP_DOMAIN * planned)
+{
+  DB_VALUE converted;
+  TP_DOMAIN *develop = NULL;
+  bool planned_rejects = true;
+
+  db_make_null (&converted);
+  er_stack_push ();
+  const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &develop);
+  pr_clear_value (&converted);
+  if (planned != NULL)
+    {
+      planned_rejects = tp_value_cast (value, &converted, (TP_DOMAIN *) planned, false) != DOMAIN_COMPATIBLE;
+      pr_clear_value (&converted);
+    }
+  er_stack_pop ();
+
+  const bool same = planned == NULL ? error != NO_ERROR
+    : planned_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (develop) == TP_DOMAIN_TYPE (planned));
+  if (!same)
+    {
+      fprintf (stderr, "interpolation sort key class: value type %d planned %d develop %d error %d\n",
+	       (int) DB_VALUE_DOMAIN_TYPE (value), planned != NULL ? (int) TP_DOMAIN_TYPE (planned) : -1,
+	       develop != NULL ? (int) TP_DOMAIN_TYPE (develop) : -1, error);
+    }
+  assert (same);
+}
+#endif
+
 /*
  * qfile_compare_with_interpolation_domain () -
  *  return: compare result
@@ -7247,6 +7289,10 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
  *  subkey(in):
  *
  *  NOTE: median analytic function sort string in different domain
+ *
+ *  #362: the analytic setup gives the key its class before the sort (qexec_plan_interpolation_sort_key), so the workers
+ *  of a parallel sort, which share the key, only read it. Only a class over a session variable read is left to the
+ *  first pair of values (D-336-E), which writes the key as develop's first pair did.
  */
 static int
 qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * subkey, SORTKEY_INFO * key_info)
@@ -7267,9 +7313,9 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
   d0 = fp0 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
   d1 = fp1 + QFILE_TUPLE_VALUE_HEADER_LENGTH;
 
-  if (subkey->cmp_dom == NULL)
+  if (subkey->cmp_dom == NULL || (subkey->cmp_dom_volatile && !subkey->cmp_dom_confirmed))
     {
-      /* get the proper domain NOTE: col_dom is string type.  See qexec_initialize_analytic_state */
+      /* NOTE: col_dom is string type.  See qexec_plan_interpolation_sort_key */
       pr_clear_value (&val0);
 
       or_init (&buf0, d0, QFILE_GET_TUPLE_VALUE_LENGTH (fp0));
@@ -7281,16 +7327,31 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
 	  goto end;
 	}
 
+      if (!subkey->cmp_dom_volatile)
+	{
+	  /* a value argument the gate could not classify (D-328-06): every value is that one, whose classification
+	   * failed for develop's first value too */
+#if !defined (NDEBUG)
+	  qfile_check_interpolation_class (&val0, NULL);
+#endif
+	  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	  goto end;
+	}
+
+      /* D-336-E: the statement may have changed the session variable before any row read it. The first pair confirms
+       * the gate's class, or takes develop's class of its first value (counted); a value no class takes leaves the next
+       * pair to try, as develop's did. */
       error = qdata_update_interpolation_func_value_and_domain (&val0, &val0, &cast_domain);
       if (error != NO_ERROR)
 	{
-	  subkey->cmp_dom = NULL;
 	  goto end;
 	}
-      else
+      if (subkey->cmp_dom == NULL || TP_DOMAIN_TYPE (subkey->cmp_dom) != TP_DOMAIN_TYPE (cast_domain))
 	{
+	  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_RESOLVE_LIST);
 	  subkey->cmp_dom = cast_domain;
 	}
+      subkey->cmp_dom_confirmed = true;
     }
 
   /* cast to proper domain, then compare */
@@ -7314,6 +7375,14 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
     {
       goto end;
     }
+
+#if !defined (NDEBUG)
+  if (!subkey->cmp_dom_volatile)
+    {
+      qfile_check_interpolation_class (&val0, subkey->cmp_dom);
+      qfile_check_interpolation_class (&val1, subkey->cmp_dom);
+    }
+#endif
 
   cast_domain = subkey->cmp_dom;
   status = tp_value_cast (&val0, &val0, cast_domain, false);

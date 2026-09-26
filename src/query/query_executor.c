@@ -490,6 +490,8 @@ static int qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * 
 static int qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
 						     ANALYTIC_TYPE * func_p, XASL_STATE * xasl_state,
 						     bool is_skip_sort);
+static void qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list,
+					       const VAL_DESCR * vd);
 static ANALYTIC_STATE *qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
 							ANALYTIC_TYPE * a_func_list, SORT_LIST * sort_list,
 							REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
@@ -25158,6 +25160,56 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 }
 
 /*
+ * qexec_plan_interpolation_sort_key () - the class the analytic sort compares the interpolation functions' string operand
+ *   in, decided before the sort (#362)
+ *   analytic_state(in/out): the state whose sort keys it sets up
+ *   a_func_list(in): the state's functions
+ *   vd(in): the execution's value descriptor
+ *
+ * MEDIAN and PERCENTILE sort their operand after their PARTITION BY keys, one key the interpolation functions of a state
+ * share (pt_metadomains_compatible). A string operand sorts in the function's class, the type its values interpolate
+ * in: the compiled function domain (D-335-10: a string column or expression is DOUBLE), or the gate's decision - the
+ * class it gave a value argument (D-328-06), DOUBLE for a gate-dependent string (D-335-10). develop took the class from
+ * the first pair of values the sort compared (qfile_compare_with_interpolation_domain). A value argument the gate could
+ * not classify has no class, and the sort rejects its values as develop's first value was rejected. A class over a
+ * session variable read the statement can leave before any row reads the variable, so the sort's first pair confirms it
+ * or gives develop's class of its first value (D-336-E). Any other key of the state - another function's ORDER BY that
+ * shares the sort - compares in its own domain (D-362-01, a user decision): develop gave it the first value's class.
+ */
+static void
+qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list, const VAL_DESCR * vd)
+{
+  for (ANALYTIC_TYPE * func_p = a_func_list; func_p != NULL; func_p = func_p->next)
+    {
+      if (!QPROC_IS_INTERPOLATION_FUNC (func_p) || func_p->sort_list_size <= func_p->sort_prefix_size)
+	{
+	  /* a constant operand is not sorted */
+	  continue;
+	}
+      if (func_p->sort_prefix_size >= analytic_state->key_info.nkeys)
+	{
+	  /* no sort keys to set up (develop's loop stopped at nkeys) */
+	  return;
+	}
+      SUBKEY_INFO *subkey = &analytic_state->key_info.key[func_p->sort_prefix_size];
+      if (!TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)))
+	{
+	  return;
+	}
+      const DOMAIN_PLAN_ITEM *item = func_p->domain_plan;
+      const TP_DOMAIN *fixed = item != NULL ? item->fixed.domain : NULL;
+      const TP_DOMAIN *decided = fixed != NULL && TP_DOMAIN_TYPE (fixed) != DB_TYPE_VARIABLE
+	? fixed : qexec_gate_domain (vd, item, false);
+      assert (decided == NULL || TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (decided))
+	      || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (decided)));
+      subkey->use_cmp_dom = true;
+      subkey->cmp_dom = decided != NULL ? tp_domain_resolve_default (TP_DOMAIN_TYPE (decided)) : NULL;
+      subkey->cmp_dom_volatile = qexec_reads_session_variable (vd, item);
+      return;
+    }
+}
+
+/*
  * qexec_initialize_analytic_state () -
  *   return:
  *   analytic_state(in) :
@@ -25180,7 +25232,6 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   REGU_VARIABLE_LIST regu_list = NULL;
   ANALYTIC_TYPE *func_p;
   bool has_interpolation_func = false;
-  SUBKEY_INFO *subkey = NULL;
   int i;
   int interpolation_func_sort_prefix_len = 0;
 
@@ -25284,29 +25335,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   /* set SUBKEY_INFO.cmp_dom */
   if (has_interpolation_func)
     {
-      /* D-335-10: a string operand the compiler typed (a column, an expression: DOUBLE) sorts in that domain; a
-       * string value the gate classifies (a bind) sorts in the domain the first pair of values gives, as today
-       * (qfile_compare_with_interpolation_domain). The functions of one state share the operand key. */
-      TP_DOMAIN *compiled_cmp_dom = NULL;
-      for (func_p = a_func_list; func_p != NULL && compiled_cmp_dom == NULL; func_p = func_p->next)
-	{
-	  if (QPROC_IS_INTERPOLATION_FUNC (func_p)
-	      && TP_IS_STRING_TYPE (qexec_node_operand_type (&xasl_state->vd, func_p->opr_dbtype, func_p->domain_plan))
-	      && func_p->domain_plan != NULL && func_p->domain_plan->fixed.domain != NULL
-	      && TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) != DB_TYPE_VARIABLE)
-	    {
-	      compiled_cmp_dom = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain));
-	    }
-	}
-      for (i = 0, subkey = analytic_state->key_info.key; i < analytic_state->key_info.nkeys && subkey != NULL;
-	   ++i, ++subkey)
-	{
-	  if (i >= interpolation_func_sort_prefix_len && TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)))
-	    {
-	      subkey->use_cmp_dom = true;
-	      subkey->cmp_dom = compiled_cmp_dom;
-	    }
-	}
+      qexec_plan_interpolation_sort_key (analytic_state, a_func_list, &xasl_state->vd);
     }
 
 resolve_domain:

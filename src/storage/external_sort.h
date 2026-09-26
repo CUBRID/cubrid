@@ -125,6 +125,10 @@ struct SUBKEY_INFO
   int is_nulls_first;
 
   bool use_cmp_dom;		/* when true, use cmp_dom to make comparing */
+
+  bool cmp_dom_volatile;	/* cmp_dom rests on a session variable read (D-336-E, #362): the first pair of values the
+				 * sort compares confirms it, or gives develop's class of the first value */
+  bool cmp_dom_confirmed;	/* that pair was compared */
 };
 
 struct SORTKEY_INFO
