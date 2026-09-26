@@ -26,6 +26,7 @@
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
 #include "heap_file.h"
+#include "heap_prepared_row.hpp"
 #include "load_common.hpp"
 #include "memory_private_allocator.hpp"
 
@@ -111,7 +112,9 @@ namespace cubload
       bool m_attrinfo_started;
       heap_cache_attrinfo m_attrinfo;
       std::vector<db_value> m_db_values;
-      std::vector<record_descriptor> m_recdes_collected;
+      std::vector<heap_prepared_row> m_recdes_collected;
+      std::size_t m_retained_bytes;
+      int m_pruning_type;
 
       bool m_scancache_started;
       heap_scancache m_scancache;
