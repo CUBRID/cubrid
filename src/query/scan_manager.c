@@ -4367,6 +4367,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.build_regu_list = regu_list_build;
   llsidp->hlsid.probe_regu_list = regu_list_probe;
   llsidp->hlsid.need_coerce_type = false;
+  llsidp->hlsid.key_plan = NULL;
 
   llsidp->is_read_only = is_read_only;
 
@@ -5756,6 +5757,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 #endif
       scan_free_hash_list_scan (thread_p, &llsidp->hlsid);
+      qdata_free_hscan_key_plan (thread_p, &llsidp->hlsid);
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
 	{
@@ -8946,6 +8948,12 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
       return S_ERROR;
     }
+  /* each build key's copy or conversion, from the domains the positions above now read (#356) */
+  if (llsidp->hlsid.need_coerce_type
+      && qdata_plan_hscan_keys (thread_p, scan_id->vd, &llsidp->hlsid, llsidp->scan_pred.regu_list) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
     {
@@ -8968,7 +8976,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* create new key */
       if (llsidp->hlsid.need_coerce_type)
 	{
-	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.probe_regu_list, new_key);
+	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.key_plan, new_key);
 	  if (new_key == NULL)
 	    {
 	      return S_ERROR;

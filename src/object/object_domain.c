@@ -26925,6 +26925,47 @@ domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain, DOM
   return domain_convert_table[mode][src_type][dst_type];
 }
 
+/*
+ * domain_lookup_coerce_converter () - the cell tp_value_coerce (TP_IMPLICIT_COERCION) runs on a value of src_type
+ *   brought into desired_domain, a domain of another type (#356): the incompatible cell for a pair implicit coercion
+ *   refuses, the implicit cell of a collection pair (set_coerce converts the elements implicitly), the ASSIGN cell
+ *   otherwise. A JSON value is not covered: tp_value_cast_internal checks the pair after it replaced the value by its
+ *   scalar.
+ */
+DOMAIN_CONVERTER
+domain_lookup_coerce_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain)
+{
+  if (desired_domain == nullptr)
+    {
+      return tp_value_convert_incompatible;
+    }
+  const DB_TYPE dst_type = TP_DOMAIN_TYPE (desired_domain);
+  if (TP_IMPLICIT_COERCION_NOT_ALLOWED (src_type, dst_type))
+    {
+      return tp_value_convert_incompatible;
+    }
+  static const DB_TYPE collections[] = { DB_TYPE_SET, DB_TYPE_MULTISET, DB_TYPE_SEQUENCE };
+  static const DOMAIN_CONVERTER implicit[3][3] = {
+    {tp_value_convert_set_to_set_implicit, tp_value_convert_set_to_multiset_implicit,
+     tp_value_convert_set_to_sequence_implicit},
+    {tp_value_convert_multiset_to_set_implicit, tp_value_convert_multiset_to_multiset_implicit,
+     tp_value_convert_multiset_to_sequence_implicit},
+    {tp_value_convert_sequence_to_set_implicit, tp_value_convert_sequence_to_multiset_implicit,
+     tp_value_convert_sequence_to_sequence_implicit}
+  };
+  for (int src = 0; src < 3; src++)
+    {
+      for (int dst = 0; dst < 3; dst++)
+	{
+	  if (src_type == collections[src] && dst_type == collections[dst])
+	    {
+	      return implicit[src][dst];
+	    }
+	}
+    }
+  return domain_lookup_converter (src_type, desired_domain, DOMAIN_CONVERT_ASSIGN);
+}
+
 const char *
 domain_converter_name (DOMAIN_CONVERTER converter)
 {

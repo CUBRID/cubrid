@@ -62,6 +62,9 @@ typedef enum tp_compare_coercion
 TP_COMPARE_COERCION tp_value_compare_common_domain (DB_TYPE type1, DB_TYPE type2);
 
 DOMAIN_CONVERTER domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMAIN_CONVERT_MODE mode);
+/* the cell tp_value_coerce runs on a value of src_type brought into a domain of another type, a JSON value excepted
+ * (#356) */
+DOMAIN_CONVERTER domain_lookup_coerce_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain);
 /* ENUM -> its name -> DOUBLE, ASSIGN: the ENUM operand of ENUM + string without plus_as_concat (D-335-05) */
 DOMAIN_CONVERTER domain_enumeration_name_converter (void);
 const char *domain_converter_name (DOMAIN_CONVERTER converter);
