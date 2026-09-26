@@ -106,6 +106,9 @@ struct DOMAIN_GATE_LINK
   int n_operands;
   bool elt_index;		/* ELT: operands[0] is the index, a bind or a literal whose value picks the branch; the
 				 * other operands are the branches in order (D-343-01) */
+  bool after_constants;		/* the gate decides the node in step 7, once the constant subtrees it reads were
+				 * evaluated: a common value folds a constant operand's value domain as develop does,
+				 * and a node above one reads its decision (#364) */
   const TP_DOMAIN *elt_index_cast;	/* ELT: the domain the compiler casts that index to (BIGINT for an index of
 					 * another type, func_type.cpp); NULL: the index as it is */
 };

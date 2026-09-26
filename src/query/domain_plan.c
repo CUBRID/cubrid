@@ -2329,6 +2329,37 @@ domain_publish_constants (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
   return true;
 }
 
+/* Whether the gate decides a slot only in G1 step 7 (#364): the slot of a node that waits for constant subtrees. */
+static bool
+domain_slot_after_constants (const DOMAIN_PLAN * plan, int slot)
+{
+  const int producer = plan->slot_gate_node[slot];
+  return producer >= 0 && plan->gate_links[producer].after_constants;
+}
+
+/*
+ * domain_publish_gate_waits () - the gate-dependent nodes the gate decides only once the constant subtrees they read
+ *   were evaluated (#364): a common value folds its operands' value domains (develop's S-04), and a constant subtree's
+ *   value is known only in G1 step 7 - a NULL without a type drops out of the fold, which its compiled domain does not
+ *   tell. A node above such a node reads its decision, so it waits too (producers come first).
+ */
+static void
+domain_publish_gate_waits (DOMAIN_PLAN * plan, int constant_base)
+{
+  for (int g = 0; g < plan->n_gate_nodes; g++)
+    {
+      DOMAIN_GATE_LINK *link = &plan->gate_links[g];
+      const bool common_value = plan->items_cold[plan->gate_nodes[g] - plan->items].ctx == DOMAIN_CTX_COMMON_VALUE;
+      for (int i = 0; i < link->n_operands && !link->after_constants; i++)
+	{
+	  /* a constant subtree's reference follows every bind's (domain_publish_constants) */
+	  const DOMAIN_PLAN_ITEM *operand = link->operands[i];
+	  link->after_constants = (common_value && operand->ref >= constant_base)
+	    || (operand->slot >= 0 && domain_slot_after_constants (plan, operand->slot));
+	}
+    }
+}
+
 /* Whether a record reads an aggregate that finalizes to DOUBLE whatever its function domain says: AVG, STDDEV* and
  * VAR* (qdata_finalize_aggregate_list), whose function domain over a late-bound argument is the argument's, as develop
  * binds it (F-352-16). Through value pointers and list positions to the producer. */
@@ -2442,6 +2473,8 @@ domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *recor
 	{
 	  *volatile_reads |= plan->slot_volatile_reads[item->slot];
 	}
+      /* a node the gate decides in step 7: the site waits for its decision (#364) */
+      site->after_constants = site->after_constants || domain_slot_after_constants (plan, item->slot);
       return DOMAIN_SIDE_AT_GATE;
     }
   const TP_DOMAIN *domain = item != NULL ? item->fixed.domain : regu->domain;
@@ -2545,6 +2578,7 @@ domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const
 	{
 	  *volatile_reads |= plan->slot_volatile_reads[column->slot];
 	}
+      site->after_constants = site->after_constants || domain_slot_after_constants (plan, column->slot);
       return DOMAIN_SIDE_AT_GATE;
     }
   if (!domain_fixes_values (column->fixed.domain))
@@ -3644,6 +3678,8 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
       if (!ctx.failed)
 	{
 	  domain_publish_item_copies (&ctx, plan);
+	  /* before the comparisons, whose sites wait for the nodes that wait (#364) */
+	  domain_publish_gate_waits (plan, constant_base);
 	}
       ctx.failed = ctx.failed || !domain_publish_compares (thread_p, &ctx, plan, constant_base)
 	|| !domain_publish_indexes (thread_p, &ctx, plan);

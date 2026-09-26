@@ -3936,7 +3936,10 @@ qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE ty
  * value for a NULL operand before it looks at the types, so a NULL the gate can see is DB_TYPE_NULL there. A value
  * the resolver classifies (an interpolation argument, the ADDTIME left string, the STR_TO_DATE format) gives its
  * class - a session variable read's value included, which the gate reads as its read node does (D-335-10, #340); a
- * string without a value keeps its string type and the resolver types it statically (D-335-10).
+ * string without a value keeps its string type and the resolver types it statically (D-335-10). A common value folds
+ * its operands' value domains as develop does (S-04): a constant subtree the gate evaluated in step 7 gives its value's
+ * type there, so a NULL without a type drops out of the fold; a subtree whose evaluation was left to the row gives its
+ * plan domain (#364, D-352-05).
  */
 static bool
 qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved,
@@ -3946,6 +3949,11 @@ qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RES
   const int val_pos = plan->items_cold[item - plan->items].val_pos;
   const DB_VALUE *value = val_pos >= 0 ? &resolved.in[val_pos] : link->literal[arg_index];
   const DB_VALUE *session_name = NULL;
+  if (value == NULL && context == DOMAIN_CTX_COMMON_VALUE && item->ref >= 0 && resolved.ready[item->ref])
+    {
+      /* the node waited for this constant subtree (DOMAIN_GATE_LINK.after_constants) */
+      value = &resolved.vals[item->ref];
+    }
 
   *operand = DOMAIN_OPERAND
   {
@@ -4245,6 +4253,22 @@ qexec_resolve_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const 
       db_private_free (thread_p, operands);
     }
   return error;
+}
+
+/*
+ * qexec_resolve_waiting_gate_node () - G1 step 7 for a gate-dependent node that waits for the constant subtrees it
+ *   reads (DOMAIN_GATE_LINK.after_constants, #364), once: a constant node just before its own evaluation - its
+ *   constant operands, nested, were evaluated before it - and any other node after the last constant
+ */
+static int
+qexec_resolve_waiting_gate_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan, int index,
+				 RESOLVED_DOMAIN_TABLE & resolved)
+{
+  if (!plan->gate_links[index].after_constants || resolved.table[plan->gate_nodes[index]->slot].domain != NULL)
+    {
+      return NO_ERROR;
+    }
+  return qexec_resolve_gate_node (thread_p, xasl, plan, index, resolved);
 }
 
 /* The value a constant side holds at the gate: a literal, a bind's reference value, or a constant subtree's value once
@@ -4642,7 +4666,9 @@ qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolve
   return NO_ERROR;
 }
 
-/* Whether every constant subtree a comparison site compares has its value (#354): a bind or a literal always has. */
+/* Whether every constant subtree a comparison site compares has its value (#354): a bind or a literal always has. A
+ * side reading a node the gate decides in step 7 waits for that decision, which the gate table holds from then on
+ * (#364). */
 static bool
 qexec_compare_constants_ready (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site)
 {
@@ -4651,6 +4677,11 @@ qexec_compare_constants_ready (const RESOLVED_DOMAIN_TABLE & resolved, const DOM
       const DOMAIN_PLAN_ITEM *constant = site->constant[side];
       if (constant != NULL && constant->ref >= 0
 	  && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0 && !resolved.ready[constant->ref])
+	{
+	  return false;
+	}
+      const DOMAIN_PLAN_ITEM *operand = site->operand[side];
+      if (operand != NULL && operand->slot >= 0 && resolved.table[operand->slot].domain == NULL)
 	{
 	  return false;
 	}
@@ -5274,9 +5305,14 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     }
 
   /* G1 step 4: gate-dependent nodes in producer order, each once (D-327-08). Volatile gate slots (S5) come with
-   * the session-variable mirror (dpin-10) and constant key ranges with the key plan (dpin-16). */
+   * the session-variable mirror (dpin-10) and constant key ranges with the key plan (dpin-16). A node that waits for
+   * the constant subtrees it reads is decided in step 7 (#364). */
   for (int i = 0; plan != NULL && i < plan->n_gate_nodes; i++)
     {
+      if (plan->gate_links[i].after_constants)
+	{
+	  continue;
+	}
       error = qexec_resolve_gate_node (thread_p, xasl, plan, i, resolved);
       if (error != NO_ERROR)
 	{
@@ -5323,7 +5359,9 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
    * value, and a comparison site over one is decided from that value (F-352-17). An evaluation error is not raised
    * here: develop raises it where it computes the node, at the first row (D-352-05). A site is decided as soon as its
    * subtrees have their values, before the next constant is evaluated: that constant may be the site's own node
-   * (GREATEST (GREATEST (?, ?), ?), #354) */
+   * (GREATEST (GREATEST (?, ?), ?), #354). A gate-dependent node that waits for its constant subtrees is decided just
+   * before its own evaluation, or after the last constant when it reads a row (#364); a site over its decision waits
+   * for it. */
   const int n_sites = plan == NULL ? 0 : plan->n_compares + plan->n_element_sites;
   unsigned char *decided = NULL;
   if (n_sites > 0)
@@ -5338,11 +5376,25 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     }
   for (int i = 0; plan != NULL && i < plan->n_constants && error == NO_ERROR; i++)
     {
-      error = qexec_resolve_constant_compares (thread_p, resolved, plan, decided, false);
+      const DOMAIN_PLAN_ITEM *node = plan->constants[i].item;
+      if (node->slot >= 0 && plan->slot_gate_node[node->slot] >= 0
+	  && plan->gate_nodes[plan->slot_gate_node[node->slot]] == node)
+	{
+	  error = qexec_resolve_waiting_gate_node (thread_p, xasl, plan, plan->slot_gate_node[node->slot], resolved);
+	}
+      if (error == NO_ERROR)
+	{
+	  error = qexec_resolve_constant_compares (thread_p, resolved, plan, decided, false);
+	}
       if (error == NO_ERROR)
 	{
 	  qexec_evaluate_constant (thread_p, xasl_state, &plan->constants[i]);
 	}
+    }
+  /* the waiting nodes left, which read a row, in producer order (#364) */
+  for (int i = 0; plan != NULL && i < plan->n_gate_nodes && error == NO_ERROR; i++)
+    {
+      error = qexec_resolve_waiting_gate_node (thread_p, xasl, plan, i, resolved);
     }
   if (error == NO_ERROR && plan != NULL)
     {
