@@ -95,6 +95,31 @@ struct xasl_state
   RESOLVED_DOMAIN_TABLE resolved;
 };
 
+/* The accessors of this execution's gate state, which the row path calls: inlined at every call in a release build
+ * (#371). */
+inline bool RESOLVED_OWNS_SLOT (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
+  __attribute__ ((ALWAYS_INLINE));
+inline const RESOLVED_DOMAIN *RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+  __attribute__ ((ALWAYS_INLINE));
+inline int RESOLVED_CELL (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
+inline TP_DOMAIN *qexec_node_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
+  __attribute__ ((ALWAYS_INLINE));
+inline bool qexec_node_took_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+  __attribute__ ((ALWAYS_INLINE));
+inline bool qexec_node_open (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
+inline bool qexec_position_open (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
+inline void qexec_take_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled,
+			       const TP_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
+inline TP_DOMAIN *qexec_interpolation_list_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled,
+						   const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
+inline void qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item,
+						  const TP_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
+inline DB_TYPE qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, const DOMAIN_PLAN_ITEM * item)
+  __attribute__ ((ALWAYS_INLINE));
+inline void qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB_TYPE compiled,
+				     DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
+inline int qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
+
 /* Whether a plan item's slot is this execution's gate table slot: an item of the plan the gate resolved, or, in a PX
  * worker's inherited copy, an item of the worker's own load of the same stream, which numbers its slots alike
  * (D-318-06, #340). */

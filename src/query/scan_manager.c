@@ -2461,12 +2461,19 @@ err_exit:
  *   decision gives.
  *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the execution boundary (b)) for a value of an element the gate
  *	     derived no rule for: the gate decides every string (#343) and gives every constant its value (#367)
+ *
+ * It runs at every range, inline, and reads the plan only where it must (#371): a NULL value, or a scan whose plan has
+ * no element the gate decides (no decisions), is not tested.
  */
-static int
+static inline int
 scan_key_single_column (INDX_SCAN_ID * isidp, int bound_index, const DB_VALUE * value)
 {
+  if (DB_IS_NULL (value) || isidp->key_decisions == NULL)
+    {
+      return NO_ERROR;
+    }
   const domain_plan_key *bound = &isidp->key_plan->bounds[bound_index];
-  if (bound->n_elems != 1 || DB_IS_NULL (value) || isidp->key_state == NULL)
+  if (bound->n_elems != 1)
     {
       return NO_ERROR;
     }

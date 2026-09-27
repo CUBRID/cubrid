@@ -693,6 +693,14 @@ enum FETCH_GATE_READING
   FETCH_GATE_UNRESOLVED		/* no decision where the plan promised one: the execution boundary (b) */
 };
 
+/* The row path's readings of the gate's decisions: inlined at every call in a release build (#371). */
+STATIC_INLINE FETCH_GATE_READING fetch_arith_gate_reading (const VAL_DESCR * vd, const ARITH_TYPE * arithptr,
+							   const TP_DOMAIN ** decided) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE bool fetch_constant_ready (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE * value)
+  __attribute__ ((ALWAYS_INLINE));
+
 /*
  * fetch_arith_gate_reading () - how an arithmetic node whose compiled domain is open takes its domain now
  *   return: the reading; *decided is set for FETCH_GATE_DECIDED
@@ -700,7 +708,7 @@ enum FETCH_GATE_READING
  * The gate decided every gate-dependent node before the main block (qexec_resolve_domains); the row reads that
  * decision and never derives one from a value, except where the reading says LATE.
  */
-static FETCH_GATE_READING
+static inline FETCH_GATE_READING
 fetch_arith_gate_reading (const VAL_DESCR * vd, const ARITH_TYPE * arithptr, const TP_DOMAIN ** decided)
 {
   if (arithptr->opcode == T_CAST || arithptr->opcode == T_CAST_WRAP || arithptr->opcode == T_CAST_NOFAIL)
@@ -4812,7 +4820,7 @@ error:
  * statement (#366). A bind value is the one the gate saw: a comparison converts its constant into a value of its own,
  * not in place (#352).
  */
-static int
+static inline int
 fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE * value)
 {
   /* a regu fetched without a descriptor with gate state has no decision to read: the boundary (#354) */

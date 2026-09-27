@@ -37,7 +37,13 @@
 struct regu_variable_list_node;
 
 /* Read-only execution views. Peek callers retain the existing no-write
- * contract even though their public DB_VALUE ** output is not const. */
+ * contract even though their public DB_VALUE ** output is not const. The row path calls them: inlined at every call
+ * in a release build (#371). */
+inline const DB_VALUE *REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
+  __attribute__ ((ALWAYS_INLINE));
+inline const RESOLVED_DOMAIN *RESOLVED (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+  __attribute__ ((ALWAYS_INLINE));
+
 inline const DB_VALUE *
 REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
 {

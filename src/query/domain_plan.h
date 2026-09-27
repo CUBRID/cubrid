@@ -294,8 +294,8 @@ struct domain_plan_index
 /* One execution's decision for a key element the gate decides (#342). */
 struct DOMAIN_KEY_DECISION
 {
-  DB_VALUE value;		/* CONSTANT: the value the key writes - converted into the index column's domain, or
-				 * as it is - the owner's */
+  DB_VALUE value;		/* CONSTANT: the value the key writes - converted into the index column's domain, the
+				 * owner's, or as it is, shared with the execution's own value (#371) */
   const TP_DOMAIN *domain;	/* CONSTANT: the domain a mixed key writes the value with (its own, in the column's
 				 * direction; the column's once converted); every constant has one (#367) */
   const TP_DOMAIN *keep_elem;	/* DECIDED: the element's domain in the column's direction */
@@ -457,7 +457,8 @@ int stx_build_domain_plan (THREAD_ENTRY * thread_p, xasl_node * root, xasl_unpac
 int domain_plan_stream_compares (THREAD_ENTRY * thread_p, cubxasl::pred_expr * pred, regu_variable_node * regu);
 bool domain_plan_validate (const DOMAIN_PLAN * plan);
 /* The keys an index's key columns and its load-fixed elements give their values (#342): columns and keys hold at most
- * two per element; the gate adds its decided elements' before it builds the key comparison table. */
+ * two per element. The load builds its key comparison table from them; the gate collects its distinct keys as it
+ * decides the elements, and a debug build checks them against these and its decided elements' (#371). */
 int domain_key_compare_keys (const domain_plan_index * index, int *columns, DOMAIN_COMPARE_KEY * keys);
 
 #endif /* _DOMAIN_PLAN_H_ */
