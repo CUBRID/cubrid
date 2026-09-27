@@ -3902,18 +3902,21 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, n_compares, n_elements, n_indexes, n_cells, resolved);
 }
 
+static int qexec_note_failure (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+			       const DOMAIN_GATE_FAILURE & failure);
+
 /* Whether the resolver takes this operand's class from its value (D-328-06): an interpolation argument, the ADDTIME
- * left string, the STR_TO_DATE format. An aggregate's interpolation argument of a type that is neither a number nor a
- * date (a string, a BIT, a LOB, a collection) is classified as develop's first value was, by the cascade to DOUBLE,
- * DATETIME and TIME (#366: no row classifies it). */
+ * left string, the STR_TO_DATE format. An interpolation argument of a type that is neither a number nor a date (a
+ * string, a BIT, a LOB, a collection) is classified as develop's first value was, by the cascade to DOUBLE, DATETIME
+ * and TIME, the aggregate's and the analytic's alike (#366: no row classifies it; #367: a value that takes none is the
+ * gate's error). */
 static bool
 qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
 {
   if (context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC)
     {
       return arg_index == 0 && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC)
-	&& (TP_IS_CHAR_TYPE (type)
-	    || (context == DOMAIN_CTX_AGG && !TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type)));
+	&& !TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type);
     }
   return context == DOMAIN_CTX_FUNC_ARG && ((opcode == T_ADDTIME && arg_index == 0 && TP_IS_CHAR_TYPE (type))
 					    || (opcode == T_STR_TO_DATE && arg_index == 1));
@@ -3930,8 +3933,8 @@ qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE ty
  * class - a session variable read's value included, which the gate reads as its read node does (D-335-10, #340); a
  * string without a value keeps its string type and the resolver types it statically (D-335-10). A common value folds
  * its operands' value domains as develop does (S-04): a constant subtree the gate evaluated in step 7 gives its value's
- * type there, so a NULL without a type drops out of the fold; a subtree whose evaluation was left to the row gives its
- * plan domain (#364, D-352-05).
+ * type there, so a NULL without a type drops out of the fold (#364); the node waits for that value, which every
+ * constant has once step 7 evaluated it (#367).
  */
 static bool
 qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved,
@@ -3941,10 +3944,25 @@ qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RES
   const int val_pos = plan->items_cold[item - plan->items].val_pos;
   const DB_VALUE *value = val_pos >= 0 ? &resolved.in[val_pos] : link->literal[arg_index];
   const DB_VALUE *session_name = NULL;
-  if (value == NULL && context == DOMAIN_CTX_COMMON_VALUE && item->ref >= 0 && resolved.ready[item->ref])
+  DB_VALUE no_value;
+  if (value == NULL && context == DOMAIN_CTX_COMMON_VALUE && item->ref >= 0)
     {
-      /* the node waited for this constant subtree (DOMAIN_GATE_LINK.after_constants) */
-      value = &resolved.vals[item->ref];
+      /* the node waited for this constant subtree (DOMAIN_GATE_LINK.after_constants), which step 7 evaluated; one
+       * whose computation failed below a branch guard gives no value to fold: the gate's error if a row reaches it,
+       * never read otherwise (#367) */
+      if (resolved.ready[item->ref] == DOMAIN_VALUE_FAILED)
+	{
+	  db_make_null (&no_value);
+	  value = &no_value;
+	}
+      else if (resolved.ready[item->ref] != DOMAIN_VALUE_READY)
+	{
+	  return false;
+	}
+      else
+	{
+	  value = &resolved.vals[item->ref];
+	}
     }
 
   *operand = DOMAIN_OPERAND
@@ -4012,8 +4030,8 @@ qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RES
 /*
  * qexec_gate_elt_branch () - the branch ELT's index names at the gate, the index being a bind or a literal
  *   (DOMAIN_GATE_LINK.elt_index), under the cast the compiler wrapped it in: 1..n, or 0 where every row gives NULL - a
- *   NULL, non-positive or too large index, or an index the cast or qdata_elt rejects, whose error the row raises as
- *   develop does (D-343-01)
+ *   NULL, non-positive or too large index (D-343-01) - or where the cast rejects the index: that cast is a constant
+ *   subtree, whose error G1 step 7 raises before any row (#367)
  */
 static int
 qexec_gate_elt_branch (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_GATE_LINK * link)
@@ -4024,8 +4042,8 @@ qexec_gate_elt_branch (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & r
   db_make_null (&cast);
   if (index != NULL && !DB_IS_NULL (index) && link->elt_index_cast != NULL)
     {
-      /* the row computes the cast (fetch_peek_arith T_CAST: tp_value_cast_force) before ELT reads the index; a cast
-       * that fails leaves the error to the row */
+      /* the cast the row would compute (fetch_peek_arith T_CAST: tp_value_cast_force) before ELT reads the index; a
+       * cast that fails is step 7's error */
       const int saved_error = er_errid ();
       if (tp_value_cast_force (index, &cast, link->elt_index_cast, false) != DOMAIN_COMPATIBLE)
 	{
@@ -4195,6 +4213,25 @@ qexec_resolve_gate_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
 	   * develop's unification of the branch lists rejected it only when both held rows (the user's decision) */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  return error;
+	}
+      if (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN && (node->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
+	  && operands[0].val_type == DB_TYPE_NULL && operands[0].domain != NULL
+	  && TP_DOMAIN_TYPE (operands[0].domain) != DB_TYPE_NULL)
+	{
+	  /* #367, D-367-04: a MEDIAN / PERCENTILE value - a literal, a bind, a session variable's value when the
+	   * execution began - that none of DOUBLE, DATETIME, TIME takes (the gate's classification of a value that is
+	   * not NULL failed): develop's first value raised this, so no row and only NULLs raised none; the gate raises
+	   * it before any row. A NULL value, or a variable without a type yet (step 7b's first pass), takes no class
+	   * and raises nothing. */
+	  if (cold->guard < 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
+		      fcode_get_uppercase_name ((FUNC_CODE) cold->opcode), "DOUBLE, DATETIME or TIME");
+	      return error;
+	    }
+	  /* below a branch guard: the gate's error only if a row reaches the function (D-367-07) */
+	  const DOMAIN_GATE_FAILURE failure = { NULL, cold->guard, -1, cold->opcode, 0, DOMAIN_FAILURE_CLASS, 0 };
+	  return qexec_note_failure (thread_p, resolved, failure);
 	}
       return NO_ERROR;
     }
@@ -4366,7 +4403,7 @@ qexec_session_variable_type (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAI
 
 
 /* The value a constant side holds at the gate: a literal, a bind's reference value, or a constant subtree's value once
- * step 7 evaluated it; NULL when there is none (a subtree whose evaluation was left to the row). */
+ * step 7 evaluated it; NULL for a subtree step 7 has not evaluated yet (every one has its value after step 7, #367). */
 static const DB_VALUE *
 qexec_compare_constant (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site, int side)
 {
@@ -4380,7 +4417,7 @@ qexec_compare_constant (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COM
       return NULL;
     }
   const bool bind = resolved.plan->items_cold[constant - resolved.plan->items].val_pos >= 0;
-  return bind || resolved.ready[constant->ref] ? &resolved.vals[constant->ref] : NULL;
+  return bind || resolved.ready[constant->ref] == DOMAIN_VALUE_READY ? &resolved.vals[constant->ref] : NULL;
 }
 
 /*
@@ -4401,6 +4438,11 @@ qexec_compare_side_key (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COM
       domain_compare_key_of (DB_IS_NULL (value) ? &tp_Null_domain : tp_domain_resolve_value (value, NULL), key);
       domain_compare_key_collate (key, site->collate[side]);
       return true;
+    }
+  if (site->literal[side] != NULL || site->constant[side] != NULL)
+    {
+      /* a constant side compares with its value's key: the gate decides the site once it has the value (#367) */
+      return false;
     }
   if (item != NULL && item->slot >= 0)
     {
@@ -4432,6 +4474,78 @@ qexec_compare_side_unresolved (const DOMAIN_COMPARE_PLAN * site)
 }
 
 /*
+ * qexec_compare_constant_failed () - develop's error where a term compares a value with a constant whose coercion
+ *   fails (#367, D-367-02): -181 naming the two sides' types at the first coercion that fails in develop's order
+ *   (domain_compare_converted: the first side, then the other)
+ *   failed(in): bit i: constant side i does not convert
+ */
+static int
+qexec_compare_constant_failed (const DOMAIN_COMPARE * compare, unsigned char failed)
+{
+  DB_TYPE type[2] = { (DB_TYPE) compare->source[0], (DB_TYPE) compare->source[1] };
+  if (!(failed & (1 << compare->first)))
+    {
+      /* the first side converted before the constant's coercion failed */
+      type[compare->first] = (DB_TYPE) compare->converted_first;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type[0]), pr_type_name (type[1]));
+  return ER_TP_CANT_COERCE;
+}
+
+/* Records a failure of the gate's own work on a constant below a branch guard (#367, D-367-07): G1 raises it at its
+ * end if the constant conditions around it let a row reach it. */
+static int
+qexec_note_failure (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_GATE_FAILURE & failure)
+{
+  if (resolved.n_failures == resolved.max_failures)
+    {
+      const int max = resolved.max_failures == 0 ? 4 : 2 * resolved.max_failures;
+      DOMAIN_GATE_FAILURE *failures =
+	(DOMAIN_GATE_FAILURE *) db_private_realloc (thread_p, resolved.failures, max * sizeof (*failures));
+      if (failures == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max * sizeof (*failures));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      resolved.failures = failures;
+      resolved.max_failures = max;
+    }
+  resolved.failures[resolved.n_failures++] = failure;
+  return NO_ERROR;
+}
+
+/* The decision of a site whose constant sides failed below a branch guard (#367): no row reaches it, and one that
+ * did would meet develop's comparison with the boundary (b) reason of an unplanned one. */
+static void
+qexec_compare_unreached (DOMAIN_COMPARE * compare)
+{
+  *compare = DOMAIN_COMPARE
+  {
+  };
+  compare->kernel = DOMAIN_COMPARE_VALUES;
+  compare->reason = DOMAIN_REASON_UNPLANNED;
+  compare->value[0] = compare->value[1] = -1;
+  compare->codeset_side = -1;
+  compare->site = -1;
+}
+
+/* Whether a comparison site compares a constant subtree whose computation failed below a branch guard (#367). */
+static bool
+qexec_compare_reads_failed (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site)
+{
+  for (int side = 0; side < 2; side++)
+    {
+      const DOMAIN_PLAN_ITEM *constant = site->constant[side];
+      if (constant != NULL && constant->ref >= 0 && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0
+	  && resolved.ready[constant->ref] == DOMAIN_VALUE_FAILED)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * qexec_resolve_compare () - G1: this execution's decision for one comparison site, and its constant sides converted
  *   once into values of their own (#352, D-352-01); step 5 for a site over binds and literals, step 7 for a site over
  *   a constant subtree, once the subtree is evaluated
@@ -4439,7 +4553,8 @@ qexec_compare_side_unresolved (const DOMAIN_COMPARE_PLAN * site)
  *
  * Every constant side gets a value of its own, converted or copied: the value it came from stays as it is (S-09's
  * in-place coercion is gone), and a reader that coerces a shared bind or a cached value in place cannot change what
- * the comparison compares. A constant whose conversion fails gives develop's failure outcome at every row.
+ * the comparison compares. A constant whose conversion fails is develop's -181 at every row a term compares, which the
+ * gate raises before any row (#367, D-367-02); a record outside a term answers by rank there, as develop's does.
  */
 static int
 qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site)
@@ -4492,7 +4607,7 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
 	    }
 	  compare->value[side] = site->value[side];
 	  compare->conv[side] = NULL;
-	  resolved.ready[site->value[side]] = 1;
+	  resolved.ready[site->value[side]] = DOMAIN_VALUE_READY;
 	  continue;
 	}
       const int saved_error = er_errid ();
@@ -4500,17 +4615,31 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
 	{
 	  compare->value[side] = site->value[side];
 	  compare->conv[side] = NULL;
-	  resolved.ready[site->value[side]] = 1;
+	  resolved.ready[site->value[side]] = DOMAIN_VALUE_READY;
 	}
       else
 	{
-	  /* develop's coercion of this constant fails at every row: its outcome, not an error of the gate */
+	  /* develop's coercion of this constant fails at every row */
 	  pr_clear_value (converted);
 	  compare->failed |= (unsigned char) (1 << side);
 	  if (er_errid () != saved_error)
 	    {
 	      er_clear ();
 	    }
+	}
+    }
+  if (compare->failed != 0 && site->predicate)
+    {
+      if (site->guard < 0)
+	{
+	  return qexec_compare_constant_failed (compare, compare->failed);
+	}
+      /* below a branch guard: the gate's error only if a row reaches the term (D-367-07) */
+      const DOMAIN_GATE_FAILURE failure = { compare, site->guard, -1, 0, 0, DOMAIN_FAILURE_COMPARE, compare->failed };
+      const int noted = qexec_note_failure (thread_p, resolved, failure);
+      if (noted != NO_ERROR)
+	{
+	  return noted;
 	}
     }
   if (compare->conv[0] == NULL && compare->conv[1] == NULL && compare->codeset_side < 0 && compare->failed == 0)
@@ -4544,12 +4673,13 @@ qexec_constant_element (const DB_VALUE * constant, int i, DB_VALUE * element)
  *   constant(in): the constant: a collection, or a value that is its one element
  *
  * Each element gets its decision - the gate resolves each element key once - and a value of its own, converted when
- * its decision converts it: the row reads both by position and decides nothing. An element whose conversion fails
- * gives develop's failure outcome at every row, as a constant comparison side does (D-352-01).
+ * its decision converts it: the row reads both by position and decides nothing. An element whose conversion fails is
+ * develop's -181 at every row the term compares with it, raised here before any row as a constant comparison side's
+ * (#367, D-367-02).
  */
 static int
-qexec_resolve_positions (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * pair, const DOMAIN_COMPARE_KEY * item,
-			 const DB_VALUE * constant, DOMAIN_ELEMENTS * out)
+qexec_resolve_positions (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * pair,
+			 const DOMAIN_COMPARE_KEY * item, const DB_VALUE * constant, DOMAIN_ELEMENTS * out)
 {
   const bool collection = TP_IS_SET_TYPE (DB_VALUE_TYPE (constant));
   const int n = collection ? set_size (db_get_set (constant)) : 1;
@@ -4600,9 +4730,9 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * pa
     }
   if (error == NO_ERROR)
     {
-      /* per key: [2d] the decision with the element converted (or as it is), [2d + 1] with its conversion failed */
+      /* one decision per key, the gate converting the elements it converts */
       size_t decision_offset, compares_offset;
-      const size_t bytes = qexec_positions_bytes (n, 2 * n_distinct, &decision_offset, &compares_offset);
+      const size_t bytes = qexec_positions_bytes (n, n_distinct, &decision_offset, &compares_offset);
       char *block = (char *) db_private_alloc (thread_p, bytes);
       if (block == NULL)
 	{
@@ -4615,7 +4745,7 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * pa
 	  out->decision = (int *) (block + decision_offset);
 	  out->compares = (DOMAIN_COMPARE *) (block + compares_offset);
 	  out->n = n;
-	  out->n_compares = 2 * n_distinct;
+	  out->n_compares = n_distinct;
 	  for (int i = 0; i < n; i++)
 	    {
 	      db_make_null (&out->value[i]);
@@ -4624,26 +4754,15 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * pa
     }
   for (int d = 0; d < n_distinct && error == NO_ERROR; d++)
     {
-      DOMAIN_COMPARE *as_is = &out->compares[2 * d];
-      DOMAIN_COMPARE *failed = &out->compares[2 * d + 1];
-      error = domain_resolve_comparison (item, &distinct[d], as_is);
+      DOMAIN_COMPARE *compare = &out->compares[d];
+      error = domain_resolve_comparison (item, &distinct[d], compare);
       if (error != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
 	  break;
 	}
       /* the row's right operand is the gate's own value of the element */
-      as_is->value[1] = -2;
-      *failed = *as_is;
-      if (as_is->kernel == DOMAIN_COMPARE_DIRECT || as_is->kernel == DOMAIN_COMPARE_CONVERT)
-	{
-	  /* the failed decision keeps the element's converter: the gate runs it below */
-	  failed->failed |= 2;
-	  failed->kernel = DOMAIN_COMPARE_CONVERT;
-	  as_is->conv[1] = NULL;
-	  as_is->kernel = as_is->conv[0] == NULL && as_is->codeset_side < 0 ? DOMAIN_COMPARE_DIRECT
-	    : DOMAIN_COMPARE_CONVERT;
-	}
+      compare->value[1] = -2;
     }
   for (int i = 0; i < n && error == NO_ERROR; i++)
     {
@@ -4652,17 +4771,18 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * pa
 	{
 	  break;
 	}
-      const DOMAIN_COMPARE *failed = &out->compares[2 * key_of[i] + 1];
-      out->decision[i] = 2 * key_of[i];
+      const DOMAIN_COMPARE *compare = &out->compares[key_of[i]];
+      out->decision[i] = key_of[i];
       if (DB_IS_NULL (&out->value[i]))
 	{
 	  continue;
 	}
-      if ((failed->failed & 2) != 0 && failed->conv[1] != NULL)
+      if ((compare->kernel == DOMAIN_COMPARE_DIRECT || compare->kernel == DOMAIN_COMPARE_CONVERT)
+	  && compare->conv[1] != NULL)
 	{
 	  DB_VALUE converted;
 	  const int saved_error = er_errid ();
-	  if (domain_run_converter (failed->conv[1], failed->target[1], &out->value[i], &converted) ==
+	  if (domain_run_converter (compare->conv[1], compare->target[1], &out->value[i], &converted) ==
 	      DOMAIN_COMPATIBLE)
 	    {
 	      pr_clear_value (&out->value[i]);
@@ -4670,12 +4790,21 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * pa
 	    }
 	  else
 	    {
-	      /* develop's coercion of this element fails at every row: its outcome, not an error of the gate */
+	      /* develop's coercion of this element fails at every row the term compares with it; below a branch guard,
+	       * only if a row reaches the term (D-367-07) */
 	      pr_clear_value (&converted);
-	      out->decision[i] = 2 * key_of[i] + 1;
 	      if (er_errid () != saved_error)
 		{
 		  er_clear ();
+		}
+	      if (pair->guard < 0)
+		{
+		  error = qexec_compare_constant_failed (compare, 2);
+		}
+	      else
+		{
+		  const DOMAIN_GATE_FAILURE failure = { compare, pair->guard, -1, 0, 0, DOMAIN_FAILURE_COMPARE, 2 };
+		  error = qexec_note_failure (thread_p, resolved, failure);
 		}
 	    }
 	}
@@ -4692,6 +4821,17 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * pa
 	    {
 	      db_enum_put_cs_and_collation (&out->value[i], TP_DOMAIN_CODESET (collate), TP_DOMAIN_COLLATION (collate));
 	    }
+	}
+    }
+  /* the gate converted the elements: a row compares them as they are */
+  for (int d = 0; d < n_distinct && error == NO_ERROR; d++)
+    {
+      DOMAIN_COMPARE *compare = &out->compares[d];
+      if (compare->kernel == DOMAIN_COMPARE_DIRECT || compare->kernel == DOMAIN_COMPARE_CONVERT)
+	{
+	  compare->conv[1] = NULL;
+	  compare->kernel = compare->conv[0] == NULL && compare->codeset_side < 0 ? DOMAIN_COMPARE_DIRECT
+	    : DOMAIN_COMPARE_CONVERT;
 	}
     }
   db_private_free (thread_p, distinct);
@@ -4721,14 +4861,25 @@ qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolve
   if (pair->literal[1] != NULL || pair->constant[1] != NULL)
     {
       const DB_VALUE *constant = qexec_compare_constant (resolved, pair, 1);
-      if (constant == NULL || DB_IS_NULL (constant))
+      if (constant == NULL && qexec_compare_reads_failed (resolved, pair))
 	{
-	  /* a NULL constant compares nothing; a constant subtree the gate did not evaluate is computed by the row, which
-	   * raises its error before any comparison (D-352-05) */
+	  /* a constant whose computation failed below a branch guard: no row reaches the term, or G1 raises the
+	   * failure (#367) */
 	  out->read = DOMAIN_READ_NONE;
 	  return NO_ERROR;
 	}
-      return qexec_resolve_positions (thread_p, pair, &key[0], constant, out);
+      if (constant == NULL)
+	{
+	  /* the gate decides the site once the constant has its value (#367) */
+	  return qexec_compare_side_unresolved (pair);
+	}
+      if (DB_IS_NULL (constant))
+	{
+	  /* a NULL constant compares nothing */
+	  out->read = DOMAIN_READ_NONE;
+	  return NO_ERROR;
+	}
+      return qexec_resolve_positions (thread_p, resolved, pair, &key[0], constant, out);
     }
   if (!qexec_compare_side_key (resolved, pair, 1, &key[1]))
     {
@@ -4770,7 +4921,8 @@ qexec_compare_constants_ready (const RESOLVED_DOMAIN_TABLE & resolved, const DOM
     {
       const DOMAIN_PLAN_ITEM *constant = site->constant[side];
       if (constant != NULL && constant->ref >= 0
-	  && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0 && !resolved.ready[constant->ref])
+	  && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0
+	  && resolved.ready[constant->ref] != DOMAIN_VALUE_READY)
 	{
 	  return false;
 	}
@@ -4787,7 +4939,8 @@ qexec_compare_constants_ready (const RESOLVED_DOMAIN_TABLE & resolved, const DOM
  * qexec_resolve_constant_compares () - G1 step 7: the comparison and ALL/SOME sites over constant subtrees whose
  *   subtrees have their values, each decided once (#354)
  *   decided(in/out): [n_compares + n_element_sites] the sites decided so far
- *   all(in): every site left, whatever its subtrees gave (after the last constant)
+ *   all(in): every site left (after the last constant and the waiting nodes that read a row): every one is ready, the
+ *	      gate having given each constant its value (#367) - one that is not is the boundary (b)
  */
 static int
 qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN * plan,
@@ -4796,9 +4949,23 @@ qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE 
   for (int k = 0; k < plan->n_compares; k++)
     {
       const DOMAIN_COMPARE_PLAN *site = plan->compares[k];
-      if (!site->after_constants || decided[k] || site->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE
-	  || !(all || qexec_compare_constants_ready (resolved, site)))
+      if (!site->after_constants || decided[k] || site->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE)
 	{
+	  continue;
+	}
+      if (!qexec_compare_constants_ready (resolved, site))
+	{
+	  if (all && qexec_compare_reads_failed (resolved, site))
+	    {
+	      /* over a constant whose computation failed below a branch guard (#367) */
+	      decided[k] = 1;
+	      qexec_compare_unreached (&resolved.compares[site->fixed.site]);
+	      continue;
+	    }
+	  if (all)
+	    {
+	      return qexec_compare_side_unresolved (site);
+	    }
 	  continue;
 	}
       decided[k] = 1;
@@ -4812,9 +4979,23 @@ qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE 
     {
       const DOMAIN_ELEMENT_COMPARE_PLAN *site = plan->element_sites[k];
       unsigned char *site_decided = &decided[plan->n_compares + k];
-      if (!site->pair.after_constants || *site_decided || site->volatile_reads != 0
-	  || !(all || qexec_compare_constants_ready (resolved, &site->pair)))
+      if (!site->pair.after_constants || *site_decided || site->volatile_reads != 0)
 	{
+	  continue;
+	}
+      if (!qexec_compare_constants_ready (resolved, &site->pair))
+	{
+	  if (all && qexec_compare_reads_failed (resolved, &site->pair))
+	    {
+	      /* over a constant whose computation failed below a branch guard (#367): nothing to compare */
+	      *site_decided = 1;
+	      resolved.elements[site->site].read = DOMAIN_READ_NONE;
+	      continue;
+	    }
+	  if (all)
+	    {
+	      return qexec_compare_side_unresolved (&site->pair);
+	    }
 	  continue;
 	}
       *site_decided = 1;
@@ -4851,34 +5032,37 @@ qexec_release_constant_node (REGU_VARIABLE * regu)
 
 /*
  * qexec_evaluate_constant () - G1 step 7: a constant subtree once, into its own value (#352, interface §10)
+ *   return: NO_ERROR, or the error of its computation: the execution's, before any row (#367, D-367-01)
  *
  * The fetch computes it as the first row would; its value goes to the gate's array and every fetch after this reads it.
- * An error stays with the row: the value is left out and the row computes the node as develop does, raising the error
- * there (0 rows, a branch never taken or a short-circuited predicate raise none, as in develop) (D-352-05).
+ * develop raised a computation's error at the first row that computed the node, so 0 rows, a branch never taken or a
+ * short-circuited predicate raised none; the gate raises it whatever the rows (the user's decision of 2026-09-27,
+ * replacing D-352-05).
  */
-static void
+static int
 qexec_evaluate_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const DOMAIN_PLAN_CONSTANT * constant)
 {
   RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved;
   DB_VALUE *value = NULL;
-  const int saved_error = er_errid ();
-  if (fetch_peek_dbval (thread_p, constant->regu, &xasl_state->vd, NULL, NULL, NULL, &value) != NO_ERROR
-      || value == NULL || pr_clone_value (value, &resolved.vals[constant->item->ref]) != NO_ERROR)
+  int error = fetch_peek_dbval (thread_p, constant->regu, &xasl_state->vd, NULL, NULL, NULL, &value);
+  if (error == NO_ERROR)
     {
-      if (er_errid () != saved_error)
-	{
-	  er_clear ();
-	}
-      pr_clear_value (&resolved.vals[constant->item->ref]);
-      qexec_release_constant_node (constant->regu);
-      return;
+      assert (value != NULL);
+      error = value != NULL ? pr_clone_value (value, &resolved.vals[constant->item->ref]) : ER_FAILED;
     }
-  resolved.ready[constant->item->ref] = 1;
   qexec_release_constant_node (constant->regu);
+  if (error != NO_ERROR)
+    {
+      pr_clear_value (&resolved.vals[constant->item->ref]);
+      return error;
+    }
+  resolved.ready[constant->item->ref] = DOMAIN_VALUE_READY;
+  return NO_ERROR;
 }
 
-/* The value of a constant key element once the gate formed it (#342): a bind's own value, a literal, a constant subtree
- * step 7 evaluated; NULL when the row computes it (an evaluation error stays with the row, D-352-05). */
+/* The value of a constant key element once the gate formed it (#342): a bind's own value, a literal, or a constant
+ * subtree step 7 evaluated; every constant has its value by step 8 (D-367-01), so NULL is the boundary (b) at the
+ * caller. */
 static const DB_VALUE *
 qexec_key_constant_value (const XASL_STATE * xasl_state, const REGU_VARIABLE * regu)
 {
@@ -4893,12 +5077,8 @@ qexec_key_constant_value (const XASL_STATE * xasl_state, const REGU_VARIABLE * r
       {
 	const DOMAIN_PLAN_ITEM *item = (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
 	  ? regu->value.arithptr->domain_plan : regu->domain_plan;
-	if (item != NULL && item->ref >= 0 && item->ref < resolved.n_vals && resolved.ready != NULL
-	    && resolved.ready[item->ref])
-	  {
-	    return &resolved.vals[item->ref];
-	  }
-	return NULL;
+	return item != NULL && item->ref >= 0 && item->ref < resolved.n_vals
+	  && resolved.ready[item->ref] == DOMAIN_VALUE_READY ? &resolved.vals[item->ref] : NULL;
       }
     }
 }
@@ -4938,18 +5118,32 @@ qexec_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const 
  *
  * develop's scan_dbvals_to_midxkey on the value, once: another type is converted strictly into the index column's
  * domain or else kept, a NUMERIC, CHAR or BIT of the column's type with other parameters is kept. A single-column key
- * takes the value as it is. A NULL or an invalid index key type is the range's to answer (develop's order).
+ * takes the value as it is. A NULL is the range's to answer. A value no index key can hold is develop's error at the
+ * range, raised here before any row, whatever a NULL column before it (#367, D-367-03).
  */
 static int
-qexec_resolve_key_constant (const XASL_STATE * xasl_state, bool midxkey, const domain_plan_key_elem * elem,
-			    DOMAIN_KEY_DECISION * decision)
+qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bool midxkey, int guard,
+			    const domain_plan_key_elem * elem, DOMAIN_KEY_DECISION * decision)
 {
+  const TP_DOMAIN *column = elem->index_elem;
   const DB_VALUE *value = qexec_key_constant_value (xasl_state, elem->regu);
   if (value == NULL)
     {
-      return NO_ERROR;
+      const DOMAIN_PLAN_ITEM *item = (elem->regu->type == TYPE_INARITH || elem->regu->type == TYPE_OUTARITH)
+	? elem->regu->value.arithptr->domain_plan : elem->regu->domain_plan;
+      if (item != NULL && item->ref >= 0 && item->ref < xasl_state->resolved.n_vals
+	  && xasl_state->resolved.ready[item->ref] == DOMAIN_VALUE_FAILED)
+	{
+	  /* a constant whose computation failed below a branch guard: no row opens the scan, or G1 raises the failure
+	   * (#367); the decision stays without a domain */
+	  return NO_ERROR;
+	}
+      /* the boundary (b): every constant has its value by step 8 (D-367-01) */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", elem->decision,
+	      pr_type_name (TP_DOMAIN_TYPE (column)));
+      return ER_QPROC_DOMAIN_UNRESOLVED;
     }
-  const TP_DOMAIN *column = elem->index_elem;
   decision->domain = column;
   if (DB_IS_NULL (value))
     {
@@ -4957,8 +5151,17 @@ qexec_resolve_key_constant (const XASL_STATE * xasl_state, bool midxkey, const d
     }
   if (!tp_valid_indextype (DB_VALUE_DOMAIN_TYPE (value)))
     {
-      decision->invalid = true;
-      return pr_clone_value (value, &decision->value);
+      if (guard < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (TP_DOMAIN_TYPE (column)),
+		  pr_type_name (DB_VALUE_DOMAIN_TYPE (value)));
+	  return ER_TP_CANT_COERCE;
+	}
+      /* below a branch guard: the gate's error only if a row opens the scan (D-367-07) */
+      const DOMAIN_GATE_FAILURE failure =
+	{ NULL, guard, -1, TP_DOMAIN_TYPE (column), DB_VALUE_DOMAIN_TYPE (value), DOMAIN_FAILURE_KEY, 0 };
+      const int noted = qexec_note_failure (thread_p, xasl_state->resolved, failure);
+      return noted != NO_ERROR ? noted : pr_clone_value (value, &decision->value);
     }
   const TP_DOMAIN *value_domain = tp_domain_resolve_value (value, NULL);
   if (value_domain == NULL)
@@ -5014,11 +5217,7 @@ qexec_key_constant_domain (const domain_plan_index * index, const domain_plan_ke
 	  continue;
 	}
       const DOMAIN_KEY_DECISION *decision = &out->decisions[elem->decision];
-      if (decision->domain == NULL)
-	{
-	  /* a constant the row computes: the range assembles the bound */
-	  return NULL;
-	}
+      assert (decision->domain != NULL);
       const DB_VALUE *value = &decision->value;
       if (!DB_IS_NULL (value) && TP_IS_STRING_TYPE (DB_VALUE_DOMAIN_TYPE (value))
 	  && value->data.ch.medium.is_max_string)
@@ -5096,8 +5295,8 @@ error:
  *
  * Each constant key element is converted or kept once, by develop's rule on its value; an element whose domain the
  * gate decided takes its rule from that domain; a constant multi-column bound gets its domain; and the scan's key
- * comparison table covers every key its columns' values take. No value's error is raised here: an invalid index key
- * type or a constant the row computes is the range's, as develop raises it.
+ * comparison table covers every key its columns' values take. A constant no index key can hold is an error here,
+ * before any row (D-367-03); every other outcome of a value is the range's.
  */
 static int
 qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const domain_plan_index * index)
@@ -5155,7 +5354,7 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
 	  const TP_DOMAIN *domain = NULL;
 	  if (elem->rule == DOMAIN_KEY_CONSTANT)
 	    {
-	      error = qexec_resolve_key_constant (xasl_state, bound->midxkey, elem, decision);
+	      error = qexec_resolve_key_constant (thread_p, xasl_state, bound->midxkey, index->guard, elem, decision);
 	      n_constants++;
 	      domain = decision->domain;
 	    }
@@ -5178,8 +5377,16 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
 	}
       if (error == NO_ERROR && bound->constant)
 	{
-	  /* NULL: the range assembles it in its scratch chain (a constant the row computes) */
-	  out->domains[b] = qexec_key_constant_domain (index, bound, out);
+	  /* every element has its value by now (D-367-01): the range writes the key with this domain - unless one
+	   * failed below a branch guard, and no row opens the scan (#367) */
+	  bool failed = false;
+	  for (int i = 0; i < bound->n_elems; i++)
+	    {
+	      failed = failed || (bound->elems[i].rule == DOMAIN_KEY_CONSTANT
+				  && out->decisions[bound->elems[i].decision].domain == NULL);
+	    }
+	  out->domains[b] = failed ? NULL : qexec_key_constant_domain (index, bound, out);
+	  error = !failed && out->domains[b] == NULL ? ER_OUT_OF_VIRTUAL_MEMORY : NO_ERROR;
 	}
     }
   if (error == NO_ERROR && n_keys > 0)
@@ -5354,10 +5561,17 @@ qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl
   /* the comparisons over the reads */
   for (int k = 0; error == NO_ERROR && k < plan->n_compares; k++)
     {
-      if (plan->compares[k]->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE)
+      if (plan->compares[k]->fixed.kernel != DOMAIN_COMPARE_AT_GATE_VOLATILE)
 	{
-	  error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
+	  continue;
 	}
+      if (qexec_compare_reads_failed (resolved, plan->compares[k]))
+	{
+	  /* over a constant whose computation failed below a branch guard (#367) */
+	  qexec_compare_unreached (&resolved.compares[plan->compares[k]->fixed.site]);
+	  continue;
+	}
+      error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
     }
   for (int k = 0; error == NO_ERROR && k < plan->n_element_sites; k++)
     {
@@ -5366,6 +5580,141 @@ qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl
 	  error = qexec_resolve_elements (thread_p, resolved, plan->element_sites[k]);
 	}
     }
+  return error;
+}
+
+/*
+ * qexec_guard_reached () - whether a row reaches what lies below a branch guard (#367, D-367-07): the guards around
+ *   it first, then its own constant selector, taken as develop's evaluation takes it
+ *   return: 1 reached, 0 not, or the error of a selector's evaluation (a failure there raised first, as develop's)
+ *   state(in/out): [plan->n_guards] 0 not known yet, 1 reached, 2 not reached
+ */
+static int
+qexec_guard_reached (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const DOMAIN_PLAN * plan, int guard,
+		     unsigned char *state)
+{
+  if (guard < 0)
+    {
+      return 1;
+    }
+  if (state[guard] != 0)
+    {
+      return state[guard] == 1 ? 1 : 0;
+    }
+  const DOMAIN_PLAN_GUARD *g = &plan->guards[guard];
+  const int outer = qexec_guard_reached (thread_p, xasl_state, plan, g->parent, state);
+  if (outer != 1)
+    {
+      if (outer == 0)
+	{
+	  state[guard] = 2;
+	}
+      return outer;
+    }
+  bool reached = true;
+  switch (g->kind)
+    {
+    case DOMAIN_GUARD_PRED_TRUE:
+    case DOMAIN_GUARD_PRED_NOT_TRUE:
+    case DOMAIN_GUARD_TERM_NOT_FALSE:
+    case DOMAIN_GUARD_TERM_NOT_TRUE:
+      {
+	const DB_LOGICAL value = eval_pred (thread_p, (const PRED_EXPR *) g->selector, &xasl_state->vd, NULL);
+	if (value == V_ERROR)
+	  {
+	    return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	  }
+	reached = g->kind == DOMAIN_GUARD_PRED_TRUE ? value == V_TRUE
+	  : g->kind == DOMAIN_GUARD_TERM_NOT_FALSE ? value != V_FALSE : value != V_TRUE;
+      }
+      break;
+    case DOMAIN_GUARD_FIRST_NULL:
+    case DOMAIN_GUARD_FIRST_NOT_NULL:
+      {
+	DB_VALUE *value = NULL;
+	if (fetch_peek_dbval (thread_p, (REGU_VARIABLE *) g->selector, &xasl_state->vd, NULL, NULL, NULL, &value)
+	    != NO_ERROR)
+	  {
+	    return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	  }
+	const bool is_null = value == NULL || DB_IS_NULL (value);
+	reached = g->kind == DOMAIN_GUARD_FIRST_NULL ? is_null : !is_null;
+      }
+      break;
+    case DOMAIN_GUARD_LIMIT:
+      {
+	bool empty = false;
+	if (qexec_check_limit_clause (thread_p, (XASL_NODE *) g->selector, xasl_state, &empty) != NO_ERROR)
+	  {
+	    return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	  }
+	reached = !empty;
+      }
+      break;
+    default:
+      assert (false);
+      break;
+    }
+  state[guard] = reached ? 1 : 2;
+  return reached ? 1 : 0;
+}
+
+/*
+ * qexec_raise_reached_failures () - G1's end (#367, D-367-07): the first failure below branch guards a row reaches is
+ *   the execution's error, raised again as it happened; the others lie where no data reaches, as develop never
+ *   raised them
+ */
+static int
+qexec_raise_reached_failures (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
+{
+  RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved;
+  const DOMAIN_PLAN *plan = resolved.plan;
+  if (resolved.n_failures == 0)
+    {
+      return NO_ERROR;
+    }
+  assert (plan != NULL && plan->n_guards > 0);
+  unsigned char *state = (unsigned char *) db_private_alloc (thread_p, plan->n_guards);
+  if (state == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, plan->n_guards);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (state, 0, plan->n_guards);
+  int error = NO_ERROR;
+  for (int f = 0; f < resolved.n_failures && error == NO_ERROR; f++)
+    {
+      const DOMAIN_GATE_FAILURE *failure = &resolved.failures[f];
+      const int reached = qexec_guard_reached (thread_p, xasl_state, plan, failure->guard, state);
+      if (reached != 1)
+	{
+	  error = reached;
+	  continue;
+	}
+      switch (failure->kind)
+	{
+	case DOMAIN_FAILURE_CONSTANT:
+	  error = qexec_evaluate_constant (thread_p, xasl_state, &plan->constants[failure->index]);
+	  break;
+	case DOMAIN_FAILURE_COMPARE:
+	  error = qexec_compare_constant_failed (failure->compare, failure->failed);
+	  break;
+	case DOMAIN_FAILURE_KEY:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name ((DB_TYPE) failure->arg),
+		  pr_type_name ((DB_TYPE) failure->arg2));
+	  error = ER_TP_CANT_COERCE;
+	  break;
+	case DOMAIN_FAILURE_CLASS:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
+		  fcode_get_uppercase_name ((FUNC_CODE) failure->arg), "DOUBLE, DATETIME or TIME");
+	  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	  break;
+	default:
+	  assert (false);
+	  break;
+	}
+    }
+  db_private_free (thread_p, state);
   return error;
 }
 
@@ -5535,12 +5884,12 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
   resolved.sealed = true;
 
   /* G1 step 7 (#352, interface §10): the decisions are sealed; each constant subtree is evaluated once into its own
-   * value, and a comparison site over one is decided from that value (F-352-17). An evaluation error is not raised
-   * here: develop raises it where it computes the node, at the first row (D-352-05). A site is decided as soon as its
-   * subtrees have their values, before the next constant is evaluated: that constant may be the site's own node
-   * (GREATEST (GREATEST (?, ?), ?), #354). A gate-dependent node that waits for its constant subtrees is decided just
-   * before its own evaluation, or after the last constant when it reads a row (#364); a site over its decision waits
-   * for it. */
+   * value, and a comparison site over one is decided from that value (F-352-17). An evaluation error is the
+   * execution's, before any row, whatever the rows would have reached (#367, D-367-01: develop raised it at the first
+   * row that computed the node). A site is decided as soon as its subtrees have their values, before the next constant
+   * is evaluated: that constant may be the site's own node (GREATEST (GREATEST (?, ?), ?), #354). A gate-dependent node
+   * that waits for its constant subtrees is decided just before its own evaluation, or after the last constant when it
+   * reads a row (#364); a site over its decision waits for it. */
   const int n_sites = plan == NULL ? 0 : plan->n_compares + plan->n_element_sites;
   unsigned char *decided = NULL;
   if (n_sites > 0)
@@ -5567,7 +5916,17 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	}
       if (error == NO_ERROR)
 	{
-	  qexec_evaluate_constant (thread_p, xasl_state, &plan->constants[i]);
+	  error = qexec_evaluate_constant (thread_p, xasl_state, &plan->constants[i]);
+	  if (error != NO_ERROR && error != ER_INTERRUPTED && error != ER_OUT_OF_VIRTUAL_MEMORY
+	      && plan->items_cold[node - plan->items].guard >= 0)
+	    {
+	      /* below a branch guard: the gate's error only if a row reaches the constant (D-367-07) */
+	      resolved.ready[node->ref] = DOMAIN_VALUE_FAILED;
+	      er_clear ();
+	      const DOMAIN_GATE_FAILURE failure =
+		{ NULL, plan->items_cold[node - plan->items].guard, i, 0, 0, DOMAIN_FAILURE_CONSTANT, 0 };
+	      error = qexec_note_failure (thread_p, resolved, failure);
+	    }
 	}
     }
   /* the waiting nodes left, which read a row, in producer order (#364) */
@@ -5577,7 +5936,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     }
   if (error == NO_ERROR && plan != NULL)
     {
-      /* the sites left: over a subtree the gate left to the row */
+      /* the sites left: over the last constants and the waiting nodes that read a row */
       error = qexec_resolve_constant_compares (thread_p, resolved, plan, decided, true);
     }
   if (decided != NULL)
@@ -5609,7 +5968,16 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	  return error;
 	}
     }
-  return NO_ERROR;
+
+  /* #367 (D-367-07): the failures below branch guards are the gate's errors if the constant conditions around them let
+   * a row reach them; where no data does, develop never raised them */
+  error = qexec_raise_reached_failures (thread_p, xasl_state);
+  if (resolved.failures != NULL)
+    {
+      db_private_free_and_init (thread_p, resolved.failures);
+      resolved.n_failures = resolved.max_failures = 0;
+    }
+  return error;
 }
 
 /*
@@ -5748,6 +6116,12 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
   RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
   assert (resolved.owner == thread_p || resolved.vals == NULL);
+  if (resolved.failures != NULL)
+    {
+      /* G1 ended with an error before it raised its failures below branch guards (#367) */
+      db_private_free_and_init (thread_p, resolved.failures);
+      resolved.n_failures = resolved.max_failures = 0;
+    }
   for (int k = 0; k < resolved.n_elements; k++)
     {
       qexec_clear_elements (thread_p, &resolved.elements[k]);
@@ -23528,17 +23902,6 @@ qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
     && !TP_IS_DATE_OR_TIME_TYPE (operand_type) && !qexec_interpolation_sees_nulls (vd, agg_p);
 }
 
-/* Whether a MEDIAN / PERCENTILE value the gate gave no class is a literal, a bind or a session variable read it could
- * not classify (#341): the plan typed the argument as the value the gate saw - a string, a BIT, a LOB, a collection;
- * a variable keeps its value's class for the statement (#366) - so the function's first non-NULL value is that value,
- * which develop's cascade rejected too (D-335-10). */
-static bool
-qexec_interpolation_value_unclassified (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
-{
-  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, agg_p->operands->value.domain_plan);
-  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL;
-}
-
 /*
  * qexec_setup_aggregate_accumulators () - the accumulator domains of an aggregate whose function domain is set (#337)
  *   return: error code or NO_ERROR
@@ -23819,9 +24182,9 @@ qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_lis
  * The function's domain and its list's were set before the first row (qexec_setup_aggregate_domains): the first value
  * checks them. A string column or expression is cast to its DOUBLE (D-335-10): a first value that does not convert
  * reports ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN (-1118) here, while a later one fails as the row's conversion
- * does (-181), as develop's did. A literal, a bind or a session variable read the gate could not classify is that
- * value: -1118, as develop's first value; a variable keeps the class the gate gave it for the statement (#366). The
- * cast goes into a value of its own: the operand may be a shared bind or a cached column value (S-39).
+ * does (-181), as develop's did. A literal, a bind or a session variable read the gate could not classify is the
+ * gate's -1118 before any row (#367, D-367-04), and one it classified was set up before the first row. The cast goes
+ * into a value of its own: the operand may be a shared bind or a cached column value (S-39).
  */
 static int
 qexec_interpolation_first_value (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const DB_VALUE * dbval)
@@ -23847,15 +24210,10 @@ qexec_interpolation_first_value (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, c
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
     }
-  else if (!gate_class && qexec_interpolation_value_unclassified (vd, agg_p))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
-	      fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME or TIME");
-      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-    }
   else
     {
-      /* a value argument the gate classified was set up before the first row (qexec_setup_aggregate_accumulators) */
+      /* a value argument: the gate classified it, setting it up before the first row
+       * (qexec_setup_aggregate_accumulators), or raised -1118 (#367) */
       return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
     }
   /* clear errors from failed casts once one succeeds */

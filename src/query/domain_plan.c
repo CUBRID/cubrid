@@ -119,6 +119,7 @@ struct DOMAIN_LOAD_ELEMENT_TERM
   DOMAIN_LOAD_ELEMENT_TERM *next;
   ALSM_EVAL_TERM *term;
   DOMAIN_PLAN_ITEM *list_column;
+  int guard;			/* the branch guard around the term (#367) */
 };
 /* A comparison of two values outside a predicate term the walk met (#354): FIELD, NULLIF, LEAST and GREATEST over
  * their operands, LIMIT's row count against 0, a merge join's column pair. A side is a regu, a list column (bound to
@@ -156,6 +157,7 @@ struct DOMAIN_LOAD_CONTEXT
   int n_gate_order;
   int max_gate_order;
   COMP_EVAL_TERM **compare_terms;	/* the comparison terms met, in walk order (#352) */
+  int *compare_term_guards;	/* [max_compare_terms] the branch guard around each term (#367) */
   int n_compare_terms;
   int max_compare_terms;
   DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first (#352) */
@@ -163,11 +165,23 @@ struct DOMAIN_LOAD_CONTEXT
   DOMAIN_LOAD_COMPARE_PAIR *compare_pairs;	/* the comparisons outside a term met, last first (#354) */
   int n_compare_pairs;
   INDX_INFO **indexes;		/* the index scans met, in walk order (#342) */
+  int *index_guards;		/* [max_indexes] the branch guard around each scan (#367) */
   int n_indexes;
   int max_indexes;
   ARITH_TYPE **defines;		/* the session variable assignments met (T_DEFINE_VARIABLE, #366) */
   int n_defines;
   int max_defines;
+  /* the branches taken by a constant condition (#367): the innermost one around the walk's position, and all of them,
+   * outer ones first */
+  int guard;
+  DOMAIN_PLAN_GUARD *guards;
+  int n_guards;
+  int max_guards;
+  bool guards_ambiguous;	/* a node met under two guards (domain_note_met_again) */
+  XASL_NODE **blocks;		/* the blocks walked, and the guard each was first walked below (#367) */
+  int *block_guards;
+  int n_blocks;
+  int max_blocks;
 };
 
 static void domain_walk_xasl (DOMAIN_LOAD_CONTEXT *, XASL_NODE *);
@@ -364,6 +378,7 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
   record->cold.val_pos = -1;
   record->cold.ctx = context;
   record->cold.opcode = opcode;
+  record->cold.guard = ctx->guard;
   record->cold.name = name;
   if (ctx->tail == NULL)
     {
@@ -376,6 +391,108 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
   ctx->tail = record;
   *owner = &record->item;
   return *owner;
+}
+
+/* Whether a regu the walk met is a constant (#367): a bind, a literal or a constant subtree - no row changes it. */
+static bool
+domain_regu_is_constant (const REGU_VARIABLE * regu)
+{
+  return regu != NULL && regu->domain_plan != NULL && regu->domain_plan->operand_class == OPERAND_CONST;
+}
+
+/* Whether a predicate the walk met reads constants only (#367): every value each of its terms compares is one. */
+static bool
+domain_pred_is_constant (const PRED_EXPR * pred)
+{
+  if (pred == NULL)
+    {
+      return false;
+    }
+  switch (pred->type)
+    {
+    case T_PRED:
+      return domain_pred_is_constant (pred->pe.m_pred.lhs) && domain_pred_is_constant (pred->pe.m_pred.rhs);
+    case T_NOT_TERM:
+      return domain_pred_is_constant (pred->pe.m_not_term);
+    case T_EVAL_TERM:
+      {
+	const EVAL_TERM *term = &pred->pe.m_eval_term;
+	switch (term->et_type)
+	  {
+	  case T_COMP_EVAL_TERM:
+	    return domain_regu_is_constant (term->et.et_comp.lhs)
+	      && (term->et.et_comp.rhs == NULL || domain_regu_is_constant (term->et.et_comp.rhs));
+	  case T_ALSM_EVAL_TERM:
+	    return domain_regu_is_constant (term->et.et_alsm.elem) && domain_regu_is_constant (term->et.et_alsm.elemset);
+	  case T_LIKE_EVAL_TERM:
+	    return domain_regu_is_constant (term->et.et_like.src) && domain_regu_is_constant (term->et.et_like.pattern)
+	      && (term->et.et_like.esc_char == NULL || domain_regu_is_constant (term->et.et_like.esc_char));
+	  default:
+	    /* an RLIKE term keeps its compiled pattern in the term, which the gate does not evaluate (it is no
+	     * selector) */
+	    return false;
+	  }
+      }
+    default:
+      return false;
+    }
+}
+
+/*
+ * domain_push_guard () - a branch the walk enters whose condition is a constant becomes the innermost guard of what
+ *   lies below it (#367, D-367-07); the caller restores ctx->guard when it leaves the branch
+ */
+static void
+domain_push_guard (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_GUARD_KIND kind, const void *selector)
+{
+  if (ctx->failed)
+    {
+      return;
+    }
+  if (ctx->n_guards == ctx->max_guards)
+    {
+      const int max = ctx->max_guards == 0 ? 8 : ctx->max_guards * 2;
+      DOMAIN_PLAN_GUARD *guards =
+	(DOMAIN_PLAN_GUARD *) db_private_realloc (ctx->thread_p, ctx->guards, max * sizeof (*guards));
+      if (guards == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->guards = guards;
+      ctx->max_guards = max;
+    }
+  DOMAIN_PLAN_GUARD *guard = &ctx->guards[ctx->n_guards];
+  guard->selector = selector;
+  guard->parent = ctx->guard;
+  guard->kind = (unsigned char) kind;
+  ctx->guard = ctx->n_guards++;
+}
+
+/* Whether guard outer is inner or one of the guards around it (-1, no guard, is around every guard). */
+static bool
+domain_guard_encloses (const DOMAIN_LOAD_CONTEXT * ctx, int outer, int inner)
+{
+  for (; inner >= 0; inner = ctx->guards[inner].parent)
+    {
+      if (inner == outer)
+	{
+	  return true;
+	}
+    }
+  return outer < 0;
+}
+
+/* A node the walk meets again, first met below guard (#367): its guard chain holds for this place too when the first
+ * place's guard is around this one; otherwise the node is also reached another way than its chain says, and the plan
+ * keeps no guards (every failure is the gate's error). */
+static void
+domain_note_met_again (DOMAIN_LOAD_CONTEXT * ctx, int guard)
+{
+  if (!domain_guard_encloses (ctx, guard, ctx->guard))
+    {
+      ctx->guards_ambiguous = true;
+    }
 }
 
 static void
@@ -856,24 +973,58 @@ domain_walk_out (DOMAIN_LOAD_CONTEXT * ctx, OUTPTR_LIST * list)
 static void
 domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_gate = false, bool field_bottom = true)
 {
-  if (arith == NULL || arith->domain_plan != NULL || ctx->failed)
+  if (arith == NULL || ctx->failed)
     {
+      return;
+    }
+  if (arith->domain_plan != NULL)
+    {
+      domain_note_met_again (ctx, domain_record_of (arith->domain_plan)->cold.guard);
       return;
     }
   bool is_cast = arith->opcode == T_CAST || arith->opcode == T_CAST_WRAP;
   REGU_VARIABLE *operands[] = { arith->leftptr, arith->rightptr, arith->thirdptr };
   DOMAIN_OPERAND_CLASS cls = domain_volatile_operator (arith->opcode) || arith->pred != NULL
     ? OPERAND_VOLATILE : OPERAND_CONST;
+  /* #367: CASE, DECODE and IF take one arm by their predicate, which develop evaluates first; COALESCE, NVL, IFNULL
+   * and NVL2 read their other operands by the first one's NULL-ness - when the node's domain is fixed: of an open
+   * (VARIABLE) domain, develop's fetch_peek_arith reads every operand to infer the domain from the values. A selector
+   * that is a constant guards each arm it may skip. */
+  const int entry_guard = ctx->guard;
+  const bool by_predicate = arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_IF;
+  const bool by_first = (arith->opcode == T_COALESCE || arith->opcode == T_NVL || arith->opcode == T_IFNULL
+			 || arith->opcode == T_NVL2) && arith->domain != NULL
+    && TP_DOMAIN_TYPE (arith->domain) != DB_TYPE_VARIABLE;
+  if (by_predicate)
+    {
+      domain_walk_pred (ctx, arith->pred);
+    }
+  const bool guarded_arms = by_predicate && domain_pred_is_constant (arith->pred);
   for (int operand_index = 0; operand_index < 3; operand_index++)
     {
       REGU_VARIABLE *operand = operands[operand_index];
+      ctx->guard = entry_guard;
+      if (operand != NULL && guarded_arms && operand_index < 2)
+	{
+	  domain_push_guard (ctx, operand_index == 0 ? DOMAIN_GUARD_PRED_TRUE : DOMAIN_GUARD_PRED_NOT_TRUE,
+			     arith->pred);
+	}
+      else if (operand != NULL && by_first && operand_index > 0 && domain_regu_is_constant (arith->leftptr))
+	{
+	  domain_push_guard (ctx, arith->opcode == T_NVL2 && operand_index == 1 ? DOMAIN_GUARD_FIRST_NOT_NULL
+			     : DOMAIN_GUARD_FIRST_NULL, arith->leftptr);
+	}
       domain_walk_regu (ctx, operand, is_cast ? DOMAIN_CTX_ASSIGN : DOMAIN_CTX_ARITH);
       if (operand != NULL)
 	{
 	  cls = domain_merge_class (cls, operand->domain_plan);
 	}
     }
-  domain_walk_pred (ctx, arith->pred);
+  ctx->guard = entry_guard;
+  if (!by_predicate)
+    {
+      domain_walk_pred (ctx, arith->pred);
+    }
   /* the comparisons the node makes are planned like a term's (#354): FIELD compares its third operand with each value,
    * NULLIF and LEAST / GREATEST their two operands; the node's item carries them (#355) */
   const DOMAIN_COMPARE_PLAN **compares = domain_arith_compares (ctx->thread_p, arith->opcode, &ctx->failed);
@@ -1002,8 +1153,17 @@ domain_local_value (XASL_NODE * block, DB_VALUE * value)
 static void
 domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX context)
 {
-  if (regu == NULL || regu->domain_plan != NULL || ctx->failed)
+  if (regu == NULL || ctx->failed)
     {
+      return;
+    }
+  if (regu->domain_plan != NULL)
+    {
+      const DOMAIN_LOAD_RECORD *record = domain_record_of (regu->domain_plan);
+      if (record->regu == regu)
+	{
+	  domain_note_met_again (ctx, record->cold.guard);
+	}
       return;
     }
   domain_walk_xasl (ctx, regu->xasl);
@@ -1296,8 +1456,16 @@ domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
 	  return;
 	}
       ctx->compare_terms = terms;
+      int *guards = (int *) db_private_realloc (ctx->thread_p, ctx->compare_term_guards, max * sizeof (*guards));
+      if (guards == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->compare_term_guards = guards;
       ctx->max_compare_terms = max;
     }
+  ctx->compare_term_guards[ctx->n_compare_terms] = ctx->guard;
   ctx->compare_terms[ctx->n_compare_terms++] = term;
 }
 
@@ -1317,6 +1485,7 @@ domain_add_element_term (DOMAIN_LOAD_CONTEXT * ctx, ALSM_EVAL_TERM * term)
     }
   entry->term = term;
   entry->list_column = NULL;
+  entry->guard = ctx->guard;
   entry->next = ctx->element_terms;
   ctx->element_terms = entry;
   ctx->n_element_terms++;
@@ -1330,11 +1499,20 @@ domain_add_element_term (DOMAIN_LOAD_CONTEXT * ctx, ALSM_EVAL_TERM * term)
 static void
 domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
 {
+  const int entry_guard = ctx->guard;
   while (pred != NULL && !ctx->failed)
     {
       if (pred->type == T_PRED)
 	{
 	  domain_walk_pred (ctx, pred->pe.m_pred.lhs);
+	  const BOOL_OP op = pred->pe.m_pred.bool_op;
+	  if ((op == B_AND || op == B_OR) && domain_pred_is_constant (pred->pe.m_pred.lhs))
+	    {
+	      /* #367: eval_pred evaluates the rest of an AND only when this term is not false, of an OR only when it is
+	       * not true */
+	      domain_push_guard (ctx, op == B_AND ? DOMAIN_GUARD_TERM_NOT_FALSE : DOMAIN_GUARD_TERM_NOT_TRUE,
+				 pred->pe.m_pred.lhs);
+	    }
 	  pred = pred->pe.m_pred.rhs;
 	  continue;
 	}
@@ -1370,8 +1548,9 @@ domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
 	      break;
 	    }
 	}
-      return;
+      break;
     }
+  ctx->guard = entry_guard;
 }
 
 /* A sort key reads column pos_no of the list it sorts: the producer's item is the key's item (X-2). An aggregate's
@@ -1515,6 +1694,7 @@ domain_add_index (DOMAIN_LOAD_CONTEXT * ctx, INDX_INFO * index)
     {
       if (ctx->indexes[i] == index)
 	{
+	  domain_note_met_again (ctx, ctx->index_guards[i]);
 	  return;
 	}
     }
@@ -1528,8 +1708,16 @@ domain_add_index (DOMAIN_LOAD_CONTEXT * ctx, INDX_INFO * index)
 	  return;
 	}
       ctx->indexes = indexes;
+      int *guards = (int *) db_private_realloc (ctx->thread_p, ctx->index_guards, max * sizeof (*guards));
+      if (guards == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->index_guards = guards;
       ctx->max_indexes = max;
     }
+  ctx->index_guards[ctx->n_indexes] = ctx->guard;
   ctx->indexes[ctx->n_indexes++] = index;
 }
 
@@ -1568,6 +1756,11 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 	    }
 	  domain_walk_regu (ctx, key->key_limit_l);
 	  domain_walk_regu (ctx, key->key_limit_u);
+	  /* the scan computes its key limits when it opens, and turns an overflow of their arithmetic into a limit
+	   * (scan_handle_overflow_subtraction_upper, fetch_and_coerce_key_limit_lower): a constant there is the scan's
+	   * to compute, not one whose failure is the gate's error (#367) */
+	  domain_force_row (key->key_limit_l);
+	  domain_force_row (key->key_limit_u);
 	}
       domain_walk_pred (ctx, spec->where_key);
       domain_walk_pred (ctx, spec->where_pred);
@@ -1778,13 +1971,58 @@ domain_add_merge_compares (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 static void
 domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 {
-  if (xasl == NULL || xasl->domain_plan != NULL || ctx->failed)
+  if (xasl == NULL || ctx->failed)
     {
       return;
     }
+  if (xasl->domain_plan != NULL)
+    {
+      for (int i = 0; i < ctx->n_blocks; i++)
+	{
+	  if (ctx->blocks[i] == xasl)
+	    {
+	      domain_note_met_again (ctx, ctx->block_guards[i]);
+	      break;
+	    }
+	}
+      return;
+    }
+  if (ctx->n_blocks == ctx->max_blocks)
+    {
+      const int max = ctx->max_blocks == 0 ? 8 : ctx->max_blocks * 2;
+      XASL_NODE **blocks = (XASL_NODE **) db_private_realloc (ctx->thread_p, ctx->blocks, max * sizeof (*blocks));
+      int *guards = blocks == NULL ? NULL
+	: (int *) db_private_realloc (ctx->thread_p, ctx->block_guards, max * sizeof (*guards));
+      if (blocks != NULL)
+	{
+	  ctx->blocks = blocks;
+	}
+      if (guards == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->block_guards = guards;
+      ctx->max_blocks = max;
+    }
+  ctx->blocks[ctx->n_blocks] = xasl;
+  ctx->block_guards[ctx->n_blocks++] = ctx->guard;
   XASL_NODE *previous_block = ctx->block;
+  const int entry_guard = ctx->guard;
   ctx->block = xasl;
   xasl->domain_plan = ctx->plan;
+  if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && xasl->limit_row_count != NULL)
+    {
+      /* #367: qexec_execute_mainblock_internal checks the top-most block's LIMIT first and executes nothing more when
+       * its row count is not above 0 - a constant row count guards everything else of the statement */
+      domain_walk_regu (ctx, xasl->limit_offset);
+      domain_walk_regu (ctx, xasl->limit_row_count);
+      if (domain_regu_is_constant (xasl->limit_row_count)
+	  && (xasl->limit_offset == NULL || domain_regu_is_constant (xasl->limit_offset)))
+	{
+	  domain_push_guard (ctx, DOMAIN_GUARD_LIMIT, xasl);
+	}
+    }
   if (xasl->type == CONNECTBY_PROC)
     {
       /* before its specs are walked: the probe item records the domain the scan coerces to */
@@ -1793,7 +2031,21 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_xasl (ctx, xasl->aptr_list);
   domain_walk_xasl (ctx, xasl->bptr_list);
   domain_walk_xasl (ctx, xasl->dptr_list);
+  /* #367: the scan loop takes a row on only when the block's if_pred holds (qexec_intprt_fnc, after the join
+   * predicates): what reads the qualified rows - fptr, the inner scans, the row numbers, the outputs - lies below it,
+   * so a constant if_pred guards them */
+  const int block_guard = ctx->guard;
+  domain_walk_pred (ctx, xasl->if_pred);
+  int if_guard = block_guard;
+  if (domain_pred_is_constant (xasl->if_pred))
+    {
+      domain_push_guard (ctx, DOMAIN_GUARD_PRED_TRUE, xasl->if_pred);
+      if_guard = ctx->guard;
+      ctx->guard = block_guard;
+    }
+  ctx->guard = if_guard;
   domain_walk_xasl (ctx, xasl->fptr_list);
+  ctx->guard = block_guard;
   domain_walk_xasl (ctx, xasl->connect_by_ptr);
   switch (xasl->type)
     {
@@ -1836,12 +2088,16 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_specs (ctx, xasl->merge_spec);
   domain_walk_pred (ctx, xasl->during_join_pred);
   domain_walk_pred (ctx, xasl->after_join_pred);
-  domain_walk_pred (ctx, xasl->if_pred);
+  ctx->guard = if_guard;
   domain_walk_pred (ctx, xasl->instnum_pred);
   domain_walk_pred (ctx, xasl->ordbynum_pred);
   domain_walk_regu (ctx, xasl->orderby_limit);
+  /* the LIMIT is checked before the scan: outside the if_pred's guard, and outside its own when the block is the
+   * top-most one */
+  ctx->guard = XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) ? entry_guard : block_guard;
   domain_walk_regu (ctx, xasl->limit_offset);
   domain_walk_regu (ctx, xasl->limit_row_count);
+  ctx->guard = block_guard;
   if (xasl->limit_row_count != NULL)
     {
       /* qexec_check_limit_clause runs the query only for a row count greater than an INT 0 (#354) */
@@ -1853,6 +2109,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_regu (ctx, xasl->level_regu);
   domain_walk_regu (ctx, xasl->isleaf_regu);
   domain_walk_regu (ctx, xasl->iscycle_regu);
+  ctx->guard = if_guard;
   for (SELUPD_LIST * p = xasl->selected_upd_list; p != NULL; p = p->next)
     {
       for (REGU_VARLIST_LIST list = p->select_list; list != NULL; list = list->next)
@@ -1860,6 +2117,9 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 	  domain_walk_list (ctx, list->list);
 	}
     }
+  /* a list or a value built from the qualified rows is below the if_pred's guard; the other procedures keep the
+   * block's */
+  ctx->guard = xasl->type == BUILDLIST_PROC || xasl->type == BUILDVALUE_PROC ? if_guard : block_guard;
   switch (xasl->type)
     {
     case BUILDLIST_PROC:
@@ -1933,6 +2193,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     default:
       break;
     }
+  ctx->guard = if_guard;
   domain_walk_out (ctx, xasl->outptr_list);
   OUTPTR_LIST *output = domain_block_output (xasl);
   domain_walk_sort (ctx, xasl->orderby_list, output == NULL ? NULL : output->valptrp, xasl);
@@ -1954,8 +2215,12 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   /* an uncorrelated scalar subquery runs once before the scan that reads it (qexec_execute_mainblock_internal), fetched
    * through the regu that owns it: a predicate operand, or a regu no predicate holds (an index key range reads a copy)
    * (#340) */
+  ctx->guard = block_guard;
   domain_walk_regu (ctx, xasl->precomp_owner_regu, DOMAIN_CTX_COMPARE);
+  ctx->guard = if_guard;
   domain_walk_xasl (ctx, xasl->scan_ptr);
+  /* the next block is no part of this one's execution: outside its guards */
+  ctx->guard = entry_guard;
   domain_walk_xasl (ctx, xasl->next);
   ctx->block = previous_block;
 }
@@ -2886,6 +3151,8 @@ domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOA
   memset (site, 0, sizeof (*site));
   site->site = -1;
   DOMAIN_COMPARE_PLAN *pair = &site->pair;
+  pair->predicate = true;
+  pair->guard = entry->guard;
   DOMAIN_COMPARE_KEY key[2];
   unsigned long long volatile_reads = 0;
   const DOMAIN_COMPARE_SIDE item = domain_compare_side (plan, records, constant_base, term->elem, pair, 0, &key[0],
@@ -2984,7 +3251,11 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
       COMP_EVAL_TERM *term = ctx->compare_terms[t];
       if (term->domain_compare != NULL)
 	{
-	  /* a term the walk met twice */
+	  /* a term the walk met twice: its guard chain holds for the second place too, or the plan keeps no guards */
+	  if (!domain_guard_encloses (ctx, term->domain_compare->guard, ctx->compare_term_guards[t]))
+	    {
+	      ctx->guards_ambiguous = true;
+	    }
 	  continue;
 	}
       DOMAIN_COMPARE_PLAN *site = (DOMAIN_COMPARE_PLAN *) domain_plan_alloc (thread_p, 1, sizeof (*site));
@@ -2994,6 +3265,8 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	  break;
 	}
       memset (site, 0, sizeof (*site));
+      site->predicate = true;
+      site->guard = ctx->compare_term_guards[t];
       DOMAIN_COMPARE_KEY key[2];
       unsigned long long volatile_reads = 0;
       const DOMAIN_COMPARE_SIDE lhs = domain_compare_side (plan, records, constant_base, term->lhs, site, 0, &key[0],
@@ -3010,6 +3283,11 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	  ok = domain_publish_elements (thread_p, plan, records, constant_base, e, gate_sites, &n_gate, element_sites,
 					&n_element_gate);
 	}
+      else if (!domain_guard_encloses (ctx, e->term->domain_compare->pair.guard, e->guard))
+	{
+	  /* a term the walk met twice below guards neither of which is around the other (#367) */
+	  ctx->guards_ambiguous = true;
+	}
     }
   for (DOMAIN_LOAD_COMPARE_PAIR * pair = ctx->compare_pairs; pair != NULL && ok; pair = pair->next)
     {
@@ -3024,6 +3302,7 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	  break;
 	}
       memset (site, 0, sizeof (*site));
+      site->guard = -1;
       DOMAIN_COMPARE_KEY key[2];
       unsigned long long volatile_reads = 0;
       const DOMAIN_COMPARE_SIDE lhs = domain_compare_pair_side (plan, records, constant_base, pair, site, 0, &key[0],
@@ -3164,10 +3443,10 @@ domain_plan_key_bound (THREAD_ENTRY * thread_p, domain_plan_index * index, REGU_
     }
   if (bound->midxkey && mixes)
     {
-      /* constants only: the gate writes the domain once per execution; the scan fills a scratch chain otherwise, and
-       * for a constant the row computes (D-352-05) */
+      /* constants only: the gate writes the domain once per execution (every constant has its value before any row,
+       * #367); the scan fills a scratch chain otherwise */
       bound->constant = constant && !row;
-      bound->scratch = index->n_scratch++;
+      bound->scratch = bound->constant ? -1 : index->n_scratch++;
     }
   return true;
 }
@@ -3250,6 +3529,7 @@ domain_publish_indexes (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMA
       domain_plan_index *index = &plan->indexes[j];
       memset (index, 0, sizeof (*index));
       index->site = -1;
+      index->guard = ctx->index_guards[j];
       indx_info->domain_plan = NULL;
       if (indx_info->key_type == NULL)
 	{
@@ -3357,6 +3637,7 @@ domain_stream_compare (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * lhs, c
       return NULL;
     }
   memset (site, 0, sizeof (*site));
+  site->guard = -1;
   DOMAIN_COMPARE_KEY key[2];
   const bool lhs_literal = domain_stream_literal_key (lhs, site, 0, &key[0]);
   const bool rhs_literal = domain_stream_literal_key (rhs, site, 1, &key[1]);
@@ -3386,6 +3667,7 @@ domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
     }
   memset (site, 0, sizeof (*site));
   site->site = -1;
+  site->pair.guard = -1;
   DOMAIN_COMPARE_KEY item;
   if (!domain_stream_literal_key (elem, &site->pair, 0, &item))
     {
@@ -3588,6 +3870,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   memset (&ctx, 0, sizeof (ctx));
   ctx.thread_p = thread_p;
   ctx.plan = plan;
+  ctx.guard = -1;
   domain_walk_xasl (&ctx, root);
   /* Output/list readers borrow their producer's answer. Match the restored
    * value identity, not a column ordinal from a different XASL block. Keep an
@@ -3841,6 +4124,57 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	}
       ctx.failed = ctx.failed || !domain_publish_compares (thread_p, &ctx, plan, constant_base)
 	|| !domain_publish_indexes (thread_p, &ctx, plan);
+    }
+  if (!ctx.failed && ctx.guards_ambiguous)
+    {
+      /* #367: a node below two guards neither of which is around the other - no guard chain says every way to it,
+       * so the plan keeps no guards and every failure is the gate's error */
+      for (int i = 0; i < plan->n_items; i++)
+	{
+	  plan->items_cold[i].guard = -1;
+	}
+      for (int k = 0; k < plan->n_compares; k++)
+	{
+	  plan->compares[k]->guard = -1;
+	}
+      for (int k = 0; k < plan->n_element_sites; k++)
+	{
+	  plan->element_sites[k]->pair.guard = -1;
+	}
+      for (int j = 0; j < plan->n_indexes; j++)
+	{
+	  plan->indexes[j].guard = -1;
+	}
+    }
+  else if (!ctx.failed && ctx.n_guards > 0)
+    {
+      plan->guards = (DOMAIN_PLAN_GUARD *) domain_plan_alloc (thread_p, ctx.n_guards, sizeof (*plan->guards));
+      ctx.failed = plan->guards == NULL;
+      if (!ctx.failed)
+	{
+	  memcpy (plan->guards, ctx.guards, sizeof (*plan->guards) * ctx.n_guards);
+	  plan->n_guards = ctx.n_guards;
+	}
+    }
+  if (ctx.guards != NULL)
+    {
+      db_private_free (thread_p, ctx.guards);
+    }
+  if (ctx.blocks != NULL)
+    {
+      db_private_free (thread_p, ctx.blocks);
+    }
+  if (ctx.block_guards != NULL)
+    {
+      db_private_free (thread_p, ctx.block_guards);
+    }
+  if (ctx.index_guards != NULL)
+    {
+      db_private_free (thread_p, ctx.index_guards);
+    }
+  if (ctx.compare_term_guards != NULL)
+    {
+      db_private_free (thread_p, ctx.compare_term_guards);
     }
   if (ctx.gate_order != NULL)
     {

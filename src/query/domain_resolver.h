@@ -154,7 +154,8 @@ struct DOMAIN_COMPARE
   unsigned char first;		/* the side develop converts first */
   unsigned char source[2];	/* DB_TYPE of each side before conversion: develop's failure outcome names these */
   unsigned char converted_first;	/* DB_TYPE the first side has once converted (the second conversion failing) */
-  unsigned char failed;		/* bit i: the gate could not convert constant side i (develop's failure at every row) */
+  unsigned char failed;		/* bit i: the gate could not convert constant side i - a record outside a term, which
+				 * answers by develop's rank at every row (a term's is the gate's error, #367) */
   unsigned char reason;		/* kernel VALUES: DOMAIN_COMPARE_REASON */
   unsigned char coercion;	/* the do_coercion develop's comparison passes cmpval: 1, or 0 for a comparison without
 				 * coercion (a collection's order, #354) */
@@ -304,18 +305,16 @@ bool domain_key_compares_as_is (const DOMAIN_COMPARE_KEY * a, const DOMAIN_COMPA
 
 /*
  * DOMAIN_SEARCH_KEYS - what an index scan's comparisons of its search key values read (#342): the scan's key
- *   comparison table (NULL: none planned), and whether a key column took develop's rule from its value in this scan
- *   (a constant the row computes, D-352-05) - its comparisons then keep develop's, counted. A B-tree search outside a
- *   query plan has none.
+ *   comparison table (NULL: none planned). A B-tree search outside a query plan has none.
  */
 struct DOMAIN_SEARCH_KEYS
 {
   const DOMAIN_KEY_COMPARES *compares;
-  bool values_decide;
 };
 
-/* A search key comparison of two values of a key column whose keys do not compare as they are: the table's, develop's
- * where the scan's values decide, the execution boundary (b) otherwise (#342). */
+/* A search key comparison of two values of a key column whose keys do not compare as they are: the table's, the
+ * execution boundary (b) for a pair it does not hold (#342) - every key column's rule is decided before any row, a
+ * constant's included (#367). */
 DB_VALUE_COMPARE_RESULT domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1,
 						   DB_VALUE * value2, int do_coercion, int total_order,
 						   bool * can_compare);

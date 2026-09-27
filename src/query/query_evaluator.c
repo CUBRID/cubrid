@@ -292,8 +292,7 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
       elements->all = &decided->compares[0];
       break;
     default:
-      /* nothing decided: a NULL constant compares nothing, and a constant the row computes raises its error first
-       * (D-352-05) */
+      /* nothing decided: a NULL constant compares nothing */
       break;
     }
 }

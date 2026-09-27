@@ -89,6 +89,7 @@ struct DOMAIN_PLAN_ITEM_COLD
   int val_pos;
   short ctx;
   int opcode;
+  int guard;			/* the innermost branch guard around the item (DOMAIN_PLAN_GUARD, #367); -1 none */
   const DOMAIN_PLAN_ITEM *pair;
   const char *name;
 };
@@ -131,6 +132,37 @@ struct DOMAIN_COMPARE_PLAN
   int value[2];			/* resolved.vals index reserved for a constant side's converted value; -1 */
   bool after_constants;		/* a side is a constant subtree: the gate decides the site once it evaluated the
 				 * subtree, from the subtree's value (a compiled domain need not describe it, F-352-17) */
+  bool predicate;		/* a comparison term's or an ALL/SOME term's record: develop's coercion of a constant side
+				 * that fails is its error at every row the term compares, which the gate raises before
+				 * any row (#367, D-367-02); a record outside a term answers by rank there, as develop's */
+  int guard;			/* a term's: the innermost branch guard around it (DOMAIN_PLAN_GUARD, #367); -1 none */
+};
+
+/*
+ * A branch develop's evaluation takes by a condition that is a constant (#367, D-367-07). A failure of the gate's own
+ * work on a constant - its computation, a term's conversion of it, a key constant, a MEDIAN value - is the gate's
+ * error only when the constant conditions around it let some row reach it: where no data reaches it, develop never
+ * raised it, and the answer stays develop's (the user's decision of 2026-09-27). A branch whose condition a row gives
+ * is no guard: any row may take it.
+ */
+enum DOMAIN_GUARD_KIND
+{
+  DOMAIN_GUARD_PRED_TRUE,	/* the arm CASE, DECODE or IF takes when its predicate is true (selector: the predicate) */
+  DOMAIN_GUARD_PRED_NOT_TRUE,	/* the arm it takes when the predicate is false or unknown */
+  DOMAIN_GUARD_FIRST_NULL,	/* an operand COALESCE, NVL, IFNULL or NVL2 reads when its first is NULL (selector: the
+				 * first operand) */
+  DOMAIN_GUARD_FIRST_NOT_NULL,	/* NVL2's second operand: read when the first is not NULL */
+  DOMAIN_GUARD_TERM_NOT_FALSE,	/* the rest of an AND: evaluated unless its first term is false (selector: the term) */
+  DOMAIN_GUARD_TERM_NOT_TRUE,	/* the rest of an OR: evaluated unless its first term is true */
+  DOMAIN_GUARD_LIMIT		/* a statement below its LIMIT: executed when the row count is above 0 (selector: the
+				 * top-most XASL, qexec_check_limit_clause) */
+};
+
+struct DOMAIN_PLAN_GUARD
+{
+  const void *selector;		/* PRED_EXPR, REGU_VARIABLE or XASL_NODE by kind */
+  int parent;			/* the guard around this one; -1 */
+  unsigned char kind;		/* DOMAIN_GUARD_KIND */
 };
 
 /* What an ALL/SOME term compares its item with (#352, D-352-03). */
@@ -161,7 +193,7 @@ struct DOMAIN_ELEMENT_COMPARE_PLAN
 /* What the gate decided for an ALL/SOME term in one execution (#352, D-352-03). */
 enum DOMAIN_ELEMENTS_READ
 {
-  DOMAIN_READ_NONE,		/* nothing: a NULL constant, or a constant subtree the row computes (D-352-05) */
+  DOMAIN_READ_NONE,		/* nothing: a NULL constant */
   DOMAIN_READ_POSITIONS,	/* a constant right side: each element's decision and the gate's own value, by position */
   DOMAIN_READ_TABLE,		/* a collection the row computes: `table` */
   DOMAIN_READ_PAIR		/* a right side whose values are no collection: compares[0] */
@@ -237,6 +269,7 @@ struct domain_plan_index
   int n_scratch;		/* the bounds with a scratch chain */
   int site;			/* resolved.indexes index: the gate decides the CONSTANT and DECIDED elements and builds
 				 * the key comparison table once per execution; -1 none */
+  int guard;			/* the innermost branch guard around the scan (DOMAIN_PLAN_GUARD, #367); -1 none */
   const DOMAIN_KEY_COMPARES *compares;	/* site -1: the load's key comparison table; NULL when every value compares
 					 * with its index column as it is */
 };
@@ -247,14 +280,12 @@ struct DOMAIN_KEY_DECISION
   DB_VALUE value;		/* CONSTANT: the value the key writes - converted into the index column's domain, or
 				 * as it is - the owner's */
   const TP_DOMAIN *domain;	/* CONSTANT: the domain a mixed key writes the value with (its own, in the column's
-				 * direction; the column's once converted); NULL: the gate has no value for it (a
-				 * constant subtree the row computes, D-352-05) */
+				 * direction; the column's once converted); every constant has one (#367) */
   const TP_DOMAIN *keep_elem;	/* DECIDED: the element's domain in the column's direction */
   DOMAIN_CONV_FUNC strict_conv;	/* DECIDED STRICT */
   unsigned char rule;		/* DECIDED: INDEX, STRICT or KEEP; DECIDED itself when the gate has no domain for it:
 				 * its values are NULL (a value there is the boundary (b), #343) */
   bool kept;			/* CONSTANT: its column is kept, so its key is mixed */
-  bool invalid;			/* CONSTANT: no index key type (tp_valid_indextype): the range raises develop's error */
 };
 
 /* One execution's key decisions for an index scan (#342): one block with the element decisions, the bounds' domains and
@@ -303,6 +334,37 @@ struct domain_plan
   int n_cells;			/* the items with a cell (#355) */
   int n_session_variables;
   DOMAIN_SESSION_VARIABLE *session_variables;	/* the session variables the statement reads (#366) */
+  int n_guards;
+  DOMAIN_PLAN_GUARD *guards;	/* the branches taken by a constant condition, outer ones first (#367) */
+};
+
+/* What resolved.ready says of a value the gate keeps in vals (#352, #367). */
+enum DOMAIN_VALUE_STATE
+{
+  DOMAIN_VALUE_PENDING = 0,	/* a constant subtree step 7 has not evaluated yet */
+  DOMAIN_VALUE_READY = 1,	/* in vals */
+  DOMAIN_VALUE_FAILED = 2	/* a constant subtree whose computation failed below a branch guard: the gate's error
+				 * once it knows a row reaches it, never read otherwise (D-367-07) */
+};
+
+/* What G1 failed at below a branch guard (#367, D-367-07): it raises the failure at its end if a row reaches it. */
+enum DOMAIN_GATE_FAILURE_KIND
+{
+  DOMAIN_FAILURE_CONSTANT,	/* a constant subtree's computation: index = plan->constants index (D-367-01) */
+  DOMAIN_FAILURE_COMPARE,	/* a term's constant conversion: compare, failed (D-367-02) */
+  DOMAIN_FAILURE_KEY,		/* a key constant no index key holds: arg = column type, arg2 = value type (D-367-03) */
+  DOMAIN_FAILURE_CLASS		/* a MEDIAN / PERCENTILE value without a class: arg = function (D-367-04) */
+};
+
+struct DOMAIN_GATE_FAILURE
+{
+  const DOMAIN_COMPARE *compare;	/* COMPARE: the decision whose constant sides do not convert */
+  int guard;
+  int index;
+  int arg;
+  int arg2;
+  unsigned char kind;		/* DOMAIN_GATE_FAILURE_KIND */
+  unsigned char failed;		/* COMPARE: bit i, constant side i does not convert */
 };
 
 struct RESOLVED_DOMAIN_TABLE
@@ -319,7 +381,7 @@ struct RESOLVED_DOMAIN_TABLE
   DOMAIN_COMPARE *compares;	/* [plan->n_compares] this execution's comparison decisions (#352) */
   DOMAIN_ELEMENTS *elements;	/* [plan->n_element_sites] this execution's ALL/SOME decisions; their arrays are the
 				 * owner's (#352) */
-  unsigned char *ready;		/* [n_vals] a constant subtree's value is in vals (the gate evaluated it, #352) */
+  unsigned char *ready;		/* [n_vals] DOMAIN_VALUE_STATE of a constant subtree's value (#352, #367) */
   DOMAIN_INDEX_DECISIONS *indexes;	/* [n_indexes] this execution's key decisions by index site; their blocks are
 					 * the owner's (#342) */
   int n_indexes;
@@ -331,6 +393,10 @@ struct RESOLVED_DOMAIN_TABLE
 				 * (qexec_setup_interpolation_list); NULL */
   int *taken_type;		/* [n_cells] an aggregate's or analytic function's operand type (opr_dbtype); -1 */
   int n_cells;
+  /* during G1 only: the failures below branch guards it raises at its end if a row reaches them (#367) */
+  DOMAIN_GATE_FAILURE *failures;
+  int n_failures;
+  int max_failures;
 };
 
 int stx_build_domain_plan (THREAD_ENTRY *thread_p, xasl_node *root, xasl_unpack_info *unpack_info,

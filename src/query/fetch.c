@@ -808,7 +808,7 @@ fetch_constant_ready (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
       return false;
     }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  return resolved.ready != NULL && item->ref < resolved.n_vals && resolved.ready[item->ref] != 0;
+  return resolved.ready != NULL && item->ref < resolved.n_vals && resolved.ready[item->ref] == DOMAIN_VALUE_READY;
 }
 
 /*

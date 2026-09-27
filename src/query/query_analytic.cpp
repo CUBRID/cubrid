@@ -798,11 +798,10 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		    }
 		  else
 		    {
-		      /* a value the gate could not classify - a literal, a bind, a session variable read, which keeps its
-		       * value's class for the statement (#366) - fails develop's casts to DOUBLE, DATETIME then TIME: the
-		       * gate's classification is that cascade (domain_classify_interpolation, D-335-10) */
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_TIME);
-		      dom_status = DOMAIN_INCOMPATIBLE;
+		      /* a value the gate could not classify - a literal, a bind, a session variable read - is the gate's
+		       * -1118 before any row (#367, D-367-04), and one it classified has its decision (planned) */
+		      error = qexec_domain_unresolved (val_desc_p, func_p->domain_plan, func_p->domain);
+		      goto exit;
 		    }
 
 		  if (dom_status != DOMAIN_COMPATIBLE)

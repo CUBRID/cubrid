@@ -351,12 +351,11 @@ struct scan_key_state
 enum SCAN_KEY_CHOICE
 {
   SCAN_KEY_COLUMN,		/* the index column's */
-  SCAN_KEY_PLANNED,		/* the plan's other domain for the column: the element's own, or the gate's decision */
-  SCAN_KEY_VALUE		/* the value's, develop's rule on it (a constant the row computes, D-352-05): never reused */
+  SCAN_KEY_PLANNED		/* the plan's other domain for the column: the element's own, or the gate's decision */
 };
 
 /* The search keys of an index scan whose plan keeps nothing for them: its values compare with the index as they are. */
-static const DOMAIN_SEARCH_KEYS scan_No_search_keys = { NULL, false };
+static const DOMAIN_SEARCH_KEYS scan_No_search_keys = { NULL };
 
 /* What the B-tree's comparisons of an index scan's search key values read (#342); NULL for a B-tree search outside a
  * query plan (an index scan identifier without a key plan). */
@@ -457,7 +456,6 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
     }
   scan_key_state *state = (scan_key_state *) block;
   state->search_keys.compares = compares;
-  state->search_keys.values_decide = false;
   state->n_columns = n_columns;
   state->chains = n_chains > 0 ? (TP_DOMAIN *) (block + chains_offset) : NULL;
   state->converted = (DB_VALUE *) (block + converted_offset);
@@ -2087,42 +2085,6 @@ scan_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const D
 #endif /* !NDEBUG */
 
 /*
- * scan_key_column_by_value () - develop's rule for a key column, from its value (#342): a constant the row computes
- *   (D-352-05); counted, and the scan's comparisons then keep develop's for keys the table does not hold
- */
-static int
-scan_key_column_by_value (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const TP_DOMAIN * column, int column_index,
-			  const DB_VALUE ** value, const TP_DOMAIN ** domain, unsigned char *choice, bool * kept)
-{
-  scan_key_state *state = isidp->key_state;
-  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
-  state->search_keys.values_decide = true;
-  *choice = SCAN_KEY_VALUE;
-  const TP_DOMAIN *value_domain = tp_domain_resolve_value (*value, NULL);
-  if (value_domain == NULL)
-    {
-      return ER_FAILED;
-    }
-  DOMAIN_CONV_FUNC strict_conv = NULL;
-  const DOMAIN_KEY_RULE rule = domain_key_rule (value_domain, column, true, &strict_conv);
-  if (rule == DOMAIN_KEY_STRICT)
-    {
-      DB_VALUE *converted = &state->converted[column_index];
-      pr_clear_value (converted);
-      if (domain_run_converter (strict_conv, column, *value, converted) == DOMAIN_COMPATIBLE)
-	{
-	  *value = converted;
-	  *domain = column;
-	  return NO_ERROR;
-	}
-      pr_clear_value (converted);
-    }
-  *kept = rule != DOMAIN_KEY_INDEX;
-  *domain = domain_in_key_direction (value_domain, column);
-  return *domain != NULL ? NO_ERROR : ER_OUT_OF_VIRTUAL_MEMORY;
-}
-
-/*
  * scan_key_column () - one column of a multi-column search key at a range (#342, interface section 5)
  *   return: NO_ERROR, or ER_code (the execution boundary (b): a value its plan domain does not describe)
  *   value(in/out): the column's value; its strict conversion once converted
@@ -2145,23 +2107,21 @@ scan_key_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const domain_pla
   if (rule == DOMAIN_KEY_CONSTANT || rule == DOMAIN_KEY_DECIDED)
     {
       const DOMAIN_KEY_DECISION *decision = &isidp->key_decisions->decisions[elem->decision];
-      if (rule == DOMAIN_KEY_CONSTANT && decision->domain != NULL)
+      if (rule == DOMAIN_KEY_CONSTANT)
 	{
-	  /* the gate converted or kept the value once; the caller read its value */
+	  /* the gate converted or kept the value once - every constant has its value before any row (#367) - and the
+	   * caller read it */
+	  assert (decision->domain != NULL);
 	  *domain = decision->domain;
 	  *choice = decision->domain == column ? SCAN_KEY_COLUMN : SCAN_KEY_PLANNED;
 	  *kept = decision->kept;
 	  return NO_ERROR;
 	}
-      if (rule == DOMAIN_KEY_DECIDED && decision->rule == DOMAIN_KEY_DECIDED)
+      if (decision->rule == DOMAIN_KEY_DECIDED)
 	{
 	  /* the gate derives a rule for every element whose values its decision fixes; a value here had no decision:
 	   * the gate decides every string (#343) */
 	  return scan_key_plan_unresolved (column);
-	}
-      if (rule == DOMAIN_KEY_CONSTANT)
-	{
-	  return scan_key_column_by_value (thread_p, isidp, column, column_index, value, domain, choice, kept);
 	}
       if (!scan_key_value_holds (*value, decision->keep_elem))
 	{
@@ -2231,7 +2191,7 @@ scan_key_chain (scan_key_state * state, const domain_plan_key * bound, const TP_
   bool same = written < UCHAR_MAX && last[n_columns] == written + 1;
   for (int i = 0; same && i < written; i++)
     {
-      same = state->choices[i] != SCAN_KEY_VALUE && last[i] == state->choices[i];
+      same = last[i] == state->choices[i];
     }
   if (same)
     {
@@ -2328,10 +2288,13 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       DB_VALUE *val = NULL;
       if (decision != NULL && decision->domain != NULL)
 	{
+	  /* a constant: the value the gate converted or kept once (#342) */
 	  val = (DB_VALUE *) & decision->value;
 	}
       else
 	{
+	  /* a row's value - or a constant whose computation failed below a branch guard, which no row reaches: one
+	   * that does computes it and raises its error, as develop's (#367) */
 	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
 	  if (ret != NO_ERROR)
 	    {
@@ -2383,13 +2346,21 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       mixed = mixed || kept;
     }
 
-  /* the domain the key is written with: the index's, or develop's mix of its columns' own domains */
+  /* the domain the key is written with: the index's, or develop's mix of its columns' own domains - the gate's for a
+   * bound of constants (#342), else the scan's scratch chain */
   key_domain = btree_domainp;
-  if (mixed)
+  if (mixed && bound->constant)
     {
-      const TP_DOMAIN *constant = bound->constant && isidp->key_decisions != NULL
-	? isidp->key_decisions->domains[bound_index] : NULL;
-      key_domain = constant != NULL ? (TP_DOMAIN *) constant : scan_key_chain (state, bound, btree_domainp, written);
+      key_domain = (TP_DOMAIN *) isidp->key_decisions->domains[bound_index];
+      if (key_domain == NULL)
+	{
+	  ret = scan_key_plan_unresolved (btree_domainp);
+	  goto err_exit;
+	}
+    }
+  else if (mixed)
+    {
+      key_domain = scan_key_chain (state, bound, btree_domainp, written);
     }
 
   /* calculate midxkey's size */
@@ -2507,13 +2478,12 @@ err_exit:
 /*
  * scan_key_single_column () - a single-column search key at a range (#342): the value as it is (#321 section 4.2); the
  *   B-tree compares it with the index through the key comparison table, which the gate built for the key the element's
- *   decision gives. A constant the row computes (D-352-05) makes the scan's comparisons develop's where the table has
- *   none, counted.
+ *   decision gives.
  *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the execution boundary (b)) for a value of an element the gate
- *	     derived no rule for: the gate decides every string (#343)
+ *	     derived no rule for: the gate decides every string (#343) and gives every constant its value (#367)
  */
 static int
-scan_key_single_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, int bound_index, const DB_VALUE * value)
+scan_key_single_column (INDX_SCAN_ID * isidp, int bound_index, const DB_VALUE * value)
 {
   const domain_plan_key *bound = &isidp->key_plan->bounds[bound_index];
   if (bound->n_elems != 1 || DB_IS_NULL (value) || isidp->key_state == NULL)
@@ -2531,16 +2501,10 @@ scan_key_single_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, int bound
       return scan_key_plan_unresolved (elem->index_elem);
     }
   const TP_DOMAIN *decided = elem->rule == DOMAIN_KEY_CONSTANT ? decision->domain : decision->keep_elem;
-  if (decided == NULL)
+  if (decided == NULL || !scan_key_value_holds (value, decided))
     {
-      /* a constant the row computes (D-352-05) */
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
-      isidp->key_state->search_keys.values_decide = true;
-      return NO_ERROR;
-    }
-  if (!scan_key_value_holds (value, decided))
-    {
-      /* a value of another type than the gate's decision: none, a session variable read included (#366) */
+      /* no decision, or a value of another type than the gate's: none - a constant has its value (#367), a session
+       * variable read its type for the statement (#366) */
       return scan_key_plan_unresolved (decided);
     }
   return NO_ERROR;
@@ -2637,7 +2601,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key1, vd, NULL, NULL, NULL, &key_val_range->key1);
 	  if (ret == NO_ERROR)
 	    {
-	      ret = scan_key_single_column (thread_p, iscan_id, 2 * key_range_idx, &key_val_range->key1);
+	      ret = scan_key_single_column (iscan_id, 2 * key_range_idx, &key_val_range->key1);
 	    }
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
 
@@ -2689,7 +2653,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key2, vd, NULL, NULL, NULL, &key_val_range->key2);
 	  if (ret == NO_ERROR)
 	    {
-	      ret = scan_key_single_column (thread_p, iscan_id, 2 * key_range_idx + 1, &key_val_range->key2);
+	      ret = scan_key_single_column (iscan_id, 2 * key_range_idx + 1, &key_val_range->key2);
 	    }
 
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key2);

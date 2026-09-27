@@ -793,7 +793,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
 	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operand->domain)))
 	{
 	  /* #337: a string value none of DOUBLE, DATETIME, TIME takes (the gate's classification failed): no domain;
-	   * the first value raises the error (qexec_resolve_domains_for_aggregation) */
+	   * develop's first value raised the error, the gate raises it (#367) */
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
       if (!domain_is_interpolation_type (operand_type))
@@ -907,9 +907,11 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 	? domain_operand_domain (operand) : argument;
       if (open != NULL && TP_DOMAIN_TYPE (open) != DB_TYPE_VARIABLE)
 	{
-	  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (open)) && operand->val_type == DB_TYPE_NULL)
+	  if (!domain_is_interpolation_type (TP_DOMAIN_TYPE (open)) && TP_DOMAIN_TYPE (open) != DB_TYPE_NULL
+	      && operand->val_type == DB_TYPE_NULL)
 	    {
-	      /* a string value none of DOUBLE, DATETIME, TIME takes: the first execution raises the error */
+	      /* a value none of DOUBLE, DATETIME, TIME takes (the gate classifies a string, a BIT, a LOB, a collection):
+	       * develop's first execution raised the error, the gate raises it (#367) */
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
 	  const TP_DOMAIN *final_domain = domain_interpolation_final (function, open, val_type);
@@ -1668,13 +1670,6 @@ domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE
 	  return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
 	}
       return domain_compare_values (thread_p, compare, value1, value2, total_order, can_compare);
-    }
-  if (keys != NULL && keys->values_decide)
-    {
-      /* a column took develop's rule from its value in this scan (a constant the row computes, D-352-05): develop's
-       * comparison, counted */
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
-      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
   /* the execution boundary (b): the plan knows every key a column's values take */
   assert (false);
