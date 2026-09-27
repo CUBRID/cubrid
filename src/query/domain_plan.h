@@ -20,7 +20,6 @@
 #define _DOMAIN_PLAN_H_
 
 #include "domain_resolver.h"
-#include "object_domain_convert.h"
 #include "thread_compat.hpp"
 #include <cstddef>
 
@@ -255,7 +254,7 @@ struct domain_plan_key_elem
   struct regu_variable_node *regu;	/* the element; NULL: an index skip scan's skip value, read from the index */
   const TP_DOMAIN *index_elem;	/* the index column's domain */
   const TP_DOMAIN *keep_elem;	/* STRICT, KEEP: the element's domain in the column's direction */
-  DOMAIN_CONV_FUNC strict_conv;	/* STRICT: the element's type into index_elem, COMPARE mode (tp_value_coerce_strict) */
+  DOMAIN_CONVERTER strict_conv;	/* STRICT: the element's type into index_elem, COMPARE mode (tp_value_coerce_strict) */
   int decision;			/* CONSTANT, DECIDED: the element's decision in its index's decisions; -1 */
   unsigned char rule;		/* DOMAIN_KEY_RULE */
 };
@@ -300,7 +299,7 @@ struct DOMAIN_KEY_DECISION
   const TP_DOMAIN *domain;	/* CONSTANT: the domain a mixed key writes the value with (its own, in the column's
 				 * direction; the column's once converted); every constant has one (#367) */
   const TP_DOMAIN *keep_elem;	/* DECIDED: the element's domain in the column's direction */
-  DOMAIN_CONV_FUNC strict_conv;	/* DECIDED STRICT */
+  DOMAIN_CONVERTER strict_conv;	/* DECIDED STRICT */
   unsigned char rule;		/* DECIDED: INDEX, STRICT or KEEP; DECIDED itself when the gate has no domain for it:
 				 * its values are NULL (a value there is the boundary (b), #343) */
   bool kept;			/* CONSTANT: its column is kept, so its key is mixed */
@@ -378,7 +377,7 @@ struct DOMAIN_HELD_VALUE
 {
   DB_VALUE value;		/* the converted value, the owner's */
   unsigned long long epoch;	/* the scope's epoch it was converted in; 0: never */
-  DOMAIN_CONV_FUNC conv;	/* what converted it: a reader with another converter or target converts again */
+  DOMAIN_CONVERTER conv;	/* what converted it: a reader with another converter or target converts again */
   const TP_DOMAIN *target;
   bool failed;			/* the conversion failed in that epoch: the row converts, as develop's did */
 };

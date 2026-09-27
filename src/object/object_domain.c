@@ -20594,11 +20594,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -20613,11 +20608,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -20645,11 +20637,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_integer_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -20664,11 +20652,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
@@ -20696,11 +20680,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     nullptr,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_float_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -20715,11 +20695,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
@@ -20747,11 +20723,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
     nullptr,
     tp_value_convert_double_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -20766,11 +20738,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
@@ -20798,11 +20766,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_varchar_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -20817,11 +20781,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_varchar_to_bit,
@@ -20872,11 +20832,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
 #else
     tp_value_convert_incompatible,
 #endif
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -20904,11 +20860,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_set_to_set,
     tp_value_convert_set_to_multiset,
     tp_value_convert_set_to_sequence,
@@ -20923,11 +20875,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -20955,11 +20903,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_multiset_to_set,
     tp_value_convert_multiset_to_multiset,
     tp_value_convert_multiset_to_sequence,
@@ -20974,11 +20918,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21006,11 +20946,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_sequence_to_set,
     tp_value_convert_sequence_to_multiset,
     tp_value_convert_sequence_to_sequence,
@@ -21025,11 +20961,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21057,11 +20989,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21076,11 +21004,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21108,11 +21032,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_time_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21127,11 +21047,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21159,11 +21075,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestamp_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21178,11 +21090,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21210,11 +21118,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_date_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21229,11 +21133,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21261,11 +21161,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_monetary_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21280,11 +21176,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
@@ -21312,11 +21204,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21331,11 +21218,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21363,11 +21247,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21382,11 +21261,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21433,11 +21309,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21465,11 +21337,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21484,11 +21352,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     nullptr,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21516,11 +21380,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_short_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21535,11 +21395,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     nullptr,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
@@ -21586,11 +21442,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_vobj_to_vobj,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21669,11 +21521,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21688,11 +21535,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21720,11 +21564,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_numeric_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21739,11 +21579,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
@@ -21771,11 +21607,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_bit_to_varchar,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21790,11 +21621,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_bit_to_bit,
@@ -21822,11 +21650,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_varbit_to_varchar,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21841,11 +21664,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_varbit_to_bit,
@@ -21873,11 +21693,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_char_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21892,11 +21708,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_char_to_bit,
@@ -21924,11 +21736,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21943,11 +21750,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21975,11 +21779,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -21994,11 +21793,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22026,11 +21822,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22045,11 +21836,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22077,11 +21865,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22096,11 +21879,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22128,11 +21908,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22147,11 +21922,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22179,11 +21951,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_bigint_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22198,11 +21966,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN >,
     tp_value_convert_incompatible,
@@ -22230,11 +21994,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetime_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22249,11 +22009,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22281,11 +22037,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22300,11 +22051,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_blob_to_bit,
@@ -22332,11 +22080,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_clob_to_varchar,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22351,11 +22094,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22383,11 +22123,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_enumeration_to_float,
     tp_value_convert_enumeration_to_double,
     tp_value_convert_enumeration_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22402,11 +22138,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_enumeration_to_short,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_enumeration_to_numeric,
     tp_value_convert_enumeration_to_bit,
@@ -22434,11 +22166,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestamptz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22453,11 +22181,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22485,11 +22209,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestampltz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22504,11 +22224,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22536,11 +22252,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetimetz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22555,11 +22267,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22587,11 +22295,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetimeltz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22606,11 +22310,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22638,11 +22338,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_json_scalar_to_float,
     tp_value_convert_json_scalar_to_double,
     tp_value_convert_json_scalar_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22657,11 +22353,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_json_scalar_to_short,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_json_scalar_to_numeric,
     tp_value_convert_json_scalar_to_bit,
@@ -22691,11 +22383,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22710,11 +22397,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22742,11 +22426,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_integer_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22761,11 +22441,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
@@ -22793,11 +22469,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     nullptr,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_float_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22812,11 +22484,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
@@ -22844,11 +22512,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
     nullptr,
     tp_value_convert_double_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22863,11 +22527,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
@@ -22895,11 +22555,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_varchar_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -22914,11 +22570,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_varchar_to_bit,
@@ -22969,11 +22621,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
 #else
     tp_value_convert_incompatible,
 #endif
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23001,11 +22649,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_set_to_set,
     tp_value_convert_set_to_multiset,
     tp_value_convert_set_to_sequence,
@@ -23020,11 +22664,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23052,11 +22692,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_multiset_to_set,
     tp_value_convert_multiset_to_multiset,
     tp_value_convert_multiset_to_sequence,
@@ -23071,11 +22707,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23103,11 +22735,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_sequence_to_set,
     tp_value_convert_sequence_to_multiset,
     tp_value_convert_sequence_to_sequence,
@@ -23122,11 +22750,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23154,11 +22778,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23173,11 +22793,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23205,11 +22821,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_time_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23224,11 +22836,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23256,11 +22864,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestamp_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23275,11 +22879,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23307,11 +22907,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_date_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23326,11 +22922,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23358,11 +22950,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_monetary_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23377,11 +22965,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
@@ -23409,11 +22993,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23428,11 +23007,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23460,11 +23036,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23479,11 +23050,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23530,11 +23098,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23562,11 +23126,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23581,11 +23141,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     nullptr,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23613,11 +23169,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_short_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23632,11 +23184,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     nullptr,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
@@ -23683,11 +23231,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_vobj_to_vobj,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23766,11 +23310,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23785,11 +23324,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23817,11 +23353,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_numeric_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23836,11 +23368,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
@@ -23868,11 +23396,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_bit_to_varchar,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23887,11 +23410,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_bit_to_bit,
@@ -23919,11 +23439,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_varbit_to_varchar,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23938,11 +23453,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_varbit_to_bit,
@@ -23970,11 +23482,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_char_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -23989,11 +23497,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_char_to_bit,
@@ -24021,11 +23525,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24040,11 +23539,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24072,11 +23568,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24091,11 +23582,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24123,11 +23611,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24142,11 +23625,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24174,11 +23654,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24193,11 +23668,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24225,11 +23697,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24244,11 +23711,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24276,11 +23740,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_bigint_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24295,11 +23755,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_COMPARE >,
     tp_value_convert_incompatible,
@@ -24327,11 +23783,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetime_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24346,11 +23798,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24378,11 +23826,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24397,11 +23840,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24429,11 +23869,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24448,11 +23883,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24480,11 +23912,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_enumeration_to_float,
     tp_value_convert_enumeration_to_double,
     tp_value_convert_enumeration_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24499,11 +23927,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_enumeration_to_short,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_enumeration_to_numeric,
     tp_value_convert_enumeration_to_bit,
@@ -24531,11 +23955,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestamptz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24550,11 +23970,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24582,11 +23998,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestampltz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24601,11 +24013,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24633,11 +24041,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetimetz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24652,11 +24056,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24684,11 +24084,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetimeltz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24703,11 +24099,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24735,11 +24127,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_json_scalar_to_float,
     tp_value_convert_json_scalar_to_double,
     tp_value_convert_json_scalar_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24754,11 +24142,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_json_scalar_to_short,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_json_scalar_to_numeric,
     tp_value_convert_json_scalar_to_bit,
@@ -24788,11 +24172,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24807,11 +24186,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24839,11 +24215,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_integer_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24858,11 +24230,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
@@ -24890,11 +24258,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     nullptr,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_float_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24909,11 +24273,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
@@ -24941,11 +24301,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
     nullptr,
     tp_value_convert_double_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -24960,11 +24316,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
@@ -24992,11 +24344,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_varchar_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25011,11 +24359,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_varchar_to_bit,
@@ -25066,11 +24410,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
 #else
     tp_value_convert_incompatible,
 #endif
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25098,11 +24438,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_set_to_set,
     tp_value_convert_set_to_multiset,
     tp_value_convert_set_to_sequence,
@@ -25117,11 +24453,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25149,11 +24481,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_multiset_to_set,
     tp_value_convert_multiset_to_multiset,
     tp_value_convert_multiset_to_sequence,
@@ -25168,11 +24496,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25200,11 +24524,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_sequence_to_set,
     tp_value_convert_sequence_to_multiset,
     tp_value_convert_sequence_to_sequence,
@@ -25219,11 +24539,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25251,11 +24567,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25270,11 +24582,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25302,11 +24610,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_time_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25321,11 +24625,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25353,11 +24653,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestamp_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25372,11 +24668,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25404,11 +24696,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_date_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25423,11 +24711,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25455,11 +24739,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_monetary_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25474,11 +24754,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
@@ -25506,11 +24782,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25525,11 +24796,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25557,11 +24825,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25576,11 +24839,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25627,11 +24887,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25659,11 +24915,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25678,11 +24930,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     nullptr,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25710,11 +24958,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_short_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25729,11 +24973,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     nullptr,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
@@ -25780,11 +25020,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_vobj_to_vobj,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25863,11 +25099,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25882,11 +25113,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25914,11 +25142,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_numeric_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25933,11 +25157,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
@@ -25965,11 +25185,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_bit_to_varchar,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -25984,11 +25199,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_bit_to_bit,
@@ -26016,11 +25228,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_varbit_to_varchar,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26035,11 +25242,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_varbit_to_bit,
@@ -26067,11 +25271,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_char_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26086,11 +25286,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_CHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_char_to_bit,
@@ -26118,11 +25314,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26137,11 +25328,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26169,11 +25357,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26188,11 +25371,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26220,11 +25400,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26239,11 +25414,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26271,11 +25443,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26290,11 +25457,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26322,11 +25486,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26341,11 +25500,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26373,11 +25529,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_bigint_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26392,11 +25544,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_OPERAND >,
     tp_value_convert_incompatible,
@@ -26424,11 +25572,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetime_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26443,11 +25587,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26475,11 +25615,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26494,11 +25629,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26526,11 +25658,6 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
-    tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26545,11 +25672,8 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
     tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26577,11 +25701,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_enumeration_to_float,
     tp_value_convert_enumeration_to_double,
     tp_value_convert_enumeration_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26596,11 +25716,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_enumeration_to_short,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_enumeration_to_numeric,
     tp_value_convert_enumeration_to_bit,
@@ -26628,11 +25744,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestamptz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26647,11 +25759,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26679,11 +25787,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_timestampltz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26698,11 +25802,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26730,11 +25830,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetimetz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26749,11 +25845,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26781,11 +25873,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_datetimeltz_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26800,11 +25888,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26832,11 +25916,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_json_scalar_to_float,
     tp_value_convert_json_scalar_to_double,
     tp_value_convert_json_scalar_to_varchar,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
     tp_value_convert_incompatible,
@@ -26851,11 +25931,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
     tp_value_convert_incompatible,
     tp_value_convert_json_scalar_to_short,
     tp_value_convert_incompatible,
-#if !defined (SERVER_MODE)
     tp_value_convert_incompatible,
-#else
-    tp_value_convert_incompatible,
-#endif
     tp_value_convert_incompatible,
     tp_value_convert_json_scalar_to_numeric,
     tp_value_convert_json_scalar_to_bit,

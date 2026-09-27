@@ -527,7 +527,7 @@ enum hash_scan_key_rule
 typedef struct hash_scan_key_entry HASH_SCAN_KEY_ENTRY;
 struct hash_scan_key_entry
 {
-  DOMAIN_CONV_FUNC conv;	/* CONVERT: the cell tp_value_coerce runs (domain_lookup_coerce_converter) */
+  DOMAIN_CONVERTER conv;	/* CONVERT: the cell tp_value_coerce runs (domain_lookup_coerce_converter) */
   const TP_DOMAIN *target;	/* the probe key's domain */
   DB_TYPE source;		/* COPY, CONVERT: the type of the key's values */
   unsigned char rule;		/* hash_scan_key_rule */

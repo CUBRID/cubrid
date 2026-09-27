@@ -37,6 +37,7 @@
 #include "fetch.h"
 #include "list_file.h"
 #include "object_domain.h"
+#include "object_domain_convert.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "set_object.h"
@@ -2476,7 +2477,7 @@ qdata_assert_precast_planned (OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * prec
 	  const DB_TYPE sibling =
 	    type == DB_TYPE_CHAR ? DB_TYPE_VARCHAR : type == DB_TYPE_VARCHAR ? DB_TYPE_CHAR : type;
 	  same = sibling != type && precast->conv[i] != NULL && develop.conv[i] != NULL
-	    && precast->conv[i] == domain_lookup_converter (sibling, planned, DOMAIN_CTX_ASSIGN);
+	    && precast->conv[i] == domain_lookup_converter_for_context (sibling, planned, DOMAIN_CTX_ASSIGN);
 	}
       if (!same)
 	{

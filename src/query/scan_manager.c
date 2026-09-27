@@ -28,6 +28,7 @@
 #include <string.h>
 #include <assert.h>
 #include <climits>
+#include <algorithm>
 #include "json_builder.h"
 
 #include "error_manager.h"
@@ -159,7 +160,6 @@ static void rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right);
 static void range_to_rop (ROP_TYPE * left, ROP_TYPE * rightk, RANGE range);
 static ROP_TYPE compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term,
 				const DOMAIN_SEARCH_KEYS * search_keys);
-static int key_val_compare (const void *p1, const void *p2);
 static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys);
 static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys);
 static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys);
@@ -374,10 +374,7 @@ scan_index_search_keys (const INDX_SCAN_ID * isidp)
 static int
 scan_key_plan_unresolved (const TP_DOMAIN * key_type)
 {
-  assert (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
-	  pr_type_name (key_type != NULL ? TP_DOMAIN_TYPE (key_type) : DB_TYPE_NULL));
-  return ER_QPROC_DOMAIN_UNRESOLVED;
+  return domain_unresolved_error ("", -1, key_type != NULL ? TP_DOMAIN_TYPE (key_type) : DB_TYPE_NULL);
 }
 
 /* Releases an index scan's key plan storage (#342): at scan close, or at the XASL clear of a scan torn down without
@@ -1831,31 +1828,6 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, in
 }
 
 /*
- * key_val_compare () - key value sorting function
- *   return:
- *   p1 (in): pointer to key1 range
- *   p2 (in): pointer to key2 range
- */
-/* The search keys check_key_vals sorts under: qsort passes its comparator no context (#342). */
-static thread_local const DOMAIN_SEARCH_KEYS *scan_Sort_search_keys = NULL;
-
-static int
-key_val_compare (const void *p1, const void *p2)
-{
-  int p1_num_index_term, p2_num_index_term;
-  DB_VALUE *p1_key, *p2_key;
-
-  p1_num_index_term = ((KEY_VAL_RANGE *) p1)->num_index_term;
-  p2_num_index_term = ((KEY_VAL_RANGE *) p2)->num_index_term;
-  assert_release (p1_num_index_term == p2_num_index_term);
-
-  p1_key = &((KEY_VAL_RANGE *) p1)->key1;
-  p2_key = &((KEY_VAL_RANGE *) p2)->key1;
-
-  return scan_key_compare (p1_key, p2_key, p1_num_index_term, scan_Sort_search_keys);
-}
-
-/*
  * eliminate_duplicated_keys () - elimnate duplicated key values
  *   return: number of keys, -1 for error
  *   key_vals (in): pointer to array of KEY_VAL_RANGE structure
@@ -2026,9 +1998,17 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_va
       return key_cnt;
     }
 
-  scan_Sort_search_keys = search_keys;
-  qsort ((void *) key_vals, key_cnt, sizeof (KEY_VAL_RANGE), key_val_compare);
-  scan_Sort_search_keys = NULL;
+  /* the comparator carries the search keys itself, not a thread-local the sort reads at every comparison (#368, review
+   * 2 R2-11); a stable sort keeps the order glibc's merge sort gave equal key values */
+  /* *INDENT-OFF* */
+  std::stable_sort (key_vals, key_vals + key_cnt,
+		    [search_keys] (const KEY_VAL_RANGE & a, const KEY_VAL_RANGE & b)
+  {
+    assert_release (a.num_index_term == b.num_index_term);
+    return scan_key_compare (const_cast < DB_VALUE * >(&a.key1), const_cast < DB_VALUE * >(&b.key1),
+			     a.num_index_term, search_keys) < 0;
+  });
+  /* *INDENT-ON* */
 
   return ((*key_val_fn) (key_vals, key_cnt, search_keys));
 }
@@ -2102,7 +2082,7 @@ scan_key_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const domain_pla
   const TP_DOMAIN *column = elem->index_elem;
   unsigned char rule = elem->rule;
   const TP_DOMAIN *keep = elem->keep_elem;
-  DOMAIN_CONV_FUNC strict_conv = elem->strict_conv;
+  DOMAIN_CONVERTER strict_conv = elem->strict_conv;
   *kept = false;
   if (rule == DOMAIN_KEY_CONSTANT || rule == DOMAIN_KEY_DECIDED)
     {

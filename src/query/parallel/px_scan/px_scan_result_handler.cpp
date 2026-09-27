@@ -69,9 +69,7 @@ namespace parallel_scan
 	if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
 	    || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
 	  {
-	    assert (false);
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", i,
-		    pr_type_name (domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL));
+	    (void) domain_unresolved_error ("", i, domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL);
 	    return true;
 	  }
       }
@@ -80,9 +78,8 @@ namespace parallel_scan
 
   static bool accumulator_domain_unresolved (const AGGREGATE_TYPE *agg_node)
   {
-    assert (false);
-    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
-	    pr_type_name (agg_node->domain != NULL ? TP_DOMAIN_TYPE (agg_node->domain) : DB_TYPE_NULL));
+    (void) domain_unresolved_error ("", -1,
+				    agg_node->domain != NULL ? TP_DOMAIN_TYPE (agg_node->domain) : DB_TYPE_NULL);
     return false;
   }
 
@@ -1843,11 +1840,12 @@ namespace parallel_scan
 	     * per scope, in the worker's own state (D-368-07) */
 	    const DOMAIN_PLAN_ITEM *item = agg_node->domain_plan;
 	    const RESOLVED_DOMAIN *precast = &acc_dom->precast;
+	    const bool is_held = item != NULL && item->held[1] != 0 && precast->conv[1] != NULL
+				 && !DB_IS_NULL (db_value_p);
 	    const DB_VALUE *const held[2] =
 	    {
-	      NULL, item != NULL && item->held[1] != 0 && precast->conv[1] != NULL && !DB_IS_NULL (db_value_p)
-	      ? qexec_held_value (thread_p, tl_vd, item->held[1], precast->conv[1], precast->operand_domain[1],
-				  db_value_p) : NULL
+	      NULL, is_held ? qexec_held_value (thread_p, tl_vd, item->held[1], precast->conv[1],
+						precast->operand_domain[1], db_value_p) : NULL
 	    };
 	    if (qdata_precast_arith_dbval (thread_p, T_ADD, precast, acc->value, db_value_p, acc->value,
 					   acc_dom->value_dom, held) != NO_ERROR)

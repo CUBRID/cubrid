@@ -747,15 +747,11 @@ fetch_convert_to_branch_value (THREAD_ENTRY * thread_p, const val_descr * vd, co
 			       const RESOLVED_DOMAIN * decision, DB_VALUE * value)
 {
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
-  const DOMAIN_CONV_FUNC converter = type == DB_TYPE_VARCHAR ? decision->conv[0]
+  const DOMAIN_CONVERTER converter = type == DB_TYPE_VARCHAR ? decision->conv[0]
     : type == DB_TYPE_CHAR ? decision->conv[1] : NULL;
   if (converter == NULL)
     {
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
-	      vd->xasl_state->resolved.plan != NULL ? (int) (item - vd->xasl_state->resolved.plan->items) : -1,
-	      pr_type_name (type));
-      return ER_QPROC_DOMAIN_UNRESOLVED;
+      return domain_unresolved_error ("", qexec_item_index (vd, item), type);
     }
   DB_VALUE converted;
   perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
@@ -1586,12 +1582,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	case FETCH_GATE_UNRESOLVED:
 	default:
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
-		  arithptr->domain_plan != NULL && vd != NULL && vd->xasl_state != NULL
-		  && vd->xasl_state->resolved.plan != NULL
-		  ? (int) (arithptr->domain_plan - vd->xasl_state->resolved.plan->items) : -1,
-		  pr_type_name (DB_TYPE_VARIABLE));
+	  (void) domain_unresolved_error ("", qexec_item_index (vd, arithptr->domain_plan), DB_TYPE_VARIABLE);
 	  goto error;
 	}
     }
@@ -4720,12 +4711,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       assert (DB_IS_NULL (arithptr->value));
       if (!DB_IS_NULL (arithptr->value))
 	{
-	  domain = no_value_domain;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
-		  vd != NULL && vd->xasl_state != NULL && vd->xasl_state->resolved.plan != NULL
-		  && arithptr->domain_plan != NULL
-		  ? (int) (arithptr->domain_plan - vd->xasl_state->resolved.plan->items) : -1,
-		  pr_type_name (DB_TYPE_NULL));
+	  (void) domain_unresolved_error ("", qexec_item_index (vd, arithptr->domain_plan), DB_TYPE_NULL);
 	  goto error;
 	}
       domain = no_value_domain;
@@ -4758,12 +4744,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  /* S-02: the gate decides every string (#343), a string over a session variable read too (#366): a string
 	   * without a decision is the execution boundary (b) */
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
-		  arithptr->domain_plan != NULL && vd != NULL && vd->xasl_state != NULL
-		  && vd->xasl_state->resolved.plan != NULL
-		  ? (int) (arithptr->domain_plan - vd->xasl_state->resolved.plan->items) : -1,
-		  pr_type_name (TP_DOMAIN_TYPE (arith_domain)));
+	  (void) domain_unresolved_error ("", qexec_item_index (vd, arithptr->domain_plan),
+					  TP_DOMAIN_TYPE (arith_domain));
 	  goto error;
 	}
     }
@@ -4855,11 +4837,7 @@ fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE
       return NO_ERROR;
     }
   /* the gate decides every open regu, one over a session variable read too (#366): none here is the boundary (b) */
-  assert (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
-	  item != NULL && vd != NULL && vd->xasl_state != NULL && vd->xasl_state->resolved.plan != NULL
-	  ? (int) (item - vd->xasl_state->resolved.plan->items) : -1, pr_type_name (TP_DOMAIN_TYPE (regu_var->domain)));
-  return ER_QPROC_DOMAIN_UNRESOLVED;
+  return domain_unresolved_error ("", qexec_item_index (vd, item), TP_DOMAIN_TYPE (regu_var->domain));
 }
 
 /*

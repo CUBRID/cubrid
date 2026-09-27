@@ -45,8 +45,8 @@ static int domain_character_result (int opcode, const DOMAIN_OPERAND * operands,
 static const TP_DOMAIN *domain_variable_string_value (const TP_DOMAIN * domain);
 
 /* D-325-01/02: CAST and pre-cast consumers supply ASSIGN explicitly. */
-DOMAIN_CONV_FUNC
-domain_lookup_converter (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CTX context)
+DOMAIN_CONVERTER
+domain_lookup_converter_for_context (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CTX context)
 {
   DOMAIN_CONVERT_MODE mode = context == DOMAIN_CTX_ASSIGN ? DOMAIN_CONVERT_ASSIGN
     : context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_CONVERT_COMPARE : DOMAIN_CONVERT_OPERAND;
@@ -1232,7 +1232,7 @@ domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
 
 /* The converter a comparison runs on a side: the ASSIGN cell (D-328-05, today's tp_value_coerce on the cells a
  * comparison reaches), failing what implicit coercion refuses. */
-static DOMAIN_CONV_FUNC
+static DOMAIN_CONVERTER
 domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target)
 {
   if (domain_implicit_coercion_refused (source, TP_DOMAIN_TYPE (target)))
@@ -1270,7 +1270,7 @@ domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate)
 }
 
 TP_DOMAIN_STATUS
-domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, const DB_VALUE * source, DB_VALUE * result)
+domain_run_converter (DOMAIN_CONVERTER converter, const TP_DOMAIN * target, const DB_VALUE * source, DB_VALUE * result)
 {
   db_value_domain_init (result, TP_DOMAIN_TYPE (target), target->precision, target->scale);
   if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (target)))
@@ -1631,7 +1631,7 @@ domain_copy_one (const TP_DOMAIN * domain)
   return tp_domain_copy (&one, false);
 }
 
-DOMAIN_CONV_FUNC
+DOMAIN_CONVERTER
 domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column)
 {
   const DB_TYPE target = TP_DOMAIN_TYPE (column);
@@ -1640,11 +1640,11 @@ domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column)
     {
       return NULL;
     }
-  return domain_lookup_converter (source, column, DOMAIN_CTX_KEY_ELEM);
+  return domain_lookup_converter_for_context (source, column, DOMAIN_CTX_KEY_ELEM);
 }
 
 DOMAIN_KEY_RULE
-domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey, DOMAIN_CONV_FUNC * strict_conv)
+domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey, DOMAIN_CONVERTER * strict_conv)
 {
   *strict_conv = NULL;
   if (!midxkey)
@@ -2287,6 +2287,15 @@ domain_key_pairs (void)
   return pairs;
 }
 
+int
+domain_unresolved_error (const char *alias, int index, DB_TYPE type)
+{
+  assert (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", alias, index,
+	  pr_type_name (type));
+  return ER_QPROC_DOMAIN_UNRESOLVED;
+}
+
 void
 domain_key_pairs_final (void)
 {
@@ -2430,7 +2439,8 @@ domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands,
       /* the consumer (assignment target, index element) is the target */
       assert (consumer_domain != NULL);
       result->domain = result->operand_domain[0] = consumer_domain;
-      result->conv[0] = domain_lookup_converter (domain_operand_type (&operands[0]), consumer_domain, context);
+      result->conv[0] =
+	domain_lookup_converter_for_context (domain_operand_type (&operands[0]), consumer_domain, context);
       return NO_ERROR;
 
     case DOMAIN_CTX_LIST_COLUMN:
@@ -3014,7 +3024,7 @@ domain_resolve_branch_merge (const DOMAIN_OPERAND * operands, int n_operands, RE
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   result->domain = domain_as_value_domain (domain);
-  result->conv[0] = domain_lookup_converter (DB_TYPE_VARCHAR, result->domain, DOMAIN_CTX_ASSIGN);
-  result->conv[1] = domain_lookup_converter (DB_TYPE_CHAR, result->domain, DOMAIN_CTX_ASSIGN);
+  result->conv[0] = domain_lookup_converter_for_context (DB_TYPE_VARCHAR, result->domain, DOMAIN_CTX_ASSIGN);
+  result->conv[1] = domain_lookup_converter_for_context (DB_TYPE_CHAR, result->domain, DOMAIN_CTX_ASSIGN);
   return NO_ERROR;
 }

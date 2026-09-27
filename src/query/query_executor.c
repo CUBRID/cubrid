@@ -4167,11 +4167,8 @@ qexec_resolve_gate_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
       if (!qexec_gate_operand (thread_p, plan, resolved, link, i, context, cold->opcode, &operands[i]))
 	{
 	  /* a producer without a decision: the boundary (b) (#343) */
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute",
-		  xasl->query_alias != NULL ? xasl->query_alias : "", (int) (link->operands[i] - plan->items),
-		  pr_type_name (DB_TYPE_NULL));
-	  return ER_QPROC_DOMAIN_UNRESOLVED;
+	  return domain_unresolved_error (xasl->query_alias != NULL ? xasl->query_alias : "",
+					  (int) (link->operands[i] - plan->items), DB_TYPE_NULL);
 	}
     }
   if (node->flags & DOMAIN_PLAN_PRECAST_GATE)
@@ -4226,11 +4223,8 @@ qexec_resolve_gate_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
 	  return NO_ERROR;
 
 	default:
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute",
-		  xasl->query_alias != NULL ? xasl->query_alias : "", (int) (node - plan->items),
-		  pr_type_name (DB_TYPE_VARIABLE));
-	  return ER_QPROC_DOMAIN_UNRESOLVED;
+	  return domain_unresolved_error (xasl->query_alias != NULL ? xasl->query_alias : "",
+					  (int) (node - plan->items), DB_TYPE_VARIABLE);
 	}
     }
   if ((context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC) && link->argument != NULL)
@@ -4256,10 +4250,8 @@ qexec_resolve_gate_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
       return NO_ERROR;
 
     case ER_QPROC_DOMAIN_UNRESOLVED:
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute",
-	      xasl->query_alias != NULL ? xasl->query_alias : "", (int) (node - plan->items),
-	      pr_type_name (DB_TYPE_VARIABLE));
+      (void) domain_unresolved_error (xasl->query_alias != NULL ? xasl->query_alias : "", (int) (node - plan->items),
+				      DB_TYPE_VARIABLE);
       return error;
 
     case ER_OUT_OF_VIRTUAL_MEMORY:
@@ -4547,10 +4539,7 @@ qexec_compare_side_key (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COM
 static int
 qexec_compare_side_unresolved (const DOMAIN_COMPARE_PLAN * site)
 {
-  assert (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", site->fixed.site,
-	  pr_type_name (DB_TYPE_VARIABLE));
-  return ER_QPROC_DOMAIN_UNRESOLVED;
+  return domain_unresolved_error ("", site->fixed.site, DB_TYPE_VARIABLE);
 }
 
 /*
@@ -5260,10 +5249,7 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bo
 	  return NO_ERROR;
 	}
       /* the boundary (b): every constant has its value by step 8 (D-367-01) */
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", elem->decision,
-	      pr_type_name (TP_DOMAIN_TYPE (column)));
-      return ER_QPROC_DOMAIN_UNRESOLVED;
+      return domain_unresolved_error ("", elem->decision, TP_DOMAIN_TYPE (column));
     }
   decision->domain = column;
   if (DB_IS_NULL (value))
@@ -5294,7 +5280,7 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bo
       decision->domain = value_domain;
       return pr_clone_value (value, &decision->value);
     }
-  DOMAIN_CONV_FUNC strict_conv = NULL;
+  DOMAIN_CONVERTER strict_conv = NULL;
   const DOMAIN_KEY_RULE rule = domain_key_rule (value_domain, column, true, &strict_conv);
   if (rule == DOMAIN_KEY_STRICT)
     {
@@ -5942,6 +5928,19 @@ qexec_raise_reached_failures (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
  * takes its value as given and a GATE slot takes the value's domain into the gate
  * table. Every gate-dependent node then takes the grid's answer for this
  * execution's operand types (#335).
+ *
+ * The steps, in this order (interface section 3.1; #368 review 2 R2-16):
+ *   1   one block for the values and the decisions, vd.dbval_ptr pointed at the values (qexec_init_resolved_domains)
+ *   2   each bind reference's value, a GATE slot's domain from its bound value
+ *   3   (the session variable reads are gate-dependent nodes of step 4, typed in step 7b, #366)
+ *   4   the gate-dependent nodes, producers first; a node over a constant subtree waits for step 7, a node over a
+ *       session variable read for 7b
+ *   5   the comparison sites and ALL/SOME terms over binds, literals and decisions
+ *   6   the decisions are sealed
+ *   7   each constant subtree evaluated once; the sites and nodes waiting for it just before the next one
+ *   7b  each session variable's type for the statement, then the decisions over its reads
+ *   8   the index scans' key elements and key comparison tables
+ *   end the failures below branch guards, raised if a row reaches them (#367)
  */
 int
 qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state)
@@ -6311,13 +6310,8 @@ qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const D
 int
 qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled)
 {
-  const DOMAIN_PLAN *plan = vd != NULL && vd->xasl_state != NULL ? vd->xasl_state->resolved.plan : NULL;
-  assert (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "",
-	  item != NULL && plan != NULL && item >= plan->items && item < plan->items + plan->n_items
-	  ? (int) (item - plan->items) : -1,
-	  pr_type_name (compiled != NULL ? TP_DOMAIN_TYPE (compiled) : DB_TYPE_NULL));
-  return ER_QPROC_DOMAIN_UNRESOLVED;
+  return domain_unresolved_error ("", qexec_item_index (vd, item),
+				  compiled != NULL ? TP_DOMAIN_TYPE (compiled) : DB_TYPE_NULL);
 }
 
 /* The connection owns the gate block and all cloned payloads, including
@@ -6396,7 +6390,7 @@ qexec_enter_domain_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
  *   value(in): the value, not NULL
  */
 const DB_VALUE *
-qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONV_FUNC conv,
+qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONVERTER conv,
 		  const TP_DOMAIN * target, const DB_VALUE * value)
 {
   if (held <= 0 || vd == NULL || vd->xasl_state == NULL)

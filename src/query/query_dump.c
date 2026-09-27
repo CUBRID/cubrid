@@ -25,6 +25,7 @@
 #include "config.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "domain_plan.h"
+#include "object_domain_convert.h"
 #endif
 #include <stdio.h>
 

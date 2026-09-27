@@ -26,8 +26,6 @@
 #include "object_domain.h"	/* TP_DOMAIN_STATUS and shared value types, no client API. */
 #include "thread_compat.hpp"
 
-typedef TP_DOMAIN_STATUS (*DOMAIN_CONV_FUNC) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *);
-
 enum DOMAIN_CTX
 {
   DOMAIN_CTX_ARITH, DOMAIN_CTX_COMPARE, DOMAIN_CTX_ASSIGN, DOMAIN_CTX_COMMON_VALUE,
@@ -37,7 +35,7 @@ enum DOMAIN_CTX
 struct RESOLVED_DOMAIN
 {
   const TP_DOMAIN *domain;
-  DOMAIN_CONV_FUNC conv[3];
+  DOMAIN_CONVERTER conv[3];
   const TP_DOMAIN *operand_domain[3];
 };
 
@@ -50,8 +48,8 @@ struct DOMAIN_OPERAND
   bool is_gate_slot;
 };
 
-/* Context-to-mode adapter. */
-DOMAIN_CONV_FUNC domain_lookup_converter (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CTX context);
+/* The conversion table's cell for a resolver context (its mode): the context adapter of domain_lookup_converter */
+DOMAIN_CONVERTER domain_lookup_converter_for_context (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CTX context);
 
 /*
  * The single home of the server G-row grid (D-318-07, D-323-02): the value-type rules that execution applies today
@@ -171,7 +169,7 @@ struct DOMAIN_COMPARE
 				 * codeset at the row (develop's tmp_char_conv); -1 none */
   int site;			/* AT_GATE*: resolved.compares index of this execution's decision; -1 */
   const struct pr_type *cmp;	/* cmpval of the compared values */
-  DOMAIN_CONV_FUNC conv[2];	/* side i's converter at the row, NULL none; develop's order: first, then the other */
+  DOMAIN_CONVERTER conv[2];	/* side i's converter at the row, NULL none; develop's order: first, then the other */
   const TP_DOMAIN *target[2];	/* the domain side i is converted into */
   unsigned long long volatile_reads;	/* AT_GATE_VOLATILE: the session variable reads the decision depends on */
 };
@@ -196,7 +194,7 @@ void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const 
 
 /* A planned converter on a value, with the target initialized as tp_value_cast_internal initializes it before its
  * cell (the domain, and a string target's codeset and collation). */
-TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMAIN * target, const DB_VALUE * source,
+TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONVERTER converter, const TP_DOMAIN * target, const DB_VALUE * source,
 				       DB_VALUE * result);
 
 /*
@@ -233,6 +231,17 @@ DB_VALUE_COMPARE_RESULT domain_compare_by_keys (const DB_VALUE * value1, const D
 /* The key pair table's life (#354): made once, when the first comparison needs it after the language and type modules
  * are up; freed before the type module (tp_final), whose cached domains its string targets are. */
 void domain_key_pairs_final (void);
+
+/*
+ * domain_unresolved_error () - the execution boundary (b) (interface section 6): a site the plan should have decided
+ *   has no decision - optdebug stops, release raises ER_QPROC_DOMAIN_UNRESOLVED naming the site. Every site raises it
+ *   through here (#368, review 2 R2-04).
+ *   return: ER_QPROC_DOMAIN_UNRESOLVED
+ *   alias(in): the statement's alias, or ""
+ *   index(in): the plan item's or the site's index; -1 unknown
+ *   type(in): the type the site names
+ */
+int domain_unresolved_error (const char *alias, int index, DB_TYPE type);
 
 /* The key of a value: its type and, for a string or an ENUM, its codeset and collation (#342). */
 void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key);
@@ -309,12 +318,12 @@ TP_DOMAIN *domain_copy_one (const TP_DOMAIN * domain);
 
 /* The cell develop's tp_value_coerce_strict runs to bring a value of a type into an index column's domain; NULL where
  * it refuses the column's type (only a number or a date and time is a strict target). */
-DOMAIN_CONV_FUNC domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column);
+DOMAIN_CONVERTER domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column);
 
 /* The rule a column of a search key follows for values of an element's domain (DOMAIN_KEY_INDEX, _STRICT or _KEEP),
  * and the strict converter of rule STRICT. */
 DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey,
-				 DOMAIN_CONV_FUNC * strict_conv);
+				 DOMAIN_CONVERTER * strict_conv);
 
 /* Whether the B-tree compares a value of key a with an index key of key b as they are (btree_compare_key): comparable
  * key types and, for strings, the same collation. */

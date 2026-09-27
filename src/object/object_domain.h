@@ -192,6 +192,11 @@ typedef enum tp_domain_status
   DOMAIN_TRUNCATED		/* converted value retained; caller decides acceptance */
 } TP_DOMAIN_STATUS;
 
+/* A converter of a value into a domain: a cell of the conversion table (object_domain_convert.h), the one type the
+ * server's planned converters use (#368, review 2 R2-02). The caller handles NULL and aliasing and initializes the
+ * target domain. */
+typedef TP_DOMAIN_STATUS (*DOMAIN_CONVERTER) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *);
+
 /*
  * TP_MATCH
  *    This is used to describe the amount of "tolerance" to be exhibited by

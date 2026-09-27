@@ -763,58 +763,17 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		    break;
 
 		  case DB_TYPE_DATE:
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			domain = tp_domain_resolve_default (DB_TYPE_DATE);
-		      }
-		    break;
-
 		  case DB_TYPE_DATETIME:
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			domain = tp_domain_resolve_default (DB_TYPE_DATETIME);
-		      }
-		    break;
-
 		  case DB_TYPE_DATETIMETZ:
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			domain = tp_domain_resolve_default (DB_TYPE_DATETIMETZ);
-		      }
-		    break;
-
 		  case DB_TYPE_DATETIMELTZ:
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			domain = tp_domain_resolve_default (DB_TYPE_DATETIMELTZ);
-		      }
-		    break;
-
 		  case DB_TYPE_TIMESTAMP:
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMP);
-		      }
-		    break;
-
 		  case DB_TYPE_TIMESTAMPTZ:
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
-		      }
-		    break;
-
 		  case DB_TYPE_TIMESTAMPLTZ:
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPLTZ);
-		      }
-		    break;
-
 		  case DB_TYPE_TIME:
+		    /* a date or time value's type is the function's (#368, review 2 R2-23: one body) */
 		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		      {
-			domain = tp_domain_resolve_default (DB_TYPE_TIME);
+			domain = tp_domain_resolve_default (opr_type);
 		      }
 		    break;
 

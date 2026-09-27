@@ -31,8 +31,6 @@ enum DOMAIN_CONVERT_MODE
 };
 
 /* *INDENT-OFF* */
-using DOMAIN_CONVERTER = TP_DOMAIN_STATUS (*) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *);
-
 /* The caller handles NULL and aliasing and initializes the target domain before calling a cell. */
 template <DB_TYPE SRC, DB_TYPE DST, DOMAIN_CONVERT_MODE MODE>
 TP_DOMAIN_STATUS tp_value_convert_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain);

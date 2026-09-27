@@ -1078,10 +1078,10 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	   * the first value is the accumulator's as it is */
 	  const DOMAIN_PLAN_ITEM *item = agg_p->domain_plan;
 	  const RESOLVED_DOMAIN *precast = &agg_p->accumulator_domain.precast;
-	  const DB_VALUE *held = accumulator->curr_cnt >= 1 && item != NULL && item->held[1] != 0
-				 && precast->conv[1] != NULL
-				 ? qexec_held_value (thread_p, val_desc_p, item->held[1], precast->conv[1],
-						     precast->operand_domain[1], peek_val) : NULL;
+	  const bool is_held = accumulator->curr_cnt >= 1 && item != NULL && item->held[1] != 0
+			       && precast->conv[1] != NULL;
+	  const DB_VALUE *held = is_held ? qexec_held_value (thread_p, val_desc_p, item->held[1], precast->conv[1],
+				 precast->operand_domain[1], peek_val) : NULL;
 	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
 		  agg_p->function, agg_domain, peek_val, false, held);
 	  if (error != NO_ERROR)

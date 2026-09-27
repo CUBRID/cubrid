@@ -22330,10 +22330,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       if (key_plan == NULL)
 	{
 	  /* the execution boundary (b): every index scan has its key plan */
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
-		  pr_type_name (DB_TYPE_MIDXKEY));
-	  error = ER_QPROC_DOMAIN_UNRESOLVED;
+	  error = domain_unresolved_error ("", -1, DB_TYPE_MIDXKEY);
 	  goto exit;
 	}
       multi_range_opt->sort_col_dom =

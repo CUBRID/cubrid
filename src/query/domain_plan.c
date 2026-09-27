@@ -789,7 +789,7 @@ domain_fixed_operand (DOMAIN_PLAN_ITEM * item, int i, const TP_DOMAIN * source,
   item->fixed.operand_domain[i] = target;
   if (domain_is_fixed (source) && domain_is_fixed (target))
     {
-      item->fixed.conv[i] = domain_lookup_converter (TP_DOMAIN_TYPE (source), target, mode);
+      item->fixed.conv[i] = domain_lookup_converter_for_context (TP_DOMAIN_TYPE (source), target, mode);
     }
 }
 
@@ -1300,6 +1300,82 @@ domain_outer_scope (const DOMAIN_LOAD_CONTEXT * ctx, const REGU_VARIABLE * regu)
   return NULL;
 }
 
+/*
+ * domain_link_string_function () - a function the compiler typed as a string whose collation its values give: a node
+ *   the gate decides from its string operands (#338, #343; #368, review 2 R2-20: out of domain_walk_regu)
+ *   return: false when the walk stops (no memory)
+ */
+static bool
+domain_link_string_function (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_PLAN_ITEM * item,
+			     DOMAIN_LOAD_RECORD * record)
+{
+  /* #338: a function the compiler typed as a string whose collation its values give is decided by the gate from
+   * its string operands, every one of them (#343: a node links as many as it has). ELT links all its operands in
+   * order: the gate picks the branch its index names, or merges the branches' collations (D-343-01). */
+  const bool elt = regu->value.funcp->ftype == F_ELT;
+  REGU_VARIABLE_LIST index = regu->value.funcp->operand;
+  /* the index joins the links only where the gate reads its value: a bind or a literal, which the compiler wraps
+   * in a cast to BIGINT when its type is another (func_type.cpp) - the gate applies that cast as the row does */
+  REGU_VARIABLE *index_value = &index->value;
+  const TP_DOMAIN *index_cast = NULL;
+  if (elt && (index_value->type == TYPE_INARITH || index_value->type == TYPE_OUTARITH)
+      && index_value->value.arithptr->rightptr != NULL
+      && (index_value->value.arithptr->opcode == T_CAST || index_value->value.arithptr->opcode == T_CAST_WRAP
+	  || index_value->value.arithptr->opcode == T_CAST_NOFAIL))
+    {
+      index_cast = index_value->value.arithptr->domain;
+      index_value = index_value->value.arithptr->rightptr;
+    }
+  const bool elt_index = elt && (index_value->type == TYPE_DBVAL
+				 || (index_value->type == TYPE_POS_VALUE && index_value->domain != NULL));
+  int n_all = 0;
+  for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+    {
+      n_all++;
+    }
+  REGU_VARIABLE *inline_operands[8];
+  REGU_VARIABLE **operands = n_all <= 8 ? inline_operands
+    : (REGU_VARIABLE **) db_private_alloc (ctx->thread_p, n_all * sizeof (*operands));
+  if (operands == NULL)
+    {
+      ctx->failed = true;
+      return false;
+    }
+  int n_operands = 0;
+  for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+    {
+      const TP_DOMAIN *d = op->value.domain;
+      if (elt ? (op == index && !elt_index)
+	  : (d != NULL && TP_DOMAIN_TYPE (d) != DB_TYPE_VARIABLE && !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d))))
+	{
+	  continue;
+	}
+      operands[n_operands++] = elt && op == index ? index_value : &op->value;
+    }
+  if (n_operands == 0)
+    {
+      operands[n_operands++] = &regu->value.funcp->operand->value;
+    }
+  record->kind = DOMAIN_LOAD_NODE;
+  item->flags |= DOMAIN_PLAN_COLLATION_GATE;
+  record->cold.opcode = regu->value.funcp->ftype;
+  record->elt_index = elt_index;
+  record->elt_index_cast = elt_index ? index_cast : NULL;
+  domain_set_links (ctx, record, operands, n_operands, regu->domain);
+  for (int i = 0; i < n_operands; i++)
+    {
+      if (operands[i]->domain_plan == NULL)
+	{
+	  record->n_link = -1;
+	}
+    }
+  if (operands != inline_operands)
+    {
+      db_private_free (ctx->thread_p, operands);
+    }
+  return true;
+}
+
 static void
 domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX context)
 {
@@ -1489,69 +1565,9 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     }
   else if (regu->type == TYPE_FUNC && domain_character_open (regu->domain) && regu->value.funcp->operand != NULL)
     {
-      /* #338: a function the compiler typed as a string whose collation its values give is decided by the gate from
-       * its string operands, every one of them (#343: a node links as many as it has). ELT links all its operands in
-       * order: the gate picks the branch its index names, or merges the branches' collations (D-343-01). */
-      const bool elt = regu->value.funcp->ftype == F_ELT;
-      REGU_VARIABLE_LIST index = regu->value.funcp->operand;
-      /* the index joins the links only where the gate reads its value: a bind or a literal, which the compiler wraps
-       * in a cast to BIGINT when its type is another (func_type.cpp) - the gate applies that cast as the row does */
-      REGU_VARIABLE *index_value = &index->value;
-      const TP_DOMAIN *index_cast = NULL;
-      if (elt && (index_value->type == TYPE_INARITH || index_value->type == TYPE_OUTARITH)
-	  && index_value->value.arithptr->rightptr != NULL
-	  && (index_value->value.arithptr->opcode == T_CAST || index_value->value.arithptr->opcode == T_CAST_WRAP
-	      || index_value->value.arithptr->opcode == T_CAST_NOFAIL))
+      if (!domain_link_string_function (ctx, regu, item, record))
 	{
-	  index_cast = index_value->value.arithptr->domain;
-	  index_value = index_value->value.arithptr->rightptr;
-	}
-      const bool elt_index = elt && (index_value->type == TYPE_DBVAL
-				     || (index_value->type == TYPE_POS_VALUE && index_value->domain != NULL));
-      int n_all = 0;
-      for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
-	{
-	  n_all++;
-	}
-      REGU_VARIABLE *inline_operands[8];
-      REGU_VARIABLE **operands = n_all <= 8 ? inline_operands
-	: (REGU_VARIABLE **) db_private_alloc (ctx->thread_p, n_all * sizeof (*operands));
-      if (operands == NULL)
-	{
-	  ctx->failed = true;
 	  return;
-	}
-      int n_operands = 0;
-      for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
-	{
-	  const TP_DOMAIN *d = op->value.domain;
-	  if (elt ? (op == index && !elt_index)
-	      : (d != NULL && TP_DOMAIN_TYPE (d) != DB_TYPE_VARIABLE && !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d))))
-	    {
-	      continue;
-	    }
-	  operands[n_operands++] = elt && op == index ? index_value : &op->value;
-	}
-      if (n_operands == 0)
-	{
-	  operands[n_operands++] = &regu->value.funcp->operand->value;
-	}
-      record->kind = DOMAIN_LOAD_NODE;
-      item->flags |= DOMAIN_PLAN_COLLATION_GATE;
-      record->cold.opcode = regu->value.funcp->ftype;
-      record->elt_index = elt_index;
-      record->elt_index_cast = elt_index ? index_cast : NULL;
-      domain_set_links (ctx, record, operands, n_operands, regu->domain);
-      for (int i = 0; i < n_operands; i++)
-	{
-	  if (operands[i]->domain_plan == NULL)
-	    {
-	      record->n_link = -1;
-	    }
-	}
-      if (operands != inline_operands)
-	{
-	  db_private_free (ctx->thread_p, operands);
 	}
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
@@ -3570,7 +3586,8 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	  DOMAIN_COMPARE_PLAN *met = const_cast < DOMAIN_COMPARE_PLAN * >(term->domain_compare);
 	  for (int side = 0; side < 2; side++)
 	    {
-	      if (met->held[side] != 0 && ctx->held_blocks[met->held[side] - 1] != ctx->compare_term_scopes[2 * t + side])
+	      if (met->held[side] != 0
+		  && ctx->held_blocks[met->held[side] - 1] != ctx->compare_term_scopes[2 * t + side])
 		{
 		  met->held[side] = 0;
 		}
@@ -4405,47 +4422,131 @@ struct DOMAIN_LOAD_REF
   int next;			/* the position's next entry; -1 */
 };
 
-int
-stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_INFO * unpack_info, bool is_pred_stream)
+/* The load context's lists and records, once the plan is published; on a failure the owners the walk bound are left
+ * without an item (#368, review 2 R2-20: one function of stx_build_domain_plan's steps). */
+static void
+domain_load_context_free (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
 {
-  if (root->domain_plan != NULL)
+  if (ctx->guards != NULL)
     {
-      return NO_ERROR;
+      db_private_free (thread_p, ctx->guards);
     }
-  assert (unpack_info == get_xasl_unpack_info_ptr (thread_p));
-  DOMAIN_PLAN *plan = (DOMAIN_PLAN *) stx_alloc_struct (thread_p, sizeof (*plan));
-  if (plan == NULL)
+  if (ctx->blocks != NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      db_private_free (thread_p, ctx->blocks);
     }
-  memset (plan, 0, sizeof (*plan));
-  plan->dbval_cnt = root->dbval_cnt;
-  plan->n_refs = root->dbval_cnt;
-  /* the execution's scope comes first (DOMAIN_SCOPE_EXECUTION, #368) */
-  plan->n_scopes = 1;
-  DOMAIN_LOAD_CONTEXT ctx;
-  memset (&ctx, 0, sizeof (ctx));
-  ctx.thread_p = thread_p;
-  ctx.plan = plan;
-  ctx.guard = -1;
-  domain_walk_xasl (&ctx, root);
+  if (ctx->block_guards != NULL)
+    {
+      db_private_free (thread_p, ctx->block_guards);
+    }
+  if (ctx->index_guards != NULL)
+    {
+      db_private_free (thread_p, ctx->index_guards);
+    }
+  if (ctx->compare_term_guards != NULL)
+    {
+      db_private_free (thread_p, ctx->compare_term_guards);
+    }
+  if (ctx->compare_term_scopes != NULL)
+    {
+      db_private_free (thread_p, ctx->compare_term_scopes);
+    }
+  if (ctx->ancestors != NULL)
+    {
+      db_private_free (thread_p, ctx->ancestors);
+    }
+  if (ctx->held_scopes != NULL)
+    {
+      db_private_free (thread_p, ctx->held_scopes);
+    }
+  if (ctx->held_blocks != NULL)
+    {
+      db_private_free (thread_p, ctx->held_blocks);
+    }
+  if (ctx->gate_order != NULL)
+    {
+      db_private_free (thread_p, ctx->gate_order);
+    }
+  if (ctx->indexes != NULL)
+    {
+      db_private_free (thread_p, ctx->indexes);
+    }
+  if (ctx->defines != NULL)
+    {
+      db_private_free (thread_p, ctx->defines);
+    }
+  if (ctx->compare_terms != NULL)
+    {
+      db_private_free (thread_p, ctx->compare_terms);
+    }
+  while (ctx->element_terms != NULL)
+    {
+      DOMAIN_LOAD_ELEMENT_TERM *e = ctx->element_terms;
+      ctx->element_terms = e->next;
+      db_private_free (thread_p, e);
+    }
+  while (ctx->list_columns != NULL)
+    {
+      DOMAIN_LOAD_LIST_COLUMN *c = ctx->list_columns;
+      ctx->list_columns = c->next;
+      db_private_free (thread_p, c);
+    }
+  while (ctx->bindings != NULL)
+    {
+      DOMAIN_LOAD_BINDING *b = ctx->bindings;
+      ctx->bindings = b->next;
+      if (ctx->failed)
+	{
+	  *b->owner = NULL;
+	}
+      db_private_free (thread_p, b);
+    }
+  /* after the bindings, which write into the pairs' column sides */
+  while (ctx->compare_pairs != NULL)
+    {
+      DOMAIN_LOAD_COMPARE_PAIR *pair = ctx->compare_pairs;
+      ctx->compare_pairs = pair->next;
+      if (ctx->failed)
+	{
+	  *pair->owner = NULL;
+	}
+      db_private_free (thread_p, pair);
+    }
+  while (ctx->head != NULL)
+    {
+      DOMAIN_LOAD_RECORD *r = ctx->head;
+      ctx->head = r->next;
+      if (r->link != r->link_inline)
+	{
+	  db_private_free (thread_p, r->link);
+	  db_private_free (thread_p, (void *) r->literal);
+	}
+      db_private_free (thread_p, r);
+    }
+}
+
+/* The value pointers' aliases and producers (#337, F-335-07), found through the records' sorted outputs (#368, review 2
+ * R2-20, R2-21) */
+static void
+domain_match_value_pointers (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
+{
   /* the records' outputs, sorted: a value pointer finds the records writing its value by a binary search, not by a
    * scan of every record (#368, review 2 R2-21) */
   int n_outputs = 0;
-  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
     {
       n_outputs += (r->output[0] != NULL) + (r->output[1] != NULL);
     }
   DOMAIN_LOAD_OUTPUT *outputs = NULL;
-  if (n_outputs > 0 && !ctx.failed)
+  if (n_outputs > 0 && !ctx->failed)
     {
       outputs = (DOMAIN_LOAD_OUTPUT *) db_private_alloc (thread_p, sizeof (*outputs) * (size_t) n_outputs);
-      ctx.failed = outputs == NULL;
+      ctx->failed = outputs == NULL;
     }
   if (outputs != NULL)
     {
       int k = 0, order = 0;
-      for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next, order++)
+      for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next, order++)
 	{
 	  for (int i = 0; i < 2; i++)
 	    {
@@ -4462,7 +4563,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   /* Output/list readers borrow their producer's answer. Match the restored
    * value identity, not a column ordinal from a different XASL block. Keep an
    * independent item when the consumer has a different compiled domain. */
-  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL && !ctx.failed; r = r->next)
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL && !ctx->failed; r = r->next)
     {
       if (r->regu == NULL || r->regu->type != TYPE_CONSTANT || r->regu->value.dbvalptr == NULL)
 	{
@@ -4488,7 +4589,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     }
   /* A value pointer's producer is the node writing the value it points at (#337, F-335-07): a fetch into a value
    * list, an arithmetic result, an accumulator, an analytic result, a single-row subquery's column. */
-  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL && !ctx.failed; r = r->next)
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL && !ctx->failed; r = r->next)
     {
       if (r->alias != NULL || r->regu == NULL || r->regu->type != TYPE_CONSTANT || r->regu->value.dbvalptr == NULL)
 	{
@@ -4510,6 +4611,106 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     {
       db_private_free (thread_p, outputs);
     }
+}
+
+/* Each bind's reference and the constant and volatile counts (#368, review 2 R2-20: one of stx_build_domain_plan's
+ * steps) */
+static void
+domain_assign_references (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
+{
+  /* References are assigned in deterministic traversal order. The first use of
+   * each bind keeps val_pos; only a different (domain, failure policy) adds a value.
+   * Each position keeps the pairs its references were given so far (#368, R2-21). */
+  int n_binds = 0;
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
+    {
+      n_binds += r->alias == NULL && r->cold.val_pos >= 0;
+    }
+  int *ref_first = NULL;
+  DOMAIN_LOAD_REF *refs = NULL;
+  if (n_binds > 0 && !ctx->failed)
+    {
+      ref_first = (int *) db_private_alloc (thread_p, sizeof (*ref_first) * (size_t) plan->dbval_cnt);
+      refs = (DOMAIN_LOAD_REF *) db_private_alloc (thread_p, sizeof (*refs) * (size_t) n_binds);
+      ctx->failed = ref_first == NULL || refs == NULL;
+      for (int i = 0; ref_first != NULL && i < plan->dbval_cnt; i++)
+	{
+	  ref_first[i] = -1;
+	}
+    }
+  int n_ref_entries = 0;
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL && !ctx->failed; r = r->next)
+    {
+      if (r->alias != NULL)
+	{
+	  continue;
+	}
+      if (r->cold.val_pos >= 0)
+	{
+	  const int pos = r->cold.val_pos;
+	  const bool first = ref_first[pos] < 0;
+	  for (int e = ref_first[pos]; e >= 0; e = refs[e].next)
+	    {
+	      if (refs[e].domain == r->item.fixed.domain && refs[e].fail == r->item.fail)
+		{
+		  r->item.ref = refs[e].ref;
+		  break;
+		}
+	    }
+	  if (r->item.ref < 0)
+	    {
+	      r->item.ref = first ? pos : plan->n_refs++;
+	      refs[n_ref_entries].domain = r->item.fixed.domain;
+	      refs[n_ref_entries].fail = r->item.fail;
+	      refs[n_ref_entries].ref = r->item.ref;
+	      refs[n_ref_entries].next = ref_first[pos];
+	      ref_first[pos] = n_ref_entries++;
+	    }
+	}
+      if (r->item.operand_class == OPERAND_CONST)
+	{
+	  plan->n_const_refs++;
+	}
+      if (r->item.operand_class == OPERAND_VOLATILE)
+	{
+	  plan->n_volatile++;
+	}
+    }
+  if (ref_first != NULL)
+    {
+      db_private_free (thread_p, ref_first);
+    }
+  if (refs != NULL)
+    {
+      db_private_free (thread_p, refs);
+    }
+}
+
+int
+stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_INFO * unpack_info, bool is_pred_stream)
+{
+  if (root->domain_plan != NULL)
+    {
+      return NO_ERROR;
+    }
+  assert (unpack_info == get_xasl_unpack_info_ptr (thread_p));
+  DOMAIN_PLAN *plan = (DOMAIN_PLAN *) stx_alloc_struct (thread_p, sizeof (*plan));
+  if (plan == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (plan, 0, sizeof (*plan));
+  plan->dbval_cnt = root->dbval_cnt;
+  plan->n_refs = root->dbval_cnt;
+  /* the execution's scope comes first (DOMAIN_SCOPE_EXECUTION, #368) */
+  plan->n_scopes = 1;
+  DOMAIN_LOAD_CONTEXT ctx;
+  memset (&ctx, 0, sizeof (ctx));
+  ctx.thread_p = thread_p;
+  ctx.plan = plan;
+  ctx.guard = -1;
+  domain_walk_xasl (&ctx, root);
+  domain_match_value_pointers (thread_p, &ctx);
   /* CTE columns first: a recursive part then meets its own column in progress and reads the non-recursive column in
    * its place, whichever record the walk met first */
   for (DOMAIN_LOAD_LIST_COLUMN * c = ctx.list_columns; c != NULL && !ctx.failed; c = c->next)
@@ -4556,72 +4757,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	}
     }
   plan->n_refs = plan->dbval_cnt;
-  /* References are assigned in deterministic traversal order. The first use of
-   * each bind keeps val_pos; only a different (domain, failure policy) adds a value.
-   * Each position keeps the pairs its references were given so far (#368, R2-21). */
-  int n_binds = 0;
-  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
-    {
-      n_binds += r->alias == NULL && r->cold.val_pos >= 0;
-    }
-  int *ref_first = NULL;
-  DOMAIN_LOAD_REF *refs = NULL;
-  if (n_binds > 0 && !ctx.failed)
-    {
-      ref_first = (int *) db_private_alloc (thread_p, sizeof (*ref_first) * (size_t) plan->dbval_cnt);
-      refs = (DOMAIN_LOAD_REF *) db_private_alloc (thread_p, sizeof (*refs) * (size_t) n_binds);
-      ctx.failed = ref_first == NULL || refs == NULL;
-      for (int i = 0; ref_first != NULL && i < plan->dbval_cnt; i++)
-	{
-	  ref_first[i] = -1;
-	}
-    }
-  int n_ref_entries = 0;
-  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL && !ctx.failed; r = r->next)
-    {
-      if (r->alias != NULL)
-	{
-	  continue;
-	}
-      if (r->cold.val_pos >= 0)
-	{
-	  const int pos = r->cold.val_pos;
-	  const bool first = ref_first[pos] < 0;
-	  for (int e = ref_first[pos]; e >= 0; e = refs[e].next)
-	    {
-	      if (refs[e].domain == r->item.fixed.domain && refs[e].fail == r->item.fail)
-		{
-		  r->item.ref = refs[e].ref;
-		  break;
-		}
-	    }
-	  if (r->item.ref < 0)
-	    {
-	      r->item.ref = first ? pos : plan->n_refs++;
-	      refs[n_ref_entries].domain = r->item.fixed.domain;
-	      refs[n_ref_entries].fail = r->item.fail;
-	      refs[n_ref_entries].ref = r->item.ref;
-	      refs[n_ref_entries].next = ref_first[pos];
-	      ref_first[pos] = n_ref_entries++;
-	    }
-	}
-      if (r->item.operand_class == OPERAND_CONST)
-	{
-	  plan->n_const_refs++;
-	}
-      if (r->item.operand_class == OPERAND_VOLATILE)
-	{
-	  plan->n_volatile++;
-	}
-    }
-  if (ref_first != NULL)
-    {
-      db_private_free (thread_p, ref_first);
-    }
-  if (refs != NULL)
-    {
-      db_private_free (thread_p, refs);
-    }
+  domain_assign_references (thread_p, &ctx, plan);
   /* gate-dependent nodes in resolution order: producers first (#337) */
   plan->n_gate_nodes = ctx.n_gate_order;
   plan->items = (DOMAIN_PLAN_ITEM *) domain_plan_alloc (thread_p, plan->n_items, sizeof (*plan->items));
@@ -4778,102 +4914,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  plan->n_guards = ctx.n_guards;
 	}
     }
-  if (ctx.guards != NULL)
-    {
-      db_private_free (thread_p, ctx.guards);
-    }
-  if (ctx.blocks != NULL)
-    {
-      db_private_free (thread_p, ctx.blocks);
-    }
-  if (ctx.block_guards != NULL)
-    {
-      db_private_free (thread_p, ctx.block_guards);
-    }
-  if (ctx.index_guards != NULL)
-    {
-      db_private_free (thread_p, ctx.index_guards);
-    }
-  if (ctx.compare_term_guards != NULL)
-    {
-      db_private_free (thread_p, ctx.compare_term_guards);
-    }
-  if (ctx.compare_term_scopes != NULL)
-    {
-      db_private_free (thread_p, ctx.compare_term_scopes);
-    }
-  if (ctx.ancestors != NULL)
-    {
-      db_private_free (thread_p, ctx.ancestors);
-    }
-  if (ctx.held_scopes != NULL)
-    {
-      db_private_free (thread_p, ctx.held_scopes);
-    }
-  if (ctx.held_blocks != NULL)
-    {
-      db_private_free (thread_p, ctx.held_blocks);
-    }
-  if (ctx.gate_order != NULL)
-    {
-      db_private_free (thread_p, ctx.gate_order);
-    }
-  if (ctx.indexes != NULL)
-    {
-      db_private_free (thread_p, ctx.indexes);
-    }
-  if (ctx.defines != NULL)
-    {
-      db_private_free (thread_p, ctx.defines);
-    }
-  if (ctx.compare_terms != NULL)
-    {
-      db_private_free (thread_p, ctx.compare_terms);
-    }
-  while (ctx.element_terms != NULL)
-    {
-      DOMAIN_LOAD_ELEMENT_TERM *e = ctx.element_terms;
-      ctx.element_terms = e->next;
-      db_private_free (thread_p, e);
-    }
-  while (ctx.list_columns != NULL)
-    {
-      DOMAIN_LOAD_LIST_COLUMN *c = ctx.list_columns;
-      ctx.list_columns = c->next;
-      db_private_free (thread_p, c);
-    }
-  while (ctx.bindings != NULL)
-    {
-      DOMAIN_LOAD_BINDING *b = ctx.bindings;
-      ctx.bindings = b->next;
-      if (ctx.failed)
-	{
-	  *b->owner = NULL;
-	}
-      db_private_free (thread_p, b);
-    }
-  /* after the bindings, which write into the pairs' column sides */
-  while (ctx.compare_pairs != NULL)
-    {
-      DOMAIN_LOAD_COMPARE_PAIR *pair = ctx.compare_pairs;
-      ctx.compare_pairs = pair->next;
-      if (ctx.failed)
-	{
-	  *pair->owner = NULL;
-	}
-      db_private_free (thread_p, pair);
-    }
-  while (ctx.head != NULL)
-    {
-      DOMAIN_LOAD_RECORD *r = ctx.head;
-      ctx.head = r->next;
-      if (r->link != r->link_inline)
-	{
-	  db_private_free (thread_p, r->link);
-	  db_private_free (thread_p, (void *) r->literal);
-	}
-      db_private_free (thread_p, r);
-    }
+  domain_load_context_free (thread_p, &ctx);
   if (ctx.failed)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;

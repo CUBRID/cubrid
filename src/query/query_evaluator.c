@@ -64,9 +64,21 @@ struct EVAL_ELEMENTS
 
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
-static DB_LOGICAL eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2,
-				      REL_OP rel_operator, const COMP_EVAL_TERM * et_comp, const val_descr * vd,
-				      const DOMAIN_COMPARE * compare, const DB_VALUE * develop2);
+static DB_LOGICAL eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2,
+					       REL_OP rel_operator, const COMP_EVAL_TERM * et_comp,
+					       const val_descr * vd, const DOMAIN_COMPARE * compare
+#if !defined (NDEBUG)
+					       , const DB_VALUE * develop2
+#endif				/* !NDEBUG */
+  );
+/* develop2, the value the shadow checks compare, is an optdebug argument (#368, review 2 R2-09, D-368-08) */
+#if !defined (NDEBUG)
+#define eval_value_rel_cmp(thread_p, dbval1, dbval2, rel_operator, et_comp, vd, compare, develop2) \
+  eval_value_rel_cmp_internal (thread_p, dbval1, dbval2, rel_operator, et_comp, vd, compare, develop2)
+#else /* !NDEBUG */
+#define eval_value_rel_cmp(thread_p, dbval1, dbval2, rel_operator, et_comp, vd, compare, develop2) \
+  eval_value_rel_cmp_internal (thread_p, dbval1, dbval2, rel_operator, et_comp, vd, compare)
+#endif /* !NDEBUG */
 static DB_LOGICAL eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator,
 				  const EVAL_ELEMENTS * elements, const val_descr * vd);
 static DB_LOGICAL eval_all_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP rel_operator,
@@ -164,26 +176,27 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  * cmpval compares, the collation, and develop's outcome when a conversion fails. The row runs them; it decides nothing.
  */
 
-/* develop's comparison of the values, for a reason no record carries (#352) */
-static DOMAIN_COMPARE
+/* develop's comparison of the values, for a reason no record carries (#352); constant-initialized (#368, R2-10) */
+static constexpr DOMAIN_COMPARE
 eval_values_decision (DOMAIN_COMPARE_REASON reason)
 {
-  DOMAIN_COMPARE compare;
-  compare = DOMAIN_COMPARE
-  {
-  };
+  DOMAIN_COMPARE compare = DOMAIN_COMPARE ();
   compare.kernel = DOMAIN_COMPARE_VALUES;
   compare.reason = (unsigned char) reason;
-  compare.value[0] = compare.value[1] = compare.codeset_side = compare.site = -1;
+  /* one assignment each: GCC 8.5 fails with an internal compiler error on a chained one in a constexpr function */
+  compare.value[0] = -1;
+  compare.value[1] = -1;
+  compare.codeset_side = -1;
+  compare.site = -1;
   return compare;
 }
 
-static const DOMAIN_COMPARE eval_Compare_null = eval_values_decision (DOMAIN_REASON_NULL);
-static const DOMAIN_COMPARE eval_Compare_unplanned = eval_values_decision (DOMAIN_REASON_UNPLANNED);
+static constexpr DOMAIN_COMPARE eval_Compare_null = eval_values_decision (DOMAIN_REASON_NULL);
+static constexpr DOMAIN_COMPARE eval_Compare_unplanned = eval_values_decision (DOMAIN_REASON_UNPLANNED);
 
 /* The element comparisons of a set or list comparison: the collections' elements are their data, so the comparison
  * reads the key pair table by the two values' keys (#354, D-354-01). */
-static DOMAIN_COMPARE
+static constexpr DOMAIN_COMPARE
 eval_keys_decision (void)
 {
   DOMAIN_COMPARE compare = eval_values_decision (DOMAIN_REASON_UNPLANNED);
@@ -191,7 +204,7 @@ eval_keys_decision (void)
   return compare;
 }
 
-static const DOMAIN_COMPARE eval_Compare_elements = eval_keys_decision ();
+static constexpr DOMAIN_COMPARE eval_Compare_elements = eval_keys_decision ();
 
 /*
  * eval_site_compare () - the decision of a comparison record in this execution: the load's, or the gate's for a site
@@ -486,7 +499,7 @@ eval_assert_planned_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbva
 static void
 eval_assert_planned_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
 			     int total_order, DB_VALUE_COMPARE_RESULT result, bool comparable,
-			     const COMP_EVAL_TERM * et_comp, const val_descr * vd, bool asks_comparable = true)
+			     const COMP_EVAL_TERM * et_comp, const val_descr * vd, bool asks_comparable)
 {
   const int error = comparable ? NO_ERROR : er_errid ();
   bool develop_comparable = true;
@@ -545,9 +558,7 @@ eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN 
 #if !defined (NDEBUG)
       eval_report_planned_compare ("boundary", compare, value1, value2, NULL, vd);
 #endif
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
-	      pr_type_name (DB_VALUE_DOMAIN_TYPE (value2)));
+      (void) domain_unresolved_error ("", -1, DB_VALUE_DOMAIN_TYPE (value2));
       if (can_compare != NULL)
 	{
 	  *can_compare = false;
@@ -568,13 +579,16 @@ eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN 
  *   et_comp(in): compound evaluation term
  *   vd(in): value descriptor of the term's execution (the gate's decisions and converted constants, #352)
  *   compare(in): the decision of an element comparison (#352, D-352-03); NULL: the term's
- *   develop2(in): the right side develop compares where dbval2 is the gate's converted copy of it (the shadow checks
- *		   compare that one); NULL: dbval2
+ *   develop2(in): (optdebug only) the right side develop compares where dbval2 is the gate's converted copy of it (the
+ *		   shadow checks compare that one); NULL: dbval2
  */
 static DB_LOGICAL
-eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
-		    const COMP_EVAL_TERM * et_comp, const val_descr * vd, const DOMAIN_COMPARE * compare,
-		    const DB_VALUE * develop2)
+eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, REL_OP rel_operator,
+			     const COMP_EVAL_TERM * et_comp, const val_descr * vd, const DOMAIN_COMPARE * compare
+#if !defined (NDEBUG)
+			     , const DB_VALUE * develop2
+#endif				/* !NDEBUG */
+  )
 {
   int result;
   bool comparable = true;
@@ -617,7 +631,7 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 	    result = eval_compare_planned (thread_p, compare, site, vd, dbval1, dbval2, total_order, &comparable);
 #if !defined (NDEBUG)
 	    eval_assert_planned_compare (compare, dbval1, develop2 != NULL ? develop2 : dbval2, total_order,
-					 (DB_VALUE_COMPARE_RESULT) result, comparable, et_comp, vd);
+					 (DB_VALUE_COMPARE_RESULT) result, comparable, et_comp, vd, true);
 #endif
 	  }
 	else if (eval_compare_decides (dbval1, dbval2))
@@ -627,9 +641,7 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 #if !defined (NDEBUG)
 	    eval_report_planned_compare ("boundary", compare, dbval1, dbval2, et_comp, vd);
 #endif
-	    assert (false);
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", -1,
-		    pr_type_name (DB_VALUE_DOMAIN_TYPE (dbval2)));
+	    (void) domain_unresolved_error ("", -1, DB_VALUE_DOMAIN_TYPE (dbval2));
 	    return V_ERROR;
 	  }
 	else
@@ -733,7 +745,9 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
     {
       DB_VALUE *element = &elem_val;
       const DOMAIN_COMPARE *compare;
+#if !defined (NDEBUG)
       const DB_VALUE *develop2 = NULL;
+#endif
       if (elements->constant != NULL)
 	{
 	  element = &elements->constant->value[i];

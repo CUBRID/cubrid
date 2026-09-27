@@ -277,9 +277,20 @@ extern const TP_DOMAIN *qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PL
 extern const TP_DOMAIN *qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled,
 					       const DOMAIN_PLAN_ITEM * item);
 extern int qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled);
+
+/* A plan item's index in this execution's plan, which the boundary (b) names; -1 for an item of another load (#368,
+ * review 2 R2-04) */
+inline int
+qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  const DOMAIN_PLAN *plan = vd != NULL && vd->xasl_state != NULL ? vd->xasl_state->resolved.plan : NULL;
+  return item != NULL && plan != NULL && item >= plan->items && item < plan->items + plan->n_items
+    ? (int) (item - plan->items) : -1;
+}
+
 extern const TP_DOMAIN *qexec_value_domain (const VAL_DESCR * vd, const regu_variable_node * regu);
 extern void qexec_enter_domain_scope (const VAL_DESCR * vd, const val_list_node * val_list);
-extern const DB_VALUE *qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONV_FUNC conv,
+extern const DB_VALUE *qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONVERTER conv,
 					 const TP_DOMAIN * target, const DB_VALUE * value);
 extern int qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other);
 
