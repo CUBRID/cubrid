@@ -4046,7 +4046,7 @@ qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RES
   NULL, DB_TYPE_NULL, -1, -1, false};
   if (value != NULL)
     {
-      operand->domain = tp_domain_resolve_value (value, NULL);
+      operand->domain = domain_value_domain (value);
       operand->is_gate_slot = (item->flags & DOMAIN_PLAN_GATE) != 0;
     }
   else if (item->slot >= 0)
@@ -4386,7 +4386,7 @@ qexec_session_start_type (THREAD_ENTRY * thread_p, const DB_VALUE * name)
   db_make_null (&current);
   if (session_get_variable (thread_p, name, &current) == NO_ERROR)
     {
-      type = DB_IS_NULL (&current) ? NULL : tp_domain_resolve_value (&current, NULL);
+      type = DB_IS_NULL (&current) ? NULL : domain_value_domain (&current);
     }
   else
     {
@@ -4489,8 +4489,8 @@ qexec_session_variable_type (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAI
 }
 
 /*
- * qexec_share_value () - a bind's value in the gate's array as a copy that owns nothing (#371): its DB_VALUE is its
- *   own, its buffers are the bind's
+ * qexec_share_value () - a bind's value in the gate's array as a copy that owns nothing (#371, pr_share_value): its
+ *   DB_VALUE is its own, its buffers are the bind's
  *   return: NO_ERROR, or pr_clone_value's error
  *
  * resolved.in - qmgr's copies of the client's values, an SA client's own - lives for the whole execution and nothing
@@ -4510,12 +4510,7 @@ qexec_share_value (const DB_VALUE * source, DB_VALUE * copy)
     {
       return pr_clone_value (source, copy);
     }
-  *copy = *source;
-  copy->need_clear = false;
-  if (TP_IS_CHAR_TYPE (type))
-    {
-      copy->data.ch.info.compressed_need_clear = false;
-    }
+  pr_share_value (const_cast < DB_VALUE * >(source), copy);
   return NO_ERROR;
 }
 
@@ -5370,34 +5365,6 @@ qexec_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const 
 }
 #endif /* !NDEBUG */
 
-/* The domain of a constant key element's value (#371): tp_domain_resolve_value's. A type without parameters has the
- * built-in domain, which is read directly; any other type's is resolved from the value. */
-static const TP_DOMAIN *
-qexec_key_value_domain (const DB_VALUE * value)
-{
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
-  switch (type)
-    {
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_BIGINT:
-    case DB_TYPE_SHORT:
-    case DB_TYPE_FLOAT:
-    case DB_TYPE_DOUBLE:
-    case DB_TYPE_DATE:
-    case DB_TYPE_TIME:
-    case DB_TYPE_DATETIME:
-    case DB_TYPE_DATETIMETZ:
-    case DB_TYPE_DATETIMELTZ:
-    case DB_TYPE_TIMESTAMP:
-    case DB_TYPE_TIMESTAMPTZ:
-    case DB_TYPE_TIMESTAMPLTZ:
-    case DB_TYPE_MONETARY:
-      return tp_domain_resolve_default (type);
-    default:
-      return tp_domain_resolve_value (value, NULL);
-    }
-}
-
 /*
  * qexec_resolve_key_constant () - a constant key element's value for this execution (#342, B31)
  *
@@ -5449,7 +5416,7 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bo
       const int noted = qexec_note_failure (thread_p, xasl_state->resolved, failure);
       return noted != NO_ERROR ? noted : pr_clone_value (value, &decision->value);
     }
-  const TP_DOMAIN *value_domain = qexec_key_value_domain (value);
+  const TP_DOMAIN *value_domain = domain_value_domain (value);
   if (value_domain == NULL)
     {
       return ER_FAILED;

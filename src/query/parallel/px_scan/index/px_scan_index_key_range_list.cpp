@@ -114,8 +114,10 @@ namespace parallel_index_scan
       }
     INDX_SCAN_ID *isidp = &worker_scan_id->s.isid;
     TP_DOMAIN *btree_domainp = m_btid_int.key_type;
-    /* the workers' comparisons of these ranges' values read the coordinator's search keys, which outlive them */
+    /* the workers' comparisons of these ranges' values read the coordinator's search keys, which outlive them, and
+     * compare as the coordinator's scan chose at open (#371) */
     m_btid_int.search_keys = scan_index_search_keys (isidp);
+    m_btid_int.search_compare = scan_index_search_compare (isidp);
 
     m_part_key_desc = false;
     m_key_val_ranges.resize (key_cnt);
