@@ -1306,7 +1306,7 @@ domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_con
  * turn. A correlated side its scope converted comes in converted too (preconverted, #368). Every conversion the row
  * runs is counted (Num_planned_convert).
  */
-static DB_VALUE_COMPARE_RESULT
+DB_VALUE_COMPARE_RESULT
 domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
 			  const DB_VALUE * value2, int total_order, bool * can_compare, unsigned char preconverted)
 {

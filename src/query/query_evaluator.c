@@ -356,29 +356,41 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
     {
       return total_order ? DB_GT : DB_UNK;
     }
-  if (compare->kernel == DOMAIN_COMPARE_OBJECT || compare->kernel == DOMAIN_COMPARE_KEYS)
+  /* one switch on the kernel the record names (#368, review 2 R2-08) */
+  switch (compare->kernel)
     {
+    case DOMAIN_COMPARE_DIRECT:
+      return compare->cmp->cmpval ((DB_VALUE *) value[0], (DB_VALUE *) value[1], compare->coercion, total_order, NULL,
+				   compare->collation);
+
+    case DOMAIN_COMPARE_CONVERT:
+      {
+	unsigned char converted = 0;
+	for (int side = 0; site != NULL && side < 2; side++)
+	  {
+	    /* D-368-01: a correlated side is converted once per scope (its outer row), not at every inner row */
+	    const DB_VALUE *held = site->held[side] != 0 && compare->conv[side] != NULL
+	      ? qexec_held_value (thread_p, vd, site->held[side], compare->conv[side], compare->target[side],
+				  value[side]) : NULL;
+	    if (held != NULL)
+	      {
+		value[side] = held;
+		converted |= (unsigned char) (1 << side);
+	      }
+	  }
+	return domain_compare_converted (thread_p, compare, value[0], value[1], total_order, can_compare, converted);
+      }
+
+    case DOMAIN_COMPARE_OBJECT:
+    case DOMAIN_COMPARE_KEYS:
       /* an object side meets OIDs on the server, and a collection's elements are its data: the key pair table's
        * comparison of the two values' keys (#354) */
       return domain_compare_by_keys (dbval1, dbval2, 1, total_order, can_compare);
+
+    default:
+      /* RANK, COLLATIONS */
+      return domain_compare_values (thread_p, compare, value[0], value[1], total_order, can_compare);
     }
-  unsigned char converted = 0;
-  if (site != NULL && compare->kernel == DOMAIN_COMPARE_CONVERT)
-    {
-      for (int side = 0; side < 2; side++)
-	{
-	  /* D-368-01: a correlated side is converted once per scope (its outer row), not at every inner row */
-	  const DB_VALUE *held = site->held[side] != 0 && compare->conv[side] != NULL
-	    ? qexec_held_value (thread_p, vd, site->held[side], compare->conv[side], compare->target[side], value[side])
-	    : NULL;
-	  if (held != NULL)
-	    {
-	      value[side] = held;
-	      converted |= (unsigned char) (1 << side);
-	    }
-	}
-    }
-  return domain_compare_values (thread_p, compare, value[0], value[1], total_order, can_compare, converted);
 }
 
 #if !defined (NDEBUG)
