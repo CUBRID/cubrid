@@ -4349,6 +4349,62 @@ domain_plan_stream_compares (THREAD_ENTRY * thread_p, PRED_EXPR * pred, REGU_VAR
   return ctx.failed ? ER_OUT_OF_VIRTUAL_MEMORY : NO_ERROR;
 }
 
+/*
+ * A record's output - the value it writes: a fetch into a value list, an arithmetic result, an accumulator, an analytic
+ * result, a single-row subquery's column - for finding the records a value pointer reads (#368, review 2 R2-21). The
+ * outputs are sorted by the value and then by walk order, so a value's writers come in the order a scan of the records
+ * met them.
+ */
+struct DOMAIN_LOAD_OUTPUT
+{
+  const DB_VALUE *value;
+  DOMAIN_LOAD_RECORD *record;
+  int order;
+};
+
+static int
+domain_compare_outputs (const void *lhs, const void *rhs)
+{
+  const DOMAIN_LOAD_OUTPUT *a = (const DOMAIN_LOAD_OUTPUT *) lhs;
+  const DOMAIN_LOAD_OUTPUT *b = (const DOMAIN_LOAD_OUTPUT *) rhs;
+  const uintptr_t va = (uintptr_t) a->value, vb = (uintptr_t) b->value;
+  if (va != vb)
+    {
+      return va < vb ? -1 : 1;
+    }
+  return a->order < b->order ? -1 : a->order > b->order ? 1 : 0;
+}
+
+/* The first of a value's outputs among the sorted outputs; n when no record writes it. */
+static int
+domain_first_output (const DOMAIN_LOAD_OUTPUT * outputs, int n, const DB_VALUE * value)
+{
+  int lo = 0, hi = n;
+  while (lo < hi)
+    {
+      const int mid = lo + (hi - lo) / 2;
+      if ((uintptr_t) outputs[mid].value < (uintptr_t) value)
+	{
+	  lo = mid + 1;
+	}
+      else
+	{
+	  hi = mid;
+	}
+    }
+  return lo;
+}
+
+/* A (domain, failure policy) a bind position's references were given, and its reference (#368, R2-21): the positions'
+ * lists replace a scan of the records before each bind. */
+struct DOMAIN_LOAD_REF
+{
+  const TP_DOMAIN *domain;
+  int fail;
+  int ref;
+  int next;			/* the position's next entry; -1 */
+};
+
 int
 stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_INFO * unpack_info, bool is_pred_stream)
 {
@@ -4373,6 +4429,36 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   ctx.plan = plan;
   ctx.guard = -1;
   domain_walk_xasl (&ctx, root);
+  /* the records' outputs, sorted: a value pointer finds the records writing its value by a binary search, not by a
+   * scan of every record (#368, review 2 R2-21) */
+  int n_outputs = 0;
+  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
+    {
+      n_outputs += (r->output[0] != NULL) + (r->output[1] != NULL);
+    }
+  DOMAIN_LOAD_OUTPUT *outputs = NULL;
+  if (n_outputs > 0 && !ctx.failed)
+    {
+      outputs = (DOMAIN_LOAD_OUTPUT *) db_private_alloc (thread_p, sizeof (*outputs) * (size_t) n_outputs);
+      ctx.failed = outputs == NULL;
+    }
+  if (outputs != NULL)
+    {
+      int k = 0, order = 0;
+      for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next, order++)
+	{
+	  for (int i = 0; i < 2; i++)
+	    {
+	      if (r->output[i] != NULL)
+		{
+		  outputs[k].value = r->output[i];
+		  outputs[k].record = r;
+		  outputs[k++].order = order;
+		}
+	    }
+	}
+      qsort (outputs, (size_t) n_outputs, sizeof (*outputs), domain_compare_outputs);
+    }
   /* Output/list readers borrow their producer's answer. Match the restored
    * value identity, not a column ordinal from a different XASL block. Keep an
    * independent item when the consumer has a different compiled domain. */
@@ -4382,14 +4468,15 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	{
 	  continue;
 	}
-      for (DOMAIN_LOAD_RECORD * p = ctx.head; p != NULL; p = p->next)
+      const DB_VALUE *value = r->regu->value.dbvalptr;
+      for (int k = domain_first_output (outputs, n_outputs, value); k < n_outputs && outputs[k].value == value; k++)
 	{
+	  DOMAIN_LOAD_RECORD *p = outputs[k].record;
 	  if (p == r || (p->regu != NULL && p->regu->type == TYPE_CONSTANT))
 	    {
 	      continue;
 	    }
-	  if ((p->output[0] == r->regu->value.dbvalptr || p->output[1] == r->regu->value.dbvalptr)
-	      && p->item.fixed.domain == r->item.fixed.domain
+	  if (p->item.fixed.domain == r->item.fixed.domain
 	      && p->item.operand_class == r->item.operand_class
 	      && p->item.flags == r->item.flags && p->item.fail == r->item.fail
 	      && !domain_reads_group_concat_value (r, p))
@@ -4409,14 +4496,19 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	}
       /* a writer that is itself a value pointer counts too: a scalar subquery's BUILDVALUE column points at its
        * accumulator and is copied into single_tuple */
-      for (DOMAIN_LOAD_RECORD * p = ctx.head; p != NULL; p = p->next)
+      const DB_VALUE *value = r->regu->value.dbvalptr;
+      for (int k = domain_first_output (outputs, n_outputs, value); k < n_outputs && outputs[k].value == value; k++)
 	{
-	  if (p != r && (p->output[0] == r->regu->value.dbvalptr || p->output[1] == r->regu->value.dbvalptr))
+	  if (outputs[k].record != r)
 	    {
-	      r->producer = p;
+	      r->producer = outputs[k].record;
 	      break;
 	    }
 	}
+    }
+  if (outputs != NULL)
+    {
+      db_private_free (thread_p, outputs);
     }
   /* CTE columns first: a recursive part then meets its own column in progress and reads the non-recursive column in
    * its place, whichever record the walk met first */
@@ -4465,7 +4557,26 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     }
   plan->n_refs = plan->dbval_cnt;
   /* References are assigned in deterministic traversal order. The first use of
-   * each bind keeps val_pos; only a different (domain, failure policy) adds a value. */
+   * each bind keeps val_pos; only a different (domain, failure policy) adds a value.
+   * Each position keeps the pairs its references were given so far (#368, R2-21). */
+  int n_binds = 0;
+  for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
+    {
+      n_binds += r->alias == NULL && r->cold.val_pos >= 0;
+    }
+  int *ref_first = NULL;
+  DOMAIN_LOAD_REF *refs = NULL;
+  if (n_binds > 0 && !ctx.failed)
+    {
+      ref_first = (int *) db_private_alloc (thread_p, sizeof (*ref_first) * (size_t) plan->dbval_cnt);
+      refs = (DOMAIN_LOAD_REF *) db_private_alloc (thread_p, sizeof (*refs) * (size_t) n_binds);
+      ctx.failed = ref_first == NULL || refs == NULL;
+      for (int i = 0; ref_first != NULL && i < plan->dbval_cnt; i++)
+	{
+	  ref_first[i] = -1;
+	}
+    }
+  int n_ref_entries = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL && !ctx.failed; r = r->next)
     {
       if (r->alias != NULL)
@@ -4474,23 +4585,24 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	}
       if (r->cold.val_pos >= 0)
 	{
-	  bool first = true;
-	  for (DOMAIN_LOAD_RECORD * p = ctx.head; p != r; p = p->next)
+	  const int pos = r->cold.val_pos;
+	  const bool first = ref_first[pos] < 0;
+	  for (int e = ref_first[pos]; e >= 0; e = refs[e].next)
 	    {
-	      if (p->cold.val_pos != r->cold.val_pos)
+	      if (refs[e].domain == r->item.fixed.domain && refs[e].fail == r->item.fail)
 		{
-		  continue;
-		}
-	      first = false;
-	      if (p->item.fixed.domain == r->item.fixed.domain && p->item.fail == r->item.fail)
-		{
-		  r->item.ref = p->item.ref;
+		  r->item.ref = refs[e].ref;
 		  break;
 		}
 	    }
 	  if (r->item.ref < 0)
 	    {
-	      r->item.ref = first ? r->cold.val_pos : plan->n_refs++;
+	      r->item.ref = first ? pos : plan->n_refs++;
+	      refs[n_ref_entries].domain = r->item.fixed.domain;
+	      refs[n_ref_entries].fail = r->item.fail;
+	      refs[n_ref_entries].ref = r->item.ref;
+	      refs[n_ref_entries].next = ref_first[pos];
+	      ref_first[pos] = n_ref_entries++;
 	    }
 	}
       if (r->item.operand_class == OPERAND_CONST)
@@ -4501,6 +4613,14 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	{
 	  plan->n_volatile++;
 	}
+    }
+  if (ref_first != NULL)
+    {
+      db_private_free (thread_p, ref_first);
+    }
+  if (refs != NULL)
+    {
+      db_private_free (thread_p, refs);
     }
   /* gate-dependent nodes in resolution order: producers first (#337) */
   plan->n_gate_nodes = ctx.n_gate_order;
@@ -4540,18 +4660,17 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 		  plan->volatile_refs[vol++] = item;
 		}
 	    }
-	  for (DOMAIN_LOAD_BINDING * b = ctx.bindings; b != NULL; b = b->next)
-	    {
-	      if (b->target == &r->item)
-		{
-		  *b->owner = item;
-		}
-	    }
 	}
       else
 	{
 	  *r->owner = NULL;
 	}
+    }
+  /* a binding's target is a record's item: the binding takes that record's published item (#368, R2-21: not a scan
+   * of the bindings for each record) */
+  for (DOMAIN_LOAD_BINDING * b = ctx.bindings; b != NULL && !ctx.failed; b = b->next)
+    {
+      *b->owner = &plan->items[domain_record_of (b->target)->index];
     }
   if (!ctx.failed)
     {
