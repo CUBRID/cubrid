@@ -228,8 +228,11 @@ DB_VALUE_COMPARE_RESULT domain_compare_converted (THREAD_ENTRY * thread_p, const
 DB_VALUE_COMPARE_RESULT domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion,
 						int total_order, bool * can_compare);
 
-/* The key pair table's life (#354): made once, when the first comparison needs it after the language and type modules
- * are up; freed before the type module (tp_final), whose cached domains its string targets are. */
+/* The key pair table's life (#354): made once, at server boot once the language and type modules are up
+ * (domain_key_pairs_init, #368 D-368-10), or by the first comparison that finds none (a process that does not boot
+ * the server, or a boot short of memory); freed before the type module (tp_final), whose cached domains its string
+ * targets are. */
+void domain_key_pairs_init (void);
 void domain_key_pairs_final (void);
 
 /*

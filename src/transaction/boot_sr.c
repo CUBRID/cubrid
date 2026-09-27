@@ -2651,6 +2651,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
+  /* the key pair table, the comparison of every pair of value keys, before the first query needs it (#368,
+   * D-368-10: its time and memory move from the first comparison to the boot) */
+  domain_key_pairs_init ();
+
 #if defined (SA_MODE)
   /* Completely vacuum database. */
   if (r_args == NULL || r_args->is_restore_from_backup == false)

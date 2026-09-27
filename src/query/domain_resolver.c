@@ -2113,8 +2113,9 @@ domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAI
  * The key pair table (#354, D-354-01): the comparison of every pair of keys a value can have - an element type
  * (domain_element_type) and, for a string or an ENUM, a registered collation - with coercion and without. A pair's
  * entry indexes a pool of the distinct decisions: most pairs share one (a string's collation does not change how it
- * compares with a number). Its entries depend on no value and no plan, so it is made once, the first time a comparison
- * needs it, and freed before the type module whose cached domains its string targets are (domain_key_pairs_final).
+ * compares with a number). Its entries depend on no value and no plan, so it is made once - at server boot
+ * (domain_key_pairs_init, #368 D-368-10), or by the first comparison that finds none - and freed before the type
+ * module whose cached domains its string targets are (domain_key_pairs_final).
  */
 struct DOMAIN_KEY_PAIRS
 {
@@ -2269,7 +2270,7 @@ domain_key_pairs_make (void)
   return pairs;
 }
 
-/* The table, made the first time a comparison needs it. */
+/* The table: the boot made it (D-368-10); the first comparison that finds none makes it here. */
 static const DOMAIN_KEY_PAIRS *
 domain_key_pairs (void)
 {
@@ -2287,13 +2288,11 @@ domain_key_pairs (void)
   return pairs;
 }
 
-int
-domain_unresolved_error (const char *alias, int index, DB_TYPE type)
+void
+domain_key_pairs_init (void)
 {
-  assert (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", alias, index,
-	  pr_type_name (type));
-  return ER_QPROC_DOMAIN_UNRESOLVED;
+  /* a table the boot cannot make is left to the first comparison, as before */
+  (void) domain_key_pairs ();
 }
 
 void
@@ -2301,6 +2300,15 @@ domain_key_pairs_final (void)
 {
   std::lock_guard < std::mutex > lock (domain_Key_pairs_mutex);
   domain_key_pairs_free (domain_Key_pairs.exchange (NULL));
+}
+
+int
+domain_unresolved_error (const char *alias, int index, DB_TYPE type)
+{
+  assert (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", alias, index,
+	  pr_type_name (type));
+  return ER_QPROC_DOMAIN_UNRESOLVED;
 }
 
 /* A key's row and column in the table; -1 for a key no value of an element type carries. */
