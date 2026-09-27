@@ -4751,6 +4751,7 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
   compare->volatile_reads = site->fixed.volatile_reads;
   if (compare->kernel != DOMAIN_COMPARE_DIRECT && compare->kernel != DOMAIN_COMPARE_CONVERT)
     {
+      domain_compare_leaves (compare);
       return NO_ERROR;
     }
   for (int side = 0; side < 2; side++)
@@ -4835,6 +4836,7 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
     {
       compare->kernel = DOMAIN_COMPARE_CONVERT;
     }
+  domain_compare_leaves (compare);
   return NO_ERROR;
 }
 

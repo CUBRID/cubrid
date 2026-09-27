@@ -569,6 +569,10 @@ eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN 
   return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
 }
 
+/* a comparison's result as its relational operator reads it (eval_value_rel_cmp and the leaves, #371) */
+STATIC_INLINE DB_LOGICAL eval_rel_result (REL_OP rel_operator, int result, const DB_VALUE * dbval1,
+					  const DB_VALUE * dbval2) __attribute__ ((ALWAYS_INLINE));
+
 /*
  * eval_value_rel_cmp () - Compare two db_values according to the given
  *                       relational operator
@@ -576,9 +580,10 @@ eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN 
  *   dbval1(in): first db_value
  *   dbval2(in): second db_value
  *   rel_operator(in): Relational operator
- *   et_comp(in): compound evaluation term
+ *   et_comp(in): compound evaluation term; its record's correlated sides are converted once per scope (#368)
  *   vd(in): value descriptor of the term's execution (the gate's decisions and converted constants, #352)
- *   compare(in): the decision of an element comparison (#352, D-352-03); NULL: the term's
+ *   compare(in): the decision of an element comparison (#352, D-352-03), or the term's decision its caller read
+ *		  (eval_compare_term, #371); NULL: the term's
  *   develop2(in): (optdebug only) the right side develop compares where dbval2 is the gate's converted copy of it (the
  *		   shadow checks compare that one); NULL: dbval2
  */
@@ -615,11 +620,10 @@ eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALU
 	/* R_EQ_TORDER compares in total order; the others compare ordinally, and NULL's still yield UNKNOWN */
 	const int total_order = rel_operator == R_EQ_TORDER;
 	/* the term's record, whose correlated sides its scope converts once (#368); an element's decision has none */
-	const DOMAIN_COMPARE_PLAN *site = NULL;
+	const DOMAIN_COMPARE_PLAN *site = et_comp != NULL ? et_comp->domain_compare : NULL;
 	if (compare == NULL)
 	  {
 	    compare = et_comp != NULL ? eval_planned_compare (et_comp, vd) : &eval_Compare_unplanned;
-	    site = et_comp != NULL ? et_comp->domain_compare : NULL;
 	  }
 	if (compare->kernel != DOMAIN_COMPARE_VALUES)
 	  {
@@ -658,6 +662,19 @@ eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALU
       return V_ERROR;
     }
 
+  return eval_rel_result (rel_operator, result, dbval1, dbval2);
+}
+
+/*
+ * eval_rel_result () - a comparison's result as its relational operator reads it: an unknown result is V_UNKNOWN,
+ *			except for R_NULLSAFE_EQ, whose own rule reads the two values
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ *   result(in): DB_VALUE_COMPARE_RESULT of the comparison
+ *   dbval1(in), dbval2(in): the values the comparison was given
+ */
+STATIC_INLINE DB_LOGICAL
+eval_rel_result (REL_OP rel_operator, int result, const DB_VALUE * dbval1, const DB_VALUE * dbval2)
+{
   if (result == DB_UNK && rel_operator != R_NULLSAFE_EQ)
     {
       return V_UNKNOWN;
@@ -714,6 +731,126 @@ eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALU
     default:
       return V_ERROR;
     }
+}
+
+/*
+ * Comparison term leaves (#371)
+ *
+ * A comparison term's decided record names the functions its row runs for the record's kernel, one for each relational
+ * operator, when the load or the gate decides it: a decision of kernel DIRECT compares its sides by cmpval and reads
+ * the result by the operator its leaf was made for, with no kernel or operator switch at the row. The row takes the
+ * leaf of its term's operator at the row: qexec_eval_instnum_pred evaluates inst_num () <= n as < first, so the
+ * operator is not always the one the load saw. Any other decision's row is eval_value_rel_cmp's.
+ */
+
+/*
+ * eval_leaf_direct () - a comparison term's row over a decision of kernel DIRECT, for one relational operator: the
+ *			 sides the record names, develop's NULL rule (as eval_compare_planned's), cmpval under the
+ *			 planned collation, and the operator's reading of the result (eval_rel_result)
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE or V_UNKNOWN)
+ *   dbval1(in), dbval2(in): the values the term fetched
+ */
+/* *INDENT-OFF* */
+template <REL_OP rel_operator>
+static DB_LOGICAL
+eval_leaf_direct (const DOMAIN_COMPARE * compare, const val_descr * vd, DB_VALUE * dbval1, DB_VALUE * dbval2)
+{
+  const int total_order = rel_operator == R_EQ_TORDER;
+  const DB_VALUE *value1 = eval_compare_side (compare, vd, 0, dbval1);
+  const DB_VALUE *value2 = eval_compare_side (compare, vd, 1, dbval2);
+  int result;
+  if (DB_IS_NULL (value1))
+    {
+      result = DB_IS_NULL (value2) ? (total_order ? DB_EQ : DB_UNK) : (total_order ? DB_LT : DB_UNK);
+    }
+  else if (DB_IS_NULL (value2))
+    {
+      result = total_order ? DB_GT : DB_UNK;
+    }
+  else
+    {
+      result = compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, total_order, NULL,
+				     compare->collation);
+    }
+  return eval_rel_result (rel_operator, result, dbval1, dbval2);
+}
+
+/* Kernel DIRECT's leaves by REL_OP (R_NULLSAFE_EQ is the last): the operators eval_value_rel_cmp reads ordinally; none
+ * for a set comparison and the operators no comparison term evaluates here. */
+struct EVAL_DIRECT_LEAVES
+{
+  DOMAIN_COMPARE_LEAF by_operator[R_NULLSAFE_EQ + 1];
+};
+
+static constexpr EVAL_DIRECT_LEAVES
+eval_direct_leaves (void)
+{
+  EVAL_DIRECT_LEAVES leaves = EVAL_DIRECT_LEAVES ();
+  leaves.by_operator[R_EQ] = eval_leaf_direct<R_EQ>;
+  leaves.by_operator[R_NE] = eval_leaf_direct<R_NE>;
+  leaves.by_operator[R_GT] = eval_leaf_direct<R_GT>;
+  leaves.by_operator[R_GE] = eval_leaf_direct<R_GE>;
+  leaves.by_operator[R_LT] = eval_leaf_direct<R_LT>;
+  leaves.by_operator[R_LE] = eval_leaf_direct<R_LE>;
+  leaves.by_operator[R_EQ_TORDER] = eval_leaf_direct<R_EQ_TORDER>;
+  leaves.by_operator[R_NULLSAFE_EQ] = eval_leaf_direct<R_NULLSAFE_EQ>;
+  return leaves;
+}
+
+static constexpr EVAL_DIRECT_LEAVES eval_Direct_leaves = eval_direct_leaves ();
+/* *INDENT-ON* */
+
+/* domain_compare_leaves () - declared with DOMAIN_COMPARE (domain_resolver.h); the load and the gate call it where
+ * they decide a term's record, and the leaves it names are these */
+void
+domain_compare_leaves (DOMAIN_COMPARE * compare)
+{
+  compare->leaves = compare->kernel == DOMAIN_COMPARE_DIRECT ? eval_Direct_leaves.by_operator : NULL;
+}
+
+#if !defined (NDEBUG)
+/*
+ * eval_assert_leaf () - #371 shadow check of a term's leaf: eval_value_rel_cmp's evaluation of the term, the path the
+ *			 leaf takes the place of, gives the leaf's answer
+ */
+static void
+eval_assert_leaf (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, const val_descr * vd,
+		  const DOMAIN_COMPARE * compare, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_LOGICAL leaf)
+{
+  const DB_LOGICAL result = eval_value_rel_cmp (thread_p, dbval1, dbval2, et_comp->rel_op, et_comp, vd, NULL, NULL);
+  if (result != leaf)
+    {
+      eval_report_planned_compare ("leaf", compare, dbval1, dbval2, et_comp, vd);
+      fprintf (stderr, "planned comparison leaf: rel_op=%d leaf=%d eval_value_rel_cmp=%d\n", (int) et_comp->rel_op,
+	       (int) leaf, (int) result);
+    }
+  assert (result == leaf);
+}
+#endif /* !NDEBUG */
+
+STATIC_INLINE DB_LOGICAL eval_compare_term (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, val_descr * vd,
+					    DB_VALUE * dbval1, DB_VALUE * dbval2) __attribute__ ((ALWAYS_INLINE));
+
+/*
+ * eval_compare_term () - a comparison term's row on the values it fetched (#371): the leaf its record's decision in
+ *			  this execution names for the term's operator, or eval_value_rel_cmp on that decision
+ *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
+ */
+STATIC_INLINE DB_LOGICAL
+eval_compare_term (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, val_descr * vd, DB_VALUE * dbval1,
+		   DB_VALUE * dbval2)
+{
+  const DOMAIN_COMPARE *compare = eval_planned_compare (et_comp, vd);
+  const DOMAIN_COMPARE_LEAF leaf = compare->leaves != NULL ? compare->leaves[et_comp->rel_op] : NULL;
+  if (leaf == NULL)
+    {
+      return eval_value_rel_cmp (thread_p, dbval1, dbval2, et_comp->rel_op, et_comp, vd, compare, NULL);
+    }
+  const DB_LOGICAL result = leaf (compare, vd, dbval1, dbval2);
+#if !defined (NDEBUG)
+  eval_assert_leaf (thread_p, et_comp, vd, compare, dbval1, dbval2, result);
+#endif /* !NDEBUG */
+  return result;
 }
 
 /*
@@ -2371,11 +2508,8 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	    }
 	  else
 	    {
-	      /*
-	       * general case: compare values, db_value_compare will
-	       * take care of any coercion necessary.
-	       */
-	      result = eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp, vd, NULL, NULL);
+	      /* general case: compare values as the term's record decided before any row (#371) */
+	      result = eval_compare_term (thread_p, et_comp, vd, peek_val1, peek_val2);
 	    }
 	  break;
 
@@ -2607,11 +2741,8 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
       return V_UNKNOWN;
     }
 
-  /*
-   * general case: compare values, db_value_compare will
-   * take care of any coercion necessary.
-   */
-  return eval_value_rel_cmp (thread_p, peek_val1, peek_val2, et_comp->rel_op, et_comp, vd, NULL, NULL);
+  /* general case: compare values as the term's record decided before any row (#371) */
+  return eval_compare_term (thread_p, et_comp, vd, peek_val1, peek_val2);
 }
 
 /*

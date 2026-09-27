@@ -25,6 +25,7 @@
 
 #include "object_domain.h"	/* TP_DOMAIN_STATUS and shared value types, no client API. */
 #include "thread_compat.hpp"
+#include <cstddef>
 
 enum DOMAIN_CTX
 {
@@ -143,36 +144,58 @@ enum DOMAIN_COMPARE_REASON
 				 * state, an element whose key the plan does not hold */
 };
 
+struct DOMAIN_COMPARE;
+struct val_descr;
+
+/* A comparison term's row for one relational operator over a decided record (#371): the values the term fetched,
+ * compared as the record's kernel compares them and read by the operator as eval_value_rel_cmp does. */
+typedef DB_LOGICAL (*DOMAIN_COMPARE_LEAF) (const DOMAIN_COMPARE * compare, const val_descr * vd, DB_VALUE * dbval1,
+					   DB_VALUE * dbval2);
+
 /*
  * DOMAIN_COMPARE - develop's tp_value_compare_with_error with its coercion decided before any row (D-352-01): which
  *   side becomes what (tp_value_compare_common_domain and the implicit coercion rules), the type whose cmpval compares,
  *   the collation, and the outcome develop gives when a conversion fails. The row runs the planned converters and
- *   cmpval; it decides nothing.
+ *   cmpval; it decides nothing. A comparison term's record names the leaves its row runs (#371).
  */
 struct DOMAIN_COMPARE
 {
-  /* what every row reads first (kernel DIRECT reads no more than this and cmp) */
+  /* what the row reads, together in the first 64 bytes (#371, review 2 R2-15); the row of a kernel DIRECT decision
+   * reads leaves, cmp, value, collation and coercion alone */
+  const DOMAIN_COMPARE_LEAF *leaves;	/* the kernel's leaves by REL_OP, a comparison term's row by its operator
+					 * (domain_compare_leaves); NULL: eval_value_rel_cmp */
+  const struct pr_type *cmp;	/* cmpval of the compared values */
+  DOMAIN_CONVERTER conv[2];	/* side i's converter at the row, NULL none; develop's order: first, then the other */
+  const TP_DOMAIN *target[2];	/* the domain side i is converted into */
+  int value[2];			/* resolved.vals index of a constant side the gate converted once; -1: the row's value;
+				 * -2: the gate's own value of a constant's element, the row's operand (#352) */
+  short collation;		/* the collation cmpval compares under (an id below LANG_MAX_COLLATIONS); 0 for a
+				 * non-string */
   unsigned char kernel;		/* DOMAIN_COMPARE_KERNEL */
+  unsigned char coercion;	/* the do_coercion develop's comparison passes cmpval: 1, or 0 for a comparison without
+				 * coercion (a collection's order, #354) */
+  /* what the gate, the other kernels and develop's outcome of a failed conversion read */
+  int site;			/* AT_GATE*: resolved.compares index of this execution's decision; -1 */
   unsigned char first;		/* the side develop converts first */
   unsigned char source[2];	/* DB_TYPE of each side before conversion: develop's failure outcome names these */
   unsigned char converted_first;	/* DB_TYPE the first side has once converted (the second conversion failing) */
   unsigned char failed;		/* bit i: the gate could not convert constant side i - a record outside a term, which
 				 * answers by develop's rank at every row (a term's is the gate's error, #367) */
   unsigned char reason;		/* kernel VALUES: DOMAIN_COMPARE_REASON */
-  unsigned char coercion;	/* the do_coercion develop's comparison passes cmpval: 1, or 0 for a comparison without
-				 * coercion (a collection's order, #354) */
   signed char rank;		/* kernel RANK: DB_LT or DB_GT */
-  int collation;		/* the collation cmpval compares under; 0 for a non-string */
-  int value[2];			/* resolved.vals index of a constant side the gate converted once; -1: the row's value;
-				 * -2: the gate's own value of a constant's element, the row's operand (#352) */
-  int codeset_side;		/* an ENUM against a string of another codeset: the side brought into the ENUM's
+  signed char codeset_side;	/* an ENUM against a string of another codeset: the side brought into the ENUM's
 				 * codeset at the row (develop's tmp_char_conv); -1 none */
-  int site;			/* AT_GATE*: resolved.compares index of this execution's decision; -1 */
-  const struct pr_type *cmp;	/* cmpval of the compared values */
-  DOMAIN_CONVERTER conv[2];	/* side i's converter at the row, NULL none; develop's order: first, then the other */
-  const TP_DOMAIN *target[2];	/* the domain side i is converted into */
   unsigned long long volatile_reads;	/* AT_GATE_VOLATILE: the session variable reads the decision depends on */
 };
+static_assert (sizeof (DOMAIN_COMPARE) == 80, "comparison record layout");
+static_assert (offsetof (DOMAIN_COMPARE, coercion) < 64, "a comparison's row fields in its first 64 bytes");
+
+/* The leaves a decided record names (#371): kernel DIRECT's, one for each of R_EQ, R_NE, R_LT, R_LE, R_GT, R_GE,
+ * R_EQ_TORDER and R_NULLSAFE_EQ (NULL for a set comparison); NULL for any other kernel, whose rows keep
+ * eval_value_rel_cmp. A term's row takes the leaf of the operator the term has at the row, which is not always the
+ * load's (qexec_eval_instnum_pred evaluates inst_num () <= n as < first). The load sets a term's fixed record's, the
+ * gate its decisions'; the leaves are the evaluator's (query_evaluator.c). */
+void domain_compare_leaves (DOMAIN_COMPARE * compare);
 
 /* Whether a domain fixes the type and collation of its values: not VARIABLE, and a string or an ENUM whose collation
  * flag is NORMAL (F-336-01). */

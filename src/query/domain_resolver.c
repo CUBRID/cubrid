@@ -2268,7 +2268,8 @@ domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b)
     && a->reason == b->reason && a->coercion == b->coercion && a->rank == b->rank && a->collation == b->collation
     && a->value[0] == b->value[0] && a->value[1] == b->value[1] && a->codeset_side == b->codeset_side
     && a->site == b->site && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
-    && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->volatile_reads == b->volatile_reads;
+    && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->volatile_reads == b->volatile_reads
+    && a->leaves == b->leaves;
 }
 
 static void

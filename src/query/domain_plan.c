@@ -3610,6 +3610,8 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
       const DOMAIN_COMPARE_SIDE rhs = domain_compare_side (plan, records, constant_base, term->rhs, site, 1, &key[1],
 							   &volatile_reads);
       ok = domain_publish_record (plan, site, lhs, rhs, key, volatile_reads, gate_sites, &n_gate);
+      /* a fixed decision's leaves; a gate site's come with the gate's decisions (#371) */
+      domain_compare_leaves (&site->fixed);
       term->domain_compare = site;
       for (int side = 0; ok && side < 2; side++)
 	{
@@ -4123,7 +4125,7 @@ domain_stream_by_keys (DOMAIN_COMPARE * fixed)
 }
 
 /* A comparison of two stream regus, decided now. */
-static const DOMAIN_COMPARE_PLAN *
+static DOMAIN_COMPARE_PLAN *
 domain_stream_compare (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * lhs, const REGU_VARIABLE * rhs)
 {
   DOMAIN_COMPARE_PLAN *site = (DOMAIN_COMPARE_PLAN *) stx_alloc_struct (ctx->thread_p, sizeof (*site));
@@ -4327,7 +4329,13 @@ domain_stream_walk_pred (DOMAIN_STREAM_CONTEXT * ctx, PRED_EXPR * pred)
 	    if (value_comparison && comp->domain_compare == NULL && comp->lhs != NULL && comp->rhs != NULL
 		&& comp->lhs->type != TYPE_LIST_ID && comp->rhs->type != TYPE_LIST_ID)
 	      {
-		comp->domain_compare = domain_stream_compare (ctx, comp->lhs, comp->rhs);
+		DOMAIN_COMPARE_PLAN *site = domain_stream_compare (ctx, comp->lhs, comp->rhs);
+		if (site != NULL)
+		  {
+		    /* the term's row runs its decision's leaves (#371) */
+		    domain_compare_leaves (&site->fixed);
+		  }
+		comp->domain_compare = site;
 	      }
 	  }
 	  break;
