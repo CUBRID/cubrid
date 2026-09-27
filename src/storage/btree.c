@@ -6082,6 +6082,7 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
   /* init index key copy_buf info */
   btid->copy_buf = NULL;
   btid->copy_buf_len = 0;
+  btid->search_compare = BTREE_SEARCH_COMPARE_PLANNED;
   btid->search_keys = NULL;
 
   if (is_key_type)
@@ -18427,8 +18428,9 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       /* TODO: Use index_scan_id_p->copy_buf directly. */
       bts->btid_int.copy_buf = index_scan_id_p->copy_buf;
       bts->btid_int.copy_buf_len = index_scan_id_p->copy_buf_len;
-      /* the comparisons of the scan's search key values (#342) */
+      /* the comparisons of the scan's search key values (#342), and how they compare (#371) */
       bts->btid_int.search_keys = scan_index_search_keys (index_scan_id_p);
+      bts->btid_int.search_compare = scan_index_search_compare (index_scan_id_p);
     }
 
   /* initialize the key range with given information */
@@ -22021,11 +22023,65 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 /*
  * btree_compare_search_key () - an index scan's comparison of a key with a key of its search (#342): the columns whose
  *   values do not compare as they are compare as the scan's key plan decided before any row (B30, B31)
+ *
+ * The scan chose the comparison when it opened (#371, BTID_INT.search_compare): a search whose values all have their
+ * index columns' types and collations compares a single-column key by the column's cmpval and a multi-column key
+ * column by column, without develop's type and collation checks at each comparison; optdebug still makes them and
+ * checks the answer.
  */
 DB_VALUE_COMPARE_RESULT
 btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key2, int *start_colp)
 {
-  return btree_compare_key_with (key1, key2, btid->key_type, btid->search_keys, 1, 1, start_colp);
+  if (btid->search_compare == BTREE_SEARCH_COMPARE_PLANNED)
+    {
+      return btree_compare_key_with (key1, key2, btid->key_type, btid->search_keys, 1, 1, start_colp);
+    }
+
+#if !defined (NDEBUG)
+  int check_col = start_colp != NULL ? *start_colp : 0;
+#endif
+  DB_VALUE_COMPARE_RESULT c;
+  bool is_desc;
+
+  /* btree_compare_key_with's answers for a NULL */
+  if (DB_IS_NULL (key1))
+    {
+      assert (!DB_IS_NULL (key2));
+      return DB_IS_NULL (key2) ? DB_UNK : DB_LT;
+    }
+  if (DB_IS_NULL (key2))
+    {
+      return DB_GT;
+    }
+
+  if (btid->search_compare == BTREE_SEARCH_COMPARE_DIRECT)
+    {
+      c = btid->key_type->type->cmpval (key1, key2, 1, 1, NULL, btid->key_type->collation_id);
+      /* for single-column desc index */
+      is_desc = btid->key_type->is_desc;
+    }
+  else
+    {
+      bool dom_is_desc[2];
+      int dummy_diff_column;
+      c =
+	pr_midxkey_compare_planned (db_get_midxkey (key1), db_get_midxkey (key2), 1, 1, -1, start_colp,
+				    &dummy_diff_column, dom_is_desc, NULL, NULL, NULL);
+      is_desc = dom_is_desc[0];
+    }
+  if (is_desc)
+    {
+      c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
+    }
+
+#if !defined (NDEBUG)
+  /* develop's checks with the scan's search keys give the same answer: else the scan chose wrongly (#371) */
+  assert (c == btree_compare_key_with (key1, key2, btid->key_type, btid->search_keys, 1, 1,
+				       start_colp != NULL ? &check_col : NULL));
+  assert (start_colp == NULL || check_col == *start_colp);
+#endif
+
+  return c;
 }
 
 /*

@@ -603,6 +603,7 @@ extern int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_
 extern int scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt,
 					   const DOMAIN_SEARCH_KEYS * search_keys);
 extern const DOMAIN_SEARCH_KEYS *scan_index_search_keys (const INDX_SCAN_ID * isidp);
+extern BTREE_SEARCH_COMPARE scan_index_search_compare (const INDX_SCAN_ID * isidp);
 extern void scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp);
 
 extern int scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,

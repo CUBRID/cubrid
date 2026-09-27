@@ -329,14 +329,16 @@ scan_init_index_scan (INDX_SCAN_ID * isidp, struct btree_iscan_oid_list *oid_lis
 
 /*
  * An index scan's storage for its key plan (#342, interface section 5): made at scan open, released at scan close, the
- * scan thread's. search_keys is what the B-tree reads to compare the search key values (BTID_INT.search_keys). Each
- * bound with a scratch chain writes its mixed domain there - a MIDXKEY node, then its columns - refilled by structure
- * copy when the bound's column domains change and reused otherwise: a range allocates, caches and decides no domain
- * (D-323-08). A range's column values, domains and strict conversions live here too.
+ * scan thread's. search_keys is what the B-tree reads to compare the search key values (BTID_INT.search_keys), and
+ * search_compare how it compares them (BTID_INT.search_compare, #371). Each bound with a scratch chain writes its mixed
+ * domain there - a MIDXKEY node, then its columns - refilled by structure copy when the bound's column domains change
+ * and reused otherwise: a range allocates, caches and decides no domain (D-323-08). A range's column values, domains
+ * and strict conversions live here too.
  */
 struct scan_key_state
 {
   DOMAIN_SEARCH_KEYS search_keys;
+  BTREE_SEARCH_COMPARE search_compare;
   int n_columns;
   TP_DOMAIN *chains;		/* [n_scratch * (1 + n_columns)] */
   unsigned char *last;		/* [n_scratch * (n_columns + 1)] a chain's last fill: each column's domain choice, then
@@ -367,6 +369,19 @@ scan_index_search_keys (const INDX_SCAN_ID * isidp)
       return NULL;
     }
   return isidp->key_state != NULL ? &isidp->key_state->search_keys : &scan_No_search_keys;
+}
+
+/* How the B-tree compares an index scan's search key values (#371): the scan's choice at open
+ * (scan_open_index_key_plan); PLANNED without a key plan - develop's checks, as btree_compare_key_with makes them. */
+BTREE_SEARCH_COMPARE
+scan_index_search_compare (const INDX_SCAN_ID * isidp)
+{
+  if (isidp == NULL || isidp->key_plan == NULL)
+    {
+      return BTREE_SEARCH_COMPARE_PLANNED;
+    }
+  /* a scan without storage has a single-column key and no key comparison table */
+  return isidp->key_state != NULL ? isidp->key_state->search_compare : BTREE_SEARCH_COMPARE_DIRECT;
 }
 
 /* The execution boundary (b) of an index scan's key plan (#342): optdebug stops,
@@ -400,7 +415,8 @@ scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp)
  *   key_type(in): the B-tree's key domain, its root header's
  *
  * The load derived the plan from the stream's key domain, the root header's (L-45 (f)); a scan whose B-tree has
- * another is the execution boundary (b). The scan's storage is made once here for every range it builds.
+ * another is the execution boundary (b). The scan's storage is made once here for every range it builds, and the
+ * B-tree's comparison of its search key values is chosen here (#371).
  */
 static int
 scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const INDX_INFO * indx_info,
@@ -431,6 +447,7 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
   const bool midxkey = TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY;
   if (!midxkey && compares == NULL && plan->n_decisions == 0)
     {
+      /* no storage: its values compare as they are (scan_index_search_compare) */
       return NO_ERROR;
     }
 
@@ -453,6 +470,10 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
     }
   scan_key_state *state = (scan_key_state *) block;
   state->search_keys.compares = compares;
+  /* a key comparison table is made only for a column whose values take more than the column's own type and collation
+   * (domain_resolve_key_compares): without one, every value compares with the index as it is (#371) */
+  state->search_compare = compares != NULL ? BTREE_SEARCH_COMPARE_PLANNED
+    : midxkey ? BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN : BTREE_SEARCH_COMPARE_DIRECT;
   state->n_columns = n_columns;
   state->chains = n_chains > 0 ? (TP_DOMAIN *) (block + chains_offset) : NULL;
   state->converted = (DB_VALUE *) (block + converted_offset);
@@ -1716,6 +1737,9 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DO
     }
   else
     {
+      /* search keys without a key comparison table: every value has its column's type and collation, and compares as
+       * it is (#371, scan_open_index_key_plan) */
+      const DOMAIN_SEARCH_KEYS *planned = search_keys != NULL && search_keys->compares != NULL ? search_keys : NULL;
       key_type = DB_VALUE_DOMAIN_TYPE (val1);
       if (key_type == DB_TYPE_MIDXKEY)
 	{
@@ -1724,13 +1748,13 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DO
 	  rc =
 	    pr_midxkey_compare_planned (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
 					&dummy_diff_column, NULL, NULL,
-					search_keys != NULL ? domain_search_key_compare_element : NULL, search_keys);
+					planned != NULL ? domain_search_key_compare_element : NULL, planned);
 	}
-      else if (search_keys != NULL && scan_key_values_decide (val1, val2))
+      else if (planned != NULL && scan_key_values_decide (val1, val2))
 	{
 	  /* search key values of other types or collations compare as the scan's key plan decided (#342) */
 	  bool can_compare = true;
-	  rc = domain_search_key_compare (search_keys, 0, val1, val2, 1, 1, &can_compare);
+	  rc = domain_search_key_compare (planned, 0, val1, val2, 1, 1, &can_compare);
 	  if (!can_compare && rc != DB_UNK)
 	    {
 	      /* a conversion failed: develop's tp_value_compare answers by the types' rank, without an error */
@@ -1739,6 +1763,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DO
 	}
       else
 	{
+	  assert (search_keys == NULL || planned != NULL || !scan_key_values_decide (val1, val2));
 	  rc = tp_value_compare (val1, val2, 1, 1);
 	}
     }
