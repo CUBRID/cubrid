@@ -1973,7 +1973,7 @@ namespace parallel_scan
 	     * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
 	    if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	      {
-	        return accumulator_domain_unresolved (agg_node);
+		return accumulator_domain_unresolved (agg_node);
 	      }
 	    int gc_err;
 	    if (acc->curr_cnt < 1)

@@ -423,7 +423,8 @@ domain_pred_is_constant (const PRED_EXPR * pred)
 	    return domain_regu_is_constant (term->et.et_comp.lhs)
 	      && (term->et.et_comp.rhs == NULL || domain_regu_is_constant (term->et.et_comp.rhs));
 	  case T_ALSM_EVAL_TERM:
-	    return domain_regu_is_constant (term->et.et_alsm.elem) && domain_regu_is_constant (term->et.et_alsm.elemset);
+	    return domain_regu_is_constant (term->et.et_alsm.elem)
+	      && domain_regu_is_constant (term->et.et_alsm.elemset);
 	  case T_LIKE_EVAL_TERM:
 	    return domain_regu_is_constant (term->et.et_like.src) && domain_regu_is_constant (term->et.et_like.pattern)
 	      && (term->et.et_like.esc_char == NULL || domain_regu_is_constant (term->et.et_like.esc_char));
@@ -1136,9 +1137,9 @@ domain_local_value (XASL_NODE * block, DB_VALUE * value)
     {
       return false;
     }
-  for (ANALYTIC_EVAL_TYPE *eval = block->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
+  for (ANALYTIC_EVAL_TYPE * eval = block->proc.buildlist.a_eval_list; eval != NULL; eval = eval->next)
     {
-      for (ANALYTIC_TYPE *analytic = eval->head; analytic != NULL; analytic = analytic->next)
+      for (ANALYTIC_TYPE * analytic = eval->head; analytic != NULL; analytic = analytic->next)
 	{
 	  if (analytic->value == value || analytic->out_value == value)
 	    {
@@ -1570,8 +1571,7 @@ domain_walk_sort (DOMAIN_LOAD_CONTEXT * ctx, SORT_LIST * list, REGU_VARIABLE_LIS
 	}
       else
 	{
-	  (void) domain_add_item (ctx, &pos->domain_plan, pos->dom, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0,
-				  "position");
+	  (void) domain_add_item (ctx, &pos->domain_plan, pos->dom, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0, "position");
 	}
     }
 }
@@ -2291,11 +2291,13 @@ domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
 	   * type, a node over the position classifies that value (D-328-06) as develop's first value does */
 	  domain_resolve_record (ctx, record->producer);
 	  DOMAIN_LOAD_RECORD *producer = domain_owner_record (record->producer);
-	  const DOMAIN_LOAD_RECORD *root = domain_owner_record (domain_record_of (domain_link_source (&producer->item)));
+	  const DOMAIN_LOAD_RECORD *root =
+	    domain_owner_record (domain_record_of (domain_link_source (&producer->item)));
 	  const TP_DOMAIN *carried = root->item.fixed.domain;
 	  if (root->literal_value && carried != NULL
 	      && (TP_DOMAIN_TYPE (carried) == TP_DOMAIN_TYPE (item->fixed.domain)
-		  || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (carried)) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (item->fixed.domain)))))
+		  || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (carried))
+		      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (item->fixed.domain)))))
 	    {
 	      record->producer = producer;
 	      record->follows_producer = true;
@@ -2391,7 +2393,8 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
        * function over a list (GROUP BY, analytic) is a value pointer; its source tells which. */
       const DOMAIN_LOAD_RECORD *argument = domain_owner_record (domain_record_of (record->link[0]));
       if (argument->literal_value
-	  || (argument->regu == NULL && argument->kind == DOMAIN_LOAD_NODE && argument->cold.opcode == T_EVALUATE_VARIABLE))
+	  || (argument->regu == NULL && argument->kind == DOMAIN_LOAD_NODE
+	      && argument->cold.opcode == T_EVALUATE_VARIABLE))
 	{
 	  item->flags |= DOMAIN_PLAN_VALUE_ARGUMENT;
 	}
@@ -4067,7 +4070,8 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  DOMAIN_LOAD_RECORD *r = ctx.gate_order[g];
 	  DOMAIN_GATE_LINK *link = &plan->gate_links[g];
 	  memset (link, 0, sizeof (*link));
-	  link->operands = (const DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, r->n_link, sizeof (*link->operands));
+	  link->operands =
+	    (const DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, r->n_link, sizeof (*link->operands));
 	  link->literal = (const DB_VALUE **) domain_plan_alloc (thread_p, r->n_link, sizeof (*link->literal));
 	  if (link->operands == NULL || link->literal == NULL)
 	    {

@@ -30,6 +30,7 @@ enum DOMAIN_CONVERT_MODE
   DOMAIN_CONVERT_OPERAND
 };
 
+/* *INDENT-OFF* */
 using DOMAIN_CONVERTER = TP_DOMAIN_STATUS (*) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *);
 
 /* The caller handles NULL and aliasing and initializes the target domain before calling a cell. */
@@ -43,6 +44,7 @@ constexpr DB_TYPE tp_numeric_convert_types[] = {
 };
 using DOMAIN_NUMERIC_CONVERTERS = std::array<DOMAIN_CONVERTER, 3 * 9 * 7>;
 extern const DOMAIN_NUMERIC_CONVERTERS tp_numeric_convert_table;
+/* *INDENT-ON* */
 
 /*
  * TP_COMPARE_COERCION
@@ -61,10 +63,10 @@ typedef enum tp_compare_coercion
 
 TP_COMPARE_COERCION tp_value_compare_common_domain (DB_TYPE type1, DB_TYPE type2);
 
-DOMAIN_CONVERTER domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMAIN_CONVERT_MODE mode);
+DOMAIN_CONVERTER domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain, DOMAIN_CONVERT_MODE mode);
 /* the cell tp_value_coerce runs on a value of src_type brought into a domain of another type, a JSON value excepted
  * (#356) */
-DOMAIN_CONVERTER domain_lookup_coerce_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain);
+DOMAIN_CONVERTER domain_lookup_coerce_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain);
 /* ENUM -> its name -> DOUBLE, ASSIGN: the ENUM operand of ENUM + string without plus_as_concat (D-335-05) */
 DOMAIN_CONVERTER domain_enumeration_name_converter (void);
 const char *domain_converter_name (DOMAIN_CONVERTER converter);

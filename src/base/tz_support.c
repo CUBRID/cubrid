@@ -48,8 +48,8 @@
 #if defined (SERVER_MODE)
 #include "thread_manager.hpp"
 #endif // SERVER_MODE
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "db_date_status.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -223,24 +223,25 @@ static int tz_get_iana_zone_id_by_windows_zone (const char *windows_zone_name);
 /* Status cores share error provenance across nested conversions. */
 static int
 get_closest_ds_rule_core (const int src_julian_date, const int src_time_sec, const TZ_DS_RULESET * ds_ruleset,
-		     const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction, date_conversion_error *date_error);
+			  const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction, date_conversion_error * date_error);
 static int
 get_date_diff_from_ds_rule_core (const int src_julian_date, const int src_time_sec, const TZ_DS_RULE * ds_rule,
-			    const DS_SEARCH_DIRECTION direction, full_date_t * date_diff, date_conversion_error *date_error);
-static int
-get_saving_time_from_offset_rule_core (const TZ_OFFSET_RULE * offset_rule, const TZ_DATA * tzd, int *save_time, date_conversion_error *date_error);
-static int
-tz_conv_tz_datetime_w_zone_info_core (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
-				 const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
-				 TZ_DECODE_INFO * src_zone_info_out, TZ_DECODE_INFO * dest_zone_info_out, date_conversion_error *date_error);
-static int
-tz_datetime_utc_conv_core (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool src_is_utc, bool only_tz_adjust,
-		      DB_DATETIME * dest_dt, date_conversion_error *date_error);
-static int
-tz_fast_find_ds_rule_core (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, const int src_julian_date,
-		      const int src_year, const int src_month, int *ds_rule_id, date_conversion_error *date_error);
-static int
-tz_str_timezone_decode_core (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info, const char **tz_end, date_conversion_error *date_error);
+				 const DS_SEARCH_DIRECTION direction, full_date_t * date_diff,
+				 date_conversion_error * date_error);
+static int get_saving_time_from_offset_rule_core (const TZ_OFFSET_RULE * offset_rule, const TZ_DATA * tzd,
+						  int *save_time, date_conversion_error * date_error);
+static int tz_conv_tz_datetime_w_zone_info_core (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
+						 const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
+						 TZ_DECODE_INFO * src_zone_info_out,
+						 TZ_DECODE_INFO * dest_zone_info_out,
+						 date_conversion_error * date_error);
+static int tz_datetime_utc_conv_core (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool src_is_utc,
+				      bool only_tz_adjust, DB_DATETIME * dest_dt, date_conversion_error * date_error);
+static int tz_fast_find_ds_rule_core (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, const int src_julian_date,
+				      const int src_year, const int src_month, int *ds_rule_id,
+				      date_conversion_error * date_error);
+static int tz_str_timezone_decode_core (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info,
+					const char **tz_end, date_conversion_error * date_error);
 
 static int
 tz_load_library (const char *lib_file, void **handle)

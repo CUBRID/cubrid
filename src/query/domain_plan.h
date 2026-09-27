@@ -32,8 +32,14 @@ namespace cubxasl
   struct pred_expr;
 }
 
-enum DOMAIN_FAIL_POLICY { DOMAIN_FAIL_ERROR, DOMAIN_FAIL_NULL, DOMAIN_FAIL_KEEP };
-enum DOMAIN_OPERAND_CLASS { OPERAND_CONST = 1, OPERAND_ROW, OPERAND_CORRELATED, OPERAND_VOLATILE };
+enum DOMAIN_FAIL_POLICY
+{
+  DOMAIN_FAIL_ERROR, DOMAIN_FAIL_NULL, DOMAIN_FAIL_KEEP
+};
+enum DOMAIN_OPERAND_CLASS
+{
+  OPERAND_CONST = 1, OPERAND_ROW, OPERAND_CORRELATED, OPERAND_VOLATILE
+};
 enum DOMAIN_PLAN_FLAGS
 {
   DOMAIN_PLAN_GATE = 0x01, DOMAIN_PLAN_KEY1 = 0x02, DOMAIN_PLAN_KEY2 = 0x04,
@@ -399,13 +405,13 @@ struct RESOLVED_DOMAIN_TABLE
   int max_failures;
 };
 
-int stx_build_domain_plan (THREAD_ENTRY *thread_p, xasl_node *root, xasl_unpack_info *unpack_info,
-                          bool is_pred_stream);
+int stx_build_domain_plan (THREAD_ENTRY * thread_p, xasl_node * root, xasl_unpack_info * unpack_info,
+			   bool is_pred_stream);
 /* The comparison records of a filter or function index stream, or a partition expression (#354): the stream's load
  * gives every comparison its predicate or its expression makes a record, two literals decided from their values and
  * any other side by the key pair table. */
 int domain_plan_stream_compares (THREAD_ENTRY * thread_p, cubxasl::pred_expr * pred, regu_variable_node * regu);
-bool domain_plan_validate (const DOMAIN_PLAN *plan);
+bool domain_plan_validate (const DOMAIN_PLAN * plan);
 /* The keys an index's key columns and its load-fixed elements give their values (#342): columns and keys hold at most
  * two per element; the gate adds its decided elements' before it builds the key comparison table. */
 int domain_key_compare_keys (const domain_plan_index * index, int *columns, DOMAIN_COMPARE_KEY * keys);

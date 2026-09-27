@@ -682,7 +682,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	      func_p->is_first_exec_time = false;
 	      /* #337: an open function the gate decided takes that class; the value is coerced to it below */
 	      const TP_DOMAIN *planned = TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-		? qexec_gate_domain (val_desc_p, func_p->domain_plan, false) : NULL;
+					 ? qexec_gate_domain (val_desc_p, func_p->domain_plan, false) : NULL;
 	      if (planned != NULL)
 		{
 		  domain = (TP_DOMAIN *) planned;
@@ -691,136 +691,136 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	       * decision has no value sees only NULLs */
 	      /* determine domain based on first value */
 	      if (planned == NULL)
-	      switch (opr_type)
-		{
+		switch (opr_type)
+		  {
 
-		case DB_TYPE_SHORT:
-		case DB_TYPE_INTEGER:
-		case DB_TYPE_BIGINT:
-		case DB_TYPE_FLOAT:
-		case DB_TYPE_DOUBLE:
-		case DB_TYPE_MONETARY:
-		case DB_TYPE_NUMERIC:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      if (func_p->is_const_operand || func_p->function == PT_PERCENTILE_DISC)
-			{
-			  /* percentile_disc returns the same type as operand while median and percentile_cont return
-			   * double */
-			  domain = tp_domain_resolve_value (&dbval, NULL);
-			  if (domain == NULL)
-			    {
-			      error = er_errid ();
-			      assert (error != NO_ERROR);
+		  case DB_TYPE_SHORT:
+		  case DB_TYPE_INTEGER:
+		  case DB_TYPE_BIGINT:
+		  case DB_TYPE_FLOAT:
+		  case DB_TYPE_DOUBLE:
+		  case DB_TYPE_MONETARY:
+		  case DB_TYPE_NUMERIC:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			if (func_p->is_const_operand || func_p->function == PT_PERCENTILE_DISC)
+			  {
+			    /* percentile_disc returns the same type as operand while median and percentile_cont return
+			     * double */
+			    domain = tp_domain_resolve_value (&dbval, NULL);
+			    if (domain == NULL)
+			      {
+				error = er_errid ();
+				assert (error != NO_ERROR);
 
-			      return error;
-			    }
-			}
-		      else
-			{
-			  domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-			}
-		    }
-		  break;
+				return error;
+			      }
+			  }
+			else
+			  {
+			    domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+			  }
+		      }
+		    break;
 
-		case DB_TYPE_DATE:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_DATE);
-		    }
-		  break;
+		  case DB_TYPE_DATE:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			domain = tp_domain_resolve_default (DB_TYPE_DATE);
+		      }
+		    break;
 
-		case DB_TYPE_DATETIME:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_DATETIME);
-		    }
-		  break;
+		  case DB_TYPE_DATETIME:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			domain = tp_domain_resolve_default (DB_TYPE_DATETIME);
+		      }
+		    break;
 
-		case DB_TYPE_DATETIMETZ:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_DATETIMETZ);
-		    }
-		  break;
+		  case DB_TYPE_DATETIMETZ:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			domain = tp_domain_resolve_default (DB_TYPE_DATETIMETZ);
+		      }
+		    break;
 
-		case DB_TYPE_DATETIMELTZ:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_DATETIMELTZ);
-		    }
-		  break;
+		  case DB_TYPE_DATETIMELTZ:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			domain = tp_domain_resolve_default (DB_TYPE_DATETIMELTZ);
+		      }
+		    break;
 
-		case DB_TYPE_TIMESTAMP:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMP);
-		    }
-		  break;
+		  case DB_TYPE_TIMESTAMP:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMP);
+		      }
+		    break;
 
-		case DB_TYPE_TIMESTAMPTZ:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
-		    }
-		  break;
+		  case DB_TYPE_TIMESTAMPTZ:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ);
+		      }
+		    break;
 
-		case DB_TYPE_TIMESTAMPLTZ:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPLTZ);
-		    }
-		  break;
+		  case DB_TYPE_TIMESTAMPLTZ:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			domain = tp_domain_resolve_default (DB_TYPE_TIMESTAMPLTZ);
+		      }
+		    break;
 
-		case DB_TYPE_TIME:
-		  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		    {
-		      domain = tp_domain_resolve_default (DB_TYPE_TIME);
-		    }
-		  break;
+		  case DB_TYPE_TIME:
+		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+		      {
+			domain = tp_domain_resolve_default (DB_TYPE_TIME);
+		      }
+		    break;
 
-		default:
-		  /* the compiled function domain is the plan's: domain may already hold the first value's domain
-		   * from the late binding above */
-		  assert (func_p->domain_plan != NULL);
-		  if (func_p->domain_plan != NULL && func_p->domain_plan->fixed.domain != NULL
-		      && TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) != DB_TYPE_VARIABLE)
-		    {
-		      /* D-335-10: a string column or expression is DOUBLE, the compiled function domain */
-		      tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain));
-		      dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
-		    }
-		  else if (DB_IS_NULL (&dbval))
-		    {
-		      /* a NULL: develop's first cast, to DOUBLE, takes it */
-		      tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-		      dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
-		    }
-		  else
-		    {
-		      /* a value the gate could not classify - a literal, a bind, a session variable read - is the gate's
-		       * -1118 before any row (#367, D-367-04), and one it classified has its decision (planned) */
-		      error = qexec_domain_unresolved (val_desc_p, func_p->domain_plan, func_p->domain);
-		      goto exit;
-		    }
+		  default:
+		    /* the compiled function domain is the plan's: domain may already hold the first value's domain
+		     * from the late binding above */
+		    assert (func_p->domain_plan != NULL);
+		    if (func_p->domain_plan != NULL && func_p->domain_plan->fixed.domain != NULL
+			&& TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) != DB_TYPE_VARIABLE)
+		      {
+			/* D-335-10: a string column or expression is DOUBLE, the compiled function domain */
+			tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain));
+			dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+		      }
+		    else if (DB_IS_NULL (&dbval))
+		      {
+			/* a NULL: develop's first cast, to DOUBLE, takes it */
+			tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+			dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
+		      }
+		    else
+		      {
+			/* a value the gate could not classify - a literal, a bind, a session variable read - is the gate's
+			 * -1118 before any row (#367, D-367-04), and one it classified has its decision (planned) */
+			error = qexec_domain_unresolved (val_desc_p, func_p->domain_plan, func_p->domain);
+			goto exit;
+		      }
 
-		  if (dom_status != DOMAIN_COMPATIBLE)
-		    {
-		      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
-			      TP_DOMAIN_TYPE (tmp_domain_p) == DB_TYPE_TIME ? "DOUBLE, DATETIME, TIME" : "DOUBLE");
-		      goto exit;
-		    }
+		    if (dom_status != DOMAIN_COMPATIBLE)
+		      {
+			error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
+				TP_DOMAIN_TYPE (tmp_domain_p) == DB_TYPE_TIME ? "DOUBLE, DATETIME, TIME" : "DOUBLE");
+			goto exit;
+		      }
 
-		  /* clear errors from failed casts if any cast attempt succeeds. */
-		  if (er_errid () != NO_ERROR)
-		    {
-		      er_clear ();
-		    }
+		    /* clear errors from failed casts if any cast attempt succeeds. */
+		    if (er_errid () != NO_ERROR)
+		      {
+			er_clear ();
+		      }
 
-		  /* update domain */
-		  domain = tmp_domain_p;
-		}
+		    /* update domain */
+		    domain = tmp_domain_p;
+		  }
 	      qexec_take_domain (val_desc_p, func_p->domain_plan, func_p->domain, domain);
 	    }
 	}

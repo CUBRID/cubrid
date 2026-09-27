@@ -2394,7 +2394,7 @@ qdump_print_xasl (xasl_node * xasl_p)
     {
       const DOMAIN_PLAN *plan = xasl_p->domain_plan;
       fprintf (foutput, "domain plan: items=%d slots=%d refs=%d(+%d) gate_nodes=%d\n",
-               plan->n_items, plan->n_slots, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_gate_nodes);
+	       plan->n_items, plan->n_slots, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_gate_nodes);
     }
 #endif
   qdump_print_xasl_type (xasl_p);

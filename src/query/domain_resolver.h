@@ -23,7 +23,7 @@
 #error Belongs only to server or stand-alone modules.
 #endif
 
-#include "object_domain.h" /* TP_DOMAIN_STATUS and shared value types, no client API. */
+#include "object_domain.h"	/* TP_DOMAIN_STATUS and shared value types, no client API. */
 #include "thread_compat.hpp"
 
 typedef TP_DOMAIN_STATUS (*DOMAIN_CONV_FUNC) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *);
@@ -51,7 +51,7 @@ struct DOMAIN_OPERAND
 };
 
 /* Context-to-mode adapter. */
-DOMAIN_CONV_FUNC domain_lookup_converter (DB_TYPE source, const TP_DOMAIN *target, DOMAIN_CTX context);
+DOMAIN_CONV_FUNC domain_lookup_converter (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CTX context);
 
 /*
  * The single home of the server G-row grid (D-318-07, D-323-02): the value-type rules that execution applies today

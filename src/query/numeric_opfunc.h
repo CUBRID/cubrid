@@ -168,23 +168,25 @@ extern int numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, 
 
 #if defined (__cplusplus)
 /* Fixed-type operations shared by the legacy dispatchers and planned conversion cells. */
+/* *INDENT-OFF* */
 template <DB_TYPE SRC>
 int numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status);
+/* *INDENT-ON* */
 
 extern int numeric_coerce_string_to_num_status (const char *astring, int astring_length, INTL_CODESET codeset,
-                                               DB_VALUE *result);
-extern int numeric_coerce_num_to_double (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_float (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_monetary (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_int (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_bigint (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_short (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_double_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_float_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_monetary_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_int_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_bigint_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
-extern int numeric_coerce_num_to_short_strict (const DB_VALUE *src, int scale, DB_VALUE *dest);
+						DB_VALUE * result);
+extern int numeric_coerce_num_to_double (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_float (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_monetary (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_int (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_bigint (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_short (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_double_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_float_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_monetary_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_int_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_bigint_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_short_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
 
 #endif /* __cplusplus */
 

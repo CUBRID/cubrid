@@ -322,7 +322,7 @@ typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
 struct qfile_tuple_value_position
 {
   TP_DOMAIN *dom;		/* value domain */
-  struct domain_plan_item *domain_plan; /* load-derived, not serialized */
+  struct domain_plan_item *domain_plan;	/* load-derived, not serialized */
   int pos_no;			/* value position number */
 };
 

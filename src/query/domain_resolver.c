@@ -2630,6 +2630,7 @@ struct DOMAIN_CHAR_RULE
 };
 
 /* The rule of a character operator; an operator not listed makes a string from its character operands, merged. */
+/* *INDENT-OFF* */
 static DOMAIN_CHAR_RULE
 domain_character_rule (int opcode)
 {
@@ -2697,6 +2698,7 @@ domain_character_rule (int opcode)
       return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_MERGE, DOMAIN_PREC_FLOATING };
     }
 }
+/* *INDENT-ON* */
 
 /* The character operands' collation, merged as the string operators merge their argument values: operands without
  * a collation (NULL, a number, a date) take no part. return: false when two do not merge; *collation_id is -1 when no

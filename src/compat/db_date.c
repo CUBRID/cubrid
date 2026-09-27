@@ -40,8 +40,8 @@
 #include "object_representation.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
-// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "db_date_status.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -117,7 +117,7 @@ static int db_timestamp_encode_w_reg (const DB_DATE * date, const DB_TIME * time
 /* Status cores share error provenance across nested conversions. */
 static int
 db_timestamp_encode_w_reg_core (const DB_DATE * date, const DB_TIME * timeval, const TZ_REGION * tz_region,
-			   DB_TIMESTAMP * utime, TZ_ID * dest_tz_id, date_conversion_error *date_error);
+				DB_TIMESTAMP * utime, TZ_ID * dest_tz_id, date_conversion_error * date_error);
 
 int
 julian_encode (int m, int d, int y)

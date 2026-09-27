@@ -5611,7 +5611,7 @@ determine_round (char *out_str, int *out_prec, int *out_scale, int tmp_int_len, 
  *	 grouping symbols.
  */
 int
-numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE *result)
+numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE * result)
 {
   int ret = numeric_coerce_string_to_num_status (astring, astring_length, codeset, result);
   if (ret == ER_IT_DATA_OVERFLOW)
@@ -5623,7 +5623,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
 
 /* The conversion cells return a status; only the legacy wrapper publishes an error. */
 int
-numeric_coerce_string_to_num_status (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE *result)
+numeric_coerce_string_to_num_status (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE * result)
 {
   char num_string[DB_MAX_NUMERIC_PRECISION + 1];
   unsigned char num[DB_NUMERIC_BUF_SIZE];
@@ -6427,6 +6427,7 @@ numeric_words_to_bytes (const uint64_t * src, int src_words, uint8_t * dest)
  * they are set to 0, the precision and scale are set to be the maximum
  * amount necessary in order to preserve as much data as possible.
  */
+/* *INDENT-OFF* */
 template <DB_TYPE SRC>
 int
 numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status)
@@ -6488,9 +6489,9 @@ numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS
       db_get_numeric_precision_and_scale (src, &precision, &scale, &src_is_float_numeric);
 
       if (!src_is_float_numeric && precision == (unsigned char) DB_HJOIN_NUMERIC_PRECISION_DEFERRED)
-        {
-          precision = numeric_get_precision_digits (db_locate_numeric (src));
-        }
+	{
+	  precision = numeric_get_precision_digits (db_locate_numeric (src));
+	}
 
       numeric_copy (num, db_locate_numeric (src));
       num_is_negative = numeric_is_negative (src);
@@ -6512,21 +6513,21 @@ numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS
   if (ret == NO_ERROR)
     {
       if (desired_precision == DB_DEFAULT_NUMERIC_PRECISION)
-        {
-          db_make_numeric (dest, num, precision, scale, DB_NUMERIC_BUF_SIZE, num_is_negative, true);
-          return ret;
-        }
+	{
+	  db_make_numeric (dest, num, precision, scale, DB_NUMERIC_BUF_SIZE, num_is_negative, true);
+	  return ret;
+	}
 
       /* Make the intermediate value */
       bool dest_value_is_negative = num_is_negative;
       db_make_numeric (dest, num, precision, scale, DB_NUMERIC_BUF_SIZE, dest_value_is_negative, false);
       ret =
-        numeric_coerce_num_to_num (dest, DB_VALUE_PRECISION (dest), DB_VALUE_SCALE (dest),
-                                   desired_precision, desired_scale, num, &dest_value_is_negative);
+	numeric_coerce_num_to_num (dest, DB_VALUE_PRECISION (dest), DB_VALUE_SCALE (dest),
+				   desired_precision, desired_scale, num, &dest_value_is_negative);
       if (ret != NO_ERROR)
-        {
-          goto exit_on_error;
-        }
+	{
+	  goto exit_on_error;
+	}
 
       db_make_numeric (dest, num, desired_precision, desired_scale, DB_NUMERIC_BUF_SIZE, dest_value_is_negative, false);
     }
@@ -6583,6 +6584,7 @@ numeric_db_value_coerce_to_num (DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *d
       return ER_FAILED;
     }
 }
+/* *INDENT-ON* */
 
 /*
  * numeric_db_value_coerce_from_num () -
@@ -6595,7 +6597,7 @@ numeric_db_value_coerce_to_num (DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *d
  * numerical type.
  */
 int
-numeric_coerce_num_to_double (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_double (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
@@ -6615,7 +6617,7 @@ exit_on_error:
 }
 
 int
-numeric_coerce_num_to_float (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_float (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
@@ -6635,7 +6637,7 @@ exit_on_error:
 }
 
 int
-numeric_coerce_num_to_monetary (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_monetary (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
@@ -6648,7 +6650,7 @@ numeric_coerce_num_to_monetary (const DB_VALUE *src, int scale, DB_VALUE *dest)
 }
 
 int
-numeric_coerce_num_to_int (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_int (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
@@ -6668,7 +6670,7 @@ exit_on_error:
 }
 
 int
-numeric_coerce_num_to_bigint (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_bigint (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
@@ -6688,7 +6690,7 @@ exit_on_error:
 }
 
 int
-numeric_coerce_num_to_short (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_short (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
@@ -6722,49 +6724,49 @@ numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATU
     case DB_TYPE_DOUBLE:
       ret = numeric_coerce_num_to_double (src, scale, dest);
       if (ret != NO_ERROR)
-        {
-          goto exit_on_error;
-        }
+	{
+	  goto exit_on_error;
+	}
       break;
 
     case DB_TYPE_FLOAT:
       ret = numeric_coerce_num_to_float (src, scale, dest);
       if (ret != NO_ERROR)
-        {
-          goto exit_on_error;
-        }
+	{
+	  goto exit_on_error;
+	}
       break;
 
     case DB_TYPE_MONETARY:
       ret = numeric_coerce_num_to_monetary (src, scale, dest);
       if (ret != NO_ERROR)
-        {
-          goto exit_on_error;
-        }
+	{
+	  goto exit_on_error;
+	}
       break;
 
     case DB_TYPE_INTEGER:
       ret = numeric_coerce_num_to_int (src, scale, dest);
       if (ret != NO_ERROR)
-        {
-          goto exit_on_error;
-        }
+	{
+	  goto exit_on_error;
+	}
       break;
 
     case DB_TYPE_BIGINT:
       ret = numeric_coerce_num_to_bigint (src, scale, dest);
       if (ret != NO_ERROR)
-        {
-          goto exit_on_error;
-        }
+	{
+	  goto exit_on_error;
+	}
       break;
 
     case DB_TYPE_SMALLINT:
       ret = numeric_coerce_num_to_short (src, scale, dest);
       if (ret != NO_ERROR)
-        {
-          goto exit_on_error;
-        }
+	{
+	  goto exit_on_error;
+	}
       break;
 
     case DB_TYPE_NUMERIC:
@@ -6885,7 +6887,7 @@ exit_on_error:
  * dest(in/out) : the value to coerce to
  */
 int
-numeric_coerce_num_to_double_strict (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_double_strict (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
 
   double adouble;
@@ -6901,7 +6903,7 @@ numeric_coerce_num_to_double_strict (const DB_VALUE *src, int scale, DB_VALUE *d
 }
 
 int
-numeric_coerce_num_to_float_strict (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_float_strict (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
 
   double adouble;
@@ -6917,7 +6919,7 @@ numeric_coerce_num_to_float_strict (const DB_VALUE *src, int scale, DB_VALUE *de
 }
 
 int
-numeric_coerce_num_to_monetary_strict (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_monetary_strict (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
 
   double adouble;
@@ -6933,7 +6935,7 @@ numeric_coerce_num_to_monetary_strict (const DB_VALUE *src, int scale, DB_VALUE 
 }
 
 int
-numeric_coerce_num_to_int_strict (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_int_strict (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
 
   double adouble;
@@ -6949,7 +6951,7 @@ numeric_coerce_num_to_int_strict (const DB_VALUE *src, int scale, DB_VALUE *dest
 }
 
 int
-numeric_coerce_num_to_bigint_strict (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_bigint_strict (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
   int ret = NO_ERROR;
 
@@ -6967,7 +6969,7 @@ numeric_coerce_num_to_bigint_strict (const DB_VALUE *src, int scale, DB_VALUE *d
 }
 
 int
-numeric_coerce_num_to_short_strict (const DB_VALUE *src, int scale, DB_VALUE *dest)
+numeric_coerce_num_to_short_strict (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
 
   double adouble;

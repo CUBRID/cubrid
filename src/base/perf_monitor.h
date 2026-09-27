@@ -1013,11 +1013,11 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
        * session totals in the existing transaction array and serialize their updates.
        * This path is reached only while performance collection is enabled. */
       if (offset >= pstat_Metadata[PSTAT_QM_NUM_DOMAIN_RESOLVE_FETCH].start_offset
-          && offset <= pstat_Metadata[PSTAT_QM_NUM_PLANNED_CONVERT].start_offset)
-        {
-          assert (pstat_Global.tran_stats[tran_index] != NULL);
-          ATOMIC_INC_64 (&pstat_Global.tran_stats[tran_index][offset], amount);
-        }
+	  && offset <= pstat_Metadata[PSTAT_QM_NUM_PLANNED_CONVERT].start_offset)
+	{
+	  assert (pstat_Global.tran_stats[tran_index] != NULL);
+	  ATOMIC_INC_64 (&pstat_Global.tran_stats[tran_index][offset], amount);
+	}
       else if (thread_p != NULL && thread_p->m_uses_px_stats)
 	{
 	  assert (thread_p->m_px_orig_thread_entry != NULL);

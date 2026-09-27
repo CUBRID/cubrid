@@ -3803,14 +3803,14 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, 
     {
       return NULL;
     }
-  const RESOLVED_DOMAIN_TABLE &src = xasl_state_p->resolved;
+  const RESOLVED_DOMAIN_TABLE & src = xasl_state_p->resolved;
   assert (src.sealed);
   xasl_state *new_xasl_state = (xasl_state *) db_private_alloc (thread_p, sizeof (xasl_state));
   if (new_xasl_state == NULL)
     {
       return NULL;
     }
-  RESOLVED_DOMAIN_TABLE &resolved = new_xasl_state->resolved;
+  RESOLVED_DOMAIN_TABLE & resolved = new_xasl_state->resolved;
   memset (&resolved, 0, sizeof (resolved));
   if (qexec_alloc_resolved_domains (thread_p, src.n_vals, src.n_slots, src.n_compares, src.n_elements, src.n_indexes,
 				    src.n_cells, resolved) != NO_ERROR)
@@ -3885,7 +3885,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, 
 static int
 qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, XASL_STATE * xasl_state)
 {
-  RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
+  RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved;
   assert (!resolved.sealed && resolved.vals == NULL);
   assert (plan == NULL || plan->dbval_cnt <= xasl_state->vd.dbval_cnt);
   resolved.in = xasl_state->vd.dbval_ptr;
@@ -3938,7 +3938,8 @@ qexec_gate_classifies (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE ty
  */
 static bool
 qexec_gate_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved,
-		    const DOMAIN_GATE_LINK * link, int arg_index, DOMAIN_CTX context, int opcode, DOMAIN_OPERAND * operand)
+		    const DOMAIN_GATE_LINK * link, int arg_index, DOMAIN_CTX context, int opcode,
+		    DOMAIN_OPERAND * operand)
 {
   const DOMAIN_PLAN_ITEM *item = link->operands[arg_index];
   const int val_pos = plan->items_cold[item - plan->items].val_pos;
@@ -4122,9 +4123,15 @@ qexec_resolve_gate_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
 	  /* D-343-01: the branch a row picks carries another domain than its siblings. ELT whose index the gate reads
 	   * picks one branch for every row; any other pick is the row's, so the branches' collations merge into one
 	   * domain, the row converting the value it picks - and branches that do not merge are rejected here */
-	  error = link->elt_index
-	    ? domain_resolve_branch_pick (operands, link->n_operands, qexec_gate_elt_branch (plan, resolved, link), entry)
-	    : domain_resolve_branch_merge (operands, link->n_operands, entry);
+	  if (link->elt_index)
+	    {
+	      error = domain_resolve_branch_pick (operands, link->n_operands,
+						  qexec_gate_elt_branch (plan, resolved, link), entry);
+	    }
+	  else
+	    {
+	      error = domain_resolve_branch_merge (operands, link->n_operands, entry);
+	    }
 	  if (error == ER_QSTR_INCOMPATIBLE_COLLATIONS)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
@@ -4536,7 +4543,8 @@ qexec_compare_reads_failed (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN
   for (int side = 0; side < 2; side++)
     {
       const DOMAIN_PLAN_ITEM *constant = site->constant[side];
-      if (constant != NULL && constant->ref >= 0 && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0
+      if (constant != NULL && constant->ref >= 0
+	  && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0
 	  && resolved.ready[constant->ref] == DOMAIN_VALUE_FAILED)
 	{
 	  return true;
@@ -5737,7 +5745,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 {
   /* D-M3: a PX worker inherits the decisions through qexec_deep_copy_xasl_state and never makes one. */
   assert (thread_p == NULL || thread_p->m_px_orig_thread_entry == NULL || thread_p->m_px_orig_thread_entry == thread_p);
-  RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
+  RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved;
   const int dbval_cnt = xasl_state->vd.dbval_cnt;
   const DOMAIN_PLAN *plan = xasl->domain_plan;
   if (plan != NULL && plan->dbval_cnt > dbval_cnt)
@@ -6114,7 +6122,7 @@ qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, co
 void
 qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
-  RESOLVED_DOMAIN_TABLE &resolved = xasl_state->resolved;
+  RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved;
   assert (resolved.owner == thread_p || resolved.vals == NULL);
   if (resolved.failures != NULL)
     {
