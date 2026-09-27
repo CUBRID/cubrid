@@ -226,8 +226,21 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       domain = (TP_DOMAIN *) gate_decided;
 
       /* coerce operand */
+      const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (&dbval);
       if (tp_value_coerce (&dbval, &dbval, domain) != DOMAIN_COMPATIBLE)
 	{
+	  if (QPROC_IS_INTERPOLATION_FUNC (func_p) && TP_IS_CHAR_TYPE (value_type)
+	      && (func_p->domain_plan == NULL || ! (func_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT)))
+	    {
+	      /* D-344-02: a string the gate typed by its type (D-335-10: DOUBLE) whose first value does not convert
+	       * reports ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, as the aggregate's first value does
+	       * (qexec_interpolation_first_value) and develop's did; a later value fails as the row's conversion does.
+	       * A value argument keeps the conversion's error (#366, D-366-06). */
+	      er_clear ();
+	      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function), "DOUBLE");
+	      goto exit;
+	    }
 	  /* D4 (#337): the failure used to leave no error, so the query ended silently with no rows (an assertion in
 	   * qexec_analytic_add_tuple under optdebug) */
 	  error = er_errid ();
