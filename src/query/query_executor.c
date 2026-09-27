@@ -5591,6 +5591,90 @@ qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl
   return error;
 }
 
+static void qexec_release_selector_pred (PRED_EXPR * pred);
+
+/*
+ * qexec_release_selector_regu () - what evaluating a branch guard's selector left in its nodes, released on the gate's
+ *   thread (#368)
+ *
+ * A CASE, IF, DECODE, predicate or collection node of a selector is computed there, not read from the gate's array, and
+ * keeps its result in the node, which a PX job would free across heaps (qexec_release_constant_node); rows compute it
+ * again. A constant subtree read from the array left nothing there.
+ */
+static void
+qexec_release_selector_regu (REGU_VARIABLE * regu)
+{
+  if (regu == NULL)
+    {
+      return;
+    }
+  switch (regu->type)
+    {
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      qexec_release_selector_regu (regu->value.arithptr->leftptr);
+      qexec_release_selector_regu (regu->value.arithptr->rightptr);
+      qexec_release_selector_regu (regu->value.arithptr->thirdptr);
+      qexec_release_selector_pred (regu->value.arithptr->pred);
+      pr_clear_value (regu->value.arithptr->value);
+      break;
+    case TYPE_FUNC:
+      for (REGU_VARIABLE_LIST operand = regu->value.funcp->operand; operand != NULL; operand = operand->next)
+	{
+	  qexec_release_selector_regu (&operand->value);
+	}
+      pr_clear_value (regu->value.funcp->value);
+      qexec_clear_function_tmp_obj (regu->value.funcp);
+      break;
+    default:
+      break;
+    }
+}
+
+/* The same for a selector predicate's terms (#368). */
+static void
+qexec_release_selector_pred (PRED_EXPR * pred)
+{
+  while (pred != NULL)
+    {
+      switch (pred->type)
+	{
+	case T_PRED:
+	  qexec_release_selector_pred (pred->pe.m_pred.lhs);
+	  pred = pred->pe.m_pred.rhs;
+	  continue;
+	case T_NOT_TERM:
+	  pred = pred->pe.m_not_term;
+	  continue;
+	case T_EVAL_TERM:
+	  {
+	    EVAL_TERM *term = &pred->pe.m_eval_term;
+	    switch (term->et_type)
+	      {
+	      case T_COMP_EVAL_TERM:
+		qexec_release_selector_regu (term->et.et_comp.lhs);
+		qexec_release_selector_regu (term->et.et_comp.rhs);
+		break;
+	      case T_ALSM_EVAL_TERM:
+		qexec_release_selector_regu (term->et.et_alsm.elem);
+		qexec_release_selector_regu (term->et.et_alsm.elemset);
+		break;
+	      case T_LIKE_EVAL_TERM:
+		qexec_release_selector_regu (term->et.et_like.src);
+		qexec_release_selector_regu (term->et.et_like.pattern);
+		qexec_release_selector_regu (term->et.et_like.esc_char);
+		break;
+	      default:
+		break;
+	      }
+	  }
+	  return;
+	default:
+	  return;
+	}
+    }
+}
+
 /*
  * qexec_guard_reached () - whether a row reaches what lies below a branch guard (#367, D-367-07): the guards around
  *   it first, then its own constant selector, taken as develop's evaluation takes it
@@ -5634,6 +5718,7 @@ qexec_guard_reached (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const DOM
 	  }
 	reached = g->kind == DOMAIN_GUARD_PRED_TRUE ? value == V_TRUE
 	  : g->kind == DOMAIN_GUARD_TERM_NOT_FALSE ? value != V_FALSE : value != V_TRUE;
+	qexec_release_selector_pred ((PRED_EXPR *) g->selector);
       }
       break;
     case DOMAIN_GUARD_FIRST_NULL:
@@ -5647,16 +5732,20 @@ qexec_guard_reached (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const DOM
 	  }
 	const bool is_null = value == NULL || DB_IS_NULL (value);
 	reached = g->kind == DOMAIN_GUARD_FIRST_NULL ? is_null : !is_null;
+	qexec_release_selector_regu ((REGU_VARIABLE *) g->selector);
       }
       break;
     case DOMAIN_GUARD_LIMIT:
       {
 	bool empty = false;
-	if (qexec_check_limit_clause (thread_p, (XASL_NODE *) g->selector, xasl_state, &empty) != NO_ERROR)
+	XASL_NODE *block = (XASL_NODE *) g->selector;
+	if (qexec_check_limit_clause (thread_p, block, xasl_state, &empty) != NO_ERROR)
 	  {
 	    return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
 	  }
 	reached = !empty;
+	qexec_release_selector_regu (block->limit_offset);
+	qexec_release_selector_regu (block->limit_row_count);
       }
       break;
     default:

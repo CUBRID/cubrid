@@ -92,6 +92,8 @@ struct DOMAIN_LOAD_RECORD
   bool needs_cell;		/* the node gets a cell in an execution's state (domain_give_cell, #355) */
   bool open;			/* its compiled domain is open: DOMAIN_PLAN_OPEN once published (#355) */
   bool open_position;		/* a list position whose pos_descr.dom is open: DOMAIN_PLAN_OPEN_POSITION (#355) */
+  bool row_invariant;		/* no row changes its value: a constant, or a branch or collection node over such
+				 * operands - what a branch guard's condition reads (#368) */
   DOMAIN_LOAD_RECORD *producer;	/* CONSUMER / ARITH_REGU: whose answer this record reads */
   /* NODE / FIXED_AGG: the operands in operand order, and the literal a TYPE_DBVAL operand carries; the inline arrays
    * hold three, a function with more operands allocates its own (#343) */
@@ -372,6 +374,7 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
   record->item.slot = -1;
   record->item.ref = -1;
   record->item.operand_class = operand_class;
+  record->row_invariant = operand_class == OPERAND_CONST;
   record->item.fixed.domain = domain;
   record->item.fail = context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_FAIL_KEEP
     : context == DOMAIN_CTX_ASSIGN ? DOMAIN_FAIL_ERROR : DOMAIN_FAIL_NULL;
@@ -393,16 +396,21 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
   return *owner;
 }
 
-/* Whether a regu the walk met is a constant (#367): a bind, a literal or a constant subtree - no row changes it. */
+/*
+ * domain_regu_is_row_invariant () - whether no row changes the value of a regu the walk met (#367, #368): a bind, a
+ *   literal, a constant subtree, or a CASE, IF, DECODE, predicate or collection node over such operands. A branch
+ *   guard's condition reads only these (D-367-07); the cache class is another question - develop computes a branch
+ *   node at every fetch, so its class stays VOLATILE (D-323-18).
+ */
 static bool
-domain_regu_is_constant (const REGU_VARIABLE * regu)
+domain_regu_is_row_invariant (const REGU_VARIABLE * regu)
 {
-  return regu != NULL && regu->domain_plan != NULL && regu->domain_plan->operand_class == OPERAND_CONST;
+  return regu != NULL && regu->domain_plan != NULL && domain_record_of (regu->domain_plan)->row_invariant;
 }
 
-/* Whether a predicate the walk met reads constants only (#367): every value each of its terms compares is one. */
+/* Whether no row changes a predicate the walk met (#367, #368): every value each of its terms compares is so. */
 static bool
-domain_pred_is_constant (const PRED_EXPR * pred)
+domain_pred_is_row_invariant (const PRED_EXPR * pred)
 {
   if (pred == NULL)
     {
@@ -411,23 +419,24 @@ domain_pred_is_constant (const PRED_EXPR * pred)
   switch (pred->type)
     {
     case T_PRED:
-      return domain_pred_is_constant (pred->pe.m_pred.lhs) && domain_pred_is_constant (pred->pe.m_pred.rhs);
+      return domain_pred_is_row_invariant (pred->pe.m_pred.lhs) && domain_pred_is_row_invariant (pred->pe.m_pred.rhs);
     case T_NOT_TERM:
-      return domain_pred_is_constant (pred->pe.m_not_term);
+      return domain_pred_is_row_invariant (pred->pe.m_not_term);
     case T_EVAL_TERM:
       {
 	const EVAL_TERM *term = &pred->pe.m_eval_term;
 	switch (term->et_type)
 	  {
 	  case T_COMP_EVAL_TERM:
-	    return domain_regu_is_constant (term->et.et_comp.lhs)
-	      && (term->et.et_comp.rhs == NULL || domain_regu_is_constant (term->et.et_comp.rhs));
+	    return domain_regu_is_row_invariant (term->et.et_comp.lhs)
+	      && (term->et.et_comp.rhs == NULL || domain_regu_is_row_invariant (term->et.et_comp.rhs));
 	  case T_ALSM_EVAL_TERM:
-	    return domain_regu_is_constant (term->et.et_alsm.elem)
-	      && domain_regu_is_constant (term->et.et_alsm.elemset);
+	    return domain_regu_is_row_invariant (term->et.et_alsm.elem)
+	      && domain_regu_is_row_invariant (term->et.et_alsm.elemset);
 	  case T_LIKE_EVAL_TERM:
-	    return domain_regu_is_constant (term->et.et_like.src) && domain_regu_is_constant (term->et.et_like.pattern)
-	      && (term->et.et_like.esc_char == NULL || domain_regu_is_constant (term->et.et_like.esc_char));
+	    return domain_regu_is_row_invariant (term->et.et_like.src)
+	      && domain_regu_is_row_invariant (term->et.et_like.pattern)
+	      && (term->et.et_like.esc_char == NULL || domain_regu_is_row_invariant (term->et.et_like.esc_char));
 	  default:
 	    /* an RLIKE term keeps its compiled pattern in the term, which the gate does not evaluate (it is no
 	     * selector) */
@@ -638,6 +647,14 @@ domain_volatile_operator (OPERATOR_TYPE opcode)
     default:
       return false;
     }
+}
+
+/* The volatile operators develop computes at every fetch only because it never analyzed their predicate: over operands
+ * no row changes, no row changes them either (#368). */
+static bool
+domain_branch_operator (OPERATOR_TYPE opcode)
+{
+  return opcode == T_CASE || opcode == T_DECODE || opcode == T_IF || opcode == T_PREDICATE;
 }
 
 /* develop's fetch cached a function over constant operands only for these (the FETCH_ALL_CONST decision of
@@ -990,7 +1007,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
   /* #367: CASE, DECODE and IF take one arm by their predicate, which develop evaluates first; COALESCE, NVL, IFNULL
    * and NVL2 read their other operands by the first one's NULL-ness - when the node's domain is fixed: of an open
    * (VARIABLE) domain, develop's fetch_peek_arith reads every operand to infer the domain from the values. A selector
-   * that is a constant guards each arm it may skip. */
+   * no row changes guards each arm it may skip (#368: a branch node inside it too, domain_regu_is_row_invariant). */
   const int entry_guard = ctx->guard;
   const bool by_predicate = arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_IF;
   const bool by_first = (arith->opcode == T_COALESCE || arith->opcode == T_NVL || arith->opcode == T_IFNULL
@@ -1000,7 +1017,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     {
       domain_walk_pred (ctx, arith->pred);
     }
-  const bool guarded_arms = by_predicate && domain_pred_is_constant (arith->pred);
+  const bool guarded_arms = by_predicate && domain_pred_is_row_invariant (arith->pred);
   for (int operand_index = 0; operand_index < 3; operand_index++)
     {
       REGU_VARIABLE *operand = operands[operand_index];
@@ -1010,7 +1027,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	  domain_push_guard (ctx, operand_index == 0 ? DOMAIN_GUARD_PRED_TRUE : DOMAIN_GUARD_PRED_NOT_TRUE,
 			     arith->pred);
 	}
-      else if (operand != NULL && by_first && operand_index > 0 && domain_regu_is_constant (arith->leftptr))
+      else if (operand != NULL && by_first && operand_index > 0 && domain_regu_is_row_invariant (arith->leftptr))
 	{
 	  domain_push_guard (ctx, arith->opcode == T_NVL2 && operand_index == 1 ? DOMAIN_GUARD_FIRST_NOT_NULL
 			     : DOMAIN_GUARD_FIRST_NULL, arith->leftptr);
@@ -1044,8 +1061,20 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	  domain_add_regu_compare (ctx, arith->leftptr, arith->rightptr, &compares[0]);
 	}
     }
+  /* #368: no row changes a CASE, DECODE, IF or predicate node over operands no row changes, though develop computes it
+   * at every fetch (its class stays VOLATILE); a volatile operator's value is the row's */
+  bool row_invariant = (!domain_volatile_operator (arith->opcode) || domain_branch_operator (arith->opcode))
+    && (arith->pred == NULL || domain_pred_is_row_invariant (arith->pred));
+  for (int i = 0; i < 3 && row_invariant; i++)
+    {
+      row_invariant = operands[i] == NULL || domain_regu_is_row_invariant (operands[i]);
+    }
   DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &arith->domain_plan, arith->domain, cls,
 					    is_cast ? DOMAIN_CTX_ASSIGN : DOMAIN_CTX_ARITH, arith->opcode, "arith");
+  if (item != NULL)
+    {
+      domain_record_of (item)->row_invariant = row_invariant;
+    }
   if (arith->opcode == T_DEFINE_VARIABLE)
     {
       /* #366: the gate types a variable the statement reads from the values the statement assigns it */
@@ -1173,6 +1202,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       return;
     }
   DOMAIN_OPERAND_CLASS cls = OPERAND_ROW;
+  bool row_invariant = false;	/* a constant's is its class's (domain_add_item) */
   switch (regu->type)
     {
     case TYPE_REGU_VAR_LIST:
@@ -1203,6 +1233,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       if (regu->value.arithptr->domain_plan != NULL)
 	{
 	  cls = (DOMAIN_OPERAND_CLASS) regu->value.arithptr->domain_plan->operand_class;
+	  row_invariant = domain_record_of (regu->value.arithptr->domain_plan)->row_invariant;
 	}
       break;
     case TYPE_FUNC:
@@ -1233,9 +1264,13 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
 	  /* the target, recomputed at every iteration */
 	  domain_force_row (&regu->value.funcp->operand->next->value);
 	}
+      /* #368: a collection built from values no row changes is one too (an IN list of binds in a branch condition) */
+      row_invariant = domain_function_caches (regu->value.funcp->ftype) || regu->value.funcp->ftype == F_SET
+	|| regu->value.funcp->ftype == F_MULTISET || regu->value.funcp->ftype == F_SEQUENCE;
       for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
 	{
 	  cls = domain_merge_class (cls, op->value.domain_plan);
+	  row_invariant = row_invariant && domain_regu_is_row_invariant (&op->value);
 	}
       break;
     case TYPE_SP:
@@ -1263,6 +1298,10 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
   if (item == NULL)
     {
       return;
+    }
+  if (row_invariant && cls != OPERAND_CORRELATED)
+    {
+      domain_record_of (item)->row_invariant = true;
     }
   /* a list position's value descriptor shares the regu's item: one cell for both, which develop wrote together; each
    * half keeps its own openness (#355) */
@@ -1507,7 +1546,7 @@ domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
 	{
 	  domain_walk_pred (ctx, pred->pe.m_pred.lhs);
 	  const BOOL_OP op = pred->pe.m_pred.bool_op;
-	  if ((op == B_AND || op == B_OR) && domain_pred_is_constant (pred->pe.m_pred.lhs))
+	  if ((op == B_AND || op == B_OR) && domain_pred_is_row_invariant (pred->pe.m_pred.lhs))
 	    {
 	      /* #367: eval_pred evaluates the rest of an AND only when this term is not false, of an OR only when it is
 	       * not true */
@@ -2017,8 +2056,8 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
        * its row count is not above 0 - a constant row count guards everything else of the statement */
       domain_walk_regu (ctx, xasl->limit_offset);
       domain_walk_regu (ctx, xasl->limit_row_count);
-      if (domain_regu_is_constant (xasl->limit_row_count)
-	  && (xasl->limit_offset == NULL || domain_regu_is_constant (xasl->limit_offset)))
+      if (domain_regu_is_row_invariant (xasl->limit_row_count)
+	  && (xasl->limit_offset == NULL || domain_regu_is_row_invariant (xasl->limit_offset)))
 	{
 	  domain_push_guard (ctx, DOMAIN_GUARD_LIMIT, xasl);
 	}
@@ -2037,7 +2076,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   const int block_guard = ctx->guard;
   domain_walk_pred (ctx, xasl->if_pred);
   int if_guard = block_guard;
-  if (domain_pred_is_constant (xasl->if_pred))
+  if (domain_pred_is_row_invariant (xasl->if_pred))
     {
       domain_push_guard (ctx, DOMAIN_GUARD_PRED_TRUE, xasl->if_pred);
       if_guard = ctx->guard;
