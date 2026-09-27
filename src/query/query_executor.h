@@ -49,6 +49,7 @@ struct qfile_tuple_record;
 class regu_variable_node;
 struct tp_domain;
 struct valptr_list_node;
+struct val_list_node;
 struct xasl_node;
 struct xasl_state;
 using XASL_STATE = xasl_state;
@@ -275,6 +276,9 @@ extern const TP_DOMAIN *qexec_consumer_domain (const VAL_DESCR * vd, const TP_DO
 					       const DOMAIN_PLAN_ITEM * item);
 extern int qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled);
 extern const TP_DOMAIN *qexec_value_domain (const VAL_DESCR * vd, const regu_variable_node * regu);
+extern void qexec_enter_domain_scope (const VAL_DESCR * vd, const val_list_node * val_list);
+extern const DB_VALUE *qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONV_FUNC conv,
+					 const TP_DOMAIN * target, const DB_VALUE * value);
 extern int qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other);
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,

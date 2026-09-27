@@ -852,6 +852,23 @@ fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * 
        * decides before the main block: the execution boundary (b) */
       return qexec_domain_unresolved (vd, item, arithptr->domain);
     }
+  if (plan != NULL && (item->held[0] != 0 || item->held[1] != 0) && left != NULL && right != NULL && !DB_IS_NULL (left)
+      && !DB_IS_NULL (right))
+    {
+      /* #368 (D-368-01, D-368-07): an operand a scope fixes - a constant for the execution, a correlated value for its
+       * outer row - is converted once per scope */
+      DB_VALUE *const operands[2] = { left, right };
+      const DB_VALUE *held[2] = { NULL, NULL };
+      for (int i = 0; i < 2; i++)
+	{
+	  if (item->held[i] != 0 && plan->conv[i] != NULL)
+	    {
+	      held[i] = qexec_held_value (thread_p, vd, item->held[i], plan->conv[i], plan->operand_domain[i],
+					  operands[i]);
+	    }
+	}
+      return qdata_precast_arith_dbval (thread_p, arithptr->opcode, plan, left, right, arithptr->value, domain, held);
+    }
   return qdata_precast_arith_dbval (thread_p, arithptr->opcode, plan, left, right, arithptr->value, domain);
 }
 

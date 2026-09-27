@@ -1839,9 +1839,18 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    /* after the pre-cast the setup planned for a value (#368, D-368-06) */
-	    if (qdata_precast_arith_dbval (thread_p, T_ADD, &acc_dom->precast, acc->value, db_value_p, acc->value,
-					   acc_dom->value_dom) != NO_ERROR)
+	    /* after the pre-cast the setup planned for a value (#368, D-368-06); a value a scope fixes is converted once
+	     * per scope, in the worker's own state (D-368-07) */
+	    const DOMAIN_PLAN_ITEM *item = agg_node->domain_plan;
+	    const RESOLVED_DOMAIN *precast = &acc_dom->precast;
+	    const DB_VALUE *const held[2] =
+	    {
+	      NULL, item != NULL && item->held[1] != 0 && precast->conv[1] != NULL && !DB_IS_NULL (db_value_p)
+	      ? qexec_held_value (thread_p, tl_vd, item->held[1], precast->conv[1], precast->operand_domain[1],
+				  db_value_p) : NULL
+	    };
+	    if (qdata_precast_arith_dbval (thread_p, T_ADD, precast, acc->value, db_value_p, acc->value,
+					   acc_dom->value_dom, held) != NO_ERROR)
 	      {
 		return false;
 	      }

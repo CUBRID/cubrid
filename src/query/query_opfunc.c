@@ -2519,6 +2519,8 @@ qdata_assert_precast_done (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, cons
  *   return: NO_ERROR or ER_code
  *   opcode(in): T_ADD, T_SUB, T_MUL or T_DIV
  *   precast(in): operand_domain[0..1] and conv[0..1] of domain_resolve_precast; NULL converts nothing
+ *   held(in): [2] an operand its scope converted once already (#368, D-368-01, D-368-07): the operator takes it in place
+ *	       of the conversion; NULL none
  *
  * Over two values that are not NULL, each operand the plan converts gets a value of its own, in develop's order - the
  * second operand first but for a subtraction - and a conversion that fails is develop's tp_value_auto_cast outcome:
@@ -2527,7 +2529,8 @@ qdata_assert_precast_done (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, cons
  */
 int
 qdata_precast_arith_dbval (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * precast,
-			   DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+			   DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
+			   const DB_VALUE * const *held)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   int (*arith_operator) (DB_VALUE *, DB_VALUE *, DB_VALUE *, TP_DOMAIN *) = opcode == T_ADD ? qdata_add_dbval
@@ -2548,6 +2551,14 @@ qdata_precast_arith_dbval (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, const 
       const int i = opcode == T_SUB ? k : 1 - k;
       if (precast->conv[i] == NULL)
 	{
+	  continue;
+	}
+      if (held != NULL && held[i] != NULL)
+	{
+	  /* a copy that frees nothing: the scope's value stays its owner's */
+	  converted[i] = *held[i];
+	  converted[i].need_clear = false;
+	  operand[i] = &converted[i];
 	  continue;
 	}
       perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);

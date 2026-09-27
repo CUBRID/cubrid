@@ -340,18 +340,19 @@ eval_compare_side (const DOMAIN_COMPARE * compare, const val_descr * vd, int sid
 /*
  * eval_compare_planned () - a comparison planned before any row (D-352-02): develop's NULL rule, then the kernel the
  *			     record names, on the row's values and the gate's own values of the constant sides
+ *   site(in): the comparison's record; a side it names fixed for a scope comes in converted once per scope (#368)
  */
 static DB_VALUE_COMPARE_RESULT
-eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const val_descr * vd,
-		      const DB_VALUE * dbval1, const DB_VALUE * dbval2, int total_order, bool * can_compare)
+eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DOMAIN_COMPARE_PLAN * site,
+		      const val_descr * vd, const DB_VALUE * dbval1, const DB_VALUE * dbval2, int total_order,
+		      bool * can_compare)
 {
-  const DB_VALUE *value1 = eval_compare_side (compare, vd, 0, dbval1);
-  const DB_VALUE *value2 = eval_compare_side (compare, vd, 1, dbval2);
-  if (DB_IS_NULL (value1))
+  const DB_VALUE *value[2] = { eval_compare_side (compare, vd, 0, dbval1), eval_compare_side (compare, vd, 1, dbval2) };
+  if (DB_IS_NULL (value[0]))
     {
-      return DB_IS_NULL (value2) ? (total_order ? DB_EQ : DB_UNK) : (total_order ? DB_LT : DB_UNK);
+      return DB_IS_NULL (value[1]) ? (total_order ? DB_EQ : DB_UNK) : (total_order ? DB_LT : DB_UNK);
     }
-  if (DB_IS_NULL (value2))
+  if (DB_IS_NULL (value[1]))
     {
       return total_order ? DB_GT : DB_UNK;
     }
@@ -361,7 +362,23 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
        * comparison of the two values' keys (#354) */
       return domain_compare_by_keys (dbval1, dbval2, 1, total_order, can_compare);
     }
-  return domain_compare_values (thread_p, compare, value1, value2, total_order, can_compare);
+  unsigned char converted = 0;
+  if (site != NULL && compare->kernel == DOMAIN_COMPARE_CONVERT)
+    {
+      for (int side = 0; side < 2; side++)
+	{
+	  /* D-368-01: a correlated side is converted once per scope (its outer row), not at every inner row */
+	  const DB_VALUE *held = site->held[side] != 0 && compare->conv[side] != NULL
+	    ? qexec_held_value (thread_p, vd, site->held[side], compare->conv[side], compare->target[side], value[side])
+	    : NULL;
+	  if (held != NULL)
+	    {
+	      value[side] = held;
+	      converted |= (unsigned char) (1 << side);
+	    }
+	}
+    }
+  return domain_compare_values (thread_p, compare, value[0], value[1], total_order, can_compare, converted);
 }
 
 #if !defined (NDEBUG)
@@ -503,7 +520,7 @@ eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN 
       eval_assert_planned_sides (compare, value1, value2, NULL, vd);
 #endif
       const DB_VALUE_COMPARE_RESULT result =
-	eval_compare_planned (thread_p, compare, vd, value1, value2, total_order, can_compare);
+	eval_compare_planned (thread_p, compare, site, vd, value1, value2, total_order, can_compare);
 #if !defined (NDEBUG)
       eval_assert_planned_compare (compare, value1, value2, total_order, result,
 				   can_compare != NULL ? *can_compare : true, NULL, vd, can_compare != NULL);
@@ -571,9 +588,12 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
       {
 	/* R_EQ_TORDER compares in total order; the others compare ordinally, and NULL's still yield UNKNOWN */
 	const int total_order = rel_operator == R_EQ_TORDER;
+	/* the term's record, whose correlated sides its scope converts once (#368); an element's decision has none */
+	const DOMAIN_COMPARE_PLAN *site = NULL;
 	if (compare == NULL)
 	  {
 	    compare = et_comp != NULL ? eval_planned_compare (et_comp, vd) : &eval_Compare_unplanned;
+	    site = et_comp != NULL ? et_comp->domain_compare : NULL;
 	  }
 	if (compare->kernel != DOMAIN_COMPARE_VALUES)
 	  {
@@ -582,7 +602,7 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 #if !defined (NDEBUG)
 	    eval_assert_planned_sides (compare, dbval1, dbval2, et_comp, vd);
 #endif
-	    result = eval_compare_planned (thread_p, compare, vd, dbval1, dbval2, total_order, &comparable);
+	    result = eval_compare_planned (thread_p, compare, site, vd, dbval1, dbval2, total_order, &comparable);
 #if !defined (NDEBUG)
 	    eval_assert_planned_compare (compare, dbval1, develop2 != NULL ? develop2 : dbval2, total_order,
 					 (DB_VALUE_COMPARE_RESULT) result, comparable, et_comp, vd);

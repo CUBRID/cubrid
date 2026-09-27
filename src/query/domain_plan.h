@@ -84,10 +84,17 @@ struct domain_plan_item
   int cell;			/* 1 + the index of the node's cell in an execution's state (resolved.taken): the domain
 				 * the execution gave a node develop wrote it into (#355, D-355-01); 0: none */
   RESOLVED_DOMAIN fixed;
-  /* FIELD, NULLIF, LEAST, GREATEST: the comparisons the node makes, as the load or the gate decided them (#354) -
-   * [0] the left operand (FIELD: the third against the left), [1] FIELD's third against the right; NULL otherwise.
-   * The node carries only its item (D-323-01), so ARITH_TYPE keeps develop's size (#355, D-355-04). */
-  const DOMAIN_COMPARE_PLAN **compares;
+  union
+  {
+    /* FIELD, NULLIF, LEAST, GREATEST: the comparisons the node makes, as the load or the gate decided them (#354) -
+     * [0] the left operand (FIELD: the third against the left), [1] FIELD's third against the right; NULL otherwise.
+     * The node carries only its item (D-323-01), so ARITH_TYPE keeps develop's size (#355, D-355-04). */
+    const DOMAIN_COMPARE_PLAN **compares;
+    /* T_ADD, T_SUB, T_MUL, T_DIV, and a SUM or AVG ([1]: the value it adds): 1 + the resolved.held index of an operand
+     * fixed for a scope - a constant for the execution, a correlated value for its block's scan - whose pre-cast the
+     * execution converts once per scope; 0 none (#368, D-368-01, D-368-07) */
+    int held[2];
+  };
 };
 /* D-328-03 supersedes the original 64-byte limit: operand targets are distinct from the result. */
 static_assert (sizeof (DOMAIN_PLAN_ITEM) == 80, "domain plan item layout");
@@ -145,6 +152,8 @@ struct DOMAIN_COMPARE_PLAN
 				 * that fails is its error at every row the term compares, which the gate raises before
 				 * any row (#367, D-367-02); a record outside a term answers by rank there, as develop's */
   int guard;			/* a term's: the innermost branch guard around it (DOMAIN_PLAN_GUARD, #367); -1 none */
+  int held[2];			/* a term's side that is a correlated value, fixed while its block's scan runs: 1 + the
+				 * resolved.held index of its conversion, made once per scope (#368, D-368-01); 0 none */
 };
 
 /*
@@ -349,6 +358,29 @@ struct domain_plan
   DOMAIN_SESSION_VARIABLE *session_variables;	/* the session variables the statement reads (#366) */
   int n_guards;
   DOMAIN_PLAN_GUARD *guards;	/* the branches taken by a constant condition, outer ones first (#367) */
+  /* #368 (D-368-01, D-368-07): the values an execution converts once per scope - a comparison side, an arithmetic
+   * operand, a SUM or AVG's value - and the scope each belongs to: DOMAIN_SCOPE_EXECUTION for a constant, else the
+   * scope of the block whose scans fix a correlated value (VAL_LIST.domain_scope) */
+  int n_held;
+  int *held_scope;		/* [n_held] */
+  int n_scopes;			/* the execution's and one per such block */
+};
+
+/* The scope a constant is fixed in: the execution (#368) */
+const int DOMAIN_SCOPE_EXECUTION = 0;
+
+/*
+ * A value converted once for a scope (#368, D-368-01, D-368-07): the row converts it only when the scope has not been
+ * entered or the conversion failed, and develop's outcome follows from the row's own conversion. A scope's epoch
+ * grows at each entry, so a value converted in an earlier one is not read.
+ */
+struct DOMAIN_HELD_VALUE
+{
+  DB_VALUE value;		/* the converted value, the owner's */
+  unsigned long long epoch;	/* the scope's epoch it was converted in; 0: never */
+  DOMAIN_CONV_FUNC conv;	/* what converted it: a reader with another converter or target converts again */
+  const TP_DOMAIN *target;
+  bool failed;			/* the conversion failed in that epoch: the row converts, as develop's did */
 };
 
 /* What resolved.ready says of a value the gate keeps in vals (#352, #367). */
@@ -410,6 +442,12 @@ struct RESOLVED_DOMAIN_TABLE
   DOMAIN_GATE_FAILURE *failures;
   int n_failures;
   int max_failures;
+  /* #368: the values converted once per scope and each scope's epoch; a PX copy starts with none converted and only the
+   * execution's scope entered. The owner's. */
+  DOMAIN_HELD_VALUE *held;	/* [n_held] */
+  unsigned long long *scope_epochs;	/* [n_scopes] */
+  int n_held;
+  int n_scopes;
 };
 
 int stx_build_domain_plan (THREAD_ENTRY * thread_p, xasl_node * root, xasl_unpack_info * unpack_info,

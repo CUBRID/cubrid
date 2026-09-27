@@ -862,6 +862,8 @@ namespace cubxasl
     assert_release_error (i == src->val_cnt);
 
     dest->val_cnt = src->val_cnt;
+    /* the spawned nodes share the source's plan items, which number the scopes (#368) */
+    dest->domain_scope = src->domain_scope;
 
     return dest;
   }

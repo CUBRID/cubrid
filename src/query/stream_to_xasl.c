@@ -5588,6 +5588,8 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &val_list->val_cnt);
+  /* the load gives it its block's scope, if any (#368) */
+  val_list->domain_scope = 0;
 
   value_list =
     (QPROC_DB_VALUE_LIST) stx_alloc_struct (thread_p, sizeof (struct qproc_db_value_list) * val_list->val_cnt);

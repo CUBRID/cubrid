@@ -206,10 +206,11 @@ TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONV_FUNC converter, const TP_DOMA
  *   return: the result; *can_compare false, with develop's error, where a conversion fails or collations do not merge
  *   can_compare(out): NULL for tp_value_compare's contract: a failed conversion or a rank answers without an error
  *		       (collations that do not merge still set -1150, as develop does)
+ *   converted(in): bit i: value i is side i converted already, once for its scope (#368, D-368-01)
  */
 DB_VALUE_COMPARE_RESULT domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
 					       const DB_VALUE * value1, const DB_VALUE * value2, int total_order,
-					       bool * can_compare);
+					       bool * can_compare, unsigned char converted = 0);
 
 /*
  * domain_compare_by_keys () - develop's tp_value_compare_with_error on two values whose keys only the data knows - a

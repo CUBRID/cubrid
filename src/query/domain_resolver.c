@@ -1303,11 +1303,12 @@ domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_con
  *				 the other, then an ENUM's codeset for the string it meets - and cmpval
  *
  * A constant side the gate converted comes in converted; one whose conversion failed gives develop's outcome at its
- * turn. Every conversion the row runs is counted (Num_planned_convert).
+ * turn. A correlated side its scope converted comes in converted too (preconverted, #368). Every conversion the row
+ * runs is counted (Num_planned_convert).
  */
 static DB_VALUE_COMPARE_RESULT
 domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
-			  const DB_VALUE * value2, int total_order, bool * can_compare)
+			  const DB_VALUE * value2, int total_order, bool * can_compare, unsigned char preconverted)
 {
   const DB_VALUE *side[2] = { value1, value2 };
   DB_VALUE converted[2], codeset_value;
@@ -1322,7 +1323,7 @@ domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compar
 	  result = domain_compare_conversion_failed (compare, k == 1, can_compare);
 	  goto end;
 	}
-      if (compare->conv[s] == NULL)
+      if (compare->conv[s] == NULL || (preconverted & (1 << s)))
 	{
 	  continue;
 	}
@@ -1373,7 +1374,7 @@ end:
 
 DB_VALUE_COMPARE_RESULT
 domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
-		       const DB_VALUE * value2, int total_order, bool * can_compare)
+		       const DB_VALUE * value2, int total_order, bool * can_compare, unsigned char converted)
 {
   switch (compare->kernel)
     {
@@ -1381,7 +1382,7 @@ domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, 
       return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, total_order, NULL,
 				   compare->collation);
     case DOMAIN_COMPARE_CONVERT:
-      return domain_compare_converted (thread_p, compare, value1, value2, total_order, can_compare);
+      return domain_compare_converted (thread_p, compare, value1, value2, total_order, can_compare, converted);
     case DOMAIN_COMPARE_RANK:
       /* types that do not compare as they are, without coercion: develop answers by their rank */
       if (can_compare != NULL)

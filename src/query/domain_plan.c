@@ -108,6 +108,10 @@ struct DOMAIN_LOAD_RECORD
   const TP_DOMAIN *argument;	/* FIXED_AGG: the argument's compiled domain when it is not open (DOMAIN_GATE_LINK) */
   int gate_order;		/* index into plan->gate_nodes once this record is a gate-dependent node */
   DOMAIN_PLAN_ITEM *self_owner;	/* owner storage of a synthetic record (a set-operation column) */
+  /* T_ADD, T_SUB, T_MUL, T_DIV, a SUM or AVG (#368): the operands whose pre-cast the execution may convert once per
+   * scope ([1]: the value an aggregate adds), and for a correlated one the block whose scans fix it */
+  REGU_VARIABLE *held_operand[2];
+  XASL_NODE *held_scope[2];
 };
 struct DOMAIN_LOAD_BINDING
 {
@@ -160,6 +164,8 @@ struct DOMAIN_LOAD_CONTEXT
   int max_gate_order;
   COMP_EVAL_TERM **compare_terms;	/* the comparison terms met, in walk order (#352) */
   int *compare_term_guards;	/* [max_compare_terms] the branch guard around each term (#367) */
+  XASL_NODE **compare_term_scopes;	/* [2 * max_compare_terms] per side, the block whose scans fix a correlated side
+					 * (domain_outer_scope, #368); NULL */
   int n_compare_terms;
   int max_compare_terms;
   DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first (#352) */
@@ -184,6 +190,16 @@ struct DOMAIN_LOAD_CONTEXT
   int *block_guards;
   int n_blocks;
   int max_blocks;
+  /* the blocks whose execution holds the walk's position, the outermost first, the block walked last (#368): a value
+   * of one of them but the last is fixed while the last one's scan runs */
+  XASL_NODE **ancestors;
+  int n_ancestors;
+  int max_ancestors;
+  /* the values converted once per scope published so far (plan->n_held, #368): each one's scope, and the block whose
+   * scans fix a correlated one (NULL for a constant) */
+  int *held_scopes;
+  XASL_NODE **held_blocks;
+  int max_held;
 };
 
 static void domain_walk_xasl (DOMAIN_LOAD_CONTEXT *, XASL_NODE *);
@@ -193,6 +209,7 @@ static void domain_walk_regu (DOMAIN_LOAD_CONTEXT *, REGU_VARIABLE *, DOMAIN_CTX
 static OUTPTR_LIST *domain_block_output (XASL_NODE * xasl);
 static DOMAIN_PLAN_ITEM *domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos);
 static void domain_add_define (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * define);
+static XASL_NODE *domain_outer_scope (const DOMAIN_LOAD_CONTEXT * ctx, const REGU_VARIABLE * regu);
 
 static bool
 domain_is_fixed (const TP_DOMAIN * domain)
@@ -1035,7 +1052,16 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     }
   if (arith->domain_plan != NULL)
     {
-      domain_note_met_again (ctx, domain_record_of (arith->domain_plan)->cold.guard);
+      DOMAIN_LOAD_RECORD *met = domain_record_of (arith->domain_plan);
+      domain_note_met_again (ctx, met->cold.guard);
+      for (int i = 0; i < 2; i++)
+	{
+	  /* #368: an operand a scope fixes is converted once per scope only where this place is in the same scope */
+	  if (met->held_operand[i] != NULL && met->held_scope[i] != domain_outer_scope (ctx, met->held_operand[i]))
+	    {
+	      met->held_operand[i] = NULL;
+	    }
+	}
       return;
     }
   bool is_cast = arith->opcode == T_CAST || arith->opcode == T_CAST_WRAP;
@@ -1183,6 +1209,17 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     {
       domain_plan_precast (item, arith->opcode, operands[0]->domain, operands[1]->domain);
     }
+  if (item != NULL && domain_precast_operator (arith->opcode) && operands[0] != NULL && operands[1] != NULL)
+    {
+      /* #368 (D-368-01, D-368-07): an operand a scope fixes - a constant, or a value an outer block's scan fixes - has
+       * its pre-cast converted once per scope (domain_publish_held) */
+      DOMAIN_LOAD_RECORD *record = domain_record_of (item);
+      for (int i = 0; i < 2; i++)
+	{
+	  record->held_operand[i] = operands[i];
+	  record->held_scope[i] = domain_outer_scope (ctx, operands[i]);
+	}
+    }
 }
 
 static bool
@@ -1234,6 +1271,33 @@ domain_local_value (XASL_NODE * block, DB_VALUE * value)
     }
   return domain_value_in_list (block->proc.buildlist.g_val_list, value)
     || domain_value_in_list (block->proc.buildlist.a_val_list, value);
+}
+
+/*
+ * domain_outer_scope () - the block whose scans fix a correlated value the walk meets (#368, D-368-01): the block
+ *   walked, when the value is one of an outer block's - an outer scan's row, which an inner scan restarts for and a
+ *   correlated subquery runs for; NULL otherwise
+ *
+ * A value of a block walked after this one (an inner scan's row the outer block's output reads) changes at every row
+ * this block evaluates, and a subquery's result is computed on demand: neither is fixed for a scope.
+ */
+static XASL_NODE *
+domain_outer_scope (const DOMAIN_LOAD_CONTEXT * ctx, const REGU_VARIABLE * regu)
+{
+  if (regu == NULL || regu->type != TYPE_CONSTANT || regu->xasl != NULL || regu->value.dbvalptr == NULL
+      || ctx->n_ancestors < 2 || ctx->ancestors[ctx->n_ancestors - 1] != ctx->block
+      || domain_local_value (ctx->block, regu->value.dbvalptr))
+    {
+      return NULL;
+    }
+  for (int i = ctx->n_ancestors - 2; i >= 0; i--)
+    {
+      if (domain_local_value (ctx->ancestors[i], regu->value.dbvalptr))
+	{
+	  return ctx->block;
+	}
+    }
+  return NULL;
 }
 
 static void
@@ -1559,9 +1623,19 @@ domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
 	  return;
 	}
       ctx->compare_term_guards = guards;
+      XASL_NODE **scopes =
+	(XASL_NODE **) db_private_realloc (ctx->thread_p, ctx->compare_term_scopes, 2 * max * sizeof (*scopes));
+      if (scopes == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->compare_term_scopes = scopes;
       ctx->max_compare_terms = max;
     }
   ctx->compare_term_guards[ctx->n_compare_terms] = ctx->guard;
+  ctx->compare_term_scopes[2 * ctx->n_compare_terms] = domain_outer_scope (ctx, term->lhs);
+  ctx->compare_term_scopes[2 * ctx->n_compare_terms + 1] = domain_outer_scope (ctx, term->rhs);
   ctx->compare_terms[ctx->n_compare_terms++] = term;
 }
 
@@ -1713,6 +1787,12 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	      if (operand->domain_plan == NULL)
 		{
 		  record->n_link = -1;
+		}
+	      if ((agg->function == PT_SUM || agg->function == PT_AVG) && agg->option != Q_DISTINCT)
+		{
+		  /* #368 (D-368-01, D-368-07): the value SUM and AVG add, when a scope fixes it (domain_publish_held) */
+		  record->held_operand[1] = operand;
+		  record->held_scope[1] = domain_outer_scope (ctx, operand);
 		}
 	    }
 	}
@@ -2102,6 +2182,20 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     }
   ctx->blocks[ctx->n_blocks] = xasl;
   ctx->block_guards[ctx->n_blocks++] = ctx->guard;
+  if (ctx->n_ancestors == ctx->max_ancestors)
+    {
+      const int max = ctx->max_ancestors == 0 ? 8 : ctx->max_ancestors * 2;
+      XASL_NODE **ancestors =
+	(XASL_NODE **) db_private_realloc (ctx->thread_p, ctx->ancestors, max * sizeof (*ancestors));
+      if (ancestors == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->ancestors = ancestors;
+      ctx->max_ancestors = max;
+    }
+  ctx->ancestors[ctx->n_ancestors++] = xasl;
   XASL_NODE *previous_block = ctx->block;
   const int entry_guard = ctx->guard;
   ctx->block = xasl;
@@ -2314,8 +2408,10 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_regu (ctx, xasl->precomp_owner_regu, DOMAIN_CTX_COMPARE);
   ctx->guard = if_guard;
   domain_walk_xasl (ctx, xasl->scan_ptr);
-  /* the next block is no part of this one's execution: outside its guards */
+  /* the next block is no part of this one's execution: outside its guards, and not an outer block of it (#368) */
   ctx->guard = entry_guard;
+  assert (ctx->n_ancestors > 0 && ctx->ancestors[ctx->n_ancestors - 1] == xasl);
+  ctx->n_ancestors--;
   domain_walk_xasl (ctx, xasl->next);
   ctx->block = previous_block;
 }
@@ -3313,8 +3409,124 @@ domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOA
 }
 
 /*
+ * domain_block_scope () - the scope of a block whose scans fix the correlated values it reads (#368, D-368-01)
+ *   return: the scope; -1 when the block's scans do not start it anew
+ *
+ * The value lists the block's scans fill carry it: a scan filling one starts the scope anew (scan_start_scan,
+ * scan_reset_scan_block: an inner scan for each outer row), and so does the block's execution (a correlated subquery,
+ * qexec_execute_mainblock). Only a scan procedure's block is one; a list another block's scope marked already is not.
+ */
+static int
+domain_block_scope (DOMAIN_PLAN * plan, XASL_NODE * block)
+{
+  if ((block->type != BUILDLIST_PROC && block->type != BUILDVALUE_PROC && block->type != SCAN_PROC)
+      || block->val_list == NULL)
+    {
+      return -1;
+    }
+  VAL_LIST *const lists[2] = { block->val_list, block->merge_val_list };
+  const int scope = lists[0]->domain_scope;
+  if (lists[1] != NULL && lists[1]->domain_scope != scope)
+    {
+      return -1;
+    }
+  if (scope != 0)
+    {
+      return scope;
+    }
+  for (int i = 0; i < 2; i++)
+    {
+      if (lists[i] != NULL)
+	{
+	  lists[i]->domain_scope = plan->n_scopes;
+	}
+    }
+  return plan->n_scopes++;
+}
+
+/*
+ * domain_add_held () - a value the execution converts once per scope (#368): a constant's scope is the execution's, a
+ *   correlated value's its block's
+ *   return: 1 + its resolved.held index; 0 when there is none (the block's scans do not start a scope; no memory:
+ *	     ctx->failed)
+ */
+static int
+domain_add_held (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, XASL_NODE * block)
+{
+  const int scope = block == NULL ? DOMAIN_SCOPE_EXECUTION : domain_block_scope (plan, block);
+  if (scope < 0)
+    {
+      return 0;
+    }
+  if (plan->n_held == ctx->max_held)
+    {
+      const int max = ctx->max_held == 0 ? 8 : ctx->max_held * 2;
+      int *scopes = (int *) db_private_realloc (ctx->thread_p, ctx->held_scopes, max * sizeof (*scopes));
+      if (scopes == NULL)
+	{
+	  ctx->failed = true;
+	  return 0;
+	}
+      ctx->held_scopes = scopes;
+      XASL_NODE **blocks = (XASL_NODE **) db_private_realloc (ctx->thread_p, ctx->held_blocks, max * sizeof (*blocks));
+      if (blocks == NULL)
+	{
+	  ctx->failed = true;
+	  return 0;
+	}
+      ctx->held_blocks = blocks;
+      ctx->max_held = max;
+    }
+  ctx->held_scopes[plan->n_held] = scope;
+  ctx->held_blocks[plan->n_held] = block;
+  return ++plan->n_held;
+}
+
+/* Whether a node's pre-cast may convert operand i at the row: the gate decides the pre-cast (a gate-dependent node, a
+ * compiled one over an operand it did not type), or the load's converts it (#368). */
+static bool
+domain_arith_may_convert (const DOMAIN_PLAN_ITEM * item, int i)
+{
+  return ((item->flags & DOMAIN_PLAN_GATE) && !(item->flags & DOMAIN_PLAN_COLLATION_GATE))
+    || (item->flags & DOMAIN_PLAN_PRECAST_GATE) || item->fixed.conv[i] != NULL;
+}
+
+/* Whether an operand is a constant the execution fixes: a literal, a bind, or a constant subtree the gate evaluates
+ * (#368, as domain_compare_side knows one). */
+static bool
+domain_constant_operand (const REGU_VARIABLE * regu, int constant_base)
+{
+  if (regu->type == TYPE_DBVAL || (regu->type == TYPE_POS_VALUE && regu->domain_plan != NULL))
+    {
+      return true;
+    }
+  const DOMAIN_PLAN_ITEM *cached = NULL;
+  if ((regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL)
+    {
+      cached = regu->value.arithptr->domain_plan;
+    }
+  else if (regu->type == TYPE_FUNC)
+    {
+      cached = regu->domain_plan;
+    }
+  return cached != NULL && cached->ref >= constant_base;
+}
+
+/* Whether a comparison record may convert a side at the row: the gate decides it, or the load's decision converts it
+ * (#368). */
+static bool
+domain_record_may_convert (const DOMAIN_COMPARE_PLAN * site, int side)
+{
+  return site->fixed.kernel == DOMAIN_COMPARE_AT_GATE || site->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE
+    || (site->fixed.kernel == DOMAIN_COMPARE_CONVERT && site->fixed.conv[side] != NULL);
+}
+
+/*
  * domain_publish_compares () - every comparison term gets its comparison record (D-352-01), every ALL/SOME term its
  *   element comparisons (D-352-03), and every comparison outside a term its record (#354)
+ *
+ * #368 (D-368-01): a term's side that is a correlated value an outer block's scan fixes is converted once per scope,
+ * where every place the walk met the term is in that scope.
  */
 static bool
 domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, int constant_base)
@@ -3354,6 +3566,15 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	    {
 	      ctx->guards_ambiguous = true;
 	    }
+	  /* and a side is converted once per scope only where the second place is in the same scope (#368) */
+	  DOMAIN_COMPARE_PLAN *met = const_cast < DOMAIN_COMPARE_PLAN * >(term->domain_compare);
+	  for (int side = 0; side < 2; side++)
+	    {
+	      if (met->held[side] != 0 && ctx->held_blocks[met->held[side] - 1] != ctx->compare_term_scopes[2 * t + side])
+		{
+		  met->held[side] = 0;
+		}
+	    }
 	  continue;
 	}
       DOMAIN_COMPARE_PLAN *site = (DOMAIN_COMPARE_PLAN *) domain_plan_alloc (thread_p, 1, sizeof (*site));
@@ -3373,6 +3594,14 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 							   &volatile_reads);
       ok = domain_publish_record (plan, site, lhs, rhs, key, volatile_reads, gate_sites, &n_gate);
       term->domain_compare = site;
+      for (int side = 0; ok && side < 2; side++)
+	{
+	  XASL_NODE *block = ctx->compare_term_scopes[2 * t + side];
+	  if (block != NULL && domain_record_may_convert (site, side))
+	    {
+	      site->held[side] = domain_add_held (ctx, plan, block);
+	    }
+	}
     }
   for (DOMAIN_LOAD_ELEMENT_TERM * e = ctx->element_terms; e != NULL && ok; e = e->next)
     {
@@ -3444,6 +3673,54 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
       db_private_free (thread_p, records);
     }
   return ok;
+}
+
+/*
+ * domain_publish_held () - the arithmetic operands and the values SUM and AVG add that a scope fixes (#368, D-368-01,
+ *   D-368-07): a constant - a literal, a bind, a constant subtree - for the execution, a correlated value for its
+ *   block's scope; the execution converts each once per scope where the node's pre-cast converts it. Then the scope
+ *   of every such value, the comparison sides' (domain_publish_compares) included.
+ */
+static bool
+domain_publish_held (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, int constant_base)
+{
+  for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL && !ctx->failed; r = r->next)
+    {
+      if (r->alias != NULL || (r->held_operand[0] == NULL && r->held_operand[1] == NULL))
+	{
+	  continue;
+	}
+      DOMAIN_PLAN_ITEM *item = &plan->items[r->index];
+      /* an aggregate plans its pre-cast at its setup, from its value's domain in the execution */
+      const bool aggregate = r->cold.ctx == DOMAIN_CTX_AGG;
+      for (int i = 0; i < 2; i++)
+	{
+	  const REGU_VARIABLE *operand = r->held_operand[i];
+	  if (operand == NULL || (!aggregate && !domain_arith_may_convert (item, i)))
+	    {
+	      continue;
+	    }
+	  if (r->held_scope[i] != NULL)
+	    {
+	      item->held[i] = domain_add_held (ctx, plan, r->held_scope[i]);
+	    }
+	  else if (domain_constant_operand (operand, constant_base))
+	    {
+	      item->held[i] = domain_add_held (ctx, plan, NULL);
+	    }
+	}
+    }
+  if (ctx->failed || plan->n_held == 0)
+    {
+      return !ctx->failed;
+    }
+  plan->held_scope = (int *) domain_plan_alloc (thread_p, plan->n_held, sizeof (*plan->held_scope));
+  if (plan->held_scope == NULL)
+    {
+      return false;
+    }
+  memcpy (plan->held_scope, ctx->held_scopes, sizeof (*plan->held_scope) * plan->n_held);
+  return true;
 }
 
 /*
@@ -4088,6 +4365,8 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   memset (plan, 0, sizeof (*plan));
   plan->dbval_cnt = root->dbval_cnt;
   plan->n_refs = root->dbval_cnt;
+  /* the execution's scope comes first (DOMAIN_SCOPE_EXECUTION, #368) */
+  plan->n_scopes = 1;
   DOMAIN_LOAD_CONTEXT ctx;
   memset (&ctx, 0, sizeof (ctx));
   ctx.thread_p = thread_p;
@@ -4347,7 +4626,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	}
       ctx.failed = ctx.failed || !domain_publish_compares (thread_p, &ctx, plan, constant_base)
 	|| !domain_publish_constant_sites (thread_p, plan, constant_base)
-	|| !domain_publish_indexes (thread_p, &ctx, plan);
+	|| !domain_publish_indexes (thread_p, &ctx, plan) || !domain_publish_held (thread_p, &ctx, plan, constant_base);
     }
   if (!ctx.failed && ctx.guards_ambiguous)
     {
@@ -4399,6 +4678,22 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   if (ctx.compare_term_guards != NULL)
     {
       db_private_free (thread_p, ctx.compare_term_guards);
+    }
+  if (ctx.compare_term_scopes != NULL)
+    {
+      db_private_free (thread_p, ctx.compare_term_scopes);
+    }
+  if (ctx.ancestors != NULL)
+    {
+      db_private_free (thread_p, ctx.ancestors);
+    }
+  if (ctx.held_scopes != NULL)
+    {
+      db_private_free (thread_p, ctx.held_scopes);
+    }
+  if (ctx.held_blocks != NULL)
+    {
+      db_private_free (thread_p, ctx.held_blocks);
     }
   if (ctx.gate_order != NULL)
     {

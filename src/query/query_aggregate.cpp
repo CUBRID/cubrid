@@ -65,7 +65,8 @@ using namespace cubquery;
 //
 static int qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
-    tp_domain *func_domain, db_value *value, bool is_acc_to_acc);
+    tp_domain *func_domain, db_value *value, bool is_acc_to_acc,
+    const DB_VALUE *held = NULL);
 static void qdata_clear_value_array (DB_VALUE *values, int count);
 static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p,
     cubxasl::aggregate_accumulator *acc,
@@ -475,11 +476,12 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
  *   func_domain(in): function domain
  *   value(in): value
  *   value_next(int): value of the second argument; used only for JSON_OBJECTAGG
+ *   held(in): SUM, AVG: the value converted once for its scope for the pre-cast of the add (#368, D-368-07); NULL none
  */
 static int
 qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
 				      cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
-				      tp_domain *func_domain, db_value *value, bool is_acc_to_acc)
+				      tp_domain *func_domain, db_value *value, bool is_acc_to_acc, const DB_VALUE *held)
 {
   DB_VALUE squared;
   bool copy_operator = false;
@@ -623,8 +625,9 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	    }
 	  /* unsupported types keep the per-row add into acc->value, after the pre-cast the setup planned for a value
 	   * (#368, D-368-06); another accumulator comes in the accumulator's type */
+	  const DB_VALUE *const held_values[2] = { NULL, held };
 	  if (qdata_precast_arith_dbval (thread_p, T_ADD, is_acc_to_acc ? NULL : &domain->precast, acc->value, value,
-					 acc->value, domain->value_dom) != NO_ERROR)
+					 acc->value, domain->value_dom, held_values) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -1071,8 +1074,16 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      continue;
 	    }
 
+	  /* #368 (D-368-01, D-368-07): a value a scope fixes is converted once per scope for the pre-cast of the add;
+	   * the first value is the accumulator's as it is */
+	  const DOMAIN_PLAN_ITEM *item = agg_p->domain_plan;
+	  const RESOLVED_DOMAIN *precast = &agg_p->accumulator_domain.precast;
+	  const DB_VALUE *held = accumulator->curr_cnt >= 1 && item != NULL && item->held[1] != 0
+				 && precast->conv[1] != NULL
+				 ? qexec_held_value (thread_p, val_desc_p, item->held[1], precast->conv[1],
+						     precast->operand_domain[1], peek_val) : NULL;
 	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-		  agg_p->function, agg_domain, peek_val, false);
+		  agg_p->function, agg_domain, peek_val, false, held);
 	  if (error != NO_ERROR)
 	    {
 	      return error;

@@ -3782,6 +3782,47 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
   return NO_ERROR;
 }
 
+/* The values an execution converts once per scope and the scopes' epochs (#368): none converted yet; the execution's
+ * scope is entered from the start, a block's when its scan starts. */
+static int
+qexec_alloc_held_values (THREAD_ENTRY * thread_p, int n_held, int n_scopes, RESOLVED_DOMAIN_TABLE & resolved)
+{
+  assert (resolved.held == NULL && resolved.scope_epochs == NULL);
+  if (n_held <= 0 || n_scopes <= 0)
+    {
+      return NO_ERROR;
+    }
+  resolved.held = (DOMAIN_HELD_VALUE *) db_private_alloc (thread_p, sizeof (*resolved.held) * (size_t) n_held);
+  resolved.scope_epochs =
+    (unsigned long long *) db_private_alloc (thread_p, sizeof (*resolved.scope_epochs) * (size_t) n_scopes);
+  if (resolved.held == NULL || resolved.scope_epochs == NULL)
+    {
+      if (resolved.held != NULL)
+	{
+	  db_private_free_and_init (thread_p, resolved.held);
+	}
+      if (resolved.scope_epochs != NULL)
+	{
+	  db_private_free_and_init (thread_p, resolved.scope_epochs);
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (*resolved.held) * (size_t) n_held);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (int h = 0; h < n_held; h++)
+    {
+      db_make_null (&resolved.held[h].value);
+      resolved.held[h].epoch = 0;
+      resolved.held[h].conv = NULL;
+      resolved.held[h].target = NULL;
+      resolved.held[h].failed = false;
+    }
+  memset (resolved.scope_epochs, 0, sizeof (*resolved.scope_epochs) * (size_t) n_scopes);
+  resolved.scope_epochs[DOMAIN_SCOPE_EXECUTION] = 1;
+  resolved.n_held = n_held;
+  resolved.n_scopes = n_scopes;
+  return NO_ERROR;
+}
+
 /*
  * qexec_deep_copy_xasl_state () - the one way a PX clone inherits a gated
  *   execution state (D-318-06, D-323-06).
@@ -3819,6 +3860,13 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, 
       return NULL;
     }
   resolved.owner = thread_p;
+  /* #368: the worker converts its own values once per scope, and enters a block's scope when its own scan starts */
+  if (qexec_alloc_held_values (thread_p, src.n_held, src.n_scopes, resolved) != NO_ERROR)
+    {
+      qexec_clear_resolved_domains (thread_p, new_xasl_state);
+      db_private_free (thread_p, new_xasl_state);
+      return NULL;
+    }
   for (int k = 0; k < src.n_elements; k++)
     {
       if (qexec_copy_elements (thread_p, &src.elements[k], &resolved.elements[k]) != NO_ERROR)
@@ -3905,7 +3953,13 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_elements = plan == NULL ? 0 : plan->n_element_sites;
   const int n_indexes = plan == NULL ? 0 : plan->n_index_sites;
   const int n_cells = plan == NULL ? 0 : plan->n_cells;
-  return qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, n_compares, n_elements, n_indexes, n_cells, resolved);
+  const int error =
+    qexec_alloc_resolved_domains (thread_p, n_vals, n_slots, n_compares, n_elements, n_indexes, n_cells, resolved);
+  if (error != NO_ERROR || plan == NULL)
+    {
+      return error;
+    }
+  return qexec_alloc_held_values (thread_p, plan->n_held, plan->n_scopes, resolved);
 }
 
 static int qexec_note_failure (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
@@ -6296,7 +6350,91 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
       db_private_free (thread_p, resolved.vals);
       xasl_state->vd.dbval_ptr = const_cast < DB_VALUE * >(resolved.in);
     }
+  if (resolved.held != NULL)
+    {
+      for (int h = 0; h < resolved.n_held; h++)
+	{
+	  pr_clear_value (&resolved.held[h].value);
+	}
+      db_private_free (thread_p, resolved.held);
+    }
+  if (resolved.scope_epochs != NULL)
+    {
+      db_private_free (thread_p, resolved.scope_epochs);
+    }
   memset (&resolved, 0, sizeof (resolved));
+}
+
+/*
+ * qexec_enter_domain_scope () - a scan filling a block's value list starts, or restarts for the next outer row, or the
+ *   block's execution starts: the correlated values the block holds converted are converted anew (#368, D-368-01)
+ *   vd(in): the execution's value descriptor (a PX worker's own)
+ *   val_list(in): the list; its load gave it its block's scope, if any
+ */
+void
+qexec_enter_domain_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
+{
+  if (val_list == NULL || val_list->domain_scope <= 0 || vd == NULL || vd->xasl_state == NULL)
+    {
+      return;
+    }
+  RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  if (val_list->domain_scope < resolved.n_scopes)
+    {
+      resolved.scope_epochs[val_list->domain_scope]++;
+    }
+}
+
+/*
+ * qexec_held_value () - the value a scope fixes, converted once in the scope (#368, D-368-01, D-368-07): a comparison
+ *   side, an arithmetic operand or the value a SUM or AVG adds that is a constant (the execution's scope) or a
+ *   correlated value (its block's scope)
+ *   return: the converted value; NULL when the row converts it - the scope was not entered, the conversion failed
+ *	     (develop's outcome follows from the row's own), or the value is not the execution's own
+ *   held(in): 1 + its resolved.held index (a plan item's or a comparison record's)
+ *   conv(in), target(in): the converter the row would run, and its target
+ *   value(in): the value, not NULL
+ */
+const DB_VALUE *
+qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONV_FUNC conv,
+		  const TP_DOMAIN * target, const DB_VALUE * value)
+{
+  if (held <= 0 || vd == NULL || vd->xasl_state == NULL)
+    {
+      return NULL;
+    }
+  RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  const int h = held - 1;
+  if (h >= resolved.n_held || resolved.owner != thread_p)
+    {
+      return NULL;
+    }
+  /* a PX worker's own load numbers the values and their scopes as the plan does (D-M3) */
+  const unsigned long long epoch = resolved.scope_epochs[resolved.plan->held_scope[h]];
+  if (epoch == 0)
+    {
+      return NULL;
+    }
+  DOMAIN_HELD_VALUE *entry = &resolved.held[h];
+  if (entry->epoch == epoch && entry->conv == conv && entry->target == target)
+    {
+      return entry->failed ? NULL : &entry->value;
+    }
+  pr_clear_value (&entry->value);
+  entry->epoch = epoch;
+  entry->conv = conv;
+  entry->target = target;
+  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
+  /* a failure is the row's to report, in develop's order: this attempt leaves no error */
+  er_stack_push ();
+  entry->failed = domain_run_converter (conv, target, value, &entry->value) != DOMAIN_COMPATIBLE;
+  er_stack_pop ();
+  if (entry->failed)
+    {
+      pr_clear_value (&entry->value);
+      return NULL;
+    }
+  return &entry->value;
 }
 
 /* Frees a qexec_deep_copy_xasl_state copy: its values (secondary references
@@ -18827,6 +18965,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
+
+  /* #368 (D-368-01): a correlated subquery runs for an outer row - the outer values the block reads converted are
+   * converted anew, its LIMIT's included */
+  qexec_enter_domain_scope (&xasl_state->vd, xasl->val_list);
 
   /*
    * Pre_processing

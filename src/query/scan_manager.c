@@ -4743,6 +4743,9 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   JSON_TABLE_SCAN_ID *jtidp = NULL;
 
+  /* #368 (D-368-01): the outer values its block reads converted are converted anew */
+  qexec_enter_domain_scope (scan_id->vd, scan_id->val_list);
+
 #if SERVER_MODE && !WINDOWS
   /* attempt parallel-index promotion now that need_count_only is resolved; may rewrite scan_id->type to S_PARALLEL_INDEX_SCAN. */
   if (scan_id->type == S_INDX_SCAN && scan_id->s.isid.parallel_pending != NULL)
@@ -5073,6 +5076,8 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
   s_id->single_fetched = false;
   s_id->null_fetched = false;
+  /* #368 (D-368-01): an inner scan restarts for the next outer row, whose values it reads converted anew */
+  qexec_enter_domain_scope (s_id->vd, s_id->val_list);
 
   switch (s_id->type)
     {
