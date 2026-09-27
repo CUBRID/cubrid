@@ -4473,6 +4473,90 @@ qexec_session_variable_type (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAI
   return NO_ERROR;
 }
 
+/*
+ * qexec_share_value () - a bind's value in the gate's array as a copy that owns nothing (#371): its DB_VALUE is its
+ *   own, its buffers are the bind's
+ *   return: NO_ERROR, or pr_clone_value's error
+ *
+ * resolved.in - qmgr's copies of the client's values, an SA client's own - lives for the whole execution and nothing
+ * writes it, and qexec_clear_resolved_domains clears the gate's values before the execution ends: pr_clear_value
+ * frees nothing of a value without need_clear and, for a string, compressed_need_clear (DB_NEED_CLEAR). A reader that
+ * changes the copy in place writes its DB_VALUE only: a cast gives it a value of its own (tp_value_cast_internal), a
+ * string cast that keeps the bytes changes the header (tp_value_slam_domain), a COLLATE modifier the codeset and
+ * collation, qdata_set_valptr_list_unbound makes it NULL. A NULL is made as pr_clone_value makes it, and a collection
+ * is cloned: pr_clear_value frees a collection whatever need_clear says, and a cast in place changes the collection
+ * itself (setobj_put_domain).
+ */
+static int
+qexec_share_value (const DB_VALUE * source, DB_VALUE * copy)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (source);
+  if (DB_IS_NULL (source) || TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ)
+    {
+      return pr_clone_value (source, copy);
+    }
+  *copy = *source;
+  copy->need_clear = false;
+  if (TP_IS_CHAR_TYPE (type))
+    {
+      copy->data.ch.info.compressed_need_clear = false;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * qexec_constant_key () - the key a constant compares with: its value's (#352)
+ *
+ * A string, a NUMERIC and a type without parameters give the key their cached domain gives, read from the value
+ * (#371). Any other value keeps the key of the domain tp_domain_resolve_value gives it: an ENUM's is the default ENUM
+ * domain, not the value's collation; a collection's, a MIDXKEY's and an OID's are theirs.
+ */
+static void
+qexec_constant_key (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key)
+{
+  if (DB_IS_NULL (value))
+    {
+      domain_compare_key_of (&tp_Null_domain, key);
+      return;
+    }
+  switch (DB_VALUE_DOMAIN_TYPE (value))
+    {
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_NUMERIC:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+      domain_compare_key_of_value (value, key);
+#if !defined (NDEBUG)
+      {
+	DOMAIN_COMPARE_KEY domain_key;
+	domain_compare_key_of (tp_domain_resolve_value (value, NULL), &domain_key);
+	assert (domain_key.type == key->type && domain_key.codeset == key->codeset
+		&& domain_key.collation == key->collation);
+      }
+#endif
+      break;
+    default:
+      domain_compare_key_of (tp_domain_resolve_value (value, NULL), key);
+      break;
+    }
+}
 
 /* The value a constant side holds at the gate: a literal, a bind's reference value, or a constant subtree's value once
  * step 7 evaluated it; NULL for a subtree step 7 has not evaluated yet (every one has its value after step 7, #367). */
@@ -4495,19 +4579,19 @@ qexec_compare_constant (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COM
 /*
  * qexec_compare_side_key () - the key of one side of a comparison site at the gate (#352)
  *   return: false when the side has no decision the gate should have made (qexec_compare_side_unresolved)
+ *   value(in): the side's value at the gate (qexec_compare_constant), which the caller looked up once (#371)
  *
  * A constant side - a bind or a literal (F-335-06), a constant subtree the gate evaluated (F-352-17) - compares with
  * its value's key, a slot or gate-dependent side with the gate's decision, anything else with its plan domain.
  */
 static bool
 qexec_compare_side_key (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site, int side,
-			DOMAIN_COMPARE_KEY * key)
+			const DB_VALUE * value, DOMAIN_COMPARE_KEY * key)
 {
   const DOMAIN_PLAN_ITEM *item = site->operand[side];
-  const DB_VALUE *value = qexec_compare_constant (resolved, site, side);
   if (value != NULL)
     {
-      domain_compare_key_of (DB_IS_NULL (value) ? &tp_Null_domain : tp_domain_resolve_value (value, NULL), key);
+      qexec_constant_key (value, key);
       domain_compare_key_collate (key, site->collate[side]);
       return true;
     }
@@ -4621,17 +4705,25 @@ qexec_compare_reads_failed (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN
  *   a constant subtree, once the subtree is evaluated
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
  *
- * Every constant side gets a value of its own, converted or copied: the value it came from stays as it is (S-09's
- * in-place coercion is gone), and a reader that coerces a shared bind or a cached value in place cannot change what
- * the comparison compares. A constant whose conversion fails is develop's -181 at every row a term compares, which the
- * gate raises before any row (#367, D-367-02); a record outside a term answers by rank there, as develop's does.
+ * A constant side the decision converts gets a value of its own, converted once: the value it came from stays as it
+ * is (S-09's in-place coercion is gone). One with nothing to convert is not copied (#371): a bind gets a copy that
+ * shares its value (qexec_share_value), which a reader that changes the bind's value in place - an in-place cast of a
+ * constant column, qdata_set_valptr_list_unbound - leaves as it is; a literal or a constant subtree is compared as the
+ * row fetches it, the value the gate read here. Under a COLLATE modifier either has the codeset and collation the
+ * fetch gives it, a literal or a subtree in a copy of its own. A constant whose conversion fails is develop's -181 at
+ * every row a term compares, which the gate raises before any row (#367, D-367-02); a record outside a term answers
+ * by rank there, as develop's does.
  */
 static int
 qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * site)
 {
   DOMAIN_COMPARE *compare = &resolved.compares[site->fixed.site];
+  /* each side's value at the gate, looked up once (#371) */
+  const DB_VALUE *const constant[2] =
+    { qexec_compare_constant (resolved, site, 0), qexec_compare_constant (resolved, site, 1) };
   DOMAIN_COMPARE_KEY key[2];
-  if (!qexec_compare_side_key (resolved, site, 0, &key[0]) || !qexec_compare_side_key (resolved, site, 1, &key[1]))
+  if (!qexec_compare_side_key (resolved, site, 0, constant[0], &key[0])
+      || !qexec_compare_side_key (resolved, site, 1, constant[1], &key[1]))
     {
       return qexec_compare_side_unresolved (site);
     }
@@ -4648,21 +4740,31 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
     }
   for (int side = 0; side < 2; side++)
     {
-      const DB_VALUE *constant = qexec_compare_constant (resolved, site, side);
-      if (constant == NULL || site->value[side] < 0)
+      if (constant[side] == NULL || site->value[side] < 0)
 	{
 	  continue;
 	}
       DB_VALUE *converted = &resolved.vals[site->value[side]];
-      if (compare->conv[side] == NULL || DB_IS_NULL (constant))
+      if (compare->conv[side] == NULL || DB_IS_NULL (constant[side]))
 	{
-	  /* nothing to convert (a NULL answers before any coercion): a copy of its own, in the codeset and collation
+	  /* nothing to convert (a NULL answers before any coercion) */
+	  compare->conv[side] = NULL;
+	  const TP_DOMAIN *collate = site->collate[side];
+	  const DOMAIN_PLAN_ITEM *item = site->constant[side];
+	  const bool bind = item != NULL && resolved.plan->items_cold[item - resolved.plan->items].val_pos >= 0;
+	  if (!bind && collate == NULL)
+	    {
+	      /* a literal or a constant subtree: the row compares the value it fetches, this one (#371) */
+	      continue;
+	    }
+	  /* a bind's copy shares its value, a literal's or a subtree's is its own; either in the codeset and collation
 	   * a COLLATE modifier gives it at the fetch */
-	  if (pr_clone_value (constant, converted) != NO_ERROR)
+	  const int copied = bind ? qexec_share_value (constant[side], converted)
+	    : pr_clone_value (constant[side], converted);
+	  if (copied != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
-	  const TP_DOMAIN *collate = site->collate[side];
 	  if (collate != NULL && !DB_IS_NULL (converted))
 	    {
 	      if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (converted)))
@@ -4676,16 +4778,14 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
 		}
 	    }
 	  compare->value[side] = site->value[side];
-	  compare->conv[side] = NULL;
-	  resolved.ready[site->value[side]] = DOMAIN_VALUE_READY;
 	  continue;
 	}
       const int saved_error = er_errid ();
-      if (domain_run_converter (compare->conv[side], compare->target[side], constant, converted) == DOMAIN_COMPATIBLE)
+      if (domain_run_converter (compare->conv[side], compare->target[side], constant[side], converted) ==
+	  DOMAIN_COMPATIBLE)
 	{
 	  compare->value[side] = site->value[side];
 	  compare->conv[side] = NULL;
-	  resolved.ready[site->value[side]] = DOMAIN_VALUE_READY;
 	}
       else
 	{
@@ -4780,7 +4880,7 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolv
 	  break;
 	}
       DOMAIN_COMPARE_KEY key;
-      domain_compare_key_of (DB_IS_NULL (&element) ? &tp_Null_domain : tp_domain_resolve_value (&element, NULL), &key);
+      qexec_constant_key (&element, &key);
       if (!collection)
 	{
 	  domain_compare_key_collate (&key, pair->collate[1]);
@@ -4923,35 +5023,37 @@ qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolve
 {
   DOMAIN_ELEMENTS *out = &resolved.elements[site->site];
   const DOMAIN_COMPARE_PLAN *pair = &site->pair;
+  /* each side's value at the gate, looked up once (#371) */
+  const DB_VALUE *const constant[2] =
+    { qexec_compare_constant (resolved, pair, 0), qexec_compare_constant (resolved, pair, 1) };
   DOMAIN_COMPARE_KEY key[2];
-  if (!qexec_compare_side_key (resolved, pair, 0, &key[0]))
+  if (!qexec_compare_side_key (resolved, pair, 0, constant[0], &key[0]))
     {
       return qexec_compare_side_unresolved (pair);
     }
   if (pair->literal[1] != NULL || pair->constant[1] != NULL)
     {
-      const DB_VALUE *constant = qexec_compare_constant (resolved, pair, 1);
-      if (constant == NULL && qexec_compare_reads_failed (resolved, pair))
+      if (constant[1] == NULL && qexec_compare_reads_failed (resolved, pair))
 	{
 	  /* a constant whose computation failed below a branch guard: no row reaches the term, or G1 raises the
 	   * failure (#367) */
 	  out->read = DOMAIN_READ_NONE;
 	  return NO_ERROR;
 	}
-      if (constant == NULL)
+      if (constant[1] == NULL)
 	{
 	  /* the gate decides the site once the constant has its value (#367) */
 	  return qexec_compare_side_unresolved (pair);
 	}
-      if (DB_IS_NULL (constant))
+      if (DB_IS_NULL (constant[1]))
 	{
 	  /* a NULL constant compares nothing */
 	  out->read = DOMAIN_READ_NONE;
 	  return NO_ERROR;
 	}
-      return qexec_resolve_positions (thread_p, resolved, pair, &key[0], constant, out);
+      return qexec_resolve_positions (thread_p, resolved, pair, &key[0], constant[1], out);
     }
-  if (!qexec_compare_side_key (resolved, pair, 1, &key[1]))
+  if (!qexec_compare_side_key (resolved, pair, 1, constant[1], &key[1]))
     {
       return qexec_compare_side_unresolved (pair);
     }
@@ -5140,14 +5242,33 @@ qexec_release_constant_node (REGU_VARIABLE * regu)
     }
 }
 
+/* Whether a constant subtree's value moves into the gate's array rather than being copied there (#371): the node's own
+ * string, which owns its buffers. Its release then frees nothing and leaves the node's value the NULL a copy's release
+ * left; any other value - one the node points at, one that owns nothing, a NULL - is copied. */
+static bool
+qexec_constant_value_moves (const REGU_VARIABLE * regu, const DB_VALUE * value)
+{
+  const DB_VALUE *own = NULL;
+  if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
+    {
+      own = regu->value.arithptr->value;
+    }
+  else if (regu->type == TYPE_FUNC)
+    {
+      own = regu->value.funcp->value;
+    }
+  return value == own && !DB_IS_NULL (value) && value->need_clear && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value))
+    && (DB_GET_COMPRESSED_STRING (value) == NULL || value->data.ch.info.compressed_need_clear);
+}
+
 /*
  * qexec_evaluate_constant () - G1 step 7: a constant subtree once, into its own value (#352, interface §10)
  *   return: NO_ERROR, or the error of its computation: the execution's, before any row (#367, D-367-01)
  *
- * The fetch computes it as the first row would; its value goes to the gate's array and every fetch after this reads it.
- * develop raised a computation's error at the first row that computed the node, so 0 rows, a branch never taken or a
- * short-circuited predicate raised none; the gate raises it whatever the rows (the user's decision of 2026-09-27,
- * replacing D-352-05).
+ * The fetch computes it as the first row would; its value goes to the gate's array - the node's own string moves
+ * there (#371), any other value is copied - and every fetch after this reads it. develop raised a computation's error
+ * at the first row that computed the node, so 0 rows, a branch never taken or a short-circuited predicate raised none;
+ * the gate raises it whatever the rows (the user's decision of 2026-09-27, replacing D-352-05).
  */
 static int
 qexec_evaluate_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const DOMAIN_PLAN_CONSTANT * constant)
@@ -5158,7 +5279,16 @@ qexec_evaluate_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const
   if (error == NO_ERROR)
     {
       assert (value != NULL);
-      error = value != NULL ? pr_clone_value (value, &resolved.vals[constant->item->ref]) : ER_FAILED;
+      if (value != NULL && qexec_constant_value_moves (constant->regu, value))
+	{
+	  resolved.vals[constant->item->ref] = *value;
+	  value->need_clear = false;
+	  value->data.ch.info.compressed_need_clear = false;
+	}
+      else
+	{
+	  error = value != NULL ? pr_clone_value (value, &resolved.vals[constant->item->ref]) : ER_FAILED;
+	}
     }
   qexec_release_constant_node (constant->regu);
   if (error != NO_ERROR)
@@ -5920,7 +6050,7 @@ qexec_raise_reached_failures (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
  *   the main block.
  *   return: NO_ERROR, or ER_code (a failure is a pre-execution error)
  *   xasl(in): root of the XASL tree carrying the load-derived DOMAIN_PLAN
- *   xasl_state(in/out): after return vd.dbval_ptr points to the owned values
+ *   xasl_state(in/out): after return vd.dbval_ptr points to the gate's values (a bind's shares qmgr's value, #371)
  *
  * D-323-01/03/04/05: the plan stays immutable, the input stays const, and each
  * reference (val_pos, domain, failure policy) has its own value. D-335-08: the
@@ -5931,7 +6061,7 @@ qexec_raise_reached_failures (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
  *
  * The steps, in this order (interface section 3.1; #368 review 2 R2-16):
  *   1   one block for the values and the decisions, vd.dbval_ptr pointed at the values (qexec_init_resolved_domains)
- *   2   each bind reference's value, a GATE slot's domain from its bound value
+ *   2   each bind reference's value (qexec_share_value), a GATE slot's domain from its bound value
  *   3   (the session variable reads are gate-dependent nodes of step 4, typed in step 7b, #366)
  *   4   the gate-dependent nodes, producers first; a node over a constant subtree waits for step 7, a node over a
  *       session variable read for 7b
@@ -5985,7 +6115,8 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	{
 	  const int val_pos = plan->items_cold[plan->const_refs[next] - plan->items].val_pos;
 	  assert (val_pos >= 0 && val_pos < dbval_cnt);
-	  error = pr_clone_value (&resolved.in[val_pos], &resolved.vals[ref]);
+	  /* the bind's value, shared (#371) */
+	  error = qexec_share_value (&resolved.in[val_pos], &resolved.vals[ref]);
 	  for (; error == NO_ERROR && next < n_const_refs && plan->const_refs[next]->ref == ref; next++)
 	    {
 	      if (plan->items_cold[plan->const_refs[next] - plan->items].val_pos < 0)
@@ -5997,9 +6128,9 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	      if (item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_COLLATION_GATE))
 		{
 		  /* a GATE slot: the value's domain is the plan; a COLLATION_GATE slot: the compiled type with the
-		   * value's collation (#336) */
+		   * value's collation (#336); the cached domain found without a transient one (#371) */
 		  assert (item->slot >= 0 && item->slot < resolved.n_slots);
-		  resolved.table[item->slot].domain = tp_domain_resolve_value (source, NULL);
+		  resolved.table[item->slot].domain = domain_value_domain (source);
 		  if (resolved.table[item->slot].domain == NULL)
 		    {
 		      /* a set whose element domains could not be built, or no memory: no slot is left undecided (#343) */
@@ -6030,11 +6161,11 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	}
       else if (ref < dbval_cnt && (plan == NULL || ref < plan->dbval_cnt))
 	{
-	  /* A value no item references: a bind the tree does not read. A surplus one past the plan's positions (a
-	   * host variable the client folded away) is not copied: the plan numbers its own values there (constant
-	   * subtrees, comparison constants, #352), and no reader takes a surplus position from this array (DBLINK and
-	   * the result cache read resolved.in). */
-	  error = pr_clone_value (&resolved.in[ref], &resolved.vals[ref]);
+	  /* A value no item references: a bind the tree does not read, shared too (#371). A surplus one past the plan's
+	   * positions (a host variable the client folded away) is not placed: the plan numbers its own values there
+	   * (constant subtrees, comparison constants, #352), and no reader takes a surplus position from this array
+	   * (DBLINK and the result cache read resolved.in). */
+	  error = qexec_share_value (&resolved.in[ref], &resolved.vals[ref]);
 	}
       if (error != NO_ERROR)
 	{
@@ -6059,8 +6190,8 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
     }
 
   /* G1 step 5 (#352, D-352-01): every comparison site over binds, literals and decisions, from its sides' values and
-   * decisions; each constant side gets a value of its own now. A site over a constant subtree waits for step 7, a site
-   * over a session variable read for step 7b (#366). */
+   * decisions; each constant side it converts gets a value of its own now (qexec_resolve_compare). A site over a
+   * constant subtree waits for step 7, a site over a session variable read for step 7b (#366). */
   for (int k = 0; plan != NULL && k < plan->n_compares; k++)
     {
       if (plan->compares[k]->after_constants || plan->compares[k]->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE)
