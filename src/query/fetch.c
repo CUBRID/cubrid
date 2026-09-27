@@ -3341,12 +3341,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
+	  /* the value carries the precision and scale its format gives: the node's domain, a cached one the plan shares,
+	   * stays as compiled (#368, review 2 R2-07; develop wrote them into it) */
 	  if (db_to_number (peek_left, peek_right, peek_third, arithptr->value) != NO_ERROR)
 	    {
 	      goto error;
 	    }
-	  domain->precision = arithptr->value->domain.numeric_info.precision;
-	  domain->scale = arithptr->value->domain.numeric_info.scale;
 	}
       break;
 
