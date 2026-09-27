@@ -28,6 +28,9 @@ struct domain_plan_item;
 #include "dbtype_def.h"
 #include "query_sum_accumulator.h"
 #include "storage_common.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "domain_resolver.h"
+#endif
 
 // forward definitions
 struct qfile_list_id;
@@ -80,6 +83,7 @@ namespace cubxasl
   {
     tp_domain *value_dom;		/* domain of value */
     tp_domain *value2_dom;	/* domain of value2 */
+    RESOLVED_DOMAIN precast;	/* SUM / AVG: the pre-cast of value + a value, set with value_dom (#368, D-368-06) */
   };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

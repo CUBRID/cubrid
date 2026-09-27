@@ -828,6 +828,34 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
 }
 
 /*
+ * fetch_arith_binary () - an addition, subtraction, multiplication or division: its operands' pre-cast, planned before
+ *   any row (#368, D-368-02), then the typed operator, which casts nothing (qdata_precast_arith_dbval)
+ *   return: NO_ERROR or ER_code
+ *
+ * The plan is the gate's decision for a node whose type the gate decides, the load's for any other node - a compiled
+ * node, one whose collation alone the gate decides, a stream's node (domain_plan_precast). A NULL operand converts
+ * nothing, planned or not: develop's operators returned before their pre-cast.
+ */
+static int
+fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left,
+		    DB_VALUE * right, TP_DOMAIN * domain)
+{
+  const DOMAIN_PLAN_ITEM *item = arithptr->domain_plan;
+  const RESOLVED_DOMAIN *plan = item != NULL ? &item->fixed : NULL;
+  if (item != NULL && (item->flags & DOMAIN_PLAN_GATE) && !(item->flags & DOMAIN_PLAN_COLLATION_GATE))
+    {
+      plan = RESOLVED_GATE_NODE (vd, item);
+    }
+  if (plan == NULL && left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
+    {
+      /* every node of a loaded tree or stream carries its pre-cast, and the gate decided every node whose type it
+       * decides before the main block: the execution boundary (b) */
+      return qexec_domain_unresolved (vd, item, arithptr->domain);
+    }
+  return qdata_precast_arith_dbval (thread_p, arithptr->opcode, plan, left, right, arithptr->value, domain);
+}
+
+/*
  * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
  *   regu_var(in/out): Regulator Variable of an ARITH node.
@@ -1569,7 +1597,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  }
 	else
 	  {
-	    if (qdata_add_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+	    if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
 	      {
 		goto error;
 	      }
@@ -1629,21 +1657,21 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_SUB:
-      if (qdata_subtract_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+      if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_MUL:
-      if (qdata_multiply_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+      if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
 	{
 	  goto error;
 	}
       break;
 
     case T_DIV:
-      if (qdata_divide_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+      if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
 	{
 	  goto error;
 	}

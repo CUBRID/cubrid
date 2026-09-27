@@ -4120,6 +4120,15 @@ qexec_resolve_gate_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
 	  return ER_QPROC_DOMAIN_UNRESOLVED;
 	}
     }
+  if (node->flags & DOMAIN_PLAN_PRECAST_GATE)
+    {
+      /* #368 (D-368-02): an arithmetic node the compiler typed over an operand it did not keeps its compiled domain;
+       * its operands' pre-cast is the grid's over their decided domains */
+      assert (link->n_operands == 2);
+      domain_resolve_precast (cold->opcode, operands, entry);
+      entry->domain = link->consumer;
+      return NO_ERROR;
+    }
   if (node->flags & DOMAIN_PLAN_COLLATION_GATE)
     {
       /* #338: a string the compiler typed but whose collation its values give */
@@ -4208,10 +4217,14 @@ qexec_resolve_gate_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
 
     case ER_QSTR_INCOMPATIBLE_COLLATIONS:
       /* plus as concatenation over collations that do not merge: the row raises it as develop does, giving no value
-       * before (D-338-02's timing, #343) */
+       * before (D-338-02's timing, #343) - after the operands' pre-cast, an ENUM's name (#368) */
       *entry = RESOLVED_DOMAIN
       {
       };
+      if (context == DOMAIN_CTX_ARITH && cold->opcode == T_ADD)
+	{
+	  domain_resolve_precast (T_ADD, operands, entry);
+	}
       entry->domain = &tp_Null_domain;
       return NO_ERROR;
 
@@ -24056,10 +24069,30 @@ qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
  * a string, the class the gate gave a value sets them, and anything else waits for the first value
  * (qexec_interpolation_waits).
  */
+/*
+ * qexec_value_domain () - the domain a regu gives its values in this execution (#368): its compiled domain when that
+ *   fixes them, the plan's otherwise - the gate's decision for a bind, a session variable read or a node over them,
+ *   or the producer's that an alias reads (a hash GROUP BY argument over a bind), as qexec_consumer_domain gives it.
+ *   An aggregate's or an analytic function's operand type is not it: develop's late binding put the function's
+ *   domain there (DOUBLE for a SUM over strings).
+ */
+const TP_DOMAIN *
+qexec_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
+{
+  if (regu == NULL)
+    {
+      return NULL;
+    }
+  const bool arith = (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL;
+  return qexec_consumer_domain (vd, arith ? regu->value.arithptr->domain : regu->domain,
+				arith ? regu->value.arithptr->domain_plan : regu->domain_plan);
+}
+
 static int
 qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const TP_DOMAIN * accumulator)
 {
   TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  memset (&agg_p->accumulator_domain.precast, 0, sizeof (agg_p->accumulator_domain.precast));
   switch (agg_p->function)
     {
     case PT_AGG_BIT_AND:
@@ -24081,6 +24114,20 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 	}
       agg_p->accumulator_domain.value_dom = (TP_DOMAIN *) accumulator;
       agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+      {
+	/* #368 (D-368-06): a value added after the first takes the pre-cast develop's qdata_add_dbval took by its type -
+	 * a string into the DOUBLE accumulator - planned here from the argument's domain in this execution */
+	const TP_DOMAIN *argument = qexec_value_domain (vd, agg_p->operands != NULL ? &agg_p->operands->value : NULL);
+	if (argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
+	    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL)
+	  {
+	    const DOMAIN_OPERAND operands[2] = {
+	      {accumulator, TP_DOMAIN_TYPE (accumulator), -1, -1, false},
+	      {argument, TP_DOMAIN_TYPE (argument), -1, -1, false}
+	    };
+	    domain_resolve_precast (T_ADD, operands, &agg_p->accumulator_domain.precast);
+	  }
+      }
       break;
 
     case PT_STDDEV:
@@ -30964,10 +31011,17 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
       if (op == R_LT)
 	{
-	  /* add 1 so we can use R_LE */
+	  /* add 1 so we can use R_LE, after the pre-cast develop's qdata_subtract_dbval took by the bound's type - a
+	   * string as DOUBLE - planned once for this execution's bound (#368, D-368-06) */
 	  DB_VALUE one_val;
 	  db_make_int (&one_val, 1);
-	  error = qdata_subtract_dbval (val, &one_val, ubound, qexec_node_domain (vd, rhs->domain, rhs->domain_plan));
+	  const DOMAIN_OPERAND operands[2] = {
+	    {NULL, DB_VALUE_DOMAIN_TYPE (val), -1, -1, false}, {NULL, DB_TYPE_INTEGER, -1, -1, false}
+	  };
+	  RESOLVED_DOMAIN precast;
+	  domain_resolve_precast (T_SUB, operands, &precast);
+	  error = qdata_precast_arith_dbval (thread_p, T_SUB, &precast, val, &one_val, ubound,
+					     qexec_node_domain (vd, rhs->domain, rhs->domain_plan));
 	}
       else
 	{

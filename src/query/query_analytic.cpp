@@ -94,6 +94,30 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
     }
 
   const FUNC_CODE fcode = func_p->function;
+  /* #368 (D-368-06): a value a SUM / AVG adds after the first takes the pre-cast develop's qdata_add_dbval took by its
+   * type - a string into the sum the first value became - planned here from the function's domain and its argument's
+   * in this execution */
+  func_p->precast = RESOLVED_DOMAIN ();
+  if (fcode == PT_SUM || fcode == PT_AVG)
+    {
+      const TP_DOMAIN *argument = qexec_value_domain (vd, &func_p->operand);
+      const TP_DOMAIN *function = qexec_gate_domain (vd, func_p->domain_plan, false);
+      if (function == NULL)
+	{
+	  function = qexec_node_domain (vd, func_p->domain, func_p->domain_plan);
+	}
+      if (argument != NULL && function != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL && TP_DOMAIN_TYPE (function) != DB_TYPE_VARIABLE)
+	{
+	  /* the first value becomes the function's domain when it is a string, and keeps its own type otherwise */
+	  const TP_DOMAIN *sum = TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (argument)) ? function : argument;
+	  const DOMAIN_OPERAND operands[2] =
+	  {
+	    {sum, TP_DOMAIN_TYPE (sum), -1, -1, false}, {argument, TP_DOMAIN_TYPE (argument), -1, -1, false}
+	  };
+	  domain_resolve_precast (T_ADD, operands, &func_p->precast);
+	}
+    }
   if (fcode == PT_COUNT_STAR || fcode == PT_COUNT)
     {
       db_make_bigint (func_p->value, 0);
@@ -495,7 +519,9 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : domain);
-	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, result_domain) != NO_ERROR)
+	  /* after the pre-cast the partition planned for a value (#368, D-368-06) */
+	  if (qdata_precast_arith_dbval (thread_p, T_ADD, &func_p->precast, func_p->value, &dbval, func_p->value,
+					 result_domain) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;

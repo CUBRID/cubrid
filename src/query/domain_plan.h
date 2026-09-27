@@ -56,8 +56,11 @@ enum DOMAIN_PLAN_FLAGS
   DOMAIN_PLAN_OPEN = 0x400,	/* the node's compiled domain is open - a VARIABLE type or a collation its values give:
 				 * the domain an execution gives it lives in the execution's cell, not in the node
 				 * (#355, D-355-01, D-355-06); a list position's regu */
-  DOMAIN_PLAN_OPEN_POSITION = 0x800	/* a list position's value descriptor (pos_descr.dom) is open; it shares the
+  DOMAIN_PLAN_OPEN_POSITION = 0x800,	/* a list position's value descriptor (pos_descr.dom) is open; it shares the
 					 * position's cell (#355, D-355-09) */
+  DOMAIN_PLAN_PRECAST_GATE = 0x1000	/* an arithmetic node the compiler typed over an operand it did not (LIMIT's
+					 * offset + count, an ORDERBY_NUM bound): its domain is the compiled one, the
+					 * gate decides its operands' pre-cast from their decided domains (#368) */
 };
 
 /* What execution must know before it takes a slot's decision in place of a value-driven late binding (#337): a

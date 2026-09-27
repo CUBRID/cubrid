@@ -57,6 +57,7 @@
 #include "xasl_analytic.hpp"
 #include "xserver_interface.h"
 #include "intl_support.h"
+#include "perf_monitor.h"
 
 #include "dbtype.h"
 
@@ -2417,56 +2418,168 @@ qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domai
   return error;
 }
 
-#if !defined (NDEBUG)
-/*
- * qdata_assert_resolved_arith () - dpin-07 shadow check: domain_resolve (DOMAIN_CTX_ARITH) must answer what the
- *				    operator did, until the deletion tickets remove the per-row resolution
- *   opcode(in): operator
- *   n_operands(in): operand count
- *   types(in): operand value types on entry
- *   targets(in): operand types after the pre-cast, per operand position; NULL when not observed
- *   raw_result_p(in): result before the XASL domain coerce; NULL when not observed
- */
-void
-qdata_assert_resolved_arith (int opcode, int n_operands, const DB_TYPE * types, const DB_TYPE * targets,
-			     const DB_VALUE * raw_result_p)
+/* develop's pre-cast failure of an operand (tp_value_auto_cast in qdata_*_dbval): the error names the value the cast
+ * took - for an ENUM added to a string, its name, which develop cast to VARCHAR first */
+static int
+qdata_precast_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target)
 {
-  DOMAIN_OPERAND operands[3];
-  RESOLVED_DOMAIN resolved;
-  bool needs_gate;
+  if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_ENUMERATION)
+    {
+      return tp_domain_status_er_set (status, ARG_FILE_LINE, value, target);
+    }
+  DB_VALUE name;
+  db_make_null (&name);
+  (void) tp_value_cast (value, &name, tp_domain_resolve_default (DB_TYPE_VARCHAR), false);
+  const int error = tp_domain_status_er_set (status, ARG_FILE_LINE, &name, target);
+  pr_clear_value (&name);
+  return error;
+}
 
-  /* MySQL compatibility makes date results depend on the previous result value */
-  if (prm_get_integer_value (PRM_ID_COMPAT_MODE) == COMPAT_MYSQL)
-    {
-      return;
-    }
+#if !defined (NDEBUG)
+/* Whether two types are one for a pre-cast (#368): a character, bit or collection type stands for its class */
+static bool
+qdata_precast_type_holds (DB_TYPE value, DB_TYPE planned)
+{
+  return value == planned || (TP_IS_CHAR_TYPE (value) && TP_IS_CHAR_TYPE (planned))
+    || (TP_IS_BIT_TYPE (value) && TP_IS_BIT_TYPE (planned)) || (TP_IS_SET_TYPE (value) && TP_IS_SET_TYPE (planned));
+}
 
-  assert (n_operands > 0 && n_operands <= 3);
-  for (int i = 0; i < n_operands; i++)
+/*
+ * qdata_assert_precast_planned () - #368 shadow check: the pre-cast a caller planned for two values that are not NULL
+ *   is the resolver's grid over the values' own types - develop's, which qdata_*_dbval took by the values' types (its
+ *   shadow check held the grid to it until #368): the same target types, and the converter of the value's own type,
+ *   CHAR and VARCHAR standing for each other (their converters read any string)
+ */
+static void
+qdata_assert_precast_planned (OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * precast, const DB_VALUE * dbval1_p,
+			      const DB_VALUE * dbval2_p)
+{
+  const DB_VALUE *values[2] = { dbval1_p, dbval2_p };
+  const DOMAIN_OPERAND operands[2] = {
+    {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, -1, false}
+  };
+  RESOLVED_DOMAIN develop;
+  domain_resolve_precast (opcode, operands, &develop);
+  for (int i = 0; i < 2; i++)
     {
-      operands[i] = DOMAIN_OPERAND
-      {
-      tp_domain_resolve_default (types[i]), types[i], -1, -1, false};
-    }
-
-  int error = domain_resolve (DOMAIN_CTX_ARITH, opcode, operands, n_operands, NULL, &resolved, &needs_gate);
-  assert (!needs_gate);
-  if (error != NO_ERROR)
-    {
-      /* only a pair the operator also rejects: it produced no value */
-      assert (raw_result_p == NULL || DB_IS_NULL (raw_result_p));
-      return;
-    }
-  for (int i = 0; targets != NULL && i < n_operands; i++)
-    {
-      assert (TP_DOMAIN_TYPE (resolved.operand_domain[i]) == targets[i]);
-    }
-  if (raw_result_p != NULL && !DB_IS_NULL (raw_result_p))
-    {
-      assert (TP_DOMAIN_TYPE (resolved.domain) == DB_VALUE_DOMAIN_TYPE (raw_result_p));
+      if (precast->conv[i] == NULL && develop.conv[i] == NULL)
+	{
+	  /* neither converts the value: its type is the operator's to take */
+	  continue;
+	}
+      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (values[i]);
+      const TP_DOMAIN *planned = precast->operand_domain[i];
+      bool same = planned != NULL
+	&& qdata_precast_type_holds (TP_DOMAIN_TYPE (develop.operand_domain[i]), TP_DOMAIN_TYPE (planned));
+      if (same && precast->conv[i] != develop.conv[i])
+	{
+	  const DB_TYPE sibling =
+	    type == DB_TYPE_CHAR ? DB_TYPE_VARCHAR : type == DB_TYPE_VARCHAR ? DB_TYPE_CHAR : type;
+	  same = sibling != type && precast->conv[i] != NULL && develop.conv[i] != NULL
+	    && precast->conv[i] == domain_lookup_converter (sibling, planned, DOMAIN_CTX_ASSIGN);
+	}
+      if (!same)
+	{
+	  fprintf (stderr, "planned pre-cast: opcode=%d operand=%d value=%d/%d planned=%d develop=%d conv=%s/%s\n",
+		   (int) opcode, i, (int) DB_VALUE_DOMAIN_TYPE (values[0]), (int) DB_VALUE_DOMAIN_TYPE (values[1]),
+		   planned != NULL ? (int) TP_DOMAIN_TYPE (planned) : -1,
+		   develop.operand_domain[i] != NULL ? (int) TP_DOMAIN_TYPE (develop.operand_domain[i]) : -1,
+		   domain_converter_name (precast->conv[i]), domain_converter_name (develop.conv[i]));
+	}
+      assert (same);
     }
 }
+
+/*
+ * qdata_assert_precast_done () - #368 shadow check: qdata_{add,subtract,multiply,divide}_dbval cast nothing, so the
+ *   two values that are not NULL come in the types their pre-cast gives - the resolver's grid over them converts
+ *   nothing more. A caller that did not plan the pre-cast fails here.
+ */
+static void
+qdata_assert_precast_done (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, const DB_VALUE * dbval2_p)
+{
+  const DOMAIN_OPERAND operands[2] = {
+    {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, -1, false}
+  };
+  RESOLVED_DOMAIN precast;
+  domain_resolve_precast (opcode, operands, &precast);
+  if (precast.conv[0] != NULL || precast.conv[1] != NULL)
+    {
+      fprintf (stderr, "unplanned pre-cast: opcode=%d values=%d/%d conv=%s/%s\n", (int) opcode,
+	       (int) DB_VALUE_DOMAIN_TYPE (dbval1_p), (int) DB_VALUE_DOMAIN_TYPE (dbval2_p),
+	       domain_converter_name (precast.conv[0]), domain_converter_name (precast.conv[1]));
+    }
+  assert (precast.conv[0] == NULL && precast.conv[1] == NULL);
+}
 #endif
+
+/*
+ * qdata_precast_arith_dbval () - an addition, subtraction, multiplication or division over its operands' pre-cast,
+ *   planned before any row (xmilex-git/workspace#368, D-368-02, D-368-06), then the typed operator, which casts nothing
+ *   return: NO_ERROR or ER_code
+ *   opcode(in): T_ADD, T_SUB, T_MUL or T_DIV
+ *   precast(in): operand_domain[0..1] and conv[0..1] of domain_resolve_precast; NULL converts nothing
+ *
+ * Over two values that are not NULL, each operand the plan converts gets a value of its own, in develop's order - the
+ * second operand first but for a subtraction - and a conversion that fails is develop's tp_value_auto_cast outcome:
+ * NULL under return_null_on_function_errors, the error otherwise. A NULL operand converts nothing: develop's operators
+ * returned before their pre-cast.
+ */
+int
+qdata_precast_arith_dbval (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * precast,
+			   DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+{
+  assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
+  int (*arith_operator) (DB_VALUE *, DB_VALUE *, DB_VALUE *, TP_DOMAIN *) = opcode == T_ADD ? qdata_add_dbval
+    : opcode == T_SUB ? qdata_subtract_dbval : opcode == T_MUL ? qdata_multiply_dbval : qdata_divide_dbval;
+  if (precast == NULL || dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
+    {
+      return arith_operator (dbval1_p, dbval2_p, result_p, domain_p);
+    }
+#if !defined (NDEBUG)
+  qdata_assert_precast_planned (opcode, precast, dbval1_p, dbval2_p);
+#endif
+  DB_VALUE *operand[2] = { dbval1_p, dbval2_p };
+  DB_VALUE converted[2];
+  int used = 0;
+  int error = NO_ERROR;
+  for (int k = 0; k < 2 && error == NO_ERROR; k++)
+    {
+      const int i = opcode == T_SUB ? k : 1 - k;
+      if (precast->conv[i] == NULL)
+	{
+	  continue;
+	}
+      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
+      used |= 1 << i;
+      const TP_DOMAIN_STATUS status = domain_run_converter (precast->conv[i], precast->operand_domain[i], operand[i],
+							    &converted[i]);
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	    {
+	      error = qdata_precast_error (status, operand[i], precast->operand_domain[i]);
+	      break;
+	    }
+	  pr_clear_value (&converted[i]);
+	  db_make_null (&converted[i]);
+	  er_clear ();
+	}
+      operand[i] = &converted[i];
+    }
+  if (error == NO_ERROR)
+    {
+      error = arith_operator (operand[0], operand[1], result_p, domain_p);
+    }
+  for (int i = 0; i < 2; i++)
+    {
+      if (used & (1 << i))
+	{
+	  pr_clear_value (&converted[i]);
+	}
+    }
+  return error;
+}
 
 /*
  * qdata_add_dbval () -
@@ -2491,11 +2604,6 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
   DB_TYPE type1;
   DB_TYPE type2;
   int error = NO_ERROR;
-  DB_VALUE cast_value1;
-  DB_VALUE cast_value2;
-  TP_DOMAIN *cast_dom1 = NULL;
-  TP_DOMAIN *cast_dom2 = NULL;
-  TP_DOMAIN_STATUS dom_status;
 
   if (domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL)
     {
@@ -2504,79 +2612,13 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
 
   type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
   type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
-#if !defined (NDEBUG)
-  const DB_TYPE entry_types[2] = { type1, type2 };
-  bool swapped = false;
-#endif
-
-  /* Enumeration */
-  if (type1 == DB_TYPE_ENUMERATION)
-    {
-      if (TP_IS_CHAR_BIT_TYPE (type2))
-	{
-	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_VARCHAR);
-	}
-      else
-	{
-	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
-	}
-
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  return error;
-	}
-      error = qdata_add_dbval (&cast_value1, dbval2_p, result_p, domain_p);
-      pr_clear_value (&cast_value1);
-#if !defined (NDEBUG)
-      if (error == NO_ERROR)
-	{
-	  qdata_assert_resolved_arith (T_ADD, 2, entry_types, NULL, domain_p == NULL ? result_p : NULL);
-	}
-#endif
-      return error;
-    }
-  else if (type2 == DB_TYPE_ENUMERATION)
-    {
-      if (TP_IS_CHAR_BIT_TYPE (type1))
-	{
-	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_VARCHAR);
-	}
-      else
-	{
-	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
-	}
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  return error;
-	}
-      error = qdata_add_dbval (dbval1_p, &cast_value2, result_p, domain_p);
-      pr_clear_value (&cast_value2);
-#if !defined (NDEBUG)
-      if (error == NO_ERROR)
-	{
-	  qdata_assert_resolved_arith (T_ADD, 2, entry_types, NULL, domain_p == NULL ? result_p : NULL);
-	}
-#endif
-      return error;
-    }
 
   /* plus as concat : when both operands are string or bit */
   if (prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT) == true)
     {
       if (TP_IS_CHAR_BIT_TYPE (type1) && TP_IS_CHAR_BIT_TYPE (type2))
 	{
-	  error = qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
-#if !defined (NDEBUG)
-	  if (error == NO_ERROR && !DB_IS_NULL (dbval1_p) && !DB_IS_NULL (dbval2_p))
-	    {
-	      qdata_assert_resolved_arith (T_ADD, 2, entry_types, entry_types, domain_p == NULL ? result_p : NULL);
-	    }
-#endif
-	  return error;
+	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
 	}
     }
 
@@ -2585,8 +2627,12 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       return NO_ERROR;
     }
 
-  db_make_null (&cast_value1);
-  db_make_null (&cast_value2);
+  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval,
+   * xmilex-git/workspace#368, D-368-02): an ENUM's name or ordinal, a string as DOUBLE, a floating number or a string
+   * next to a date as BIGINT. */
+#if !defined (NDEBUG)
+  qdata_assert_precast_done (T_ADD, dbval1_p, dbval2_p);
+#endif
 
   /* not all pairs of operands types can be handled; for some of these pairs, reverse the order of operands to match
    * the handled case */
@@ -2600,62 +2646,8 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       temp = dbval1_p;
       dbval1_p = dbval2_p;
       dbval2_p = temp;
-#if !defined (NDEBUG)
-      swapped = true;
-#endif
       type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
       type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
-    }
-
-  /* number + string : cast string to DOUBLE, add as numbers */
-  if (TP_IS_NUMERIC_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      /* cast string to double */
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  /* date + number : cast number to bigint, add as date + bigint */
-  /* date + string : cast string to bigint, add as date + bigint */
-  else if (TP_IS_DATE_OR_TIME_TYPE (type1) && (TP_IS_FLOATING_NUMBER_TYPE (type2) || TP_IS_CHAR_TYPE (type2)))
-    {
-      /* cast number to BIGINT */
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_BIGINT);
-    }
-  /* string + string: cast number to bigint, add as date + bigint */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      /* cast number to BIGINT */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-
-  if (cast_dom2 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  return error;
-	}
-      dbval2_p = &cast_value2;
-    }
-
-  if (cast_dom1 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  return error;
-	}
-      dbval1_p = &cast_value1;
-    }
-
-  type1 = dbval1_p ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL;
-  type2 = dbval2_p ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL;
-
-  if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
-    {
-      return NO_ERROR;
     }
 
   if (qdata_is_zero_value_date (dbval1_p) || qdata_is_zero_value_date (dbval2_p))
@@ -2804,12 +2796,6 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       return error;
     }
 
-#if !defined (NDEBUG)
-  {
-    const DB_TYPE targets[2] = { swapped ? type2 : type1, swapped ? type1 : type2 };
-    qdata_assert_resolved_arith (T_ADD, 2, entry_types, targets, TP_IS_SET_TYPE (type1) ? NULL : result_p);
-  }
-#endif
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
@@ -4903,161 +4889,20 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
   DB_TYPE type1;
   DB_TYPE type2;
   int error = NO_ERROR;
-  DB_VALUE cast_value1;
-  DB_VALUE cast_value2;
-  TP_DOMAIN *cast_dom1 = NULL;
-  TP_DOMAIN *cast_dom2 = NULL;
-  TP_DOMAIN_STATUS dom_status;
 
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
       return NO_ERROR;
     }
 
-  db_make_null (&cast_value1);
-  db_make_null (&cast_value2);
-
+  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval,
+   * xmilex-git/workspace#368, D-368-02): an ENUM's ordinal, a string as DOUBLE, TIME or DATETIME and the date beside it
+   * as DATETIME, a floating number next to a date as BIGINT. */
+#if !defined (NDEBUG)
+  qdata_assert_precast_done (T_SUB, dbval1_p, dbval2_p);
+#endif
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
-#if !defined (NDEBUG)
-  const DB_TYPE entry_types[2] = { type1, type2 };
-#endif
-
-  if (type1 == DB_TYPE_ENUMERATION)
-    {
-      /* The enumeration will always be casted to SMALLINT */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  return error;
-	}
-      error = qdata_subtract_dbval (&cast_value1, dbval2_p, result_p, domain_p);
-#if !defined (NDEBUG)
-      if (error == NO_ERROR)
-	{
-	  qdata_assert_resolved_arith (T_SUB, 2, entry_types, NULL, domain_p == NULL ? result_p : NULL);
-	}
-#endif
-      return error;
-    }
-  else if (type2 == DB_TYPE_ENUMERATION)
-    {
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_SMALLINT);
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  return error;
-	}
-      error = qdata_subtract_dbval (dbval1_p, &cast_value2, result_p, domain_p);
-#if !defined (NDEBUG)
-      if (error == NO_ERROR)
-	{
-	  qdata_assert_resolved_arith (T_SUB, 2, entry_types, NULL, domain_p == NULL ? result_p : NULL);
-	}
-#endif
-      return error;
-    }
-
-  /* number - string : cast string to number, substract as numbers */
-  if (TP_IS_NUMERIC_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      /* cast string to double */
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  /* string - number: cast string to number, substract as numbers */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_NUMERIC_TYPE (type2))
-    {
-      /* cast string to double */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  /* string - string: cast string to number, substract as numbers */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      /* cast string to double */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  /* date - number : cast floating point number to bigint, date - bigint = date */
-  else if (TP_IS_DATE_OR_TIME_TYPE (type1) && TP_IS_FLOATING_NUMBER_TYPE (type2))
-    {
-      /* cast number to BIGINT */
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_BIGINT);
-    }
-  /* number - date: cast floating point number to bigint, bigint - date= date */
-  else if (TP_IS_FLOATING_NUMBER_TYPE (type1) && TP_IS_DATE_OR_TIME_TYPE (type2))
-    {
-      /* cast number to BIGINT */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_BIGINT);
-    }
-  /* TIME - string : cast string to TIME , date - TIME = bigint */
-  /* DATE - string : cast string to DATETIME, the other operand to DATETIME DATETIME - DATETIME = bigint */
-  else if (TP_IS_DATE_OR_TIME_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      if (type1 == DB_TYPE_TIME)
-	{
-	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_TIME);
-	}
-      else
-	{
-	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_DATETIME);
-
-	  if (type1 != DB_TYPE_DATETIME)
-	    {
-	      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DATETIME);
-	    }
-	}
-    }
-  /* string - TIME : cast string to TIME, TIME - TIME = bigint */
-  /* string - DATE : cast string to DATETIME, the other operand to DATETIME DATETIME - DATETIME = bigint */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_DATE_OR_TIME_TYPE (type2))
-    {
-      if (type2 == DB_TYPE_TIME)
-	{
-	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_TIME);
-	}
-      else
-	{
-	  /* cast string to same 'date' */
-	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_DATETIME);
-	  if (type2 != DB_TYPE_DATETIME)
-	    {
-	      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DATETIME);
-	    }
-	}
-    }
-
-  if (cast_dom1 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  return error;
-	}
-      dbval1_p = &cast_value1;
-    }
-
-  if (cast_dom2 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  return error;
-	}
-      dbval2_p = &cast_value2;
-    }
-
-  type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
-  type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
-
-  if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
-    {
-      return NO_ERROR;
-    }
 
   if (qdata_is_zero_value_date (dbval1_p) || qdata_is_zero_value_date (dbval2_p))
     {
@@ -5186,12 +5031,6 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       return error;
     }
 
-#if !defined (NDEBUG)
-  {
-    const DB_TYPE targets[2] = { type1, type2 };
-    qdata_assert_resolved_arith (T_SUB, 2, entry_types, targets, TP_IS_SET_TYPE (type1) ? NULL : result_p);
-  }
-#endif
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
@@ -5620,75 +5459,19 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
   DB_TYPE type1;
   DB_TYPE type2;
   int error = NO_ERROR;
-  DB_VALUE cast_value1;
-  DB_VALUE cast_value2;
-  TP_DOMAIN *cast_dom1 = NULL;
-  TP_DOMAIN *cast_dom2 = NULL;
-  TP_DOMAIN_STATUS dom_status;
 
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
       return NO_ERROR;
     }
 
-  type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
-  type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval,
+   * xmilex-git/workspace#368, D-368-02): a string as DOUBLE. */
 #if !defined (NDEBUG)
-  const DB_TYPE entry_types[2] = { type1, type2 };
+  qdata_assert_precast_done (T_MUL, dbval1_p, dbval2_p);
 #endif
-
-  db_make_null (&cast_value1);
-  db_make_null (&cast_value2);
-
-  /* number * string : cast string to DOUBLE, multiply as number * DOUBLE */
-  if (TP_IS_NUMERIC_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      /* cast arg2 to double */
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  /* string * number: cast string to DOUBLE, multiply as DOUBLE * number */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_NUMERIC_TYPE (type2))
-    {
-      /* cast arg1 to double */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  /* string * string: cast both to DOUBLE, multiply as DOUBLE * DOUBLE */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      /* cast number to DOUBLE */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-
-  if (cast_dom2 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  return error;
-	}
-      dbval2_p = &cast_value2;
-    }
-
-  if (cast_dom1 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  return error;
-	}
-      dbval1_p = &cast_value1;
-    }
-
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
-
-  if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
-    {
-      return NO_ERROR;
-    }
 
   switch (type1)
     {
@@ -5766,12 +5549,6 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       return error;
     }
 
-#if !defined (NDEBUG)
-  {
-    const DB_TYPE targets[2] = { type1, type2 };
-    qdata_assert_resolved_arith (T_MUL, 2, entry_types, targets, TP_IS_SET_TYPE (type1) ? NULL : result_p);
-  }
-#endif
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 
@@ -6251,87 +6028,20 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   DB_TYPE type1;
   DB_TYPE type2;
   int error = NO_ERROR;
-  DB_VALUE cast_value1;
-  DB_VALUE cast_value2;
-  TP_DOMAIN *cast_dom1 = NULL;
-  TP_DOMAIN *cast_dom2 = NULL;
-  TP_DOMAIN_STATUS dom_status;
-
-  /* it should not be static because the parameter could be changed without broker restart */
-  bool oracle_compat_number = prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR);
 
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
       return NO_ERROR;
     }
 
-  type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
-  type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval,
+   * xmilex-git/workspace#368, D-368-02): a string as DOUBLE, two discrete numbers as NUMERIC under
+   * oracle_compat_number_behavior. */
 #if !defined (NDEBUG)
-  const DB_TYPE entry_types[2] = { type1, type2 };
+  qdata_assert_precast_done (T_DIV, dbval1_p, dbval2_p);
 #endif
-
-  db_make_null (&cast_value1);
-  db_make_null (&cast_value2);
-
-  /* number / string : cast string to DOUBLE, divide as number / DOUBLE */
-  if (TP_IS_NUMERIC_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      /* cast arg2 to double */
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  /* string / number: cast string to DOUBLE, divide as DOUBLE / number */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_NUMERIC_TYPE (type2))
-    {
-      /* cast arg1 to double */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  /* string / string: cast both to DOUBLE, divide as DOUBLE / DOUBLE */
-  else if (TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
-    {
-      /* cast number to DOUBLE */
-      cast_dom1 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-      cast_dom2 = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-    }
-  else if (oracle_compat_number)
-    {
-      if (TP_IS_DISCRETE_NUMBER_TYPE (type1) && TP_IS_DISCRETE_NUMBER_TYPE (type2))
-	{
-	  /* cast number to NUMERIC */
-	  cast_dom1 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-	  cast_dom2 = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-	}
-    }
-
-  if (cast_dom2 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval2_p, &cast_value2, cast_dom2);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval2_p, cast_dom2);
-	  return error;
-	}
-      dbval2_p = &cast_value2;
-    }
-
-  if (cast_dom1 != NULL)
-    {
-      dom_status = tp_value_auto_cast (dbval1_p, &cast_value1, cast_dom1);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval1_p, cast_dom1);
-	  return error;
-	}
-      dbval1_p = &cast_value1;
-    }
-
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
-
-  if (DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
-    {
-      return NO_ERROR;
-    }
 
   if (qdata_is_divided_zero (dbval2_p))
     {
@@ -6394,12 +6104,6 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       return error;
     }
 
-#if !defined (NDEBUG)
-  {
-    const DB_TYPE targets[2] = { type1, type2 };
-    qdata_assert_resolved_arith (T_DIV, 2, entry_types, targets, TP_IS_SET_TYPE (type1) ? NULL : result_p);
-  }
-#endif
   return qdata_coerce_result_to_domain (result_p, domain_p);
 }
 

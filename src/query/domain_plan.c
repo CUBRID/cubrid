@@ -776,6 +776,44 @@ domain_fixed_operand (DOMAIN_PLAN_ITEM * item, int i, const TP_DOMAIN * source,
     }
 }
 
+/* The operators qdata_*_dbval took through a pre-cast by their values' types; the resolver's grid is its one rule, and
+ * the plan carries it (#368, D-368-02). */
+static bool
+domain_precast_operator (OPERATOR_TYPE opcode)
+{
+  return opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV;
+}
+
+/*
+ * domain_plan_precast () - the operand converters of an addition, subtraction, multiplication or division over its
+ *   operands' compiled domains (#368, D-368-02): fetch converts the operands with them and qdata_*_dbval casts nothing.
+ *   A node the gate decides the type of reads the gate's instead; an operand whose domain is open plans nothing here
+ *   (the item keeps no converter: the ASSIGN cells domain_fixed_operand looked up are not a pre-cast).
+ */
+static void
+domain_plan_precast (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, const TP_DOMAIN * left, const TP_DOMAIN * right)
+{
+  if (item == NULL)
+    {
+      return;
+    }
+  item->fixed.conv[0] = item->fixed.conv[1] = NULL;
+  if (!domain_type_is_fixed (left) || !domain_type_is_fixed (right))
+    {
+      return;
+    }
+  const DOMAIN_OPERAND operands[2] = {
+    {left, TP_DOMAIN_TYPE (left), -1, -1, false}, {right, TP_DOMAIN_TYPE (right), -1, -1, false}
+  };
+  RESOLVED_DOMAIN precast;
+  domain_resolve_precast (opcode, operands, &precast);
+  for (int i = 0; i < 2; i++)
+    {
+      item->fixed.operand_domain[i] = precast.operand_domain[i];
+      item->fixed.conv[i] = precast.conv[i];
+    }
+}
+
 static void
 domain_walk_list (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST list, DOMAIN_CTX context = DOMAIN_CTX_FUNC_ARG)
 {
@@ -1097,7 +1135,14 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
   /* #338: a string the compiler typed but whose collation its values give (LEAVE, ENFORCE) is decided by the gate
    * from its operands' decided domains, as a gate-dependent node on the collation axis */
   const bool collation_open = !marked_gate && !late_bound && domain_character_open (arith->domain);
-  if (item != NULL && (marked_gate || late_bound || collation_open))
+  /* #368 (D-368-02): an addition, subtraction, multiplication or division the compiler typed over an operand it did
+   * not (LIMIT's offset + count, an ORDERBY_NUM bound over a bind) keeps its compiled domain; the gate decides its
+   * operands' pre-cast from their decided domains */
+  const bool precast_open = domain_precast_operator (arith->opcode) && !marked_gate && !late_bound && !collation_open
+    && operands[0] != NULL && operands[1] != NULL && operands[0]->domain_plan != NULL
+    && operands[1]->domain_plan != NULL && (!domain_type_is_fixed (operands[0]->domain)
+					    || !domain_type_is_fixed (operands[1]->domain));
+  if (item != NULL && (marked_gate || late_bound || collation_open || precast_open))
     {
       DOMAIN_LOAD_RECORD *record = domain_record_of (item);
       const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
@@ -1105,6 +1150,10 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
       if (collation_open)
 	{
 	  item->flags |= DOMAIN_PLAN_COLLATION_GATE;
+	}
+      if (precast_open)
+	{
+	  item->flags |= DOMAIN_PLAN_PRECAST_GATE;
 	}
       domain_set_links (ctx, record, operands, n_value_operands, arith->domain);
       for (int i = 0; i < n_value_operands; i++)
@@ -1126,6 +1175,13 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	  domain_fixed_operand (item, i, operands[i]->domain, is_cast ? arith->domain : operands[i]->domain,
 				DOMAIN_CTX_ASSIGN);
 	}
+    }
+  /* #368 (D-368-02): the pre-cast of a node the compiler typed - its collation may still be the gate's - is the
+   * resolver's over its operands' compiled domains */
+  if (domain_precast_operator (arith->opcode) && !marked_gate && !late_bound && operands[0] != NULL
+      && operands[1] != NULL)
+    {
+      domain_plan_precast (item, arith->opcode, operands[0]->domain, operands[1]->domain);
     }
 }
 
@@ -3833,8 +3889,27 @@ domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
   return site;
 }
 
-/* A stream has no plan items: a FIELD, NULLIF, LEAST or GREATEST node gets a bare one to carry its comparison records
- * (#355, D-355-04); NULL for any other operator */
+/* A stream has no plan items: a node that needs one gets a bare item (#355, D-355-04) */
+static DOMAIN_PLAN_ITEM *
+domain_stream_item (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
+{
+  DOMAIN_PLAN_ITEM *item = (DOMAIN_PLAN_ITEM *) stx_alloc_struct (ctx->thread_p, (int) sizeof (*item));
+  if (item == NULL)
+    {
+      ctx->failed = true;
+      return NULL;
+    }
+  memset (item, 0, sizeof (*item));
+  item->slot = -1;
+  item->ref = -1;
+  item->operand_class = OPERAND_ROW;
+  item->fixed.domain = arith->domain;
+  arith->domain_plan = item;
+  return item;
+}
+
+/* A FIELD, NULLIF, LEAST or GREATEST node's comparison records, carried by its bare item (#355, D-355-04); NULL for
+ * any other operator */
 static const DOMAIN_COMPARE_PLAN **
 domain_stream_arith_compares (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
 {
@@ -3847,19 +3922,12 @@ domain_stream_arith_compares (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
     {
       return NULL;
     }
-  DOMAIN_PLAN_ITEM *item = (DOMAIN_PLAN_ITEM *) stx_alloc_struct (ctx->thread_p, (int) sizeof (*item));
+  DOMAIN_PLAN_ITEM *item = domain_stream_item (ctx, arith);
   if (item == NULL)
     {
-      ctx->failed = true;
       return NULL;
     }
-  memset (item, 0, sizeof (*item));
-  item->slot = -1;
-  item->ref = -1;
-  item->operand_class = OPERAND_ROW;
-  item->fixed.domain = arith->domain;
   item->compares = compares;
-  arith->domain_plan = item;
   return compares;
 }
 
@@ -3874,6 +3942,14 @@ domain_stream_walk_arith (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith, bool 
   domain_stream_walk_regu (ctx, arith->rightptr);
   domain_stream_walk_regu (ctx, arith->thirdptr);
   domain_stream_walk_pred (ctx, arith->pred);
+  if (domain_precast_operator (arith->opcode) && arith->domain_plan == NULL && arith->leftptr != NULL
+      && arith->rightptr != NULL)
+    {
+      /* #368 (D-368-02): the pre-cast over the stream's operand domains, which describe its values - ALTER compiles
+       * anew a stream that reads a changed column (D-368-05) */
+      domain_plan_precast (domain_stream_item (ctx, arith), arith->opcode, arith->leftptr->domain,
+			   arith->rightptr->domain);
+    }
   const DOMAIN_COMPARE_PLAN **compares = domain_stream_arith_compares (ctx, arith);
   if (compares == NULL)
     {

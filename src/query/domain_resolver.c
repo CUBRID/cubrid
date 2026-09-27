@@ -458,6 +458,25 @@ domain_arith_mod (DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * 
   return NO_ERROR;
 }
 
+/* The operands' pre-cast of a binary arithmetic operator */
+static void
+domain_set_arith_operands (int opcode, const DOMAIN_OPERAND * operands, DB_TYPE left_target, DB_TYPE right_target,
+			   RESOLVED_DOMAIN * result)
+{
+  /* D-328-04: the pre-cast is tp_value_auto_cast, ASSIGN (ROUND) */
+  domain_set_operand (result, 0, &operands[0], left_target, DOMAIN_CONVERT_ASSIGN);
+  domain_set_operand (result, 1, &operands[1], right_target, DOMAIN_CONVERT_ASSIGN);
+  /* D-335-05: an ENUM added to a string without plus_as_concat reaches DOUBLE through its name, not its ordinal */
+  for (int i = 0; i < 2 && opcode == T_ADD; i++)
+    {
+      if (domain_operand_type (&operands[i]) == DB_TYPE_ENUMERATION
+	  && TP_DOMAIN_TYPE (result->operand_domain[i]) == DB_TYPE_DOUBLE)
+	{
+	  result->conv[i] = domain_enumeration_name_converter ();
+	}
+    }
+}
+
 static int
 domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
 {
@@ -480,18 +499,7 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
 	  {
 	    return error;
 	  }
-	/* D-328-04: the pre-cast is tp_value_auto_cast, ASSIGN (ROUND) */
-	domain_set_operand (result, 0, &operands[0], left_target, DOMAIN_CONVERT_ASSIGN);
-	domain_set_operand (result, 1, &operands[1], right_target, DOMAIN_CONVERT_ASSIGN);
-	/* D-335-05: an ENUM added to a string without plus_as_concat reaches DOUBLE through its name, not its ordinal */
-	for (int i = 0; i < 2 && opcode == T_ADD; i++)
-	  {
-	    if (domain_operand_type (&operands[i]) == DB_TYPE_ENUMERATION
-		&& TP_DOMAIN_TYPE (result->operand_domain[i]) == DB_TYPE_DOUBLE)
-	      {
-		result->conv[i] = domain_enumeration_name_converter ();
-	      }
-	  }
+	domain_set_arith_operands (opcode, operands, left_target, right_target, result);
 	break;
       }
 
@@ -554,6 +562,26 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
   /* NUMERIC results stay floating: the value operation decides p/s (converters §3) */
   result->domain = tp_domain_resolve_default (result_type);
   return NO_ERROR;
+}
+
+/*
+ * domain_resolve_precast () - the operands' pre-cast of an addition, subtraction, multiplication or division: the
+ *   targets and converters of domain_resolve's ARITH rule, without its result (#368, D-368-02). qdata_*_dbval cast its
+ *   operands before its typed dispatch took or rejected the pair and before plus as concatenation merged their
+ *   collations, so the pre-cast stands whatever the result.
+ */
+void
+domain_resolve_precast (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result)
+{
+  assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
+  DB_TYPE left_target, right_target, result_type;
+  *result = RESOLVED_DOMAIN
+  {
+  };
+  /* the targets are set before the typed dispatch answers whether it takes the pair */
+  (void) domain_arith_binary (opcode, domain_operand_type (&operands[0]), domain_operand_type (&operands[1]),
+			      &left_target, &right_target, &result_type);
+  domain_set_arith_operands (opcode, operands, left_target, right_target, result);
 }
 
 static const TP_DOMAIN *

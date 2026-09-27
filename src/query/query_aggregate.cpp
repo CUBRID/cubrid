@@ -621,8 +621,10 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	      return ER_FAILED;
 	    }
-	  /* unsupported types keep the per-row add into acc->value */
-	  if (qdata_add_dbval (acc->value, value, acc->value, domain->value_dom) != NO_ERROR)
+	  /* unsupported types keep the per-row add into acc->value, after the pre-cast the setup planned for a value
+	   * (#368, D-368-06); another accumulator comes in the accumulator's type */
+	  if (qdata_precast_arith_dbval (thread_p, T_ADD, is_acc_to_acc ? NULL : &domain->precast, acc->value, value,
+					 acc->value, domain->value_dom) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -1791,6 +1793,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       TP_DOMAIN *tmp_domain_ptr = NULL;
       /* the function's domain in this execution (#355) */
       TP_DOMAIN *agg_domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+      /* a SUM / AVG over distinct values holds the first one as it is until it adds another (#368) */
+      const TP_DOMAIN *raw_domain = NULL;
 
       if (agg_p->function == PT_VARIANCE || agg_p->function == PT_STDDEV || agg_p->function == PT_VAR_POP
 	  || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_VAR_SAMP || agg_p->function == PT_STDDEV_SAMP)
@@ -1967,6 +1971,29 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		    }
 		  else
 		    {
+		      /* #368 (D-368-06): develop took the first distinct value as it is, added the second to it and every
+		       * later one to the sum's domain, each with the pre-cast its qdata_add_dbval took by the values'
+		       * types; a SUM or an AVG plans both from the list's column domain */
+		      const bool sum_or_avg = agg_p->function == PT_SUM || agg_p->function == PT_AVG;
+		      const TP_DOMAIN *column = list_id_p->type_list.domp[0];
+		      const TP_DOMAIN *sum_domain = agg_p->function == PT_AVG && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
+						    ? column : agg_p->accumulator_domain.value_dom;
+		      RESOLVED_DOMAIN precast_second = {}, precast_later = {};
+		      if (sum_or_avg && sum_domain != NULL)
+			{
+			  const DOMAIN_OPERAND second[2] =
+			  {
+			    {column, TP_DOMAIN_TYPE (column), -1, -1, false}, {column, TP_DOMAIN_TYPE (column), -1, -1, false}
+			  };
+			  const DOMAIN_OPERAND later[2] =
+			  {
+			    {sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, -1, false},
+			    {column, TP_DOMAIN_TYPE (column), -1, -1, false}
+			  };
+			  domain_resolve_precast (T_ADD, second, &precast_second);
+			  domain_resolve_precast (T_ADD, later, &precast_later);
+			}
+		      bool added = false;
 		      while (true)
 			{
 			  scan_code = qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK);
@@ -2076,6 +2103,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				}
 			      else
 				{
+				  raw_domain = sum_or_avg ? column : NULL;
 				  if (tmp_pr_type->setval (agg_p->accumulator.value, &dbval, true) != NO_ERROR)
 				    {
 				      assert (false);
@@ -2141,8 +2169,12 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				      domain_ptr = NULL;
 				    }
 
-				  error = qdata_add_dbval (agg_p->accumulator.value, &dbval,
-							   agg_p->accumulator.value, domain_ptr);
+				  error = qdata_precast_arith_dbval (thread_p, T_ADD,
+								     !sum_or_avg ? NULL : added ? &precast_later : &precast_second,
+								     agg_p->accumulator.value, &dbval, agg_p->accumulator.value,
+								     domain_ptr);
+				  added = true;
+				  raw_domain = NULL;
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -2182,10 +2214,22 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-	  /* compute AVG(X) = SUM(X)/COUNT(X) */
+	  /* compute AVG(X) = SUM(X)/COUNT(X), after the pre-cast develop's qdata_divide_dbval took by the sum's type - a
+	   * distinct string held as it is - planned from the sum's domain (#368, D-368-06) */
 	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
-	  error = qdata_divide_dbval (agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
+	  const TP_DOMAIN *sum_domain = raw_domain != NULL ? raw_domain : agg_p->accumulator_domain.value_dom;
+	  RESOLVED_DOMAIN precast = {};
+	  if (sum_domain != NULL)
+	    {
+	      const DOMAIN_OPERAND operands[2] =
+	      {
+		{sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, -1, false}, {double_domain_ptr, DB_TYPE_DOUBLE, -1, -1, false}
+	      };
+	      domain_resolve_precast (T_DIV, operands, &precast);
+	    }
+	  error = qdata_precast_arith_dbval (thread_p, T_DIV, &precast, agg_p->accumulator.value, &dbval, &xavgval,
+					     double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

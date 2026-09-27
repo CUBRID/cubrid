@@ -1839,7 +1839,9 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    if (qdata_add_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+	    /* after the pre-cast the setup planned for a value (#368, D-368-06) */
+	    if (qdata_precast_arith_dbval (thread_p, T_ADD, &acc_dom->precast, acc->value, db_value_p, acc->value,
+					   acc_dom->value_dom) != NO_ERROR)
 	      {
 		return false;
 	      }

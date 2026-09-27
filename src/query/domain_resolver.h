@@ -68,6 +68,10 @@ DOMAIN_CONV_FUNC domain_lookup_converter (DB_TYPE source, const TP_DOMAIN * targ
 int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 		    const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_gate);
 
+/* The operands' pre-cast of T_ADD, T_SUB, T_MUL or T_DIV alone: operand_domain[0..1] and conv[0..1] of the ARITH rule
+ * over operands of these types, whatever its result; domain stays NULL (#368, D-368-02). */
+void domain_resolve_precast (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result);
+
 /* val_type of a value-overloaded slot (MEDIAN/PERCENTILE argument, STR_TO_DATE format, ADDTIME left). Gate only,
  * once, before domain_resolve (D-328-06). DB_TYPE_NULL when the value cannot be classified: the function's own error. */
 DB_TYPE domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value);

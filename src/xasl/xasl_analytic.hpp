@@ -30,6 +30,9 @@ struct domain_plan_item;
 #include "query_sum_accumulator.h"  // SUM_ACC
 #include "regu_var.hpp"             // regu_variable_node
 #include "storage_common.h"         // QUERY_OPTIONS
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "domain_resolver.h"        // RESOLVED_DOMAIN
+#endif
 
 // forward definitions
 struct qfile_list_id;
@@ -100,6 +103,9 @@ namespace cubxasl
     db_value *out_value;		/* DB_VALUE used for output */
     db_value part_value;		/* partition temporary accumulator */
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+    RESOLVED_DOMAIN precast;		/* SUM / AVG: the pre-cast of value + a value, set per partition (#368, D-368-06) */
+#endif
     INT64 curr_cnt;			/* current number of items */
     bool is_first_exec_time;	        /* the fist time to be executed */
 
