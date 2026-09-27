@@ -3798,15 +3798,18 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_slots, 
 }
 
 /* The values an execution converts once per scope and the scopes' epochs (#368): none converted yet; the execution's
- * scope is entered from the start, a block's when its scan starts. */
+ * scope is entered from the start, a block's when its scan starts. held_scope: the plan's scope of each value, which
+ * the value keeps for its reads (#371). */
 static int
-qexec_alloc_held_values (THREAD_ENTRY * thread_p, int n_held, int n_scopes, RESOLVED_DOMAIN_TABLE & resolved)
+qexec_alloc_held_values (THREAD_ENTRY * thread_p, int n_held, const int *held_scope, int n_scopes,
+			 RESOLVED_DOMAIN_TABLE & resolved)
 {
   assert (resolved.held == NULL && resolved.scope_epochs == NULL);
   if (n_held <= 0 || n_scopes <= 0)
     {
       return NO_ERROR;
     }
+  assert (held_scope != NULL);
   resolved.held = (DOMAIN_HELD_VALUE *) db_private_alloc (thread_p, sizeof (*resolved.held) * (size_t) n_held);
   resolved.scope_epochs =
     (unsigned long long *) db_private_alloc (thread_p, sizeof (*resolved.scope_epochs) * (size_t) n_scopes);
@@ -3825,11 +3828,13 @@ qexec_alloc_held_values (THREAD_ENTRY * thread_p, int n_held, int n_scopes, RESO
     }
   for (int h = 0; h < n_held; h++)
     {
-      db_make_null (&resolved.held[h].value);
+      assert (held_scope[h] >= 0 && held_scope[h] < n_scopes);
       resolved.held[h].epoch = 0;
+      resolved.held[h].converted = NULL;
+      resolved.held[h].scope = held_scope[h];
+      db_make_null (&resolved.held[h].value);
       resolved.held[h].conv = NULL;
       resolved.held[h].target = NULL;
-      resolved.held[h].failed = false;
     }
   memset (resolved.scope_epochs, 0, sizeof (*resolved.scope_epochs) * (size_t) n_scopes);
   resolved.scope_epochs[DOMAIN_SCOPE_EXECUTION] = 1;
@@ -3876,7 +3881,8 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, 
     }
   resolved.owner = thread_p;
   /* #368: the worker converts its own values once per scope, and enters a block's scope when its own scan starts */
-  if (qexec_alloc_held_values (thread_p, src.n_held, src.n_scopes, resolved) != NO_ERROR)
+  if (qexec_alloc_held_values (thread_p, src.n_held, src.n_held > 0 ? src.plan->held_scope : NULL, src.n_scopes,
+			       resolved) != NO_ERROR)
     {
       qexec_clear_resolved_domains (thread_p, new_xasl_state);
       db_private_free (thread_p, new_xasl_state);
@@ -3974,7 +3980,7 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
     {
       return error;
     }
-  return qexec_alloc_held_values (thread_p, plan->n_held, plan->n_scopes, resolved);
+  return qexec_alloc_held_values (thread_p, plan->n_held, plan->held_scope, plan->n_scopes, resolved);
 }
 
 static int qexec_note_failure (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
@@ -6655,6 +6661,11 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
  *   block's execution starts: the correlated values the block holds converted are converted anew (#368, D-368-01)
  *   vd(in): the execution's value descriptor (a PX worker's own)
  *   val_list(in): the list; its load gave it its block's scope, if any
+ *
+ * The entry converts nothing: the first read after it does (qexec_convert_held_value). One outer row may enter a scope
+ * twice - a correlated subquery at its execution and at its scan's start - and an inner scan enters its own when it
+ * starts, before the outer scan has a row: a conversion here would run for no row, or on the previous row's value
+ * (#371).
  */
 void
 qexec_enter_domain_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
@@ -6671,55 +6682,40 @@ qexec_enter_domain_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
 }
 
 /*
- * qexec_held_value () - the value a scope fixes, converted once in the scope (#368, D-368-01, D-368-07): a comparison
- *   side, an arithmetic operand or the value a SUM or AVG adds that is a constant (the execution's scope) or a
- *   correlated value (its block's scope)
+ * qexec_convert_held_value () - the first read of a held value in its scope's epoch (qexec_held_value): the value
+ *   converted for every read of the epoch (#368, D-368-01, D-368-07; #371)
  *   return: the converted value; NULL when the row converts it - the scope was not entered, the conversion failed
  *	     (develop's outcome follows from the row's own), or the value is not the execution's own
- *   held(in): 1 + its resolved.held index (a plan item's or a comparison record's)
+ *   entry(in/out): the held value, which a PX worker's own load numbers with its scope as the plan does (D-M3)
  *   conv(in), target(in): the converter the row would run, and its target
  *   value(in): the value, not NULL
  */
 const DB_VALUE *
-qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONVERTER conv,
-		  const TP_DOMAIN * target, const DB_VALUE * value)
+qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_HELD_VALUE * entry,
+			  DOMAIN_CONVERTER conv, const TP_DOMAIN * target, const DB_VALUE * value)
 {
-  if (held <= 0 || vd == NULL || vd->xasl_state == NULL)
+  const unsigned long long epoch = resolved.scope_epochs[entry->scope];
+  if (epoch == 0 || resolved.owner != thread_p)
     {
       return NULL;
-    }
-  RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  const int h = held - 1;
-  if (h >= resolved.n_held || resolved.owner != thread_p)
-    {
-      return NULL;
-    }
-  /* a PX worker's own load numbers the values and their scopes as the plan does (D-M3) */
-  const unsigned long long epoch = resolved.scope_epochs[resolved.plan->held_scope[h]];
-  if (epoch == 0)
-    {
-      return NULL;
-    }
-  DOMAIN_HELD_VALUE *entry = &resolved.held[h];
-  if (entry->epoch == epoch && entry->conv == conv && entry->target == target)
-    {
-      return entry->failed ? NULL : &entry->value;
     }
   pr_clear_value (&entry->value);
   entry->epoch = epoch;
+  entry->converted = NULL;
   entry->conv = conv;
   entry->target = target;
   perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
   /* a failure is the row's to report, in develop's order: this attempt leaves no error */
   er_stack_push ();
-  entry->failed = domain_run_converter (conv, target, value, &entry->value) != DOMAIN_COMPATIBLE;
+  const bool failed = domain_run_converter (conv, target, value, &entry->value) != DOMAIN_COMPATIBLE;
   er_stack_pop ();
-  if (entry->failed)
+  if (failed)
     {
       pr_clear_value (&entry->value);
       return NULL;
     }
-  return &entry->value;
+  entry->converted = &entry->value;
+  return entry->converted;
 }
 
 /* Frees a qexec_deep_copy_xasl_state copy: its values (secondary references
@@ -24494,7 +24490,8 @@ qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
  * They are the ones develop's first non-NULL value gave: the accumulator follows the function (or, for SUM and AVG, the
  * argument). A MEDIAN / PERCENTILE over a number or a date leaves them unset, as the first value did (F-333-06); over
  * a string, the class the gate gave a value sets them, and anything else waits for the first value
- * (qexec_interpolation_waits).
+ * (qexec_interpolation_waits). SUM and AVG also get the pre-cast of a value added after the first (#368, D-368-06) and
+ * the held index of that value where a scope fixes it (#371).
  */
 /*
  * qexec_value_domain () - the domain a regu gives its values in this execution (#368): its compiled domain when that
@@ -24520,6 +24517,7 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 {
   TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
   memset (&agg_p->accumulator_domain.precast, 0, sizeof (agg_p->accumulator_domain.precast));
+  agg_p->accumulator_domain.held = 0;
   switch (agg_p->function)
     {
     case PT_AGG_BIT_AND:
@@ -24553,6 +24551,13 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 	      {argument, TP_DOMAIN_TYPE (argument), -1, -1, false}
 	    };
 	    domain_resolve_precast (T_ADD, operands, &agg_p->accumulator_domain.precast);
+	  }
+	/* #371: a value a scope fixes, which that pre-cast converts, is converted once per scope (qexec_held_value): the
+	 * rows read the index set here, not the plan item and the pre-cast */
+	const DOMAIN_PLAN_ITEM *item = agg_p->domain_plan;
+	if (item != NULL && item->held[1] != 0 && agg_p->accumulator_domain.precast.conv[1] != NULL)
+	  {
+	    agg_p->accumulator_domain.held = item->held[1];
 	  }
       }
       break;

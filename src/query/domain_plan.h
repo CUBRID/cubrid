@@ -371,15 +371,18 @@ const int DOMAIN_SCOPE_EXECUTION = 0;
 /*
  * A value converted once for a scope (#368, D-368-01, D-368-07): the row converts it only when the scope has not been
  * entered or the conversion failed, and develop's outcome follows from the row's own conversion. A scope's epoch
- * grows at each entry, so a value converted in an earlier one is not read.
+ * grows at each entry, so a value converted in an earlier one is not read. The first read in an epoch converts it,
+ * every other read takes converted after one comparison of epochs (qexec_held_value, #371).
  */
 struct DOMAIN_HELD_VALUE
 {
-  DB_VALUE value;		/* the converted value, the owner's */
   unsigned long long epoch;	/* the scope's epoch it was converted in; 0: never */
-  DOMAIN_CONVERTER conv;	/* what converted it: a reader with another converter or target converts again */
+  const DB_VALUE *converted;	/* what the rows of that epoch read: value, or NULL - never converted, or the
+				 * conversion failed: the row converts, as develop's did (#371) */
+  int scope;			/* its scope: plan->held_scope's (#371) */
+  DB_VALUE value;		/* the converted value, the owner's */
+  DOMAIN_CONVERTER conv;	/* what converted it, and to what: the execution's, every read passes the same (#371) */
   const TP_DOMAIN *target;
-  bool failed;			/* the conversion failed in that epoch: the row converts, as develop's did */
 };
 
 /* What resolved.ready says of a value the gate keeps in vals (#352, #367). */

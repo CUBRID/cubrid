@@ -1075,13 +1075,11 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    }
 
 	  /* #368 (D-368-01, D-368-07): a value a scope fixes is converted once per scope for the pre-cast of the add;
-	   * the first value is the accumulator's as it is */
-	  const DOMAIN_PLAN_ITEM *item = agg_p->domain_plan;
-	  const RESOLVED_DOMAIN *precast = &agg_p->accumulator_domain.precast;
-	  const bool is_held = accumulator->curr_cnt >= 1 && item != NULL && item->held[1] != 0
-			       && precast->conv[1] != NULL;
-	  const DB_VALUE *held = is_held ? qexec_held_value (thread_p, val_desc_p, item->held[1], precast->conv[1],
-				 precast->operand_domain[1], peek_val) : NULL;
+	   * the first value is the accumulator's as it is. The setup fixed whether it is one (#371). */
+	  const cubxasl::aggregate_accumulator_domain *acc_dom = &agg_p->accumulator_domain;
+	  const DB_VALUE *held = acc_dom->held != 0 && accumulator->curr_cnt >= 1
+				 ? qexec_held_value (thread_p, val_desc_p, acc_dom->held, acc_dom->precast.conv[1],
+				     acc_dom->precast.operand_domain[1], peek_val) : NULL;
 	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
 		  agg_p->function, agg_domain, peek_val, false, held);
 	  if (error != NO_ERROR)

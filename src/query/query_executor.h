@@ -119,6 +119,9 @@ inline DB_TYPE qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, 
 inline void qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB_TYPE compiled,
 				     DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 inline int qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
+inline const DB_VALUE *qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held,
+					 DOMAIN_CONVERTER conv, const TP_DOMAIN * target, const DB_VALUE * value)
+  __attribute__ ((ALWAYS_INLINE));
 
 /* Whether a plan item's slot is this execution's gate table slot: an item of the plan the gate resolved, or, in a PX
  * worker's inherited copy, an item of the worker's own load of the same stream, which numbers its slots alike
@@ -315,8 +318,40 @@ qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 
 extern const TP_DOMAIN *qexec_value_domain (const VAL_DESCR * vd, const regu_variable_node * regu);
 extern void qexec_enter_domain_scope (const VAL_DESCR * vd, const val_list_node * val_list);
-extern const DB_VALUE *qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONVERTER conv,
-					 const TP_DOMAIN * target, const DB_VALUE * value);
+extern const DB_VALUE *qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+						 DOMAIN_HELD_VALUE * entry, DOMAIN_CONVERTER conv,
+						 const TP_DOMAIN * target, const DB_VALUE * value);
+
+/*
+ * qexec_held_value () - the value a scope fixes, converted once in the scope (#368, D-368-01, D-368-07): a comparison
+ *   side, an arithmetic operand or the value a SUM or AVG adds that is a constant (the execution's scope) or a
+ *   correlated value (its block's scope)
+ *   return: the converted value; NULL when the row converts it - the scope was not entered, or the conversion failed
+ *	     (develop's outcome follows from the row's own)
+ *   held(in): 1 + its resolved.held index (a plan item's, a comparison record's or an accumulator domain's), not 0
+ *   conv(in), target(in): the converter the row would run, and its target: the execution's, the same at every read
+ *   value(in): the value, not NULL
+ *
+ * The first read in the scope's epoch converts the value (qexec_convert_held_value). Every other read is one
+ * comparison of epochs and the pointer that read left, which is NULL in a scope never entered: no owner, converter or
+ * target is compared on the row (#371). Only the thread that owns the execution's state reads it.
+ */
+inline const DB_VALUE *
+qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONVERTER conv,
+		  const TP_DOMAIN * target, const DB_VALUE * value)
+{
+  assert (vd != NULL && vd->xasl_state != NULL && held > 0);
+  RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
+  assert (held <= resolved.n_held && resolved.owner == thread_p);
+  DOMAIN_HELD_VALUE *entry = &resolved.held[held - 1];
+  if (entry->epoch == resolved.scope_epochs[entry->scope])
+    {
+      assert (entry->epoch == 0 || (entry->conv == conv && entry->target == target));
+      return entry->converted;
+    }
+  return qexec_convert_held_value (thread_p, resolved, entry, conv, target, value);
+}
+
 extern int qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other);
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
