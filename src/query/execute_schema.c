@@ -12256,6 +12256,27 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		    }
 		}
 	    }
+	  else if (att->header.name_space == ID_ATTRIBUTE && SM_IS_CONSTRAINT_INDEX_FAMILY (sm_cls_constr->type)
+		   && sm_cls_constr->filter_predicate != NULL)
+	    {
+	      /* xmilex-git/workspace#368 (#359): an index whose key does not hold the attribute but whose filter
+	       * predicate reads it keeps a predicate stream compiled against the attribute's type; saved, it is
+	       * compiled anew and rebuilt with the change, as an index over the attribute is */
+	      const SM_PREDICATE_INFO *pred = sm_cls_constr->filter_predicate;
+	      bool reads_attribute = false;
+	      for (int i = 0; i < pred->num_attrs && !reads_attribute; i++)
+		{
+		  reads_attribute = pred->att_ids[i] == att->id;
+		}
+	      if (reads_attribute)
+		{
+		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	    }
 	}
     }
   else
