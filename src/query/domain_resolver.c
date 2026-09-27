@@ -1406,39 +1406,39 @@ domain_compare_key_equal (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_K
   return lhs->type == rhs->type && lhs->codeset == rhs->codeset && lhs->collation == rhs->collation;
 }
 
-/* Whether keys[i] is the first of its (column, key) among keys[0..i]. */
-static bool
-domain_key_first (const int *columns, const DOMAIN_COMPARE_KEY * keys, int i)
+int
+domain_key_compares_distinct (int *columns, DOMAIN_COMPARE_KEY * keys, int n_keys)
 {
-  for (int j = 0; j < i; j++)
+  int n_distinct = 0;
+  for (int i = 0; i < n_keys; i++)
     {
-      if (columns[j] == columns[i] && domain_compare_key_equal (&keys[j], &keys[i]))
+      if (keys[i].type == DB_TYPE_NULL)
 	{
-	  return false;
+	  continue;
+	}
+      int d = 0;
+      while (d < n_distinct && (columns[d] != columns[i] || !domain_compare_key_equal (&keys[d], &keys[i])))
+	{
+	  d++;
+	}
+      if (d == n_distinct)
+	{
+	  columns[n_distinct] = columns[i];
+	  keys[n_distinct++] = keys[i];
 	}
     }
-  return true;
-}
-
-/* Whether (keys[i], keys[j]) is an entry of the table: two different keys of one column, each met first there. A
- * NULL key compares nothing (its values are NULL, which the B-tree and the range build answer first). */
-static bool
-domain_key_pair (const int *columns, const DOMAIN_COMPARE_KEY * keys, int i, int j)
-{
-  return j != i && columns[j] == columns[i] && keys[i].type != DB_TYPE_NULL && keys[j].type != DB_TYPE_NULL
-    && domain_key_first (columns, keys, i) && domain_key_first (columns, keys, j)
-    && !domain_compare_key_equal (&keys[i], &keys[j]);
+  return n_distinct;
 }
 
 static int
-domain_key_compares_count (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys)
+domain_key_compares_count (const int *columns, int n_keys)
 {
   int n_entries = 0;
   for (int i = 0; i < n_keys; i++)
     {
       for (int j = 0; j < n_keys; j++)
 	{
-	  if (domain_key_pair (columns, keys, i, j))
+	  if (j != i && columns[j] == columns[i])
 	    {
 	      n_entries++;
 	    }
@@ -1450,7 +1450,7 @@ domain_key_compares_count (const int *columns, const DOMAIN_COMPARE_KEY * keys, 
 size_t
 domain_key_compares_bytes (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys)
 {
-  const int n_entries = domain_key_compares_count (columns, keys, n_keys);
+  const int n_entries = domain_key_compares_count (columns, n_keys);
   const size_t n_slots = n_entries > 0 ? (size_t) n_entries : 1;
   return offsetof (DOMAIN_KEY_COMPARES, entry) + sizeof (DOMAIN_KEY_COMPARE_ENTRY) * n_slots;
 }
@@ -1466,7 +1466,8 @@ domain_resolve_key_compares (const int *columns, const DOMAIN_COMPARE_KEY * keys
     {
       for (int j = 0; j < n_keys; j++)
 	{
-	  if (!domain_key_pair (columns, keys, i, j))
+	  /* the keys are distinct (domain_key_compares_distinct): two of one column are different keys */
+	  if (j == i || columns[j] != columns[i])
 	    {
 	      continue;
 	    }

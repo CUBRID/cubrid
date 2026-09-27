@@ -334,6 +334,10 @@ struct domain_plan
   DOMAIN_COMPARE_PLAN **compares;	/* the comparison sites the gate decides, in resolved.compares order (#352) */
   int n_constants;
   DOMAIN_PLAN_CONSTANT *constants;	/* the constant subtrees, operands before their consumers (#352) */
+  int *constant_sites_first;	/* [n_constants + 1] G1 step 7 decides the sites constant_sites[first[i] .. first[i + 1])
+				 * just before it evaluates constant i (#368); NULL when no site waits for one */
+  int *constant_sites;		/* comparison site k, or ALL/SOME site n_compares + k; a site ready only after the last
+				 * constant is not here: the last pass decides it */
   int n_element_sites;
   DOMAIN_ELEMENT_COMPARE_PLAN **element_sites;	/* the ALL/SOME terms the gate decides, in resolved.elements order
 						 * (#352) */

@@ -3839,7 +3839,13 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, 
     }
   for (int i = 0; i < src.n_vals; i++)
     {
-      pr_clone_value (&src.vals[i], &resolved.vals[i]);
+      if (pr_clone_value (&src.vals[i], &resolved.vals[i]) != NO_ERROR)
+	{
+	  /* no memory: a worker never reads a value its copy lacks, the caller fails the job (#368) */
+	  qexec_clear_resolved_domains (thread_p, new_xasl_state);
+	  db_private_free (thread_p, new_xasl_state);
+	  return NULL;
+	}
     }
   if (src.n_slots != 0)
     {
@@ -4944,15 +4950,63 @@ qexec_compare_constants_ready (const RESOLVED_DOMAIN_TABLE & resolved, const DOM
 }
 
 /*
- * qexec_resolve_constant_compares () - G1 step 7: the comparison and ALL/SOME sites over constant subtrees whose
- *   subtrees have their values, each decided once (#354)
+ * qexec_resolve_constant_sites () - G1 step 7 just before constant i: the comparison and ALL/SOME sites whose last
+ *   constant subtree or waiting node is ready now (domain_publish_constant_sites), each decided once (#354, #368); one
+ *   over a constant whose computation failed below a branch guard is left to the last pass
  *   decided(in/out): [n_compares + n_element_sites] the sites decided so far
- *   all(in): every site left (after the last constant and the waiting nodes that read a row): every one is ready, the
- *	      gate having given each constant its value (#367) - one that is not is the boundary (b)
+ */
+static int
+qexec_resolve_constant_sites (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN * plan,
+			      unsigned char *decided, int i)
+{
+  if (plan->constant_sites_first == NULL)
+    {
+      return NO_ERROR;
+    }
+  for (int k = plan->constant_sites_first[i]; k < plan->constant_sites_first[i + 1]; k++)
+    {
+      const int s = plan->constant_sites[k];
+      if (decided[s])
+	{
+	  continue;
+	}
+      int error = NO_ERROR;
+      if (s < plan->n_compares)
+	{
+	  if (!qexec_compare_constants_ready (resolved, plan->compares[s]))
+	    {
+	      continue;
+	    }
+	  decided[s] = 1;
+	  error = qexec_resolve_compare (thread_p, resolved, plan->compares[s]);
+	}
+      else
+	{
+	  const DOMAIN_ELEMENT_COMPARE_PLAN *site = plan->element_sites[s - plan->n_compares];
+	  if (!qexec_compare_constants_ready (resolved, &site->pair))
+	    {
+	      continue;
+	    }
+	  decided[s] = 1;
+	  error = qexec_resolve_elements (thread_p, resolved, site);
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * qexec_resolve_constant_compares () - G1 step 7's last pass: the comparison and ALL/SOME sites over constant subtrees
+ *   left (after the last constant and the waiting nodes that read a row), each decided once (#354); every one is
+ *   ready, the gate having given each constant its value (#367) - one that is not is the boundary (b)
+ *   decided(in/out): [n_compares + n_element_sites] the sites decided so far
  */
 static int
 qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN * plan,
-				 unsigned char *decided, bool all)
+				 unsigned char *decided)
 {
   for (int k = 0; k < plan->n_compares; k++)
     {
@@ -4963,18 +5017,14 @@ qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE 
 	}
       if (!qexec_compare_constants_ready (resolved, site))
 	{
-	  if (all && qexec_compare_reads_failed (resolved, site))
+	  if (qexec_compare_reads_failed (resolved, site))
 	    {
 	      /* over a constant whose computation failed below a branch guard (#367) */
 	      decided[k] = 1;
 	      qexec_compare_unreached (&resolved.compares[site->fixed.site]);
 	      continue;
 	    }
-	  if (all)
-	    {
-	      return qexec_compare_side_unresolved (site);
-	    }
-	  continue;
+	  return qexec_compare_side_unresolved (site);
 	}
       decided[k] = 1;
       const int error = qexec_resolve_compare (thread_p, resolved, site);
@@ -4993,18 +5043,14 @@ qexec_resolve_constant_compares (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE 
 	}
       if (!qexec_compare_constants_ready (resolved, &site->pair))
 	{
-	  if (all && qexec_compare_reads_failed (resolved, &site->pair))
+	  if (qexec_compare_reads_failed (resolved, &site->pair))
 	    {
 	      /* over a constant whose computation failed below a branch guard (#367): nothing to compare */
 	      *site_decided = 1;
 	      resolved.elements[site->site].read = DOMAIN_READ_NONE;
 	      continue;
 	    }
-	  if (all)
-	    {
-	      return qexec_compare_side_unresolved (&site->pair);
-	    }
-	  continue;
+	  return qexec_compare_side_unresolved (&site->pair);
 	}
       *site_decided = 1;
       const int error = qexec_resolve_elements (thread_p, resolved, site);
@@ -5399,6 +5445,7 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
     }
   if (error == NO_ERROR && n_keys > 0)
     {
+      n_keys = domain_key_compares_distinct (columns, keys, n_keys);
       const size_t table_bytes = domain_key_compares_bytes (columns, keys, n_keys);
       DOMAIN_KEY_COMPARES *table = (DOMAIN_KEY_COMPARES *) db_private_alloc (thread_p, table_bytes);
       error = table == NULL ? ER_OUT_OF_VIRTUAL_MEMORY
@@ -6009,7 +6056,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	}
       if (error == NO_ERROR)
 	{
-	  error = qexec_resolve_constant_compares (thread_p, resolved, plan, decided, false);
+	  error = qexec_resolve_constant_sites (thread_p, resolved, plan, decided, i);
 	}
       if (error == NO_ERROR)
 	{
@@ -6034,7 +6081,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
   if (error == NO_ERROR && plan != NULL)
     {
       /* the sites left: over the last constants and the waiting nodes that read a row */
-      error = qexec_resolve_constant_compares (thread_p, resolved, plan, decided, true);
+      error = qexec_resolve_constant_compares (thread_p, resolved, plan, decided);
     }
   if (decided != NULL)
     {

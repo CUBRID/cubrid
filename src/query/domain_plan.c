@@ -3391,6 +3391,110 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 }
 
 /*
+ * domain_site_ready_at () - the constant G1 step 7 decides a waiting comparison or ALL/SOME site before (#368): one past
+ *   its last constant subtree, or the constant a waiting node it reads is (the gate decides it just before evaluating
+ *   it, #364); n_constants when it reads a waiting node that reads a row - after the last constant
+ */
+static int
+domain_site_ready_at (const DOMAIN_PLAN * plan, const DOMAIN_COMPARE_PLAN * site, int constant_base)
+{
+  int at = 0;
+  for (int side = 0; side < 2; side++)
+    {
+      const DOMAIN_PLAN_ITEM *constant = site->constant[side];
+      if (constant != NULL && constant->ref >= 0 && plan->items_cold[constant - plan->items].val_pos < 0)
+	{
+	  const int c = constant->ref - constant_base;
+	  assert (c >= 0 && c < plan->n_constants);
+	  at = c + 1 > at ? c + 1 : at;
+	}
+      const DOMAIN_PLAN_ITEM *operand = site->operand[side];
+      if (operand != NULL && operand->slot >= 0 && domain_slot_after_constants (plan, operand->slot))
+	{
+	  const DOMAIN_PLAN_ITEM *node = plan->gate_nodes[plan->slot_gate_node[operand->slot]];
+	  const int c = node->ref - constant_base;
+	  const bool constant_node = c >= 0 && c < plan->n_constants && plan->constants[c].item == node;
+	  const int node_at = constant_node ? c : plan->n_constants;
+	  at = node_at > at ? node_at : at;
+	}
+    }
+  return at;
+}
+
+/*
+ * domain_publish_constant_sites () - for each constant subtree, the waiting comparison and ALL/SOME sites G1 step 7
+ *   decides just before it evaluates that constant (#368): step 7 decides a site as soon as its constants have their
+ *   values (D-354-08, D-364-02), and this list lets it do so without going over every site before every constant
+ */
+static bool
+domain_publish_constant_sites (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, int constant_base)
+{
+  const int n_sites = plan->n_compares + plan->n_element_sites;
+  if (plan->n_constants == 0 || n_sites == 0)
+    {
+      return true;
+    }
+  int *at = (int *) db_private_alloc (thread_p, sizeof (int) * n_sites);
+  if (at == NULL)
+    {
+      return false;
+    }
+  int n_waiting = 0;
+  for (int s = 0; s < n_sites; s++)
+    {
+      const bool comparison = s < plan->n_compares;
+      const DOMAIN_COMPARE_PLAN *site =
+	comparison ? plan->compares[s] : &plan->element_sites[s - plan->n_compares]->pair;
+      /* a site over a session variable read waits for step 7b; one that waits for no constant is decided in step 5 */
+      const bool volatile_site = comparison ? site->fixed.kernel == DOMAIN_COMPARE_AT_GATE_VOLATILE
+	: plan->element_sites[s - plan->n_compares]->volatile_reads != 0;
+      at[s] = site->after_constants && !volatile_site ? domain_site_ready_at (plan, site, constant_base)
+	: plan->n_constants;
+      n_waiting += at[s] < plan->n_constants;
+    }
+  bool ok = true;
+  if (n_waiting > 0)
+    {
+      int *first = (int *) domain_plan_alloc (thread_p, plan->n_constants + 1, sizeof (int));
+      int *sites = (int *) domain_plan_alloc (thread_p, n_waiting, sizeof (int));
+      ok = first != NULL && sites != NULL;
+      if (ok)
+	{
+	  /* a counting sort by the constant each site waits for, plan order within one */
+	  memset (first, 0, sizeof (int) * (plan->n_constants + 1));
+	  for (int s = 0; s < n_sites; s++)
+	    {
+	      if (at[s] < plan->n_constants)
+		{
+		  first[at[s] + 1]++;
+		}
+	    }
+	  for (int i = 0; i < plan->n_constants; i++)
+	    {
+	      first[i + 1] += first[i];
+	    }
+	  for (int s = 0; s < n_sites; s++)
+	    {
+	      if (at[s] < plan->n_constants)
+		{
+		  sites[first[at[s]]++] = s;
+		}
+	    }
+	  /* each first[i] ran to the start of the next constant's sites */
+	  for (int i = plan->n_constants; i > 0; i--)
+	    {
+	      first[i] = first[i - 1];
+	    }
+	  first[0] = 0;
+	  plan->constant_sites_first = first;
+	  plan->constant_sites = sites;
+	}
+    }
+  db_private_free (thread_p, at);
+  return ok;
+}
+
+/*
  * domain_plan_key_element () - how one column of a search key takes its value (#342, interface section 5)
  *
  * A constant is the gate's (its value, once per execution); so is an element whose domain the gate decides (its rule,
@@ -3535,7 +3639,7 @@ domain_publish_key_compares (THREAD_ENTRY * thread_p, domain_plan_index * index)
   bool ok = columns != NULL && keys != NULL;
   if (ok)
     {
-      const int n = domain_key_compare_keys (index, columns, keys);
+      const int n = domain_key_compares_distinct (columns, keys, domain_key_compare_keys (index, columns, keys));
       const size_t bytes = domain_key_compares_bytes (columns, keys, n);
       DOMAIN_KEY_COMPARES *table = (DOMAIN_KEY_COMPARES *) domain_plan_alloc (thread_p, 1, bytes);
       ok = table != NULL && domain_resolve_key_compares (columns, keys, n, table, bytes) == NO_ERROR;
@@ -4166,6 +4270,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  ctx.failed = !domain_publish_session_variables (thread_p, &ctx, plan);
 	}
       ctx.failed = ctx.failed || !domain_publish_compares (thread_p, &ctx, plan, constant_base)
+	|| !domain_publish_constant_sites (thread_p, plan, constant_base)
 	|| !domain_publish_indexes (thread_p, &ctx, plan);
     }
   if (!ctx.failed && ctx.guards_ambiguous)

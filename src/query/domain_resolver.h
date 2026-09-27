@@ -246,8 +246,14 @@ struct DOMAIN_KEY_COMPARES
   DOMAIN_KEY_COMPARE_ENTRY entry[1];	/* [n_entries] */
 };
 
+/* The distinct (column, key) pairs of keys[0..n_keys), first occurrences in order, compacted in place; returns their
+ * count (#368). A key repeats once per range of a K-element IN list and adds no entry to the table; a NULL key
+ * compares nothing (its values are NULL, which the B-tree and the range build answer first), so it is dropped. */
+int domain_key_compares_distinct (int *columns, DOMAIN_COMPARE_KEY * keys, int n_keys);
+
 /* The comparisons among the keys a scan's key columns take - every ordered pair of different keys of one column - as a
- * table: its size, then the table itself (#342). columns[i] is keys[i]'s column; a key may repeat. */
+ * table: its size, then the table itself (#342). columns[i] is keys[i]'s column; the keys are distinct
+ * (domain_key_compares_distinct), so the work grows with the distinct keys, not with the ranges (#368). */
 size_t domain_key_compares_bytes (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys);
 int domain_resolve_key_compares (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys,
 				 DOMAIN_KEY_COMPARES * table, size_t bytes);
