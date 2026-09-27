@@ -1393,9 +1393,10 @@ static int btree_get_num_visible_oids_from_all_ovf (THREAD_ENTRY * thread_p, BTI
 static void btree_write_default_split_info (BTREE_NODE_SPLIT_INFO * info);
 static int btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p, VPID * prev);
 static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
-static DB_VALUE_COMPARE_RESULT btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
-						       const DOMAIN_SEARCH_KEYS * search_keys, int do_coercion,
-						       int total_order, int *start_colp);
+STATIC_INLINE DB_VALUE_COMPARE_RESULT btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
+							      const DOMAIN_SEARCH_KEYS * search_keys, int do_coercion,
+							      int total_order, int *start_colp)
+  __attribute__ ((ALWAYS_INLINE));
 static int btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * next_vpid);
 static PAGE_PTR btree_get_next_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p);
 static int btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts,
@@ -22032,9 +22033,11 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
  *
  * search_keys NULL is a B-tree search outside a query plan, whose keys are the index's own: a column whose values do
  * not compare as they are compares by value. An index scan's search keys compare such columns as its key plan says;
- * one the plan has no comparison for is the execution boundary (b).
+ * one the plan has no comparison for is the execution boundary (b). Inlined into btree_compare_key and
+ * btree_compare_search_key: a key comparison is one call, as develop's btree_compare_key is, and a single-column key
+ * reads search_keys only for values that do not compare as they are (#371).
  */
-static DB_VALUE_COMPARE_RESULT
+STATIC_INLINE DB_VALUE_COMPARE_RESULT
 btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
 			const DOMAIN_SEARCH_KEYS * search_keys, int do_coercion, int total_order, int *start_colp)
 {

@@ -584,9 +584,47 @@ domain_resolve_precast (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DO
   domain_set_arith_operands (opcode, operands, left_target, right_target, result);
 }
 
+/* The cached domain tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id) gives a string (the collation's
+ * codeset) or a bit string, found without the transient domain tp_domain_resolve makes and frees (#371); a domain not
+ * cached yet, and one of another type, are tp_domain_resolve's. */
+static const TP_DOMAIN *
+domain_character_domain (DB_TYPE type, int precision, int collation_id)
+{
+  const TP_DOMAIN *domain = NULL;
+  if (TP_IS_CHAR_TYPE (type))
+    {
+      const int codeset = lang_get_collation (collation_id)->codeset;
+      domain = tp_domain_find_charbit (type, codeset, collation_id, TP_DOMAIN_COLL_NORMAL, precision, false);
+      if (domain != NULL && domain->codeset != codeset)
+	{
+	  /* the cache matches a string's codeset as well, which tp_domain_find_charbit leaves out for a CHAR */
+	  domain = NULL;
+	}
+    }
+  else if (TP_IS_BIT_TYPE (type))
+    {
+      /* a bit string's domain has no collation: the cache matches its precision alone */
+      domain = tp_domain_find_charbit (type, INTL_CODESET_RAW_BITS, 0, TP_DOMAIN_COLL_NORMAL, precision, false);
+    }
+  if (domain == NULL)
+    {
+      return tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id);
+    }
+#if !defined (NDEBUG)
+  /* shadow check (optdebug): tp_domain_resolve finds the same cached domain */
+  assert (domain == tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id));
+#endif
+  return domain;
+}
+
 static const TP_DOMAIN *
 domain_char_with_collation (DB_TYPE type, int codeset, int collation_id)
 {
+  if (codeset == lang_get_collation (collation_id)->codeset)
+    {
+      /* the default domain's precision under the collation, as tp_domain_resolve caches it (#371) */
+      return domain_character_domain (type, tp_domain_resolve_default (type)->precision, collation_id);
+    }
   TP_DOMAIN *domain = tp_domain_copy (tp_domain_resolve_default (type), false);
   if (domain == NULL)
     {
@@ -1089,7 +1127,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
     case T_HEX:
     case T_CONV:
       /* db_hex, db_conv: db_make_string, a floating VARCHAR in LANG_SYS (#338) */
-      result->domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, LANG_SYS_COLLATION);
+      result->domain = domain_character_domain (DB_TYPE_VARCHAR, DB_MAX_VARCHAR_PRECISION, LANG_SYS_COLLATION);
       if (result->domain == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -1427,6 +1465,96 @@ domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key)
       key->codeset = db_get_enum_codeset (value);
       key->collation = db_get_enum_collation (value);
     }
+}
+
+const TP_DOMAIN *
+domain_value_domain (const DB_VALUE * value)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  const TP_DOMAIN *domain = NULL;
+  switch (type)
+    {
+    case DB_TYPE_NULL:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_DATE:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_MONETARY:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_ENUMERATION:
+      /* no parameters: the built-in domain (an ENUM value carries no element list) */
+      domain = tp_domain_resolve_default (type);
+      break;
+
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      {
+	/* the value's codeset, collation and precision, a variable string's floating one read as its maximum */
+	const int codeset = db_get_string_codeset (value);
+	int precision = db_value_precision (value);
+	if (type == DB_TYPE_VARCHAR
+	    && (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE || precision > DB_MAX_VARCHAR_PRECISION))
+	  {
+	    precision = DB_MAX_VARCHAR_PRECISION;
+	  }
+	else if (type == DB_TYPE_VARBIT
+		 && (precision == 0 || precision == TP_FLOATING_PRECISION_VALUE || precision > DB_MAX_VARBIT_PRECISION))
+	  {
+	    precision = DB_MAX_VARBIT_PRECISION;
+	  }
+	domain = tp_domain_find_charbit (type, codeset, db_get_string_collation (value), TP_DOMAIN_COLL_NORMAL,
+					 precision, false);
+	if (domain != NULL && TP_IS_CHAR_TYPE (type) && domain->codeset != codeset)
+	  {
+	    /* the cache matches a string's codeset as well, which tp_domain_find_charbit leaves out for a CHAR */
+	    domain = NULL;
+	  }
+      }
+      break;
+
+    case DB_TYPE_NUMERIC:
+      {
+	/* a default precision or scale reads as NUMERIC's default */
+	int precision = db_value_precision (value);
+	int scale = db_value_scale (value);
+	if (precision == DB_DEFAULT_PRECISION)
+	  {
+	    precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  }
+	if (scale == DB_DEFAULT_SCALE)
+	  {
+	    scale = DB_DEFAULT_NUMERIC_SCALE;
+	  }
+	domain = tp_domain_find_numeric (DB_TYPE_NUMERIC, precision, scale, false);
+      }
+      break;
+
+    default:
+      /* a collection, a MIDXKEY, an OBJECT or OID, JSON: tp_domain_resolve_value reads the value itself */
+      break;
+    }
+  if (domain == NULL)
+    {
+      /* not cached yet: tp_domain_resolve_value caches it */
+      return tp_domain_resolve_value (value, NULL);
+    }
+#if !defined (NDEBUG)
+  /* shadow check (optdebug): tp_domain_resolve_value finds the same cached domain */
+  assert (domain == tp_domain_resolve_value (value, NULL));
+#endif
+  return domain;
 }
 
 static bool
@@ -2626,11 +2754,11 @@ domain_variable_string_value (const TP_DOMAIN * domain)
   const bool floating = domain->precision == 0 || domain->precision == TP_FLOATING_PRECISION_VALUE;
   if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR && (floating || domain->precision > DB_MAX_VARCHAR_PRECISION))
     {
-      return tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, domain->collation_id);
+      return domain_character_domain (DB_TYPE_VARCHAR, DB_MAX_VARCHAR_PRECISION, domain->collation_id);
     }
   if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT && (floating || domain->precision > DB_MAX_VARBIT_PRECISION))
     {
-      return tp_domain_resolve (DB_TYPE_VARBIT, NULL, DB_MAX_VARBIT_PRECISION, 0, NULL, 0);
+      return domain_character_domain (DB_TYPE_VARBIT, DB_MAX_VARBIT_PRECISION, 0);
     }
   return domain;
 }
@@ -2810,13 +2938,13 @@ domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled
 	{
 	  /* a string recoded into the target codeset comes out in the target type (CTP _07_session_var: an
 	   * iso88591 or binary CHAR bind cast to a utf8 VARCHAR) */
-	  return tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, compiled->precision, 0, NULL,
-				    compiled->collation_id);
+	  return domain_character_domain (TP_DOMAIN_TYPE (compiled), compiled->precision, compiled->collation_id);
 	}
-      return tp_domain_resolve (TP_DOMAIN_TYPE (from), NULL, from->precision, 0, NULL, compiled->collation_id);
+      return domain_character_domain (TP_DOMAIN_TYPE (from), from->precision, compiled->collation_id);
     }
-  return tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, compiled->precision, compiled->scale, NULL,
-			    char_source ? from->collation_id : compiled->collation_id);
+  /* neither the domain cache nor a string conversion reads a string domain's scale (#371) */
+  return domain_character_domain (TP_DOMAIN_TYPE (compiled), compiled->precision,
+				  char_source ? from->collation_id : compiled->collation_id);
 }
 
 /* The character result of opcode over the operands' decided domains; compiled is the node's compiled domain (NULL
@@ -2837,12 +2965,11 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
       const TP_DOMAIN *value = n_operands > 0 ? domain_operand_domain (&operands[0]) : NULL;
       if (value != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (value)))
 	{
-	  domain = tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, compiled->precision, 0, NULL,
-				      value->collation_id);
+	  domain = domain_character_domain (TP_DOMAIN_TYPE (compiled), compiled->precision, value->collation_id);
 	}
       else
 	{
-	  domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, compiled->collation_id);
+	  domain = domain_character_domain (DB_TYPE_VARCHAR, DB_MAX_VARCHAR_PRECISION, compiled->collation_id);
 	}
     }
   else if (compiled != NULL && opcode == PT_GROUP_CONCAT)
@@ -2856,8 +2983,7 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	  result->domain = &tp_Null_domain;
 	  return NO_ERROR;
 	}
-      domain = tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL,
-				  function->collation_id);
+      domain = domain_character_domain (TP_DOMAIN_TYPE (compiled), TP_FLOATING_PRECISION_VALUE, function->collation_id);
     }
   else
     {
@@ -2966,7 +3092,7 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	{
 	  precision = TP_FLOATING_PRECISION_VALUE;
 	}
-      domain = tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id);
+      domain = domain_character_domain (type, precision, collation_id);
     }
 
   if (domain == NULL)
@@ -3026,7 +3152,7 @@ domain_resolve_branch_merge (const DOMAIN_OPERAND * operands, int n_operands, RE
   /* the branches' string type (the compiler casts every branch to it) of the value's own length (D-338-03) */
   const TP_DOMAIN *first = domain_first_character_operand (operands, n_operands);
   const DB_TYPE type = first != NULL && TP_DOMAIN_TYPE (first) == DB_TYPE_CHAR ? DB_TYPE_CHAR : DB_TYPE_VARCHAR;
-  const TP_DOMAIN *domain = tp_domain_resolve (type, NULL, TP_FLOATING_PRECISION_VALUE, 0, NULL, collation_id);
+  const TP_DOMAIN *domain = domain_character_domain (type, TP_FLOATING_PRECISION_VALUE, collation_id);
   if (domain == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;

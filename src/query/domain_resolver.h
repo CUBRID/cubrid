@@ -249,6 +249,12 @@ int domain_unresolved_error (const char *alias, int index, DB_TYPE type);
 /* The key of a value: its type and, for a string or an ENUM, its codeset and collation (#342). */
 void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key);
 
+/* The cached domain tp_domain_resolve_value (value, NULL) gives a value, found without the transient domain that
+ * function makes and frees (#371): a type without parameters has its built-in domain, a string, a bit string or a
+ * NUMERIC the cached domain of its parameters; a domain not cached yet, and any other type, are
+ * tp_domain_resolve_value's (which caches it). */
+const TP_DOMAIN *domain_value_domain (const DB_VALUE * value);
+
 /*
  * DOMAIN_KEY_COMPARES - an index scan's comparisons of values of a key column whose types or collations do not compare
  *   as they are (#342): a search key value against an index key, or two search key values (the ranges' sort and
