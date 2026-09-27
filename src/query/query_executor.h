@@ -116,7 +116,8 @@ RESOLVED_OWNS_SLOT (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_IT
 inline const RESOLVED_DOMAIN *
 RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  if (vd == NULL || vd->xasl_state == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_GATE))
+  /* a node the gate does not decide answers before the descriptor's gate state is read (#368, R2-03 (a)) */
+  if (vd == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_GATE) || vd->xasl_state == NULL)
     {
       return NULL;
     }
@@ -131,11 +132,12 @@ RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 /* The index of a node's cell in this execution's state, or -1 when it has none here: an item without a cell, a node
  * of another tree, a descriptor without gate state. A PX worker's copy reads the cells of its own load's items, which
  * number them as the plan does (#355, D-355-01, D-355-07). The descriptor comes first: a temporary regu fetched
- * without one (qdata_get_interpolation_function_result) leaves its position's item pointer unset. */
+ * without one (qdata_get_interpolation_function_result) leaves its position's item pointer unset. An item without a
+ * cell - most nodes, at every row - answers before the descriptor's gate state is read (#368, review 2 R2-03 (a)). */
 inline int
 RESOLVED_CELL (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  if (vd == NULL || vd->xasl_state == NULL || item == NULL || item->cell <= 0)
+  if (vd == NULL || item == NULL || item->cell <= 0 || vd->xasl_state == NULL)
     {
       return -1;
     }

@@ -4995,6 +4995,12 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
+      /* the domains its positions and predicate operands take for the execution, once per start rather than at every
+       * row it returns (#368, review 2 R2-12) */
+      if (scan_plan_list_scan_domains (thread_p, scan_id->vd, llsidp) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
       /* open list file scan */
       if (qfile_open_list_scan (llsidp->list_id, &llsidp->lsid) != NO_ERROR)
 	{
@@ -7361,11 +7367,6 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   tplrec.size = 0;
   tplrec.tpl = (QFILE_TUPLE) NULL;
-
-  if (scan_plan_list_scan_domains (thread_p, scan_id->vd, llsidp) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
     {
