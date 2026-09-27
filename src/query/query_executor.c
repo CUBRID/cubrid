@@ -5683,10 +5683,14 @@ qexec_check_key_pairs (THREAD_ENTRY * thread_p, const domain_plan_index * index,
  *
  * The distinct keys are collected as the elements are decided, each column's own key first; a column whose values take
  * no other key compares nothing, and a scan none of whose columns does has no table (#371).
+ *
+ * Only a scan with an element to decide has a site (domain_publish_indexes): one with none - its literals included,
+ * which the load fixes - allocates and decides nothing here, and the load built its table (#371).
  */
 static int
 qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const domain_plan_index * index)
 {
+  assert (index->n_decisions > 0);
   RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved;
   DOMAIN_INDEX_DECISIONS *out = &resolved.indexes[index->site];
   const int n_bounds = 2 * index->n_ranges + 1;

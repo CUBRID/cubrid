@@ -416,7 +416,8 @@ scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp)
  *
  * The load derived the plan from the stream's key domain, the root header's (L-45 (f)); a scan whose B-tree has
  * another is the execution boundary (b). The scan's storage is made once here for every range it builds, and the
- * B-tree's comparison of its search key values is chosen here (#371).
+ * B-tree's comparison of its search key values is chosen here (#371). A single-column key without a key comparison
+ * table needs no storage, whatever the gate decided for it: it takes its values as they are (#371).
  */
 static int
 scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const INDX_INFO * indx_info,
@@ -445,9 +446,23 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
   isidp->key_plan = plan;
   isidp->key_decisions = decisions;
   const bool midxkey = TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY;
-  if (!midxkey && compares == NULL && plan->n_decisions == 0)
+  if (!midxkey && compares == NULL)
     {
-      /* no storage: its values compare as they are (scan_index_search_compare) */
+      /* no storage: its values compare as they are (scan_index_search_compare), and a single-column key takes each as
+       * it is, whatever the gate decided for it - no scratch chain, no strict conversion (#371) */
+#if !defined (NDEBUG)
+      assert (plan->n_scratch == 0);
+      for (int b = 0; b < 2 * plan->n_ranges + 1; b++)
+	{
+	  for (int i = 0; i < plan->bounds[b].n_elems; i++)
+	    {
+	      const domain_plan_key_elem *elem = &plan->bounds[b].elems[i];
+	      assert (elem->rule != DOMAIN_KEY_STRICT);
+	      assert (elem->rule != DOMAIN_KEY_DECIDED || decisions == NULL || decisions->decisions == NULL
+		      || decisions->decisions[elem->decision].rule != DOMAIN_KEY_STRICT);
+	    }
+	}
+#endif
       return NO_ERROR;
     }
 
@@ -2493,6 +2508,15 @@ err_exit:
 static inline int
 scan_key_single_column (INDX_SCAN_ID * isidp, int bound_index, const DB_VALUE * value)
 {
+#if !defined (NDEBUG)
+  {
+    /* a literal the load fixed holds the domain the load read from its value (#371) */
+    const domain_plan_key *fixed = &isidp->key_plan->bounds[bound_index];
+    const domain_plan_key_elem *elem = fixed->n_elems == 1 ? &fixed->elems[0] : NULL;
+    assert (elem == NULL || elem->regu == NULL || elem->regu->type != TYPE_DBVAL || elem->rule != DOMAIN_KEY_INDEX
+	    || DB_IS_NULL (value) || scan_key_value_holds (value, elem->keep_elem));
+  }
+#endif
   if (DB_IS_NULL (value) || isidp->key_decisions == NULL)
     {
       return NO_ERROR;

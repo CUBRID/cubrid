@@ -3847,12 +3847,35 @@ domain_publish_constant_sites (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, int 
 }
 
 /*
+ * domain_key_literal () - the domain of a literal key element's value, which the load reads once (#371); NULL for a
+ *   constant the gate forms at every execution: a bind (a WHERE literal the parser auto-parameterized is one,
+ *   qo_auto_parameterize) or a constant subtree, a NULL (the range answers it), a value no index key holds (the gate's
+ *   error before any row, D-367-03), a literal under a COLLATE modifier (the fetch gives its value the modifier's
+ *   collation)
+ */
+static const TP_DOMAIN *
+domain_key_literal (const REGU_VARIABLE * regu)
+{
+  if (regu->type != TYPE_DBVAL || REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION)
+      || DB_IS_NULL (&regu->value.dbval) || !tp_valid_indextype (DB_VALUE_DOMAIN_TYPE (&regu->value.dbval)))
+    {
+      return NULL;
+    }
+  const TP_DOMAIN *domain = domain_value_domain (&regu->value.dbval);
+  return domain_fixes_values (domain) ? domain : NULL;
+}
+
+/*
  * domain_plan_key_element () - how one column of a search key takes its value (#342, interface section 5)
  *
  * A constant is the gate's (its value, once per execution); so is an element whose domain the gate decides (its rule,
  * from that domain). The load derives the rule of any other element from its domain: the column's type, strict or kept
  * (domain_key_rule). keep_elem is the element's domain in the column's direction, which a multi-column key writes the
  * value with once any column is kept.
+ *
+ * A literal is the load's (#371): its value's domain gives the rule the gate gave it at every execution
+ * (qexec_resolve_key_constant). One the gate converts strictly stays the gate's: the gate converts it once per
+ * execution, the range would at every range it builds.
  */
 static bool
 domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE * regu, const TP_DOMAIN * column,
@@ -3872,6 +3895,16 @@ domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE 
   const DOMAIN_PLAN_ITEM *item = regu != NULL ? regu->domain_plan : NULL;
   if (item != NULL && item->operand_class == OPERAND_CONST)
     {
+      const TP_DOMAIN *literal = domain_key_literal (regu);
+      DOMAIN_CONVERTER strict_conv = NULL;
+      const DOMAIN_KEY_RULE rule = literal != NULL ? domain_key_rule (literal, column, midxkey, &strict_conv)
+	: DOMAIN_KEY_CONSTANT;
+      if (rule == DOMAIN_KEY_INDEX || rule == DOMAIN_KEY_KEEP)
+	{
+	  elem->rule = rule;
+	  elem->keep_elem = domain_in_key_direction (literal, column);
+	  return elem->keep_elem != NULL;
+	}
       elem->rule = DOMAIN_KEY_CONSTANT;
       elem->decision = index->n_decisions++;
       return true;
