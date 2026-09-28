@@ -3051,6 +3051,20 @@ histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *
 /*===========================================================================*/
 /* bind-value plan watch: node-cardinality fingerprint, target selection, early window */
 
+/* Tuning constants of the watch. Deliberately not system parameters: the one thing a DBA
+ * decides is whether to watch and for how many executions (plan_cache_bind_watch_checks);
+ * nobody has a basis to pick a band or a floor per installation. These are the issue's
+ * starting values and are fixed by the phase-1 measurement -- change here and rebuild. */
+/* shape: the nodes moved relative to each other, which reverses a driving order */
+static constexpr double BIND_WATCH_SHAPE_BAND = 4.0;
+/* scale: everything moved together; only absolute thresholds (parallel-scan entry, hash-join
+ * spill, hash-aggregation give-up) can flip, so this band is wide */
+static constexpr double BIND_WATCH_SCALE_BAND = 10.0;
+/* a node estimated below this on both sides is ignored: 1 row becoming 3 moves no plan */
+static constexpr double BIND_WATCH_ROW_FLOOR = 1000.0;
+/* a plan cheaper than this cannot get expensive enough for a replan to pay for itself */
+static constexpr double BIND_WATCH_COST_THRESHOLD = 100.0;
+
 /* the value-dependent row estimate of one FROM spec: the rows its histogram was built from,
  * scaled by every histogram-priceable host-variable term on it. Terms the histogram cannot
  * price are left out of BOTH the recorded and the current vector, so the ratio between them
@@ -3371,10 +3385,13 @@ bool
 histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws, bool *out_usable)
 {
   BIND_WATCH_STATE cur;
-  const double row_floor = (double) prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_ROW_FLOOR);
-  const double shape_band = (double) prm_get_float_value (PRM_ID_PLAN_CACHE_BIND_SHAPE_BAND);
-  const double scale_band = (double) prm_get_float_value (PRM_ID_PLAN_CACHE_BIND_SCALE_BAND);
-  const bool trace = prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_WATCH_TRACE);
+  const double row_floor = BIND_WATCH_ROW_FLOOR;
+  const double shape_band = BIND_WATCH_SHAPE_BAND;
+  const double scale_band = BIND_WATCH_SCALE_BAND;
+  /* the per-check dump rides on the general debug-log switch (on by default in debug builds,
+   * where the phase-1 measurement runs); the replan reason below is logged unconditionally,
+   * since it is bounded by the window and is what a DBA asks for when a plan changed */
+  const bool trace = prm_get_bool_value (PRM_ID_ER_LOG_DEBUG);
   double ratio_sum = 0.0, mean_ratio = 0.0, worst_shape = 0.0;
   int compared = 0, worst_i = -1, i, j;
   bool out_of_band = false;
@@ -3483,29 +3500,50 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
 
   if (out_of_band)
     {
+      /* one line, every node: "<table> then -> now (Nx up|down)" -- with the dump off (release
+       * builds) this is the only account of why the plan changed, so it must be complete */
+      char nodes_buf[BIND_WATCH_MAX_NODES * (BIND_WATCH_NAME_LEN + 48)];
+      size_t used = 0;
+
+      nodes_buf[0] = '\0';
+      for (i = 0; i < cur.nodes && used < sizeof (nodes_buf); i++)
+	{
+	  double then = -1.0, fold = 0.0;
+	  int n;
+
+	  for (j = 0; j < ws->nodes; j++)
+	    {
+	      if (ws->spec_id[j] == cur.spec_id[i])
+		{
+		  then = ws->card[j];
+		  break;
+		}
+	    }
+	  if (then > 0.0)
+	    {
+	      fold = (cur.card[i] >= then) ? cur.card[i] / then : then / cur.card[i];
+	    }
+	  n = snprintf (nodes_buf + used, sizeof (nodes_buf) - used, "%s%s %.0f -> %.0f (%.1fx %s)",
+			(i > 0) ? "; " : "", cur.name[i], then, cur.card[i], fold,
+			(cur.card[i] >= then) ? "up" : "down");
+	  if (n < 0)
+	    {
+	      break;
+	    }
+	  used += (size_t) n;
+	}
+
       if (worst_i >= 0)
 	{
-	  double then, fold;
-
-	  for (j = 0; j < ws->nodes && ws->spec_id[j] != cur.spec_id[worst_i]; j++)
-	    {
-	      ;
-	    }
-	  then = ws->card[j];
-	  fold = (cur.card[worst_i] >= then) ? cur.card[worst_i] / then : then / cur.card[worst_i];
 	  _er_log_debug (ARG_FILE_LINE,
-			 "bind watch replan (shape): %s estimated rows %.0f -> %.0f, %.1fx %s"
-			 " (shape band %.1fx, overall scale %.1fx)\n",
-			 cur.name[worst_i], then, cur.card[worst_i], fold,
-			 (cur.card[worst_i] >= then) ? "up" : "down", shape_band, std::exp (mean_ratio));
+			 "bind watch replan (shape): %s; shape %.1fx over band %.1fx, overall scale %.1fx\n",
+			 nodes_buf, std::exp (worst_shape), shape_band, std::exp (mean_ratio));
 	}
       else
 	{
-	  double fold = std::exp (std::fabs (mean_ratio));
-
-	  _er_log_debug (ARG_FILE_LINE,
-			 "bind watch replan (scale): all %d nodes moved %.1fx %s (scale band %.1fx)\n",
-			 cur.nodes, fold, (mean_ratio >= 0.0) ? "up" : "down", scale_band);
+	  _er_log_debug (ARG_FILE_LINE, "bind watch replan (scale): %s; all moved %.1fx %s over band %.1fx\n",
+			 nodes_buf, std::exp (std::fabs (mean_ratio)), (mean_ratio >= 0.0) ? "up" : "down",
+			 scale_band);
 	}
     }
 
@@ -3720,8 +3758,7 @@ histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement, doub
     {
       return false;
     }
-  /* a plan this cheap cannot get expensive enough for a replan to pay for itself */
-  if (plan_cost < (double) prm_get_float_value (PRM_ID_PLAN_CACHE_BIND_COST_THRESHOLD))
+  if (plan_cost < BIND_WATCH_COST_THRESHOLD)
     {
       return false;
     }

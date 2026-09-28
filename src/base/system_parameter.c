@@ -823,16 +823,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_WATCH_CHECKS "plan_cache_bind_watch_checks"
 
-#define PRM_NAME_PLAN_CACHE_BIND_SHAPE_BAND "plan_cache_bind_shape_band"
-
-#define PRM_NAME_PLAN_CACHE_BIND_SCALE_BAND "plan_cache_bind_scale_band"
-
-#define PRM_NAME_PLAN_CACHE_BIND_ROW_FLOOR "plan_cache_bind_row_floor"
-
-#define PRM_NAME_PLAN_CACHE_BIND_COST_THRESHOLD "plan_cache_bind_cost_threshold"
-
-#define PRM_NAME_PLAN_CACHE_BIND_WATCH_TRACE "plan_cache_bind_watch_trace"
-
 // #endregion
 
 /*
@@ -5603,66 +5593,6 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 0}},
    {false, {.i = 1000}},
    {false, {.i = 0}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PLAN_CACHE_BIND_SHAPE_BAND,
-   PRM_NAME_PLAN_CACHE_BIND_SHAPE_BAND,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_FLOAT,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.f = 4.0f}},
-   {false, {.f = 4.0f}},
-   {false, {.f = 1000000.0f}},
-   {false, {.f = 1.0f}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PLAN_CACHE_BIND_SCALE_BAND,
-   PRM_NAME_PLAN_CACHE_BIND_SCALE_BAND,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_FLOAT,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.f = 10.0f}},
-   {false, {.f = 10.0f}},
-   {false, {.f = 1000000.0f}},
-   {false, {.f = 1.0f}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PLAN_CACHE_BIND_ROW_FLOOR,
-   PRM_NAME_PLAN_CACHE_BIND_ROW_FLOOR,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_INTEGER,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 1000}},
-   {false, {.i = 1000}},
-   {false, {.i = 1000000000}},
-   {false, {.i = 0}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PLAN_CACHE_BIND_COST_THRESHOLD,
-   PRM_NAME_PLAN_CACHE_BIND_COST_THRESHOLD,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_FLOAT,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.f = 100.0f}},
-   {false, {.f = 100.0f}},
-   NULL_SYSPRM_PARAM_VALUE,
-   {false, {.f = 0.0f}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PLAN_CACHE_BIND_WATCH_TRACE,
-   PRM_NAME_PLAN_CACHE_BIND_WATCH_TRACE,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
-   PRM_BOOLEAN,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE,
-   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
