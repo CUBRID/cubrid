@@ -3100,69 +3100,6 @@ sm_mark_system_class (MOP classop, int on_or_off)
   return error;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-#ifdef SA_MODE
-void
-sm_mark_system_class_for_catalog (void)
-{
-  MOP classmop;
-  SM_CLASS *class_;
-  int i;
-
-  const char *classes[] = {
-    CT_CLASS_NAME,
-    CT_ATTRIBUTE_NAME,
-    CT_DOMAIN_NAME,
-    CT_METHOD_NAME,
-    CT_METHSIG_NAME,
-    CT_METHARG_NAME,
-    CT_METHFILE_NAME,
-    CT_QUERYSPEC_NAME,
-    CT_INDEX_NAME,
-    CT_INDEXKEY_NAME,
-    CT_CLASSAUTH_NAME,
-    CT_DATATYPE_NAME,
-    CT_STORED_PROC_NAME,
-    CT_STORED_PROC_ARGS_NAME,
-    CT_PARTITION_NAME,
-    CT_HISTOGRAM_NAME,
-    CTV_CLASS_NAME,
-    CTV_SUPER_CLASS_NAME,
-    CTV_VCLASS_NAME,
-    CTV_ATTRIBUTE_NAME,
-    CTV_ATTR_SD_NAME,
-    CTV_METHOD_NAME,
-    CTV_METHARG_NAME,
-    CTV_METHARG_SD_NAME,
-    CTV_METHFILE_NAME,
-    CTV_INDEX_NAME,
-    CTV_INDEXKEY_NAME,
-    CTV_AUTH_NAME,
-    CTV_TRIGGER_NAME,
-    CTV_STORED_PROC_NAME,
-    CTV_STORED_PROC_ARGS_NAME,
-    CTV_PARTITION_NAME,
-    CT_COLLATION_NAME,
-    CT_SERVER_NAME,
-    CTV_SERVER_NAME,
-    CTV_HISTOGRAM_NAME,
-    CTV_USER_NAME,
-    CTV_AUTHORIZATION_NAME,
-    NULL
-  };
-
-  for (i = 0; classes[i] != NULL; i++)
-    {
-      classmop = locator_find_class (classes[i]);
-      if (au_fetch_class_force (classmop, &class_, AU_FETCH_UPDATE) == NO_ERROR)
-	{
-	  class_->flags |= SM_CLASSFLAG_SYSTEM;
-	}
-    }
-}
-#endif /* SA_MODE */
-#endif
-
 /*
  * sm_set_class_flag() - This turns on or off the given flag.
  *    The flag may be tested by the sm_get_class_flag function.
@@ -15928,6 +15865,7 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 {
   HFID *insts_hfid = NULL;
   HFID prev_hfid;
+  HFID new_hfid;
   SM_CLASS *class_ = NULL;
   OID *oid = NULL;
   DB_OBJLIST *subs;
@@ -15972,28 +15910,18 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   prev_hfid = *insts_hfid;
 
-  /* Destroy the heap */
-  error = heap_destroy_newly_created (insts_hfid, oid, true);
+  /* Create the new heap first and flush the class straight from the old HFID to the new one, so the class record
+   * never exposes a NULL HFID on disk; a concurrent lock-free reader caching that transient state aborted the
+   * server (CBRD-27286). The old heap is destroyed last - its destruction is postponed to commit time anyway, so
+   * the ordering does not change when the pages are actually freed. */
+  HFID_SET_NULL (&new_hfid);
+  error = heap_create (&new_hfid, oid, reuse_oid);
   if (error != NO_ERROR)
     {
       goto end;
     }
 
-  HFID_SET_NULL (insts_hfid);
-  ws_dirty (class_mop);
-
-  error = locator_flush_class (class_mop);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-  /* Create a new heap */
-  error = heap_create (insts_hfid, oid, reuse_oid);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
+  *insts_hfid = new_hfid;
 
   /* Destroy and Create the lob dir if need */
   error = locator_lob_process_dir (class_, &prev_hfid, insts_hfid);
@@ -16004,6 +15932,13 @@ sm_truncate_using_destroy_heap (MOP class_mop)
 
   ws_dirty (class_mop);
   error = locator_flush_class (class_mop);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* Destroy the old heap */
+  error = heap_destroy_newly_created (&prev_hfid, oid, true);
 
 end:
   return error;
@@ -16882,4 +16817,19 @@ sm_domain_copy (SM_DOMAIN * ptr)
     }
 
   return new_ptr;
+}
+
+/*
+ * sm_is_catcls_disabled () - check whether catalog class updates are disabled
+ *   return: true in SA_MODE when catcls_Enable is false
+ */
+bool
+sm_is_catcls_disabled (void)
+{
+#if defined(SA_MODE)
+  extern bool catcls_Enable;
+  return !catcls_Enable;
+#else
+  return false;
+#endif
 }
