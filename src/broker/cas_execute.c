@@ -916,6 +916,20 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 {
   int err_code = 0;
 
+  /* A COMMIT cannot finish a stream still running. It rolls back and fails instead -- what every driver already
+   * takes a failed END_TRAN to have done. */
+  if (tran_type == CCI_TRAN_COMMIT && stream_from_is_open ())
+    {
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, reset_con_status, ddl_audit_log);
+      if (err_code < 0)
+	{
+	  return err_code;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a COMMIT inside an open stream session rolls the transaction back");
+      return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+    }
+
   ux_end_tran_cleanup (tran_type);
 
   if (tran_type == CCI_TRAN_COMMIT)
@@ -10576,13 +10590,12 @@ ux_stream_is_open (void)
  * ux_stream_admits_request () - May this request run on the connection now?
  *
  * An open stream is one statement still running: only its own requests and the
- * ones that give up the whole transaction are admitted.
+ * ones that end the whole transaction are admitted (a COMMIT rolls back, see
+ * ux_end_tran).
  */
 bool
-ux_stream_admits_request (int func_code, int argc, void **argv)
+ux_stream_admits_request (int func_code)
 {
-  int tran_type = 0;
-
   if (!stream_from_is_open ())
     {
       return true;
@@ -10593,17 +10606,11 @@ ux_stream_admits_request (int func_code, int argc, void **argv)
     case CAS_FC_STREAM_SEND_DATA:
     case CAS_FC_STREAM_END:
     case CAS_FC_STREAM_ABORT:
+    case CAS_FC_END_TRAN:
     case CAS_FC_CHECK_CAS:
     case CAS_FC_END_SESSION:
     case CAS_FC_CON_CLOSE:
       return true;
-
-    case CAS_FC_END_TRAN:
-      if (argc >= 1)
-	{
-	  net_arg_get_char (tran_type, argv[0]);
-	}
-      return tran_type == CCI_TRAN_ROLLBACK;
 
     default:
       return false;

@@ -1121,7 +1121,7 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
   strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 
   server_fn = server_fn_table[func_code - 1];
-  if (!ux_stream_admits_request (func_code, argc, argv))
+  if (!ux_stream_admits_request (func_code))
     {
       server_fn = fn_stream_refused;
     }
