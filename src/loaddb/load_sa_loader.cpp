@@ -2233,6 +2233,19 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
 	   */
 	  CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val));
 	}
+      else if (type == LDR_OID || type == LDR_CLASS_OID)
+	{
+	  /*
+	   * An object reference. It is the standalone loader's own business and the
+	   * shared table has no entry for it, so it would come back a domain conflict
+	   * from ldr_convert_value (). An ordinary attribute reaches the reference
+	   * through store[type].handler in ldr_store_value (); a %constructor line
+	   * does not go through that, so name the element converter here the way
+	   * ldr_act_class_attr () does. obj_desc_set () coerces the value against the
+	   * attribute domain once construct_instance () applies it.
+	   */
+	  CHECK_ERR (err, (* (elem_converter[type])) (context, str, len, &attdesc->ctor_val));
+	}
       else
 	{
 	  /* An attribute of the instance, so the attribute domain applies. */
