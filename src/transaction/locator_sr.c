@@ -4345,15 +4345,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   child_snapshot.snapshot_fnc = locator_satisfies_child_of_locked_parent;
 
   parent_key = *key;
-  if (DB_VALUE_TYPE (&parent_key) == DB_TYPE_MIDXKEY && parent_key.data.midxkey.domain == NULL)
-    {
-      parent_key.data.midxkey.domain = btree_read_key_type (thread_p, &index->btid);
-      if (parent_key.data.midxkey.domain == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
-	}
-    }
 
   db_make_null (&null_value);
   db_make_null (&key_val_range.key1);
@@ -4385,6 +4376,16 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	}
       else if (fkref->del_action == SM_FOREIGN_KEY_CASCADE || fkref->del_action == SM_FOREIGN_KEY_SET_NULL)
 	{
+	  /* A midxkey from the DELETE path carries no domain; read the PK's once, for the re-check below. */
+	  if (DB_VALUE_TYPE (&parent_key) == DB_TYPE_MIDXKEY && parent_key.data.midxkey.domain == NULL)
+	    {
+	      parent_key.data.midxkey.domain = btree_read_key_type (thread_p, &index->btid);
+	      if (parent_key.data.midxkey.domain == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto error3;
+		}
+	    }
 	  if (attr_ids)
 	    {
 	      db_private_free_and_init (thread_p, attr_ids);
@@ -4750,15 +4751,6 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   child_snapshot.snapshot_fnc = locator_satisfies_child_of_locked_parent;
 
   parent_key = *key;
-  if (DB_VALUE_TYPE (&parent_key) == DB_TYPE_MIDXKEY && parent_key.data.midxkey.domain == NULL)
-    {
-      parent_key.data.midxkey.domain = btree_read_key_type (thread_p, &index->btid);
-      if (parent_key.data.midxkey.domain == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
-	}
-    }
 
   db_make_null (&key_val_range.key1);
   db_make_null (&key_val_range.key2);
@@ -4789,6 +4781,16 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	}
       else if (fkref->upd_action == SM_FOREIGN_KEY_CASCADE || fkref->upd_action == SM_FOREIGN_KEY_SET_NULL)
 	{
+	  /* A midxkey from the DELETE path carries no domain; read the PK's once, for the re-check below. */
+	  if (DB_VALUE_TYPE (&parent_key) == DB_TYPE_MIDXKEY && parent_key.data.midxkey.domain == NULL)
+	    {
+	      parent_key.data.midxkey.domain = btree_read_key_type (thread_p, &index->btid);
+	      if (parent_key.data.midxkey.domain == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto error3;
+		}
+	    }
 	  if (attr_ids)
 	    {
 	      db_private_free_and_init (thread_p, attr_ids);
