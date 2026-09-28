@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.jdbc;
 
+import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.context.ContextManager;
 import java.sql.Connection;
 import java.sql.Driver;
@@ -89,6 +90,17 @@ public class CUBRIDServerSideDriver implements Driver {
         if (!matcher.find()) {
             // TODO: error?
             return null;
+        }
+
+        if (ExecuteThread.isServerSideSqlForbiddenOnCurrentThread()) {
+            /*
+             * A PARALLEL_ENABLE stored procedure must not open the server-side default
+             * connection: that Connection is cached on the session's Context, so concurrent
+             * workers would share one object and corrupt its state. Refuse here, before the
+             * object exists. An external connection (jdbc:cubrid://...) is a separate session
+             * and is not affected - this driver only accepts jdbc:default:connection.
+             */
+            throw new SQLException(ExecuteThread.SERVER_SIDE_SQL_REFUSED_MSG);
         }
 
         setDefaultProperties(info);

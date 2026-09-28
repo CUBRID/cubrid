@@ -24,6 +24,7 @@
 #define _XASL_AGGREGATE_HPP_
 
 #include "dbtype_def.h"
+#include "query_sum_accumulator.h"
 #include "storage_common.h"
 
 // forward definitions
@@ -67,6 +68,8 @@ namespace cubxasl
     INT64 curr_cnt;			/* current number of items */
     bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
     bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
+    SUM_ACC sum_acc;	        /* word accumulator for NUMERIC SUM/AVG */
+    int shared_from;		/* 1 + index of the accumulator owner; 0 = no sharing (zero-init safe) */
   };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)

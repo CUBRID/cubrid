@@ -573,7 +573,9 @@ boot_compact_db (THREAD_ENTRY * thread_p, OID * class_oids, int n_classes, int s
 	  continue;
 	}
 
-      if (heap_get_class_info (thread_p, class_oids + i, &hfid, NULL, NULL) != NO_ERROR)
+      bool found = false;
+
+      if (heap_get_class_info (thread_p, class_oids + i, &hfid, NULL, &found) != NO_ERROR || !found)
 	{
 	  lock_unlock_object (thread_p, class_oids + i, oid_Root_class_oid, IX_LOCK, true);
 	  OID_SET_NULL (last_processed_oid);

@@ -2264,7 +2264,12 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   ptr = or_unpack_int (ptr, &xasl->sub_host_var_count);
   if (xasl->sub_host_var_count > 0)
     {
-      xasl->sub_host_var_index = (int *) malloc (sizeof (int) * xasl->sub_host_var_count);
+      xasl->sub_host_var_index = (int *) stx_alloc_struct (thread_p, sizeof (int) * xasl->sub_host_var_count);
+      if (xasl->sub_host_var_index == NULL)
+	{
+	  goto error;
+	}
+
       for (i = 0; i < xasl->sub_host_var_count; i++)
 	{
 	  ptr = or_unpack_int (ptr, &xasl->sub_host_var_index[i]);
@@ -5983,6 +5988,9 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
+  /* execution-only fields are not part of the stream, so initialize them here */
+  aggregate->accumulator.shared_from = 0;
+  aggregate->accumulator.sum_acc.is_active = false;
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

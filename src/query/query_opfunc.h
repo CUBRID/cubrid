@@ -29,6 +29,7 @@
 #include "dbtype_def.h"
 #include "db_function.hpp"
 #include "query_list.h"
+#include "query_sum_accumulator.h"
 #include "storage_common.h"
 #include "string_opfunc.h"
 #include "thread_compat.hpp"
@@ -128,5 +129,23 @@ extern int qdata_get_interpolation_function_result (THREAD_ENTRY * thread_p, qfi
 						    FUNC_CODE function);
 extern int qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val, DB_VALUE * dest_val,
 							     tp_domain ** domain);
+
+/*
+ * The qdata_sum_acc_* family is the SUM/AVG accumulator's type-dispatch point.
+ *
+ * NUMERIC uses the word accumulator in numeric_opfunc.c. SHORT/INTEGER/BIGINT,
+ * DOUBLE, and FLOAT use the typed accumulator in query_opfunc.c. Typed modes
+ * reproduce qdata_add_dbval () without per-row DB_VALUE dispatch.
+ *
+ * Integer modes preserve the input type's overflow semantics (for example,
+ * SUM(SHORT) overflows past 32767). DOUBLE uses the same IEEE operations, and
+ * FLOAT accumulates as DOUBLE before the final demotion.
+ */
+extern int qdata_sum_acc_accumulate (SUM_ACC * acc, bool is_first, const DB_VALUE * seed_from, const DB_VALUE * value);
+extern int qdata_sum_acc_add_dbv (SUM_ACC * acc, const DB_VALUE * dbv);
+extern int qdata_sum_acc_merge (SUM_ACC * acc, const SUM_ACC * other);
+extern int qdata_sum_acc_snapshot (const SUM_ACC * acc, DB_VALUE * result);
+extern int qdata_sum_acc_finalize (SUM_ACC * acc, DB_VALUE * result);
+extern int qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result);
 
 #endif /* _QUERY_OPFUNC_H_ */
