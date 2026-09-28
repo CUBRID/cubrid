@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
@@ -880,26 +879,6 @@ options valids:\n\
   -q, --query-exec-info              afficher des informations sur l'exécution de requêtes au sein des transactions actives\n\
   -f, --force                        arrête la transaction sans demande de vérification\n
 
-
-$set 31 MSGCAT_UTIL_SET_MIGRATE
-1 database-name
-2 argument obligatoire, aucun défaut
-3 compatibility-check
-4 Seulement verification du compatibilité
-5 backup-destination
-6 un chemin de répertoire ou d'un dispositif pour la destination des volumes de sauvegarde
-20 Base de données '%1$s' n'existe pas.
-21 '%1$s' ne peut pas être migrées vers %2$s, car sa version de base est trop petite.\n
-22 '%1$s' ne doivent pas être migrés.\n
-23 '%1$s' doit être migré.\n
-24 La sauvegarde est recommandée après la migration. Voulez-vous sauvegarder votre base de données maintenant? (y/n):
-25 Nous vous recommandons de sauvegarder votre nouvelle base de données avec la commande backupdb après la migration.
-26 \n*** ATTENTION: Sauvegardez votre base de données avant de commencer la migration vers %1$s ***\n\nPour récupérer des erreurs qui pourraient être survenus au cours de la migration, nous vous recommandons vivement de sauvegarder votre base de données.\nAvez-vous déjà sauvegardé votre base de données? (y/n):
-27 \n1. Exécutez backupdb \n2. Entrez le chemin de sauvegarde pour la nouvelle base de données (chemin actuel: %1$s)\n3. Quttez \n
-28 \nLe nouveau chemin de sauvegarde pour la base de données::
-29 \nMigration et sauvegarde ont été effectuées avec succès.
-30 Échec de la sauvegarde. S'il vous plaît, essayez de sauvegarder votre base de données.
-31 \n\n*** ATTENTION : Lorsque la migration est terminée, vous ne pouvez pas restaurer la base de données avec les volumes anciens de sauvegarde.\nNotez que la version précédente des fichiers de sauvegarde peuvent être restaurées uniquement sur la version correspondante de restoredb.\nS'il vous plaît vérifier les volumes de sauvegarde anciens sont conservés en sécurité.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \

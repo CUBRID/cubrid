@@ -2159,14 +2159,15 @@ histogram_scan_targets (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID
       for (int i = 0; i < cnt; i++)
 	{
 	  HFID part_hfid;
+	  bool part_hfid_found = false;
 	  HFID_SET_NULL (&part_hfid);
-	  error = heap_get_class_info (thread_p, &parts[i], &part_hfid, NULL, NULL);
+	  error = heap_get_class_info (thread_p, &parts[i], &part_hfid, NULL, &part_hfid_found);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      break;
 	    }
-	  if (HFID_IS_NULL (&part_hfid))
+	  if (!part_hfid_found)
 	    {
 	      continue;		/* partition without a heap: nothing to sample */
 	    }

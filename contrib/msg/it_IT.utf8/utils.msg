@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
@@ -877,26 +876,6 @@ opzioni valide:\n\
   -q, --query-exec-info              visualizzare le informazioni sulle esecuzione query di transazioni attive\n\
   -f, --force                        chiudere la transazione senza una richiesta per la verifica\n
 
-
-$set 31 MSGCAT_UTIL_SET_MIGRATE
-1 nome-database
-2 argomento richiesto, nessun predefinito
-3 compatibility-check
-4 compatibility check solo
-5 backup-destination
-6 un directory o un dispositivo per la destinazione dei volumi di backup
-20 database '%1$s' non esiste.
-21 '%1$s' non può essere migrato a %2$s, perché la sua versione DB è troppo bassa.\n
-22 '%1$s' non ha bisogno di essere migrato.\n
-23 '%1$s' ha bisogno di essere migrato.\n
-24 Backup è raccomandato dopo la migrazione. Vuoi eseguire il backup del database ora? (y/n):
-25 Si consiglia di eseguire il backup del nuovo database con il comando backupdb dopo la migrazione.
-26 \n*** ATTENZIONE: Eseguire il backup del database prima di iniziare la migrazione a %1$s ***\n\nPer recuperare gli errori verificatisi durante la migrazione, si consiglia di eseguire il backup del database.\nHa già eseguito il backup del database? (y/n):
-27 \n1. Esegui backupdb \n2. Digitare il nuovo percorso di backup per il nuovo database.(path corente: %1$s)\n3. Exit \n
-28 \n Il nuovo backup path del database:
-29 \nLa migrazione e il backup sono stati completati con successo.
-30 Backup non riuscito. Per favore, riprovare a eseguire il backup del database.
-31 \n\n*** ATTENZIONE : Una volta completata la migrazione, è non è possibile ripristinare il database con i volumi di backup precedenti.\nSi noti che la versione precedente dei file di backup può essere ripristinata solo sulla versione corrispondente di restoredb.\nVerificare i volumi di backup precedenti è tenuto saldamente.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \

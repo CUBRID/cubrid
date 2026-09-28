@@ -624,6 +624,28 @@ namespace parallel_scan
     return error;
   }
 
+  /* merge_list_ids () leaves this list closed and descriptor-less, but the main thread still appends to it. */
+  int restore_agg_part_list_for_append (THREAD_ENTRY *thread_p, QFILE_LIST_ID *part_list_id)
+  {
+    if (part_list_id->tpl_descr.f_valp == nullptr && part_list_id->type_list.type_cnt > 0)
+      {
+	/* f_len lives inside the f_valp allocation, so the array has to come from the allocator that sizes both:
+	 * a bare f_valp malloc would leave the size pass writing f_len through the null the copy left behind. */
+	part_list_id->tpl_descr.f_cnt = part_list_id->type_list.type_cnt;
+	if (qfile_tpl_descr_alloc_values (&part_list_id->tpl_descr, part_list_id->type_list.type_cnt) != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+      }
+
+    if (part_list_id->tuple_cnt > 0 && part_list_id->last_pgptr == nullptr)
+      {
+	return qfile_reopen_list_as_append_mode (thread_p, part_list_id);
+      }
+
+    return NO_ERROR;
+  }
+
   template <RESULT_TYPE result_type>
   SCAN_CODE result_handler<result_type>::read (THREAD_ENTRY *thread_p, read_dest_type *dest)
   {
@@ -694,6 +716,12 @@ namespace parallel_scan
 	  {
 	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
 	    if (merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
+	    if (restore_agg_part_list_for_append (thread_p, buildlist_proc->agg_hash_context->part_list_id) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
