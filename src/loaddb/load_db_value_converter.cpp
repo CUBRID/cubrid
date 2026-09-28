@@ -325,6 +325,15 @@ namespace cubload
   {
     if (attr->is_not_null ())
       {
+	/*
+	 * Say it, do not just return it. A bare code leaves er_errid () empty, and
+	 * every loader failure goes through er_filter_errid (), which reads an empty
+	 * er_errid () as "nothing to report" and hands back NO_ERROR - the failure
+	 * becomes a success. An ordinary attribute survives that because the object
+	 * template refuses the null again further down, but a %constructor line has
+	 * nothing after the conversion, so the row would go missing without a word.
+	 */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr->get_name ());
 	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
       }
     else
