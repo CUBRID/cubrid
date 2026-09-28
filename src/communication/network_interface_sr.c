@@ -11420,6 +11420,18 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
+  /* Only the connection that opened the session with GET_SUMMARY may read log
+   * info under it. Without this, a GET_LOGINFO from anywhere else scans the log
+   * and, reading forward, moves flashback_Min_log_pageid away from the archives
+   * the real session still needs. The error path below resets nothing for a
+   * connection that is not the owner. */
+  if (!flashback_is_owner (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_DUPLICATED_REQUEST, 0);
+      error_code = ER_FLASHBACK_DUPLICATED_REQUEST;
+      goto error;
+    }
+
   /* A too-short (or NULL) request would otherwise dereference NULL / read
    * past a zero-byte allocation at the unconditional unpack below. */
   if (request == NULL || reqlen < OR_INT_SIZE)

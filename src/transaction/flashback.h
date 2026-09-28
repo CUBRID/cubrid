@@ -140,6 +140,7 @@ extern void flashback_set_request_done_time ();
 extern void flashback_set_status_active ();
 extern void flashback_set_status_inactive ();
 extern void flashback_reset ();
+extern bool flashback_is_owner (THREAD_ENTRY * thread_p);
 extern void flashback_reset_if_owner (THREAD_ENTRY * thread_p);
 
 #endif /* _FLASHBACK_H_ */

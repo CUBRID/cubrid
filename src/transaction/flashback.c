@@ -206,6 +206,32 @@ flashback_reset ()
 }
 
 /*
+ * flashback_is_owner - is the calling connection the one that opened the
+ *                      flashback session now in progress?
+ *
+ * return: true only if a session is in progress and this connection opened it
+ *
+ * NOTE: GET_SUMMARY opens the session (flashback_initialize); every GET_LOGINFO
+ *       that follows reads under it and moves flashback_Min_log_pageid, which
+ *       keeps the archives that session still needs. A connection that did not
+ *       open the session must not do either.
+ */
+bool
+flashback_is_owner (THREAD_ENTRY * thread_p)
+{
+  bool is_owner;
+
+  pthread_mutex_lock (&flashback_Conn_lock);
+
+  is_owner = (flashback_Current_conn != NULL && flashback_Current_conn == thread_p->conn_entry
+	      && flashback_Current_conn->in_flashback);
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
+
+  return is_owner;
+}
+
+/*
  * flashback_reset_if_owner - reset flashback global state, but only if the
  *                            calling connection is the current owner
  *
