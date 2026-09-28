@@ -120,7 +120,7 @@ extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
 
-/* remote DML push-sink state, shared by INSERT SELECT and DELETE + local subquery (and UPDATE to follow) */
+/* remote DML push-sink state, shared by INSERT / REPLACE SELECT and DELETE + local subquery (and UPDATE to follow) */
 typedef struct dblink_dml_state DBLINK_DML_STATE;
 struct dblink_dml_state
 {
@@ -135,17 +135,30 @@ struct dblink_dml_state
   bool rows_sent;		/* this statement has executed at least one row on the remote */
 };
 
+/* Assignments a remote ON DUPLICATE KEY UPDATE clause carries: cols[i] is the remote column name and
+ * exprs[i] is its new value, already printed as remote SQL. Both arrays are num_assigns long and every
+ * element is a non-empty string -- the clause goes out as statement text, not as binds. */
+typedef struct dblink_odku_assigns DBLINK_ODKU_ASSIGNS;
+struct dblink_odku_assigns
+{
+  char **cols;
+  char **exprs;
+  int num_assigns;
+};
+
 /* which statement dblink_dml_open() prepares; each kind reads only its own params below */
 typedef enum dblink_dml_kind
 {
-  DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind; ignores key_col/op */
-  DBLINK_DML_DELETE		/* uses key_col/op; ignores attr_names/num_attrs/num_bind */
+  DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind/odku; ignores key_col/op */
+  DBLINK_DML_REPLACE,		/* same params as INSERT but never odku: the grammar makes the two exclusive */
+  DBLINK_DML_DELETE		/* uses key_col/op; ignores attr_names/num_attrs/num_bind/odku */
     /* DBLINK_DML_UPDATE to follow */
 } DBLINK_DML_KIND;
 
 extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user,
 			    const char *pwd, const char *table_name, char **attr_names, int num_attrs, int num_bind,
-			    const char *key_col, const char *op, DBLINK_DML_STATE * state);
+			    const char *key_col, const char *op, const DBLINK_ODKU_ASSIGNS * odku,
+			    DBLINK_DML_STATE * state);
 extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
 				   int num_vals, int *affected_rows);
 extern void dblink_dml_stmt_done (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
