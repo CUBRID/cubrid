@@ -10540,6 +10540,11 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
  *
  * Note: matching is based on equivalence classes so that it remains valid
  *  when redundant FK-PK join terms are removed by qo_check_skip_term().
+ *
+ * Note: a nullable FK column is matched the same as a NOT NULL one, with no separate NULL-ratio
+ *  correction applied to the floor. A correction would double-count against an explicit IS NOT
+ *  NULL (or similar) predicate elsewhere, since nothing here sees every predicate that may already
+ *  be pricing the same NULL rows out; leaving it out is a bounded overestimate instead.
  */
 static int
 qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_idx, QO_SEGMENT ** fk_col_segs_out,
@@ -10561,13 +10566,6 @@ qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_i
 
       fk_seg = QO_ENV_SEG (env, fk_idx->seg_idxs[i]);
       pk_seg = QO_ENV_SEG (env, pk_idx->seg_idxs[i]);
-
-      /* a nullable FK column can fail to match any parent row at all, breaking the "every row matches exactly
-       * one parent" assumption the floor relies on; stop here so this constraint is not registered */
-      if (!QO_SEG_IS_NOT_NULL (fk_seg))
-	{
-	  break;
-	}
 
       eqc = QO_SEG_EQCLASS (fk_seg);
       if (eqc == NULL || eqc == QO_UNORDERED || eqc != QO_SEG_EQCLASS (pk_seg))
