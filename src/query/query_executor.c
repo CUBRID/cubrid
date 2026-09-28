@@ -4588,8 +4588,8 @@ qexec_compare_constant (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COM
     {
       return NULL;
     }
-  const bool bind = resolved.plan->items_cold[constant - resolved.plan->items].val_pos >= 0;
-  return bind || resolved.ready[constant->ref] == DOMAIN_VALUE_READY ? &resolved.vals[constant->ref] : NULL;
+  assert (site->bind[side] == (resolved.plan->items_cold[constant - resolved.plan->items].val_pos >= 0));
+  return site->bind[side] || resolved.ready[constant->ref] == DOMAIN_VALUE_READY ? &resolved.vals[constant->ref] : NULL;
 }
 
 /*
@@ -4705,8 +4705,7 @@ qexec_compare_reads_failed (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN
   for (int side = 0; side < 2; side++)
     {
       const DOMAIN_PLAN_ITEM *constant = site->constant[side];
-      if (constant != NULL && constant->ref >= 0
-	  && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0
+      if (constant != NULL && constant->ref >= 0 && !site->bind[side]
 	  && resolved.ready[constant->ref] == DOMAIN_VALUE_FAILED)
 	{
 	  return true;
@@ -4767,8 +4766,7 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
 	  /* nothing to convert (a NULL answers before any coercion) */
 	  compare->conv[side] = NULL;
 	  const TP_DOMAIN *collate = site->collate[side];
-	  const DOMAIN_PLAN_ITEM *item = site->constant[side];
-	  const bool bind = item != NULL && resolved.plan->items_cold[item - resolved.plan->items].val_pos >= 0;
+	  const bool bind = site->constant[side] != NULL && site->bind[side];
 	  if (!bind && collate == NULL)
 	    {
 	      /* a literal or a constant subtree: the row compares the value it fetches, this one (#371) */
@@ -5110,8 +5108,7 @@ qexec_compare_constants_ready (const RESOLVED_DOMAIN_TABLE & resolved, const DOM
   for (int side = 0; side < 2; side++)
     {
       const DOMAIN_PLAN_ITEM *constant = site->constant[side];
-      if (constant != NULL && constant->ref >= 0
-	  && resolved.plan->items_cold[constant - resolved.plan->items].val_pos < 0
+      if (constant != NULL && constant->ref >= 0 && !site->bind[side]
 	  && resolved.ready[constant->ref] != DOMAIN_VALUE_READY)
 	{
 	  return false;
@@ -5381,7 +5378,8 @@ qexec_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const 
  *
  * A value the key takes as it is is shared, not copied (#371): it is the execution's own - a bind's, a literal of the
  * plan, a constant subtree's - and outlives the decision, which qexec_clear_resolved_domains clears first. A converted
- * value is the decision's.
+ * value is the decision's. A single-column key's decision holds no value (#372): its range reads the value from its own
+ * fetch, and only a multi-column key is written from the decision's value.
  */
 static int
 qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bool midxkey, int guard,
@@ -5429,8 +5427,9 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bo
     }
   if (!midxkey)
     {
+      /* a single-column range reads the value from its own fetch (scan_key_single_column): the decision is its
+       * domain alone (#372) */
       decision->domain = value_domain;
-      pr_share_value (const_cast < DB_VALUE * >(value), &decision->value);
       return NO_ERROR;
     }
   DOMAIN_CONVERTER strict_conv = NULL;
@@ -5754,7 +5753,12 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
 	  if (elem->rule == DOMAIN_KEY_CONSTANT)
 	    {
 	      DOMAIN_KEY_DECISION *decision = &out->decisions[elem->decision];
-	      error = qexec_resolve_key_constant (thread_p, xasl_state, bound->midxkey, index->guard, elem, decision);
+	      if (!elem->shared)
+		{
+		  error =
+		    qexec_resolve_key_constant (thread_p, xasl_state, bound->midxkey, index->guard, elem, decision);
+		}
+	      /* a shared element's decision is key1's, made above; the count stays one per element (#372) */
 	      n_constants++;
 	      domain = decision->domain;
 	    }
@@ -6268,36 +6272,44 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
    * (ref -1) come first: each value is produced once by the first item of its ref, and
    * every GATE item of that ref records the value's domain in its own slot. */
   const int n_const_refs = plan == NULL ? 0 : plan->n_const_refs;
+  const int *const ref_pos = plan == NULL ? NULL : plan->const_ref_pos;
   int next = 0;
   for (int ref = 0; ref < resolved.n_vals; ref++)
     {
       /* a constant subtree's value (#352) is not a bind reference: step 7 evaluates it */
-      while (next < n_const_refs && (plan->const_refs[next]->ref < ref
-				     || plan->items_cold[plan->const_refs[next] - plan->items].val_pos < 0))
+      while (next < n_const_refs && (plan->const_refs[next]->ref < ref || ref_pos[next] < 0))
 	{
 	  next++;
 	}
       if (next < n_const_refs && plan->const_refs[next]->ref == ref)
 	{
-	  const int val_pos = plan->items_cold[plan->const_refs[next] - plan->items].val_pos;
+	  /* every item of one reference reads one position (domain_assign_references) */
+	  const int val_pos = ref_pos[next];
 	  assert (val_pos >= 0 && val_pos < dbval_cnt);
+	  const DB_VALUE *source = &resolved.in[val_pos];
 	  /* the bind's value, shared (#371) */
-	  error = qexec_share_value (&resolved.in[val_pos], &resolved.vals[ref]);
+	  error = qexec_share_value (source, &resolved.vals[ref]);
+	  /* its domain, found once for all its slots (#372) */
+	  const TP_DOMAIN *value_domain = NULL;
 	  for (; error == NO_ERROR && next < n_const_refs && plan->const_refs[next]->ref == ref; next++)
 	    {
-	      if (plan->items_cold[plan->const_refs[next] - plan->items].val_pos < 0)
+	      if (ref_pos[next] < 0)
 		{
 		  continue;
 		}
 	      const DOMAIN_PLAN_ITEM *item = plan->const_refs[next];
-	      const DB_VALUE *source = &resolved.in[plan->items_cold[item - plan->items].val_pos];
+	      assert (ref_pos[next] == val_pos);
 	      if (item->flags & (DOMAIN_PLAN_GATE | DOMAIN_PLAN_COLLATION_GATE))
 		{
 		  /* a GATE slot: the value's domain is the plan; a COLLATION_GATE slot: the compiled type with the
 		   * value's collation (#336); the cached domain found without a transient one (#371) */
 		  assert (item->slot >= 0 && item->slot < resolved.n_slots);
-		  resolved.table[item->slot].domain = domain_value_domain (source);
-		  if (resolved.table[item->slot].domain == NULL)
+		  if (value_domain == NULL)
+		    {
+		      value_domain = domain_value_domain (source);
+		    }
+		  resolved.table[item->slot].domain = value_domain;
+		  if (value_domain == NULL)
 		    {
 		      /* a set whose element domains could not be built, or no memory: no slot is left undecided (#343) */
 		      if (er_errid () == NO_ERROR)

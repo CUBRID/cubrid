@@ -3071,6 +3071,7 @@ domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *recor
   if (regu->type == TYPE_POS_VALUE && item != NULL)
     {
       site->constant[side] = item;
+      site->bind[side] = plan->items_cold[item - plan->items].val_pos >= 0;
       return DOMAIN_SIDE_AT_GATE;
     }
   if (regu->type == TYPE_DBVAL)
@@ -3865,6 +3866,23 @@ domain_key_literal (const REGU_VARIABLE * regu)
   return domain_fixes_values (domain) ? domain : NULL;
 }
 
+/* Whether key2's constant element reads key1's value at its column (#372): two binds of one reference - the gate's
+ * vals[ref] - without a COLLATE modifier, against the same column. */
+static bool
+domain_key_same_bind (const domain_plan_key_elem * pair, const domain_plan_key_elem * elem)
+{
+  if (pair == NULL || pair->rule != DOMAIN_KEY_CONSTANT || pair->shared || pair->index_elem != elem->index_elem)
+    {
+      return false;
+    }
+  const REGU_VARIABLE *first = pair->regu, *second = elem->regu;
+  return first != NULL && second != NULL && first->type == TYPE_POS_VALUE && second->type == TYPE_POS_VALUE
+    && first->domain_plan != NULL && second->domain_plan != NULL && first->domain_plan->ref >= 0
+    && first->domain_plan->ref == second->domain_plan->ref
+    && !REGU_VARIABLE_IS_FLAGED (first, REGU_VARIABLE_APPLY_COLLATION)
+    && !REGU_VARIABLE_IS_FLAGED (second, REGU_VARIABLE_APPLY_COLLATION);
+}
+
 /*
  * domain_plan_key_element () - how one column of a search key takes its value (#342, interface section 5)
  *
@@ -3876,10 +3894,14 @@ domain_key_literal (const REGU_VARIABLE * regu)
  * A literal is the load's (#371): its value's domain gives the rule the gate gave it at every execution
  * (qexec_resolve_key_constant). One the gate converts strictly stays the gate's: the gate converts it once per
  * execution, the range would at every range it builds.
+ *
+ * pair(in): key1's element at this column when this is key2's, else NULL. A key2 constant over the same bind (an IN
+ * list's range, key1 = key2 = ?) takes key1's decision: the same value against the same column in the same index is
+ * one decision, which the gate makes once (#372).
  */
 static bool
 domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE * regu, const TP_DOMAIN * column,
-			 bool skip_value, domain_plan_key_elem * elem)
+			 bool skip_value, const domain_plan_key_elem * pair, domain_plan_key_elem * elem)
 {
   elem->regu = regu;
   elem->index_elem = column;
@@ -3887,6 +3909,7 @@ domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE 
   elem->strict_conv = NULL;
   elem->decision = -1;
   elem->rule = DOMAIN_KEY_INDEX;
+  elem->shared = false;
   if (skip_value)
     {
       /* an index skip scan's skip value is read from the index */
@@ -3906,6 +3929,12 @@ domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE 
 	  return elem->keep_elem != NULL;
 	}
       elem->rule = DOMAIN_KEY_CONSTANT;
+      if (domain_key_same_bind (pair, elem))
+	{
+	  elem->decision = pair->decision;
+	  elem->shared = true;
+	  return true;
+	}
       elem->decision = index->n_decisions++;
       return true;
     }
@@ -3922,10 +3951,11 @@ domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE 
   return elem->keep_elem != NULL;
 }
 
-/* One bound of a key range (#342): the columns of a multi-column key's F_MIDXKEY, or the single-column key itself. */
+/* One bound of a key range (#342): the columns of a multi-column key's F_MIDXKEY, or the single-column key itself.
+ * pair(in): key1's bound when this is key2's (domain_plan_key_element), else NULL */
 static bool
 domain_plan_key_bound (THREAD_ENTRY * thread_p, domain_plan_index * index, REGU_VARIABLE * bound_regu, bool skip_first,
-		       domain_plan_key * bound)
+		       const domain_plan_key * pair, domain_plan_key * bound)
 {
   memset (bound, 0, sizeof (*bound));
   bound->scratch = -1;
@@ -3963,7 +3993,8 @@ domain_plan_key_bound (THREAD_ENTRY * thread_p, domain_plan_index * index, REGU_
 	  return false;
 	}
       domain_plan_key_elem *elem = &bound->elems[bound->n_elems++];
-      if (!domain_plan_key_element (index, bound->midxkey, regu, column, skip_first && i == 0, elem))
+      const domain_plan_key_elem *pair_elem = pair != NULL && i < pair->n_elems ? &pair->elems[i] : NULL;
+      if (!domain_plan_key_element (index, bound->midxkey, regu, column, skip_first && i == 0, pair_elem, elem))
 	{
 	  return false;
 	}
@@ -4081,14 +4112,15 @@ domain_publish_indexes (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMA
 	{
 	  KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
 	  /* an index skip scan's ranges start with its skip value */
-	  if (!domain_plan_key_bound (thread_p, index, range->key1, iss, &index->bounds[2 * i])
-	      || !domain_plan_key_bound (thread_p, index, range->key2, iss, &index->bounds[2 * i + 1]))
+	  if (!domain_plan_key_bound (thread_p, index, range->key1, iss, NULL, &index->bounds[2 * i])
+	      || !domain_plan_key_bound (thread_p, index, range->key2, iss, &index->bounds[2 * i],
+					 &index->bounds[2 * i + 1]))
 	    {
 	      return false;
 	    }
 	}
       /* the index skip scan's fetch range: its one column is the skip value */
-      if (!domain_plan_key_bound (thread_p, index, iss ? indx_info->iss_range.key1 : NULL, true,
+      if (!domain_plan_key_bound (thread_p, index, iss ? indx_info->iss_range.key1 : NULL, true, NULL,
 				  &index->bounds[2 * index->n_ranges]))
 	{
 	  return false;
@@ -4963,6 +4995,20 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   if (plan->n_const_refs > 1)
     {
       qsort (plan->const_refs, plan->n_const_refs, sizeof (*plan->const_refs), domain_compare_refs);
+    }
+  if (plan->n_const_refs > 0)
+    {
+      /* each reference's bind position beside it, in the sorted order: G1 step 2 walks the references at every
+       * execution (#372) */
+      plan->const_ref_pos = (int *) domain_plan_alloc (thread_p, plan->n_const_refs, sizeof (*plan->const_ref_pos));
+      if (plan->const_ref_pos == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      for (int i = 0; i < plan->n_const_refs; i++)
+	{
+	  plan->const_ref_pos[i] = plan->items_cold[plan->const_refs[i] - plan->items].val_pos;
+	}
     }
   /* Predicate streams are wired at the final boundary ticket. They have no
    * XASL root today; no persisted regu/arith/predicate layout changes here. */

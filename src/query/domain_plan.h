@@ -150,6 +150,8 @@ struct DOMAIN_COMPARE_PLAN
   bool predicate;		/* a comparison term's or an ALL/SOME term's record: develop's coercion of a constant side
 				 * that fails is its error at every row the term compares, which the gate raises before
 				 * any row (#367, D-367-02); a record outside a term answers by rank there, as develop's */
+  bool bind[2];			/* constant side i is a bind: its value is the client's (vals[ref]), not a constant subtree
+				 * step 7 evaluates (#372) */
   int guard;			/* a term's: the innermost branch guard around it (DOMAIN_PLAN_GUARD, #367); -1 none */
   int held[2];			/* a term's side that is a correlated value, fixed while its block's scan runs: 1 + the
 				 * resolved.held index of its conversion, made once per scope (#368, D-368-01); 0 none */
@@ -257,6 +259,8 @@ struct domain_plan_key_elem
   DOMAIN_CONVERTER strict_conv;	/* STRICT: the element's type into index_elem, COMPARE mode (tp_value_coerce_strict) */
   int decision;			/* CONSTANT, DECIDED: the element's decision in its index's decisions; -1 */
   unsigned char rule;		/* DOMAIN_KEY_RULE */
+  bool shared;			/* a key2 CONSTANT over key1's bind at the same column: it reads key1's decision, which
+				 * the gate makes once (#372) */
 };
 
 /* One bound of a key range, key1 or key2 (#342): the two bounds of a range are planned apart (L-45 (c)). */
@@ -336,6 +340,8 @@ struct domain_plan
 						 * a decision with any (#366) */
   int n_const_refs;
   DOMAIN_PLAN_ITEM **const_refs;
+  int *const_ref_pos;		/* [n_const_refs] each constant reference's bind position (its val_pos), -1 for a constant
+				 * subtree: G1 step 2 reads it without the item's cold record (#372) */
   int n_volatile;
   DOMAIN_PLAN_ITEM **volatile_refs;
   int n_indexes;
