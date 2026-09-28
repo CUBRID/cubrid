@@ -222,6 +222,8 @@ static void qo_follow_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *, void
 
 static void qo_plan_compute_cost (QO_PLAN *);
 static void qo_plan_compute_subquery_cost (PT_NODE *, double *, double *);
+static bool qo_term_is_evaluated_before (QO_TERM * term1, QO_TERM * term2);
+static double qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx);
 static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
 static bool qo_index_forbids_key_filter (QO_INDEX_ENTRY *);
@@ -797,45 +799,166 @@ qo_plan_compute_cost (QO_PLAN * plan)
   QO_ENV *env;
   QO_SUBQUERY *subq;
   PT_NODE *query;
-  double temp_cpu_cost, temp_io_cost;
-  double subq_cpu_cost, subq_io_cost;
+  double subq_cpu_cost, subq_io_cost, eval_rows;
   int i;
   BITSET_ITERATOR iter;
 
-  /* When computing the cost for a WORST_PLAN, we'll get in here without a backing info node; just work around it. */
-  env = plan->info ? (plan->info)->env : NULL;
-  subq_cpu_cost = subq_io_cost = 0.0;
+  /* This computes the specific cost characteristics for each plan. */
+  (*(plan->vtbl)->cost_fn) (plan);
 
-  /* Compute the costs for all of the subqueries. Each of the pinned subqueries is intended to be evaluated once for
-   * each row produced by this plan; the cost of each such evaluation in the fixed cost of the subquery plus one trip
-   * through the result, i.e.,
+  /* When computing the cost for a WORST_PLAN, we'll get in here without a backing info node; just work around it. */
+  if (plan->info == NULL)
+    {
+      return;
+    }
+  env = (plan->info)->env;
+
+  /* Now add in the costs for all of the subqueries. The cost of each evaluation is the fixed cost of the subquery
+   * plus one trip through the result, i.e.,
    *
    * QO_PLAN_FIXED_COST(subplan) + QO_PLAN_ACCESS_COST(subplan)
    *
    * The cost info for the subplan has (probably) been squirreled away in a QO_SUMMARY structure reachable from the
    * original select node.
+   *
+   * A pinned subquery is not evaluated for every scanned row: a term containing a subquery is never put on the
+   * access predicate of the scan but on the if-predicate, which is evaluated only for the rows that survived the
+   * access predicate. Multiply the cost by that estimated number of evaluations (see qo_plan_subquery_eval_rows ()).
    */
-
   for (i = bitset_iterate (&(plan->subqueries), &iter); i != -1; i = bitset_next_member (&iter))
     {
-      subq = env ? &env->subqueries[i] : NULL;
-      query = subq ? subq->node : NULL;
-      qo_plan_compute_subquery_cost (query, &temp_cpu_cost, &temp_io_cost);
-      subq_cpu_cost += temp_cpu_cost;
-      subq_io_cost += temp_io_cost;
+      subq = &env->subqueries[i];
+      query = subq->node;
+      qo_plan_compute_subquery_cost (query, &subq_cpu_cost, &subq_io_cost);
+      eval_rows = qo_plan_subquery_eval_rows (plan, i);
+
+      plan->variable_cpu_cost += eval_rows * subq_cpu_cost;
+      plan->variable_io_cost += eval_rows * subq_io_cost;
     }
+}
 
-  /* This computes the specific cost characteristics for each plan. */
-  (*(plan->vtbl)->cost_fn) (plan);
-
-  /* Now add in the subquery costs; this cost is incurred for each row produced by this plan, so multiply it by the
-   * estimated scan_rows and add it to the access cost.
-   */
-  if (plan->info)
+/*
+ * qo_term_is_evaluated_before () - Tells whether term1 is evaluated before term2 when both are AND-ed terms of the
+ *				    same predicate
+ *   return: true if term1 is evaluated first
+ *   term1(in):
+ *   term2(in):
+ *
+ * Note: This mirrors the ordering used by make_pred_from_bitset () in plan_generation.c, which is the order the
+ *   terms of a predicate are evaluated in at run time (eval_pred () short-circuits an AND on the first false
+ *   operand): pred_order desc, selectivity asc, rank asc, and finally the term index for a complete tie.
+ */
+static bool
+qo_term_is_evaluated_before (QO_TERM * term1, QO_TERM * term2)
+{
+  if (QO_TERM_PRED_ORDER (term1) != QO_TERM_PRED_ORDER (term2))
     {
-      plan->variable_cpu_cost += (plan->info)->scan_rows * subq_cpu_cost;
-      plan->variable_io_cost += (plan->info)->scan_rows * subq_io_cost;
+      return QO_TERM_PRED_ORDER (term1) > QO_TERM_PRED_ORDER (term2);
     }
+
+  if (QO_TERM_SELECTIVITY (term1) != QO_TERM_SELECTIVITY (term2))
+    {
+      return QO_TERM_SELECTIVITY (term1) < QO_TERM_SELECTIVITY (term2);
+    }
+
+  if (QO_TERM_RANK (term1) != QO_TERM_RANK (term2))
+    {
+      return QO_TERM_RANK (term1) < QO_TERM_RANK (term2);
+    }
+
+  return QO_TERM_IDX (term1) < QO_TERM_IDX (term2);
+}
+
+/*
+ * qo_plan_subquery_eval_rows () - Estimate how many times a pinned subquery is evaluated by the plan
+ *   return: estimated number of evaluations (an expectation; may be fractional)
+ *   plan(in): plan the subquery is pinned to
+ *   subq_idx(in): index of the subquery in env->subqueries
+ *
+ * Note: The sarg terms of a scan are split by is_normal_access_term ()/is_normal_if_term () in plan_generation.c:
+ *   a term containing a subquery (or of class QO_TC_OTHER) goes to the if-predicate, every other term to the access
+ *   predicate of the scan (the after-join classes never reach a scan plan; they are listed here only to mirror
+ *   is_normal_access_term ()). An OR-derived restriction that make_pred_from_plan () drops from the data filter
+ *   (too expensive, or letting most rows through) is not evaluated at all and must not be counted either. The
+ *   if-predicate is evaluated only for the rows that passed the access predicate, and its terms are AND-ed with
+ *   short-circuit in the order given by qo_term_is_evaluated_before (). So the subquery term is evaluated for
+ *   scan_rows * (selectivity of all access terms) * (selectivity of the if-predicate terms evaluated before it)
+ *   rows. Neither the subquery term itself nor the if-predicate terms evaluated after it reduce the number of
+ *   evaluations. The index range and key filter terms of an index scan are already reflected in scan_rows. For
+ *   other plans, or when the subquery is not attached to a sarg term of this scan, it is assumed to be evaluated
+ *   for every row of scan_rows.
+ */
+static double
+qo_plan_subquery_eval_rows (QO_PLAN * plan, int subq_idx)
+{
+  QO_ENV *env;
+  QO_TERM *term, *subq_term;
+  BITSET_ITERATOR iter;
+  double sel;
+  int t;
+
+  assert (plan->info != NULL);
+  env = (plan->info)->env;
+
+  if (plan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      return (plan->info)->scan_rows;
+    }
+
+  /* find the sarg term of this scan which contains the subquery */
+  subq_term = NULL;
+  for (t = bitset_iterate (&(plan->sarged_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+      if (BITSET_MEMBER (QO_TERM_SUBQUERIES (term), subq_idx))
+	{
+	  subq_term = term;
+	  break;
+	}
+    }
+
+  if (subq_term == NULL)
+    {
+      return (plan->info)->scan_rows;
+    }
+
+  /* rows reaching the subquery term = scan_rows * selectivity of the sarg terms evaluated before it */
+  sel = 1.0;
+  for (t = bitset_iterate (&(plan->sarged_terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+      if (term == subq_term || QO_IS_FAKE_TERM (term))
+	{
+	  continue;
+	}
+
+      /* dropped from the data filter by make_pred_from_plan (): not evaluated at the scan */
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED_EXPENSIVE)
+	  || (QO_TERM_IS_FLAGED (term, QO_TERM_OR_DERIVED) && QO_TERM_SELECTIVITY (term) > 0.5))
+	{
+	  continue;
+	}
+
+      if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))) || QO_TERM_CLASS (term) == QO_TC_OTHER)
+	{
+	  /* if-predicate term (is_normal_if_term ()): counts only if evaluated before the subquery term */
+	  if (qo_term_is_evaluated_before (term, subq_term))
+	    {
+	      sel *= QO_TERM_SELECTIVITY (term);
+	    }
+	}
+      else if (QO_TERM_CLASS (term) != QO_TC_AFTER_JOIN && QO_TERM_CLASS (term) != QO_TC_TOTALLY_AFTER_JOIN)
+	{
+	  /* access predicate term (is_normal_access_term ()): always evaluated before the if-predicate */
+	  sel *= QO_TERM_SELECTIVITY (term);
+	}
+    }
+
+  /* No lower bound: this is an expectation. Flooring it at one evaluation would charge the inner side of a
+   * nested-loop join (scan_rows of 1 per probe) with a full evaluation per probe even when almost no probed row
+   * reaches the subquery term.
+   */
+  return (plan->info)->scan_rows * sel;
 }
 
 /*
@@ -3637,7 +3760,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val, outer_card;
+  double guessed_result_cardinality, limit_val, outer_card, required_card;
 
   inner = planp->plan_un.join.inner;
 
@@ -3677,16 +3800,24 @@ qo_nljoin_cost (QO_PLAN * planp)
 
       if (outer->plan_type == QO_PLANTYPE_SCAN)
 	{
-	  planp->limit_nljoin_guessed_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
-	  guessed_result_cardinality = MIN (planp->limit_nljoin_guessed_card, (outer->info)->cardinality);
+	  /* outer rows required to satisfy the LIMIT; the outer scan cannot read more rows than it has */
+	  required_card = MAX (limit_val / (outer->info)->hit_prob, 1.0);
+	  guessed_result_cardinality = MIN (required_card, (outer->info)->cardinality);
+	  /* rows this join emits (shown as card, handed to the next join level): the query stops at the
+	   * LIMIT, and when the outer is exhausted first it is what the rows read actually produce
+	   * (rows read * plan_card/outer_card). */
+	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
+	  planp->limit_nljoin_guessed_card =
+	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
       else if (outer->plan_type == QO_PLANTYPE_JOIN)
 	{
 	  guessed_result_cardinality = outer->limit_nljoin_guessed_card;
 	  outer_card = ((outer->info)->cardinality == 0) ? 1 : (outer->info)->cardinality;
-	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card). */
+	  /* result = outer_guessed * (inner_card * selectivity) = outer_guessed * (plan_card/outer_card),
+	   * and never more than the LIMIT since the query stops there. */
 	  planp->limit_nljoin_guessed_card =
-	    MAX (1.0, guessed_result_cardinality * ((planp->info)->cardinality / outer_card));
+	    MAX (1.0, MIN (limit_val, guessed_result_cardinality * ((planp->info)->cardinality / outer_card)));
 	}
       else
 	{
@@ -7637,11 +7768,11 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
 /*
  * qo_get_term_hit_prob () -
  *
- * hit_prob = min(1, ndv(tail) / ndv(head))
+ * hit_prob = min(1, ndv(tail after its filters) / ndv(head))
  *
- * Although filters may reduce data, NDV cannot be adjusted
- * accurately. To avoid biased estimation, we conservatively
- * assume the original NDV relationship is maintained.
+ * The NDV of a side's join key is reduced by that side's own
+ * search conditions with qo_estimate_ndv (), the same estimate
+ * GROUP BY uses for the number of groups after filtering.
  */
 static void
 qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
@@ -7652,6 +7783,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
   int seg_idx;
   QO_SEGMENT *head_seg = NULL, *tail_seg = NULL;
   INT64 head_ndv = 1, tail_ndv = 1;
+  double head_ndv_eff, tail_ndv_eff;
 
   *out_head_factor = 1.0;
   *out_tail_factor = 1.0;
@@ -7698,8 +7830,23 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
       return;
     }
 
-  *out_head_factor = MIN (1.0, (double) tail_ndv / (double) head_ndv);
-  *out_tail_factor = MIN (1.0, (double) head_ndv / (double) tail_ndv);
+  /* Distinct join-key values that survive each side's own search conditions: the NDV shrinks the way
+   * qo_estimate_ndv () models it for GROUP BY, and stays as is when there is no filter
+   * (cardinality == total_rows). The denominator keeps the full NDV: it is the domain the outer
+   * row's value is drawn from. */
+  head_ndv_eff = qo_estimate_ndv (head_info->total_rows, head_info->cardinality, (double) head_ndv);
+  tail_ndv_eff = qo_estimate_ndv (tail_info->total_rows, tail_info->cardinality, (double) tail_ndv);
+  if (head_ndv_eff <= 0.0)
+    {
+      head_ndv_eff = (double) head_ndv;
+    }
+  if (tail_ndv_eff <= 0.0)
+    {
+      tail_ndv_eff = (double) tail_ndv;
+    }
+
+  *out_head_factor = MIN (1.0, tail_ndv_eff / (double) head_ndv);
+  *out_tail_factor = MIN (1.0, head_ndv_eff / (double) tail_ndv);
 }
 
 static void
