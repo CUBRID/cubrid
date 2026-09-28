@@ -188,9 +188,6 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   int coll_id;
   ANALYTIC_PERCENTILE_FUNCTION_INFO *percentile_info_p = NULL;
   DB_VALUE *peek_value_p = NULL;
-  /* the function's domain and operand type in this execution: what its first binding took into its cells (#355) */
-  TP_DOMAIN *domain = qexec_node_domain (val_desc_p, func_p->domain, func_p->domain_plan);
-  DB_TYPE opr_type = qexec_node_operand_type (val_desc_p, func_p->opr_dbtype, func_p->domain_plan);
 
   db_make_null (&dbval);
   db_make_null (&sqr_val);
@@ -198,9 +195,8 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   /* Fast path for a plain SUM/AVG over one operand: peek the operand and add
    * it directly to the accumulator. The first value, a restored partial, and
    * NULL stay on the general path, which owns the fetched value and clears it
-   * afterward. */
-  if (qdata_analytic_is_plain_sum_avg (func_p, val_desc_p) && func_p->curr_cnt >= 1
-      && func_p->sum_acc.is_active)
+   * afterward. The row's own state is tested first (#372). */
+  if (func_p->curr_cnt >= 1 && func_p->sum_acc.is_active && qdata_analytic_is_plain_sum_avg (func_p, val_desc_p))
     {
       DB_VALUE *peek_operand_p = NULL;
 
@@ -221,6 +217,11 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  return NO_ERROR;
 	}
     }
+
+  /* the function's domain and operand type in this execution: what its first binding took into its cells (#355); the
+   * fast path above needs neither, and fetching its operand takes none of the function's (#372) */
+  TP_DOMAIN *domain = qexec_node_domain (val_desc_p, func_p->domain, func_p->domain_plan);
+  DB_TYPE opr_type = qexec_node_operand_type (val_desc_p, func_p->opr_dbtype, func_p->domain_plan);
 
   /* fetch operand value, analytic regulator variable should only contain constants */
   if (fetch_copy_dbval (thread_p, &func_p->operand, val_desc_p, NULL, NULL, NULL, &dbval) != NO_ERROR)

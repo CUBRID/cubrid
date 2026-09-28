@@ -99,6 +99,8 @@ struct xasl_state
  * (#371). */
 inline bool RESOLVED_OWNS_SLOT (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
   __attribute__ ((ALWAYS_INLINE));
+inline bool RESOLVED_OWNS_CELL (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
+  __attribute__ ((ALWAYS_INLINE));
 inline const RESOLVED_DOMAIN *RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
   __attribute__ ((ALWAYS_INLINE));
 inline int RESOLVED_CELL (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
@@ -138,44 +140,48 @@ RESOLVED_OWNS_SLOT (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_IT
   return resolved.inherited || (item >= plan->items && item < plan->items + plan->n_items);
 }
 
+/* Whether a plan item's cell is this execution's: an item of the plan the gate resolved, or, in a PX worker's inherited
+ * copy, an item of the worker's own load of the same stream, which numbers its cells alike (#355, D-355-07). */
+inline bool
+RESOLVED_OWNS_CELL (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
+{
+  const DOMAIN_PLAN *plan = resolved.plan;
+  return plan != NULL && item->cell > 0 && item->cell <= resolved.n_cells
+    && (resolved.inherited || (item >= plan->items && item < plan->items + plan->n_items));
+}
+
 /* The gate's decision for a gate-dependent node of the tree this execution loaded, or NULL when the gate did not
- * decide it here (a node without gate state, a node the gate left undecided). fetch reads it in place of a row-time
- * late binding (#336); the #335 shadow checks compare against it. */
+ * decide it (a node the gate does not decide, a node it left undecided). fetch reads it in place of a row-time late
+ * binding (#336); the #335 shadow checks compare against it. */
 inline const RESOLVED_DOMAIN *
 RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
   /* a node the gate does not decide answers before the descriptor's gate state is read (#368, R2-03 (a)) */
-  if (vd == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_GATE) || vd->xasl_state == NULL)
+  if (vd == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_GATE))
     {
       return NULL;
     }
-  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  if (!RESOLVED_OWNS_SLOT (resolved, item) || resolved.table[item->slot].domain == NULL)
-    {
-      return NULL;
-    }
-  return &resolved.table[item->slot];
+  /* every read comes after the gate sealed its decisions, with the descriptor of the execution that loaded the node or
+   * a PX worker's copy of its state: what an execution never changes is asserted, not tested at every row (#372) */
+  assert (vd->xasl_state != NULL && RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item));
+  const RESOLVED_DOMAIN *decision = &vd->xasl_state->resolved.table[item->slot];
+  return decision->domain != NULL ? decision : NULL;
 }
 
-/* The index of a node's cell in this execution's state, or -1 when it has none here: an item without a cell, a node
- * of another tree, a descriptor without gate state. A PX worker's copy reads the cells of its own load's items, which
- * number them as the plan does (#355, D-355-01, D-355-07). The descriptor comes first: a temporary regu fetched
- * without one (qdata_get_interpolation_function_result) leaves its position's item pointer unset. An item without a
- * cell - most nodes, at every row - answers before the descriptor's gate state is read (#368, review 2 R2-03 (a)). */
+/* The index of a node's cell in this execution's state, or -1 when it has none: an item without a cell - most nodes,
+ * at every row - or no descriptor. The descriptor comes first: a temporary regu fetched without one
+ * (qdata_get_interpolation_function_result) leaves its position's item pointer unset (#368, review 2 R2-03 (a)). A node
+ * with a cell is read with the descriptor of the execution that loaded it, or with a PX worker's copy of its state,
+ * whose own load numbers the cells as the plan does (#355, D-355-01, D-355-07): that never changes during an
+ * execution, so it is asserted, not tested at every row (#372). */
 inline int
 RESOLVED_CELL (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  if (vd == NULL || item == NULL || item->cell <= 0 || vd->xasl_state == NULL)
+  if (vd == NULL || item == NULL || item->cell <= 0)
     {
       return -1;
     }
-  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  const DOMAIN_PLAN *plan = resolved.plan;
-  if (plan == NULL || item->cell > resolved.n_cells
-      || (!resolved.inherited && (item < plan->items || item >= plan->items + plan->n_items)))
-    {
-      return -1;
-    }
+  assert (vd->xasl_state != NULL && RESOLVED_OWNS_CELL (vd->xasl_state->resolved, item));
   return item->cell - 1;
 }
 

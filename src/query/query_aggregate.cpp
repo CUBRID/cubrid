@@ -968,9 +968,6 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
     {
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
-      /* the function's domain and operand type in this execution: its setup's or its first value's (#355) */
-      TP_DOMAIN *agg_domain = qexec_node_domain (val_desc_p, agg_p->domain, agg_p->domain_plan);
-      const DB_TYPE agg_operand_type = qexec_node_operand_type (val_desc_p, agg_p->opr_dbtype, agg_p->domain_plan);
 
       if (agg_p->flag.agg_optimized || agg_p->is_ended)
 	{
@@ -1081,7 +1078,8 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				 ? qexec_held_value (thread_p, val_desc_p, acc_dom->held, acc_dom->precast.conv[1],
 				     acc_dom->precast.operand_domain[1], peek_val) : NULL;
 	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-		  agg_p->function, agg_domain, peek_val, false, held);
+		  agg_p->function, qexec_node_domain (val_desc_p, agg_p->domain, agg_p->domain_plan),
+		  peek_val, false, held);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -1090,6 +1088,11 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  accumulator->curr_cnt++;
 	  continue;
 	}
+
+      /* the function's domain and operand type in this execution: its setup's, or what its interpolation took at an
+       * earlier group's end (#355). The rows never change them, so only the paths that use them read them (#372). */
+      TP_DOMAIN *agg_domain = qexec_node_domain (val_desc_p, agg_p->domain, agg_p->domain_plan);
+      const DB_TYPE agg_operand_type = qexec_node_operand_type (val_desc_p, agg_p->opr_dbtype, agg_p->domain_plan);
 
       /* fetch operands value. aggregate regulator variable should only contain constants */
       REGU_VARIABLE_LIST operand = NULL;

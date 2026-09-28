@@ -803,16 +803,18 @@ fetch_arith_compare (const ARITH_TYPE * arithptr, int k)
 }
 
 /* Whether the gate already evaluated this constant subtree (#352, interface §10): its value is in the gate's array.
- * It replaces fetch's FETCH_ALL_CONST mark, which the first computation set on the plan. */
+ * It replaces fetch's FETCH_ALL_CONST mark, which the first computation set on the plan. The value's index is the
+ * plan's, inside every execution's array, a PX worker's copy included: asserted, not tested at every row (#372). */
 static inline bool
 fetch_constant_ready (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  if (item == NULL || item->ref < 0 || vd == NULL || vd->xasl_state == NULL)
+  if (item == NULL || item->ref < 0 || vd == NULL)
     {
       return false;
     }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  return resolved.ready != NULL && item->ref < resolved.n_vals && resolved.ready[item->ref] == DOMAIN_VALUE_READY;
+  assert (resolved.ready != NULL && item->ref < resolved.n_vals);
+  return resolved.ready[item->ref] == DOMAIN_VALUE_READY;
 }
 
 /*
@@ -849,6 +851,23 @@ fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * 
   if (item != NULL && (item->flags & DOMAIN_PLAN_GATE) && !(item->flags & DOMAIN_PLAN_COLLATION_GATE))
     {
       plan = RESOLVED_GATE_NODE (vd, item);
+    }
+  if (plan != NULL && plan->conv[0] == NULL && plan->conv[1] == NULL)
+    {
+      /* #372: a pre-cast that converts neither operand leaves the typed operator alone, which develop's fetch called
+       * directly; the operator's optdebug check still stops operands a plan left unconverted (qdata_assert_precast_done) */
+      switch (arithptr->opcode)
+	{
+	case T_ADD:
+	  return qdata_add_dbval (left, right, arithptr->value, domain);
+	case T_SUB:
+	  return qdata_subtract_dbval (left, right, arithptr->value, domain);
+	case T_MUL:
+	  return qdata_multiply_dbval (left, right, arithptr->value, domain);
+	default:
+	  assert (arithptr->opcode == T_DIV);
+	  return qdata_divide_dbval (left, right, arithptr->value, domain);
+	}
     }
   if (plan == NULL && left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
     {
