@@ -11577,6 +11577,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   assert (attribute->node_type == PT_ATTR_DEF);
 
   db_make_null (&stack_value);
+  /* the exit path releases the streams, also on an error before they are built */
+  classobj_initialize_default_expr (&new_default_expr);
 
   attr_name = get_attr_name (attribute);
 
