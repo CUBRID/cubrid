@@ -123,18 +123,18 @@ static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
 static INT64 saved_log_fpos = 0;
 static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
 
-static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd);
-static void cas_fwrite_oneline (CAS_LOG_FD * lfd, const char *str);
-static INT64 cas_ftell (CAS_LOG_FD * lfd);
-static int cas_fseek (CAS_LOG_FD * lfd, INT64 offset, int whence);
+static inline size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd);
+static inline void cas_fwrite_oneline (CAS_LOG_FD * lfd, const char *str);
+static inline INT64 cas_ftell (CAS_LOG_FD * lfd);
+static inline int cas_fseek (CAS_LOG_FD * lfd, INT64 offset, int whence);
 static CAS_LOG_FD *cas_fopen (CAS_LOG_FD * lfd, const char *path, const char *mode);
 #if defined (WINDOWS)
 static FILE *cas_fopen_and_lock (const char *path, const char *mode);
 #endif
 static int cas_fclose (CAS_LOG_FD * lfd);
-static int cas_fflush (CAS_LOG_FD * lfd);
+static inline int cas_fflush (CAS_LOG_FD * lfd);
 static int cas_fprintf (void *stream, const char *format, ...);
-static int cas_fputc (int c, CAS_LOG_FD * lfd);
+static inline int cas_fputc (int c, CAS_LOG_FD * lfd);
 static int cas_unlink (const char *pathname);
 static int cas_rename (const char *oldpath, const char *newpath);
 static int cas_mkdir (const char *pathname, mode_t mode);
@@ -150,14 +150,14 @@ static bool sql_log_sig_inited = false;
 
 static void arm_flush_timer_1s (void);
 static void cas_log_timer_init (void);
-static void cas_log_crit_enter (void);
-static void cas_log_crit_leave (void);
-static void cas_log_block_usr2 (void);
-static void cas_log_restore_usr2 (void);
+static inline void cas_log_crit_enter (void);
+static inline void cas_log_crit_leave (void);
+static inline void cas_log_block_usr2 (void);
+static inline void cas_log_restore_usr2 (void);
 static int pwrite_all (int fd, const char *p, size_t len, INT64 off);
 static int ftruncate_all (int fd, INT64 len);
-static int cas_fflush_internal (CAS_LOG_FD * lfd, int end);
-static int cas_log_timer_bound (CAS_LOG_FD * lfd);
+static inline int cas_fflush_internal (CAS_LOG_FD * lfd, int end);
+static inline int cas_log_timer_bound (CAS_LOG_FD * lfd);
 
 static INT64 saved_temp_stmt_fpos = 0;
 
@@ -1408,8 +1408,8 @@ cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx)
 
 /*
  * arm_flush_timer_1s () - arm the one-shot flush timer for 1 s from now.
- *   Called when the first line enters an empty buffer, when a unit is confirmed in ERROR / TIMEOUT
- *   mode, and when retrying after a failed flush.  it_interval must stay 0: a periodic SIGUSR2 would
+ *   Called when the first line enters an empty buffer and when a unit is confirmed in ERROR / TIMEOUT
+ *   mode.  it_interval must stay 0: a periodic SIGUSR2 would
  *   keep restarting the CAS poll () loops, whose timeouts count in DEFAULT_CHECK_INTERVAL (1 s) steps.
  */
 static void
@@ -1446,13 +1446,13 @@ arm_flush_timer_1s (void)
  *   together (buffer reset, oversized line, rewind, flush, open, close).  Restore with SIG_SETMASK,
  *   not SIG_UNBLOCK, so an outer block (cas_log_flush_on_exit) is preserved.  Not nestable.
  */
-static void
+static inline void
 cas_log_block_usr2 (void)
 {
   sigprocmask (SIG_BLOCK, &usr2_set, &usr2_block_old);
 }
 
-static void
+static inline void
 cas_log_restore_usr2 (void)
 {
   sigprocmask (SIG_SETMASK, &usr2_block_old, NULL);
@@ -1465,14 +1465,14 @@ cas_log_restore_usr2 (void)
  *   each other.  A flush deferred by the handler while the flag is up is done in leave, under the
  *   kernel block like every other flush.
  */
-static void
+static inline void
 cas_log_crit_enter (void)
 {
   usr2_in_crit = 1;
   CAS_LOG_COMPILER_BARRIER ();
 }
 
-static void
+static inline void
 cas_log_crit_leave (void)
 {
   CAS_LOG_COMPILER_BARRIER ();
@@ -1516,7 +1516,7 @@ pwrite_all (int fd, const char *p, size_t len, INT64 off)
  *   In ALL mode, flush all committed bytes.  In modes that discard units, stop at saved_log_fpos
  *   so the in-flight unit reaches the file only through an overflow.
  */
-static int
+static inline int
 cas_log_timer_bound (CAS_LOG_FD * lfd)
 {
   INT64 off;
@@ -1557,7 +1557,7 @@ ftruncate_all (int fd, INT64 len)
  *   Callers have already closed the SIGUSR2 window with cas_log_block_usr2 (), are the SIGUSR2
  *   handler, or are on the exit path.
  */
-static int
+static inline int
 cas_fflush_internal (CAS_LOG_FD * lfd, int end)
 {
   int from;
@@ -1573,12 +1573,8 @@ cas_fflush_internal (CAS_LOG_FD * lfd, int end)
     }
   if (pwrite_all (lfd->fd, lfd->buf + from, (size_t) (end - from), lfd->file_buf_base + from) < 0)
     {
-      /* Keep buf_flushed unchanged so the same range can be retried.  
-       * Re-arm the timer even if no further line arrives. */
-      if (lfd == &sql_log_fd && sql_log_timer_ok)
-	{
-	  arm_flush_timer_1s ();	/* timer exists: settime only, safe in the handler */
-	}
+      /* No retry: pwrite_all () already retried EINTR, so this is a bad fd or a full / broken disk.
+       * Keep buf_flushed unchanged so the file stays contiguous; the overflow path drops the tail. */
       return -1;
     }
   lfd->buf_flushed = end;
@@ -1592,7 +1588,7 @@ cas_fflush_internal (CAS_LOG_FD * lfd, int end)
  *   committed by updating buf_used, so the handler sees whole records only.  The first record into
  *   an empty buffer arms the flush timer.
  */
-static size_t
+static inline size_t
 cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd)
 {
   size_t n;
@@ -1681,7 +1677,7 @@ done:
  *   This is a byte-level scan rather than a SQL parse,
  *   so newlines inside string literals are also replaced.
  */
-static void
+static inline void
 cas_fwrite_oneline (CAS_LOG_FD * lfd, const char *str)
 {
   while (*str)
@@ -1701,13 +1697,13 @@ cas_fwrite_oneline (CAS_LOG_FD * lfd, const char *str)
     }
 }
 
-static INT64
+static inline INT64
 cas_ftell (CAS_LOG_FD * lfd)
 {
   return lfd->file_buf_base + lfd->buf_used;	/* logical position; no syscall */
 }
 
-static int
+static inline int
 cas_fseek (CAS_LOG_FD * lfd, INT64 offset, int whence)
 {
   INT64 new_len;
@@ -1881,7 +1877,7 @@ cas_fclose (CAS_LOG_FD * lfd)
   return 0;
 }
 
-static int
+static inline int
 cas_fflush (CAS_LOG_FD * lfd)
 {
   int result;
@@ -1952,7 +1948,7 @@ cas_fprintf (void *stream, const char *format, ...)
   return result;
 }
 
-static int
+static inline int
 cas_fputc (int c, CAS_LOG_FD * lfd)
 {
   unsigned char b = (unsigned char) c;
