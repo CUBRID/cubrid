@@ -30,9 +30,7 @@
 #include "system_parameter.h"
 #include "language_support.h"
 #include "error_manager.h"
-#include "perf_monitor.h"
 #include "string_opfunc.h"
-#include "thread_manager.hpp"
 #include <atomic>
 #include <cstddef>
 #include <mutex>
@@ -1341,12 +1339,11 @@ domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_con
  *				 the other, then an ENUM's codeset for the string it meets - and cmpval
  *
  * A constant side the gate converted comes in converted; one whose conversion failed gives develop's outcome at its
- * turn. A correlated side its scope converted comes in converted too (preconverted, #368). Every conversion the row
- * runs is counted (Num_planned_convert).
+ * turn. A correlated side its scope converted comes in converted too (preconverted, #368).
  */
 DB_VALUE_COMPARE_RESULT
-domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
-			  const DB_VALUE * value2, int total_order, bool * can_compare, unsigned char preconverted)
+domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
+			  int total_order, bool * can_compare, unsigned char preconverted)
 {
   const DB_VALUE *side[2] = { value1, value2 };
   DB_VALUE converted[2], codeset_value;
@@ -1365,7 +1362,6 @@ domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compar
 	{
 	  continue;
 	}
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
       used |= 1 << s;
       if (domain_run_converter (compare->conv[s], compare->target[s], side[s], &converted[s]) != DOMAIN_COMPATIBLE)
 	{
@@ -1379,7 +1375,6 @@ domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compar
       /* an ENUM compared as a string of another codeset: develop brings the other string into the ENUM's */
       const DB_VALUE *text = side[compare->codeset_side];
       DB_DATA_STATUS data_status;
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
       used |= 4;
       db_value_domain_init (&codeset_value, DB_VALUE_DOMAIN_TYPE (text), DB_VALUE_PRECISION (text), 0);
       db_string_put_cs_and_collation (&codeset_value, lang_get_collation (compare->collation)->codeset,
@@ -1411,8 +1406,8 @@ end:
 }
 
 DB_VALUE_COMPARE_RESULT
-domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
-		       const DB_VALUE * value2, int total_order, bool * can_compare, unsigned char converted)
+domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
+		       int total_order, bool * can_compare, unsigned char converted)
 {
   switch (compare->kernel)
     {
@@ -1420,7 +1415,7 @@ domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, 
       return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, total_order, NULL,
 				   compare->collation);
     case DOMAIN_COMPARE_CONVERT:
-      return domain_compare_converted (thread_p, compare, value1, value2, total_order, can_compare, converted);
+      return domain_compare_converted (compare, value1, value2, total_order, can_compare, converted);
     case DOMAIN_COMPARE_RANK:
       /* types that do not compare as they are, without coercion: develop answers by their rank */
       if (can_compare != NULL)
@@ -1809,7 +1804,6 @@ DB_VALUE_COMPARE_RESULT
 domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1, DB_VALUE * value2,
 			   int do_coercion, int total_order, bool * can_compare)
 {
-  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   DOMAIN_COMPARE_KEY key[2];
   domain_compare_key_of_value (value1, &key[0]);
   domain_compare_key_of_value (value2, &key[1]);
@@ -1827,7 +1821,7 @@ domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE
 	  /* an object side: develop's comparison, which meets OIDs on the server */
 	  return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
 	}
-      return domain_compare_values (thread_p, compare, value1, value2, total_order, can_compare);
+      return domain_compare_values (compare, value1, value2, total_order, can_compare);
     }
   /* the execution boundary (b): the plan knows every key a column's values take */
   assert (false);
@@ -2491,7 +2485,7 @@ domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do
   if (row < 0 || column < 0)
     {
       /* every value of an element type has a key the table covers: the table is missing only when it could not be
-       * made (no memory), and develop's comparison answers, counted */
+       * made (no memory), and develop's comparison answers */
       assert (pairs == NULL);
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
@@ -2501,19 +2495,18 @@ domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do
       /* an object side: develop's comparison, which meets OIDs on the server */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
-  const DB_VALUE_COMPARE_RESULT result =
-    domain_compare_values (thread_get_thread_entry_info (), compare, value1, value2, total_order, can_compare);
+  const DB_VALUE_COMPARE_RESULT result = domain_compare_values (compare, value1, value2, total_order, can_compare);
 #if !defined (NDEBUG)
   {
-    /* shadow check (optdebug): develop's comparison of the same values, uncounted, gives the table's result,
-     * comparability and error */
+    /* shadow check (optdebug): develop's comparison of the same values gives the table's result, comparability and
+     * error */
     const bool comparable = can_compare != NULL ? *can_compare : true;
     const int error = comparable ? NO_ERROR : er_errid ();
     bool develop_comparable = true;
     bool *const develop_comparable_p = can_compare != NULL ? &develop_comparable : NULL;
     er_stack_push ();
     const DB_VALUE_COMPARE_RESULT develop =
-      tp_value_compare_uncounted (value1, value2, do_coercion, total_order, develop_comparable_p);
+      tp_value_compare_with_error (value1, value2, do_coercion, total_order, develop_comparable_p);
     const int develop_error = develop_comparable ? NO_ERROR : er_errid ();
     er_stack_pop ();
     if (develop != result || develop_comparable != comparable || develop_error != error)

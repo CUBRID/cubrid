@@ -2172,7 +2172,6 @@ scan_key_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const domain_pla
 	assert (rule == DOMAIN_KEY_STRICT && strict_conv != NULL);
 	DB_VALUE *converted = &isidp->key_state->converted[column_index];
 	pr_clear_value (converted);
-	perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
 	if (domain_run_converter (strict_conv, column, *value, converted) == DOMAIN_COMPATIBLE)
 	  {
 #if !defined (NDEBUG)

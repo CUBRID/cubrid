@@ -97,8 +97,6 @@
 #include "px_query_executor.hpp"
 #include <vector>
 #include "dblink_scan.h"
-#include "perf_monitor.h"
-#include "thread_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -5741,7 +5739,6 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
       error = qexec_add_key_pair (thread_p, &pairs, i, widest->elems[i].index_elem);
     }
   const int n_own = pairs.n;
-  int n_constants = 0;
   for (int b = 0; b < n_bounds && error == NO_ERROR; b++)
     {
       const domain_plan_key *bound = &index->bounds[b];
@@ -5758,8 +5755,7 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
 		  error =
 		    qexec_resolve_key_constant (thread_p, xasl_state, bound->midxkey, index->guard, elem, decision);
 		}
-	      /* a shared element's decision is key1's, made above; the count stays one per element (#372) */
-	      n_constants++;
+	      /* a shared element's decision is key1's, made above (#372) */
 	      domain = decision->domain;
 	    }
 	  else if (elem->rule == DOMAIN_KEY_DECIDED)
@@ -5816,11 +5812,6 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
   if (pairs.keys != pairs.key_space)
     {
       db_private_free (thread_p, pairs.keys);
-    }
-  if (n_constants > 0)
-    {
-      /* the gate converts each constant key element once (#342 gate: K elements only) */
-      perfmon_add_stat (thread_p, PSTAT_QM_NUM_DOMAIN_GATE_CONVERT, n_constants);
     }
   if (error == ER_OUT_OF_VIRTUAL_MEMORY && er_errid () == NO_ERROR)
     {
@@ -6319,6 +6310,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 		      return er_errid ();
 		    }
 		}
+#if !defined (NDEBUG)
 	      if (!(item->flags & DOMAIN_PLAN_GATE) && item->fixed.domain != NULL && !DB_IS_NULL (source)
 		  && item->fail != DOMAIN_FAIL_KEEP)
 		{
@@ -6326,15 +6318,9 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 		   * the value into the plan domain; CHAR vs VARCHAR is the kept original value (D-327-01) */
 		  const DB_TYPE plan_type = TP_DOMAIN_TYPE (item->fixed.domain);
 		  const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (source);
-		  const bool mismatch = plan_type != value_type
-		    && !(TP_IS_CHAR_TYPE (plan_type) && TP_IS_CHAR_TYPE (value_type));
-		  if (mismatch)
-		    {
-		      /* CTP sql + medium count 0 (#336); the boundary is the assert below, the counter its release measure */
-		      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_DOMAIN_BIND_PLAN_MISMATCH);
-		    }
-		  assert (!mismatch);
+		  assert (plan_type == value_type || (TP_IS_CHAR_TYPE (plan_type) && TP_IS_CHAR_TYPE (value_type)));
 		}
+#endif
 	    }
 	}
       else if (ref < dbval_cnt && (plan == NULL || ref < plan->dbval_cnt))
@@ -6396,10 +6382,6 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	}
     }
 
-  if (dbval_cnt > 0)
-    {
-      perfmon_add_stat (thread_p, PSTAT_QM_NUM_DOMAIN_GATE_CONVERT, dbval_cnt);
-    }
   resolved.sealed = true;
 
   /* G1 step 7 (#352, interface §10): the decisions are sealed; each constant subtree is evaluated once into its own
@@ -6716,7 +6698,6 @@ qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resol
   entry->converted = NULL;
   entry->conv = conv;
   entry->target = target;
-  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
   /* a failure is the row's to report, in develop's order: this attempt leaves no error */
   er_stack_push ();
   const bool failed = domain_run_converter (conv, target, value, &entry->value) != DOMAIN_COMPATIBLE;
@@ -30959,10 +30940,6 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec, con
       if (domain == NULL)
 	{
 	  /* a key the plan gives no domain here (qexec_topn_sort_domains): its values' types decide */
-	  if (perfmon_is_perf_tracking ())
-	    {
-	      perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_COERCE_COMPARE);
-	    }
 	  cmp = tp_value_compare (left, right, 1, 1);
 	}
       else

@@ -58,7 +58,6 @@
 #include "xasl_analytic.hpp"
 #include "xserver_interface.h"
 #include "intl_support.h"
-#include "perf_monitor.h"
 
 #include "dbtype.h"
 
@@ -2562,7 +2561,6 @@ qdata_precast_arith_dbval (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, const 
 	  operand[i] = &converted[i];
 	  continue;
 	}
-      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
       used |= 1 << i;
       const TP_DOMAIN_STATUS status = domain_run_converter (precast->conv[i], precast->operand_domain[i], operand[i],
 							    &converted[i]);

@@ -52,7 +52,6 @@
 #include "db_date.h"
 #include "thread_compat.hpp"
 #include "oid.h"
-#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -711,7 +710,6 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 		}
 	      continue;
 	    case HASH_SCAN_KEY_CONVERT:
-	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
 	      status = domain_run_converter (entry->conv, entry->target, value, new_key->values[i]);
 	      break;
 	    case HASH_SCAN_KEY_COERCE:

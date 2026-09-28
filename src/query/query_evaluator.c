@@ -45,7 +45,6 @@
 #include "string_opfunc.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
-#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -391,7 +390,7 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
 		converted |= (unsigned char) (1 << side);
 	      }
 	  }
-	return domain_compare_converted (thread_p, compare, value[0], value[1], total_order, can_compare, converted);
+	return domain_compare_converted (compare, value[0], value[1], total_order, can_compare, converted);
       }
 
     case DOMAIN_COMPARE_OBJECT:
@@ -402,7 +401,7 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
 
     default:
       /* RANK, COLLATIONS */
-      return domain_compare_values (thread_p, compare, value[0], value[1], total_order, can_compare);
+      return domain_compare_values (compare, value[0], value[1], total_order, can_compare);
     }
 }
 
@@ -491,8 +490,8 @@ eval_assert_planned_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbva
 }
 
 /*
- * eval_assert_planned_compare () - #352 shadow check after the kernel: develop's comparison of the same values,
- *				    uncounted, gives the planned comparison's result, comparability and error
+ * eval_assert_planned_compare () - #352 shadow check after the kernel: develop's comparison of the same values
+ *				    gives the planned comparison's result, comparability and error
  *   asks_comparable(in): the caller asks whether the values compare (tp_value_compare_with_error's contract); false
  *			  for tp_value_compare's, which asks nothing (#354)
  */
@@ -505,7 +504,7 @@ eval_assert_planned_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * db
   bool develop_comparable = true;
   er_stack_push ();
   const DB_VALUE_COMPARE_RESULT develop =
-    tp_value_compare_uncounted (dbval1, dbval2, 1, total_order, asks_comparable ? &develop_comparable : NULL);
+    tp_value_compare_with_error (dbval1, dbval2, 1, total_order, asks_comparable ? &develop_comparable : NULL);
   const int develop_error = develop_comparable ? NO_ERROR : er_errid ();
   er_stack_pop ();
   const bool same = develop == result && develop_comparable == comparable && develop_error == error;

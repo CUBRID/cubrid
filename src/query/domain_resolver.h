@@ -229,15 +229,15 @@ TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONVERTER converter, const TP_DOMA
  *		       (collations that do not merge still set -1150, as develop does)
  *   converted(in): bit i: value i is side i converted already, once for its scope (#368, D-368-01)
  */
-DB_VALUE_COMPARE_RESULT domain_compare_values (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
-					       const DB_VALUE * value1, const DB_VALUE * value2, int total_order,
-					       bool * can_compare, unsigned char converted = 0);
+DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
+					       const DB_VALUE * value2, int total_order, bool * can_compare,
+					       unsigned char converted = 0);
 
 /* Kernel CONVERT alone (domain_compare_values' case), for a caller that has switched on the kernel already (#368,
  * review 2 R2-08). */
-DB_VALUE_COMPARE_RESULT domain_compare_converted (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
-						  const DB_VALUE * value1, const DB_VALUE * value2, int total_order,
-						  bool * can_compare, unsigned char preconverted);
+DB_VALUE_COMPARE_RESULT domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
+						  const DB_VALUE * value2, int total_order, bool * can_compare,
+						  unsigned char preconverted);
 
 /*
  * domain_compare_by_keys () - develop's tp_value_compare_with_error on two values whose keys only the data knows - a

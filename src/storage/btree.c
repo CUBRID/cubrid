@@ -22209,10 +22209,6 @@ btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain
 	    }
 	  else
 	    {
-	      if (perfmon_is_perf_tracking ())
-		{
-		  perfmon_inc_stat (thread_get_thread_entry_info (), PSTAT_QM_NUM_DOMAIN_KEY_COERCE);
-		}
 	      c = tp_value_compare_with_error (key1, key2, do_coercion, total_order, &comparable);
 	    }
 

@@ -58,7 +58,6 @@
 #include "pl_executor.hpp"
 
 #include "dbtype.h"
-#include "perf_monitor.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -769,7 +768,6 @@ fetch_convert_to_branch_value (THREAD_ENTRY * thread_p, const val_descr * vd, co
       return domain_unresolved_error ("", qexec_item_index (vd, item), type);
     }
   DB_VALUE converted;
-  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_PLANNED_CONVERT);
   if (domain_run_converter (converter, decision->domain, value, &converted) != DOMAIN_COMPATIBLE)
     {
       pr_clear_value (&converted);
