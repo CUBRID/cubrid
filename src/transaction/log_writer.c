@@ -334,7 +334,7 @@ logwr_read_log_header (void)
 	      return error;
 	    }
 
-	  memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
+	  memcpy ((void *) &logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
 	  assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
 	  assert (log_pgptr->hdr.offset == NULL_OFFSET);
@@ -662,7 +662,7 @@ logwr_set_hdr_and_flush_info (void)
   if (num_toflush > 0)
     {
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
+      memcpy ((void *) &logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
       logwr_Gl.loghdr_pgptr = log_pgptr;
 
       /* Initialize archive info if it is not set */
@@ -714,7 +714,7 @@ logwr_set_hdr_and_flush_info (void)
       /* If it gets only the header page, compares both of the headers. There is no update for the header information */
       LOG_HEADER hdr;
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      memcpy (&hdr, log_pgptr->area, sizeof (LOG_HEADER));
+      memcpy ((void *) &hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
       if (hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
 	  && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY
@@ -1623,7 +1623,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
     {
 
       loghdr_pgptr = (LOG_PAGE *) logpg_area;
-      memcpy (&hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
+      memcpy ((void *) &hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
 
       *master_eof_lsa = hdr.eof_lsa;
 

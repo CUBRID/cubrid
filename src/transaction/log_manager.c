@@ -1185,7 +1185,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 	  log_Gl.hdr.append_lsa.store (LOG_LSA (LOGPAGEID_MAX, 0));
 
 	  /* sync append_lsa to prior_lsa */
-	  log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
+	  log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
 
 	  LSA_SET_NULL (&log_Gl.hdr.chkpt_lsa);
 	  log_Gl.hdr.nxarv_pageid = LOGPAGEID_MAX;
@@ -1468,17 +1468,17 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);
 
-  if (log_Gl.append.prev_lsa.load () != log_Gl.prior_info.prev_lsa)
+  if (log_Gl.append.prev_lsa.load () != log_Gl.prior_info.prev_lsa.load ())
     {
       assert (0);
       /* defense code */
-      log_Gl.prior_info.prev_lsa = log_Gl.append.prev_lsa;
+      log_Gl.prior_info.prev_lsa.store (log_Gl.append.prev_lsa.load ());
     }
-  if (log_Gl.hdr.append_lsa.load () != log_Gl.prior_info.prior_lsa)
+  if (log_Gl.hdr.append_lsa.load () != log_Gl.prior_info.prior_lsa.load ())
     {
       assert (0);
       /* defense code */
-      log_Gl.prior_info.prior_lsa = log_Gl.hdr.append_lsa;
+      log_Gl.prior_info.prior_lsa.store (log_Gl.hdr.append_lsa.load ());
     }
 
   /*
@@ -3307,7 +3307,8 @@ log_skip_logging_set_lsa (THREAD_ENTRY * thread_p, LOG_DATA_ADDR * addr)
 
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
-  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &log_Gl.prior_info.prior_lsa);
+  const LOG_LSA prior_lsa = log_Gl.prior_info.prior_lsa.load ();
+  (void) pgbuf_set_lsa (thread_p, addr->pgptr, &prior_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
@@ -9306,7 +9307,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
   if (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_NULL)
     {
       LOG_CS_ENTER_READ_MODE (thread_p);
-      memcpy (&ctx->header, &log_Gl.hdr, sizeof (LOG_HEADER));
+      memcpy ((void *) &ctx->header, &log_Gl.hdr, sizeof (LOG_HEADER));
       LOG_CS_EXIT (thread_p);
     }
   else
@@ -9333,7 +9334,7 @@ log_active_log_header_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VAL
 	  goto exit_on_error;
 	}
 
-      memcpy (&ctx->header, page_hdr->area, sizeof (LOG_HEADER));
+      memcpy ((void *) &ctx->header, page_hdr->area, sizeof (LOG_HEADER));
 
       ctx->header.magic[sizeof (ctx->header.magic) - 1] = 0;
       ctx->header.db_release[sizeof (ctx->header.db_release) - 1] = 0;
