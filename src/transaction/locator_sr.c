@@ -4235,16 +4235,18 @@ locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEAD
  * return: NO_ERROR or error code
  *
  *   parent_key(in): the key being deleted or updated; a midxkey carries the domain it was written with
- *   refers(out):
+ *   refers(out): true when the child's foreign key still equals parent_key, or its latest version is ours
  *
  * The child was enumerated before its lock was granted; the writer the lock waited for may have moved it to another
- * parent.
+ * parent. A version of this transaction's own comes from a cascade of the same statement and is acted on as
+ * enumerated.
  */
 static int
 locator_child_still_refers (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, BTID * fk_btid, OID * oid,
 			    RECDES * recdes, DB_VALUE * parent_key, bool * refers)
 {
   OR_CLASSREP *rep = attr_info->last_classrepr;
+  MVCC_REC_HEADER mvcc_header;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT];
   DB_VALUE child_key_buf;
   DB_VALUE *child_key;
@@ -4253,6 +4255,13 @@ locator_child_still_refers (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_
   BTID btid;
   int index_pos;
   int error_code = NO_ERROR;
+
+  if (or_mvcc_get_header (recdes, &mvcc_header) == NO_ERROR && MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
+      && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&mvcc_header)))
+    {
+      *refers = true;
+      return NO_ERROR;
+    }
 
   for (index_pos = 0; index_pos < rep->n_indexes; index_pos++)
     {
@@ -4376,7 +4385,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	}
       else if (fkref->del_action == SM_FOREIGN_KEY_CASCADE || fkref->del_action == SM_FOREIGN_KEY_SET_NULL)
 	{
-	  /* A midxkey from the DELETE path carries no domain; read the PK's once, for the re-check below. */
+	  /* A key built without its domain (DELETE, a partition move) gets the PK's, read once for the re-check below. */
 	  if (DB_VALUE_TYPE (&parent_key) == DB_TYPE_MIDXKEY && parent_key.data.midxkey.domain == NULL)
 	    {
 	      parent_key.data.midxkey.domain = btree_read_key_type (thread_p, &index->btid);
@@ -4781,7 +4790,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	}
       else if (fkref->upd_action == SM_FOREIGN_KEY_CASCADE || fkref->upd_action == SM_FOREIGN_KEY_SET_NULL)
 	{
-	  /* A midxkey from the DELETE path carries no domain; read the PK's once, for the re-check below. */
+	  /* A key built without its domain (DELETE, a partition move) gets the PK's, read once for the re-check below. */
 	  if (DB_VALUE_TYPE (&parent_key) == DB_TYPE_MIDXKEY && parent_key.data.midxkey.domain == NULL)
 	    {
 	      parent_key.data.midxkey.domain = btree_read_key_type (thread_p, &index->btid);
