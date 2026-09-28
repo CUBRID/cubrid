@@ -107,10 +107,16 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
   m_rows_loaded = 0;
 
   FILE_TYPE ftype;
-  error = heap_get_class_info (thread_p, &m_class_oid, &m_hfid, &ftype, NULL);
+  bool has_heap = false;
+  error = heap_get_class_info (thread_p, &m_class_oid, &m_hfid, &ftype, &has_heap);
   if (error != NO_ERROR)
     {
       return error;
+    }
+  if (!has_heap)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "the target has no heap");
+      return ER_COPY_NOT_SUPPORTED;
     }
 
   /* This attrinfo only computes the attribute id mapping; it must be released
