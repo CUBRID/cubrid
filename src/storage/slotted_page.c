@@ -805,9 +805,9 @@ spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp, VPID
 /*
  * spage_boot () - Initialize the slotted page module. The save_space hash table
  *              is initialized
- *   return:
+ *   return: NO_ERROR or error code
  */
-void
+int
 spage_boot (THREAD_ENTRY * thread_p)
 {
   assert (sizeof (SPAGE_HEADER) % DOUBLE_ALIGNMENT == 0);
@@ -815,13 +815,8 @@ spage_boot (THREAD_ENTRY * thread_p)
 
   spage_User_page_size = DB_PAGESIZE;
 
-  /* spage_boot () cannot report, and neither could the path this replaces, so the error is left set and the
-   * rest of this function runs exactly as it did before */
-  if (spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100,
-				 spage_Saving_entry_descriptor) != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-    }
+  return spage_Saving_hashmap.init (spage_saving_Ts, THREAD_TS_SPAGE_SAVING, 4547, 100, 100,
+				    spage_Saving_entry_descriptor);
 }
 
 /*

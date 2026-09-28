@@ -602,13 +602,17 @@ session_control_daemon_destroy ()
 /*
  * session_states_init () - Initialize session states area
  *
+ *   return: NO_ERROR or error code
+ *
  * Note: Creates and initializes a main memory hash table that will be
  * used by session states operations. This routine should only be
  * called once during server boot.
  */
-void
+int
 session_states_init (THREAD_ENTRY * thread_p)
 {
+  int error_code;
+
   sessions.last_session_id = 0;
   sessions.num_holdable_cursors = 0;
 
@@ -616,17 +620,17 @@ session_states_init (THREAD_ENTRY * thread_p)
   er_log_debug (ARG_FILE_LINE, "creating session states table\n");
 #endif /* SESSION_DEBUG */
 
-  /* session_states_init () cannot report, and neither could the path this replaces, so the error is left set
-   * and the rest of this function runs exactly as it did before */
-  if (sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50,
-				    session_state_Descriptor) != NO_ERROR)
+  error_code = sessions.states_hashmap.init (sessions_Ts, THREAD_TS_SESSIONS, SESSIONS_HASH_SIZE, 2, 50,
+					     session_state_Descriptor);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      return error_code;
     }
 
 #if defined (SERVER_MODE)
   session_control_daemon_init ();
 #endif /* SERVER_MODE */
+  return NO_ERROR;
 }
 
 /*

@@ -2602,7 +2602,7 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count, DISK_
 
 /*
  * catalog_initialize () - Initialize data for further catalog operations
- *   return: nothing
+ *   return: NO_ERROR or error code
  *   catid(in): Catalog identifier taken from the system page
  *
  * Note: Creates and initializes a main memory hash table that will be
@@ -2612,9 +2612,11 @@ catalog_copy_disk_attributes (DISK_ATTR * new_attrs_p, int new_attr_count, DISK_
  * data in the catalog header. This routine should always be
  * called before any other catalog operations, except catalog creation.
  */
-void
+int
 catalog_initialize (CTID * catalog_id_p)
 {
+  int error_code;
+
   // protect against repeated hashmap initializations
   catalog_Hashmap.destroy ();
 
@@ -2624,13 +2626,11 @@ catalog_initialize (CTID * catalog_id_p)
   catalog_Id.vfid.volid = catalog_id_p->vfid.volid;
   catalog_Id.hpgid = catalog_id_p->hpgid;
 
-  // init. catalog_initialize () cannot report, and neither could the path this replaces
-  // (lf_hash_table_cpp::init () assert (false)d and returned void), so the error is left set for whoever asks
-  // next and the rest of this function runs exactly as it did before.
-  if (catalog_Hashmap.init (catalog_Ts, THREAD_TS_CATALOG, CATALOG_HASH_SIZE, 2, 100, catalog_entry_Descriptor)
-      != NO_ERROR)
+  error_code = catalog_Hashmap.init (catalog_Ts, THREAD_TS_CATALOG, CATALOG_HASH_SIZE, 2, 100,
+				     catalog_entry_Descriptor);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR ();
+      return error_code;
     }
 
   catalog_Max_record_size =
@@ -2641,6 +2641,7 @@ catalog_initialize (CTID * catalog_id_p)
       catalog_initialize_max_space (&catalog_Max_space);
       catalog_is_header_initialized = true;
     }
+  return NO_ERROR;
 }
 
 /*

@@ -157,7 +157,7 @@ extern CTID catalog_Id;		/* global catalog identifier */
 
 extern void catalog_free_representation (DISK_REPR * repr_p);
 extern void catalog_free_class_info (CLS_INFO * class_info_p);
-extern void catalog_initialize (CTID * catid);
+extern int catalog_initialize (CTID * catid);
 extern void catalog_finalize (void);
 
 /* these two routines should be called only once and by the root */
