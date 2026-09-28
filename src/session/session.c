@@ -190,12 +190,14 @@ typedef struct active_sessions
   session_hashmap_type states_hashmap;
   SESSION_ID last_session_id;
   int num_holdable_cursors;
+  bool is_initialized;		/* finalize also runs on boot error paths that never initialized the table */
 
   // *INDENT-OFF*
   active_sessions ()
     : states_hashmap {}
     , last_session_id (0)
     , num_holdable_cursors (0)
+    , is_initialized (false)
   {
   }
   // *INDENT-ON*
@@ -627,6 +629,8 @@ session_states_init (THREAD_ENTRY * thread_p)
       return error_code;
     }
 
+  sessions.is_initialized = true;
+
 #if defined (SERVER_MODE)
   session_control_daemon_init ();
 #endif /* SERVER_MODE */
@@ -649,7 +653,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 #endif /* SERVER_MODE */
 
   const char *env_value = envvar_get ("DUMP_SESSION");
-  if (env_value != NULL)
+  if (env_value != NULL && sessions.is_initialized)
     {
       session_states_dump (thread_p);
     }
@@ -660,6 +664,7 @@ session_states_finalize (THREAD_ENTRY * thread_p)
 
   /* destroy hash and freelist */
   sessions.states_hashmap.destroy ();
+  sessions.is_initialized = false;
 }
 
 /*
