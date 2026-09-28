@@ -3782,6 +3782,7 @@ dwb_file_sync_helper (THREAD_ENTRY *thread_p)
   FLUSH_VOLUME_INFO *current_flush_volume_info = NULL;
   unsigned int count_flush_volumes_info = 0;
   bool all_block_pages_written = false, need_wait = false, can_flush_volume = false;
+  bool all_volume_pages_written = false;
   unsigned int start_flush_volume = 0;
   int first_partial_flushed_volume = -1;
   PERF_UTIME_TRACKER time_track;
@@ -3827,10 +3828,16 @@ dwb_file_sync_helper (THREAD_ENTRY *thread_p)
 	  /* I'm the flusher of the volume. */
 	  assert_release (current_flush_volume_info->flushed_status == VOLUME_FLUSHED_BY_DWB_FILE_SYNC_HELPER_THREAD);
 
+	  /* Read all_pages_written before num_pages. The writer counts every page of the volume before it sets
+	   * all_pages_written, so num_pages read after all_pages_written is seen true is the final count. In the other
+	   * order, num_pages 0 read before the writer counted the pages could be taken for "already flushed", and the
+	   * volume would be left unsynchronized.
+	   */
+	  all_volume_pages_written = current_flush_volume_info->all_pages_written;
 	  num_pages = ATOMIC_INC_32 (&current_flush_volume_info->num_pages, 0);
 	  if (num_pages < num_pages_to_sync)
 	    {
-	      if (current_flush_volume_info->all_pages_written == true)
+	      if (all_volume_pages_written == true)
 		{
 		  if (num_pages == 0)
 		    {
@@ -3854,7 +3861,7 @@ dwb_file_sync_helper (THREAD_ENTRY *thread_p)
 		  break;
 		}
 	    }
-	  else if (current_flush_volume_info->all_pages_written == false)
+	  else if (all_volume_pages_written == false)
 	    {
 	      if (first_partial_flushed_volume == -1)
 		{
@@ -3952,7 +3959,8 @@ dwb_file_sync_helper (THREAD_ENTRY *thread_p)
 	  current_flush_volume_info = &block->flush_volumes_info[i];
 
 	  assert ((current_flush_volume_info->all_pages_written == true)
-		  && (current_flush_volume_info->flushed_status != VOLUME_NOT_FLUSHED));
+		  && (current_flush_volume_info->flushed_status != VOLUME_NOT_FLUSHED)
+		  && (current_flush_volume_info->num_pages == 0));
 	}
     }
 #endif
