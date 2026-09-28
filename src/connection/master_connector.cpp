@@ -670,26 +670,25 @@ namespace cubconn::master
 
   inline bool connector::prepare_heartbeat_log_eof (context *ctx) noexcept
   {
-    LOG_LSA *eof_lsa;
     static LOG_LSA prev_eof_lsa = LSA_INITIALIZER;
     alignas (8) std::byte reply[OR_LOG_LSA_ALIGNED_SIZE];
 
     assert (m_entry != nullptr);
     LOG_CS_ENTER_READ_MODE (m_entry);
 
-    eof_lsa = log_get_eof_lsa ();
-    (void) or_pack_log_lsa (reinterpret_cast<char *> (reply), eof_lsa);
+    const LOG_LSA eof_lsa = log_get_eof_lsa ();
+    (void) or_pack_log_lsa (reinterpret_cast<char *> (reply), &eof_lsa);
 
     LOG_CS_EXIT (m_entry);
 
-    if (LSA_EQ (&prev_eof_lsa, eof_lsa))
+    if (LSA_EQ (&prev_eof_lsa, &eof_lsa))
       {
 	er_log_debug (ARG_FILE_LINE, "Disk failure has been occurred: prev_eof_lsa(%lld, %d), eof_lsa(%lld, %d)\n",
-		      LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (eof_lsa));
+		      LSA_AS_ARGS (&prev_eof_lsa), LSA_AS_ARGS (&eof_lsa));
       }
     else
       {
-	LSA_COPY (&prev_eof_lsa, eof_lsa);
+	LSA_COPY (&prev_eof_lsa, &eof_lsa);
       }
 
     if (!this->prepare_heartbeat_send_request_with_data (ctx, SERVER_GET_EOF, reply, OR_LOG_LSA_ALIGNED_SIZE))

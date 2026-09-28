@@ -158,7 +158,7 @@ struct log_header
 
   int ha_server_state;
   int ha_file_status;
-  LOG_LSA eof_lsa;
+  LOG_LSA_ATOMIC eof_lsa;
 
   LOG_LSA smallest_lsa_at_last_chkpt;
 

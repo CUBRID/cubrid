@@ -9555,8 +9555,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
   /* Do it as async mode at the first request to the server. And, if several pages are left to get, keep it as async
    * mode */
 
-  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.pageid);
-  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.pageid)
+  assert (logwr_Gl.last_recv_pageid <= logwr_Gl.hdr.eof_lsa.load ().pageid);
+  if (logwr_Gl.last_recv_pageid == logwr_Gl.hdr.eof_lsa.load ().pageid)
     {
       /* In case of synchronous request */
       first_pageid_torecv = logwr_Gl.last_recv_pageid;
@@ -9653,7 +9653,8 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	}
     }
 
-  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.load ().pageid
+  if (logwr_Gl.start_pageid >= NULL_PAGEID
+      && logwr_Gl.hdr.eof_lsa.load ().pageid == logwr_Gl.hdr.append_lsa.load ().pageid
       && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       ctx_ptr->shutdown = true;

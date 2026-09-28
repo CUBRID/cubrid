@@ -613,10 +613,10 @@ log_get_append_lsa (void)
  *
  * NOTE:
  */
-LOG_LSA *
+LOG_LSA
 log_get_eof_lsa (void)
 {
-  return (&log_Gl.hdr.eof_lsa);
+  return log_Gl.hdr.eof_lsa.load ();
 }
 
 /*
@@ -1424,11 +1424,13 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       if (init_emergency == true && log_Gl.hdr.is_shutdown == false)
 	{
-	  if (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && log_Gl.hdr.append_lsa.load () > log_Gl.hdr.eof_lsa)
+	  const LOG_LSA eof_lsa = log_Gl.hdr.eof_lsa;
+
+	  if (!LSA_ISNULL (&eof_lsa) && log_Gl.hdr.append_lsa.load () > eof_lsa)
 	    {
 	      /* We cannot believe in append_lsa for this case. It points to an unflushed log page. Since we are
 	       * going to skip recovery for emergency startup, just replace it with eof_lsa. */
-	      LOG_RESET_APPEND_LSA (&log_Gl.hdr.eof_lsa);
+	      LOG_RESET_APPEND_LSA (&eof_lsa);
 	    }
 	}
 
@@ -9391,6 +9393,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   ACTIVE_LOG_HEADER_SCAN_CTX *ctx = (ACTIVE_LOG_HEADER_SCAN_CTX *) ptr;
   LOG_HEADER *header = &ctx->header;
   LOG_LSA append_lsa = header->append_lsa;
+  LOG_LSA eof_lsa = header->eof_lsa;
 
   if (cursor >= 1)
     {
@@ -9559,7 +9562,7 @@ log_active_log_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE *
   db_make_string (out_values[idx], str);
   idx++;
 
-  lsa_to_string (buf, sizeof (buf), &header->eof_lsa);
+  lsa_to_string (buf, sizeof (buf), &eof_lsa);
   error = db_make_string_copy (out_values[idx], buf);
   idx++;
   if (error != NO_ERROR)
