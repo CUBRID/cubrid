@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
@@ -894,26 +893,6 @@ valid options:\n\
   -q, --query-exec-info              afişează informaţii despre execuţia interogărilor din tranzacţiile active\n\
   -f, --force                        intrerupe fortat tranzacţia fără a solicita vreo verificare\n
 
-
-$set 31 MSGCAT_UTIL_SET_MIGRATE
-1 database-name
-2 argument obligatoriu, fără valoare implicită
-3 compatibility-check
-4 compatibility check only
-5 backup-destination
-6 calea către un director sau dispozitiv pentru destinaţia volumelor de rezervă
-20 baza de date '%1$s' nu există.
-21 '%1$s' nu necesită migrare la %2$s, deoarce versiunea este prea veche.\n
-22 '%1$s' nu necesită migrare.\n
-23 '%1$s' necesita migrare.\n
-24 După migrare se recomandă crearea unei copii de rezervă. Doriţi să faceţi acum o copie de rezervă a bazei de date? (y/n):
-25 Se recomandă crearea unei copii de rezervă pentru noua bază de date cu ajutorul lui backupdb dupa migrare.
-26 \n*** AVERTISMENT: Creaţi o copie de rezervă a bazei de date înainte să faceţi migrarea la %1$s ***\n\nPentru a putea preîntâmpina posibilele erori din timpul migrării, se impune crearea unei copii de rezervă a bazei de date.\nAţi creat deja o copie de rezervă a bazei de date? (y/n):
-27 \n1. Executaţi backupdb \n2. Introduceţi noua cale a copiei de rezervă pentru noua bază de date.(calea curentă: %1$s)\n3. Ieşire \n
-28 \nNoua cale către copia de rezervă a bazei de date:
-29 \nMigrarea şi copia de rezervă au fost realizate cu succes.
-30 Crearea copiei de rezervă a eşuat. Vă rugăm încercaţi încă o dată să creaţi o copie de rezervă a bazei dvs. de date.
-31 \n\n*** AVERTISMENT : Dupa ce migrarea va fi completă, nu veţi mai putea restaura baza de date cu volumele de rezervă anterioare.\nObservaţi că versiunile anterioare ale fişierelor de rezervă pot fi restaurate numai cu versiunea corespunzătoare de  restoredb.\nVa rugăm asiguraţi-vă că vechile volume de rezervă sunt păstrate în siguranţă.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \
