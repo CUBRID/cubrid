@@ -2924,8 +2924,19 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
   for (i = 0; i < ckey1->val_count; i++)
     {
       /* a key from the scan against one read back from a partial list: two sources whose types can differ, compared
-       * by the key pair table (workspace#354) */
-      result = domain_compare_by_keys (ckey1->values[i], ckey2->values[i], 0, 1, NULL);
+       * by the key pair table (workspace#354); one type without a collation compares as it is, which is
+       * domain_compare_by_keys's first answer, here without its call at every probe (workspace#372) */
+      const DB_VALUE *value1 = ckey1->values[i];
+      const DB_VALUE *value2 = ckey2->values[i];
+      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
+      if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))
+	{
+	  result = tp_value_compare_with_error (value1, value2, 0, 1, NULL);
+	}
+      else
+	{
+	  result = domain_compare_by_keys (value1, value2, 0, 1, NULL);
+	}
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;

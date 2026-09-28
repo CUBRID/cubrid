@@ -700,6 +700,13 @@ STATIC_INLINE bool fetch_constant_ready (const VAL_DESCR * vd, const DOMAIN_PLAN
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE * value)
   __attribute__ ((ALWAYS_INLINE));
+/* An arithmetic node's row: the typed operator inline, the pre-cast out of line (#372) */
+STATIC_INLINE int fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
+				      DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
+  __attribute__ ((ALWAYS_INLINE));
+static int fetch_arith_binary_precast (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
+				       const RESOLVED_DOMAIN * plan, DB_VALUE * left, DB_VALUE * right,
+				       TP_DOMAIN * domain) __attribute__ ((noinline));
 
 /*
  * fetch_arith_gate_reading () - how an arithmetic node whose compiled domain is open takes its domain now
@@ -841,8 +848,12 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
  * The plan is the gate's decision for a node whose type the gate decides, the load's for any other node - a compiled
  * node, one whose collation alone the gate decides, a stream's node (domain_plan_precast). A NULL operand converts
  * nothing, planned or not: develop's operators returned before their pre-cast.
+ *
+ * Inline at every call, with the operator called directly (#372): the pre-cast's frame - its held-value arrays, the
+ * stack protector they bring, the calls it makes - is fetch_arith_binary_precast's, which only a plan that converts an
+ * operand, or a missing plan, reaches.
  */
-static int
+static inline int
 fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left,
 		    DB_VALUE * right, TP_DOMAIN * domain)
 {
@@ -869,6 +880,16 @@ fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * 
 	  return qdata_divide_dbval (left, right, arithptr->value, domain);
 	}
     }
+  return fetch_arith_binary_precast (thread_p, vd, arithptr, plan, left, right, domain);
+}
+
+/* fetch_arith_binary's pre-cast: the operands the plan converts, a scope's held conversion, or the boundary (b) of a
+ * node without its plan (#372: out of line) */
+static int
+fetch_arith_binary_precast (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
+			    const RESOLVED_DOMAIN * plan, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
+{
+  const DOMAIN_PLAN_ITEM *item = arithptr->domain_plan;
   if (plan == NULL && left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
     {
       /* every node of a loaded tree or stream carries its pre-cast, and the gate decided every node whose type it
