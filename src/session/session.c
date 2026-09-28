@@ -985,8 +985,7 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 
 	      if (state->is_keep_session == true)
 		{
-		  /* keep session */
-		  pthread_mutex_unlock (&state->mutex);
+		  /* keep session. the next iterate () unlocks it, as it does every entry the loop walks past */
 		  continue;
 		}
 	      else
