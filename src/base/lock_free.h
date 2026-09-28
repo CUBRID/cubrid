@@ -551,7 +551,10 @@ lf_hash_table_cpp<Key, T>::unlock (lf_tran_entry *t_entry, T *&t)
   assert (t != NULL);
   if (m_freelist.entry_desc->using_mutex)
     {
+      /* lock_free.c locks entries in SERVER_MODE only */
+#if defined (SERVER_MODE)
       pthread_mutex_unlock (get_pthread_mutex (t));
+#endif /* SERVER_MODE */
     }
   else
     {

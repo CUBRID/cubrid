@@ -43,6 +43,15 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if !defined (SERVER_MODE)
+/* the hash map locks entries in SERVER_MODE only, so the mutex calls here must not run either */
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)   0
+#define pthread_mutex_trylock(a)   0
+#define pthread_mutex_unlock(a)
+#endif /* !SERVER_MODE */
+
 /* attribute of _db_serial class */
 #define SERIAL_ATTR_LIST \
   MAP_LIST_ITEM (UNIQUE_NAME) \
