@@ -110,9 +110,16 @@ namespace cubload
       }
 
     /*
-     * Allow loaddb to support the typecasts implicitly permitted by INSERT.
-     * These 5 literal kinds fall back to their natural type plus the engine's cast for every target
-     * that has no converter of its own, instead of being refused by the table.
+     * Allow loaddb to support the typecasts implicitly permitted by INSERT. A literal
+     * whose target has no converter of its own falls back to its natural type plus the
+     * engine's cast, instead of being refused by the table. The manual's implicit
+     * conversion table marks these as allowed and INSERT takes them - DATE'2020-01-01'
+     * into a VARCHAR column stores '01/01/2020', B'1010' stores 'a'.
+     *
+     * What stays out and why. Object references, collections, ^u and ^c are not values
+     * the engine casts between domains. The LOB literals are not either, and
+     * to_db_elo_int () is not even implemented. LDR_JSON is never produced: the parser
+     * has no rule for it, and a JSON column takes its value as LDR_STR.
      */
     for (int i = 0; i < NUM_DB_TYPES; i++)
       {
@@ -121,6 +128,17 @@ namespace cubload
 	setters_[i][LDR_NUMERIC] = &to_db_fallback<LDR_NUMERIC>;
 	setters_[i][LDR_DOUBLE] = &to_db_fallback<LDR_DOUBLE>;
 	setters_[i][LDR_FLOAT] = &to_db_fallback<LDR_FLOAT>;
+	setters_[i][LDR_DATE] = &to_db_fallback<LDR_DATE>;
+	setters_[i][LDR_TIME] = &to_db_fallback<LDR_TIME>;
+	setters_[i][LDR_TIMESTAMP] = &to_db_fallback<LDR_TIMESTAMP>;
+	setters_[i][LDR_TIMESTAMPLTZ] = &to_db_fallback<LDR_TIMESTAMPLTZ>;
+	setters_[i][LDR_TIMESTAMPTZ] = &to_db_fallback<LDR_TIMESTAMPTZ>;
+	setters_[i][LDR_DATETIME] = &to_db_fallback<LDR_DATETIME>;
+	setters_[i][LDR_DATETIMELTZ] = &to_db_fallback<LDR_DATETIMELTZ>;
+	setters_[i][LDR_DATETIMETZ] = &to_db_fallback<LDR_DATETIMETZ>;
+	setters_[i][LDR_BSTR] = &to_db_fallback<LDR_BSTR>;
+	setters_[i][LDR_XSTR] = &to_db_fallback<LDR_XSTR>;
+	setters_[i][LDR_MONETARY] = &to_db_fallback<LDR_MONETARY>;
       }
 
     setters_[DB_TYPE_CHAR][LDR_STR] = &to_db_char;

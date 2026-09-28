@@ -4870,7 +4870,7 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
 
   /*
    * Allow loaddb to support the typecasts implicitly permitted by INSERT, ensuring identical results between INSERT and loaddb
-   * These 5 literal kinds are converted to their natural type and handed to the object template, whose
+   * These literal kinds are converted to their natural type and handed to the object template, whose
    * check_att_domain () performs the same cast INSERT would.
    */
   ldr_store_handler (attdesc, LDR_NULL, &ldr_null_db_generic);
@@ -4878,6 +4878,24 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
   ldr_store_convert (attdesc, LDR_NUMERIC, false, false);
   ldr_store_convert (attdesc, LDR_DOUBLE, false, false);
   ldr_store_convert (attdesc, LDR_FLOAT, false, false);
+
+  /*
+   * A typed literal standing in for another domain is a cast, not a parse, so it is
+   * quiet the way LDR_STR below is. The domain cases further down overwrite the slot
+   * that really does parse the token - LDR_DATE on a DATE column, and so on - and those
+   * keep naming the value and the attribute when they fail.
+   */
+  ldr_store_cast (attdesc, LDR_DATE, false, false);
+  ldr_store_cast (attdesc, LDR_TIME, false, false);
+  ldr_store_cast (attdesc, LDR_TIMESTAMP, false, false);
+  ldr_store_cast (attdesc, LDR_TIMESTAMPLTZ, false, false);
+  ldr_store_cast (attdesc, LDR_TIMESTAMPTZ, false, false);
+  ldr_store_cast (attdesc, LDR_DATETIME, false, false);
+  ldr_store_cast (attdesc, LDR_DATETIMELTZ, false, false);
+  ldr_store_cast (attdesc, LDR_DATETIMETZ, false, false);
+  ldr_store_cast (attdesc, LDR_BSTR, false, false);
+  ldr_store_cast (attdesc, LDR_XSTR, false, false);
+  ldr_store_cast (attdesc, LDR_MONETARY, false, false);
 
   /* To behave identically to CS mode, let an unspecified domain take a string as a cast, not a mismatch */
   ldr_store_cast (attdesc, LDR_STR, false, false);
