@@ -5206,7 +5206,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
       root_tmpl->partition =
 	pt_node_to_partition_info (parser, alter_info, entity_name, class_name, class_name, &partsize);
-      if (root_tmpl->partition == NULL)
+      if (root_tmpl->partition == NULL || (er_errid () != NO_ERROR))
 	{
 	  error = er_errid ();
 	  if (abort_template == true)
@@ -10201,14 +10201,6 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 
     default:
       break;
-    }
-
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG)
-    {
-      if (sm_check_system_class_by_name (class_name))
-	{
-	  sm_mark_system_class (class_obj, 1);
-	}
     }
 
   if (do_flush_class_mop == true)
@@ -16465,8 +16457,8 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
 
 	  goto fail_return;
 	}
-      db_make_char (&expr, part_expr->expr_stream_size, part_expr->expr_stream, part_expr->expr_stream_size,
-		    LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&expr, part_expr->expr_stream_size, part_expr->expr_stream, part_expr->expr_stream_size,
+		       LANG_SYS_CODESET, LANG_SYS_COLLATION);
       set_add_element (dbc, &expr);
 
       /* Notice that we're not calling pr_clear_value on expr here because memory allocated for expr_stream is

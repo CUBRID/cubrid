@@ -3224,12 +3224,17 @@ disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_M
   )
 {
   VPID vpid_volheader;
+  bool save_force_latch_wait;
   int error_code = NO_ERROR;
 
   vpid_volheader.volid = volid;
   vpid_volheader.pageid = DISK_VOLHEADER_PAGE;
 
+  /* this fix has no conditional variant and the caller cannot act on a refusal; a no-wait
+   * transaction must still wait for the volume header */
+  save_force_latch_wait = pgbuf_set_force_latch_wait (thread_p, true);
   *page_volheader_out = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  (void) pgbuf_set_force_latch_wait (thread_p, save_force_latch_wait);
   if (*page_volheader_out == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -3493,6 +3498,7 @@ STATIC_INLINE int
 disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_LATCH_MODE latch_mode)
 {
   VPID vpid = VPID_INITIALIZER;
+  bool save_force_latch_wait;
   int error_code = NO_ERROR;
 
   assert (cursor->page == NULL);
@@ -3502,7 +3508,11 @@ disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_
   /* Fix page. */
   vpid.volid = cursor->volheader->volid;
   vpid.pageid = cursor->pageid;
+  /* same as the volume header: a no-wait transaction must still wait for the sector allocation
+   * table page */
+  save_force_latch_wait = pgbuf_set_force_latch_wait (thread_p, true);
   cursor->page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
+  (void) pgbuf_set_force_latch_wait (thread_p, save_force_latch_wait);
   if (cursor->page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -4419,7 +4429,12 @@ error:
   /* abort any changes */
   log_sysop_abort (thread_p);
 
+  /* The IO entries cover the volume extension half of this function; the latch entry covers the page fix half
+   * (disk_get_volheader (), disk_stab_cursor_fix ()). What is left is a logic failure - see
+   * disk_reserve_sectors_in_volume (), which returns ER_FAILED when the cache promised sectors the sector table
+   * does not have. That is the case disk_check () below can actually repair. */
   if (error_code == ER_INTERRUPTED	/* interrupted error */
+      || PGBUF_IS_LATCH_REFUSED_ERROR (error_code)	/* a page fix was refused, or its wait timed out */
       || error_code == ER_IO_MOUNT_FAIL || error_code == ER_IO_FORMAT_OUT_OF_SPACE || error_code == ER_IO_WRITE
       || error_code == ER_BO_CANNOT_CREATE_VOL /* IO errors */ )
     {

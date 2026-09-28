@@ -139,8 +139,12 @@ namespace parallel_query_execute
     if (err_code != NO_ERROR)
       {
 	bool dummy = false;
+	/* read-only probe: consuming (clear=true) the one-shot tran flag here races with the
+	 * sibling jobs' probes and the root executor's final drain — a concurrent user cancel
+	 * could be eaten by one failing job and mis-typed as ERROR_INTERRUPTED_* by the rest.
+	 * The root executor's drain loop is the only consumer. */
 	bool is_interrupt = logtb_get_check_interrupt (cur_thread_p)
-			    && logtb_is_interrupted_tran (cur_thread_p, true, &dummy, cur_thread_p->tran_index);
+			    && logtb_is_interrupted_tran (cur_thread_p, false, &dummy, cur_thread_p->tran_index);
 	/* logtb_set_tran_index_interrupt sets ER_INTERRUPTING with ER_NOTIFICATION_SEVERITY,
 	 * so er_errid may return NO_ERROR in this case. */
 	if (is_interrupt)
@@ -210,6 +214,15 @@ namespace parallel_query_execute
 	trace_context_p->m_stats.push_back ((trace_context::stat)
 	{ {0, 0}, fetches, ioreads, fetch_time
 	});
+	/* a job worker runs a whole subquery block, so it evaluates that block's SPs itself */
+	trace_context_p->m_sp_calls +=
+		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset];
+	trace_context_p->m_sp_time +=
+		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset];
+	trace_context_p->m_sp_fetches +=
+		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset];
+	trace_context_p->m_sp_ioreads +=
+		cur_thread_p->m_px_stats[pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset];
 	perfmon_destroy_parallel_stats (cur_thread_p);
 	cur_thread_p->m_px_stats = px_stats;
 	pthread_mutex_unlock (&cur_thread_p->m_px_stats_mutex);

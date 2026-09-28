@@ -25,6 +25,7 @@
 #include "dbtype.h"
 #include "fetch.h"
 #include "list_file.h"
+#include "numeric_opfunc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -40,6 +41,26 @@ static int qdata_analytic_interpolation (cubthread::entry *thread_p, cubxasl::an
     QFILE_LIST_SCAN_ID *scan_id);
 
 /*
+ * qdata_analytic_is_plain_sum_avg () - is this a plain SUM/AVG the peek path may take?
+ *   return: true if the fast path in qdata_evaluate_analytic_func () is allowed
+ *
+ * This is the per-query half of the test; the caller checks the per-row state
+ * (curr_cnt / is_active). The aggregate path uses the same split;
+ * see qdata_agg_is_plain_sum_avg () in query_aggregate.cpp.
+ *
+ * DB_TYPE_VARIABLE and non-normal collations stay on the general path because
+ * they require in-place coercion of the fetched value. DISTINCT uses its own
+ * list file and is also excluded.
+ */
+static inline bool
+qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p)
+{
+  return ((func_p->function == PT_SUM || func_p->function == PT_AVG)
+	  && func_p->option != Q_DISTINCT && func_p->opr_dbtype != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_COLLATION_FLAG (func_p->domain) == TP_DOMAIN_COLL_NORMAL);
+}
+
+/*
  * qdata_initialize_analytic_func () -
  *   return: NO_ERROR, or ER_code
  *   func_p(in): Analytic expression node
@@ -50,6 +71,7 @@ int
 qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p, QUERY_ID query_id)
 {
   func_p->curr_cnt = 0;
+  func_p->sum_acc.is_active = false;
   if (db_value_domain_init (func_p->value, DB_VALUE_DOMAIN_TYPE (func_p->value), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE)
       != NO_ERROR)
     {
@@ -130,6 +152,32 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
   db_make_null (&dbval);
   db_make_null (&sqr_val);
+
+  /* Fast path for a plain SUM/AVG over one operand: peek the operand and add
+   * it directly to the accumulator. The first value, a restored partial, and
+   * NULL stay on the general path, which owns the fetched value and clears it
+   * afterward. */
+  if (qdata_analytic_is_plain_sum_avg (func_p) && func_p->curr_cnt >= 1 && func_p->sum_acc.is_active)
+    {
+      DB_VALUE *peek_operand_p = NULL;
+
+      if (fetch_peek_dbval (thread_p, &func_p->operand, val_desc_p, NULL, NULL, NULL, &peek_operand_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      if (!DB_IS_NULL (peek_operand_p)
+	  && func_p->sum_acc.sum_type == sum_acc_analytic_sum_type_for (DB_VALUE_DOMAIN_TYPE (peek_operand_p)))
+	{
+	  if (qdata_sum_acc_add_dbv (&func_p->sum_acc, peek_operand_p) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  func_p->curr_cnt++;
+	  return NO_ERROR;
+	}
+    }
 
   /* fetch operand value, analytic regulator variable should only contain constants */
   if (fetch_copy_dbval (thread_p, &func_p->operand, val_desc_p, NULL, NULL, NULL, &dbval) != NO_ERROR)
@@ -376,6 +424,26 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
     case PT_AVG:
     case PT_SUM:
+    {
+      /* An operand resolved by late binding (opr_dbtype == DB_TYPE_VARIABLE) is
+       * coerced in place only on the first row. Repeat the coercion on later rows
+       * so the value matches the accumulation type, as the legacy add does
+       * implicitly on every row.
+       */
+      if (func_p->sum_acc.is_active
+	  && func_p->sum_acc.sum_type != sum_acc_analytic_sum_type_for (DB_VALUE_DOMAIN_TYPE (&dbval)))
+	{
+	  dom_status = tp_value_coerce (&dbval, &dbval, func_p->domain);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, func_p->domain);
+	      goto exit;
+	    }
+	}
+
+      /* whether the accumulator takes this value's type */
+      bool use_sum_acc = SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval));
+
       if (func_p->curr_cnt < 1)
 	{
 	  opr_dbval_p = &dbval;
@@ -401,12 +469,21 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	      goto exit;
 	    }
 	}
-      else
+      else if (!use_sum_acc)
 	{
 	  TP_DOMAIN *result_domain;
 	  DB_TYPE type =
 		  (func_p->function ==
 		   PT_AVG) ? (DB_TYPE) func_p->value->domain.general_info.type : TP_DOMAIN_TYPE (func_p->domain);
+
+	  if (func_p->sum_acc.is_active)
+	    {
+	      /* guard: an unsupported type must not arrive while the accumulator is active */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	      error = ER_FAILED;
+	      goto exit;
+	    }
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : func_p->domain);
 	  if (qdata_add_dbval (func_p->value, &dbval, func_p->value, result_domain) != NO_ERROR)
@@ -416,7 +493,19 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 	  copy_opr = false;
 	}
-      break;
+
+      /* Supported types accumulate through the accumulator, the first value
+       * included: mid-partition snapshots overwrite func_p->value, so it cannot
+       * park the first value the way the aggregate path does. */
+      if (use_sum_acc
+	  && qdata_sum_acc_accumulate (&func_p->sum_acc, func_p->curr_cnt < 1, func_p->value,
+				       &dbval) != NO_ERROR)
+	{
+	  error = ER_FAILED;
+	  goto exit;
+	}
+    }
+    break;
 
     case PT_COUNT_STAR:
       break;
@@ -1006,6 +1095,15 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
 	  qfile_close_scan (thread_p, &scan_id);
 	  func_p->curr_cnt = list_id_p->tuple_cnt;
+	}
+    }
+
+  /* Emit a rounded snapshot. The accumulator stays active for cumulative evaluation. */
+  if ((func_p->function == PT_SUM || func_p->function == PT_AVG) && func_p->sum_acc.is_active)
+    {
+      if (qdata_sum_acc_snapshot (&func_p->sum_acc, func_p->value) != NO_ERROR)
+	{
+	  goto error;
 	}
     }
 

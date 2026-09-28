@@ -262,6 +262,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->set_tran_index (NULL_TRAN_INDEX);
   conn->init_pending_request ();
   conn->init_working_task ();
+  conn->init_method_callback ();
   conn->invalidate_snapshot = 1;
   conn->in_method = false;
   err = css_get_next_client_id ();
@@ -1711,6 +1712,7 @@ css_make_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key, char *buffer,
   p->transaction_id = transid;
   p->invalidate_snapshot = invalidate_snapshot;
   p->db_error = db_error;
+  p->in_method = conn->in_method;
 
   return p;
 }

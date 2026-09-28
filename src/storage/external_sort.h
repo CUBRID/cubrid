@@ -61,8 +61,7 @@ typedef enum
   SORT_ORDER_BY,
   SORT_ORDER_WITH_LIMIT,
   SORT_GROUP_BY,
-  SORT_ANALYTIC,
-  SORT_INDEX_LEAF
+  SORT_ANALYTIC
 } SORT_PARALLEL_TYPE;
 
 typedef SORT_STATUS SORT_GET_FUNC (THREAD_ENTRY * thread_p, RECDES *, void *);
@@ -177,7 +176,5 @@ extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_c
 			  void *get_arg, SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
 			  SORT_DUP_OPTION option, int limit, bool includes_tde_class,
 			  SORT_PARALLEL_TYPE sort_parallel_type, void *px_extra_arg = NULL);
-
-extern SORT_STATUS btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 
 #endif /* _EXTERNAL_SORT_H_ */
