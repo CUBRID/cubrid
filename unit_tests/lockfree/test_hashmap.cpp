@@ -1241,38 +1241,33 @@ namespace test_lockfree
   // fpcache_remove_by_class (), session_remove_expired_sessions () - runs the same shape: iterate until the
   // delete buffer fills, release the current entry, end the lock-free transaction, break, delete what was
   // collected, then restart and scan again from the beginning. An iterator that resumes where it stopped both
-  // skips every entry it has already walked past and ends a transaction that is no longer started.
+  // skips every entry it has already walked past and ends a transaction that is no longer started. And one that
+  // unlocks the entry it stopped on releases it a second time, from whoever has locked it since.
   //
+  template <typename Hash, typename Tran>
   static int
-  testcase_iterator_restart ()
+  iterator_restart_pass (const char *impl, Hash &hash, Tran tran_handle)
   {
-    const size_t HASH_SIZE = 16;                  // small, so each bucket holds several entries
     const unsigned int ENTRY_COUNT = 200;
     const size_t INTERRUPT_AFTER = 7;             // stands in for a full delete buffer
 
     cout_new_line ();
-    std::cout << "test lockfree::hashmap|iterator_restart [mutex = " << (g_edesc.using_mutex != 0) << "]";
-
-    tran::system transys { 1 };
-    tran::index tran_index = transys.assign_index ();
-
-    my_hashmap hash;
-    init_hashmap (transys, HASH_SIZE, hash);
+    std::cout << "test " << impl << "|iterator_restart [mutex = " << (g_edesc.using_mutex != 0) << "]";
 
     for (unsigned int i = 0; i < ENTRY_COUNT; i++)
       {
 	my_key k = { i, i };
-	my_entry *ent = hash.freelist_claim (tran_index);
+	my_entry *ent = hash.freelist_claim (tran_handle);
 	assert (ent != NULL);
 	ent->m_key = k;
-	if (!hash.insert_given (tran_index, k, ent))
+	if (!hash.insert_given (tran_handle, k, ent))
 	  {
 	    assert (false);
 	  }
-	hash.unlock (tran_index, ent);
+	hash.unlock (tran_handle, ent);
       }
 
-    my_hashmap::iterator iter { tran_index, hash };
+    typename Hash::iterator iter { tran_handle, hash };
 
     // walk part of the map, then interrupt exactly the way the callers do
     size_t walked = 0;
@@ -1287,14 +1282,27 @@ namespace test_lockfree
 	++walked;
       }
     assert (ent != NULL);    // ENTRY_COUNT is well above INTERRUPT_AFTER
+    my_entry *stopped_on = ent;
     if (g_edesc.using_mutex)
       {
 	// release the entry mutex iterate () left locked
-	hash.unlock (tran_index, ent);
+	hash.unlock (tran_handle, ent);
       }
-    hash.end_tran (tran_index);
+    hash.end_tran (tran_handle);
 
-    iter.restart ();
+    bool released_foreign_lock = false;
+    if (g_edesc.using_mutex)
+      {
+	// the entry's next holder; restart () must leave its lock alone
+	pthread_mutex_lock (&stopped_on->m_mutex);
+	iter.restart ();
+	released_foreign_lock = pthread_mutex_trylock (&stopped_on->m_mutex) == 0;
+	pthread_mutex_unlock (&stopped_on->m_mutex);
+      }
+    else
+      {
+	iter.restart ();
+      }
 
     // a restart that restarts sees the whole map again
     size_t second_pass = 0;
@@ -1303,16 +1311,49 @@ namespace test_lockfree
 	++second_pass;
       }
 
-    hash.destroy ();
-    transys.free_index (tran_index);
-
+    int err = 0;
+    if (released_foreign_lock)
+      {
+	cout_new_line ();
+	std::cout << "FAILED: restart () unlocked an entry the caller had already released";
+	err = 1;
+      }
     if (second_pass != ENTRY_COUNT)
       {
 	cout_new_line ();
 	std::cout << "FAILED: second pass saw " << second_pass << " of " << ENTRY_COUNT << " entries";
-	return 1;
+	err = 1;
       }
-    return 0;
+    return err;
+  }
+
+  static int
+  testcase_iterator_restart ()
+  {
+    const size_t HASH_SIZE = 16;                  // small, so each bucket holds several entries
+    int err = 0;
+
+    {
+      tran::system transys { 1 };
+      tran::index tran_index = transys.assign_index ();
+      my_hashmap hash;
+      init_hashmap (transys, HASH_SIZE, hash);
+      err = err | iterator_restart_pass ("lockfree::hashmap", hash, tran_index);
+      hash.destroy ();
+      transys.free_index (tran_index);
+    }
+    {
+      lf_tran_system transys;
+      lf_tran_system_init (&transys, 1);
+      lf_tran_entry *tran_entry = lf_tran_request_entry (&transys);
+      my_lf_hash_table hash;
+      init_lf_hash_table (transys, (int) HASH_SIZE, hash);
+      err = err | iterator_restart_pass ("lf_hash_table", hash, tran_entry);
+      hash.destroy ();
+      lf_tran_return_entry (tran_entry);
+      lf_tran_system_destroy (&transys);
+    }
+    return err;
   }
 
   int
