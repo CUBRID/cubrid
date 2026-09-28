@@ -57,9 +57,12 @@ enum DOMAIN_PLAN_FLAGS
 				 * (#355, D-355-01, D-355-06); a list position's regu */
   DOMAIN_PLAN_OPEN_POSITION = 0x800,	/* a list position's value descriptor (pos_descr.dom) is open; it shares the
 					 * position's cell (#355, D-355-09) */
-  DOMAIN_PLAN_PRECAST_GATE = 0x1000	/* an arithmetic node the compiler typed over an operand it did not (LIMIT's
+  DOMAIN_PLAN_PRECAST_GATE = 0x1000,	/* an arithmetic node the compiler typed over an operand it did not (LIMIT's
 					 * offset + count, an ORDERBY_NUM bound): its domain is the compiled one, the
 					 * gate decides its operands' pre-cast from their decided domains (#368) */
+  DOMAIN_PLAN_LIST_BIND = 0x2000	/* a bind the compiler typed that an output list writes: the gate converts a
+					 * value of another type into the column's domain, as develop's tuple write did
+					 * (B33, #345) */
 };
 
 /* What execution must know before it takes a slot's decision in place of a value-driven late binding (#337): a
@@ -150,6 +153,9 @@ struct DOMAIN_COMPARE_PLAN
   bool predicate;		/* a comparison term's or an ALL/SOME term's record: develop's coercion of a constant side
 				 * that fails is its error at every row the term compares, which the gate raises before
 				 * any row (#367, D-367-02); a record outside a term answers by rank there, as develop's */
+  bool key_range;		/* a term of an index scan's key range (where_range): develop meets the constant that fails
+				 * in the B-tree search, which compares the search key with the index key - its -181 names
+				 * the constant's type first (#345) */
   bool bind[2];			/* constant side i is a bind: its value is the client's (vals[ref]), not a constant subtree
 				 * step 7 evaluates (#372) */
   int guard;			/* a term's: the innermost branch guard around it (DOMAIN_PLAN_GUARD, #367); -1 none */
@@ -404,8 +410,10 @@ enum DOMAIN_VALUE_STATE
 enum DOMAIN_GATE_FAILURE_KIND
 {
   DOMAIN_FAILURE_CONSTANT,	/* a constant subtree's computation: index = plan->constants index (D-367-01) */
-  DOMAIN_FAILURE_COMPARE,	/* a term's constant conversion: compare, failed (D-367-02) */
-  DOMAIN_FAILURE_KEY,		/* a key constant no index key holds: arg = column type, arg2 = value type (D-367-03) */
+  DOMAIN_FAILURE_COMPARE,	/* a term's constant conversion: compare, failed; arg 1 for a key range term (D-367-02,
+				 * #345) */
+  DOMAIN_FAILURE_KEY,		/* a key constant no index key holds: arg, arg2 = the two types of develop's -181 in its
+				 * order (D-367-03, #345) */
   DOMAIN_FAILURE_CLASS		/* a MEDIAN / PERCENTILE value without a class: arg = function (D-367-04) */
 };
 

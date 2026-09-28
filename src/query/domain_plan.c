@@ -126,6 +126,7 @@ struct DOMAIN_LOAD_ELEMENT_TERM
   ALSM_EVAL_TERM *term;
   DOMAIN_PLAN_ITEM *list_column;
   int guard;			/* the branch guard around the term (#367) */
+  bool key_range;		/* a term of an index scan's key range (#345) */
 };
 /* A comparison of two values outside a predicate term the walk met (#354): FIELD, NULLIF, LEAST and GREATEST over
  * their operands, LIMIT's row count against 0, a merge join's column pair. A side is a regu, a list column (bound to
@@ -166,6 +167,8 @@ struct DOMAIN_LOAD_CONTEXT
   int *compare_term_guards;	/* [max_compare_terms] the branch guard around each term (#367) */
   XASL_NODE **compare_term_scopes;	/* [2 * max_compare_terms] per side, the block whose scans fix a correlated side
 					 * (domain_outer_scope, #368); NULL */
+  bool *compare_term_ranges;	/* [max_compare_terms] a term of an index scan's key range (#345) */
+  bool in_key_range;		/* the walk is in an index scan's key range predicate, where_range (#345) */
   int n_compare_terms;
   int max_compare_terms;
   DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first (#352) */
@@ -1541,6 +1544,13 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       item->flags |= DOMAIN_PLAN_COLLATION_GATE;
       item->slot = ctx->plan->n_slots++;
     }
+  else if (regu->type == TYPE_POS_VALUE && context == DOMAIN_CTX_LIST_COLUMN)
+    {
+      /* an output list's bind - an UPDATE's SET value among them, an auto-parameterized literal typed by its own
+       * type. A statement sharing the plan (one hash text) can bind a literal of another type: DEFAULT (another column)
+       * is not coerced into the assigned column's type (B33, #345) */
+      item->flags |= DOMAIN_PLAN_LIST_BIND;
+    }
   if (regu->type == TYPE_CONSTANT)
     {
       /* a value pointer holds what its producer wrote there, whatever domain the reader was compiled with (an
@@ -1647,9 +1657,17 @@ domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
 	  return;
 	}
       ctx->compare_term_scopes = scopes;
+      bool *ranges = (bool *) db_private_realloc (ctx->thread_p, ctx->compare_term_ranges, max * sizeof (*ranges));
+      if (ranges == NULL)
+	{
+	  ctx->failed = true;
+	  return;
+	}
+      ctx->compare_term_ranges = ranges;
       ctx->max_compare_terms = max;
     }
   ctx->compare_term_guards[ctx->n_compare_terms] = ctx->guard;
+  ctx->compare_term_ranges[ctx->n_compare_terms] = ctx->in_key_range;
   ctx->compare_term_scopes[2 * ctx->n_compare_terms] = domain_outer_scope (ctx, term->lhs);
   ctx->compare_term_scopes[2 * ctx->n_compare_terms + 1] = domain_outer_scope (ctx, term->rhs);
   ctx->compare_terms[ctx->n_compare_terms++] = term;
@@ -1672,6 +1690,7 @@ domain_add_element_term (DOMAIN_LOAD_CONTEXT * ctx, ALSM_EVAL_TERM * term)
   entry->term = term;
   entry->list_column = NULL;
   entry->guard = ctx->guard;
+  entry->key_range = ctx->in_key_range;
   entry->next = ctx->element_terms;
   ctx->element_terms = entry;
   ctx->n_element_terms++;
@@ -1955,7 +1974,10 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 	}
       domain_walk_pred (ctx, spec->where_key);
       domain_walk_pred (ctx, spec->where_pred);
+      /* develop meets a key range term's constant that does not coerce in the B-tree search, not in the term (#345) */
+      ctx->in_key_range = true;
       domain_walk_pred (ctx, spec->where_range);
+      ctx->in_key_range = false;
       switch (spec->type)
 	{
 	case TARGET_CLASS:
@@ -2214,6 +2236,9 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   ctx->ancestors[ctx->n_ancestors++] = xasl;
   XASL_NODE *previous_block = ctx->block;
   const int entry_guard = ctx->guard;
+  /* a subquery of a key range term is no part of the key range (#345) */
+  const bool entry_key_range = ctx->in_key_range;
+  ctx->in_key_range = false;
   ctx->block = xasl;
   xasl->domain_plan = ctx->plan;
   if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && xasl->limit_row_count != NULL)
@@ -2430,6 +2455,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   ctx->n_ancestors--;
   domain_walk_xasl (ctx, xasl->next);
   ctx->block = previous_block;
+  ctx->in_key_range = entry_key_range;
 }
 
 /*
@@ -3363,6 +3389,7 @@ domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOA
   site->site = -1;
   DOMAIN_COMPARE_PLAN *pair = &site->pair;
   pair->predicate = true;
+  pair->key_range = entry->key_range;
   pair->guard = entry->guard;
   DOMAIN_COMPARE_KEY key[2];
   unsigned long long volatile_reads = 0;
@@ -3593,6 +3620,7 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 		  met->held[side] = 0;
 		}
 	    }
+	  met->key_range = met->key_range || ctx->compare_term_ranges[t];
 	  continue;
 	}
       DOMAIN_COMPARE_PLAN *site = (DOMAIN_COMPARE_PLAN *) domain_plan_alloc (thread_p, 1, sizeof (*site));
@@ -3603,6 +3631,7 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	}
       memset (site, 0, sizeof (*site));
       site->predicate = true;
+      site->key_range = ctx->compare_term_ranges[t];
       site->guard = ctx->compare_term_guards[t];
       DOMAIN_COMPARE_KEY key[2];
       unsigned long long volatile_reads = 0;
@@ -3630,10 +3659,15 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	  ok = domain_publish_elements (thread_p, plan, records, constant_base, e, gate_sites, &n_gate, element_sites,
 					&n_element_gate);
 	}
-      else if (!domain_guard_encloses (ctx, e->term->domain_compare->pair.guard, e->guard))
+      else
 	{
-	  /* a term the walk met twice below guards neither of which is around the other (#367) */
-	  ctx->guards_ambiguous = true;
+	  DOMAIN_ELEMENT_COMPARE_PLAN *met = const_cast < DOMAIN_ELEMENT_COMPARE_PLAN * >(e->term->domain_compare);
+	  met->pair.key_range = met->pair.key_range || e->key_range;
+	  if (!domain_guard_encloses (ctx, met->pair.guard, e->guard))
+	    {
+	      /* a term the walk met twice below guards neither of which is around the other (#367) */
+	      ctx->guards_ambiguous = true;
+	    }
 	}
     }
   for (DOMAIN_LOAD_COMPARE_PAIR * pair = ctx->compare_pairs; pair != NULL && ok; pair = pair->next)
@@ -4523,6 +4557,10 @@ domain_load_context_free (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
   if (ctx->compare_term_scopes != NULL)
     {
       db_private_free (thread_p, ctx->compare_term_scopes);
+    }
+  if (ctx->compare_term_ranges != NULL)
+    {
+      db_private_free (thread_p, ctx->compare_term_ranges);
     }
   if (ctx->ancestors != NULL)
     {

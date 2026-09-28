@@ -12032,11 +12032,8 @@ tp_value_convert_bit_to_bit_core (const DB_VALUE * src, DB_VALUE * target, const
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
   DB_DATA_STATUS data_stat = DATA_STATUS_OK;
 
-  if (DB_VALUE_PRECISION (src) == desired_domain->precision)
-    {
-      pr_clone_value (src, target);
-      return DOMAIN_COMPATIBLE;
-    }
+  /* develop coerces a bit string of the same precision too: a value can hold more bits than its precision (a DBLink
+   * BIT(n) value holds whole bytes, dblink_scan.c), which the coercion truncates (#345) */
   do
     {
 

@@ -4519,6 +4519,41 @@ qexec_share_value (const DB_VALUE * source, DB_VALUE * copy)
 }
 
 /*
+ * qexec_convert_list_bind () - an output list's bind in its column's compiled domain (B33, #345)
+ *
+ * The compiler typed the bind from the statement that compiled the plan: an auto-parameterized literal from its own
+ * type. A statement sharing the plan can bind a literal of another type, and develop's tuple write casts it into the
+ * column's domain (qdata_get_dbval_from_constant_regu_variable - in place, so at the first row only); the gate casts
+ * it once, before any row. A value the cast refuses stays as it is: the tuple write fails on it at the row, as
+ * develop's did.
+ */
+static void
+qexec_convert_list_bind (DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = DB_VALUE_TYPE (value);
+  const DB_TYPE column = TP_DOMAIN_TYPE (domain);
+  if (type == DB_TYPE_NULL || type == DB_TYPE_OID || column == DB_TYPE_NULL
+      || (type == column && (type != DB_TYPE_NUMERIC || (db_value_precision (value) == domain->precision
+							 && db_value_scale (value) == domain->scale))))
+    {
+      return;
+    }
+  DB_VALUE converted;
+  db_make_null (&converted);
+  er_stack_push ();
+  if (tp_value_auto_cast (value, &converted, domain) == DOMAIN_COMPATIBLE)
+    {
+      pr_clear_value (value);
+      *value = converted;
+    }
+  else
+    {
+      pr_clear_value (&converted);
+    }
+  er_stack_pop ();
+}
+
+/*
  * qexec_constant_key () - the key a constant compares with: its value's (#352)
  *
  * A string, a NUMERIC and a type without parameters give the key their cached domain gives, read from the value
@@ -4645,11 +4680,21 @@ qexec_compare_side_unresolved (const DOMAIN_COMPARE_PLAN * site)
  *   fails (#367, D-367-02): -181 naming the two sides' types at the first coercion that fails in develop's order
  *   (domain_compare_converted: the first side, then the other)
  *   failed(in): bit i: constant side i does not convert
+ *   key_range(in): the term is an index scan's key range term: develop meets the constant in the B-tree search, whose
+ *		    comparison takes the search key first and converts no index key before the constant fails - the
+ *		    constant's type, then the column's (#345)
  */
 static int
-qexec_compare_constant_failed (const DOMAIN_COMPARE * compare, unsigned char failed)
+qexec_compare_constant_failed (const DOMAIN_COMPARE * compare, unsigned char failed, bool key_range)
 {
   DB_TYPE type[2] = { (DB_TYPE) compare->source[0], (DB_TYPE) compare->source[1] };
+  if (key_range)
+    {
+      const int constant = (failed & 1) ? 0 : 1;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type[constant]),
+	      pr_type_name (type[1 - constant]));
+      return ER_TP_CANT_COERCE;
+    }
   if (!(failed & (1 << compare->first)))
     {
       /* the first side converted before the constant's coercion failed */
@@ -4815,10 +4860,11 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
     {
       if (site->guard < 0)
 	{
-	  return qexec_compare_constant_failed (compare, compare->failed);
+	  return qexec_compare_constant_failed (compare, compare->failed, site->key_range);
 	}
       /* below a branch guard: the gate's error only if a row reaches the term (D-367-07) */
-      const DOMAIN_GATE_FAILURE failure = { compare, site->guard, -1, 0, 0, DOMAIN_FAILURE_COMPARE, compare->failed };
+      const DOMAIN_GATE_FAILURE failure =
+	{ compare, site->guard, -1, site->key_range, 0, DOMAIN_FAILURE_COMPARE, compare->failed };
       const int noted = qexec_note_failure (thread_p, resolved, failure);
       if (noted != NO_ERROR)
 	{
@@ -4983,11 +5029,12 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolv
 		}
 	      if (pair->guard < 0)
 		{
-		  error = qexec_compare_constant_failed (compare, 2);
+		  error = qexec_compare_constant_failed (compare, 2, pair->key_range);
 		}
 	      else
 		{
-		  const DOMAIN_GATE_FAILURE failure = { compare, pair->guard, -1, 0, 0, DOMAIN_FAILURE_COMPARE, 2 };
+		  const DOMAIN_GATE_FAILURE failure =
+		    { compare, pair->guard, -1, pair->key_range, 0, DOMAIN_FAILURE_COMPARE, 2 };
 		  error = qexec_note_failure (thread_p, resolved, failure);
 		}
 	    }
@@ -5406,15 +5453,17 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bo
     }
   if (!tp_valid_indextype (DB_VALUE_DOMAIN_TYPE (value)))
     {
+      /* develop's -181 names the column first where scan_dbvals_to_midxkey refuses a multi-column key's element, the
+       * value first where the B-tree search compares a single-column search key with the index key (#345) */
+      const DB_TYPE first = midxkey ? TP_DOMAIN_TYPE (column) : DB_VALUE_DOMAIN_TYPE (value);
+      const DB_TYPE second = midxkey ? DB_VALUE_DOMAIN_TYPE (value) : TP_DOMAIN_TYPE (column);
       if (guard < 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (TP_DOMAIN_TYPE (column)),
-		  pr_type_name (DB_VALUE_DOMAIN_TYPE (value)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (first), pr_type_name (second));
 	  return ER_TP_CANT_COERCE;
 	}
       /* below a branch guard: the gate's error only if a row opens the scan (D-367-07) */
-      const DOMAIN_GATE_FAILURE failure =
-	{ NULL, guard, -1, TP_DOMAIN_TYPE (column), DB_VALUE_DOMAIN_TYPE (value), DOMAIN_FAILURE_KEY, 0 };
+      const DOMAIN_GATE_FAILURE failure = { NULL, guard, -1, first, second, DOMAIN_FAILURE_KEY, 0 };
       const int noted = qexec_note_failure (thread_p, xasl_state->resolved, failure);
       return noted != NO_ERROR ? noted : pr_clone_value (value, &decision->value);
     }
@@ -6185,7 +6234,7 @@ qexec_raise_reached_failures (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 	  error = qexec_evaluate_constant (thread_p, xasl_state, &plan->constants[failure->index]);
 	  break;
 	case DOMAIN_FAILURE_COMPARE:
-	  error = qexec_compare_constant_failed (failure->compare, failure->failed);
+	  error = qexec_compare_constant_failed (failure->compare, failure->failed, failure->arg != 0);
 	  break;
 	case DOMAIN_FAILURE_KEY:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name ((DB_TYPE) failure->arg),
@@ -6310,12 +6359,21 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 		      return er_errid ();
 		    }
 		}
+	      else if (item->flags & DOMAIN_PLAN_LIST_BIND)
+		{
+		  /* the tuple write reads the value in its column's type, or casts it as develop did (B33, #345) */
+		  qexec_convert_list_bind (&resolved.vals[ref], item->fixed.domain);
+		  continue;
+		}
 #if !defined (NDEBUG)
 	      if (!(item->flags & DOMAIN_PLAN_GATE) && item->fixed.domain != NULL && !DB_IS_NULL (source)
-		  && item->fail != DOMAIN_FAIL_KEEP)
+		  && item->fail == DOMAIN_FAIL_NULL)
 		{
 		  /* "value type == plan domain" for every bind the compiler typed (#336 exit condition): the client cast
-		   * the value into the plan domain; CHAR vs VARCHAR is the kept original value (D-327-01) */
+		   * the value into the plan domain; CHAR vs VARCHAR is the kept original value (D-327-01). A statement
+		   * sharing the plan - a literal form and its bind form, #345 - binds another type only where the plan
+		   * does not read it as the compiled type: a comparison or a key decides by the value, an assignment
+		   * converts it into its attribute's domain (heap_attrinfo_set), an output list's bind above */
 		  const DB_TYPE plan_type = TP_DOMAIN_TYPE (item->fixed.domain);
 		  const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (source);
 		  assert (plan_type == value_type || (TP_IS_CHAR_TYPE (plan_type) && TP_IS_CHAR_TYPE (value_type)));
