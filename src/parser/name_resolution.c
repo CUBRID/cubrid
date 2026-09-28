@@ -386,6 +386,20 @@ public:
     return m_nm_buf + m_attr[idx].name_pos;
   }
 
+  /* index of the column named name, or -1 */
+  int find_col (const char *name)
+  {
+    for (int i = 0; i < m_attr_used; i++)
+      {
+	if (intl_identifier_casecmp_for_dblink (name, get_name (i)) == 0)
+	  {
+	    return i;
+	  }
+      }
+
+    return -1;
+  }
+
   int get_attr_size ()
   {
     return m_attr_used;
@@ -412,9 +426,12 @@ public:
 static int pt_remake_dblink_select_list (PARSER_CONTEXT * parser, PT_SPEC_INFO * class_spec,
 					 S_REMOTE_TBL_COLS * rmt_cols);
 static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink,
-					    S_REMOTE_TBL_COLS * rmt_tbl_cols);
+					    S_REMOTE_TBL_COLS * rmt_tbl_cols, bool star_removed);
 static int pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_type, char *table_name,
 							   S_REMOTE_TBL_COLS * rmt_tbl_cols, int *reason);
+static int pt_dblink_table_get_column_defs_by_prepare (PARSER_CONTEXT * parser, int conn, const char *table_name,
+						       PT_NODE * sel_list, bool star_removed,
+						       S_REMOTE_TBL_COLS * rmt_tbl_cols, T_CCI_ERROR * cci_error);
 
 static PT_NODE *pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node);
 
@@ -572,7 +589,6 @@ pt_resolved (const PT_NODE * expr)
     }
   return 0;
 }
-
 
 /*
  * pt_eval_value_path() -
@@ -1061,7 +1077,6 @@ pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind
   return node;
 }
 
-
 /*
  * pt_bind_type_of_host_var() -  set the type of a host variable to
  *                               the type of its DB_VALUE
@@ -1292,7 +1307,8 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 		  return;
 		}
 
-	      err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols);
+	      err = pt_dblink_table_get_column_defs (parser, table, rmt_tbl_cols,
+						     (spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED) != 0);
 
 	      if (table->info.dblink_table.remote_table_name && *table->info.dblink_table.remote_table_name)
 		{
@@ -1422,7 +1438,6 @@ pt_find_function_type (const char *name)
     }
   return PT_GENERIC;
 }
-
 
 /*
  * pt_mark_location () -
@@ -2865,7 +2880,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 			}
 		    }		/* for */
 		}
-
 
 	      /* clear spec_id to re-check outer join semantic */
 	      bind_arg->sc_info->Oracle_outerjoin_spec = spec;
@@ -5183,17 +5197,10 @@ pt_mk_attr_def_node (PARSER_CONTEXT * parser, PT_NODE * name_node, S_REMOTE_TBL_
       return def_node;
     }
 
-  const char *col_name = name_node->info.name.original;
-  for (int i = 0; i < rmt_cols->get_attr_size (); i++)
+  int idx = rmt_cols->find_col (name_node->info.name.original);
+  if (idx >= 0 && pt_dblink_table_fill_attr_def (parser, def_node, rmt_cols->get_attr (idx)))
     {
-      if (intl_identifier_casecmp_for_dblink (col_name, rmt_cols->get_name (i)) == 0)
-	{
-	  if (pt_dblink_table_fill_attr_def (parser, def_node, rmt_cols->get_attr (i)))
-	    {
-	      return def_node;
-	    }
-	  break;
-	}
+      return def_node;
     }
 
   parser_free_node (parser, def_node);
@@ -5524,6 +5531,156 @@ enum
 };
 
 /*
+ * pt_dblink_fill_col_attr () - copy one remote column's metadata out of the prepare result
+ */
+static void
+pt_dblink_fill_col_attr (S_REMOTE_COL_ATTR * attr, const T_CCI_COL_INFO * col)
+{
+  attr->type_idx = col->ext_type;
+  attr->dec_precision = col->scale;
+  attr->precision = col->precision;
+  attr->charset = col->charset;
+}
+
+/*
+ * pt_dblink_prepare_and_type () - prepare sql on the remote and take the column metadata
+ *   from what it describes
+ *   return: NO_ERROR, or ER_FAILED with the remote's message in cci_error
+ *   conn(in): open CCI connection to the remote
+ *   sql(in): the statement to prepare
+ *   expect_cnt(in): how many columns the remote must describe, 0 for "as many as it has"
+ *   is_invisible(in): the mark for every column this prepare types
+ */
+static int
+pt_dblink_prepare_and_type (int conn, char *sql, int expect_cnt, int is_invisible, S_REMOTE_TBL_COLS * rmt_tbl_cols,
+			    T_CCI_ERROR * cci_error)
+{
+  T_CCI_COL_INFO *col_info;
+  T_CCI_CUBRID_STMT stmt_type;
+  S_REMOTE_COL_ATTR *rmt_attr;
+  int req, col_cnt = 0, i, err = ER_FAILED;
+
+  req = cci_prepare (conn, sql, 0, cci_error);
+  if (req < 0)
+    {
+      return ER_FAILED;
+    }
+
+  col_info = (T_CCI_COL_INFO *) cci_get_result_info (req, &stmt_type, &col_cnt);
+  if (col_info == NULL || col_cnt <= 0 || (expect_cnt > 0 && col_cnt != expect_cnt))
+    {
+      snprintf (cci_error->err_msg, sizeof (cci_error->err_msg), "the remote described %d columns for [%s]", col_cnt,
+		sql);
+      goto end;
+    }
+
+  for (i = 0; i < col_cnt; i++)
+    {
+      rmt_attr = rmt_tbl_cols->get_col_attr (col_info[i].col_name);
+      if (rmt_attr == NULL)
+	{
+	  goto end;
+	}
+      pt_dblink_fill_col_attr (rmt_attr, &col_info[i]);
+      rmt_attr->is_invisible = is_invisible;
+    }
+
+  err = NO_ERROR;
+
+end:
+  cci_close_req_handle (req);
+  return err;
+}
+
+/*
+ * pt_dblink_table_get_column_defs_by_prepare () - remote column list of exactly the columns
+ *   the statement references, from prepares of "SELECT <names> FROM table"
+ *   return: NO_ERROR (rmt_tbl_cols filled); ER_FAILED otherwise, with rmt_tbl_cols emptied
+ *           and the remote's message in cci_error
+ *   parser(in): parser context - prints the names the way the rewritten remote query does
+ *   conn(in): open CCI connection to the remote
+ *   table_name(in): remote table name, as the statement wrote it
+ *   sel_list(in): the gathered references, star first if there is one
+ *   rmt_tbl_cols(out): remote column list
+ *   cci_error(out): why a prepare was refused
+ *
+ * Note: a referenced name the "SELECT *" prepare did not describe exists yet is outside
+ *   the star's expansion, which is what makes it invisible.  No catalog is asked at all;
+ *   the caller describes the table instead when a prepare is refused.
+ */
+static int
+pt_dblink_table_get_column_defs_by_prepare (PARSER_CONTEXT * parser, int conn, const char *table_name,
+					    PT_NODE * sel_list, bool star_removed,
+					    S_REMOTE_TBL_COLS * rmt_tbl_cols, T_CCI_ERROR * cci_error)
+{
+  PT_NODE *name;
+  PARSER_VARCHAR *sel = NULL;
+  char *sql;
+  int n_named = 0, custom_print_saved;
+  bool has_star = (sel_list->node_type == PT_NAME && sel_list->type_enum == PT_TYPE_STAR);
+  /* the visible set tells which referenced columns are invisible, and it is needed
+   * whenever a star decides what this spec exposes: one the statement wrote, or the one
+   * the grammar took away when it collapsed "FROM (SELECT * FROM tbl@srv)" into this spec */
+  bool need_visible = (has_star || star_removed);
+
+  /* the caller logs these on ER_FAILED, and not every failure here comes from a CCI call */
+  cci_error->err_code = 0;
+  cci_error->err_msg[0] = '\0';
+
+  /* 1. the visible set, when a star expands to it */
+  if (need_visible)
+    {
+      sql = pt_append_string (parser, "/* DBLINK SELECT */ SELECT * FROM ", table_name);
+      if (pt_dblink_prepare_and_type (conn, sql, 0, 0, rmt_tbl_cols, cci_error) != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  /* 2. the referenced names the star did not cover, printed as
+   * pt_build_select_list_for_dblink () prints the remote select list */
+  custom_print_saved = parser->custom_print;
+  parser->custom_print |= PT_SUPPRESS_RESOLVED | PT_PRINT_SUPPRESS_FOR_DBLINK;
+  for (name = (has_star ? sel_list->next : sel_list); name != NULL; name = name->next)
+    {
+      if (name->node_type != PT_NAME || name->type_enum == PT_TYPE_STAR)
+	{
+	  continue;
+	}
+
+      if (rmt_tbl_cols->find_col (name->info.name.original) >= 0)
+	{
+	  continue;		/* visible: described above */
+	}
+
+      if (n_named++ > 0)
+	{
+	  sel = pt_append_nulstring (parser, sel, ", ");
+	}
+      sel = pt_append_varchar (parser, sel, pt_print_bytes (parser, name));
+    }
+  parser->custom_print = custom_print_saved;
+
+  if (n_named > 0)
+    {
+      sql = pt_append_string (parser, "/* DBLINK SELECT */ SELECT ", (char *) pt_get_varchar_bytes (sel));
+      sql = pt_append_string (parser, sql, " FROM ");
+      sql = pt_append_string (parser, sql, table_name);
+      /* outside the star's expansion yet resolvable: invisible; with no star, a plain column */
+      if (pt_dblink_prepare_and_type (conn, sql, n_named, need_visible ? 1 : 0, rmt_tbl_cols, cci_error) != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+
+  return NO_ERROR;
+
+error:
+  rmt_tbl_cols->reset_attrs ();
+  return ER_FAILED;
+}
+
+/*
  * pt_dblink_table_get_column_defs_by_schema_info () - remote table schema via cci_schema_info
  *   return: NO_ERROR on success (rmt_tbl_cols filled); ER_FAILED otherwise, with
  *           rmt_tbl_cols left empty and the reason in reason
@@ -5685,7 +5842,8 @@ pt_dblink_table_get_column_defs_by_schema_info (int conn, T_CCI_SCH_TYPE sch_typ
 }
 
 static int
-pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols)
+pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_REMOTE_TBL_COLS * rmt_tbl_cols,
+				 bool star_removed)
 {
   int req = -1, conn = -1, col_cnt, err = ER_DBLINK, i;
   T_CCI_ERROR cci_error;
@@ -5790,6 +5948,23 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
 	}
       else
 	{
+	  if (!dblink_table->needs_describe)
+	    {
+	      /* every gathered name is this table's: prepare exactly those and skip the
+	       * catalog request.  A refused prepare falls through to the describe. */
+	      rc = pt_dblink_table_get_column_defs_by_prepare (parser, conn, table_name, dblink_table->sel_list,
+							       star_removed, rmt_tbl_cols, &cci_error);
+	      if (rc == NO_ERROR)
+		{
+		  err = NO_ERROR;
+		  goto set_parser_error;
+		}
+
+	      er_log_debug (ARG_FILE_LINE,
+			    "dblink: the prepare of the referenced columns of [%s] was refused (%d: %s); "
+			    "describing the table instead\n", table_name, cci_error.err_code, cci_error.err_msg);
+	    }
+
 	  /* sch_attr_info () filters by owner only for a qualified name, so name the schema
 	   * the remote resolves in - the one CREATE SERVER gave - and let it filter.  A
 	   * gateway keeps the name as written: it picks the schema itself and may look
@@ -5857,10 +6032,12 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   for (i = 0; i < col_cnt; i++)
     {
       rmt_attr = rmt_tbl_cols->get_col_attr (col_info[i].col_name);
-      rmt_attr->type_idx = col_info[i].ext_type;
-      rmt_attr->dec_precision = col_info[i].scale;
-      rmt_attr->precision = col_info[i].precision;
-      rmt_attr->charset = col_info[i].charset;
+      if (rmt_attr == NULL)
+	{
+	  sprintf (cci_error.err_msg, "memory allocation failed while collecting the remote column list");
+	  goto set_parser_error;
+	}
+      pt_dblink_fill_col_attr (rmt_attr, &col_info[i]);
     }
 
   err = NO_ERROR;
@@ -6031,7 +6208,6 @@ pt_get_attr_data_type (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * at
     }
 }
 
-
 /*
  * pt_unwhacked_spec () - Map to the real spec.  Either identity,
  *                        or lookup of selector's path spec.
@@ -6053,7 +6229,6 @@ pt_unwhacked_spec (PARSER_CONTEXT * parser, PT_NODE * scope, PT_NODE * spec)
     }
   return spec;
 }
-
 
 /*
  * pt_resolve_correlation () - Given an exposed spec, return the name node
@@ -7219,7 +7394,6 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
   SM_CLASS *smclass;
   int partition_skip;
 
-
   if (parser == NULL)
     {
       assert (parser != NULL);
@@ -7350,7 +7524,6 @@ end:
 
   return result;
 }
-
 
 /*
  * pt_make_flat_name_list () - Create flat name list from entity spec
@@ -7603,7 +7776,6 @@ pt_make_flat_name_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * spec_
   return 0;			/* internal error, wasn't a name or a sublist */
 }
 
-
 /*
  * pt_must_have_exposed_name () - MUST assign a name (even a default one)
  *      because later checks assume the range_var field is non-empty
@@ -7702,7 +7874,6 @@ pt_must_have_exposed_name (PARSER_CONTEXT * parser, PT_NODE * p)
 
   return 1;
 }
-
 
 /*
  * pt_object_to_data_type () - create a PT_DATA_TYPE node that corresponds
@@ -8541,7 +8712,6 @@ exit_on_error:
   return ER_FAILED;
 }
 
-
 static void
 pt_write_semantic_warning (PARSER_CONTEXT * parser, PT_NODE * name, int line_no, int msg_no)
 {
@@ -9093,7 +9263,6 @@ exit_on_error:
   free_natural_join_attrs (attr_head);
   return ER_OUT_OF_VIRTUAL_MEMORY;
 }
-
 
 /*
  * generate_natural_join_attrs_from_db_attrs () -
@@ -10414,7 +10583,6 @@ pt_insert_entity (PARSER_CONTEXT * parser, PT_NODE * path, PT_NODE * prev_entity
   return entity;
 }
 
-
 /*
  * pt_insert_conjunct() -
  *   return: parse tree that is augmented with the new conjunct
@@ -10504,7 +10672,6 @@ pt_insert_conjunct (PARSER_CONTEXT * parser, PT_NODE * path_dot, PT_NODE * prev_
   return conjunct;
 }				/* pt_insert_conjunct */
 
-
 /*
  * pt_lookup_entity () -
  *   return: entity we are looking for
@@ -10557,8 +10724,6 @@ pt_lookup_entity (PARSER_CONTEXT * parser, PT_NODE * path_entities, PT_NODE * ex
 
   return entity;
 }
-
-
 
 /*
  * pt_resolve_object () - gets the object to update either from a host var
@@ -10650,7 +10815,6 @@ pt_resolve_object (PARSER_CONTEXT * parser, PT_NODE * node)
   node->info.update.spec = entity;
 }
 
-
 /*
  * pt_resolve_method_type () - resolves the return type of the method call
  *      and creates a data_type for it if it is needed
@@ -10727,8 +10891,6 @@ pt_resolve_method_type (PARSER_CONTEXT * parser, PT_NODE * node)
   node->info.method_call.method_id = (UINTPTR) node;
   return true;
 }				/* pt_resolve_method_type */
-
-
 
 /*
  * pt_make_method_call () - creates a PT_METHOD_CALL node and initilaizes from PT_FUNCTION node
@@ -10963,7 +11125,6 @@ pt_find_outer_entity_in_scopes (PARSER_CONTEXT * parser, SCOPES * scopes, UINTPT
       return NULL;
     }
 
-
   for (spec = scopes->specs; spec; spec = spec->next)
     {
       if (spec->node_type != PT_SPEC)
@@ -10989,7 +11150,6 @@ pt_find_outer_entity_in_scopes (PARSER_CONTEXT * parser, SCOPES * scopes, UINTPT
 
   return NULL;
 }
-
 
 /*
  * pt_make_flat_list_from_data_types
@@ -11684,7 +11844,6 @@ pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_N
     }
 }
 
-
 /*
  * pt_resolve_names_in_cte - resolve names in cte definition
  *
@@ -11804,7 +11963,6 @@ pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void
 
   return node;
 }
-
 
 /*
  * pt_get_attr_list_of_derived_table - determine the list of aliases of a derived table
@@ -12012,7 +12170,6 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 	}
 
       break;
-
 
     case PT_IS_SHOWSTMT:
       {
@@ -12366,8 +12523,11 @@ typedef struct link_columns
 {
   PT_NODE *col_list;
   PT_NODE *tbl_name_node;
+  bool multi_source;		/* the block reads columns from more than this table */
+  int nested_depth;		/* > 0 while inside a query block nested in the walked clause; it also
+				   counts that block's list siblings, which only costs a describe */
+  bool needs_describe;		/* a name was seen that cannot be pinned to this table */
 } S_LINK_COLUMNS;
-
 
 static void
 check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, const char *resolved, const char *original)
@@ -12433,26 +12593,33 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
     }
 }
 
-
 static PT_NODE *
 pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
+
+  /* reset: pt_walk_private () walks node->next with the value set for node */
+  *continue_walk = PT_CONTINUE_WALK;
+
+  /* a query block nested in the clause: its bare names may be its own tables' columns,
+   * so they are not certainly this table's (pt_get_column_name_post () leaves the block) */
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      plkcol->nested_depth++;
+      return node;
+    }
 
   switch (node->node_type)
     {
     case PT_DOT_:
       /* only a plain (qualifier, column) pair: in a nested path (a.b.c) arg1 is
        * itself a PT_DOT_ and info.name.original would read the wrong union member.
-       * The qualifier filters nothing: the walk is not stopped here, so arg1 and arg2
-       * are visited again as bare PT_NAMEs, and that arm passes no resolved name to
-       * check_for_already_exists ().  A reference qualified with another table's alias
-       * is therefore collected as well - pt_check_column_list () is what keeps the
-       * remote select list to this table's columns. */
+       * Do not descend: arg1 would be gathered as a column of its own. */
       if (node->info.dot.arg1->node_type == PT_NAME && node->info.dot.arg2->node_type == PT_NAME)
 	{
 	  check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
 				    node->info.dot.arg2->info.name.original);
+	  *continue_walk = PT_LIST_WALK;
 	}
       break;
 
@@ -12463,6 +12630,13 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	}
       else
 	{
+	  /* The whole rule: an unqualified name is this table's only when this table is the
+	   * block's single column source and the name is not inside a nested block, where it
+	   * may be that block's own or a correlated reference to an outer table. */
+	  if (plkcol->multi_source || plkcol->nested_depth > 0)
+	    {
+	      plkcol->needs_describe = true;
+	    }
 	  check_for_already_exists (parser, plkcol, NULL, node->info.name.original);
 	}
       break;
@@ -12481,17 +12655,42 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
+/*
+ * pt_get_column_name_post () - leave a nested query block entered by pt_get_column_name_pre ()
+ */
+static PT_NODE *
+pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && plkcol->nested_depth > 0)
+    {
+      plkcol->nested_depth--;
+    }
+
+  return node;
+}
+
+/*
+ * pt_walk_col_refs () - gather the column references of one clause
+ *   Note: pt_get_column_name_post () has to pair with the pre function at every site,
+ *   or a nested block's depth never unwinds.  A NULL clause is a no-op.
+ */
+static void
+pt_walk_col_refs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION pre, S_LINK_COLUMNS * lkcol)
+{
+  (void) parser_walk_tree (parser, node, pre, lkcol, pt_get_column_name_post, lkcol);
+}
+
 static void
 pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUERY_INFO * query)
 {
   PT_NODE *spec;
+  size_t i;
 
-  if (query->q.select.list)
-    {
-      /* a star does not stop the walk: names referenced in the conditions below
-       * may be remote invisible columns, which the star ("SELECT *") never covers */
-      (void) parser_walk_tree (parser, query->q.select.list, pt_get_column_name_pre, plkcol, NULL, NULL);
-    }
+  /* a star does not stop the walk: names referenced in the conditions below
+   * may be remote invisible columns, which the star ("SELECT *") never covers */
+  pt_walk_col_refs (parser, query->q.select.list, pt_get_column_name_pre, plkcol);
 
   /* an ON condition hangs on the spec at the right side of its JOIN, so the dblink
    * table's columns may appear in another spec's on_cond (e.g. the dblink table on
@@ -12500,42 +12699,17 @@ pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUE
    * pt_check_column_list () afterwards drops whatever is not a column of this table. */
   for (spec = query->q.select.from; spec; spec = spec->next)
     {
-      if (spec->info.spec.on_cond)
-	{
-	  (void) parser_walk_tree (parser, spec->info.spec.on_cond, pt_get_column_name_pre, plkcol, NULL, NULL);
-	}
+      pt_walk_col_refs (parser, spec->info.spec.on_cond, pt_get_column_name_pre, plkcol);
     }
-  if (query->q.select.where)
+
+  PT_NODE *clauses[] = { query->q.select.where, query->q.select.having, query->q.select.group_by,
+    query->q.select.connect_by, query->q.select.start_with, query->q.select.after_cb_filter, query->order_by,
+    query->orderby_for
+  };
+
+  for (i = 0; i < sizeof (clauses) / sizeof (clauses[0]); i++)
     {
-      (void) parser_walk_tree (parser, query->q.select.where, pt_get_column_name_pre, plkcol, NULL, NULL);
-    }
-  if (query->q.select.having)
-    {
-      (void) parser_walk_tree (parser, query->q.select.having, pt_get_column_name_pre, plkcol, NULL, NULL);
-    }
-  if (query->q.select.group_by)
-    {
-      (void) parser_walk_tree (parser, query->q.select.group_by, pt_get_column_name_pre, plkcol, NULL, NULL);
-    }
-  if (query->q.select.connect_by)
-    {
-      (void) parser_walk_tree (parser, query->q.select.connect_by, pt_get_column_name_pre, plkcol, NULL, NULL);
-    }
-  if (query->q.select.start_with)
-    {
-      (void) parser_walk_tree (parser, query->q.select.start_with, pt_get_column_name_pre, plkcol, NULL, NULL);
-    }
-  if (query->q.select.after_cb_filter)
-    {
-      (void) parser_walk_tree (parser, query->q.select.after_cb_filter, pt_get_column_name_pre, plkcol, NULL, NULL);
-    }
-  if (query->order_by)
-    {
-      (void) parser_walk_tree (parser, query->order_by, pt_get_column_name_pre, plkcol, NULL, NULL);
-    }
-  if (query->orderby_for)
-    {
-      (void) parser_walk_tree (parser, query->orderby_for, pt_get_column_name_pre, plkcol, NULL, NULL);
+      pt_walk_col_refs (parser, clauses[i], pt_get_column_name_pre, plkcol);
     }
 }
 
@@ -12545,6 +12719,10 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
   PT_QUERY_INFO *query = &query_stmt->info.query;
   PT_NODE *table;
   PT_NODE *spec;
+  bool multi_source;
+
+  /* more than one spec in the FROM means an unqualified name may be another table's */
+  multi_source = (query->q.select.from != NULL && query->q.select.from->next != NULL);
 
   for (spec = query->q.select.from; spec; spec = spec->next)
     {
@@ -12563,12 +12741,17 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 
 	      memset (&lkcol, 0x00, sizeof (lkcol));
 	      lkcol.col_list = table->info.dblink_table.sel_list;
+	      lkcol.multi_source = multi_source;
 
 	      lkcol.tbl_name_node = spec->info.spec.range_var;
 	      pt_get_cols_for_dblink (parser, &lkcol, query);
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
 	      lkcol.col_list = NULL;
+	      if (lkcol.needs_describe)
+		{
+		  table->info.dblink_table.needs_describe = true;
+		}
 	    }
 	}
     }
@@ -12610,7 +12793,7 @@ pt_dml_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
        * reference any table of the statement */
       if (node->info.spec.on_cond)
 	{
-	  (void) parser_walk_tree (parser, node->info.spec.on_cond, pt_dml_column_name_pre, arg, NULL, NULL);
+	  pt_walk_col_refs (parser, node->info.spec.on_cond, pt_dml_column_name_pre, (S_LINK_COLUMNS *) arg);
 	}
       *continue_walk = PT_LIST_WALK;
       return node;
@@ -12620,7 +12803,7 @@ pt_dml_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     {
       /* only the rhs: the lhs names a column of the DML target, and collecting it
        * would add a phantom column to the remote select list */
-      (void) parser_walk_tree (parser, node->info.expr.arg2, pt_dml_column_name_pre, arg, NULL, NULL);
+      pt_walk_col_refs (parser, node->info.expr.arg2, pt_dml_column_name_pre, (S_LINK_COLUMNS *) arg);
       *continue_walk = PT_LIST_WALK;
       return node;
     }
@@ -12629,8 +12812,8 @@ pt_dml_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     {
       /* the attribute list names target columns; the sources are the values and
        * the ON DUPLICATE KEY assignments */
-      (void) parser_walk_tree (parser, node->info.insert.value_clauses, pt_dml_column_name_pre, arg, NULL, NULL);
-      (void) parser_walk_tree (parser, node->info.insert.odku_assignments, pt_dml_column_name_pre, arg, NULL, NULL);
+      pt_walk_col_refs (parser, node->info.insert.value_clauses, pt_dml_column_name_pre, (S_LINK_COLUMNS *) arg);
+      pt_walk_col_refs (parser, node->info.insert.odku_assignments, pt_dml_column_name_pre, (S_LINK_COLUMNS *) arg);
       *continue_walk = PT_LIST_WALK;
       return node;
     }
@@ -12648,35 +12831,33 @@ pt_dml_gather_source_refs (PARSER_CONTEXT * parser, PT_NODE * stmt, S_LINK_COLUM
   switch (stmt->node_type)
     {
     case PT_UPDATE:
-      (void) parser_walk_tree (parser, stmt->info.update.assignment, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.update.spec, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.update.class_specs, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.update.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.update.order_by, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.update.orderby_for, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      pt_walk_col_refs (parser, stmt->info.update.assignment, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.update.spec, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.update.class_specs, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.update.search_cond, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.update.order_by, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.update.orderby_for, pt_dml_column_name_pre, lkcol);
       break;
 
     case PT_DELETE:
-      (void) parser_walk_tree (parser, stmt->info.delete_.spec, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.delete_.class_specs, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.delete_.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      pt_walk_col_refs (parser, stmt->info.delete_.spec, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.delete_.class_specs, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.delete_.search_cond, pt_dml_column_name_pre, lkcol);
       break;
 
     case PT_MERGE:
-      (void) parser_walk_tree (parser, stmt->info.merge.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.merge.update.assignment, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.merge.update.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
-      (void) parser_walk_tree (parser, stmt->info.merge.update.del_search_cond, pt_dml_column_name_pre, lkcol, NULL,
-			       NULL);
-      (void) parser_walk_tree (parser, stmt->info.merge.insert.value_clauses, pt_dml_column_name_pre, lkcol, NULL,
-			       NULL);
-      (void) parser_walk_tree (parser, stmt->info.merge.insert.search_cond, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      pt_walk_col_refs (parser, stmt->info.merge.search_cond, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.merge.update.assignment, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.merge.update.search_cond, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.merge.update.del_search_cond, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.merge.insert.value_clauses, pt_dml_column_name_pre, lkcol);
+      pt_walk_col_refs (parser, stmt->info.merge.insert.search_cond, pt_dml_column_name_pre, lkcol);
       break;
 
     default:
       /* PT_INSERT and anything unexpected: pt_dml_column_name_pre () itself excludes
        * the target positions */
-      (void) parser_walk_tree (parser, stmt, pt_dml_column_name_pre, lkcol, NULL, NULL);
+      pt_walk_col_refs (parser, stmt, pt_dml_column_name_pre, lkcol);
       break;
     }
 }
@@ -12708,15 +12889,39 @@ pt_gather_dblink_cols_in_dml_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
     }
 
   S_LINK_COLUMNS lkcol;
+  bool multi_source;
+
+  /* the statement's own spec list is the block's column sources: with exactly one spec
+   * its unqualified names are this table's; a MERGE always joins two, and anything
+   * unexpected counts as several so the table is described */
+  switch (stmt->node_type)
+    {
+    case PT_UPDATE:
+      multi_source = (pt_length_of_list (stmt->info.update.spec)
+		      + pt_length_of_list (stmt->info.update.class_specs)) != 1;
+      break;
+    case PT_DELETE:
+      multi_source = (pt_length_of_list (stmt->info.delete_.spec)
+		      + pt_length_of_list (stmt->info.delete_.class_specs)) != 1;
+      break;
+    default:
+      multi_source = true;
+      break;
+    }
 
   memset (&lkcol, 0x00, sizeof (lkcol));
   lkcol.col_list = table->info.dblink_table.sel_list;
   lkcol.tbl_name_node = node->info.spec.range_var;
+  lkcol.multi_source = multi_source;
 
   pt_dml_gather_source_refs (parser, stmt, &lkcol);
 
   table->info.dblink_table.sel_list = lkcol.col_list;
   lkcol.col_list = NULL;
+  if (lkcol.needs_describe)
+    {
+      table->info.dblink_table.needs_describe = true;
+    }
 
   *continue_walk = PT_LIST_WALK;
 

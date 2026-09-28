@@ -1606,7 +1606,7 @@ typedef enum
 					 * during dummy SELECT removal; invisible columns should be excluded from this spec */
   PT_SPEC_FLAG_DBLINK_DML_SRC = 0x40000	/* the remote source spec of a DML statement, and the derived table
 					 * generated around it (pt_check_sub_query_spec ()). That derived table is not a scope the statement
-           * asked for, so it must not hide the remote invisible columns the statement references - unlike
+					 * asked for, so it must not hide the remote invisible columns the statement references - unlike
 					 * PT_SPEC_FLAG_DUMMY_REMOVED, which marks a scope the statement did ask for */
 } PT_SPEC_FLAG;
 
@@ -3485,6 +3485,11 @@ typedef struct pt_dblink_info
   char *remote_table_name;
   PT_NODE *sel_list;
   PT_NODE *owner_list;
+
+  /* a referenced name could not be pinned to this table (pt_get_column_name_pre ()), so the
+   * column list is described instead of prepared.  A prediction only: when it is wrong the
+   * prepare is refused and the describe runs anyway. */
+  bool needs_describe;
 
   void *remote_col_list;	/* remote table's column list */
 
