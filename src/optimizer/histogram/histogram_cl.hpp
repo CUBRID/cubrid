@@ -112,14 +112,17 @@ bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement
  * The scalar fingerprint above bands each predicate's selectivity on its own, so it changes
  * when the plan would not (0.001 -> 0.002) and it does not look at the quantity that actually
  * moves a plan: how many rows each node is expected to produce. The watch below records the
- * per-node estimated row counts the current plan was chosen under and compares a later
- * execution's values against them as RATIOS, split into
- *   shape -- the nodes moved relative to each other, so the driving order flips (narrow band)
- *   scale -- everything moved together, so absolute-value thresholds (parallel-scan entry,
- *            hash-join spill, hash-aggregation give-up) may flip (wide band)
- * and it does so only for the first N executions of a statement, after which the plan is left
- * alone until it is invalidated. Continuous watching stays behind BIND_SENSITIVE /
- * plan_cache_bind_sensitivity.
+ * per-node estimated row counts the current plan was chosen under and, on a later execution
+ * with different values, replans when any node's estimate moved by BIND_WATCH_BAND or more.
+ * It does so only for the first plan_cache_bind_watch_checks distinct-value executions of a
+ * statement, after which the plan is left alone until it is invalidated.
+ *
+ * A statement that asks for continuous sensitivity (BIND_SENSITIVE or
+ * plan_cache_bind_sensitivity) is NOT watched this way: it keeps the scalar per-predicate
+ * fingerprint, which replans on any change of a predicate's histogram estimate -- finer than
+ * the band, and without a window. The two never overlap: the band-and-window watch is the
+ * default that must not surprise anyone in production; the hint is the user saying "this
+ * statement is value-sensitive, chase every estimate change".
  */
 
 /* Nodes tracked per statement. A node here is a FROM spec carrying at least one

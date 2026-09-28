@@ -249,13 +249,19 @@ db_bind_watch_is_open (PT_NODE * statement)
     {
       return false;
     }
+  /* a statement that asked for continuous sensitivity (BIND_SENSITIVE hint or
+   * plan_cache_bind_sensitivity) is not put behind the band and the window: it keeps the
+   * per-predicate selectivity fingerprint, which replans on any change of an estimate and
+   * never stops. The two paths do not mix. */
+  if (db_is_bind_sensitive (statement))
+    {
+      return false;
+    }
   if (*ws_p == NULL)
     {
       return true;		/* nothing checked yet: the whole window is ahead */
     }
-  /* BIND_SENSITIVE / plan_cache_bind_sensitivity is the documented way to keep watching past
-   * the window; without it the window closing is final until the plan is invalidated */
-  return (*ws_p)->checks_left > 0 || db_is_bind_sensitive (statement);
+  return (*ws_p)->checks_left > 0;
 }
 
 /*
@@ -2387,9 +2393,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  if (watch != BIND_WATCH_OFF)
 	    {
 	      /* The watched statements compare the estimated rows per node against the ones the
-	       * plan was chosen under, for the first plan_cache_bind_watch_checks executions only.
-	       * The scalar fingerprint below stays for everything else, so turning the feature off
-	       * leaves this path exactly as it was. */
+	       * plan was chosen under, for the first plan_cache_bind_watch_checks distinct-value
+	       * executions only. The scalar per-predicate fingerprint below stays for everything
+	       * else -- statements the feature does not watch, and statements that asked for
+	       * continuous sensitivity through the hint or plan_cache_bind_sensitivity -- so
+	       * turning the feature off leaves this path exactly as it was. */
 	      if (watch == BIND_WATCH_REPLAN)
 		{
 		  err = do_replan_statement_with_bind_peek (parser, statement);

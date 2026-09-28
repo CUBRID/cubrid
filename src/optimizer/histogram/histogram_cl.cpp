@@ -2705,7 +2705,9 @@ histogram_split_hv_range (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_n
       return false;
     }
 
-  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->next)
+  /* range items are OR-ed alternatives chained through or_next (the list qo_range_selectivity
+   * walks); walking `next` here saw only the first item of an IN-list */
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->or_next)
     {
       if (range_node->node_type != PT_EXPR)
 	{
@@ -2860,7 +2862,7 @@ bind_fp_mix_range (bind_fp_walk_ctx *ctx, PT_NODE *node, PT_NODE *name)
 {
   PT_NODE *range_node;
 
-  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->next)
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->or_next)
     {
       if (range_node->node_type != PT_EXPR)
 	{
@@ -3055,11 +3057,15 @@ histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *
  * decides is whether to watch and for how many executions (plan_cache_bind_watch_checks);
  * nobody has a basis to pick a band or a floor per installation. These are the issue's
  * starting values and are fixed by the phase-1 measurement -- change here and rebuild. */
-/* shape: the nodes moved relative to each other, which reverses a driving order */
-static constexpr double BIND_WATCH_SHAPE_BAND = 4.0;
-/* scale: everything moved together; only absolute thresholds (parallel-scan entry, hash-join
- * spill, hash-aggregation give-up) can flip, so this band is wide */
-static constexpr double BIND_WATCH_SCALE_BAND = 10.0;
+/* a node whose estimate moved by this factor (either way) against the one the plan was chosen
+ * under triggers a replan. One band, per node: the phase-1 measurement on JOB (105 statements,
+ * 352 value changes, see CBRD-27490) found no basis for the original shape/scale split -- the
+ * shape variants (mean, pairwise, rank) all decided identically, and 35 of the 40 changes that
+ * moved every node together still flipped the plan. It also fixed the value: no plan changed
+ * for a move between 2x and 5x, every band from 2x to 10x lost the same 742 s to statements
+ * whose estimate moved 1.79x across a cost tie (JOB 19d: 505 s on the stale plan vs 11 s), and
+ * 1.5x recovered 99% of the time at stake for 51 more replans. */
+static constexpr double BIND_WATCH_BAND = 1.5;
 /* a node estimated below this on both sides is ignored: 1 row becoming 3 moves no plan */
 static constexpr double BIND_WATCH_ROW_FLOOR = 1000.0;
 /* a plan cheaper than this cannot get expensive enough for a replan to pay for itself */
@@ -3371,29 +3377,22 @@ histogram_bind_value_hash (PARSER_CONTEXT *parser)
 
 /*
  * histogram_bind_watch_check () - compare the node cardinalities the current bind values imply
- *   against the ones the plan was chosen under, splitting the difference into shape and scale.
- *
- *   In log space the per-node change is r_i = ln (now_i / then_i). Their mean g is the common
- *   component -- everything moved by e^g, the SCALE. What is left, max |r_i - g|, is the
- *   SHAPE: how far the nodes moved relative to each other, which is what flips a driving
- *   order. Shape gets the narrow band because reversing (1000,10) into (10,1000) reverses the
- *   join; scale gets the wide one because (1000,10) -> (10000,100) keeps the order and only
- *   risks crossing absolute thresholds (parallel-scan entry, hash-join spill, hash-aggregation
- *   give-up).
+ *   against the ones the plan was chosen under: a replan when any node's estimate moved by
+ *   BIND_WATCH_BAND or more, either way. Nodes estimated below the row floor on both sides are
+ *   ignored (1 row becoming 3 moves no plan).
  */
 bool
 histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws, bool *out_usable)
 {
   BIND_WATCH_STATE cur;
   const double row_floor = BIND_WATCH_ROW_FLOOR;
-  const double shape_band = BIND_WATCH_SHAPE_BAND;
-  const double scale_band = BIND_WATCH_SCALE_BAND;
+  const double band = BIND_WATCH_BAND;
   /* the per-check dump rides on the general debug-log switch (on by default in debug builds,
    * where the phase-1 measurement runs); the replan reason below is logged unconditionally,
    * since it is bounded by the window and is what a DBA asks for when a plan changed */
   const bool trace = prm_get_bool_value (PRM_ID_ER_LOG_DEBUG);
-  double ratio_sum = 0.0, mean_ratio = 0.0, worst_shape = 0.0;
-  int compared = 0, worst_i = -1, i, j;
+  double worst_fold = 1.0;
+  int worst_i = -1, compared = 0, i, j;
   bool out_of_band = false;
 
   assert (ws != NULL && out_usable != NULL);
@@ -3441,6 +3440,8 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
 
   for (i = 0; i < cur.nodes; i++)
     {
+      double then, fold;
+
       /* the recorded vector is built by the same walk in the same order, but a NULL value can
        * reorder first-sight, so match by spec */
       for (j = 0; j < ws->nodes && ws->spec_id[j] != cur.spec_id[i]; j++)
@@ -3452,13 +3453,18 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
 	  out_of_band = true;
 	  goto record;
 	}
-      if (cur.card[i] < row_floor && ws->card[j] < row_floor)
+      then = ws->card[j];
+      if (cur.card[i] < row_floor && then < row_floor)
 	{
-	  /* 1 row becoming 3 does not move a plan */
 	  continue;
 	}
-      ratio_sum += std::log (cur.card[i] / ws->card[j]);
       compared++;
+      fold = (cur.card[i] >= then) ? cur.card[i] / then : then / cur.card[i];
+      if (fold > worst_fold)
+	{
+	  worst_fold = fold;
+	  worst_i = i;
+	}
     }
 
   if (compared == 0)
@@ -3466,45 +3472,14 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
       return false;
     }
 
-  mean_ratio = ratio_sum / compared;
-
-  for (i = 0; i < cur.nodes; i++)
-    {
-      double deviation;
-
-      for (j = 0; j < ws->nodes && ws->spec_id[j] != cur.spec_id[i]; j++)
-	{
-	  ;
-	}
-      if (j == ws->nodes || (cur.card[i] < row_floor && ws->card[j] < row_floor))
-	{
-	  continue;
-	}
-      deviation = std::fabs (std::log (cur.card[i] / ws->card[j]) - mean_ratio);
-      if (deviation > worst_shape)
-	{
-	  worst_shape = deviation;
-	  worst_i = i;
-	}
-    }
-
-  if (worst_shape > std::log (shape_band))
-    {
-      out_of_band = true;
-    }
-  else if (std::fabs (mean_ratio) > std::log (scale_band))
-    {
-      out_of_band = true;
-      worst_i = -1;
-    }
-
-  if (out_of_band)
+  if (worst_fold >= band)
     {
       /* one line, every node: "<table> then -> now (Nx up|down)" -- with the dump off (release
        * builds) this is the only account of why the plan changed, so it must be complete */
       char nodes_buf[BIND_WATCH_MAX_NODES * (BIND_WATCH_NAME_LEN + 48)];
       size_t used = 0;
 
+      out_of_band = true;
       nodes_buf[0] = '\0';
       for (i = 0; i < cur.nodes && used < sizeof (nodes_buf); i++)
 	{
@@ -3532,19 +3507,8 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
 	    }
 	  used += (size_t) n;
 	}
-
-      if (worst_i >= 0)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "bind watch replan (shape): %s; shape %.1fx over band %.1fx, overall scale %.1fx\n",
-			 nodes_buf, std::exp (worst_shape), shape_band, std::exp (mean_ratio));
-	}
-      else
-	{
-	  _er_log_debug (ARG_FILE_LINE, "bind watch replan (scale): %s; all moved %.1fx %s over band %.1fx\n",
-			 nodes_buf, std::exp (std::fabs (mean_ratio)), (mean_ratio >= 0.0) ? "up" : "down",
-			 scale_band);
-	}
+      _er_log_debug (ARG_FILE_LINE, "bind watch replan: %s moved %.1fx over the %.1fx band; %s\n",
+		     cur.name[worst_i], worst_fold, band, nodes_buf);
     }
 
 record:
