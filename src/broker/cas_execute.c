@@ -301,6 +301,7 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static bool refuse_stream_opened_mid_request (void);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -916,10 +917,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 
   ux_end_tran_cleanup (tran_type);
 
-  /* the server ends any open stream session with the transaction, so this
-   * connection is no longer holding one either */
-  ux_stream_reset ();
-
   if (tran_type == CCI_TRAN_COMMIT)
     {
       err_code = db_commit_transaction ();
@@ -931,6 +928,9 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     }
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
+      /* the server ends any open stream session with the rollback, so this
+       * connection is no longer holding one either */
+      ux_stream_reset ();
       err_code = db_abort_transaction ();
       cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
@@ -1590,6 +1590,12 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      as_info->num_holdable_results++;
 	    }
 	}
+
+      if (db_statement_count (session) > 1 && refuse_stream_opened_mid_request ())
+	{
+	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+	  goto execute_all_error;
+	}
     }
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
@@ -2045,6 +2051,12 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  goto batch_error;
 	}
 
+      if (refuse_stream_opened_mid_request ())
+	{
+	  db_query_end (result);
+	  goto batch_error;
+	}
+
       /* success; peek the values in tuples */
       if (result != NULL)
 	{
@@ -2395,6 +2407,12 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	      num_query--;
 	      continue;
 	    }
+	  goto exec_db_error;
+	}
+
+      if (refuse_stream_opened_mid_request ())
+	{
+	  db_query_end (result);
 	  goto exec_db_error;
 	}
 
@@ -10547,6 +10565,64 @@ bool
 ux_stream_is_open (void)
 {
   return stream_from_is_open ();
+}
+
+/*
+ * ux_stream_admits_request () - May this request run on the connection now?
+ *
+ * An open stream is one statement still running: only its own requests and the
+ * ones that give up the whole transaction are admitted.
+ */
+bool
+ux_stream_admits_request (int func_code, int argc, void **argv)
+{
+  int tran_type = 0;
+
+  if (!stream_from_is_open ())
+    {
+      return true;
+    }
+
+  switch (func_code)
+    {
+    case CAS_FC_STREAM_SEND_DATA:
+    case CAS_FC_STREAM_END:
+    case CAS_FC_STREAM_ABORT:
+    case CAS_FC_CHECK_CAS:
+    case CAS_FC_END_SESSION:
+    case CAS_FC_CON_CLOSE:
+      return true;
+
+    case CAS_FC_END_TRAN:
+      if (argc >= 1)
+	{
+	  net_arg_get_char (tran_type, argv[0]);
+	}
+      return tran_type == CCI_TRAN_ROLLBACK;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * refuse_stream_opened_mid_request () - Give up a stream a statement opened with more of its request to run
+ *
+ * What runs next -- another statement, the batch's own commit, a rollback to the request's savepoint --
+ * would run inside the stream, so a stream is opened only by a request that runs one statement.
+ */
+static bool
+refuse_stream_opened_mid_request (void)
+{
+  if (!stream_from_is_open ())
+    {
+      return false;
+    }
+
+  (void) stream_from_abort ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a statement that opens a stream must be executed on its own");
+  return true;
 }
 
 /*
