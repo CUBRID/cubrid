@@ -29,6 +29,8 @@
 #define AU_MAX_PASSWORD_CHARS   31
 #define AU_MAX_PASSWORD_BUF     2048
 #define AU_MAX_COMMENT_CHARS    SM_MAX_COMMENT_LENGTH
+#define ENCRYPT_SALT_SIZE       (31)
+#define ENCRYPT_SALT_SIZE_HEX   (ENCRYPT_SALT_SIZE * 2)
 
 #define PASSWORD_ENCRYPTION_SEED        "U9a$y1@zw~a0%"
 #define ENCODE_PREFIX_DEFAULT           (char)0
@@ -46,7 +48,7 @@
 void encrypt_password (const char *pass, int add_prefix, char *dest);
 void encrypt_password_sha1 (const char *pass, int add_prefix, char *dest);
 void encrypt_password_sha2_512 (const char *pass, char *dest);
-void encrypt_password_sha2_512_salt (const char *salt, const char *pass, char *dest);
+void encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *pass, char *dest);
 
 bool match_password (const char *name, const char *user, const char *database);
 int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);

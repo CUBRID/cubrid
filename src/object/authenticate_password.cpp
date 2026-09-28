@@ -144,13 +144,42 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
 }
 
+static void
+encrypt_salt_generate (char *salt, int salt_size)
+{
+  int i, length = 0;
+  const char *hex = "0123456789ABCDEF";
+  char master_salt[ENCRYPT_SALT_SIZE + 1];
+
+  assert (salt != NULL && salt_size > (ENCRYPT_SALT_SIZE * 2));
+
+  if (crypt_generate_random_bytes (master_salt, ENCRYPT_SALT_SIZE) != NO_ERROR)
+    {
+      // fallback to generate salt using time
+      srand ((unsigned int)time (NULL));
+      for (i = 0; i < ENCRYPT_SALT_SIZE; i++)
+	{
+	  master_salt[i] = (char) (rand() & 0xFF);
+	}
+    }
+
+  for (i = 0; i < ENCRYPT_SALT_SIZE; i++)
+    {
+      salt[length++] = hex[ (u_char)master_salt[i] >> 4];
+      salt[length++] = hex[ (u_char)master_salt[i] & 0x0F];
+    }
+  salt[length] = '\0';
+  assert (length == ENCRYPT_SALT_SIZE_HEX);
+}
+
 void
-encrypt_password_sha2_512_salt (const char *salt, const char *pass, char *dest)
+encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *pass, char *dest)
 {
   char sha512[AU_MAX_PASSWORD_BUF + 4];
+  char salt_in[ENCRYPT_SALT_SIZE_HEX + 1];
   char *ptr = sha512;
 
-  assert (salt != NULL && strlen (salt) > 0);
+  assert (name != NULL && strlen (name) > 0);
 
   if (pass == NULL)
     {
@@ -158,6 +187,13 @@ encrypt_password_sha2_512_salt (const char *salt, const char *pass, char *dest)
     }
   else
     {
+      if (salt == NULL)
+	{
+	  encrypt_salt_generate (salt_in, sizeof (salt_in));
+	  salt = salt_in;
+	}
+      assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
+
       if (IS_ENCODED_ANY (pass))
 	{
 	  assert (IS_ENCODED_SHA2_512 (pass));
@@ -168,11 +204,14 @@ encrypt_password_sha2_512_salt (const char *salt, const char *pass, char *dest)
 	  encrypt_password_sha2_512 (pass, sha512);
 	}
 
-      ptr++; // skip prefix
-      memcpy (ptr + strlen (ptr), salt, strlen (salt) + 1); // append salt to password
+      ptr++; // move pointer to the end of prefix
+      ptr += strlen (ptr); // move pointer to the end of password
+      memcpy (ptr, salt, ENCRYPT_SALT_SIZE_HEX);
+      memcpy (ptr + ENCRYPT_SALT_SIZE_HEX, name, strlen (name) + 1);
 
-      encrypt_password_sha2_512 (ptr, dest); // encrypt password + salt
-      dest[0] = ENCODE_PREFIX_SHA2_512_SALT;
+      encrypt_password_sha2_512 (sha512 + 1, dest + ENCRYPT_SALT_SIZE_HEX);
+      memcpy (dest + 1, salt, ENCRYPT_SALT_SIZE_HEX);
+      dest[0] = ENCODE_PREFIX_SHA2_512_SALT; // set the prefix to SHA2_512_SALT
     }
 }
 
@@ -247,8 +286,13 @@ match_password (const char *name, const char *user, const char *database)
     }
   else if (IS_ENCODED_SHA2_512_SALT (database))
     {
+      char salt[ENCRYPT_SALT_SIZE_HEX + 1];
+
       strcpy (buf2, database);
-      encrypt_password_sha2_512_salt (name, user, buf1); //ctshim
+      memcpy (salt, database + 1, ENCRYPT_SALT_SIZE_HEX);
+      salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
+
+      encrypt_password_sha2_512_salt (name, salt, user, buf1);
     }
   else
     {
@@ -372,22 +416,26 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 	{
 #ifndef NDEBUG
 	  const char *user_nm = db_get_string (&nm_value);
-	  if ( strncmp (user_nm, "##USER_DES", strlen ("##USER_DES")) == 0)
+	  if (strncmp (user_nm, "##PLAIN_", strlen ("##PLAIN_")) == 0)
+	    {
+	      strcpy ( pbuf, password);
+	    }
+	  else if (strncmp (user_nm, "##DES_", strlen ("##DES_")) == 0)
 	    {
 	      encrypt_password (password, 1, pbuf);
 	    }
-	  else if ( strncmp (user_nm, "##USER_SHA1", strlen ("##USER_SHA1")) == 0)
+	  else if (strncmp (user_nm, "##SHA1_", strlen ("##SHA1_")) == 0)
 	    {
 	      encrypt_password_sha1 (password, 1, pbuf);
 	    }
-	  else if ( strncmp (user_nm, "##USER_SHA2", strlen ("##USER_SHA2")) == 0)
+	  else if (strncmp (user_nm, "##SHA2_", strlen ("##SHA2_")) == 0)
 	    {
 	      encrypt_password_sha2_512 (password, pbuf);
 	    }
 	  else
 #endif
 	    {
-	      encrypt_password_sha2_512_salt (db_get_string (&nm_value), password, pbuf);  //ctshim
+	      encrypt_password_sha2_512_salt (db_get_string (&nm_value), NULL, password, pbuf);
 	    }
 	}
       else
