@@ -156,6 +156,10 @@
   ((specp)->type == TARGET_CLASS \
     && ((ACCESS_SPEC_HFID((specp)).vfid.fileid == NULL_FILEID || ACCESS_SPEC_HFID((specp)).vfid.volid == NULL_VOLID)))
 
+/* a partitioned class spec with more than one partition left after pruning: each partition is a scan block */
+#define QEXEC_IS_MULTI_PARTITION_SPEC(specp) \
+  ((specp) != NULL && (specp)->parts != NULL && (specp)->parts->next != NULL)
+
 #define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl) \
     (xasl->upd_del_class_cnt > 1 || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
 
@@ -8272,7 +8276,10 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  SCAN_CODE s_parts = qexec_init_next_partition (thread_p, xasl->curr_spec, xasl);
 	  if (s_parts == S_SUCCESS)
 	    {
-	      if (xasl->memoize_storage)
+	      /* a partition is a block only for an inner the block iterator drives. A scan driven per outer row
+	       * walks all its partitions within one row, and its memo holds the rows of every partition for the
+	       * key (CBRD-27493) */
+	      if (xasl->memoize_storage && !XASL_IS_PER_OUTER_ROW (xasl))
 		{
 		  clear_memoize_storage (thread_p, xasl);
 		  new_memoize_storage (thread_p, xasl);
@@ -8379,7 +8386,8 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  if (xptr2->scan_ptr)
 	    {
-	      if (XASL_IS_NL_SEMI_OR_ANTI (xptr2->scan_ptr)
+	      /* a scan driven per outer row is rewound, as in the loop below */
+	      if (XASL_IS_PER_OUTER_ROW (xptr2->scan_ptr)
 		  && qexec_reset_sa_inner_scan_block (thread_p, xptr2->scan_ptr) == S_ERROR)
 		{
 		  return S_ERROR;
@@ -8438,10 +8446,11 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 		{
 		  if (xptr2->scan_ptr)
 		    {
-		      /* a semi/anti inner is driven per outer row and was left where its last probe stopped; rewind
-		       * it (to its first partition when partitioned) so the block advance below restarts it, instead
-		       * of reading S_END here and abandoning the outer's remaining scan blocks (partitions) */
-		      if (XASL_IS_NL_SEMI_OR_ANTI (xptr2->scan_ptr)
+		      /* a semi/anti inner and every scan after it (a following join) are driven per outer row and
+		       * were left where their last probe stopped; rewind them (to the first partition when
+		       * partitioned) so the block advance below restarts them, instead of reading S_END here and
+		       * abandoning the outer's remaining scan blocks (partitions) (CBRD-27493) */
+		      if (XASL_IS_PER_OUTER_ROW (xptr2->scan_ptr)
 			  && qexec_reset_sa_inner_scan_block (thread_p, xptr2->scan_ptr) == S_ERROR)
 			{
 			  return S_ERROR;
@@ -8500,13 +8509,17 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  *   return: SCAN_CODE (S_SUCCESS, S_ERROR)
  *   inner(in) : candidate semi/anti inner scan
  *
- * Rewind a partitioned nested-loop SEMI/ANTI inner to its first partition for
- * the next outer row.  Plain inners keep the normal current-block reset.
+ * Rewind a partitioned scan driven per outer row to its first partition for
+ * the next outer row: a nested-loop SEMI/ANTI inner, or a following join after
+ * one that has more than one partition left (CBRD-27493; with a single
+ * partition the current-block reset is already a rewind).  Other inners keep
+ * the normal current-block reset.
  */
 static SCAN_CODE
 qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
 {
-  if (XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
+  if ((XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
+      || (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN) && QEXEC_IS_MULTI_PARTITION_SPEC (inner->spec_list)))
     {
       ACCESS_SPEC_TYPE *spec = inner->curr_spec;
       SCAN_CODE part_scan;
@@ -8748,6 +8761,13 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       xasl->next_scan_on = false;
     }
 
+  if (xasl->curr_spec == NULL && XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN))
+    {
+      /* a following join that went through its last partition has nothing left for this outer row; the
+       * parent rewinds it before the next row reaches it (CBRD-27493) */
+      return S_END;
+    }
+
   if (xasl->memoize_storage)
     {
       memoize_scan =
@@ -8784,13 +8804,43 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   do
     {
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
-      if (sc_scan == S_END && xasl->memoize_storage)
+      if (sc_scan == S_END && xasl->memoize_storage
+	  && !(XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN) && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec)))
 	{
+	  /* not at the end of one partition of a partitioned following join: its key is exhausted only after
+	   * the last partition, which the partition walk below records */
 	  memoize_err_code = memoize_put_nullptr (thread_p, xasl, &memoize_put_success);
 	  if (memoize_err_code == ER_FAILED)
 	    {
 	      return S_ERROR;
 	    }
+	}
+
+      if (sc_scan == S_END && XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN)
+	  && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec))
+	{
+	  /* a following join is driven per outer row, and the block iterator never moves it to its next
+	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493) */
+	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	  if (sb_scan == S_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  if (sb_scan == S_SUCCESS)
+	    {
+	      continue;
+	    }
+
+	  /* every partition was scanned: now the key is exhausted */
+	  if (xasl->memoize_storage)
+	    {
+	      memoize_err_code = memoize_put_nullptr (thread_p, xasl, &memoize_put_success);
+	      if (memoize_err_code == ER_FAILED)
+		{
+		  return S_ERROR;
+		}
+	    }
+	  return S_END;
 	}
 
 

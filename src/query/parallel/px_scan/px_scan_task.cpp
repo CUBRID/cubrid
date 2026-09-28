@@ -299,7 +299,12 @@ namespace parallel_scan
 			  }
 		      }
 
-		    if (thread_ref.on_trace && HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
+		    /* a partitioned following join is not advanced partition by partition by the main thread's scan
+		     * block iteration (it stops above the first semi / anti inner); qexec_execute_scan walks every
+		     * partition per outer row itself, so the clone needs the pruned partition list, or it probes
+		     * only the one captured partition (CBRD-27493) */
+		    if ((thread_ref.on_trace || XASL_IS_FLAGED (xptr, XASL_NL_FOLLOWING_JOIN))
+			&& HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
 		      {
 			err_code = partition_prune_spec (&thread_ref, m_vd, xptr->curr_spec);
 			if (err_code != NO_ERROR)
@@ -307,7 +312,8 @@ namespace parallel_scan
 			    return err_code;
 			  }
 			/* prune partition stats */
-			for (PARTITION_SPEC_TYPE *part_spec = xptr->curr_spec->parts; part_spec != NULL; part_spec = part_spec->next)
+			for (PARTITION_SPEC_TYPE *part_spec = xptr->curr_spec->parts;
+			     thread_ref.on_trace && part_spec != NULL; part_spec = part_spec->next)
 			  {
 			    if (HFID_EQ (&part_spec->hfid, &scan_info.hfid))
 			      {
@@ -522,6 +528,13 @@ namespace parallel_scan
       {
 	for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	  {
+	    /* a partitioned following join that went through its last partition is left with curr_spec NULL;
+	     * point it back at its spec so the record below and qexec_clear_xasl () close its scan (CBRD-27493) */
+	    if (xptr->curr_spec == NULL)
+	      {
+		xptr->curr_spec = xptr->spec_list;
+	      }
+
 	    if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->parts != NULL)
 	      {
 		xptr->spec_list->curent = NULL;
