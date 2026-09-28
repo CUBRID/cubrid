@@ -269,12 +269,13 @@ namespace lockfree
   hashmap<Key, T>::init (tran::system &transys, size_t hash_size, size_t freelist_block_size,
 			 size_t freelist_block_count, lf_entry_descriptor &edesc)
   {
-    // nothrow and checked, both because lf_hash_init () answered ER_OUT_OF_VIRTUAL_MEMORY for these arrays
-    // (lock_free.c:1927-1946) and because a throw here unwinds through C callers - xcache_initialize (),
-    // spage_boot (), catalog_initialize () - which cannot unwind, so it arrives as std::terminate.
-    m_freelist = new (std::nothrow) freelist_type (transys, freelist_block_size, freelist_block_count,
-	entry_uninit { &edesc });
-    if (m_freelist == NULL)
+    // answer ER_OUT_OF_VIRTUAL_MEMORY as lf_hash_init () does (lock_free.c:1927-1946): a bad_alloc would unwind
+    // through C callers - xcache_initialize (), spage_boot (), catalog_initialize () - and end in std::terminate
+    try
+      {
+	m_freelist = new freelist_type (transys, freelist_block_size, freelist_block_count, entry_uninit { &edesc });
+      }
+    catch (const std::bad_alloc &)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (freelist_type));
 	return ER_OUT_OF_VIRTUAL_MEMORY;

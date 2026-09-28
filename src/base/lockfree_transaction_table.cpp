@@ -23,6 +23,7 @@
 #include "lockfree_transaction_system.hpp"
 
 #include <cassert>
+#include <new>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -40,6 +41,11 @@ namespace lockfree
       , m_min_active_tranid { 0 }
       , m_owner (owner)
     {
+      if (m_all == NULL)
+	{
+	  // SERVER_MODE's new answers NULL (memory_wrapper.hpp); throw as SA_MODE's does, for callers catching it
+	  throw std::bad_alloc ();
+	}
       for (size_t i = 0; i < m_sys.get_max_transaction_count (); i++)
 	{
 	  m_all[i].set_table (*this);
