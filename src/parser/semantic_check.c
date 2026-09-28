@@ -4341,7 +4341,9 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 
 	      /* the DDL checks the type of the expression against the column, and a folded NULL carries none: hold
 	       * the root back from the folding pass, record its type once typed, then fold it below (a root the
-	       * grammar already keeps from folding, a clock pseudo-column, stays so) */
+	       * grammar keeps from folding, such as UUID (), stays so).  Folding never reads the statement clock,
+	       * which is fetched only when the DDL executes: an operator that reads it has no constant operand or is
+	       * kept from folding */
 	      held_do_not_fold = default_value->flag.do_not_fold;
 	      default_value->flag.do_not_fold = 1;
 	    }
