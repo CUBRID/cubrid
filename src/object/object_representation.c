@@ -6291,9 +6291,6 @@ classobj_initialize_default_expr (DB_DEFAULT_EXPR * default_expr)
 {
   assert (default_expr != NULL);
 
-  default_expr->default_expr_type = DB_DEFAULT_NONE;
-  default_expr->default_expr_format = NULL;
-  default_expr->default_expr_op = NULL_DEFAULT_EXPRESSION_OPERATOR;
   default_expr->default_expr_text = NULL;
   default_expr->default_expr_regu_stream = NULL;
   default_expr->default_expr_regu_stream_size = 0;

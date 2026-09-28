@@ -3150,68 +3150,7 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	      att->on_update_default_expr = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
 	    }
 
-	  if (classobj_get_prop (att->properties, "default_expr", &value) > 0)
-	    {
-	      /* We have two cases: simple and complex expressions. */
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_SEQUENCE)
-		{
-		  DB_SEQ *def_expr_seq;
-		  DB_VALUE def_expr_op, def_expr_type, def_expr_format;
-		  const char *def_expr_format_str;
-
-		  assert (set_size (db_get_set (&value)) == 3);
-
-		  def_expr_seq = db_get_set (&value);
-
-		  /* get default expression operator (op of expr) */
-		  if (set_get_element_nocopy (def_expr_seq, 0, &def_expr_op) != NO_ERROR)
-		    {
-		      assert (false);
-		    }
-		  assert (DB_VALUE_TYPE (&def_expr_op) == DB_TYPE_INTEGER
-			  && db_get_int (&def_expr_op) == (int) T_TO_CHAR);
-		  att->default_value.default_expr.default_expr_op = db_get_int (&def_expr_op);
-
-		  /* get default expression type (arg1 of expr) */
-		  if (set_get_element_nocopy (def_expr_seq, 1, &def_expr_type) != NO_ERROR)
-		    {
-		      assert (false);
-		    }
-		  assert (DB_VALUE_TYPE (&def_expr_type) == DB_TYPE_INTEGER);
-		  att->default_value.default_expr.default_expr_type =
-		    (DB_DEFAULT_EXPR_TYPE) db_get_int (&def_expr_type);
-
-		  /* get default expression format (arg2 of expr) */
-		  if (set_get_element_nocopy (def_expr_seq, 2, &def_expr_format) != NO_ERROR)
-		    {
-		      assert (false);
-		    }
-
-#if !defined (NDEBUG)
-		  {
-		    DB_TYPE db_value_type_local = db_value_type (&def_expr_format);
-		    assert (db_value_type_local == DB_TYPE_NULL || TP_IS_CHAR_TYPE (db_value_type_local));
-		  }
-#endif
-		  if (!db_value_is_null (&def_expr_format))
-		    {
-		      def_expr_format_str = db_get_string (&def_expr_format);
-		      att->default_value.default_expr.default_expr_format = ws_copy_string (def_expr_format_str);
-		      if (att->default_value.default_expr.default_expr_format == NULL)
-			{
-			  assert (er_errid () != NO_ERROR);
-			}
-		    }
-		}
-	      else
-		{
-		  att->default_value.default_expr.default_expr_type = (DB_DEFAULT_EXPR_TYPE) db_get_int (&value);
-		}
-
-	      pr_clear_value (&value);
-	    }
-
-	  /* Expression-Derived Literal: restore the original expression text. */
+	  /* the original text of an expression DEFAULT */
 	  if (classobj_get_prop (att->properties, "default_expr_literal", &value) > 0)
 	    {
 	      const char *edl_text = db_get_string (&value);
@@ -4849,83 +4788,16 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
   for (attr = attr_list; attr; attr = (SM_ATTRIBUTE *) attr->header.next)
     {
       default_expr = &attr->default_value.default_expr;
-      if (default_expr->default_expr_type != DB_DEFAULT_NONE)
+
+      /* a column DEFAULT is no longer stored in the legacy "default_expr" property (drop a stale one) */
+      if (attr->properties != NULL)
 	{
-	  /* attr has default expression as default value */
-	  if (attr->properties == NULL)
-	    {
-	      /* allocate new property sequence */
-	      attr->properties = classobj_make_prop ();
-
-	      if (attr->properties == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
-		  return er_errid ();
-		}
-	    }
-
-	  if (default_expr->default_expr_op != NULL_DEFAULT_EXPRESSION_OPERATOR)
-	    {
-	      DB_SEQ *default_expr_sequence = NULL;
-	      DB_VALUE value;
-
-	      default_expr_sequence = set_create_sequence (3);
-	      if (default_expr_sequence == NULL)
-		{
-		  if (attr->properties)
-		    {
-		      classobj_free_prop (attr->properties);
-		      attr->properties = NULL;
-		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
-		  return er_errid ();
-		}
-
-	      /* currently, only T_TO_CHAR operator is allowed  */
-	      assert (default_expr->default_expr_op == T_TO_CHAR);
-	      db_make_int (&value, (int) T_TO_CHAR);
-	      set_put_element (default_expr_sequence, 0, &value);
-
-	      /* default expression type */
-	      db_make_int (&value, default_expr->default_expr_type);
-	      set_put_element (default_expr_sequence, 1, &value);
-
-	      /* default expression format */
-	      if (default_expr->default_expr_format)
-		{
-		  db_make_string (&value, default_expr->default_expr_format);
-		}
-	      else
-		{
-		  db_make_null (&value);
-		}
-
-	      set_put_element (default_expr_sequence, 2, &value);
-
-	      /* create and put sequence */
-	      db_make_sequence (&default_expr_value, default_expr_sequence);
-	      default_expr_sequence = NULL;
-	      classobj_put_prop (attr->properties, "default_expr", &default_expr_value);
-	      pr_clear_value (&default_expr_value);
-
-	    }
-	  else
-	    {
-	      /* add default_expr property to sequence */
-	      db_make_int (&default_expr_value, default_expr->default_expr_type);
-	      classobj_put_prop (attr->properties, "default_expr", &default_expr_value);
-	    }
-	}
-      else if (attr->properties != NULL)
-	{
-	  /* make sure property is unset for existing attributes */
 	  classobj_drop_prop (attr->properties, "default_expr");
 	}
 
       /* Expression-Derived Literal: persist the original expression text under a
        * dedicated property, alongside the folded literal value (stored as an
-       * ordinary default value).  The legacy "default_expr" property is left
-       * untouched -- an EDL has default_expr_type == DB_DEFAULT_NONE. */
+       * ordinary default value). */
       if (default_expr->default_expr_text != NULL)
 	{
 	  if (attr->properties == NULL)

@@ -531,22 +531,17 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
       return NULL;
     }
 
-  if (default_value->default_expr.default_expr_type == DB_DEFAULT_NONE)
+  /* a residual DEFAULT hands the omitted column a copy of its rehydrated expression, evaluated when the
+   * statement runs; a literal or Expression-Derived Literal rebuilds from its stored value */
+  if (DB_IS_RESIDUAL_DEFAULT_EXPR (&default_value->default_expr))
     {
-      result = pt_dbval_to_value (parser, &default_value->value);
-      if (result == NULL)
-	{
-	  return NULL;
-	}
+      return pt_cdt_registry_tree_copy (parser, sm_attr, NULL, NULL);
     }
-  else
+
+  result = pt_dbval_to_value (parser, &default_value->value);
+  if (result == NULL)
     {
-      result = pt_make_default_value_tree_from_default_expr (parser, &default_value->default_expr);
-      if (!result)
-	{
-	  PT_INTERNAL_ERROR (parser, "allocate new node");
-	  return NULL;
-	}
+      return NULL;
     }
 
   data_type = parser_new_node (parser, PT_DATA_TYPE);
