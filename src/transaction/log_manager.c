@@ -1229,7 +1229,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       r_args->restart_committed_lsa = log_Gl.hdr.append_lsa;
     }
 
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &log_Gl.hdr.chkpt_lsa);
+  log_Gl.chkpt_redo_lsa.store (log_Gl.hdr.chkpt_lsa);
 
   /* Make sure that this is the desired log */
   if (strcmp (log_Gl.hdr.prefix_name, prefix_logname) != 0)

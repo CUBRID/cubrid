@@ -7296,7 +7296,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_START_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_STARTED, 2, log_Gl.hdr.chkpt_lsa.pageid,
-	  log_Gl.chkpt_redo_lsa.pageid);
+	  log_Gl.chkpt_redo_lsa.load ().pageid);
   er_log_debug (ARG_FILE_LINE, "start checkpoint\n");
 
   /*
@@ -7320,7 +7320,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
   LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
-  LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
+  chkpt_redo_lsa = log_Gl.chkpt_redo_lsa;
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
   logpb_flush_pages_direct (thread_p);
@@ -7578,7 +7578,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       LSA_COPY (&log_Gl.hdr.smallest_lsa_at_last_chkpt, &smallest_lsa);
     }
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &tmp_chkpt.redo_lsa);
+  log_Gl.chkpt_redo_lsa.store (tmp_chkpt.redo_lsa);
 
   pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
@@ -7739,7 +7739,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_END_CHECKPOINTS);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_CHECKPOINT_FINISHED, 3, log_Gl.hdr.chkpt_lsa.pageid,
-	  log_Gl.chkpt_redo_lsa.pageid, flushed_page_cnt);
+	  log_Gl.chkpt_redo_lsa.load ().pageid, flushed_page_cnt);
   er_log_debug (ARG_FILE_LINE, "end checkpoint\n");
 
   return tmp_chkpt.redo_lsa.pageid;
@@ -8005,7 +8005,7 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
 
       /* any checkpoint that completed after T -- ours or the daemon's -- satisfies the invariant */
       rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-      LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
+      redo_lsa = log_Gl.chkpt_redo_lsa;
       pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
       if (LSA_GE (&redo_lsa, &target_lsa))
 	{
@@ -8020,7 +8020,7 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
       (void) logtb_set_check_interrupt (thread_p, save_check_interrupt);
 
       rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-      LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
+      redo_lsa = log_Gl.chkpt_redo_lsa;
       pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
       if (LSA_GE (&redo_lsa, &target_lsa))
 	{

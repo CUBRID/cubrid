@@ -841,7 +841,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "ANALYSIS");
 
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
+  log_Gl.chkpt_redo_lsa.store (start_redolsa);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
   if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
