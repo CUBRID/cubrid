@@ -166,10 +166,17 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   assert (should_conn_reset != NULL);
   has_updated = logtb_has_updated (thread_p);
 
-  /* the transaction ends here, and with it any stream session opened in it */
-  session_end_stream_session (thread_p);
-
-  state = xtran_server_commit (thread_p, retain_lock);
+  /* an open stream is one statement still running, and nothing commits inside it */
+  if (session_has_stream_session (thread_p))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "commit inside an open stream session");
+      state = TRAN_ACTIVE;
+    }
+  else
+    {
+      state = xtran_server_commit (thread_p, retain_lock);
+    }
 
   PL_SESSION *session = cubpl::get_session ();
   if (!session || session->is_sp_running () == false)
@@ -416,7 +423,7 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
 
       /* This is the one transaction end that does not arrive as a commit/abort request: a deadlock
        * victim is rolled back here, on its own worker. The stream session has to go with it for the
-       * same reason as in stran_server_*_internal () -- the next chunk would otherwise build on work
+       * same reason as in stran_server_abort_internal () -- the next chunk would otherwise build on work
        * that was already rolled back. Before the rollback, so the session never sees a transaction
        * that has ended, and inside the pushed stack, because reaching for a session that is already
        * gone raises an error of its own and the error being reported to the client is the one that
@@ -3595,7 +3602,19 @@ stran_server_partial_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   ptr = or_unpack_string_nocopy (request, &savept_name);
 
-  state = xtran_server_partial_abort (thread_p, savept_name, &savept_lsa);
+  /* for the reason stran_server_commit_internal () gives: the savepoint may predate the stream */
+  if (session_has_stream_session (thread_p))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "rollback to a savepoint inside an open stream session");
+      state = TRAN_ACTIVE;
+      LSA_SET_NULL (&savept_lsa);
+    }
+  else
+    {
+      state = xtran_server_partial_abort (thread_p, savept_name, &savept_lsa);
+    }
   if (state != TRAN_UNACTIVE_ABORTED)
     {
       /* Likely the abort failed.. somehow */
@@ -12599,6 +12618,15 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
     }
 
   ptr = or_unpack_int (ptr, &stream_kind);
+
+  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
+  if (session_has_stream_session (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a stream session is already active on this connection");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto send_reply;
+    }
 
   session = stream_session_create (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
   if (session != NULL)

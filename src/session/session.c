@@ -3315,15 +3315,25 @@ session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, str
   return NO_ERROR;
 }
 
+bool
+session_has_stream_session (THREAD_ENTRY * thread_p)
+{
+  stream_session *stream_session_p = NULL;
+
+  (void) session_get_stream_session (thread_p, stream_session_p);
+
+  return stream_session_p != NULL;
+}
+
 /*
- * session_end_stream_session () - End the stream session at a transaction boundary
+ * session_end_stream_session () - End the stream session when its transaction rolls back
  *   thread_p(in): this thread handle
  *
  * A stream session cannot outlive the transaction it was opened in. Its
  * consumer has already put work into that transaction, so a chunk arriving
- * after the transaction ended would build on state that was committed or
- * rolled back. Ending the transaction therefore ends the stream, and the next
- * chunk is refused with "no active stream session".
+ * after a rollback would build on state that was undone. Rolling back
+ * therefore ends the stream, and the next chunk is refused with "no active
+ * stream session". Nothing commits inside a stream (stran_server_commit_internal).
  *
  * Unlike the interrupt path, this is safe to free here: the transaction is
  * ended by the same worker that would be running receive_chunk, and the stream

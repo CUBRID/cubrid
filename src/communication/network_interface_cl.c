@@ -7363,6 +7363,12 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 	}
     }
 
+  /* nothing commits inside a stream (tran_commit), the server's own auto-commit included */
+  if (stream_from_is_open ())
+    {
+      flag &= ~TRAN_AUTO_COMMIT;
+    }
+
   /* pack XASL file id (XASL_ID), number of parameter values, size of the send data, and query execution mode flag as a
    * request data */
   ptr = request;
@@ -11982,8 +11988,8 @@ stream_from_is_open (void)
  * stream_from_reset () - Forget the stream session this connection was holding
  *
  * Called where the server-side session is known to be gone: ending the client
- * session, shutting the database connection down, or ending the transaction the
- * stream was opened in. A client that goes away mid-stream never sends END, and
+ * session, shutting the database connection down, or rolling back the transaction
+ * the stream was opened in. A client that goes away mid-stream never sends END, and
  * this flag would otherwise survive into the next client the CAS process serves
  * -- where do_commit_after_execute () would read it and defer every auto-commit
  * forever.
@@ -12074,8 +12080,12 @@ stream_from_init (int stream_kind, const char *config, int config_len)
 	}
     }
 
-  stream_Is_open = (rc == NO_ERROR);
-  stream_Ends_unit_of_work = (stream_Is_open && ends_unit_of_work != 0);
+  /* a refused open leaves whatever was open before it */
+  if (rc == NO_ERROR)
+    {
+      stream_Is_open = true;
+      stream_Ends_unit_of_work = (ends_unit_of_work != 0);
+    }
 
   free_and_init (request);
 

@@ -301,8 +301,9 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static bool refuse_stream_opened_mid_request (void);
+static void ux_stream_give_up_after_error (void);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
-static void ux_stream_give_up_after_error (bool opened_by_this_statement);
 
 static T_FETCH_FUNC fetch_func[] = {
   fetch_result,			/* query */
@@ -927,11 +928,21 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 {
   int err_code = 0;
 
-  ux_end_tran_cleanup (tran_type);
+  /* A COMMIT cannot finish a stream still running. It rolls back and fails instead -- what every driver already
+   * takes a failed END_TRAN to have done. */
+  if (tran_type == CCI_TRAN_COMMIT && stream_from_is_open ())
+    {
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, reset_con_status, ddl_audit_log);
+      if (err_code < 0)
+	{
+	  return err_code;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a COMMIT inside an open stream session rolls the transaction back");
+      return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+    }
 
-  /* the server ends any open stream session with the transaction, so this
-   * connection is no longer holding one either */
-  ux_stream_reset ();
+  ux_end_tran_cleanup (tran_type);
 
   if (tran_type == CCI_TRAN_COMMIT)
     {
@@ -944,6 +955,9 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     }
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
+      /* the server ends any open stream session with the rollback, so this
+       * connection is no longer holding one either */
+      ux_stream_reset ();
       err_code = db_abort_transaction ();
       cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
@@ -1056,7 +1070,6 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
   DB_SESSION *session;
   T_BROKER_VERSION client_version = req_info->client_version;
   bool recompile = false;
-  bool stream_opened_here = false;
 
   char stmt_type;
 
@@ -1177,9 +1190,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
     }
 
   hm_set_current_srv_handle (srv_handle->id);
-  stream_opened_here = !stream_from_is_open ();
   n = db_execute_and_keep_statement (session, stmt_id, &result);
-  stream_opened_here = (stream_opened_here && stream_from_is_open ());
   hm_set_current_srv_handle (-1);
 
   stmt_type = db_get_statement_type (session, stmt_id);
@@ -1356,7 +1367,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 execute_error:
   NET_BUF_ERR_SET (net_buf);
 
-  ux_stream_give_up_after_error (stream_opened_here);
+  ux_stream_give_up_after_error ();
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -1401,7 +1412,6 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   char savepoint[BROKER_PATH_MAX];
   char is_savepoint = FALSE;
   int query_index = 0;
-  bool stream_opened_here = false;
 
   srv_handle->query_info_flag = FALSE;
 
@@ -1520,9 +1530,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
       hm_set_current_srv_handle (srv_handle->id);
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
-      stream_opened_here = !stream_from_is_open ();
       n = db_execute_and_keep_statement (session, stmt_id, &result);
-      stream_opened_here = (stream_opened_here && stream_from_is_open ());
       SQL_LOG2_EXEC_END (as_info->cur_sql_log2, stmt_id, n);
       hm_set_current_srv_handle (-1);
 
@@ -1610,6 +1618,12 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      q_result->is_holdable = true;
 	      as_info->num_holdable_results++;
 	    }
+	}
+
+      if (db_statement_count (session) > 1 && refuse_stream_opened_mid_request ())
+	{
+	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+	  goto execute_all_error;
 	}
     }
 
@@ -1706,7 +1720,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 execute_all_error:
   NET_BUF_ERR_SET (net_buf);
 
-  ux_stream_give_up_after_error (stream_opened_here);
+  ux_stream_give_up_after_error ();
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -2068,6 +2082,12 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  goto batch_error;
 	}
 
+      if (refuse_stream_opened_mid_request ())
+	{
+	  db_query_end (result);
+	  goto batch_error;
+	}
+
       /* success; peek the values in tuples */
       if (result != NULL)
 	{
@@ -2418,6 +2438,12 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	      num_query--;
 	      continue;
 	    }
+	  goto exec_db_error;
+	}
+
+      if (refuse_stream_opened_mid_request ())
+	{
+	  db_query_end (result);
 	  goto exec_db_error;
 	}
 
@@ -10573,6 +10599,73 @@ ux_stream_is_open (void)
 }
 
 /*
+ * ux_stream_admits_request () - May this request run on the connection now?
+ *
+ * An open stream is one statement still running: only its own requests and the
+ * ones that end the whole transaction are admitted (a COMMIT rolls back, see
+ * ux_end_tran).
+ */
+bool
+ux_stream_admits_request (int func_code)
+{
+  if (!stream_from_is_open ())
+    {
+      return true;
+    }
+
+  switch (func_code)
+    {
+    case CAS_FC_STREAM_SEND_DATA:
+    case CAS_FC_STREAM_END:
+    case CAS_FC_STREAM_ABORT:
+    case CAS_FC_END_TRAN:
+    case CAS_FC_CHECK_CAS:
+    case CAS_FC_END_SESSION:
+    case CAS_FC_CON_CLOSE:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * refuse_stream_opened_mid_request () - Give up a stream a statement opened with more of its request to run
+ *
+ * What runs next -- another statement, the batch's own commit, a rollback to the request's savepoint --
+ * would run inside the stream, so a stream is opened only by a request that runs one statement.
+ */
+static bool
+refuse_stream_opened_mid_request (void)
+{
+  if (!stream_from_is_open ())
+    {
+      return false;
+    }
+
+  (void) stream_from_abort ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a statement that opens a stream must be executed on its own");
+  return true;
+}
+
+/*
+ * ux_stream_give_up_after_error () - Drop the stream a failing statement opened
+ *
+ * It was opened for the transfer that follows, and an error reply means that transfer never comes. No statement
+ * runs while a stream is open (ux_stream_admits_request), so one open here is this statement's.
+ */
+static void
+ux_stream_give_up_after_error (void)
+{
+  if (stream_from_is_open ())
+    {
+      (void) stream_from_abort ();
+      ux_stream_reset ();
+    }
+}
+
+/*
  * ux_stream_init () - Open a stream session the driver asked for directly
  *
  * The statement path does not come through here: a statement that opens a
@@ -10599,33 +10692,6 @@ ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_b
 
   net_buf_cp_int (net_buf, 0, NULL);
   return 0;
-}
-
-/*
- * ux_stream_give_up_after_error () - Drop a stream the failing statement had just opened
- *   opened_by_this_statement(in): did the stream open during this execute?
- *
- * A statement that opens a stream leaves it open for the transfer that follows.
- * When that same statement then fails, the transfer never comes -- the driver
- * is answered with an error and moves on. In auto-commit mode the rollback the
- * error path already asks for ends the stream with the transaction, but inside
- * an explicit transaction nothing does, and the session sits in the connection
- * refusing the next open until the user commits or rolls back.
- *
- * Only a stream this statement opened is given up. One that was already open is
- * a client sending a statement in the middle of its own transfer, and an
- * unrelated failure is not the transport's cue to discard those bytes.
- */
-static void
-ux_stream_give_up_after_error (bool opened_by_this_statement)
-{
-  if (!opened_by_this_statement || !stream_from_is_open ())
-    {
-      return;
-    }
-
-  (void) stream_from_abort ();
-  ux_stream_reset ();
 }
 
 int

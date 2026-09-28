@@ -85,5 +85,6 @@ extern FN_RETURN fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_N
 extern FN_RETURN fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern FN_RETURN fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern FN_RETURN fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
+extern FN_RETURN fn_stream_refused (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 
 #endif /* _CAS_FUNCTION_H_ */

@@ -2515,3 +2515,16 @@ fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
   return FN_KEEP_CONN;
 }
+
+/* runs in place of a request an open stream does not admit (ux_stream_admits_request); the stream is left as it was */
+FN_RETURN
+fn_stream_refused (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a stream session is open on this connection; end or abort it first");
+  errors_in_transaction++;
+  ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+
+  return FN_KEEP_CONN;
+}
