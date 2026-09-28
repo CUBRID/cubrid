@@ -565,6 +565,14 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 
   node->info.query.q.select.where = parser_append_node (on_conds, node->info.query.q.select.where);
 
+  for (spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
+	{
+	  mq_regenerate_if_ambiguous (parser, spec, node, node->info.query.q.select.from);
+	}
+    }
+
   /* a SEMI JOIN, unnested above or written by the user, whose ON pins down one inner row per outer row is an
    * INNER JOIN: same rows, and the planner is free to reorder it (a SEMI inner is frozen behind its outer,
    * see QO_ADD_SEMI_ANTI_DEP_SET) */
