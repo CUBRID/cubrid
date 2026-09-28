@@ -741,13 +741,13 @@ namespace test_lockfree
   }
 
   static int
-  check_shape (const char *impl, const char *shape, size_t seen, size_t expected, bool count_it)
+  check_shape (const char *impl, const char *shape, size_t seen, size_t expected)
   {
     string_buffer line;
     line ("  %-17s %-34s saw %zu of %zu%s\n", impl, shape, seen, expected,
 	  seen == expected ? "" : "   <-- MISMATCH");
     say (line);
-    return (count_it && seen != expected) ? 1 : 0;
+    return seen != expected ? 1 : 0;
   }
 
   static int
@@ -780,7 +780,7 @@ namespace test_lockfree
 	adv_hashmap::iterator iter { l_index, l_hash };
 	iter.restart ();
 	err = err | check_shape ("lockfree::hashmap", "restart before first iterate",
-				 full_pass_new (iter), ITER_ENTRY_COUNT, true);
+				 full_pass_new (iter), ITER_ENTRY_COUNT);
       }
       {
 	// a pass that ran to its end, restarted, and run again
@@ -788,7 +788,7 @@ namespace test_lockfree
 	(void) full_pass_new (iter);
 	iter.restart ();
 	err = err | check_shape ("lockfree::hashmap", "restart after a complete pass",
-				 full_pass_new (iter), ITER_ENTRY_COUNT, true);
+				 full_pass_new (iter), ITER_ENTRY_COUNT);
       }
       {
 	adv_hashmap::iterator iter { l_index, l_hash };
@@ -796,7 +796,7 @@ namespace test_lockfree
 	iter.restart ();
 	iter.restart ();
 	err = err | check_shape ("lockfree::hashmap", "two restarts in a row",
-				 full_pass_new (iter), ITER_ENTRY_COUNT, true);
+				 full_pass_new (iter), ITER_ENTRY_COUNT);
       }
       {
 	// interrupted while sitting on the last entry of the last non-empty bucket
@@ -812,7 +812,7 @@ namespace test_lockfree
 	l_hash.end_tran (l_index);
 	iter.restart ();
 	err = err | check_shape ("lockfree::hashmap", "restart from the last entry",
-				 full_pass_new (iter), ITER_ENTRY_COUNT, true);
+				 full_pass_new (iter), ITER_ENTRY_COUNT);
       }
       {
 	// interrupted after three entries, the shape xcache_invalidate_qcaches () takes on a full buffer
@@ -824,7 +824,18 @@ namespace test_lockfree
 	l_hash.end_tran (l_index);
 	iter.restart ();
 	err = err | check_shape ("lockfree::hashmap", "restart after three entries",
-				 full_pass_new (iter), ITER_ENTRY_COUNT, true);
+				 full_pass_new (iter), ITER_ENTRY_COUNT);
+      }
+      {
+	// stopped early with the transaction still open, the shape xcache_cleanup () takes
+	adv_hashmap::iterator iter { l_index, l_hash };
+	for (size_t i = 0; i < 3; i++)
+	  {
+	    test_common::custom_assert (iter.iterate () != NULL);
+	  }
+	iter.restart ();
+	err = err | check_shape ("lockfree::hashmap", "restart with the transaction open",
+				 full_pass_new (iter), ITER_ENTRY_COUNT);
       }
       {
 	// interrupted after three entries, then the map is cleared under the iterator
@@ -837,15 +848,14 @@ namespace test_lockfree
 	l_hash.clear (l_index);
 	iter.restart ();
 	err = err | check_shape ("lockfree::hashmap", "restart across a clear ()",
-				 full_pass_new (iter), 0, true);
+				 full_pass_new (iter), 0);
       }
 
       l_hash.destroy ();
       l_transys.free_index (l_index);
     }
 
-    // the implementation it replaces. the clear () shape is left out on purpose: lf_hash_table_cpp's restart ()
-    // does not reset its current entry, so a restart taken mid-pass walks the chain of retired entries.
+    // the implementation it replaces
     {
       lf_tran_system l_transys;
       lf_tran_system_init (&l_transys, 2);
@@ -868,23 +878,23 @@ namespace test_lockfree
       {
 	adv_lf_hash::iterator iter { l_tran, l_hash };
 	iter.restart ();
-	(void) check_shape ("lf_hash_table", "restart before first iterate",
-			    full_pass_old (iter), ITER_ENTRY_COUNT, false);
+	err = err | check_shape ("lf_hash_table", "restart before first iterate",
+				 full_pass_old (iter), ITER_ENTRY_COUNT);
       }
       {
 	adv_lf_hash::iterator iter { l_tran, l_hash };
 	(void) full_pass_old (iter);
 	iter.restart ();
-	(void) check_shape ("lf_hash_table", "restart after a complete pass",
-			    full_pass_old (iter), ITER_ENTRY_COUNT, false);
+	err = err | check_shape ("lf_hash_table", "restart after a complete pass",
+				 full_pass_old (iter), ITER_ENTRY_COUNT);
       }
       {
 	adv_lf_hash::iterator iter { l_tran, l_hash };
 	(void) full_pass_old (iter);
 	iter.restart ();
 	iter.restart ();
-	(void) check_shape ("lf_hash_table", "two restarts in a row",
-			    full_pass_old (iter), ITER_ENTRY_COUNT, false);
+	err = err | check_shape ("lf_hash_table", "two restarts in a row",
+				 full_pass_old (iter), ITER_ENTRY_COUNT);
       }
       {
 	adv_lf_hash::iterator iter { l_tran, l_hash };
@@ -896,8 +906,8 @@ namespace test_lockfree
 	  }
 	l_hash.end_tran (l_tran);
 	iter.restart ();
-	(void) check_shape ("lf_hash_table", "restart from the last entry",
-			    full_pass_old (iter), ITER_ENTRY_COUNT, false);
+	err = err | check_shape ("lf_hash_table", "restart from the last entry",
+				 full_pass_old (iter), ITER_ENTRY_COUNT);
       }
       {
 	adv_lf_hash::iterator iter { l_tran, l_hash };
@@ -907,8 +917,30 @@ namespace test_lockfree
 	  }
 	l_hash.end_tran (l_tran);
 	iter.restart ();
-	(void) check_shape ("lf_hash_table", "restart after three entries",
-			    full_pass_old (iter), ITER_ENTRY_COUNT, false);
+	err = err | check_shape ("lf_hash_table", "restart after three entries",
+				 full_pass_old (iter), ITER_ENTRY_COUNT);
+      }
+      {
+	adv_lf_hash::iterator iter { l_tran, l_hash };
+	for (size_t i = 0; i < 3; i++)
+	  {
+	    test_common::custom_assert (iter.iterate () != NULL);
+	  }
+	iter.restart ();
+	err = err | check_shape ("lf_hash_table", "restart with the transaction open",
+				 full_pass_old (iter), ITER_ENTRY_COUNT);
+      }
+      {
+	adv_lf_hash::iterator iter { l_tran, l_hash };
+	for (size_t i = 0; i < 3; i++)
+	  {
+	    test_common::custom_assert (iter.iterate () != NULL);
+	  }
+	l_hash.end_tran (l_tran);
+	l_hash.clear (l_tran);
+	iter.restart ();
+	err = err | check_shape ("lf_hash_table", "restart across a clear ()",
+				 full_pass_old (iter), 0);
       }
 
       lf_tran_return_entry (l_tran);

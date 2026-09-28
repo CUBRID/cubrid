@@ -1243,6 +1243,7 @@ namespace test_lockfree
   // collected, then restart and scan again from the beginning. An iterator that resumes where it stopped both
   // skips every entry it has already walked past and ends a transaction that is no longer started. And one that
   // unlocks the entry it stopped on releases it a second time, from whoever has locked it since.
+  // xcache_cleanup () is the exception: it stops a pass early and restarts with the transaction still open.
   //
   template <typename Hash, typename Tran>
   static int
