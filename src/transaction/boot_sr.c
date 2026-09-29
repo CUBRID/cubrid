@@ -84,6 +84,7 @@
 #include "porting.h"
 #include "log_manager.h"
 #include "catalog_class.h"
+#include "system_metadata_version.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2334,9 +2335,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
   /* we need to manually add root class HFID to cache */
-  error_code =
-    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
-			   boot_Db_parm->rootclass_name);
+  error_code = heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -2605,6 +2604,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (skip_to_check_ct_classes_for_rebuild == false)
     {
+      if (log_Gl.hdr.sysmeta_version != SYSTEM_METADATA_VERSION)
+	{
+	  error_code = (log_Gl.hdr.sysmeta_version > SYSTEM_METADATA_VERSION)
+	    ? ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED : ER_SYSMETA_UPGRADE_REQUIRED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  goto error;
+	}
+
       if (catcls_Enable != true)
 	{
 	  error_code = catcls_compile_catalog_classes (thread_p);
@@ -3211,8 +3218,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
   if (!adm_prg_file_name.empty ())
     {
-      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name.c_str (), "migrate_", strlen ("migrate_")) == 0)
+      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0)
 	{
 	  check_coll_and_timezone.check_db_coll = false;
 	}
@@ -3640,7 +3646,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 	}
     }
 
-  if (heap_get_class_info (thread_p, oid, &hfid, NULL, NULL) != NO_ERROR || HFID_IS_NULL (&hfid))
+  if (heap_get_class_hfid (thread_p, oid, &hfid, NULL) != NO_ERROR)
     {
       return DISK_ERROR;
     }
@@ -5031,9 +5037,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   oid_set_root (&boot_Db_parm->rootclass_oid);
   /* we need to manually add root class HFID to cache */
-  error_code =
-    heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP,
-			   boot_Db_parm->rootclass_name);
+  error_code = heap_cache_class_info (thread_p, &boot_Db_parm->rootclass_oid, &boot_Db_parm->rootclass_hfid, FILE_HEAP);
   if (error_code != NO_ERROR)
     {
       assert_release (false);
@@ -5975,8 +5979,6 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "ADMIN_UTILITY";
     case DB_CLIENT_TYPE_ADMIN_CSQL:
       return "ADMIN_CSQL";
-    case DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG:
-      return "ADMIN_CSQL_REBUILD_CATALOG";
     case DB_CLIENT_TYPE_LOG_COPIER:
       return "LOG_COPIER";
     case DB_CLIENT_TYPE_LOG_APPLIER:

@@ -3797,13 +3797,14 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
   VFID_SET_NULL (&out->oos_vfid);
 
   HFID hfid;
+  bool hfid_found = false;
   HFID_SET_NULL (&hfid);
-  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL) != NO_ERROR)
+  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, &hfid_found) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return er_errid ();
     }
-  if (HFID_IS_NULL (&hfid))
+  if (!hfid_found)
     {
       return NO_ERROR;
     }

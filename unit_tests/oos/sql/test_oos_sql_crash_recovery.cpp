@@ -68,8 +68,10 @@
 
 #include "environment_variable.h"
 #include "test_oos_error_log.hpp"
-/* last: it ends with memory_wrapper.hpp, which must stay the last include of the file */
 #include "test_oos_sql_common.hpp"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 namespace
 {

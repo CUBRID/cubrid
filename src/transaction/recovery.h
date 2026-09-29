@@ -192,26 +192,28 @@ typedef enum
 
   RVBT_NO_LOGGING_INDEX_COMMITTED = 134,
 
+  RVLOG_SYSMETA_VERSION_UPDATE = 135,
+
   /* OOS indices always come AFTER the last develop index, keeping develop's numeric values
    * identical on this branch. When a merge from develop appends new indices, the OOS block is
    * renumbered upward (RV_fun[] in recovery.c is positionally indexed by rcvindex, so its order
    * must be updated to match). Renumbering invalidates the recovery logs of feat/oos test
    * databases created before the merge — recreate them. */
-  RVOOS_INSERT = 135,
-  RVOOS_DELETE = 136,
-  RVREPL_OOS_INSERT = 137,
-  RVREPL_OOS_DELETE = 138,
+  RVOOS_INSERT = 136,
+  RVOOS_DELETE = 137,
+  RVREPL_OOS_INSERT = 138,
+  RVREPL_OOS_DELETE = 139,
   /* TODO: RVOOS_NOTIFY_VACUUM is currently unused (no emitter); it is kept as a reserved slot
    * (no-op stub in RV_fun[]) so the OOS block stays contiguous. Either reuse it for a real
    * OOS-vacuum-notify path or retire it before the final merge to develop. */
-  RVOOS_NOTIFY_VACUUM = 139,
-  RVREPL_DUMMY_OOS_RECORD = 140,	/* multi-chunk OOS replication marker */
+  RVOOS_NOTIFY_VACUUM = 140,
+  RVREPL_DUMMY_OOS_RECORD = 141,	/* multi-chunk OOS replication marker */
   /* Tags the MVCC remove_old_forward forward REC_NEWHOME delete in heap_update_relocation
    * so vacuum's forward-walk can reclaim the old forward's OOS records from the delete's undo image.
    * Classified as an MVCC op (LOG_IS_MVCC_OPERATION) but NOT a heap op (LOG_IS_MVCC_HEAP_OPERATION):
    * its undo is logged as MVCC undo (chained for the forward-walk) yet vacuum must not "collect" the
    * already-deleted slot. Crash recovery replays the delete identically to RVHF_DELETE. */
-  RVHF_DELETE_NEWHOME_NOTIFY_VACUUM = 141,
+  RVHF_DELETE_NEWHOME_NOTIFY_VACUUM = 142,
   RV_LAST_LOGID = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
 
   RV_NOT_DEFINED = 999

@@ -821,7 +821,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
-// #endregion 
+// #endregion
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type

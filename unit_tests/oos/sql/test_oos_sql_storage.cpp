@@ -39,6 +39,9 @@
 
 #include "test_oos_sql_common.hpp"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 namespace
 {
   const char *const STORAGE_SETTINGS[] = { "PREFER_INLINE", "FORCE_OUTLINE", "PREFER_OUTLINE", "DEFAULT" };

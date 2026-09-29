@@ -638,7 +638,7 @@ heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
   HFID oos_hfid;
   VFID oos_vfid;
 
-  if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
+  if (heap_get_class_hfid (thread_p, class_oid, &oos_hfid, NULL) != NO_ERROR)
     {
       return S_ERROR;
     }
