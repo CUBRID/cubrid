@@ -2551,6 +2551,9 @@ logtb_find_state (int tran_index)
  *               (in milliseconds)
  *
  * Note:Reset the default waiting time for the current transaction index(client).
+ *      Every thread working for the transaction reads it, and so do other transactions (deadlock victim choice,
+ *      lock dumps). A temporary waiting time that only the calling thread needs, in code that may run while other
+ *      threads of the same transaction run, belongs to logtb_set_thread_wait_msecs () instead.
  */
 int
 xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
@@ -2595,6 +2598,65 @@ logtb_find_wait_msecs (int tran_index)
       assert (false);
       return 0;
     }
+}
+
+/*
+ * logtb_set_thread_wait_msecs - override the waiting time of the current thread only
+ *
+ * return: the previous override of the thread; pass it back to restore it
+ *
+ *   thread_p(in): thread entry
+ *   wait_msecs(in): waiting time for the locks and page latches this thread requests until the override is
+ *                   restored, or LK_WAIT_NOT_OVERRIDDEN to wait as the transaction does
+ *
+ * Note: tdes->wait_msecs is read by every thread working for the transaction: parallel query, sort and index
+ *       build workers copy their parent's tran_index, and the daemons of the system transaction share one tdes.
+ *       A temporary value saved and restored there by one thread is seen by the others while it is set, and two
+ *       overlapping save/restore pairs can leave one thread's temporary value on the transaction after both are
+ *       done, where it stays until the client resets it or disconnects. Code that may run while other threads of
+ *       its transaction run sets its temporary waiting time here instead.
+ *       A waiting time other transactions must see stays in tdes->wait_msecs (xlogtb_reset_wait_msecs): a
+ *       statement's LOCK_TIMEOUT hint, which its parallel workers read as well, and the waits of lock requests
+ *       that the deadlock detector and lock dumps look at. Workers do not inherit an override, since no code
+ *       that sets one starts a worker before restoring it.
+ */
+int
+logtb_set_thread_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
+{
+  int old_wait_msecs;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  old_wait_msecs = thread_p->wait_msecs_override;
+  thread_p->wait_msecs_override = wait_msecs;
+
+  return old_wait_msecs;
+}
+
+/*
+ * logtb_find_current_wait_msecs - find the waiting time of the current thread
+ *
+ * return: the override of the thread (see logtb_set_thread_wait_msecs), else the waiting time of its transaction
+ *
+ *   thread_p(in): thread entry
+ */
+int
+logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->wait_msecs_override != LK_WAIT_NOT_OVERRIDDEN)
+    {
+      return thread_p->wait_msecs_override;
+    }
+
+  return logtb_find_wait_msecs (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
 /*

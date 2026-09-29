@@ -6337,7 +6337,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* check if the given oid is root class oid */
@@ -6496,7 +6496,7 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* A TRANSACTION-typed key (keyed by the inserter's MVCCID) never aliases a real class/instance. */
@@ -6718,7 +6718,7 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* get the intentional lock mode to be acquired on class oid */
@@ -6858,7 +6858,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
   else
     {
       assert (cond_flag == LK_UNCOND_LOCK);
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* acquire the lock on the class */
@@ -6952,7 +6952,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  wait_msecs = logtb_find_wait_msecs (tran_index);
+  wait_msecs = logtb_find_current_wait_msecs (thread_p);
 
   /* We do not want to rollback the transaction in the event of a deadlock. For now, let's just wait a long time. If
    * deadlock, the transaction is going to be notified of lock timeout instead of aborted. */
@@ -9129,7 +9129,7 @@ lock_initialize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * com
 
   lockcomp = &(comp_lock->lockcomp);
   lockcomp->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lockcomp->wait_msecs = logtb_find_wait_msecs (lockcomp->tran_index);
+  lockcomp->wait_msecs = logtb_find_current_wait_msecs (thread_p);
   lockcomp->class_list = NULL;
   lockcomp->root_class_ptr = NULL;
   return NO_ERROR;
@@ -10299,7 +10299,7 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   if (lock_internal_perform_lock_object

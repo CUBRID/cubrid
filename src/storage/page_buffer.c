@@ -5303,39 +5303,32 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_set_force_latch_wait () - make page latches ignore the transaction's no-wait setting
- *   return: the old value, to be restored by the caller
+ * pgbuf_force_latch_wait () - make the page latches of this thread wait although its waiting time is a no-wait
+ *   return: the old waiting time override of the thread, to be restored by the caller with
+ *           logtb_set_thread_wait_msecs ()
  *   thread_p(in): thread entry
- *   force(in): new value
  *
  * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
  *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
  *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
  *       inconsistency.
- *       The flag lives in the thread entry rather than in LOG_TDES because parallel scan workers share their
- *       parent's tran_index: a save/restore on tdes->wait_msecs would race between sibling workers and could
- *       drop the user's lock_timeout.
+ *       Both no-wait values are lifted although they have different owners - LK_ZERO_WAIT carries the user's
+ *       lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. A finite or an already infinite
+ *       waiting time is kept, because pgbuf_timed_sleep () classifies a watchdog expiry by this very value and
+ *       would otherwise report ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED.
  */
-bool
-pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force)
+int
+pgbuf_force_latch_wait (THREAD_ENTRY * thread_p)
 {
-#if defined (SERVER_MODE)
-  bool old_val;
+  int wait_msecs;
 
-  if (thread_p == NULL)
+  wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
-      thread_p = thread_get_thread_entry_info ();
-      assert (thread_p != NULL);
+      wait_msecs = LK_INFINITE_WAIT;
     }
 
-  old_val = thread_p->force_latch_wait;
-  thread_p->force_latch_wait = force;
-
-  return old_val;
-#else /* not SERVER_MODE = SA_MODE */
-  /* single threaded, no latch contention */
-  return false;
-#endif /* not SERVER_MODE */
+  return logtb_set_thread_wait_msecs (thread_p, wait_msecs);
 }
 
 /*
@@ -6498,7 +6491,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       int wait_msec;
 
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      wait_msec = logtb_find_wait_msecs (tran_index);
+      wait_msec = pgbuf_find_current_wait_msecs (thread_p);
 
       if (wait_msec == LK_ZERO_WAIT)
 	{
@@ -16879,11 +16872,14 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
 
 // TODO: find a better place for this, but not log_impl.h
 /*
- * pgbuf_find_current_wait_msecs - find waiting times for current transaction
+ * pgbuf_find_current_wait_msecs - find waiting times for current thread
  *
  * return : wait_msecs...
  *
- * Note: Find the waiting time for the current transaction.
+ * Note: Find the waiting time for the current thread - its own override (see logtb_set_thread_wait_msecs ()),
+ *       else the waiting time of its transaction. Every check fed by this function - the demotion in
+ *       pgbuf_fix_internal (), the refusal in pgbuf_latch_bcb_upon_fix (), the sleep budget in
+ *       pgbuf_timed_sleep () and the early give-up in pgbuf_ordered_fix () - reads the same value.
  */
 STATIC_INLINE int
 pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
@@ -16892,31 +16888,19 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
   int tran_index;
   int wait_msecs;
 
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->wait_msecs_override != LK_WAIT_NOT_OVERRIDDEN)
+    {
+      return thread_p->wait_msecs_override;
+    }
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
   wait_msecs = (tdes != NULL) ? tdes->wait_msecs : LK_ZERO_WAIT;
-
-#if defined (SERVER_MODE)
-  /* The two disk manager fixes must not inherit the transaction's no-wait setting; see
-   * pgbuf_set_force_latch_wait ().
-   * Both no-wait values are in scope although they have different owners - LK_ZERO_WAIT carries the user's
-   * lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. Every check fed by this function tests
-   * that same pair - the demotion in pgbuf_fix_internal (), the sleep budget in pgbuf_timed_sleep () and the
-   * early give-up in pgbuf_ordered_fix () - and a fix that must not be refused has to clear all of them.
-   * Lift only those two: a finite or an already infinite policy is left as the transaction set it, because
-   * pgbuf_timed_sleep () classifies a watchdog expiry by this very value and would otherwise report
-   * ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED. Resolve NULL the way pgbuf_set_force_latch_wait ()
-   * does, so the flag is read from the entry it was written to. */
-  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
-    {
-      THREAD_ENTRY *flag_owner_p = (thread_p != NULL) ? thread_p : thread_get_thread_entry_info ();
-
-      if (flag_owner_p != NULL && flag_owner_p->force_latch_wait)
-	{
-	  return LK_INFINITE_WAIT;
-	}
-    }
-#endif /* SERVER_MODE */
 
   return wait_msecs;
 }

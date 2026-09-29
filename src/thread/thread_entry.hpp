@@ -263,9 +263,9 @@ namespace cubthread
       bool interrupted;		/* is this request/transaction interrupted ? */
       std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
-      bool force_latch_wait;	/* while true, page latches ignore the transaction's no-wait setting. set only
-				 * around the disk manager's volume header and sector table fixes; see
-				 * pgbuf_set_force_latch_wait () for why this lives here and not in LOG_TDES. */
+      int wait_msecs_override;	/* lock and page latch waiting time of this thread alone, or LK_WAIT_NOT_OVERRIDDEN
+				 * to wait as its transaction does. set only through logtb_set_thread_wait_msecs ();
+				 * see there for why this lives here and not in LOG_TDES. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;
 

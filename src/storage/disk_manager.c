@@ -3224,7 +3224,7 @@ disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_M
   )
 {
   VPID vpid_volheader;
-  bool save_force_latch_wait;
+  int old_wait_msecs;
   int error_code = NO_ERROR;
 
   vpid_volheader.volid = volid;
@@ -3232,9 +3232,9 @@ disk_get_volheader_internal (THREAD_ENTRY * thread_p, VOLID volid, PGBUF_LATCH_M
 
   /* this fix has no conditional variant and the caller cannot act on a refusal; a no-wait
    * transaction must still wait for the volume header */
-  save_force_latch_wait = pgbuf_set_force_latch_wait (thread_p, true);
+  old_wait_msecs = pgbuf_force_latch_wait (thread_p);
   *page_volheader_out = pgbuf_fix (thread_p, &vpid_volheader, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-  (void) pgbuf_set_force_latch_wait (thread_p, save_force_latch_wait);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   if (*page_volheader_out == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -3498,7 +3498,7 @@ STATIC_INLINE int
 disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_LATCH_MODE latch_mode)
 {
   VPID vpid = VPID_INITIALIZER;
-  bool save_force_latch_wait;
+  int old_wait_msecs;
   int error_code = NO_ERROR;
 
   assert (cursor->page == NULL);
@@ -3510,9 +3510,9 @@ disk_stab_cursor_fix (THREAD_ENTRY * thread_p, DISK_STAB_CURSOR * cursor, PGBUF_
   vpid.pageid = cursor->pageid;
   /* same as the volume header: a no-wait transaction must still wait for the sector allocation
    * table page */
-  save_force_latch_wait = pgbuf_set_force_latch_wait (thread_p, true);
+  old_wait_msecs = pgbuf_force_latch_wait (thread_p);
   cursor->page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, latch_mode, PGBUF_UNCONDITIONAL_LATCH);
-  (void) pgbuf_set_force_latch_wait (thread_p, save_force_latch_wait);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   if (cursor->page == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -4207,7 +4207,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   int old_wait_msecs;
 
   old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  old_wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   if (fileio_get_volume_descriptor (volid) == NULL_VOLDES || pageid < 0)
     {
@@ -4247,7 +4247,7 @@ disk_is_page_sector_reserved_with_debug_crash (THREAD_ENTRY * thread_p, VOLID vo
   isvalid = disk_is_sector_reserved (thread_p, volheader, sectid, debug_crash);
 
 exit:
-  xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+  logtb_set_thread_wait_msecs (thread_p, old_wait_msecs);
   (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
 
   if (page_volheader)
