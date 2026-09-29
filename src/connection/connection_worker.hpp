@@ -228,10 +228,6 @@ namespace cubconn::connection
       int m_eventfd;
       /* timer based */
       int m_timerfd;
-      /* dummy contexts registered to epoll for m_eventfd and m_timerfd. they are owned by */
-      /* this worker and are NOT tracked in m_context. their m_conn does not point to a	   */
-      /* real connection entry. see eventfd_register ().				   */
-      std::vector<context *> m_eventfd_context;
       uint64_t m_timens;
 
       /* dummy contexts registered to epoll for m_eventfd and m_timerfd.

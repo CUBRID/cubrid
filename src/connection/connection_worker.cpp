@@ -395,7 +395,6 @@ namespace cubconn::connection
     m_exhausted.reserve (128);
 
     /* notifier */
-    m_eventfd_context.reserve (2);
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (m_eventfd < 0 || m_timerfd < 0)
