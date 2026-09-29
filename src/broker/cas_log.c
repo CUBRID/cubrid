@@ -76,7 +76,7 @@ static char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
 #define SLOW_LOG_BUFFER_SIZE (SQL_LOG_BUFFER_SIZE)
 static char slow_log_buffer[SLOW_LOG_BUFFER_SIZE];
 
-/* SQL_LOG=ERROR, TIMEOUT or NOTICE hold the current unit in this scratch file and append it to the log if it is kept */
+/* SQL_LOG=ERROR, TIMEOUT or NOTICE keep the current unit in this scratch file and append it to the log if it is kept */
 static char scratch_filepath[BROKER_PATH_MAX];
 
 /*
@@ -96,7 +96,7 @@ static char scratch_filepath[BROKER_PATH_MAX];
  *   saved_log_fpos is SQL log only, cas_ftell () at the start of the current unit.  It is before file_buf_base
  *   only after a spill.
  *   Outside ON(=ALL) mode, the unit uses scratch_log_fd, which shares this buffer and is bound to the scratch
- *   file.  Its positions count from the unit start.
+ *   file.  scratch_log_fd positions, and so saved_log_fpos and saved_temp_stmt_fpos, count from the unit start.
  *   In that case, sql_log_fd keeps an empty buffer, and its file_buf_base is the SQL log position where
  *   copy_scratch_to_sql_log () writes the unit.
  */
@@ -591,8 +591,8 @@ copy_scratch_to_sql_log (void)
 		}
 	      break;
 	    }
-	  file->file_buf_base += copied;
 	}
+      file->file_buf_base += scratch_off;	/* one store, so a terminating handler copies once at most */
     }
 
   cas_fseek (unit, 0, SEEK_SET);	/* reset the buffer and truncate the scratch file if it was used */
@@ -1531,6 +1531,11 @@ cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx)
     {
       return;
     }
+  if (as_info == NULL || as_info->cur_sql_log_mode != SQL_LOG_MODE_ALL)
+    {
+      /* the mode changed and the log is reopened at the next request boundary, which discards this unit */
+      return;
+    }
 
   if (sql_log_writing)
     {
@@ -1815,8 +1820,8 @@ cas_fseek (CAS_LOG_FD * lfd, INT64 offset, int whence)
     {
       lfd->buf_used = 0;	/* zero buf_used first so a terminating handler flushes nothing */
       lfd->buf_flushed = 0;
-      (void) ftruncate_all (lfd->fd, offset);
       lfd->file_buf_base = offset;
+      (void) ftruncate_all (lfd->fd, offset);
     }
 
   return 0;
