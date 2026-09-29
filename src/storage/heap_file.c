@@ -25786,7 +25786,8 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
       assert (LSA_LT (version_lsa, &copied_lsa));
     }
 
-  if (walk->held_page->hdr.logical_pageid == version_lsa->pageid && LSA_LT (version_lsa, &walk->held_below))
+  /* held_below first: the page is uninitialized stack bytes until a hop copies into it */
+  if (LSA_LT (version_lsa, &walk->held_below) && walk->held_page->hdr.logical_pageid == version_lsa->pageid)
     {
       scan = log_get_undo_record (thread_p, walk->held_page, *version_lsa, recdes);
       if (scan == S_SUCCESS)
@@ -25860,7 +25861,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
     }
 
   walk.held_page = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  walk.held_below = NULL_LSA;	/* nothing held yet, whatever stack bytes the page has */
+  walk.held_below = NULL_LSA;	/* nothing held yet */
   walk.n_fetches_skipped = 0;
 
   /* Check visibility of old versions from log following prev_version_lsa links. Where each version is
