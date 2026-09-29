@@ -42,19 +42,33 @@ fi
 export PATH="$CUBRID/bin:$PATH"
 export LD_LIBRARY_PATH="$CUBRID/lib:${LD_LIBRARY_PATH:-}"
 
+# Do not disturb a CUBRID service that is already running on this host: the test
+# starts (and later stops) its own master/server, and CUBRID_DATABASES does not
+# isolate the shared master. If a master is already up, skip rather than risk
+# stopping someone else's server.
+if pgrep -x cub_master >/dev/null 2>&1; then
+  echo "[SKIP] a CUBRID master is already running on this host; refusing to disturb a shared service"
+  exit 77
+fi
+
 DB="cbrd27511_$$"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/cbrd27511.XXXXXX")"
 export CUBRID_DATABASES="$WORK"
 FAIL=0
+STARTED_SERVICE=0
 
 pass () { echo "[PASS] $1"; }
 fail () { echo "[FAIL] $1"; FAIL=1; }
 
 cleanup () {
+  # stop only our own database server
   cubrid server stop "$DB"  >/dev/null 2>&1
   cubrid deletedb   "$DB"   >/dev/null 2>&1
-  # only stop the master we may have started; harmless if others rely on it in CI
-  cubrid service stop        >/dev/null 2>&1
+  # stop the master only if this test started it (guarded above so that no
+  # pre-existing service is ever touched)
+  if [ "$STARTED_SERVICE" -eq 1 ]; then
+    cubrid service stop      >/dev/null 2>&1
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -91,6 +105,8 @@ else
 fi
 
 # --- 1) legitimate local registration --------------------------------------
+# starting a server auto-starts the master; remember that we own the service now
+STARTED_SERVICE=1
 cubrid server start "$DB" >/dev/null 2>&1
 if wait_registered 60; then
   pass "cub_server registered with cub_master over the resolved host name (issue-2 fix)"
