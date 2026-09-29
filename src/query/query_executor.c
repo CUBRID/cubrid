@@ -58,6 +58,8 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
+#include "heap_prepared_row.hpp"
+#include "heap_oos.hpp"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"
 #include "xserver_interface.h"
@@ -12046,8 +12048,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 				     const HEAP_IDX_ELEMENTS_INFO * idx_info, int op_type, int pruning_type,
 				     PRUNING_CONTEXT * pcontext, int *removed_count)
 {
-  LC_COPYAREA *copyarea = NULL;
-  RECDES new_recdes;
+  /* *INDENT-OFF* */
+  heap_prepared_row prepared;
+  /* *INDENT-ON* */
   int i = 0;
   int error_code = NO_ERROR;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT];
@@ -12069,20 +12072,26 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
   db_make_null (&dbvalue);
 
-  if (heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
+  /* A probe owns its preparation independently of the eventual write. */
+  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS
+      || heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
     {
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB);
-  if (copyarea == NULL)
+  /* *INDENT-OFF* */
+  error_code = prepared.prepare (thread_p, attr_info, NULL, false);
+  /* *INDENT-ON* */
+  if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &new_recdes, index_attr_info);
+      /* *INDENT-OFF* */
+      error_code = prepared.read_values (index_attr_info);
+      /* *INDENT-ON* */
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -12114,9 +12123,11 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       COPY_OID (&pruned_oid, &class_oid);
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
+      /* *INDENT-OFF* */
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				NULL, false);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, prepared.record (), &btid, &dbvalue, aligned_buf, NULL,
+				NULL, NULL, false, &prepared);
+      /* *INDENT-ON* */
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -12223,14 +12234,6 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	}
     }
 
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      new_recdes.data = NULL;
-      new_recdes.area_size = 0;
-    }
-
   return NO_ERROR;
 
 error_exit:
@@ -12238,14 +12241,6 @@ error_exit:
     {
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
-    }
-
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      new_recdes.data = NULL;
-      new_recdes.area_size = 0;
     }
 
   return ER_FAILED;
@@ -12278,8 +12273,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 				   HEAP_CACHE_ATTRINFO * index_attr_info, const HEAP_IDX_ELEMENTS_INFO * idx_info,
 				   int pruning_type, PRUNING_CONTEXT * pcontext, OID * unique_oid_p, int op_type)
 {
-  LC_COPYAREA *copyarea = NULL;
-  RECDES recdes;
+  /* *INDENT-OFF* */
+  heap_prepared_row prepared;
+  /* *INDENT-ON* */
   int i = 0;
   int error_code = NO_ERROR;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT];
@@ -12307,20 +12303,26 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       local_op_type = MULTI_ROW_UPDATE;
     }
 
-  if (heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
+  /* A probe owns its preparation independently of the eventual write. */
+  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS
+      || heap_attrinfo_clear_dbvalues (index_attr_info) != NO_ERROR)
     {
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB);
-  if (copyarea == NULL)
+  /* *INDENT-OFF* */
+  error_code = prepared.prepare (thread_p, attr_info);
+  /* *INDENT-ON* */
+  if (error_code != NO_ERROR)
     {
       goto error_exit;
     }
 
   if (idx_info->has_single_col)
     {
-      error_code = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &recdes, index_attr_info);
+      /* *INDENT-OFF* */
+      error_code = prepared.read_values (index_attr_info);
+      /* *INDENT-ON* */
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -12345,9 +12347,11 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       COPY_OID (&class_oid, &attr_info->class_oid);
       is_global_index = false;
 
+      /* *INDENT-OFF* */
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				NULL, false);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, prepared.record (), &btid, &dbvalue, aligned_buf, NULL,
+				NULL, NULL, false, &prepared);
+      /* *INDENT-ON* */
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -12435,14 +12439,6 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	}
     }
 
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      recdes.data = NULL;
-      recdes.area_size = 0;
-    }
-
   return NO_ERROR;
 
 error_exit:
@@ -12450,14 +12446,6 @@ error_exit:
     {
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
-    }
-
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      recdes.data = NULL;
-      recdes.area_size = 0;
     }
 
   return ER_FAILED;
