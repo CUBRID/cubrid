@@ -204,24 +204,26 @@ encrypt_salt_generate (char *salt, int salt_size)
       i = 0;
       while (i < ENCRYPT_SALT_SIZE)
 	{
+	  length = distribution (engine);
 	  if (i < (int) (ENCRYPT_SALT_SIZE - sizeof (int)))
 	    {
-	      ((int *) (master_salt + i))[0] = distribution (engine);
+	      memcpy (master_salt + i, &length, sizeof (int));
 	      i += sizeof (int);
 	    }
 	  else if (i < (int) (ENCRYPT_SALT_SIZE - sizeof (short)))
 	    {
-	      ((short *) (master_salt + i))[0] = (short) (distribution (engine) &  0xFFFF);
+	      memcpy (master_salt + i, &length, sizeof (short));
 	      i += sizeof (short);
 	    }
 	  else
 	    {
-	      master_salt[i] = (char) (distribution (engine) & 0xFF);
+	      master_salt[i] = (char) (length & 0xFF);
 	      i++;
 	    }
 	}
     }
 
+  length = 0;
   for (i = 0; i < ENCRYPT_SALT_SIZE; i++)
     {
       salt[length++] = hex[ (u_char)master_salt[i] >> 4];
@@ -276,10 +278,13 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
 	  encrypt_salt_generate (salt_in, sizeof (salt_in));
 	  salt = salt_in;
 	}
+      else if (IS_ENCODED_SHA2_512 (pass))
+	{
+	  strcpy (sha512, Au_user_password_sha2_512);
+	}
       else
 	{
-	  assert (IS_ENCODED_SHA2_512 (pass));
-	  strcpy (sha512, Au_user_password_sha2_512);
+	  encrypt_password_sha2_512 (pass, sha512);
 	}
 
       assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
