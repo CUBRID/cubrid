@@ -493,8 +493,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       ux_get_default_setting ();
     }
-  else if (shm_appl->cache_user_info == OFF || strcmp (database_user, db_user) != 0
-	   || strcmp (database_passwd, db_passwd) != 0)
+  else
     {
       int err_code;
       /* Already connected to a database, make sure to clear errors from previous clients */
@@ -511,13 +510,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
-    }
-  else
-    {
-      /* Already connected to a database, make sure to clear errors from previous clients */
-      er_clear ();
-      /* check session to see if it is still active and create if isn't */
-      (void) db_find_or_create_session (db_user, program_name);
     }
   return 0;
 
