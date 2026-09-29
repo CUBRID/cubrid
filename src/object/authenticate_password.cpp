@@ -269,81 +269,92 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
   if (pass == NULL)
     {
       strcpy (dest, "");
+      return;
+    }
+
+  //
+  if (salt == NULL)
+    {
+      encrypt_password_sha2_512 (pass, sha512);
+      encrypt_salt_generate (salt_in, sizeof (salt_in));
+      salt = salt_in;
+    }
+  else if (IS_ENCODED_SHA2_512 (pass))
+    {
+      strcpy (sha512, Au_user_password_sha2_512);
     }
   else
     {
-      if (salt == NULL)
-	{
-	  encrypt_password_sha2_512 (pass, sha512);
-	  encrypt_salt_generate (salt_in, sizeof (salt_in));
-	  salt = salt_in;
-	}
-      else if (IS_ENCODED_SHA2_512 (pass))
-	{
-	  strcpy (sha512, Au_user_password_sha2_512);
-	}
-      else
-	{
-	  encrypt_password_sha2_512 (pass, sha512);
-	}
+      encrypt_password_sha2_512 (pass, sha512);
+    }
 
-      assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
+  if (sha512[0] == '\0')
+    {
+      strcpy (dest, "");
+      return;
+    }
 
-      x = 0;
-      for (int i = 0; i < ENCRYPT_SALT_SIZE_HEX; i++)
-	{
-	  x ^= (unsigned int)salt[i];
-	}
+  assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
 
-      switch (x % 6)
-	{
-	case 0:
-	  encrypt_new_string (buf, salt, sha512 + 1, name);
-	  break;
-	case 1:
-	  encrypt_new_string (buf, salt, name, sha512 + 1);
-	  break;
-	case 2:
-	  encrypt_new_string (buf, sha512 + 1, salt, name);
-	  break;
-	case 3:
-	  encrypt_new_string (buf, sha512 + 1, name, salt);
-	  break;
-	case 4:
-	  encrypt_new_string (buf, name, salt, sha512 + 1);
-	  break;
-	default:
-	  encrypt_new_string (buf, name, sha512 + 1, salt);
-	  break;
-	}
+  x = 0;
+  for (int i = 0; i < ENCRYPT_SALT_SIZE_HEX; i++)
+    {
+      x ^= (unsigned int)salt[i];
+    }
 
-      encrypt_password_sha2_512 (buf, sha512);
+  switch (x % 6)
+    {
+    case 0:
+      encrypt_new_string (buf, salt, sha512 + 1, name);
+      break;
+    case 1:
+      encrypt_new_string (buf, salt, name, sha512 + 1);
+      break;
+    case 2:
+      encrypt_new_string (buf, sha512 + 1, salt, name);
+      break;
+    case 3:
+      encrypt_new_string (buf, sha512 + 1, name, salt);
+      break;
+    case 4:
+      encrypt_new_string (buf, name, salt, sha512 + 1);
+      break;
+    default:
+      encrypt_new_string (buf, name, sha512 + 1, salt);
+      break;
+    }
 
-      ptr = sha512 + 1;
-      x = encrypt_get_salt_offset (name, strlen (ptr));
-      if (x > 0)
-	{
-	  memcpy (dest + 1, ptr, x);
-	}
+  encrypt_password_sha2_512 (buf, sha512);
+  if (sha512[0] == '\0')
+    {
+      strcpy (dest, "");
+      return;
+    }
 
-      memcpy (dest + 1 + x, salt, ENCRYPT_SALT_SIZE_HEX + 1);
+  ptr = sha512 + 1;
+  x = encrypt_get_salt_offset (name, strlen (ptr));
+  if (x > 0)
+    {
+      memcpy (dest + 1, ptr, x);
+    }
 
-      if (x < strlen (ptr))
-	{
-	  memcpy (dest + 1 + x + ENCRYPT_SALT_SIZE_HEX, ptr + x, strlen (ptr) - x + 1);
-	}
-      dest[0] = ENCODE_PREFIX_SHA2_512_SALT; // set the prefix to SHA2_512_SALT
+  memcpy (dest + 1 + x, salt, ENCRYPT_SALT_SIZE_HEX + 1);
+
+  if (x < strlen (ptr))
+    {
+      memcpy (dest + 1 + x + ENCRYPT_SALT_SIZE_HEX, ptr + x, strlen (ptr) - x + 1);
+    }
+  dest[0] = ENCODE_PREFIX_SHA2_512_SALT; // set the prefix to SHA2_512_SALT
 
 #ifndef NDEBUG
-      {
-	char salt_t[ENCRYPT_SALT_SIZE_HEX + 1];
+  {
+    char salt_t[ENCRYPT_SALT_SIZE_HEX + 1];
 
-	encrypt_salt_extract (name, dest, salt_t);
-	assert (strlen (salt_t) == ENCRYPT_SALT_SIZE_HEX);
-	assert (memcmp (salt, salt_t, ENCRYPT_SALT_SIZE_HEX)==0);
-      }
+    encrypt_salt_extract (name, dest, salt_t);
+    assert (strlen (salt_t) == ENCRYPT_SALT_SIZE_HEX);
+    assert (memcmp (salt, salt_t, ENCRYPT_SALT_SIZE_HEX)==0);
+  }
 #endif
-    }
 }
 
 /*
