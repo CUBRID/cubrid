@@ -83,6 +83,9 @@
 #include "tde.h"
 #include "porting.h"
 #include "log_manager.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "writeset.hpp"
+#endif /* SERVER_MODE || SA_MODE */
 #include "catalog_class.h"
 #include "system_metadata_version.h"
 
@@ -3889,6 +3892,10 @@ void
 boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 			  BOOT_SERVER_SHUTDOWN_MODE shutdown_common_modules)
 {
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  wset_history_finalize ();
+#endif /* SERVER_MODE || SA_MODE */
+
   logtb_finalize_global_unique_stats_table (thread_p);
   locator_finalize (thread_p);
   spage_finalize (thread_p);

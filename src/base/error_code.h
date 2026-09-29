@@ -1780,7 +1780,9 @@
 #define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
 #define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
 
-#define ER_LAST_ERROR                               -1383
+#define ER_HA_WRITESET_KEY_BUILD_FAILED              -1383
+
+#define ER_LAST_ERROR                               -1384
 
 
 /*

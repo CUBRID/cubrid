@@ -554,8 +554,12 @@ enum param_id
 
   PRM_ID_PLAN_CACHE_BIND_SENSITIVITY,
 
+  PRM_ID_HA_WRITESET_HISTORY_SIZE,
+
+  PRM_ID_HA_WRITESET_TRACE_LEVEL,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_PLAN_CACHE_BIND_SENSITIVITY
+  PRM_LAST_ID = PRM_ID_HA_WRITESET_TRACE_LEVEL
 };
 typedef enum param_id PARAM_ID;
 

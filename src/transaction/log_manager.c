@@ -67,6 +67,7 @@
 #include "log_prior_inflight.hpp"
 #include "log_record.hpp"
 #include "log_recovery.h"
+#include "writeset.hpp"
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
@@ -236,6 +237,7 @@ static void log_append_sysop_end (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_
 static void log_append_repl_info_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit, int with_lock);
 static void log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_commit);
 static void log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
+static void log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_append_donetime_internal (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * eot_lsa,
 					  LOG_RECTYPE iscommitted, enum LOG_PRIOR_LSA_LOCK with_lock);
 static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE iscommitted,
@@ -494,6 +496,8 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
+    case LOG_DUMMY_WSET_LABEL:
+      return "LOG_DUMMY_WSET_LABEL";
     case LOG_DUMMY_OVF_RECORD:
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_GENERIC:
@@ -4707,8 +4711,8 @@ log_append_repl_info_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool i
  *   tdes(in):
  *   commit_lsa(out): LSA of commit log
  *
- * NOTE: Atomic write of replication log and commit log is crucial for replication consistencies.
- *       When a commit log of others is written in the middle of one's replication and commit log,
+ * NOTE: Atomic write of replication log, WSET_LABEL, and commit log is crucial for replication consistencies.
+ *       When a commit log of others is written in the middle of one's replication log, WSET_LABEL, and commit log,
  *       a restart of replication will break consistencies of slaves/replicas.
  */
 static void
@@ -4726,9 +4730,39 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
+  log_append_wset_label_with_lock (thread_p, tdes);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
+}
+
+/*
+ * log_append_wset_label_with_lock - append the writeset dependency label record
+ *
+ *   tdes(in): transaction whose selected writeset dependency is carried
+ *
+ * NOTE: Appended inside prior_lsa_mutex, immediately before the transaction's commit record.
+ *       No-op for crash recovery; read by the replication applier to set the apply task's
+ *       dependency_seq.
+ */
+static void
+log_append_wset_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  LOG_REC_WSET_LABEL *wset_label;
+  LOG_PRIOR_NODE *node;
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_WSET_LABEL, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      /* FIXME */
+      return;
+    }
+
+  wset_label = (LOG_REC_WSET_LABEL *) node->data_header;
+  LSA_COPY (&wset_label->dependency_seq, &tdes->wset_dependency_seq);
+  wset_label->dependency_is_ref = tdes->wset_dependency_is_ref;
+
+  (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
 }
 
 /*
@@ -5283,8 +5317,11 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	      && log_does_allow_replication () == true)
 	    {
+	      wset_find_dependency_from_history (tdes, &tdes->wset_dependency_seq);
 	      /* for the replication agent guarantee the order of transaction */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
+	      assert (LSA_ISNULL (&tdes->wset_dependency_seq) || LSA_LE (&tdes->wset_dependency_seq, &commit_lsa));
+	      wset_publish_commit_to_history (tdes, &commit_lsa);
 	    }
 	  else
 	    {
@@ -8032,6 +8069,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_DUMMY_HA_SERVER_STATE:
+	    case LOG_DUMMY_WSET_LABEL:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
@@ -8464,6 +8502,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_REPLICATION_STATEMENT:
 		    case LOG_SYSOP_ATOMIC_START:
 		    case LOG_DUMMY_HA_SERVER_STATE:
+		    case LOG_DUMMY_WSET_LABEL:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
 		    case LOG_SUPPLEMENTAL_INFO:
