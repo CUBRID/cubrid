@@ -19,6 +19,7 @@
 /*
  * authenticate_password.cpp -
  */
+#include <random>
 
 #include "authenticate_password.hpp"
 
@@ -164,12 +165,25 @@ encrypt_get_salt_offset (const char *name, unsigned int max_length)
 char *
 encrypt_salt_extract (const char *name, const char *salted_sha2_512, char *salt)
 {
-  unsigned int x = encrypt_get_salt_offset (name, strlen (salted_sha2_512 + 1));
+  if (IS_ENCODED_SHA2_512_SALT (salted_sha2_512))
+    {
+      unsigned int len = strlen (salted_sha2_512 + 1);
 
-  salted_sha2_512++; // skip the prefix
-  memcpy (salt, salted_sha2_512 + x, ENCRYPT_SALT_SIZE_HEX);
-  salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
-  return salt;
+      if (len == (ENCRYPT_SALT_SIZE_HEX + ENCRYPT_SHA2_512_HEX_SIZE))
+	{
+	  unsigned int x = encrypt_get_salt_offset (name, len - ENCRYPT_SALT_SIZE_HEX);
+
+	  salted_sha2_512++; // skip the prefix
+	  memcpy (salt, salted_sha2_512 + x, ENCRYPT_SALT_SIZE_HEX);
+	  salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
+	  return salt;
+	}
+    }
+
+  assert (false);
+
+  salt[0] = '\0';
+  return NULL;
 }
 
 static void
@@ -184,10 +198,27 @@ encrypt_salt_generate (char *salt, int salt_size)
   if (crypt_generate_random_bytes (master_salt, ENCRYPT_SALT_SIZE) != NO_ERROR)
     {
       // fallback to generate salt using time
-      srand ((unsigned int)time (NULL));
-      for (i = 0; i < ENCRYPT_SALT_SIZE; i++)
+      thread_local std::mt19937_64 engine (std::random_device{}());
+      std::uniform_int_distribution<int> distribution (0, INT_MAX);
+
+      i = 0;
+      while (i < ENCRYPT_SALT_SIZE)
 	{
-	  master_salt[i] = (char) (rand() & 0xFF);
+	  if (i < (int) (ENCRYPT_SALT_SIZE - sizeof (int)))
+	    {
+	      ((int *) (master_salt + i))[0] = distribution (engine);
+	      i += sizeof (int);
+	    }
+	  else if (i < (int) (ENCRYPT_SALT_SIZE - sizeof (short)))
+	    {
+	      ((short *) (master_salt + i))[0] = (short) (distribution (engine) &  0xFFFF);
+	      i += sizeof (short);
+	    }
+	  else
+	    {
+	      master_salt[i] = (char) (distribution (engine) & 0xFF);
+	      i++;
+	    }
 	}
     }
 
@@ -210,6 +241,18 @@ encrypt_new_string (char *dest, const char *src1, const char *src2, const char *
   memcpy (dest, src3, strlen (src3) + 1);
 }
 
+
+/*
+ * encrypt_password_sha2_512_salt -  hashing a password string using SHA2 512 with salt
+ *   return: none
+ *   name(in): user name
+ *   salt(in): salt string to encrypt
+ *   pass(in): string to encrypt
+ *   dest(out): destination buffer
+ *
+ *   Notice: If salt is null, pass is the user's raw input;
+             otherwise, it is formatted as ENCODE_PREFIX_SHA2_512.
+ */
 void
 encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *pass, char *dest)
 {
@@ -229,20 +272,17 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
     {
       if (salt == NULL)
 	{
+	  encrypt_password_sha2_512 (pass, sha512);
 	  encrypt_salt_generate (salt_in, sizeof (salt_in));
 	  salt = salt_in;
 	}
-      assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
-
-      if (IS_ENCODED_ANY (pass))
+      else
 	{
 	  assert (IS_ENCODED_SHA2_512 (pass));
 	  strcpy (sha512, Au_user_password_sha2_512);
 	}
-      else
-	{
-	  encrypt_password_sha2_512 (pass, sha512);
-	}
+
+      assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
 
       x = 0;
       for (int i = 0; i < ENCRYPT_SALT_SIZE_HEX; i++)
@@ -274,7 +314,8 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
 
       encrypt_password_sha2_512 (buf, sha512);
 
-      x = encrypt_get_salt_offset (name, strlen (sha512 + 1));
+      ptr = sha512 + 1;
+      x = encrypt_get_salt_offset (name, strlen (ptr));
       if (x > 0)
 	{
 	  memcpy (dest + 1, ptr, x);
@@ -282,7 +323,7 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
 
       memcpy (dest + 1 + x, salt, ENCRYPT_SALT_SIZE_HEX + 1);
 
-      if (x < strlen (sha512 + 1))
+      if (x < strlen (ptr))
 	{
 	  memcpy (dest + 1 + x + ENCRYPT_SALT_SIZE_HEX, ptr + x, strlen (ptr) - x + 1);
 	}
@@ -500,7 +541,12 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 
       if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value) && db_get_string (&nm_value) != NULL)
 	{
-#ifndef NDEBUG
+#if defined(CUBRID_ENABLE_LEGACY_PASSWORD_TEST)
+#ifdef NDEBUG
+#error "Notice: CUBRID_ENABLE_LEGACY_PASSWORD_TEST is enabled."
+#else
+#warning "Notice: CUBRID_ENABLE_LEGACY_PASSWORD_TEST is enabled."
+#endif
 	  const char *user_nm = db_get_string (&nm_value);
 	  if (strncmp (user_nm, "##PLAIN_", strlen ("##PLAIN_")) == 0)
 	    {

@@ -184,7 +184,16 @@ authenticate_context::start (void)
 	}
       else
 	{
-	  assert (user_name[0] != '\0');
+	  /*
+	     * If you try to start the authorization system and
+	     * there is no user logged in, you will automatically be logged in
+	     * as "PUBLIC".  Optionally, we could get a name from the
+	     * cubrid.conf file or use the name of the current Unix user.
+	     */
+	  if (strlen (user_name) == 0)
+	    {
+	      strcpy (user_name, AU_PUBLIC_USER_NAME);
+	    }
 
 	  error = perform_login (user_name, user_password_sha2_512, false);
 	}
@@ -241,17 +250,6 @@ authenticate_context::login (const char *name, const char *password, bool ignore
       else
 	{
 	  user_name[0] = '\0';
-	}
-
-      /*
-         * If you try to start the authorization system and
-         * there is no user logged in, you will automatically be logged in
-         * as "PUBLIC".  Optionally, we could get a name from the
-         * cubrid.conf file or use the name of the current Unix user.
-         */
-      if (strlen (user_name) == 0)
-	{
-	  strcpy (user_name, AU_PUBLIC_USER_NAME);
 	}
 
       if (password == NULL || strlen (password) == 0)
