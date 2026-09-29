@@ -85,7 +85,7 @@
 #include "string_opfunc.h"
 #include "upgrade_checksums.h"
 #if defined (SA_MODE)
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #endif
 
 #if defined (SUPPRESS_STRLEN_WARNING)

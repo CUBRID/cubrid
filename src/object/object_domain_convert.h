@@ -66,6 +66,5 @@ DOMAIN_CONVERTER domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN * de
 DOMAIN_CONVERTER domain_lookup_coerce_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain);
 /* ENUM -> its name -> DOUBLE, ASSIGN: the ENUM operand of ENUM + string without plus_as_concat */
 DOMAIN_CONVERTER domain_enumeration_name_converter (void);
-const char *domain_converter_name (DOMAIN_CONVERTER converter);
 
 #endif /* _OBJECT_DOMAIN_CONVERT_H_ */

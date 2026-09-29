@@ -19,7 +19,7 @@
 #ifndef _DOMAIN_PLAN_H_
 #define _DOMAIN_PLAN_H_
 
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #include "thread_compat.hpp"
 #include <cstddef>
 
@@ -63,14 +63,6 @@ enum DOMAIN_PLAN_FLAGS
   DOMAIN_PLAN_LIST_BIND = 0x2000	/* a bind the compiler typed that an output list writes: the gate converts a
 					 * value of another type into the column's domain, as develop's tuple write
 					 * did */
-};
-
-/* What execution must know before it takes a slot's decision in place of a value-driven late binding: a
- * decision from these sources is not always the domain develop's first value would give. */
-enum DOMAIN_SLOT_FLAGS
-{
-  DOMAIN_SLOT_VOLATILE = 0x08	/* a source develop's fetch never caches, a session variable read among them: a
-				 * decision over a read waits for G1 step 7b (slot_volatile_reads) */
 };
 
 struct DOMAIN_COMPARE_PLAN;
@@ -340,7 +332,9 @@ struct domain_plan
   DOMAIN_PLAN_ITEM **gate_nodes;	/* producers first: every operand slot is decided before its consumer */
   DOMAIN_GATE_LINK *gate_links;	/* parallel to gate_nodes */
   int *slot_gate_node;		/* [n_slots] the gate_nodes index deciding the slot; -1 for a bind slot */
-  unsigned char *slot_flags;	/* [n_slots] DOMAIN_SLOT_FLAGS of the decision's sources */
+  bool *slot_volatile;		/* [n_slots] a decision's sources include one develop's fetch never caches, a session
+				 * variable read among them: a decision over a read waits for G1 step 7b
+				 * (slot_volatile_reads) */
   unsigned long long *slot_volatile_reads;	/* [n_slots] the session variable reads a decision depends on: bit i is the
 						 * i-th read, the last bit every read past it; G1 step 7b decides
 						 * a decision with any */
@@ -464,8 +458,7 @@ struct RESOLVED_DOMAIN_TABLE
   int n_scopes;
 };
 
-int stx_build_domain_plan (THREAD_ENTRY * thread_p, xasl_node * root, xasl_unpack_info * unpack_info,
-			   bool is_pred_stream);
+int stx_build_domain_plan (THREAD_ENTRY * thread_p, xasl_node * root, xasl_unpack_info * unpack_info);
 /* The comparison records of a filter or function index stream, or a partition expression: the stream's load
  * gives every comparison its predicate or its expression makes a record, two literals decided from their values and
  * any other side by the key pair table. */

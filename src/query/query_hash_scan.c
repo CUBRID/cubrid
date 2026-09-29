@@ -30,7 +30,7 @@
 #endif
 
 #include "fetch.h"
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #include "memory_alloc.h"
 #include "memory_hash.h"
 #include "object_domain.h"

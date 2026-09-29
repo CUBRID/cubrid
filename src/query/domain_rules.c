@@ -17,7 +17,7 @@
  */
 
 #include "config.h"
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #include "object_domain_convert.h"
 #include "db_date_status.h"
 #include "db_function.hpp"

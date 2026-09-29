@@ -111,7 +111,7 @@
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
 #if defined(SA_MODE)
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #endif /* SA_MODE */
 
 #define BOOT_FORMAT_MAX_LENGTH 500

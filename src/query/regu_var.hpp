@@ -176,7 +176,6 @@ const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may re
 						 * at load for a stable regu */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
-const int REGU_VARIABLE_GATE = 0x4000; /* the execution gate takes this host variable's domain from its value */
 const int REGU_VARIABLE_OPEN = 0x8000;	/* load-derived: the regu's compiled domain is open, so the inline
 					 * fetch_peek_dbval () peeks it only once it took its domain in this execution
 					 * (qexec_node_took_domain) */
@@ -260,6 +259,7 @@ inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
+inline bool regu_is_variable_pos (const regu_variable_node *regu);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -291,5 +291,13 @@ REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
       return TP_DOMAIN_TYPE (regu->domain);
     }
   return DB_TYPE_UNKNOWN;
+}
+
+/* A variable POS: a host variable position whose domain the compiler left VARIABLE. The execution takes its domain
+ * from the bound value before its first row. */
+bool
+regu_is_variable_pos (const regu_variable_node *regu)
+{
+  return regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE;
 }
 #endif /* _REGU_VAR_HPP_ */

@@ -798,7 +798,7 @@ eval_direct_leaves (void)
 static constexpr EVAL_DIRECT_LEAVES eval_Direct_leaves = eval_direct_leaves ();
 /* *INDENT-ON* */
 
-/* domain_compare_leaves () - declared with DOMAIN_COMPARE (domain_resolver.h); the load and the gate call it where
+/* domain_compare_leaves () - declared with DOMAIN_COMPARE (domain_rules.h); the load and the gate call it where
  * they decide a term's record, and the leaves it names are these */
 void
 domain_compare_leaves (DOMAIN_COMPARE * compare)

@@ -48,7 +48,7 @@
 #include "system_parameter.h"
 #include "tz_support.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #endif
 
 #include <utility>

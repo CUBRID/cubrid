@@ -266,7 +266,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
   xasl->query_in_progress = false;
-  domain_plan_error = stx_build_domain_plan (thread_p, xasl, unpack_info_p, false);
+  domain_plan_error = stx_build_domain_plan (thread_p, xasl, unpack_info_p);
   if (domain_plan_error != NO_ERROR)
     {
       stx_set_xasl_errcode (thread_p, domain_plan_error);
@@ -5698,7 +5698,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
-  if (xasl_unpack_info->index_stream && REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_GATE))
+  if (xasl_unpack_info->index_stream && regu_is_variable_pos (regu_var))
     {
       /* a filter or function index stream has no gate to decide it (stx_index_stream_rejected) */
       xasl_unpack_info->index_stream_gate = true;
@@ -6958,12 +6958,6 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
       ptr = or_unpack_int (ptr, &tmp);
       regu->type = (REGU_DATATYPE) tmp;
       regu->domain = domain;
-      if (regu->type == TYPE_POS_VALUE && domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-	{
-	  /* the item stream carries no flags: a slot row of an all-slot VALUES column is a gate slot, as the
-	   * compiler marked it (GATE == the VARIABLE placeholder on a slot) */
-	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_GATE);
-	}
 
       if (regu->type != TYPE_DBVAL && regu->type != TYPE_INARITH && regu->type != TYPE_POS_VALUE)
 	{

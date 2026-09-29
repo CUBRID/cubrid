@@ -1255,9 +1255,8 @@ qdump_print_value (REGU_VARIABLE * value_p)
       const DOMAIN_PLAN_ITEM *item = value_p->domain_plan;
       const char *classes[] = { "?", "CONST", "ROW", "CORR", "VOLATILE" };
       const char *policies[] = { "ERROR", "NULL", "KEEP" };
-      fprintf (foutput, "{plan class=%s slot=%d ref=%d conv=%s fail=%s flags=0x%03x}",
-	       classes[item->operand_class], item->slot, item->ref, domain_converter_name (item->fixed.conv[0]),
-	       policies[item->fail], item->flags);
+      fprintf (foutput, "{plan class=%s slot=%d ref=%d fail=%s flags=0x%03x}", classes[item->operand_class],
+	       item->slot, item->ref, policies[item->fail], item->flags);
     }
 #endif
   if (REGU_VARIABLE_IS_FLAGED (value_p, REGU_VARIABLE_HIDDEN_COLUMN))

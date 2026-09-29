@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef _DOMAIN_RESOLVER_H_
-#define _DOMAIN_RESOLVER_H_
+#ifndef _DOMAIN_RULES_H_
+#define _DOMAIN_RULES_H_
 
 #if !defined (SERVER_MODE) && !defined (SA_MODE)
 #error Belongs only to server or stand-alone modules.
@@ -407,4 +407,4 @@ size_t domain_element_table_bytes (const DOMAIN_COMPARE_KEY * item, const DOMAIN
 int domain_resolve_element_table (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys,
 				  DOMAIN_ELEMENT_TABLE * table, size_t bytes);
 
-#endif /* _DOMAIN_RESOLVER_H_ */
+#endif /* _DOMAIN_RULES_H_ */

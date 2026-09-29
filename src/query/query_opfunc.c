@@ -2480,11 +2480,10 @@ qdata_assert_precast_planned (OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * prec
 	}
       if (!same)
 	{
-	  fprintf (stderr, "planned pre-cast: opcode=%d operand=%d value=%d/%d planned=%d develop=%d conv=%s/%s\n",
+	  fprintf (stderr, "planned pre-cast: opcode=%d operand=%d value=%d/%d planned=%d develop=%d\n",
 		   (int) opcode, i, (int) DB_VALUE_DOMAIN_TYPE (values[0]), (int) DB_VALUE_DOMAIN_TYPE (values[1]),
 		   planned != NULL ? (int) TP_DOMAIN_TYPE (planned) : -1,
-		   develop.operand_domain[i] != NULL ? (int) TP_DOMAIN_TYPE (develop.operand_domain[i]) : -1,
-		   domain_converter_name (precast->conv[i]), domain_converter_name (develop.conv[i]));
+		   develop.operand_domain[i] != NULL ? (int) TP_DOMAIN_TYPE (develop.operand_domain[i]) : -1);
 	}
       assert (same);
     }
@@ -2505,9 +2504,8 @@ qdata_assert_precast_done (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, cons
   domain_resolve_precast (opcode, operands, &precast);
   if (precast.conv[0] != NULL || precast.conv[1] != NULL)
     {
-      fprintf (stderr, "unplanned pre-cast: opcode=%d values=%d/%d conv=%s/%s\n", (int) opcode,
-	       (int) DB_VALUE_DOMAIN_TYPE (dbval1_p), (int) DB_VALUE_DOMAIN_TYPE (dbval2_p),
-	       domain_converter_name (precast.conv[0]), domain_converter_name (precast.conv[1]));
+      fprintf (stderr, "unplanned pre-cast: opcode=%d values=%d/%d\n", (int) opcode,
+	       (int) DB_VALUE_DOMAIN_TYPE (dbval1_p), (int) DB_VALUE_DOMAIN_TYPE (dbval2_p));
     }
   assert (precast.conv[0] == NULL && precast.conv[1] == NULL);
 }

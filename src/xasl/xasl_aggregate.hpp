@@ -29,7 +29,7 @@ struct domain_plan_item;
 #include "query_sum_accumulator.h"
 #include "storage_common.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #endif
 
 // forward definitions

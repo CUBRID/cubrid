@@ -106,7 +106,7 @@
 #ifdef CCI_XA
 #include "dblink_2pc_daemon.h"
 #endif /* CCI_XA */
-#include "domain_resolver.h"
+#include "domain_rules.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

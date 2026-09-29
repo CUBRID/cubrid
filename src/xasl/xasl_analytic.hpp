@@ -31,7 +31,7 @@ struct domain_plan_item;
 #include "regu_var.hpp"             // regu_variable_node
 #include "storage_common.h"         // QUERY_OPTIONS
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "domain_resolver.h"        // RESOLVED_DOMAIN
+#include "domain_rules.h"           // RESOLVED_DOMAIN
 #endif
 
 // forward definitions

@@ -57,7 +57,7 @@
 #include "tz_support.h"
 #include "util_func.h"
 #if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #endif
 
 #include <algorithm>

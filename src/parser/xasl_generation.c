@@ -6531,7 +6531,6 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  /* no sibling fixes this slot; the execution gate takes the
 	   * bound value's own domain, once per execution. */
 	  regu->domain = &tp_Variable_domain;
-	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_GATE);
 	}
 
       exptyp = TP_DOMAIN_TYPE (regu->domain);
@@ -6546,7 +6545,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 					      TP_DOMAIN_COLLATION (regu->domain));
 	    }
 	}
-      else if (typ != DB_TYPE_NULL && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_GATE)
+      else if (typ != DB_TYPE_NULL && !regu_is_variable_pos (regu)
 	       && (node->info.host_var.index >= parser->host_var_count || node->data_type != NULL)
 	       && (typ != exptyp
 		   || (TP_TYPE_HAS_COLLATION (typ) && TP_TYPE_HAS_COLLATION (exptyp)
@@ -6586,7 +6585,6 @@ pt_gate_limit_regu (REGU_VARIABLE * regu)
   if (regu != NULL && regu->type == TYPE_POS_VALUE)
     {
       regu->domain = &tp_Variable_domain;
-      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_GATE);
     }
   return regu;
 }

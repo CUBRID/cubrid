@@ -40,7 +40,7 @@
 #include "object_representation.h"
 #include "set_object.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "domain_resolver.h"
+#include "domain_rules.h"
 #endif
 
 #if !defined(SERVER_MODE)

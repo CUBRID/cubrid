@@ -43,19 +43,6 @@
  * reads its producer: the producer's gate slot (ALIAS) or its domain. The collation axis: a string the
  * compiler typed but whose collation the values give (LEAVE, ENFORCE) is a slot recording its bound value's domain,
  * a node the gate decides from its operands (COLLATION_GATE), or a consumer reading its producer. */
-static const bool domain_plan_check_load = true;
-struct DOMAIN_PLAN_LOAD_EXCEPTION
-{
-  const char *site;
-  const char *action;
-};
-static const DOMAIN_PLAN_LOAD_EXCEPTION domain_plan_load_exceptions[] = {
-  {"TYPE_REGU_VAR_LIST", "no item; visit children"},
-  {"REGU_VARIABLE_ANALYTIC_WINDOW", "alias list column"},
-  {"set-operation position", "alias producer"},
-  {"TYPE_LIST_ID / TYPE_ORDERBY_NUM", "no value-domain item"},
-  {"collection constructor", "static element domains"}
-};
 
 /* Temporary load records are freed before publishing the plan. No record, owner
  * link or traversal scratch survives in the hot arrays. Shared XASLs are marked
@@ -1046,7 +1033,7 @@ domain_walk_out (DOMAIN_LOAD_CONTEXT * ctx, OUTPTR_LIST * list)
 /* field_bottom: a FIELD node whose left operand is a value, not a nested FIELD (REGU_VARIABLE_FIELD_COMPARE); a node
  * met without its regu plans both of its comparisons */
 static void
-domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_gate = false, bool field_bottom = true)
+domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bottom = true)
 {
   if (arith == NULL || ctx->failed)
     {
@@ -1162,15 +1149,15 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
   const bool late_bound = arith->domain != NULL && TP_DOMAIN_TYPE (arith->domain) == DB_TYPE_VARIABLE;
   /* a string the compiler typed but whose collation its values give (LEAVE, ENFORCE) is decided by the gate
    * from its operands' decided domains, as a gate-dependent node on the collation axis */
-  const bool collation_open = !marked_gate && !late_bound && domain_character_open (arith->domain);
+  const bool collation_open = !late_bound && domain_character_open (arith->domain);
   /* an addition, subtraction, multiplication or division the compiler typed over an operand it did
    * not (LIMIT's offset + count, an ORDERBY_NUM bound over a bind) keeps its compiled domain; the gate decides its
    * operands' pre-cast from their decided domains */
-  const bool precast_open = domain_precast_operator (arith->opcode) && !marked_gate && !late_bound && !collation_open
+  const bool precast_open = domain_precast_operator (arith->opcode) && !late_bound && !collation_open
     && operands[0] != NULL && operands[1] != NULL && operands[0]->domain_plan != NULL
     && operands[1]->domain_plan != NULL && (!domain_type_is_fixed (operands[0]->domain)
 					    || !domain_type_is_fixed (operands[1]->domain));
-  if (item != NULL && (marked_gate || late_bound || collation_open || precast_open))
+  if (item != NULL && (late_bound || collation_open || precast_open))
     {
       DOMAIN_LOAD_RECORD *record = domain_record_of (item);
       const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
@@ -1206,8 +1193,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     }
   /* the pre-cast of a node the compiler typed - its collation may still be the gate's - is the
    * resolver's over its operands' compiled domains */
-  if (domain_precast_operator (arith->opcode) && !marked_gate && !late_bound && operands[0] != NULL
-      && operands[1] != NULL)
+  if (domain_precast_operator (arith->opcode) && !late_bound && operands[0] != NULL && operands[1] != NULL)
     {
       domain_plan_precast (item, arith->opcode, operands[0]->domain, operands[1]->domain);
     }
@@ -1426,8 +1412,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       break;
     case TYPE_INARITH:
     case TYPE_OUTARITH:
-      domain_walk_arith (ctx, regu->value.arithptr, REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_GATE),
-			 REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_FIELD_COMPARE));
+      domain_walk_arith (ctx, regu->value.arithptr, REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_FIELD_COMPARE));
       if (regu->value.arithptr->domain_plan != NULL)
 	{
 	  cls = (DOMAIN_OPERAND_CLASS) regu->value.arithptr->domain_plan->operand_class;
@@ -1529,7 +1514,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     {
       record->cold.val_pos = regu->value.val_pos;
     }
-  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_GATE) && regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
+  if (regu_is_variable_pos (regu))
     {
       item->flags |= DOMAIN_PLAN_GATE;
       item->slot = ctx->plan->n_slots++;
@@ -3127,7 +3112,7 @@ domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *recor
     }
   if (item != NULL && item->slot >= 0)
     {
-      if (plan->slot_flags[item->slot] & DOMAIN_SLOT_VOLATILE)
+      if (plan->slot_volatile[item->slot])
 	{
 	  *volatile_reads |= plan->slot_volatile_reads[item->slot];
 	}
@@ -3232,7 +3217,7 @@ domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const
     }
   if (column->slot >= 0)
     {
-      if (plan->slot_flags[column->slot] & DOMAIN_SLOT_VOLATILE)
+      if (plan->slot_volatile[column->slot])
 	{
 	  *volatile_reads |= plan->slot_volatile_reads[column->slot];
 	}
@@ -4796,7 +4781,7 @@ domain_assign_references (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
 }
 
 int
-stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_INFO * unpack_info, bool is_pred_stream)
+stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_INFO * unpack_info)
 {
   if (root->domain_plan != NULL)
     {
@@ -4877,13 +4862,13 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   plan->volatile_refs =
     (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_volatile, sizeof (*plan->volatile_refs));
   plan->slot_gate_node = (int *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_gate_node));
-  plan->slot_flags = (unsigned char *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_flags));
+  plan->slot_volatile = (bool *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_volatile));
   plan->slot_volatile_reads =
     (unsigned long long *) domain_plan_alloc (thread_p, plan->n_slots, sizeof (*plan->slot_volatile_reads));
   ctx.failed = ctx.failed || (plan->n_items && (!plan->items || !plan->items_cold))
     || (plan->n_gate_nodes && (!plan->gate_nodes || !plan->gate_links))
     || (plan->n_const_refs && !plan->const_refs) || (plan->n_volatile && !plan->volatile_refs)
-    || (plan->n_slots && (!plan->slot_gate_node || !plan->slot_flags || !plan->slot_volatile_reads));
+    || (plan->n_slots && (!plan->slot_gate_node || !plan->slot_volatile || !plan->slot_volatile_reads));
   int constant = 0, vol = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx.head; r != NULL; r = r->next)
     {
@@ -4922,7 +4907,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
       for (int i = 0; i < plan->n_slots; i++)
 	{
 	  plan->slot_gate_node[i] = -1;
-	  plan->slot_flags[i] = 0;
+	  plan->slot_volatile[i] = false;
 	  plan->slot_volatile_reads[i] = 0;
 	}
       int n_reads = 0;
@@ -4946,12 +4931,8 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  link->consumer = r->consumer;
 	  link->argument = r->argument;
 	  /* a node's decision inherits its sources' limits (producers come first, so theirs are set) */
-	  unsigned char flags = 0;
+	  bool is_volatile = r->item.operand_class == OPERAND_VOLATILE;
 	  unsigned long long reads = 0;
-	  if (r->item.operand_class == OPERAND_VOLATILE)
-	    {
-	      flags |= DOMAIN_SLOT_VOLATILE;
-	    }
 	  if (r->cold.opcode == T_EVALUATE_VARIABLE)
 	    {
 	      /* a session variable read is its own source: the decisions above it wait for G1 step 7b, where the
@@ -4966,13 +4947,13 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	      link->literal[i] = r->literal[i];
 	      if (source->item.slot >= 0)
 		{
-		  flags |= plan->slot_flags[source->item.slot];
+		  is_volatile = is_volatile || plan->slot_volatile[source->item.slot];
 		  reads |= plan->slot_volatile_reads[source->item.slot];
 		}
 	    }
 	  plan->gate_nodes[g] = &plan->items[r->index];
 	  plan->slot_gate_node[r->item.slot] = g;
-	  plan->slot_flags[r->item.slot] = flags;
+	  plan->slot_volatile[r->item.slot] = is_volatile;
 	  plan->slot_volatile_reads[r->item.slot] = reads;
 	}
     }
@@ -5046,10 +5027,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  plan->const_ref_pos[i] = plan->items_cold[plan->const_refs[i] - plan->items].val_pos;
 	}
     }
-  /* Predicate streams have no XASL root today; no persisted regu/arith/predicate layout changes here. */
-  (void) is_pred_stream;
-  (void) domain_plan_load_exceptions;
-  if (domain_plan_check_load && !domain_plan_validate (plan))
+  if (!domain_plan_validate (plan))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load",
 	      root->query_alias != NULL ? root->query_alias : "", plan->n_items, pr_type_name (DB_TYPE_VARIABLE));
