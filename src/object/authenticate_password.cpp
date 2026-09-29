@@ -557,7 +557,6 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 
       if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value) && db_get_string (&nm_value) != NULL)
 	{
-#define CUBRID_ENABLE_LEGACY_PASSWORD_TEST
 #if defined(CUBRID_ENABLE_LEGACY_PASSWORD_TEST)
 #ifdef NDEBUG
 #error "Notice: CUBRID_ENABLE_LEGACY_PASSWORD_TEST is enabled."
