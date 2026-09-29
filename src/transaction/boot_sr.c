@@ -3218,8 +3218,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
   if (!adm_prg_file_name.empty ())
     {
-      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name.c_str (), "migrate_", strlen ("migrate_")) == 0)
+      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0)
 	{
 	  check_coll_and_timezone.check_db_coll = false;
 	}
@@ -5980,8 +5979,6 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "ADMIN_UTILITY";
     case DB_CLIENT_TYPE_ADMIN_CSQL:
       return "ADMIN_CSQL";
-    case DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG:
-      return "ADMIN_CSQL_REBUILD_CATALOG";
     case DB_CLIENT_TYPE_LOG_COPIER:
       return "LOG_COPIER";
     case DB_CLIENT_TYPE_LOG_APPLIER:
