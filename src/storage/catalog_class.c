@@ -1309,7 +1309,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
     }
 
   /* id */
-  or_advance (buf_p, OR_INT_SIZE);
+  tp_Integer.data_readval (buf_p, &attrs[12].value, NULL, -1, true, NULL, 0);
 
   /* type */
   tp_Integer.data_readval (buf_p, &attrs[4].value, NULL, -1, true, NULL, 0);
