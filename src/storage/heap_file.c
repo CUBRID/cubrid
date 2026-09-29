@@ -916,10 +916,6 @@ static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCAN
 #endif /* ENABLE_UNUSED_FUNCTION */
 static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
 						   HEAP_PREV_VERSION_WALK * walk, RECDES * recdes);
-#if !defined (NDEBUG)
-static void heap_assert_undo_record_as_copied (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
-					       const RECDES * recdes);
-#endif /* !NDEBUG */
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
@@ -25684,47 +25680,6 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   return NO_ERROR;
 }
 
-#if !defined (NDEBUG)
-/*
- * heap_assert_undo_record_as_copied () - check an undo image read in place against the copy path's own parse of the
- *   same record in a page copy; sampled, since the check pays the very page copy the in-place read saves, and it
- *   adds to Num_log_page_fetches
- */
-static void
-heap_assert_undo_record_as_copied (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa, const RECDES * recdes)
-{
-  static thread_local unsigned int n_calls = 0;
-  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  LOG_PAGE *log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-  RECDES copied;
-  SCAN_CODE scan;
-
-  if ((++n_calls & 0xf) != 0)
-    {
-      return;
-    }
-
-  copied.area_size = MAX (recdes->length, 1);
-  copied.data = (char *) malloc (copied.area_size);
-  if (copied.data == NULL)
-    {
-      return;
-    }
-
-  if (logpb_fetch_page (thread_p, version_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-    {
-      assert (false);
-      free_and_init (copied.data);
-      return;
-    }
-
-  scan = log_get_undo_record (thread_p, log_page_p, *version_lsa, &copied);
-  assert (scan == S_SUCCESS && copied.type == recdes->type && copied.length == recdes->length
-	  && memcmp (copied.data, recdes->data, recdes->length) == 0);
-  free_and_init (copied.data);
-}
-#endif /* !NDEBUG */
-
 /*
  * heap_get_undo_record_for_version () - Read the undo image of one previous version, from wherever that
  *				         version currently lives.
@@ -25801,9 +25756,6 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
     {
       if (scan == S_SUCCESS)
 	{
-#if !defined (NDEBUG)
-	  heap_assert_undo_record_as_copied (thread_p, version_lsa, recdes);
-#endif /* !NDEBUG */
 	  walk->n_fetches_skipped++;
 	}
       return scan;
