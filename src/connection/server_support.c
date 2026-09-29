@@ -93,14 +93,6 @@
 #endif /* !defined (SERVER_MODE) */
 
 
-/* Rounds one transaction thread may spend on one connection before it goes back
- * to the pool. A defensive bound, not a correctness one: a stay already ends on
- * shutdown, on a queued task for this connection's pool core, on a failed claim
- * and on an empty window. What it bounds is how long the pool goes without a
- * completion from this thread, because one stay is one css_server_task: with a
- * 2 ms window, 64 rounds of short requests stay well inside the pool's 500 ms
- * progress interval (CAPACITY_ADJUSTMENT_INTERVAL). */
-#define CSS_STICKY_MAX_ROUNDS 64
 #define CSS_WAIT_COUNT 5	/* # of retry to connect to master */
 #define CSS_GOING_DOWN_IMMEDIATELY "Server going down immediately"
 
@@ -2162,7 +2154,6 @@ css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref)
  *   The thread running here was dispatched to the core of conn.idx, so requests run
  *   here keep the connection's core. The pool counts one completion per stay, not
  *   per request, so a stay delays this thread's progress signal by its own length;
- *   the window and CSS_STICKY_MAX_ROUNDS keep that under the pool's 500 ms interval.
  *   A queued task on that core ends the stay at the next round, so a stay cannot
  *   make the core look stalled while it has demand.
  */
@@ -2170,7 +2161,7 @@ static void
 css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
   cubconn::result status;
-  int window_ms, received, i, rounds;
+  int window_ms, received, i;
   bool handed_back;
 
   window_ms = prm_get_integer_value (PRM_ID_CSS_STICKY_RECEIVE_WINDOW_MS);
@@ -2179,7 +2170,7 @@ css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
       return;
     }
 
-  for (rounds = 0; rounds < CSS_STICKY_MAX_ROUNDS; rounds++)
+  for (;;)
     {
       /* the connection's own state is checked under cmutex by the claim below */
       if (thread_ref.shutdown)

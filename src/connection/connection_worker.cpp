@@ -789,7 +789,13 @@ namespace cubconn::connection
 	return result::Error;
       }
     ctx->m_recv.m_recv_busy.store (false, std::memory_order_relaxed);
-    if ((hand_back || ctx->m_recv.m_missed_edge) && conn.worker != nullptr && conn.context == ctx)
+    if (!hand_back && ctx->m_recv.m_missed_edge)
+      {
+	/* the dropped edge is usually data this thread already drained */
+	po.revents = 0;
+	hand_back = (poll (&po, 1, 0) != 0);
+      }
+    if (hand_back && conn.worker != nullptr && conn.context == ctx)
       {
 	message request;
 
