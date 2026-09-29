@@ -2051,6 +2051,12 @@ qo_modify_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 {
   RESET_LOCATION_INFO *infop = (RESET_LOCATION_INFO *) arg;
 
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
   if (node->node_type == PT_EXPR && node->info.expr.location == infop->start)
     {
       node->info.expr.location = infop->end;
