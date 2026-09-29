@@ -80,6 +80,7 @@ namespace cubmethod
       // bool is_updatable;		/* Cursor updatable ? */
       bool m_is_oid_included;		/* Cursor has first hidden oid col. */
       bool m_is_opened;
+      bool m_is_query_ended;		/* query entry is already ended by close () */
 
       int m_fetch_count; /* # of rows to fetch */
   };
