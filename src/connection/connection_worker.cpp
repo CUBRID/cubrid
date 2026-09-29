@@ -648,12 +648,8 @@ namespace cubconn::connection
     ctx->m_recv.m_command_flags = 0;
   }
 
-  /*
-   * worker::sticky_inline_abort () - give back what the counted requests took.
-   *   Each one holds an add_pending_request () that nobody will consume now, and
-   *   the connection never reaches zero pending without this. Caller holds
-   *   m_conn->rmutex.
-   */
+  /* give back the add_pending_request () of each counted request. Caller holds
+   * m_conn->rmutex. */
   void worker::sticky_inline_abort (context *ctx)
   {
     for (int i = 0; i < ctx->m_recv.m_inline_count; i++)
@@ -664,12 +660,8 @@ namespace cubconn::connection
     ctx->m_recv.m_inline_count = 0;
   }
 
-  /*
-   * worker::sticky_flush_counted_to_pool () - hand requests that were counted for
-   *   inline execution to the worker pool after all. css_push_server_task () takes
-   *   its own add_pending_request (), so the counted one is given back first.
-   *   Caller holds m_conn->rmutex.
-   */
+  /* css_push_server_task () takes its own add_pending_request (), so the counted
+   * one is given back first. Caller holds m_conn->rmutex. */
   void worker::sticky_flush_counted_to_pool (context *ctx, int count)
   {
     for (int i = 0; i < count; i++)
@@ -679,12 +671,8 @@ namespace cubconn::connection
       }
   }
 
-  /*
-   * worker::claim_reading () - take this socket for the worker thread. from_edge
-   *   marks a caller acting on an edge-triggered event, whose level is consumed
-   *   even when the socket is busy, so its owner is told to hand it back. Returns
-   *   false when someone else owns the socket.
-   */
+  /* from_edge marks a caller acting on an edge whose level is consumed even when
+   * the socket is busy, so its owner is told to hand it back. */
   bool worker::claim_reading (context *ctx, bool from_edge)
   {
     bool claimed;
@@ -713,15 +701,13 @@ namespace cubconn::connection
   }
 
   /*
-   * worker::sticky_poll_and_receive () - claim this connection's socket, wait up to
-   *   window_ms for the next request, receive it on the calling (transaction) thread
-   *   and give the socket back. count_out gets the number of complete requests the
-   *   caller must run, handed_back_out whether the socket went back to the worker
-   *   (an edge it dropped, data left over, or a failure) and this thread must stop
-   *   waiting on it. status reports the socket itself: Ok, Error or ClosedConnection.
+   * worker::sticky_poll_and_receive () - claim this connection's socket, wait up
+   *   to window_ms for the next request, receive it on the calling thread and give
+   *   the socket back. count_out is how many complete requests the caller must
+   *   run, handed_back_out whether the socket went back to the worker and this
+   *   thread must stop waiting on it.
    *
-   *   Static because the caller cannot read conn.worker safely on its own: the
-   *   pointer changes on handoff and is only stable under conn.cmutex, which this
+   *   Static because conn.worker is only stable under conn.cmutex, which this
    *   function takes anyway.
    */
   result worker::sticky_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
@@ -820,17 +806,10 @@ namespace cubconn::connection
 
   /*
    * worker::sticky_drain () - the reception steps of handle_reception (), run on a
-   *   transaction thread that owns the socket. It touches no worker-private state,
-   *   which also means PACKET_COUNT and BLOCKED_RMUTEX in the worker's m_stats miss
-   *   whatever a sticky receiver takes; MQ_RECV_RECHECK is what shows how often the
-   *   socket comes back to the worker.
-   *
-   *   The context's own m_stats are written here only by the receiver, and the
-   *   worker and this thread never receive at the same time -- m_recv_busy sees to that
-   *   through m_conn->cmutex, whose release and acquire order the two. LAST_ACTIVE_NS
-   *   is deliberately not written from here: no one reads it (the coordinator scores
-   *   a worker by BYTES_IN_TOTAL, BYTES_OUT_TOTAL and the budget hits), and the
-   *   worker updates it without that lock, so a write here would be a plain race.
+   *   transaction thread that owns the socket. It writes no worker-private state,
+   *   so the worker's m_stats do not count what a sticky receiver takes.
+   *   LAST_ACTIVE_NS is left alone for the same reason: the worker updates it
+   *   without m_conn->cmutex, so a write from here would race.
    */
   result worker::sticky_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out)
   {
@@ -977,11 +956,10 @@ namespace cubconn::connection
 
   /*
    * worker::is_sticky_receiving () - true while a transaction thread may be waiting
-   *   on this connection's socket in css_sticky_receive_loop (). In that wait the
-   *   thread carries no transaction index, so net_server_active_workers () cannot
-   *   see it; the working task count can, because the task that opened the wait has
-   *   not ended yet. The caller owes the shutdown guard: during shutdown the count
-   *   stays positive because retired tasks never call end_working_task ().
+   *   on this connection's socket. The waiting thread carries no transaction index,
+   *   so only the working task count can see it. The caller owes the shutdown
+   *   guard: during shutdown that count stays positive because retired tasks never
+   *   call end_working_task ().
    */
   bool worker::is_sticky_receiving (context *ctx)
   {

@@ -2085,9 +2085,14 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 }
 
 /*
- * css_run_one_request () - put the thread in the state a task starts in, then run
- *   one request on this connection. Shared by css_server_task::execute () and the
- *   sticky loop so that the two cannot drift apart.
+ * css_run_one_request() - put the thread in the state a task starts in, then
+ *                         run one request on this connection
+ *   return: void
+ *   thread_ref(in):
+ *   conn_ref(in):
+ *
+ * Note: Shared by css_server_task::execute () and css_sticky_receive_loop ()
+ *       so that the two cannot drift apart.
  */
 static void
 css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
@@ -2118,13 +2123,16 @@ css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 }
 
 /*
- * css_recycle_between_inline_requests () - apply the reset the worker pool puts
- *   between two tasks. recycle_context () also clears entry::shutdown, which
- *   inside one task would drop a stop the pool has already asked for, so this
- *   puts that one field back. The write is conditional because another thread
- *   raises the same flag: worker_pool::stop_execution () may set it while this
- *   thread is inside recycle_context (), and an unconditional store would drop
- *   that stop too.
+ * css_recycle_between_inline_requests() - apply the reset the worker pool puts
+ *                                         between two tasks
+ *   return: void
+ *   thread_ref(in):
+ *
+ * Note: recycle_context () also clears entry::shutdown, which inside one task
+ *       would drop a stop the pool has already asked for, so this puts that
+ *       one field back. The write is conditional because worker_pool::
+ *       stop_execution () may raise the same flag while this thread is inside
+ *       recycle_context ().
  */
 static void
 css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref)
@@ -2139,23 +2147,21 @@ css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref)
 }
 
 /*
- * css_sticky_receive_loop () - having answered a request, wait briefly on the
- *   connection's own socket for the next one and run it on this thread, so an
- *   active connection is served without a round trip through the connection
- *   worker. Window: sticky_receive_window_ms (0 disables).
+ * css_sticky_receive_loop() - having answered a request, wait on this
+ *                             connection's socket for the next one and run it
+ *                             on this thread
+ *   return: void
+ *   thread_ref(in):
+ *   conn_ref(in):
  *
- *   worker::sticky_poll_and_receive () owns the socket protocol; this loop only
- *   decides whether to keep waiting and runs what came in.
+ * Note: The window is sticky_receive_window_ms and 0 disables the loop.
+ *       worker::sticky_poll_and_receive () owns the socket protocol; this loop
+ *       only decides whether to keep waiting and runs what came in.
  *
- *   The connection cannot be closed underneath the loop: the task that opened it
- *   has not called end_working_task () yet, and
- *   worker::handle_connection_close () defers the close while a task is working.
- *
- *   The thread running here was dispatched to the core of conn.idx, so requests run
- *   here keep the connection's core. The pool counts one completion per stay, not
- *   per request, so a stay delays this thread's progress signal by its own length;
- *   A queued task on that core ends the stay at the next round, so a stay cannot
- *   make the core look stalled while it has demand.
+ *       The connection cannot close underneath the loop. The task that opened
+ *       it has not called end_working_task () yet, and
+ *       worker::handle_connection_close () defers the close while a task is
+ *       working.
  */
 static void
 css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
