@@ -239,6 +239,7 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 
   info->subq = NULL;
   info->on_cond = NULL;
+  info->outer_spec = NULL;
   info->is_anti = false;
   info->is_in_form = false;
 
@@ -388,6 +389,7 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       if (ref == 0)
 	{
 	  n_outer++;
+	  info->outer_spec = spec;
 	}
     }
 
@@ -453,7 +455,7 @@ exit:
 void
 qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec, *on_conds;
+  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec, *after, *on_conds;
   QO_UNNEST_INFO info;
   short loc;
 
@@ -529,16 +531,26 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 
       inner_spec->info.spec.join_type = (info.is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
 
-      /* count the position rather than read the last spec's location: a spec the rewriter appended carries
-       * the unset -1 (pt_bind_names () is long past), and qo_analyze_term () indexes the node array by
-       * location, so it must equal the FROM position */
+      after = info.outer_spec;
+      while (after->next != NULL && after->next->info.spec.join_type != PT_JOIN_NONE)
+	{
+	  after = after->next;
+	}
+
+      /* count the position rather than read a location: a spec the rewriter appended carries the unset -1
+       * (pt_bind_names () is long past), and qo_analyze_term () indexes the node array by location, so it must
+       * equal the FROM position */
       loc = 0;
-      for (spec = node->info.query.q.select.from; spec->next != NULL; spec = spec->next)
+      for (spec = node->info.query.q.select.from; spec != after; spec = spec->next)
 	{
 	  loc++;
 	}
-      spec->next = inner_spec;
       inner_spec->info.spec.location = (short) (loc + 1);
+
+      qo_insert_spec_location (parser, after->next, node, on_conds);
+
+      inner_spec->next = after->next;
+      after->next = inner_spec;
 
       /* stamp the moved ON as pt_bind_names () would: this spec's location on every term, plus (ANTI only)
        * PT_EXPR_INFO_ANTI_JOIN_ON so qo_reduce_equality_terms () keeps them as join predicates */

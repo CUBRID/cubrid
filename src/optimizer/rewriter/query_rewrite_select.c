@@ -2110,6 +2110,53 @@ qo_reset_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query
 }
 
 /*
+ * qo_insert_spec_location () - make room at 'spec' for a spec the caller is about to link in front of it: move
+ *      the locations of 'spec' and every spec behind it up by one, with the conjuncts stamped with them; the
+ *      counterpart of qo_reset_spec_location ()
+ *   return:
+ *   parser(in):
+ *   spec(in): the first spec that moves, i.e. the one the newcomer goes in front of
+ *   query(in): the SELECT whose WHERE holds the conjuncts stamped with those locations
+ *   on_conds(in): conjuncts stamped the same way but not yet appended to that WHERE
+ *
+ * Note: the specs behind 'spec' move first.  In list order a location would be carried up twice, once with
+ *   its own spec and once more with the next one.
+ */
+void
+qo_insert_spec_location (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_NODE * on_conds)
+{
+  short curr_loc, after_loc;
+  PT_NODE *where;
+  RESET_LOCATION_INFO locate_info;
+
+  if (spec == NULL)
+    {
+      return;
+    }
+
+  qo_insert_spec_location (parser, spec->next, query, on_conds);
+
+  curr_loc = spec->info.spec.location;
+  after_loc = curr_loc + 1;
+
+  if (curr_loc < 0)
+    {
+      /* never numbered: a derived table the rewriter appended */
+      return;
+    }
+
+  /* reset location of spec */
+  spec->info.spec.location = after_loc;
+
+  /* reset location of predicate */
+  locate_info.start = curr_loc;
+  locate_info.end = after_loc;
+  where = query->info.query.q.select.where;
+  (void) parser_walk_tree (parser, where, qo_modify_location, &locate_info, NULL, NULL);
+  (void) parser_walk_tree (parser, on_conds, qo_modify_location, &locate_info, NULL, NULL);
+}
+
+/*
  * qo_reduce_outer_joined_tbls () - reduce outer joined tables with unique join predicates
  *   return:
  *   parser(in):
