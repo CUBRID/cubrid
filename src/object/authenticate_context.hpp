@@ -119,12 +119,12 @@ class EXPORT_IMPORT authenticate_context
     MOP information_schema_user;
 
     /*
-     * select_catalog_user
+     * cub_select_catalog_user
      *
      * This is the system user whose members see every row of the catalog views (db_* and INFORMATION_SCHEMA).
      * The catalog classes (_db_*) stay unreadable to them. This user cannot login.
      */
-    MOP select_catalog_user;
+    MOP cub_select_catalog_user;
 
     /*
     * Au_user

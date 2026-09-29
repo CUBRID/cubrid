@@ -49,7 +49,7 @@ const authenticate_context::system_user authenticate_context::system_users[] =
     AU_INFORMATION_SCHEMA_USER_NAME, &authenticate_context::information_schema_user, false,
     &authenticate_context::init_information_schema_user
   },
-  {AU_SELECT_CATALOG_USER_NAME, &authenticate_context::select_catalog_user, false, nullptr},
+  {AU_CUB_SELECT_CATALOG_USER_NAME, &authenticate_context::cub_select_catalog_user, false, nullptr},
 };
 
 void
