@@ -8578,7 +8578,7 @@ qo_snapshot_apply (QO_ENV * env)
   DB_VALUE key_val;
   UINTPTR spec_id;
   double sum, one, nf_other, sel;
-  bool ok, success;
+  bool ok, term_ok, success;
 
   threshold = qo_snapshot_threshold ();
   if (threshold <= 0)
@@ -8614,26 +8614,36 @@ qo_snapshot_apply (QO_ENV * env)
 	  continue;
 	}
 
+      /* A planning probe must not leave an error in the global error state (the convention the
+       * histogram probes follow, see like_match_value ()): the fetch and the attribute reads below
+       * er_set () on failure (au_fetch_class (), obj_get ()), and every failure here is a fallback,
+       * not a query error. Everything from the fetch to the release runs under one push/pop. */
+      er_stack_push ();
       objs = db_get_all_objects (QO_NODE_INFO (node)->info[0].mop);
       if (objs == NULL)
 	{
+	  er_stack_pop ();
 	  continue;
 	}
-      survivors = (DB_OBJECT **) malloc (sizeof (DB_OBJECT *) * threshold);
+      /* the statistics said this many rows, and a table that has grown past them is given up below,
+       * so the survivors can never outnumber ncard */
+      survivors = (DB_OBJECT **) malloc (sizeof (DB_OBJECT *) * QO_NODE_NCARD (node));
       if (survivors == NULL)
 	{
 	  db_objlist_free (objs);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_OBJECT *) * threshold);
+	  er_stack_pop ();
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (DB_OBJECT *) * QO_NODE_NCARD (node));
 	  return;
 	}
 
-      /* apply the sargs row by row; the statistics said <= threshold rows, but the table may have
-       * grown since, and a snapshot bigger than the threshold is not "small" */
+      /* apply the sargs row by row; the statistics said ncard rows, but the table may have grown
+       * since -- then the survivors array would overflow and the snapshot is stale anyway, so give up */
       k = 0;
       rows = 0;
       for (o = objs; o != NULL && ok; o = o->next)
 	{
-	  if (++rows > threshold)
+	  if (++rows > (int) QO_NODE_NCARD (node))
 	    {
 	      ok = false;
 	      break;
@@ -8655,7 +8665,10 @@ qo_snapshot_apply (QO_ENV * env)
 
       if (ok && k > 0)
 	{
-	  /* (a) the node's own output is exactly k of its ncard rows */
+	  /* (a) the node's own output is exactly k of its ncard rows. The node's sarg terms keep their
+	   * histogram selectivity: the join order reads the node selectivity, and only the node's own
+	   * index-scan cost reads the sarg terms, which on a table this small is not what decides the plan.
+	   * Folding k into the sarg terms as well is a stage-2 item. */
 	  QO_NODE_SELECTIVITY (node) = (double) k / (double) QO_NODE_NCARD (node);
 	  QO_NODE_SNAPSHOT_CARD (node) = k;
 	  spec_id = QO_NODE_ENTITY_SPEC (node)->info.spec.id;
@@ -8700,13 +8713,13 @@ qo_snapshot_apply (QO_ENV * env)
 		}
 
 	      sum = 0.0;
-	      ok = true;
-	      for (i = 0; i < k && ok; i++)
+	      term_ok = true;
+	      for (i = 0; i < k && term_ok; i++)
 		{
 		  db_make_null (&key_val);
 		  if (db_get (survivors[i], my_name->info.name.original, &key_val) != NO_ERROR)
 		    {
-		      ok = false;
+		      term_ok = false;
 		    }
 		  else if (!DB_IS_NULL (&key_val))
 		    {
@@ -8719,16 +8732,15 @@ qo_snapshot_apply (QO_ENV * env)
 			}
 		      else
 			{
-			  ok = false;
+			  term_ok = false;
 			}
 		    }
 		  /* a NULL key matches no row of the other side: it stays in k and adds 0 */
 		  pr_clear_value (&key_val);
 		}
-	      if (!ok)
+	      if (!term_ok)
 		{
-		  ok = true;	/* this term keeps its estimate; the next term is independent */
-		  continue;
+		  continue;	/* this term keeps its histogram estimate; the next term is independent */
 		}
 
 	      /* histogram_get_equal_selectivity () returns the NON-null-conditional fraction of the
@@ -8757,6 +8769,7 @@ qo_snapshot_apply (QO_ENV * env)
 
       free_and_init (survivors);
       db_objlist_free (objs);
+      er_stack_pop ();
     }
 }
 
