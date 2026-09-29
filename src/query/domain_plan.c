@@ -2730,8 +2730,8 @@ domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry
   load_entry->state = 2;
 }
 
-/* Boundary (a): both axes are strict: an item resolve_domains does not resolve has a fixed type, and a
- * fixed string whose collation the values give is a variable POS recording its bound value's domain. */
+/* The unresolved-domain check (load): both axes are strict: an item resolve_domains does not resolve has a fixed
+ * type, and a fixed string whose collation the values give is a variable POS recording its bound value's domain. */
 bool
 domain_plan_validate (const DOMAIN_PLAN * plan)
 {

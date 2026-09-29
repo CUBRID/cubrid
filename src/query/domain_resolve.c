@@ -38,6 +38,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "qfile_tuple_layout.h"
 #include "query_aggregate.hpp"
 #include "query_evaluator.h"
 #include "session.h"
@@ -3176,7 +3177,7 @@ qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * build
   if (buildlist->g_hash_eligible)
     {
       AGGREGATE_HASH_CONTEXT *context = buildlist->agg_hash_context;
-      int i, index;
+      int i;
 
       /* update key domains */
       group_regu = buildlist->g_hk_sort_regu_list;
@@ -3190,30 +3191,72 @@ qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * build
 	    }
 	}
 
-      /* update type lists of list files */
-      for (i = 0; i < buildlist->g_hkey_size; i++)
+      /* the list columns the setup left variable: an accumulator that saw only NULL values */
+      qexec_setup_hash_aggregate_lists (vd, buildlist);
+    }
+}
+
+/*
+ * qexec_setup_hash_aggregate_lists () - the domains of the columns of a GROUP BY's hash aggregation lists (the partial
+ *   list and the sorted partial list: the keys, then each aggregate's value, value2 and count) that are still
+ *   variable, set before the first row
+ *
+ * The lists' tuples are laid out by their column domains (qfile_set_layout), and the hash aggregation writes partial
+ * results during the scan, so every column takes its domain before a tuple holds a value there: a key the plan's
+ * domain for this execution, an accumulator the domain its setup gave it (qexec_setup_aggregate_domains). A column
+ * without one yet - an accumulator that sees only NULL values - takes only NULLs until qexec_finish_group_by_domains
+ * gives it the NULL domain. A column that has a domain keeps it: tuples may hold values there already.
+ */
+void
+qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist)
+{
+  AGGREGATE_HASH_CONTEXT *context = buildlist->agg_hash_context;
+  if (!buildlist->g_hash_eligible || context == NULL || context->part_list_id == NULL
+      || context->sorted_part_list_id == NULL)
+    {
+      return;
+    }
+  QFILE_TUPLE_VALUE_TYPE_LIST *lists[2] =
+    { &context->part_list_id->type_list, &context->sorted_part_list_id->type_list };
+  bool changed = false;
+  REGU_VARIABLE_LIST key = buildlist->g_hk_scan_regu_list;
+  for (int i = 0; i < buildlist->g_hkey_size && key != NULL; i++, key = key->next)
+    {
+      TP_DOMAIN *compiled = qexec_get_node_domain (vd, key->value.domain, key->value.domain_plan);
+      const TP_DOMAIN *domain = qexec_consumer_domain (vd, compiled, key->value.domain_plan);
+      for (int l = 0; l < 2; l++)
 	{
-	  /* partial list */
-	  context->part_list_id->type_list.domp[i] = context->key_domains[i];
-
-	  /* sorted partial list */
-	  context->sorted_part_list_id->type_list.domp[i] = context->key_domains[i];
+	  if (domain != NULL && (TP_DOMAIN_TYPE (lists[l]->domp[i]) == DB_TYPE_VARIABLE
+				 || TP_DOMAIN_COLLATION_FLAG (lists[l]->domp[i]) != TP_DOMAIN_COLL_NORMAL))
+	    {
+	      lists[l]->domp[i] = (TP_DOMAIN *) domain;
+	      changed = true;
+	    }
 	}
-
-      for (i = 0; i < buildlist->g_func_count; i++)
+    }
+  for (int i = 0; i < buildlist->g_func_count; i++)
+    {
+      const int index = buildlist->g_hkey_size + i * 3;
+      TP_DOMAIN *const accumulator[2] = {
+	context->accumulator_domains[i]->value_dom, context->accumulator_domains[i]->value2_dom
+      };
+      for (int l = 0; l < 2; l++)
 	{
-	  index = buildlist->g_hkey_size + i * 3;
-
-	  /* partial list */
-	  context->part_list_id->type_list.domp[index] = context->accumulator_domains[i]->value_dom;
-	  context->part_list_id->type_list.domp[index + 1] = context->accumulator_domains[i]->value2_dom;
-	  context->part_list_id->type_list.domp[index + 2] = &tp_Integer_domain;
-
-	  /* sorted partial list */
-	  context->sorted_part_list_id->type_list.domp[index] = context->accumulator_domains[i]->value_dom;
-	  context->sorted_part_list_id->type_list.domp[index + 1] = context->accumulator_domains[i]->value2_dom;
-	  context->sorted_part_list_id->type_list.domp[index + 2] = &tp_Integer_domain;
+	  for (int k = 0; k < 2; k++)
+	    {
+	      if (accumulator[k] != NULL && TP_DOMAIN_TYPE (lists[l]->domp[index + k]) == DB_TYPE_VARIABLE)
+		{
+		  lists[l]->domp[index + k] = accumulator[k];
+		  changed = true;
+		}
+	    }
 	}
+    }
+  if (changed)
+    {
+      /* recompute layout after mutating domp */
+      qfile_set_layout (lists[0]);
+      qfile_set_layout (lists[1]);
     }
 }
 
@@ -3322,6 +3365,11 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
     case PT_AGG_BIT_AND:
     case PT_AGG_BIT_OR:
     case PT_AGG_BIT_XOR:
+      /* qdata_bit_and/or/xor_dbval always produce a BIGINT accumulator; describe what's actually stored */
+      agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
+      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+      break;
+
     case PT_MIN:
     case PT_MAX:
     case PT_GROUP_CONCAT:
@@ -3670,7 +3718,7 @@ int
 qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, VAL_DESCR * vd,
 			      QFILE_TUPLE_RECORD * tplrec, REGU_VARIABLE_LIST regu_list, int *resolved)
 {
-  if (regu_list != NULL && fetch_val_list (thread_p, regu_list, vd, NULL, NULL, tplrec->tpl, true) != NO_ERROR)
+  if (regu_list != NULL && fetch_val_list (thread_p, regu_list, vd, NULL, NULL, tplrec, true) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -3755,7 +3803,7 @@ qexec_setup_parallel_aggregates (THREAD_ENTRY * thread_p, XASL_NODE * xasl, cons
 int
 qexec_parallel_aggregate_first_values (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd, int *resolved)
 {
-  QFILE_TUPLE_RECORD tpl = { NULL, 0 };
+  QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
   if (xasl->type == BUILDLIST_PROC)
     {
       return qexec_aggregate_first_values (thread_p, xasl->proc.buildlist.g_agg_list, vd, &tpl,

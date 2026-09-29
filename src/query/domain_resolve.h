@@ -349,6 +349,7 @@ extern int qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESC
 extern int qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, buildlist_proc_node * buildlist,
 					SORT_LIST ** resolved_groupby);
 extern void qexec_finish_group_by_domains (const VAL_DESCR * vd, buildlist_proc_node * buildlist);
+extern void qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, buildlist_proc_node * buildlist);
 extern int qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list,
 					  const VAL_DESCR * vd, int *resolved);
 extern int qexec_aggregate_first_values (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list,
