@@ -292,17 +292,17 @@ end:
 }
 
 /*
- * stx_index_stream_rejected () - the load boundary (a) of a filter or function index stream
+ * stx_index_stream_rejected () - the unresolved-domain check (load) of a filter or function index stream
  *   return: true when the stream is rejected (error set, unpack info freed)
  *
- * Such a stream is loaded and evaluated without the execution gate, so a regu the gate would decide - a GATE slot or
- * node - has no decision anywhere. The catalog streams carry none (no host variable reaches a stored predicate); one is
- * refused rather than evaluated with an open domain.
+ * Such a stream is loaded and evaluated without resolve_domains, so a regu resolve_domains would resolve - a variable
+ * POS or node - has no resolution anywhere. The catalog streams carry none (no host variable reaches a stored
+ * predicate); one is refused rather than evaluated with a variable domain.
  */
 static bool
 stx_index_stream_rejected (THREAD_ENTRY * thread_p, XASL_UNPACK_INFO * unpack_info_p)
 {
-  if (!unpack_info_p->index_stream_gate)
+  if (!unpack_info_p->index_stream_late_bind)
     {
       return false;
     }
@@ -369,7 +369,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
     {
       goto end;
     }
-  /* the predicate's comparisons, decided from the stream's fixed domains */
+  /* the predicate's comparisons, resolved from the stream's fixed domains */
   if (domain_plan_stream_compares (thread_p, pwc->pred, NULL) != NO_ERROR)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
@@ -439,7 +439,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
     {
       goto end;
     }
-  /* the expression's comparisons, decided from the stream's fixed domains */
+  /* the expression's comparisons, resolved from the stream's fixed domains */
   if (domain_plan_stream_compares (thread_p, NULL, p_xasl->func_regu) != NO_ERROR)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
@@ -5700,8 +5700,8 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   ptr = or_unpack_int (ptr, &regu_var->flags);
   if (xasl_unpack_info->index_stream && regu_is_variable_pos (regu_var))
     {
-      /* a filter or function index stream has no gate to decide it (stx_index_stream_rejected) */
-      xasl_unpack_info->index_stream_gate = true;
+      /* a filter or function index stream has no resolve_domains to resolve it (stx_index_stream_rejected) */
+      xasl_unpack_info->index_stream_late_bind = true;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -5746,9 +5746,9 @@ error:
 }
 
 /*
- * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at load:
- *   a cached attribute, a literal, a value pointer without a linked subquery, whose compiled domain fixes its
- *   values. A bind reference gets it with its plan item, and a regu with an open domain gets it with its cell
+ * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at load: a cached
+ *   attribute, a literal, a value pointer without a linked subquery, whose compiled domain fixes its values. A bind
+ *   reference gets it with its plan item, and a regu with a variable domain gets it with its execution domain
  *   (domain_plan.c). A COLLATE modifier's regu takes the slow path, which applies the collation.
  */
 static void

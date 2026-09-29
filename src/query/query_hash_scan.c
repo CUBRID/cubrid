@@ -515,11 +515,11 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 enum hash_scan_key_rule
 {
   HASH_SCAN_KEY_COPY,		/* the values have the probe key's type: copied */
-  HASH_SCAN_KEY_CONVERT,	/* the planned converter brings each value into the probe key's domain */
+  HASH_SCAN_KEY_CONVERT,	/* the resolved converter brings each value into the probe key's domain */
   HASH_SCAN_KEY_COERCE,		/* tp_value_coerce brings each value into the probe key's domain: a JSON value, which
 				 * its scalar converts, or a string domain whose collation is the values' (LEAVE,
 				 * ENFORCE) */
-  HASH_SCAN_KEY_FAIL		/* the probe key's domain is open (a node not computed yet in this execution):
+  HASH_SCAN_KEY_FAIL		/* the probe key's domain is variable (a node not computed yet in this execution):
 				 * develop's coercion into it refuses every value (ER_TP_CANT_COERCE) */
 };
 
@@ -540,12 +540,12 @@ struct hash_scan_key_plan
 
 /*
  * qdata_hscan_key_value_domain () - the domain of the values a build key gives in this open
- *   return: the domain; NULL when the plan has no answer (the boundary (b))
+ *   return: the domain; NULL when the plan has no answer (the unresolved-domain check (execution))
  *   key(in): the build key
  *   producers(in): the scan's predicate regus: the list positions the build reads before it builds a key
  *
  * A value pointer holds what the position that writes it read, under the domain the list scan gave that position
- * (scan_plan_list_scan_domains: the gate's decision or a load-fixed domain). Any other key gives the domain the plan
+ * (scan_plan_list_scan_domains: the resolved domain or a load-fixed domain). Any other key gives the domain the plan
  * gives it, a key over a session variable read too.
  */
 static const TP_DOMAIN *
@@ -557,26 +557,26 @@ qdata_hscan_key_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key, R
 	{
 	  if (producer->value.type == TYPE_POSITION && producer->value.vfetch_to == key->value.dbvalptr)
 	    {
-	      return qexec_node_domain (vd, producer->value.value.pos_descr.dom,
-					producer->value.value.pos_descr.domain_plan);
+	      return qexec_get_node_domain (vd, producer->value.value.pos_descr.dom,
+					    producer->value.value.pos_descr.domain_plan);
 	    }
 	}
     }
-  return qexec_consumer_domain (vd, qexec_node_domain (vd, key->domain, key->domain_plan), key->domain_plan);
+  return qexec_consumer_domain (vd, qexec_get_node_domain (vd, key->domain, key->domain_plan), key->domain_plan);
 }
 
 /*
- * qdata_plan_hscan_keys () - how each build key enters the hash table in this open, planned before the first build
+ * qdata_plan_hscan_keys () - how each build key enters the hash table in this open, resolved before the first build
  *   row
- *   return: NO_ERROR, ER_OUT_OF_VIRTUAL_MEMORY, or ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b))
+ *   return: NO_ERROR, ER_OUT_OF_VIRTUAL_MEMORY, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution))
  *   vd(in): the execution's value descriptor
  *   hlsid(in/out): a hash list scan whose key pairs' types differ (need_coerce_type); key_plan receives the plan
  *   producers(in): the scan's predicate regus (qdata_hscan_key_value_domain)
  *
  * develop copied a build value, or coerced it into the probe key's domain where its type was not the probe key's
  * (tp_value_coerce, ER_TP_CANT_COERCE when that fails). The probe key's domain is the one the scan reads, as develop
- * read it: the compiled domain, or the gate's decision once the node was computed in this execution; check_hash_list_scan
- * reads the same. The values' type is the plan's, so each key's choice is made here, once.
+ * read it: the compiled domain, or the resolved domain once the node was computed in this execution;
+ * check_hash_list_scan reads the same. The values' type is the plan's, so each key's choice is made here, once.
  */
 int
 qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_SCAN * hlsid,
@@ -606,7 +606,7 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
       HASH_SCAN_KEY_ENTRY *key = &plan->key[i];
       key->conv = NULL;
       /* the probe key's domain now: the one it took if this execution computed it before, as develop read the node */
-      key->target = qexec_node_domain (vd, probe->value.domain, probe->value.domain_plan);
+      key->target = qexec_get_node_domain (vd, probe->value.domain, probe->value.domain_plan);
       key->source = DB_TYPE_NULL;
       const DB_TYPE target = TP_DOMAIN_TYPE (key->target);
       if (key->target == NULL || target == DB_TYPE_VARIABLE)
@@ -648,7 +648,7 @@ qdata_free_hscan_key_plan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid)
 }
 
 #if !defined (NDEBUG)
-/* The shadow check of a planned build key conversion: develop's tp_value_coerce gives the same outcome and, where
+/* The debug cross-check of a resolved build key conversion: develop's tp_value_coerce gives the same outcome and, where
  * it converts, a value of the same type that hashes alike. */
 static void
 qdata_check_hscan_key_convert (const DB_VALUE * value, const TP_DOMAIN * target, TP_DOMAIN_STATUS status,
@@ -669,7 +669,7 @@ qdata_check_hscan_key_convert (const DB_VALUE * value, const TP_DOMAIN * target,
 
 /*
  * qdata_copy_hscan_key_without_alloc () - the key a build row stores: each value copied, or brought into its probe
- *   key's domain as the scan planned it before its first build row
+ *   key's domain as the scan resolved it before its first build row
  *   returns: new_key, or NULL on error (ER_TP_CANT_COERCE where the conversion fails, as develop's)
  *   thread_p(in): thread
  *   key(in): the build row's key

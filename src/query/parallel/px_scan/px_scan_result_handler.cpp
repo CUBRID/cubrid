@@ -56,11 +56,11 @@ namespace parallel_scan
   thread_local OR_BUF result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_or_buf;
 
   /* A function that sees a value has its accumulator domain from the setup before the first row
-   * (qexec_setup_parallel_aggregates); a worker neither decides one nor falls back to its values:
-   * no domain here is the execution boundary (b). */
+   * (qexec_setup_parallel_aggregates); a worker neither resolves one nor falls back to its values:
+   * no domain here fails the unresolved-domain check (execution). */
   /* A worker's list opens with the plan's domains (qdata_get_valptr_type_list): no column waits for a first tuple to
-   * type it - PX keeps session variable reads off (px_scan_checker) and the gate decides every other column.
-   * An open column here is the execution boundary (b). */
+   * type it - PX keeps session variable reads off (px_scan_checker) and resolve_domains resolves every other column.
+   * A variable column here fails the unresolved-domain check (execution). */
   static bool list_columns_unresolved (const qfile_tuple_value_type_list &type_list)
   {
     for (int i = 0; i < type_list.type_cnt; i++)
@@ -330,7 +330,8 @@ namespace parallel_scan
 		return;
 	      }
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
-	    /* the clone's aggregates are set up from the plan decisions it inherited, before its first row */
+	    /* the clone's aggregates are set up from the plan resolutions it copied from the leader, before its first
+	     * row */
 	    if (qexec_setup_parallel_aggregates (thread_p, curr_xasl, vd, &tl.g_agg_domains_resolved) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
@@ -1539,8 +1540,8 @@ namespace parallel_scan
 		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		    return false;
 		  }
-		type_list.domp[0] =
-			qexec_node_domain (tl_vd, agg_node->operands->value.domain, agg_node->operands->value.domain_plan);
+		type_list.domp[0] = qexec_get_node_domain (tl_vd, agg_node->operands->value.domain,
+				    agg_node->operands->value.domain_plan);
 		agg_node->list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, ls_flag, agg_node->list_id);
 		db_private_free_and_init (thread_p, type_list.domp);
 		if (agg_node->list_id == nullptr)
@@ -1588,11 +1589,11 @@ namespace parallel_scan
       {
 	/* a worker's clone comes from the pool the leaders use and keeps the accumulator domains of the execution
 	 * that used it last (CBRD-27484). Empty them as the leader does before its scan, so this execution's binds and
-	 * gate decisions set them. */
+	 * resolved domains set them. */
 	agg_node->accumulator_domain.value_dom = NULL;
 	agg_node->accumulator_domain.value2_dom = NULL;
       }
-    /* set up from the plan decisions the clone inherited before its lists open (initialize_node) */
+    /* set up from the plan resolutions the clone copied from the leader before its lists open (initialize_node) */
     if (qexec_setup_parallel_aggregates (thread_p, tl_xasl_p, vd, &tl_xasl_p->proc.buildvalue.agg_domains_resolved)
 	!= NO_ERROR)
       {
@@ -1836,17 +1837,17 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    /* after the pre-cast the setup planned for a value; a value a scope fixes is converted once
+	    /* after the operand coercion the setup resolved for a value; a value a scope fixes is converted once
 	     * per scope, in the worker's own state. The setup fixed whether it is one, and the caller passes
 	     * no NULL. */
-	    const RESOLVED_DOMAIN *precast = &acc_dom->precast;
-	    const DB_VALUE *const held[2] =
+	    const RESOLVED_DOMAIN *operand_coercion = &acc_dom->operand_coercion;
+	    const DB_VALUE *const temporaries[2] =
 	    {
-	      NULL, acc_dom->held != 0 ? qexec_held_value (thread_p, tl_vd, acc_dom->held, precast->conv[1],
-		  precast->operand_domain[1], db_value_p) : NULL
+	      NULL, acc_dom->temporary != 0 ? qexec_execution_temporary (thread_p, tl_vd, acc_dom->temporary,
+		  operand_coercion->conv[1], operand_coercion->operand_domain[1], db_value_p) : NULL
 	    };
-	    if (qdata_precast_arith_dbval (thread_p, T_ADD, precast, acc->value, db_value_p, acc->value,
-					   acc_dom->value_dom, held) != NO_ERROR)
+	    if (qdata_coerce_arith_operands (thread_p, T_ADD, operand_coercion, acc->value, db_value_p, acc->value,
+					     acc_dom->value_dom, temporaries) != NO_ERROR)
 	      {
 		return false;
 	      }
@@ -2639,11 +2640,11 @@ namespace parallel_scan
 	  }
 
 	HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
-	/* the worker's state holds the leader's aggregate's domain under the same cell: the worker set its clone up
-	 * from the decisions it inherited, as the leader did */
+	/* the worker's state holds the leader's aggregate's domain under the same execution domain index: the worker
+	 * set its clone up from the resolutions it copied from the leader, as the leader did */
 	int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
 		  &orig_agg_p->accumulator_domain, orig_agg_p->function,
-		  qexec_node_domain (tl_vd, orig_agg_p->domain, orig_agg_p->domain_plan), &cur_agg_p->accumulator);
+		  qexec_get_node_domain (tl_vd, orig_agg_p->domain, orig_agg_p->domain_plan), &cur_agg_p->accumulator);
 	db_change_private_heap (thread_p, prev_heap_id);
 	if (err != NO_ERROR)
 	  {
@@ -2699,7 +2700,7 @@ namespace parallel_scan
 	      break;
 	    }
 
-	  /* the leader set its aggregates up before its scan from the decisions its workers inherited
+	  /* the leader set its aggregates up before its scan from the resolutions its workers copied from it
 	   * (qexec_setup_aggregate_domains, qexec_setup_parallel_aggregates), so a worker has no domain to hand back */
 	  assert (! (qexec_node_operand_type (tl_vd, orig_agg_p->opr_dbtype, orig_agg_p->domain_plan) == DB_TYPE_VARIABLE
 		     && qexec_node_operand_type (tl_vd, cur_agg_p->opr_dbtype, cur_agg_p->domain_plan)

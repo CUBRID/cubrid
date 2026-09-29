@@ -59,7 +59,7 @@ struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct valptr_list_node;
 struct domain_plan_index;
-struct DOMAIN_INDEX_DECISIONS;
+struct RESOLVED_INDEX_KEYS;
 struct DOMAIN_SEARCH_KEYS;
 struct scan_key_state;
 
@@ -292,9 +292,9 @@ struct indx_scan_id
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   const domain_plan_index *key_plan;	/* the key plan the load derived, INDX_INFO.domain_plan */
-  const DOMAIN_INDEX_DECISIONS *key_decisions;	/* this execution's decisions for it; NULL: the plan's alone */
-  scan_key_state *key_state;	/* the scan's key plan storage (scratch chains, the search keys the B-tree reads); NULL
-				 * when the plan needs none */
+  const RESOLVED_INDEX_KEYS *resolved_keys;	/* this execution's resolutions for it; NULL: the plan's alone */
+  scan_key_state *key_state;	/* the scan's key plan storage (mixed key domain caches, the search keys the B-tree
+				 * reads); NULL when the plan needs none */
   /* Parallel index scan pending state. Set in scan_open_parallel_index_scan when the spec is
    * parallel-eligible; consumed by scan_start_scan to attempt the promotion after
    * qexec_evaluate_aggregates_optimize has had a chance to set need_count_only. NULL means
@@ -349,7 +349,7 @@ struct parallel_index_scan_id
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
   const domain_plan_index *key_plan;	/* mirror of INDX_SCAN_ID::key_plan */
-  const DOMAIN_INDEX_DECISIONS *key_decisions;	/* mirror of INDX_SCAN_ID::key_decisions */
+  const RESOLVED_INDEX_KEYS *resolved_keys;	/* mirror of INDX_SCAN_ID::resolved_keys */
   scan_key_state *key_state;	/* mirror of INDX_SCAN_ID::key_state */
   void *parallel_pending;	/* mirror of INDX_SCAN_ID::parallel_pending */
   /* parallel-only fields (must follow all isid fields) */

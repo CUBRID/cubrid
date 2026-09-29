@@ -103,7 +103,7 @@ struct file_hash_scan_id
   char alignment;		/* alignment value used on slots of bucket pages */
 };
 
-/* How the build keys of one scan open enter the hash table, planned before the first build row: query_hash_scan.c */
+/* How the build keys of one scan open enter the hash table, resolved before the first build row: query_hash_scan.c */
 typedef struct hash_scan_key_plan HASH_SCAN_KEY_PLAN;
 
 /* hash list scan */

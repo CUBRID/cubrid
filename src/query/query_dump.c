@@ -1256,7 +1256,7 @@ qdump_print_value (REGU_VARIABLE * value_p)
       const char *classes[] = { "?", "CONST", "ROW", "CORR", "VOLATILE" };
       const char *policies[] = { "ERROR", "NULL", "KEEP" };
       fprintf (foutput, "{plan class=%s slot=%d ref=%d fail=%s flags=0x%03x}", classes[item->operand_class],
-	       item->slot, item->ref, policies[item->fail], item->flags);
+	       item->resolved_index, item->ref, policies[item->fail], item->flags);
     }
 #endif
   if (REGU_VARIABLE_IS_FLAGED (value_p, REGU_VARIABLE_HIDDEN_COLUMN))
@@ -2393,8 +2393,8 @@ qdump_print_xasl (xasl_node * xasl_p)
   if (xasl_p->domain_plan != NULL)
     {
       const DOMAIN_PLAN *plan = xasl_p->domain_plan;
-      fprintf (foutput, "domain plan: items=%d slots=%d refs=%d(+%d) gate_nodes=%d\n",
-	       plan->n_items, plan->n_slots, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_gate_nodes);
+      fprintf (foutput, "domain plan: items=%d slots=%d refs=%d(+%d) late_bind_nodes=%d\n",
+	       plan->n_items, plan->n_resolved, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_late_bind_nodes);
     }
 #endif
   qdump_print_xasl_type (xasl_p);

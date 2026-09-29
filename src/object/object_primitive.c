@@ -7743,14 +7743,14 @@ DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order, int num_index_term,
 		    int *start_colp, int *diff_column, bool * dom_is_desc, int *result_size)
 {
-  return pr_midxkey_compare_planned (mul1, mul2, do_coercion, total_order, num_index_term, start_colp, diff_column,
-				     dom_is_desc, result_size, NULL, NULL);
+  return pr_midxkey_compare_resolved (mul1, mul2, do_coercion, total_order, num_index_term, start_colp, diff_column,
+				      dom_is_desc, result_size, NULL, NULL);
 }
 
 DB_VALUE_COMPARE_RESULT
-pr_midxkey_compare_planned (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
-			    int num_index_term, int *start_colp, int *diff_column, bool * dom_is_desc, int *result_size,
-			    PR_MIDXKEY_ELEMENT_COMPARE element_compare, const void *arg)
+pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
+			     int num_index_term, int *start_colp, int *diff_column, bool * dom_is_desc,
+			     int *result_size, PR_MIDXKEY_ELEMENT_COMPARE element_compare, const void *arg)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
@@ -15506,9 +15506,9 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     }
 
   /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
-   * every pair of keys a value can have, decided before any row */
+   * every pair of keys a value can have, resolved before any row */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  cmp_result = domain_compare_by_keys (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+  cmp_result = domain_compare_by_type_pair (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
 #else
   cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
 #endif

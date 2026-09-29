@@ -72,7 +72,7 @@
 #define ROUND(x)		  ((x) > 0 ? ((x) + .5) : ((x) - .5))
 #define SECONDS_IN_A_DAY	  (long)(86400)	/* 24L * 60L * 60L */
 
-/* Numeric cells share the legacy formulas; source, destination and mode are compile-time parameters. */
+/* Numeric converters share the legacy formulas; source, destination and mode are compile-time parameters. */
 template <DB_TYPE TYPE> struct tp_numeric_value;
 
 template <> struct tp_numeric_value<DB_TYPE_SHORT>
@@ -8429,16 +8429,16 @@ tp_value_convert_collection (const DB_VALUE *src, DB_VALUE *target, const TP_DOM
  *	     for a pair that does not convert in the mode
  *
  * Every pair that converts is named once, grouped by its target. The mode picks within a case: COMPARE and
- * OPERAND take the strict cells, IMPLICIT is ASSIGN but for the pairs implicit coercion refuses and the
- * collection cells, which coerce the elements implicitly.
+ * OPERAND take the strict converters, IMPLICIT is ASSIGN but for the pairs implicit coercion refuses and the
+ * collection targets, which coerce the elements implicitly.
  */
 template <DOMAIN_CONVERT_MODE MODE>
 static TP_VALUE_CONVERTER
 tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 {
   constexpr bool strict = MODE == DOMAIN_CONVERT_COMPARE || MODE == DOMAIN_CONVERT_OPERAND;
-  /* the numeric cells of IMPLICIT are ASSIGN's */
-  constexpr DOMAIN_CONVERT_MODE CELL_MODE = MODE == DOMAIN_CONVERT_IMPLICIT ? DOMAIN_CONVERT_ASSIGN : MODE;
+  /* the numeric converters of IMPLICIT are ASSIGN's */
+  constexpr DOMAIN_CONVERT_MODE CONVERTER_MODE = MODE == DOMAIN_CONVERT_IMPLICIT ? DOMAIN_CONVERT_ASSIGN : MODE;
 
   if (MODE == DOMAIN_CONVERT_IMPLICIT && TP_IMPLICIT_COERCION_NOT_ALLOWED (src, dst))
     {
@@ -8450,20 +8450,20 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_INTEGER:
-	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_SHORT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_BIGINT:
-	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_SHORT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_FLOAT:
-	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_SHORT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_DOUBLE:
-	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_MONETARY:
-	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_SHORT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_NUMERIC:
-	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_short;
 	case DB_TYPE_JSON:
@@ -8476,20 +8476,20 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_INTEGER, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_BIGINT:
-	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_FLOAT:
-	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_DOUBLE:
-	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_MONETARY:
-	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_NUMERIC:
-	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_integer;
 	case DB_TYPE_JSON:
@@ -8502,20 +8502,20 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_BIGINT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_INTEGER:
-	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_FLOAT:
-	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_DOUBLE:
-	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_MONETARY:
-	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_NUMERIC:
-	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_bigint;
 	case DB_TYPE_JSON:
@@ -8528,20 +8528,20 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_FLOAT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_INTEGER:
-	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_BIGINT:
-	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_DOUBLE:
-	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_FLOAT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_MONETARY:
-	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_FLOAT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_NUMERIC:
-	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_float;
 	case DB_TYPE_JSON:
@@ -8554,20 +8554,20 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_INTEGER:
-	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_BIGINT:
-	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_FLOAT:
-	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_MONETARY:
-	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_NUMERIC:
-	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_double;
 	case DB_TYPE_JSON:
@@ -8580,20 +8580,20 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_MONETARY, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_INTEGER:
-	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_BIGINT:
-	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_FLOAT:
-	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_DOUBLE:
-	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_NUMERIC:
-	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_monetary;
 	case DB_TYPE_JSON:
@@ -8606,22 +8606,22 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_SHORT, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_INTEGER:
-	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_INTEGER, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_BIGINT:
-	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_BIGINT, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_FLOAT:
-	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_NUMERIC, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_FLOAT, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_DOUBLE:
-	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_MONETARY:
-	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_NUMERIC, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_MONETARY, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_NUMERIC:
-	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_NUMERIC, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, CELL_MODE>;
+	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_numeric;
 	case DB_TYPE_JSON:

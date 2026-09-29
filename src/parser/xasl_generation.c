@@ -6454,7 +6454,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	{
 	  /* A user host variable: the plan states the domain the client casts the bound value into
 	   * (host_var_expected_domains), so value type == plan domain holds by construction. It
-	   * is left to the gate when the client does not cast: no expected domain, an ENUM domain (never cast,
+	   * is left to resolve_domains when the client does not cast: no expected domain, an ENUM domain (never cast,
 	   * CUBRIDSUS-9007; `enum_col op ?` compares the bound value), or an untyped copy (the LIMIT
 	   * operand). A compile-only expected domain the client does not apply -- the collation axis's ENFORCE
 	   * on `str_col + ?` / `enum_col + ?` -- is not a plan domain. */
@@ -6469,7 +6469,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    {
 	      /* an ENFORCE domain (the collation axis's sibling collation) casts nothing: the client gives a
 	       * string value the sibling's collation and passes any other value through (tp_value_cast_internal),
-	       * so the slot's type is the value's -- a gate slot whose value already carries the enforced
+	       * so the variable POS's type is the value's -- a variable POS whose value already carries the enforced
 	       * collation */
 	      regu->domain = cast_domain;
 	    }
@@ -6528,7 +6528,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 
       if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
 	{
-	  /* no sibling fixes this slot; the execution gate takes the
+	  /* no sibling fixes this variable POS; resolve_domains takes the
 	   * bound value's own domain, once per execution. */
 	  regu->domain = &tp_Variable_domain;
 	}
@@ -6574,13 +6574,13 @@ error_exit:
 }
 
 /*
- * pt_gate_limit_regu () - a LIMIT / KEYLIMIT operand that is a host variable slot leaves its domain to the gate:
- *   auto-parameterized limits of different literal types (`limit 4`, `limit 2147483648`, `limit 3/2`)
- *   share one plan, and execution reads the bound value (qexec_check_limit_clause: tp_value_compare against 0), so
- *   no compiled domain describes every execution.
+ * pt_late_bind_limit_regu () - a LIMIT / KEYLIMIT operand that is a host variable (a variable POS) leaves its domain to
+ *   resolve_domains: auto-parameterized limits of different literal types (`limit 4`, `limit 2147483648`, `limit 3/2`)
+ *   share one plan, and execution reads the bound value (qexec_check_limit_clause: tp_value_compare against 0), so no
+ *   compiled domain describes every execution.
  */
 static REGU_VARIABLE *
-pt_gate_limit_regu (REGU_VARIABLE * regu)
+pt_late_bind_limit_regu (REGU_VARIABLE * regu)
 {
   if (regu != NULL && regu->type == TYPE_POS_VALUE)
     {
@@ -7968,7 +7968,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      if (node->type_enum == PT_TYPE_MAYBE)
 			{
-			  if (pt_is_op_gate_dependent (node->info.expr.op))
+			  if (pt_is_op_hv_late_bind (node->info.expr.op))
 			    {
 			      domain = pt_xasl_node_to_domain (parser, node);
 			    }
@@ -8112,7 +8112,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      if (node->type_enum == PT_TYPE_MAYBE)
 			{
-			  if (pt_is_op_gate_dependent (node->info.expr.op))
+			  if (pt_is_op_hv_late_bind (node->info.expr.op))
 			    {
 			      domain = pt_xasl_node_to_domain (parser, node);
 			    }
@@ -8223,7 +8223,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    }
 		  if (node->type_enum == PT_TYPE_MAYBE)
 		    {
-		      if (pt_is_op_gate_dependent (node->info.expr.op))
+		      if (pt_is_op_hv_late_bind (node->info.expr.op))
 			{
 			  domain = pt_xasl_node_to_domain (parser, node);
 			}
@@ -16652,10 +16652,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     {
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
@@ -17963,10 +17963,10 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  limit = node->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	      xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	}
     }				/* end xasl */
   else
@@ -18067,10 +18067,10 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	      xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	}
     }
 
@@ -22396,10 +22396,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
   if (aptr_statement)
     {
@@ -23323,10 +23323,10 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_gate_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
 
 cleanup:

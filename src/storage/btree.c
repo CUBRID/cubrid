@@ -6082,7 +6082,7 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
   /* init index key copy_buf info */
   btid->copy_buf = NULL;
   btid->copy_buf_len = 0;
-  btid->search_compare = BTREE_SEARCH_COMPARE_PLANNED;
+  btid->search_compare = BTREE_SEARCH_COMPARE_RESOLVED;
   btid->search_keys = NULL;
 
   if (is_key_type)
@@ -22022,7 +22022,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 
 /*
  * btree_compare_search_key () - an index scan's comparison of a key with a key of its search: the columns whose
- *   values do not compare as they are compare as the scan's key plan decided before any row
+ *   values do not compare as they are compare as the scan's key plan resolved before any row
  *
  * The scan chose the comparison when it opened (BTID_INT.search_compare): a search whose values all have their
  * index columns' types and collations compares a single-column key by the column's cmpval and a multi-column key
@@ -22032,7 +22032,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 DB_VALUE_COMPARE_RESULT
 btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key2, int *start_colp)
 {
-  if (btid->search_compare == BTREE_SEARCH_COMPARE_PLANNED)
+  if (btid->search_compare == BTREE_SEARCH_COMPARE_RESOLVED)
     {
       return btree_compare_key_with (key1, key2, btid->key_type, btid->search_keys, 1, 1, start_colp);
     }
@@ -22065,8 +22065,8 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
       bool dom_is_desc[2];
       int dummy_diff_column;
       c =
-	pr_midxkey_compare_planned (db_get_midxkey (key1), db_get_midxkey (key2), 1, 1, -1, start_colp,
-				    &dummy_diff_column, dom_is_desc, NULL, NULL, NULL);
+	pr_midxkey_compare_resolved (db_get_midxkey (key1), db_get_midxkey (key2), 1, 1, -1, start_colp,
+				     &dummy_diff_column, dom_is_desc, NULL, NULL, NULL);
       is_desc = dom_is_desc[0];
     }
   if (is_desc)
@@ -22089,7 +22089,7 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
  *
  * search_keys NULL is a B-tree search outside a query plan, whose keys are the index's own: a column whose values do
  * not compare as they are compares by value. An index scan's search keys compare such columns as its key plan says;
- * one the plan has no comparison for is the execution boundary (b). Inlined into btree_compare_key and
+ * one the plan has no comparison for fails the unresolved-domain check (execution). Inlined into btree_compare_key and
  * btree_compare_search_key: a key comparison is one call, as develop's btree_compare_key is, and a single-column key
  * reads search_keys only for values that do not compare as they are.
  */
@@ -22151,9 +22151,9 @@ btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain
       bool dom_is_desc[2];
       int dummy_diff_column;
       c =
-	pr_midxkey_compare_planned (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1,
-				    start_colp, &dummy_diff_column, dom_is_desc, NULL,
-				    search_keys != NULL ? domain_search_key_compare_element : NULL, search_keys);
+	pr_midxkey_compare_resolved (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1,
+				     start_colp, &dummy_diff_column, dom_is_desc, NULL,
+				     search_keys != NULL ? domain_search_key_compare_element : NULL, search_keys);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc[0])
@@ -22384,7 +22384,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       const domain_plan_index *key_plan = bts->index_scan_idp != NULL ? bts->index_scan_idp->key_plan : NULL;
       if (key_plan == NULL)
 	{
-	  /* the execution boundary (b): every index scan has its key plan */
+	  /* the unresolved-domain check (execution): every index scan has its key plan */
 	  error = domain_unresolved_error ("", -1, DB_TYPE_MIDXKEY);
 	  goto exit;
 	}

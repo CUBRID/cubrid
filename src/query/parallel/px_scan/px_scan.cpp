@@ -1556,13 +1556,13 @@ extern "C"
      * the key ranges init_on_main built and the workers' comparisons read it (BTID_INT.search_keys), and the
      * parallel scan's close releases it after its workers. */
     const domain_plan_index *key_plan = scan_id->s.isid.key_plan;
-    const DOMAIN_INDEX_DECISIONS *key_decisions = scan_id->s.isid.key_decisions;
+    const RESOLVED_INDEX_KEYS *resolved_keys = scan_id->s.isid.resolved_keys;
     scan_key_state *key_state = scan_id->s.isid.key_state;
     scan_id->s.isid.key_state = nullptr;
     scan_close_scan (thread_p, scan_id);
     scan_id->status = S_OPENED;	/* reset status; scan_close_scan sets it to S_CLOSED */
     scan_id->s.pisid.key_plan = key_plan;
-    scan_id->s.pisid.key_decisions = key_decisions;
+    scan_id->s.pisid.resolved_keys = resolved_keys;
     scan_id->s.pisid.key_state = key_state;
 
     if (scan_id->s.isid.indx_cov.list_id != NULL)

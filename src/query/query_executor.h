@@ -92,7 +92,7 @@ struct xasl_state
   VAL_DESCR vd;			/* Value Descriptor */
   QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
-  RESOLVED_DOMAIN_TABLE resolved;
+  RESOLVED_DOMAIN_TABLE resolved_domain;
 };
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,

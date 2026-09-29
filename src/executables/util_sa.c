@@ -2119,7 +2119,7 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
   /* Remove domain area */
 #if defined (SA_MODE)
   /* the key pair table's string targets are cached domains */
-  domain_key_pairs_final ();
+  domain_type_pair_table_final ();
 #endif
   tp_final ();
   switch (status)

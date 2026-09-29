@@ -5621,7 +5621,7 @@ numeric_coerce_string_to_num (const char *astring, int astring_length, INTL_CODE
   return ret;
 }
 
-/* The conversion cells return a status; only the legacy wrapper publishes an error. */
+/* The converters return a status; only the legacy wrapper publishes an error. */
 int
 numeric_coerce_string_to_num_status (const char *astring, int astring_length, INTL_CODESET codeset, DB_VALUE * result)
 {

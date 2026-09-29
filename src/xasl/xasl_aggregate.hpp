@@ -83,9 +83,10 @@ namespace cubxasl
   {
     tp_domain *value_dom;		/* domain of value */
     tp_domain *value2_dom;	/* domain of value2 */
-    RESOLVED_DOMAIN precast;	/* SUM / AVG: the pre-cast of value + a value, set with value_dom */
-    int held;			/* SUM / AVG: 1 + the resolved.held index of a value added after the first that a scope
-				 * fixes and precast converts; 0 none. Set with precast */
+    RESOLVED_DOMAIN operand_coercion;	/* SUM / AVG: the operand coercion of value + a value, set with value_dom */
+    int temporary;			/* SUM / AVG: 1 + the resolved_domain.temporaries index of a value added after
+				 * the first that a scope fixes and operand_coercion converts; 0 none. Set with
+				 * operand_coercion */
   };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

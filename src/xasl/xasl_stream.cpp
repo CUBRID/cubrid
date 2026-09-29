@@ -99,7 +99,7 @@ stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_s
   unpack_info->additional_buffers = NULL;
   unpack_info->track_allocated_bufers = 0;
   unpack_info->index_stream = false;
-  unpack_info->index_stream_gate = false;
+  unpack_info->index_stream_late_bind = false;
 #if defined (SERVER_MODE)
   unpack_info->thrd = thread_p;
 #endif /* SERVER_MODE */

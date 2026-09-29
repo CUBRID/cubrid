@@ -167,7 +167,7 @@ extern int numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, 
 				      int dest_scale, DB_C_NUMERIC dest_num, bool * dest_num_is_negative);
 
 #if defined (__cplusplus)
-/* Fixed-type operations shared by the legacy dispatchers and planned conversion cells. */
+/* Fixed-type operations shared by the legacy dispatchers and the converters. */
 /* *INDENT-OFF* */
 template <DB_TYPE SRC>
 int numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status);

@@ -42,7 +42,7 @@ static int domain_character_result (int opcode, const DOMAIN_OPERAND * operands,
 				    const TP_DOMAIN * compiled, RESOLVED_DOMAIN * result);
 static const TP_DOMAIN *domain_variable_string_value (const TP_DOMAIN * domain);
 
-/* The conversion a context's consumer makes. CAST and pre-cast consumers supply ASSIGN explicitly. */
+/* The conversion a context's consumer makes. CAST and operand coercion consumers supply ASSIGN explicitly. */
 DOMAIN_CONVERT_MODE
 domain_convert_mode (DOMAIN_CTX context)
 {
@@ -61,7 +61,7 @@ domain_operand_type (const DOMAIN_OPERAND * operand)
 }
 
 /* The operand's own domain when it describes its type, otherwise the default domain of that type
- * (a classified slot keeps its value domain while val_type is the class). */
+ * (a value-dependent argument keeps its value domain while val_type is its type). */
 static const TP_DOMAIN *
 domain_operand_domain (const DOMAIN_OPERAND * operand)
 {
@@ -87,7 +87,8 @@ domain_set_operand (RESOLVED_DOMAIN * result, int i, const DOMAIN_OPERAND * oper
   result->conv[i] = tp_value_find_converter (domain_operand_type (operand), result->operand_domain[i], mode);
 }
 
-/* Result of two numbers after the pre-cast: the typed dispatch of qdata_{add,subtract,multiply,divide}_*_to_dbval. */
+/* Result of two numbers after the operand coercion: the typed dispatch of
+ * qdata_{add,subtract,multiply,divide}_*_to_dbval. */
 static DB_TYPE
 domain_arith_number (int opcode, DB_TYPE left, DB_TYPE right)
 {
@@ -125,7 +126,7 @@ domain_arith_number (int opcode, DB_TYPE left, DB_TYPE right)
   return DB_TYPE_SHORT;
 }
 
-/* db_string_concatenate on two values (so:4004): character strings give VARCHAR (qstr_make_typed_string, so:1274;
+/* db_string_concatenate on two values: character strings give VARCHAR (qstr_make_typed_string;
  * CHAR comes only from the NULL/empty-string path) and bit strings BIT or VARBIT; a character with a bit string is
  * ER_QSTR_INCOMPATIBLE_CODE_SETS and any other operand ER_QSTR_INVALID_DATA_TYPE. */
 static int
@@ -150,8 +151,8 @@ domain_arith_concat (DB_TYPE left, DB_TYPE right, DB_TYPE * result_type)
   return NO_ERROR;
 }
 
-/* Date/time subtraction after the pre-cast (qdata_subtract_*_to_dbval): one side is a date/time, the other a date/time
- * or a discrete number. */
+/* Date/time subtraction after the operand coercion (qdata_subtract_*_to_dbval): one side is a date/time, the other a
+ * date/time or a discrete number. */
 static DB_TYPE
 domain_arith_subtract_datetime (DB_TYPE left, DB_TYPE right)
 {
@@ -204,12 +205,12 @@ domain_arith_subtract_datetime (DB_TYPE left, DB_TYPE right)
 }
 
 /*
- * domain_arith_dispatch - the typed dispatch of qdata_{add,subtract,multiply,divide}_dbval after the pre-cast
+ * domain_arith_dispatch - the typed dispatch of qdata_{add,subtract,multiply,divide}_dbval after the operand coercion
  *   return: NO_ERROR, or the error the dispatcher raises for the pair
- *   first, second(in): operand types after the pre-cast and, for addition, the swap
+ *   first, second(in): operand types after the operand coercion and, for addition, the swap
  *   result_type(out): the result type; DB_TYPE_NULL when a typed helper passes the pair over without an error
  *
- * A dispatcher rejects a first operand it has no helper for: addition always (qo:2724), the others unless
+ * A dispatcher rejects a first operand it has no helper for: addition always, the others unless
  * return_null_on_function_errors; a collection with a non-collection always. A typed helper leaves no value for a
  * second operand it has no case for (DATETIME - TIME), except the date addition, which rejects it like the
  * dispatchers (qdata_add_date_to_dbval).
@@ -228,7 +229,7 @@ domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * resu
 	}
       else if (opcode == T_SUB && TP_IS_DATE_OR_TIME_TYPE (second))
 	{
-	  /* the pre-cast made a floating first operand BIGINT */
+	  /* the operand coercion made a floating first operand BIGINT */
 	  *result_type = domain_arith_subtract_datetime (first, second);
 	}
       return NO_ERROR;
@@ -263,7 +264,7 @@ domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * resu
 	}
       if (TP_IS_DATE_OR_TIME_TYPE (first))
 	{
-	  /* TIMESTAMPLTZ and DATETIMETZ with anything but an integer read an unset value today (qo:2651, 2325): that
+	  /* TIMESTAMPLTZ and DATETIMETZ with anything but an integer read an unset value: that
 	   * answer is not kept, no value like their siblings */
 	  if (TP_IS_DISCRETE_NUMBER_TYPE (second))
 	    {
@@ -287,10 +288,10 @@ domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * resu
 }
 
 /*
- * domain_arith_binary - the pre-cast and typed dispatch of the four binary operators
+ * domain_arith_binary - the operand coercion and typed dispatch of the four binary operators
  *   return: NO_ERROR, or the error the operator raises for the pair
  *   left, right(in): operand types
- *   left_target, right_target(out): type each operand is cast to (qo:2438~2560, 4818~4910, 5512~5560, 6134~6260)
+ *   left_target, right_target(out): type each operand is cast to
  *   result_type(out): type the operator produces; DB_TYPE_NULL for a NULL operand or a pair it passes over
  */
 static int
@@ -391,7 +392,7 @@ domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_tar
   return domain_arith_dispatch (opcode, first, second, result_type);
 }
 
-/* The result of the db_mod_<type> helpers for two numbers (ar:1965~); a character operand is DOUBLE by then. */
+/* The result of the db_mod_<type> helpers for two numbers; a character operand is DOUBLE by then. */
 static DB_TYPE
 domain_arith_mod_number (DB_TYPE left, DB_TYPE right)
 {
@@ -428,7 +429,7 @@ domain_arith_mod_number (DB_TYPE left, DB_TYPE right)
 }
 
 /*
- * domain_arith_mod - db_mod_dbval (ar:1965): a character first operand is taken as DOUBLE (db_mod_string), the typed
+ * domain_arith_mod - db_mod_dbval: a character first operand is taken as DOUBLE (db_mod_string), the typed
  *		      helpers take a number or character second operand as DOUBLE; any other pair is rejected unless
  *		      return_null_on_function_errors
  */
@@ -455,12 +456,12 @@ domain_arith_mod (DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * 
   return NO_ERROR;
 }
 
-/* The operands' pre-cast of a binary arithmetic operator */
+/* The operands' operand coercion of a binary arithmetic operator */
 static void
 domain_set_arith_operands (int opcode, const DOMAIN_OPERAND * operands, DB_TYPE left_target, DB_TYPE right_target,
 			   RESOLVED_DOMAIN * result)
 {
-  /* the pre-cast is tp_value_auto_cast, ASSIGN (ROUND) */
+  /* the operand coercion is tp_value_auto_cast, ASSIGN (ROUND) */
   domain_set_operand (result, 0, &operands[0], left_target, DOMAIN_CONVERT_ASSIGN);
   domain_set_operand (result, 1, &operands[1], right_target, DOMAIN_CONVERT_ASSIGN);
   /* an ENUM added to a string without plus_as_concat reaches DOUBLE through its name, not its ordinal */
@@ -546,29 +547,29 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
       }
 
     default:
-      /* an operator the grid does not know: the gate must not guess */
+      /* an operator the type rules do not know: resolve_domains must not guess */
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
   if (opcode == T_ADD && TP_IS_CHAR_TYPE (result_type))
     {
-      /* plus as concatenation (qdata_strcat_dbval, db_string_concatenate so:1194): the operands' collations merge
+      /* plus as concatenation (qdata_strcat_dbval, db_string_concatenate): the operands' collations merge
        * and their precisions add, as CONCAT's do */
       return domain_character_result (T_CONCAT, operands, n_operands, NULL, result);
     }
-  /* NUMERIC results stay floating: the value operation decides p/s */
+  /* NUMERIC results stay floating: the value operation resolves p/s */
   result->domain = tp_domain_resolve_default (result_type);
   return NO_ERROR;
 }
 
 /*
- * domain_resolve_precast () - the operands' pre-cast of an addition, subtraction, multiplication or division: the
- *   targets and converters of domain_resolve's ARITH rule, without its result. qdata_*_dbval cast its
+ * domain_resolve_operand_coercion () - the operands' operand coercion of an addition, subtraction, multiplication or
+ *   division: the targets and converters of domain_resolve's ARITH rule, without its result. qdata_*_dbval cast its
  *   operands before its typed dispatch took or rejected the pair and before plus as concatenation merged their
- *   collations, so the pre-cast stands whatever the result.
+ *   collations, so the operand coercion stands whatever the result.
  */
 void
-domain_resolve_precast (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result)
+domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   DB_TYPE left_target, right_target, result_type;
@@ -608,7 +609,7 @@ domain_character_domain (DB_TYPE type, int precision, int collation_id)
       return tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id);
     }
 #if !defined (NDEBUG)
-  /* shadow check (optdebug): tp_domain_resolve finds the same cached domain */
+  /* debug cross-check (optdebug): tp_domain_resolve finds the same cached domain */
   assert (domain == tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id));
 #endif
   return domain;
@@ -633,7 +634,7 @@ domain_char_with_collation (DB_TYPE type, int codeset, int collation_id)
 }
 
 /* The coerced side's target of tp_value_compare_with_error: the default domain of the other side's type, carrying
- * the collation of the coerced side when a character or ENUM becomes a character string (od:10580~10608). */
+ * the collation of the coerced side when a character or ENUM becomes a character string. */
 static const TP_DOMAIN *
 domain_compare_target (const DOMAIN_OPERAND * coerced, DB_TYPE target_type)
 {
@@ -683,7 +684,7 @@ domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * resul
 	}
     }
 
-  /* the planned comparison converters are ASSIGN cells (today's tp_value_coerce on reachable cells) */
+  /* the resolved comparison converters are ASSIGN converters (tp_value_coerce's on the pairs a comparison reaches) */
   const TP_DOMAIN *targets[2] = { target1, target2 };
   for (int i = 0; i < 2; i++)
     {
@@ -695,7 +696,7 @@ domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * resul
   return NO_ERROR;
 }
 
-/* tp_infer_common_domain folded left to right: NVL/NVL2/IFNULL/COALESCE/NULLIF/LEAST/GREATEST (fe:3306~3961). */
+/* tp_infer_common_domain folded left to right: NVL/NVL2/IFNULL/COALESCE/NULLIF/LEAST/GREATEST. */
 static int
 domain_resolve_common_value (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
 {
@@ -726,16 +727,16 @@ domain_is_interpolation_type (DB_TYPE type)
 
 /*
  * domain_interpolation_final () - the domain MEDIAN / PERCENTILE_CONT / PERCENTILE_DISC takes from its first value
- *   (qdata_update_agg_interpolation_func_value_and_domain, qa:3329; the analytic first-execution block, qn:715)
- *   return: the final domain, or NULL when only a value could tell (a string nobody classified)
+ *   (qdata_update_agg_interpolation_func_value_and_domain; the analytic first-execution block)
+ *   return: the final domain, or NULL when only a value could tell (a string nobody typed)
  *   domain(in): the domain the function holds before that value (never VARIABLE here)
- *   class_type(in): the class the gate gave a string value (DOUBLE, DATETIME or TIME), DB_TYPE_NULL otherwise
+ *   argument_type(in): the type resolve_domains gave a string value (DOUBLE, DATETIME or TIME), DB_TYPE_NULL otherwise
  *
  * A date or time stays; a DOUBLE (MEDIAN, PERCENTILE_CONT) or any number (PERCENTILE_DISC) stays; any other number
  * becomes DOUBLE, and a string becomes the first of DOUBLE, DATETIME, TIME it casts to.
  */
 static const TP_DOMAIN *
-domain_interpolation_final (int function, const TP_DOMAIN * domain, DB_TYPE class_type)
+domain_interpolation_final (int function, const TP_DOMAIN * domain, DB_TYPE argument_type)
 {
   const DB_TYPE type = TP_DOMAIN_TYPE (domain);
   if (TP_IS_DATE_OR_TIME_TYPE (type)
@@ -747,29 +748,31 @@ domain_interpolation_final (int function, const TP_DOMAIN * domain, DB_TYPE clas
     {
       return tp_domain_resolve_default (DB_TYPE_DOUBLE);
     }
-  if (class_type == DB_TYPE_DOUBLE || class_type == DB_TYPE_DATETIME || class_type == DB_TYPE_TIME)
+  if (argument_type == DB_TYPE_DOUBLE || argument_type == DB_TYPE_DATETIME || argument_type == DB_TYPE_TIME)
     {
-      return tp_domain_resolve_default (class_type);
+      return tp_domain_resolve_default (argument_type);
     }
   return NULL;
 }
 
-/* Whether the late-binding update of qexec_resolve_domains_for_aggregation / the analytic late binding applies: the
- * operand was VARIABLE when compiled (opr_dbtype, not the function's domain) or the function domain leaves collation. */
+/* Whether develop's row-time resolve (qexec_resolve_domains_for_aggregation, the analytic functions') applies: the
+ * operand was VARIABLE when compiled (opr_dbtype, not the function's domain) or the function domain leaves
+ * collation. */
 static bool
 domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand)
 {
-  return operand->is_gate_slot || compiled == NULL || TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL;
+  return operand->is_variable_pos || compiled == NULL || TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL;
 }
 
 /*
- * domain_resolve_aggregate - domains of qexec_resolve_domains_for_aggregation (qx:21504~21630, 21716~21730)
- *   compiled(in): consumer = the aggregate's compiled domain (agg_p->domain, xasl_generation.c:4072)
- *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain when the gate decides it
- *		  (is_gate_slot: opr_dbtype is VARIABLE today); val_type = value type, classified at the gate
- *   result(out): domain = the function domain (agg_p->domain after the late-binding update, which the result is cast
+ * domain_resolve_aggregate - domains of qexec_resolve_domains_for_aggregation
+ *   compiled(in): consumer = the aggregate's compiled domain (agg_p->domain, set by xasl_generation.c)
+ *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain when resolve_domains
+ *		  resolves it (is_variable_pos: opr_dbtype is VARIABLE); val_type = value type, typed by its value at
+ *		  resolve_domains
+ *   result(out): domain = the function domain (agg_p->domain after the row-time resolve, which the result is cast
  *		  to); operand_domain[0] / conv[0] = the accumulator domain (value_dom) the argument values are coerced
- *		  to (qa:645, 713). value2_dom is a per-function constant the load puts in domain_plan_acc.
+ *		  to. value2_dom is a per-function constant the load puts in domain_plan_acc.
  */
 static int
 domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
@@ -850,25 +853,25 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      /* keyed on the operand type (opr_dbtype), as today; a number or date operand leaves value_dom unset today,
+      /* keyed on the operand type (opr_dbtype), as the operator does; a number or date operand leaves value_dom unset,
        * so the accumulator here is the function domain */
       if (operand->val_type == DB_TYPE_NULL && operand->domain != NULL
 	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operand->domain)))
 	{
-	  /* a string value none of DOUBLE, DATETIME, TIME takes (the gate's classification failed): no domain;
-	   * develop's first value raised the error, the gate raises it */
+	  /* a string value none of DOUBLE, DATETIME, TIME takes (resolve_domains could not type it): no domain;
+	   * develop's first value raised the error, resolve_domains raises it */
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
       if (!domain_is_interpolation_type (operand_type))
 	{
 	  if (domain_is_interpolation_type (val_type))
 	    {
-	      /* the gate classified the value as DOUBLE, DATETIME or TIME */
+	      /* resolve_domains typed the value as DOUBLE, DATETIME or TIME */
 	      function_domain = tp_domain_resolve_default (val_type);
 	    }
 	  else if (TP_IS_CHAR_TYPE (val_type))
 	    {
-	      /* a string the gate has no value for (a column, an expression) is a number */
+	      /* a string resolve_domains has no value for (a column, an expression) is a number */
 	      function_domain = &tp_Double_domain;
 	    }
 	  else
@@ -878,11 +881,11 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
 	}
       else if (function_domain == NULL || TP_DOMAIN_TYPE (function_domain) == DB_TYPE_VARIABLE)
 	{
-	  /* the compiler leaves the function open for a number or date argument (func_type.cpp) and the first
-	   * value opens it with the default domain of its type (qa:3345) */
+	  /* the compiler leaves the function's domain variable for a number or date argument (func_type.cpp) and
+	   * develop's first value gives it the default domain of its type */
 	  function_domain = tp_domain_resolve_default (operand_type);
 	}
-      /* then the value takes the function's final class (qa:3355): the gate records that domain */
+      /* then the value takes the function's final type: resolve_domains records that domain */
       {
 	const TP_DOMAIN *final_domain = domain_interpolation_final (function, function_domain, val_type);
 	if (final_domain != NULL)
@@ -905,7 +908,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
     }
   result->domain = function_domain;
   result->operand_domain[0] = accumulator;
-  /* a value-classified argument converts from its own type to the class (qx:21721 tp_value_cast), and so
+  /* a value-dependent argument converts from its own type to its argument type (tp_value_cast), and so
    * does a string interpolation argument typed DOUBLE */
   if (operand->domain != NULL && val_type != DB_TYPE_NULL
       && (TP_DOMAIN_TYPE (operand->domain) != val_type
@@ -921,8 +924,8 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
   return NO_ERROR;
 }
 
-/* Late-bound analytic function domain (qn:197~259): its own rules, not the aggregate ones. Same inputs as the
- * aggregate; domain = operand_domain[0] = the function domain the operand value is coerced to (qn:252). */
+/* Late-bound analytic function domain: its own rules, not the aggregate ones. Same inputs as the
+ * aggregate; domain = operand_domain[0] = the function domain the operand value is coerced to. */
 static int
 domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
 			 RESOLVED_DOMAIN * result)
@@ -963,23 +966,24 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
     }
   if (function == PT_MEDIAN || function == PT_PERCENTILE_CONT || function == PT_PERCENTILE_DISC)
     {
-      /* the first execution types an interpolation function (qn:715): a function the compiler left open takes
-       * its operand's domain, then a number becomes DOUBLE (PERCENTILE_DISC keeps it) and a string the class the
-       * gate gave its value, or DOUBLE when it has no value */
-      const TP_DOMAIN *open = argument == NULL || TP_DOMAIN_TYPE (argument) == DB_TYPE_VARIABLE
+      /* develop's first execution types an interpolation function: a function the compiler left variable takes
+       * its operand's domain, then a number becomes DOUBLE (PERCENTILE_DISC keeps it) and a string the type
+       * resolve_domains gave its value, or DOUBLE when it has no value */
+      const TP_DOMAIN *start_domain = argument == NULL || TP_DOMAIN_TYPE (argument) == DB_TYPE_VARIABLE
 	? domain_operand_domain (operand) : argument;
-      if (open != NULL && TP_DOMAIN_TYPE (open) != DB_TYPE_VARIABLE)
+      if (start_domain != NULL && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_VARIABLE)
 	{
-	  if (!domain_is_interpolation_type (TP_DOMAIN_TYPE (open)) && TP_DOMAIN_TYPE (open) != DB_TYPE_NULL
-	      && operand->val_type == DB_TYPE_NULL)
+	  if (!domain_is_interpolation_type (TP_DOMAIN_TYPE (start_domain))
+	      && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_NULL && operand->val_type == DB_TYPE_NULL)
 	    {
-	      /* a value none of DOUBLE, DATETIME, TIME takes (the gate classifies a string, a BIT, a LOB, a collection):
-	       * develop's first execution raised the error, the gate raises it */
+	      /* a value none of DOUBLE, DATETIME, TIME takes (resolve_domains types a string, a BIT, a LOB, a
+	       * collection): develop's first execution raised the error, resolve_domains raises it */
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
-	  const TP_DOMAIN *final_domain = domain_interpolation_final (function, open, val_type);
+	  const TP_DOMAIN *final_domain = domain_interpolation_final (function, start_domain, val_type);
 	  argument = final_domain != NULL ? final_domain
-	    : TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (open)) ? tp_domain_resolve_default (DB_TYPE_DOUBLE) : open;
+	    : TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (start_domain)) ? tp_domain_resolve_default (DB_TYPE_DOUBLE) :
+	    start_domain;
 	}
     }
   if (argument == NULL)
@@ -993,10 +997,10 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 }
 
 /*
- * domain_resolve_function - result types of the late-bound functions (pt_is_op_gate_dependent) and the value copies
+ * domain_resolve_function - result types of the late-bound functions (pt_is_op_hv_late_bind) and the value copies
  *   return: NO_ERROR, or the error the function raises for this argument type
  *
- * The value-overloaded ones take their class from the gate (so:7302~7420 ADDTIME, so:22578~22602 STR_TO_DATE); the
+ * The value-dependent ones take their type from resolve_domains (ADDTIME and STR_TO_DATE in string_opfunc.c); the
  * others have a fixed result type or the type of the argument they copy. fetch_peek_arith gives no
  * value for a NULL first argument, and for any NULL argument of ADDTIME, STR_TO_DATE, NEW_TIME, FROM_TZ and CONV.
  */
@@ -1054,7 +1058,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	{
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  /* a value is classified before this (VARCHAR without a zone, DATETIMETZ with one); a string the gate has no
+	  /* a value is typed before this (VARCHAR without a zone, DATETIMETZ with one); a string resolve_domains has no
 	   * value for (a column, an expression) is VARCHAR, the manual's "date/time string" row */
 	  result_type = DB_TYPE_VARCHAR;
 	  break;
@@ -1091,7 +1095,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
       break;
 
     case T_NEW_TIME:
-      /* db_new_time (so:28216) converts DATETIME and TIME within their type */
+      /* db_new_time converts DATETIME and TIME within their type */
       result_type = domain_operand_type (&operands[0]);
       if (result_type != DB_TYPE_DATETIME && result_type != DB_TYPE_TIME)
 	{
@@ -1100,7 +1104,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
       break;
 
     case T_FROM_TZ:
-      /* db_from_tz (so:28381) */
+      /* db_from_tz */
       if (domain_operand_type (&operands[0]) != DB_TYPE_DATETIME)
 	{
 	  return ER_QSTR_INVALID_DATA_TYPE;
@@ -1109,7 +1113,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
       break;
 
     case T_TO_CHAR:
-      /* db_to_char (so:12587): numbers and dates print to VARCHAR, a string comes back as it is */
+      /* db_to_char: numbers and dates print to VARCHAR, a string comes back as it is */
       result_type = domain_operand_type (&operands[0]);
       if (TP_IS_NUMERIC_TYPE (result_type) || TP_IS_DATE_OR_TIME_TYPE (result_type))
 	{
@@ -1192,7 +1196,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
       goto copy_operands;
 
     default:
-      /* a function the grid does not know: the gate must not guess */
+      /* a function the type rules do not know: resolve_domains must not guess */
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
@@ -1200,7 +1204,7 @@ set_operands:
   result->domain = tp_domain_resolve_default (result_type);
 
 copy_operands:
-  /* the functions take their arguments as they are; the classified slot keeps its value */
+  /* the functions take their arguments as they are; a value-dependent argument keeps its value */
   for (int i = 0; i < n_operands && i < 3; i++)
     {
       result->operand_domain[i] = operands[i].domain;
@@ -1218,7 +1222,7 @@ copy_operands:
  * A branch without a value (a NULL bind) takes the other's domain; one domain, or one variable string type, keeps
  * the first branch's. Two different domains are rejected before execution: develop's
  * qfile_unify_types raised the error only when both branch lists held rows and took the other branch's domain when
- * one was empty, which no decision before the rows can follow.
+ * one was empty, which no resolution before the rows can follow.
  */
 static int
 domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
@@ -1249,7 +1253,7 @@ domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RES
 
 /* develop compares through tp_value_coerce, which refuses these pairs before it converts
  * (TP_IMPLICIT_COERCION_NOT_ALLOWED): a comparison's converter fails there as develop's coercion does, where the ASSIGN
- * cell would convert */
+ * converter would convert */
 static bool
 domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
 {
@@ -1265,14 +1269,14 @@ domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
   return source != DB_TYPE_ENUMERATION && TP_IS_CHAR_TYPE (target);
 }
 
-/* The converter a comparison runs on a side: the ASSIGN cell (today's tp_value_coerce on the cells a
+/* The converter a comparison runs on a side: the ASSIGN converter (tp_value_coerce's on the pairs a
  * comparison reaches), failing what implicit coercion refuses. */
 static TP_VALUE_CONVERTER
 domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target)
 {
   if (domain_implicit_coercion_refused (source, TP_DOMAIN_TYPE (target)))
     {
-      /* the incompatible cell */
+      /* the incompatible converter */
       return tp_value_find_converter (source, NULL, DOMAIN_CONVERT_ASSIGN);
     }
   return tp_value_find_converter (source, target, DOMAIN_CONVERT_ASSIGN);
@@ -1323,11 +1327,11 @@ domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_con
 }
 
 /*
- * domain_compare_converted () - kernel CONVERT: develop's coercion with its converters planned - the first side, then
- *				 the other, then an ENUM's codeset for the string it meets - and cmpval
+ * domain_compare_converted () - comparison method CONVERT: develop's coercion with its converters resolved - the first
+ *				 side, then the other, then an ENUM's codeset for the string it meets - and cmpval
  *
- * A constant side the gate converted comes in converted; one whose conversion failed gives develop's outcome at its
- * turn. A correlated side its scope converted comes in converted too (preconverted).
+ * A constant side resolve_domains converted comes in converted; one whose conversion failed gives develop's outcome at
+ * its turn. A correlated side its scope converted comes in converted too (preconverted).
  */
 DB_VALUE_COMPARE_RESULT
 domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
@@ -1397,7 +1401,7 @@ DB_VALUE_COMPARE_RESULT
 domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
 		       int total_order, bool * can_compare, unsigned char converted)
 {
-  switch (compare->kernel)
+  switch (compare->method)
     {
     case DOMAIN_COMPARE_DIRECT:
       return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, total_order, NULL,
@@ -1416,14 +1420,14 @@ domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, 
     default:
       /* strings whose collations do not merge: develop's outcome at every row */
 #if !defined (NDEBUG)
-      if (compare->kernel != DOMAIN_COMPARE_COLLATIONS)
+      if (compare->method != DOMAIN_COMPARE_COLLATIONS)
 	{
 	  fprintf (stderr, "planned comparison kernel: kernel=%d site=%d source=%d,%d values=%d,%d\n",
-		   (int) compare->kernel, compare->site, (int) compare->source[0], (int) compare->source[1],
+		   (int) compare->method, compare->compare_index, (int) compare->source[0], (int) compare->source[1],
 		   (int) DB_VALUE_DOMAIN_TYPE (value1), (int) DB_VALUE_DOMAIN_TYPE (value2));
 	}
 #endif
-      assert (compare->kernel == DOMAIN_COMPARE_COLLATIONS);
+      assert (compare->method == DOMAIN_COMPARE_COLLATIONS);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
       if (can_compare != NULL)
 	{
@@ -1534,7 +1538,7 @@ domain_value_domain (const DB_VALUE * value)
       return tp_domain_resolve_value (value, NULL);
     }
 #if !defined (NDEBUG)
-  /* shadow check (optdebug): tp_domain_resolve_value finds the same cached domain */
+  /* debug cross-check (optdebug): tp_domain_resolve_value finds the same cached domain */
   assert (domain == tp_domain_resolve_value (value, NULL));
 #endif
   return domain;
@@ -1696,7 +1700,7 @@ domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column)
 
 /*
  * domain_compute_comparison () - the comparison develop's tp_value_compare_with_error makes between a value of each
- *   key, decided before any row: the type pair comparison table's cells, and a comparison of keys the table has no row
+ *   key, resolved before any row: the type pair comparison table's cells, and a comparison of keys the table has no row
  *   for (domain_resolve_comparison)
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when a target domain cannot be cached
  *
@@ -1718,22 +1722,22 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
   };
   result->value[0] = result->value[1] = -1;
   result->codeset_side = -1;
-  result->site = -1;
+  result->compare_index = -1;
   result->source[0] = (unsigned char) lhs->type;
   result->source[1] = (unsigned char) rhs->type;
-  result->kernel = DOMAIN_COMPARE_DIRECT;
+  result->method = DOMAIN_COMPARE_DIRECT;
   result->coercion = 1;
 
   if (lhs->type == DB_TYPE_NULL || rhs->type == DB_TYPE_NULL)
     {
       /* its value is NULL, and develop's comparison answers NULL before it counts or coerces */
-      result->kernel = DOMAIN_COMPARE_VALUES;
+      result->method = DOMAIN_COMPARE_VALUES;
       return NO_ERROR;
     }
   if (lhs->type == DB_TYPE_OBJECT || rhs->type == DB_TYPE_OBJECT)
     {
       /* an OBJECT domain's values are OIDs on the server (and OID against OBJECT compares by OID on the client) */
-      result->kernel = DOMAIN_COMPARE_OBJECT;
+      result->method = DOMAIN_COMPARE_OBJECT;
       return NO_ERROR;
     }
   if (lhs->type != rhs->type)
@@ -1834,11 +1838,11 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
     }
   if (result->collation == -1 && !refused)
     {
-      result->kernel = DOMAIN_COMPARE_COLLATIONS;
+      result->method = DOMAIN_COMPARE_COLLATIONS;
     }
   else if (result->conv[0] != NULL || result->conv[1] != NULL || result->codeset_side >= 0)
     {
-      result->kernel = DOMAIN_COMPARE_CONVERT;
+      result->method = DOMAIN_COMPARE_CONVERT;
     }
   return NO_ERROR;
 }
@@ -1908,7 +1912,7 @@ domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAI
   };
   result->value[0] = result->value[1] = -1;
   result->codeset_side = -1;
-  result->site = -1;
+  result->compare_index = -1;
   result->source[0] = (unsigned char) lhs->type;
   result->source[1] = (unsigned char) rhs->type;
   result->coercion = 0;
@@ -1916,24 +1920,24 @@ domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAI
   if (lhs->type == DB_TYPE_NULL || rhs->type == DB_TYPE_NULL)
     {
       /* its value is NULL, and develop's comparison answers NULL first */
-      result->kernel = DOMAIN_COMPARE_VALUES;
+      result->method = DOMAIN_COMPARE_VALUES;
       return;
     }
   if (lhs->type == DB_TYPE_OBJECT || rhs->type == DB_TYPE_OBJECT)
     {
       /* an OBJECT's values are OIDs on the server (and OID against OBJECT compares by OID on the client) */
-      result->kernel = DOMAIN_COMPARE_OBJECT;
+      result->method = DOMAIN_COMPARE_OBJECT;
       return;
     }
   if (lhs->type != rhs->type && !(TP_IS_CHAR_TYPE (lhs->type) && TP_IS_CHAR_TYPE (rhs->type)))
     {
       /* od:tp_value_compare_with_error without coercion: types that do not compare as they are answer by their rank */
-      result->kernel = DOMAIN_COMPARE_RANK;
+      result->method = DOMAIN_COMPARE_RANK;
       result->rank = (signed char) (tp_more_general_type (lhs->type, rhs->type) > 0 ? DB_GT : DB_LT);
       return;
     }
   /* the first value's cmpval under the collation of the tail, as with coercion when nothing is converted */
-  result->kernel = DOMAIN_COMPARE_DIRECT;
+  result->method = DOMAIN_COMPARE_DIRECT;
   result->cmp = pr_type_from_id (lhs->type);
   if (!TP_IS_CHAR_TYPE (lhs->type))
     {
@@ -1955,48 +1959,48 @@ domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAI
     }
   if (result->collation == -1)
     {
-      result->kernel = DOMAIN_COMPARE_COLLATIONS;
+      result->method = DOMAIN_COMPARE_COLLATIONS;
     }
 }
 
 /*
  * The key pair table: the comparison of every pair of keys a value can have - an element type
  * (domain_element_type) and, for a string or an ENUM, a registered collation - with coercion and without. A pair's
- * entry indexes a pool of the distinct decisions: most pairs share one (a string's collation does not change how it
+ * entry indexes a pool of the distinct resolutions: most pairs share one (a string's collation does not change how it
  * compares with a number). Its entries depend on no value and no plan, so it is made once - at server boot
- * (domain_key_pairs_init), or by the first comparison that finds none - and freed before the type
- * module whose cached domains its string targets are (domain_key_pairs_final).
+ * (domain_type_pair_table_init), or by the first comparison that finds none - and freed before the type
+ * module whose cached domains its string targets are (domain_type_pair_table_final).
  */
-struct DOMAIN_KEY_PAIRS
+struct DOMAIN_TYPE_PAIR_TABLE
 {
   short first[DOMAIN_ELEMENT_TYPES];	/* a type's key, a string or ENUM type's first; -1: no element type */
   short ordinal[DOMAIN_ELEMENT_COLLATIONS];	/* a registered collation's key among its type's; -1 */
   int n_keys;
-  int *entry[2];		/* [coercion][key1 * n_keys + key2]: the pair's decision in pool; the diagonal is a key
-				 * against itself, which an item's row (domain_compare_key_row) reads */
+  int *entry[2];		/* [coercion][key1 * n_keys + key2]: the pair's resolution in pool; the diagonal is a
+				 * key against itself, which an item's row (domain_compare_key_row) reads */
   DOMAIN_COMPARE *pool;
   int n_pool;
 };
 
 /* *INDENT-OFF* */
-static std::atomic<DOMAIN_KEY_PAIRS *> domain_Key_pairs (NULL);
+static std::atomic<DOMAIN_TYPE_PAIR_TABLE *> domain_Key_pairs (NULL);
 static std::mutex domain_Key_pairs_mutex;
 /* *INDENT-ON* */
 
 static bool
 domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b)
 {
-  return a->kernel == b->kernel && a->first == b->first && a->source[0] == b->source[0]
+  return a->method == b->method && a->first == b->first && a->source[0] == b->source[0]
     && a->source[1] == b->source[1] && a->converted_first == b->converted_first && a->failed == b->failed
     && a->reason == b->reason && a->coercion == b->coercion && a->rank == b->rank && a->collation == b->collation
     && a->value[0] == b->value[0] && a->value[1] == b->value[1] && a->codeset_side == b->codeset_side
-    && a->site == b->site && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
-    && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->volatile_reads == b->volatile_reads
-    && a->leaves == b->leaves;
+    && a->compare_index == b->compare_index && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
+    && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->session_reads == b->session_reads
+    && a->operator_functions == b->operator_functions;
 }
 
 static void
-domain_key_pairs_free (DOMAIN_KEY_PAIRS * pairs)
+domain_key_pairs_free (DOMAIN_TYPE_PAIR_TABLE * pairs)
 {
   if (pairs != NULL)
     {
@@ -2008,10 +2012,10 @@ domain_key_pairs_free (DOMAIN_KEY_PAIRS * pairs)
 }
 
 /* The table itself: NULL when it cannot be made (no memory). */
-static DOMAIN_KEY_PAIRS *
+static DOMAIN_TYPE_PAIR_TABLE *
 domain_key_pairs_make (void)
 {
-  DOMAIN_KEY_PAIRS *pairs = (DOMAIN_KEY_PAIRS *) calloc (1, sizeof (*pairs));
+  DOMAIN_TYPE_PAIR_TABLE *pairs = (DOMAIN_TYPE_PAIR_TABLE *) calloc (1, sizeof (*pairs));
   if (pairs == NULL)
     {
       return NULL;
@@ -2056,8 +2060,8 @@ domain_key_pairs_make (void)
 	    }
 	}
     }
-  /* type pair by type pair, so the decisions of one pair are contiguous in the pool and a key pair looks for its
-   * decision only among its type pair's */
+  /* type pair by type pair, so the resolutions of one pair are contiguous in the pool and a key pair looks for its
+   * resolution only among its type pair's */
   for (int mode = 0; ok && mode < 2; mode++)
     {
       for (int t1 = 0; ok && t1 < DOMAIN_ELEMENT_TYPES; t1++)
@@ -2077,25 +2081,25 @@ domain_key_pairs_make (void)
 		    {
 		      int *entry = &pairs->entry[mode][i * n + j];
 		      *entry = -1;
-		      DOMAIN_COMPARE decision;
+		      DOMAIN_COMPARE resolved_domain;
 		      if (mode == 1)
 			{
-			  ok = domain_compute_comparison (&keys[i], &keys[j], &decision) == NO_ERROR;
+			  ok = domain_compute_comparison (&keys[i], &keys[j], &resolved_domain) == NO_ERROR;
 			}
 		      else
 			{
-			  domain_resolve_comparison_uncoerced (&keys[i], &keys[j], &decision);
+			  domain_resolve_comparison_uncoerced (&keys[i], &keys[j], &resolved_domain);
 			}
 		      for (int p = pair_first; ok && p < pairs->n_pool && *entry < 0; p++)
 			{
-			  if (domain_compare_equal (&pairs->pool[p], &decision))
+			  if (domain_compare_equal (&pairs->pool[p], &resolved_domain))
 			    {
 			      *entry = p;
 			    }
 			}
 		      if (ok && *entry < 0)
 			{
-			  pairs->pool[pairs->n_pool] = decision;
+			  pairs->pool[pairs->n_pool] = resolved_domain;
 			  *entry = pairs->n_pool++;
 			}
 		    }
@@ -2118,10 +2122,10 @@ domain_key_pairs_make (void)
 }
 
 /* The table: the boot made it; the first comparison that finds none makes it here. */
-static const DOMAIN_KEY_PAIRS *
+static const DOMAIN_TYPE_PAIR_TABLE *
 domain_key_pairs (void)
 {
-  DOMAIN_KEY_PAIRS *pairs = domain_Key_pairs.load (std::memory_order_acquire);
+  DOMAIN_TYPE_PAIR_TABLE *pairs = domain_Key_pairs.load (std::memory_order_acquire);
   if (pairs == NULL)
     {
       std::lock_guard < std::mutex > lock (domain_Key_pairs_mutex);
@@ -2136,14 +2140,14 @@ domain_key_pairs (void)
 }
 
 void
-domain_key_pairs_init (void)
+domain_type_pair_table_init (void)
 {
   /* a table the boot cannot make is left to the first comparison, as before */
   (void) domain_key_pairs ();
 }
 
 void
-domain_key_pairs_final (void)
+domain_type_pair_table_final (void)
 {
   std::lock_guard < std::mutex > lock (domain_Key_pairs_mutex);
   domain_key_pairs_free (domain_Key_pairs.exchange (NULL));
@@ -2160,7 +2164,7 @@ domain_unresolved_error (const char *alias, int index, DB_TYPE type)
 
 /* A key's row and column in the table; -1 for a key no value of an element type carries. */
 static inline int
-domain_key_pair_index (const DOMAIN_KEY_PAIRS * pairs, const DOMAIN_COMPARE_KEY * key)
+domain_key_pair_index (const DOMAIN_TYPE_PAIR_TABLE * pairs, const DOMAIN_COMPARE_KEY * key)
 {
   const int first = key->type >= 0 && key->type < DOMAIN_ELEMENT_TYPES ? pairs->first[key->type] : -1;
   if (first < 0 || !TP_TYPE_HAS_COLLATION (key->type))
@@ -2173,10 +2177,10 @@ domain_key_pair_index (const DOMAIN_KEY_PAIRS * pairs, const DOMAIN_COMPARE_KEY 
 }
 
 /* A key's row and column in the table when it is one of the table's keys exactly: a string or ENUM key whose codeset
- * is its collation's, as the table's keys have it; -1 otherwise. The codesets decide a coerced string's target and
+ * is its collation's, as the table's keys have it; -1 otherwise. The codesets resolve a coerced string's target and
  * whether two collations merge, so a comparison resolved for its keys copies the table's cell only then. */
 static int
-domain_key_pair_index_exact (const DOMAIN_KEY_PAIRS * pairs, const DOMAIN_COMPARE_KEY * key)
+domain_key_pair_index_exact (const DOMAIN_TYPE_PAIR_TABLE * pairs, const DOMAIN_COMPARE_KEY * key)
 {
   const int index = domain_key_pair_index (pairs, key);
   if (index >= 0 && TP_TYPE_HAS_COLLATION (key->type) && key->codeset != lang_get_collation (key->collation)->codeset)
@@ -2189,7 +2193,7 @@ domain_key_pair_index_exact (const DOMAIN_KEY_PAIRS * pairs, const DOMAIN_COMPAR
 int
 domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result)
 {
-  const DOMAIN_KEY_PAIRS *pairs = domain_key_pairs ();
+  const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();
   const int row = pairs != NULL ? domain_key_pair_index_exact (pairs, lhs) : -1;
   const int column = pairs != NULL ? domain_key_pair_index_exact (pairs, rhs) : -1;
   if (row < 0 || column < 0)
@@ -2204,15 +2208,15 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
 int
 domain_compare_key_row (const DOMAIN_COMPARE_KEY * key)
 {
-  const DOMAIN_KEY_PAIRS *pairs = domain_key_pairs ();
+  const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();
   return pairs != NULL ? domain_key_pair_index_exact (pairs, key) : -1;
 }
 
 const DOMAIN_COMPARE *
-domain_compare_row_cell (int row, const DB_VALUE * element)
+domain_compare_row_entry (int row, const DB_VALUE * element)
 {
   /* a row was given out, so the table was made; it lives until the server stops */
-  const DOMAIN_KEY_PAIRS *pairs = domain_key_pairs ();
+  const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();
   assert (pairs != NULL && row >= 0 && row < pairs->n_keys);
   DOMAIN_COMPARE_KEY key;
   domain_compare_key_of_value (element, &key);
@@ -2221,14 +2225,14 @@ domain_compare_row_cell (int row, const DB_VALUE * element)
 }
 
 DB_VALUE_COMPARE_RESULT
-domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
-			bool * can_compare)
+domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
+			     bool * can_compare)
 {
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
   if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))
     {
       /* one type without a collation, a homogeneous collection's elements: develop compares them as they are, and
-       * decides nothing */
+       * resolves nothing */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
   if (can_compare != NULL)
@@ -2248,10 +2252,10 @@ domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do
   domain_compare_key_of_value (value2, &key[1]);
   if (key[0].type == key[1].type && key[0].collation == key[1].collation)
     {
-      /* one type and one collation: develop compares them as they are, and decides nothing */
+      /* one type and one collation: develop compares them as they are, and resolves nothing */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
-  const DOMAIN_KEY_PAIRS *pairs = domain_key_pairs ();
+  const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();
   const int row = pairs != NULL ? domain_key_pair_index (pairs, &key[0]) : -1;
   const int column = pairs != NULL ? domain_key_pair_index (pairs, &key[1]) : -1;
   if (row < 0 || column < 0)
@@ -2262,7 +2266,7 @@ domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
   const DOMAIN_COMPARE *compare = &pairs->pool[pairs->entry[do_coercion ? 1 : 0][row * pairs->n_keys + column]];
-  if (compare->kernel == DOMAIN_COMPARE_OBJECT)
+  if (compare->method == DOMAIN_COMPARE_OBJECT)
     {
       /* an object side: develop's comparison, which meets OIDs on the server */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
@@ -2270,7 +2274,7 @@ domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do
   const DB_VALUE_COMPARE_RESULT result = domain_compare_values (compare, value1, value2, total_order, can_compare);
 #if !defined (NDEBUG)
   {
-    /* shadow check (optdebug): develop's comparison of the same values gives the table's result, comparability and
+    /* debug cross-check (optdebug): develop's comparison of the same values gives the table's result, comparability and
      * error */
     const bool comparable = can_compare != NULL ? *can_compare : true;
     const int error = comparable ? NO_ERROR : er_errid ();
@@ -2285,7 +2289,7 @@ domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do
       {
 	fprintf (stderr, "key pair comparison: types %d/%d collations %d/%d coercion=%d kernel=%d result=%d/%d "
 		 "comparable=%d/%d error=%d/%d\n", (int) key[0].type, (int) key[1].type, key[0].collation,
-		 key[1].collation, do_coercion, (int) compare->kernel, (int) result, (int) develop, (int) comparable,
+		 key[1].collation, do_coercion, (int) compare->method, (int) result, (int) develop, (int) comparable,
 		 (int) develop_comparable, error, develop_error);
       }
     assert (develop == result && develop_comparable == comparable && develop_error == error);
@@ -2307,7 +2311,7 @@ domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE
        * parameters, whose precision or length alone differs) */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
-  const DOMAIN_KEY_PAIRS *pairs = keys != NULL && keys->other_keys ? domain_key_pairs () : NULL;
+  const DOMAIN_TYPE_PAIR_TABLE *pairs = keys != NULL && keys->other_keys ? domain_key_pairs () : NULL;
   const int index[2] = {
     pairs != NULL ? domain_key_pair_index (pairs, &key[0]) : -1,
     pairs != NULL ? domain_key_pair_index (pairs, &key[1]) : -1
@@ -2318,7 +2322,7 @@ domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE
       assert (!TP_TYPE_HAS_COLLATION (key[0].type) || key[0].codeset == lang_get_collation (key[0].collation)->codeset);
       assert (!TP_TYPE_HAS_COLLATION (key[1].type) || key[1].codeset == lang_get_collation (key[1].collation)->codeset);
       const DOMAIN_COMPARE *compare = &pairs->pool[pairs->entry[1][index[0] * pairs->n_keys + index[1]]];
-      if (compare->kernel == DOMAIN_COMPARE_OBJECT)
+      if (compare->method == DOMAIN_COMPARE_OBJECT)
 	{
 	  /* an object side: develop's comparison, which meets OIDs on the server */
 	  return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
@@ -2343,17 +2347,17 @@ domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value
 
 int
 domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
-		const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_gate)
+		const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_late_bind)
 {
-  assert (operands != NULL && n_operands > 0 && result != NULL && needs_gate != NULL);
+  assert (operands != NULL && n_operands > 0 && result != NULL && needs_late_bind != NULL);
 
-  *needs_gate = false;
+  *needs_late_bind = false;
   for (int i = 0; i < n_operands; i++)
     {
       if (operands[i].val_type == DB_TYPE_NULL
 	  && (operands[i].domain == NULL || TP_DOMAIN_TYPE (operands[i].domain) == DB_TYPE_VARIABLE))
 	{
-	  *needs_gate = true;
+	  *needs_late_bind = true;
 	  return NO_ERROR;
 	}
     }
@@ -2400,7 +2404,7 @@ domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands,
   return ER_FAILED;
 }
 
-/* MEDIAN/PERCENTILE: DOUBLE, then DATETIME, then TIME, as tp_value_cast (…, false) would (qx:21713~21735). */
+/* MEDIAN/PERCENTILE: DOUBLE, then DATETIME, then TIME, as tp_value_cast (…, false) would. */
 static DB_TYPE
 domain_classify_interpolation (const DB_VALUE * value)
 {
@@ -2467,7 +2471,7 @@ domain_classify_addtime (const DB_VALUE * value)
   return has_zone ? DB_TYPE_DATETIMETZ : DB_TYPE_VARCHAR;
 }
 
-/* STR_TO_DATE format: the specifiers left after removing white space decide the result type. */
+/* STR_TO_DATE format: the specifiers left after removing white space resolve the result type. */
 static DB_TYPE
 domain_classify_str_to_date_format (const DB_VALUE * value)
 {
@@ -2534,7 +2538,7 @@ domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_V
   if ((context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC) && arg_index == 0
       && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC))
     {
-      /* an analytic interpolation function classifies its first value as the aggregate does (qn:807) */
+      /* an analytic interpolation function types its first value as the aggregate does */
       return domain_classify_interpolation (value);
     }
   if (context == DOMAIN_CTX_FUNC_ARG && opcode == T_ADDTIME && arg_index == 0)
@@ -2550,12 +2554,12 @@ domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_V
 
 /*
  * the character results of compiled nodes whose collation the compiler left to the values (LEAVE) or enforced
- * over an operand it could not type (ENFORCE). Each rule is what the operator gives its value at execution today
- * (string_opfunc.c, tp_value_cast_internal); the gate applies it once to the operands' decided domains, as
+ * over an operand it could not type (ENFORCE). Each rule is what the operator gives its value at execution
+ * (string_opfunc.c, tp_value_cast_internal); resolve_domains applies it once to the operands' resolved domains, as
  * tp_domain_resolve_value would read the value.
  */
 
-/* A variable string or bit string at floating precision reads as its maximum (tp_domain_resolve_value so:3313). */
+/* A variable string or bit string at floating precision reads as its maximum (tp_domain_resolve_value). */
 static const TP_DOMAIN *
 domain_variable_string_value (const TP_DOMAIN * domain)
 {
@@ -2580,7 +2584,7 @@ domain_as_value_domain (const TP_DOMAIN * domain)
 {
   if (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_ENUMERATION)
     {
-      /* a value carries no element list (tp_domain_resolve_value so:3335) */
+      /* a value carries no element list (tp_domain_resolve_value) */
       return tp_domain_resolve_default (DB_TYPE_ENUMERATION);
     }
   return domain_variable_string_value (domain);
@@ -2590,7 +2594,7 @@ domain_as_value_domain (const TP_DOMAIN * domain)
 enum DOMAIN_CHAR_SOURCE
 {
   DOMAIN_CHAR_MERGE,		/* LANG_RT_COMMON_COLL over every character operand in operand order
-				 * (db_string_concatenate so:1194, db_string_pad, db_string_replace) */
+				 * (db_string_concatenate, db_string_pad, db_string_replace) */
   DOMAIN_CHAR_FIRST,		/* the first character operand: the string being cut, cased, trimmed, reversed,
 				 * translated, repeated, hashed or bounded keeps its codeset and collation */
   DOMAIN_CHAR_FORMAT,		/* the format argument, the second operand (db_date_format, db_time_format) */
@@ -2605,7 +2609,7 @@ enum DOMAIN_CHAR_PRECISION
   DOMAIN_PREC_FLOATING,		/* the value's own length: floating */
   DOMAIN_PREC_SOURCE,		/* the first character operand's (db_string_substring, db_string_trim,
 				 * db_string_reverse) */
-  DOMAIN_PREC_SUM,		/* the character operands' added, floating if one is (db_string_concatenate so:1262) */
+  DOMAIN_PREC_SUM,		/* the character operands' added, floating if one is (db_string_concatenate) */
   DOMAIN_PREC_COMPILED,		/* the compiled one (MD5 and SHA1 give CHAR of the digest length, UUID_FORMAT 36) */
   DOMAIN_PREC_CHAR_SOURCE	/* a fixed CHAR source's, else floating */
 };
@@ -2732,7 +2736,7 @@ domain_first_character_operand (const DOMAIN_OPERAND * operands, int n_operands)
   return NULL;
 }
 
-/* CAST, CAST_WRAP, CAST_NOFAIL to a character target: tp_value_cast_internal (od:29018). ENFORCE keeps a character
+/* CAST, CAST_WRAP, CAST_NOFAIL to a character target: tp_value_cast_internal. ENFORCE keeps a character
  * source's type and precision under the target's collation, and leaves any other value as it is; LEAVE makes the
  * target type and precision under a character source's collation, or the target's own for any other source. */
 static const TP_DOMAIN *
@@ -2759,8 +2763,8 @@ domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled
 				  char_source ? from->collation_id : compiled->collation_id);
 }
 
-/* The character result of opcode over the operands' decided domains; compiled is the node's compiled domain (NULL
- * for a gate-dependent node: the rule's type and precision). */
+/* The character result of opcode over the operands' resolved domains; compiled is the node's compiled domain (NULL
+ * for a late-binding node: the rule's type and precision). */
 static int
 domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_operands, const TP_DOMAIN * compiled,
 			 RESOLVED_DOMAIN * result)
@@ -2772,7 +2776,7 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
     }
   else if (compiled != NULL && opcode == T_TO_CHAR)
     {
-      /* db_to_char (so:12608) over the node's compiled domain: a string is coerced to it, keeping its collation
+      /* db_to_char over the node's compiled domain: a string is coerced to it, keeping its collation
        * (LEAVE); a number or a date prints into the compiled domain's codeset and collation */
       const TP_DOMAIN *value = n_operands > 0 ? domain_operand_domain (&operands[0]) : NULL;
       if (value != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (value)))
@@ -2788,7 +2792,7 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
     {
       /* a reader of a GROUP_CONCAT accumulator: qdata_group_concat_first_value makes the accumulator in its
        * compiled string type under the function domain's codeset and collation, of its own length; a function the
-       * gate saw no value for gives no value */
+       * resolve_domains saw no value for gives no value */
       const TP_DOMAIN *function = n_operands > 0 ? domain_operand_domain (&operands[0]) : NULL;
       if (function == NULL || !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (function)))
 	{
@@ -2828,7 +2832,7 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	  break;
 	case DOMAIN_CHAR_BRANCH:
 	  {
-	    /* the row takes one branch's value: one domain for every character branch, or the row decides */
+	    /* the row takes one branch's value: one domain for every character branch, or the row resolves */
 	    const TP_DOMAIN *branch = NULL;
 	    for (int i = 0; i < n_operands; i++)
 	      {

@@ -1022,7 +1022,7 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 
   /* This code references tp_infer_common_domain but reduces unnecessary calls to tp_domain_new.
    * the key columns' domains are the plan's - the join's lists opened with them (qdata_get_valptr_type_list)
-   * - so the common domain follows from decisions made before any row. */
+   * - so the common domain follows from resolutions made before any row. */
   for (domain_index = 0; domain_index < domain_cnt; domain_index++)
     {
       outer_value_index = outer_value_indexes[domain_index];

@@ -4506,7 +4506,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->cmp_dom_volatile = false;
+	  subkey->cmp_dom_session_read = false;
 
 	  /* the key's domain is the plan's */
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
@@ -4535,7 +4535,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->cmp_dom_volatile = false;
+	  subkey->cmp_dom_session_read = false;
 	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
@@ -7242,35 +7242,35 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
 
 #if !defined (NDEBUG)
 /*
- * qfile_check_interpolation_class () - shadow check (optdebug): the class the analytic setup gave the key before
- *   the sort is the one develop's first value gave it, unless that class rejects the value (a string column or
- *   expression is DOUBLE, the function's evaluation rejects the value too); a key without a class holds values
- *   develop could not classify either
+ * qfile_check_interpolation_type () - debug cross-check (optdebug): the type the analytic setup gave the key before
+ *   the sort is the one develop's first value gave it, unless that type rejects the value (a string column or
+ *   expression is DOUBLE, the function's evaluation rejects the value too); a key without a type holds values
+ *   develop could not type either
  */
 static void
-qfile_check_interpolation_class (DB_VALUE * value, const TP_DOMAIN * planned)
+qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
 {
   DB_VALUE converted;
   TP_DOMAIN *develop = NULL;
-  bool planned_rejects = true;
+  bool resolved_rejects = true;
 
   db_make_null (&converted);
   er_stack_push ();
   const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &develop);
   pr_clear_value (&converted);
-  if (planned != NULL)
+  if (resolved != NULL)
     {
-      planned_rejects = tp_value_cast (value, &converted, (TP_DOMAIN *) planned, false) != DOMAIN_COMPATIBLE;
+      resolved_rejects = tp_value_cast (value, &converted, (TP_DOMAIN *) resolved, false) != DOMAIN_COMPATIBLE;
       pr_clear_value (&converted);
     }
   er_stack_pop ();
 
-  const bool same = planned == NULL ? error != NO_ERROR
-    : planned_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (develop) == TP_DOMAIN_TYPE (planned));
+  const bool same = resolved == NULL ? error != NO_ERROR
+    : resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (develop) == TP_DOMAIN_TYPE (resolved));
   if (!same)
     {
       fprintf (stderr, "interpolation sort key class: value type %d planned %d develop %d error %d\n",
-	       (int) DB_VALUE_DOMAIN_TYPE (value), planned != NULL ? (int) TP_DOMAIN_TYPE (planned) : -1,
+	       (int) DB_VALUE_DOMAIN_TYPE (value), resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
 	       develop != NULL ? (int) TP_DOMAIN_TYPE (develop) : -1, error);
     }
   assert (same);
@@ -7286,8 +7286,8 @@ qfile_check_interpolation_class (DB_VALUE * value, const TP_DOMAIN * planned)
  *
  *  NOTE: median analytic function sort string in different domain
  *
- *  The analytic setup gives the key its class before the sort (qexec_plan_interpolation_sort_key), so the workers
- *  of a parallel sort, which share the key, only read it - a class over a session variable read too.
+ *  The analytic setup gives the key its type before the sort (qexec_plan_interpolation_sort_key), so the workers
+ *  of a parallel sort, which share the key, only read it - a type over a session variable read too.
  */
 static int
 qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * subkey, SORTKEY_INFO * key_info)
@@ -7322,12 +7322,12 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
 	  goto end;
 	}
 
-      /* a value argument the gate could not classify: every value is that one, whose classification
+      /* a value argument resolve_domains could not type: every value is that one, whose typing
        * failed for develop's first value too; a session variable read keeps that for the statement */
 #if !defined (NDEBUG)
-      if (!subkey->cmp_dom_volatile)
+      if (!subkey->cmp_dom_session_read)
 	{
-	  qfile_check_interpolation_class (&val0, NULL);
+	  qfile_check_interpolation_type (&val0, NULL);
 	}
 #endif
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
@@ -7357,10 +7357,10 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
     }
 
 #if !defined (NDEBUG)
-  if (!subkey->cmp_dom_volatile)
+  if (!subkey->cmp_dom_session_read)
     {
-      qfile_check_interpolation_class (&val0, subkey->cmp_dom);
-      qfile_check_interpolation_class (&val1, subkey->cmp_dom);
+      qfile_check_interpolation_type (&val0, subkey->cmp_dom);
+      qfile_check_interpolation_type (&val1, subkey->cmp_dom);
     }
 #endif
 

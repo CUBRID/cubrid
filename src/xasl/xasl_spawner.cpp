@@ -179,7 +179,7 @@ namespace cubxasl
     dest->rhs = spawner::spawn (src->rhs);
     dest->rel_op = src->rel_op;
     dest->type = src->type;
-    /* the leader's comparison record, as the copied operands take the leader's plan items */
+    /* the leader's resolved comparison, as the copied operands take the leader's plan items */
     dest->domain_compare = src->domain_compare;
 
     return er_errid ();
@@ -403,7 +403,7 @@ namespace cubxasl
       }
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    /* the plan item carries the node's comparison records, as a term's */
+    /* the plan item carries the node's resolved comparisons, as a term's */
     dest->domain_plan = src->domain_plan;
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
@@ -883,7 +883,7 @@ namespace cubxasl
     return er_errid ();
   }
 
-  /* frees a worker's copy of the execution gate state on the thread that made it */
+  /* frees a worker's copy of resolve_domains state on the thread that made it */
   static void
   spawner_free_xasl_state (cubthread::entry *thread_p, void *ptr, int)
   {
@@ -904,8 +904,8 @@ namespace cubxasl
 
     if (src != nullptr && src->xasl_state != nullptr)
       {
-	/* the worker inherits the gate's decisions and values through the one PX copy: every
-	 * reference value (secondary references included) and the gate table, owned and freed by this thread */
+	/* the worker inherits the resolved domains and values through the one PX copy: every reference value (secondary
+	 * references included) and the resolved domain table, owned and freed by this thread */
 	xasl_state *copy = qexec_deep_copy_xasl_state (&m_thread_ref, src->xasl_state, false);
 	if (copy == nullptr)
 	  {
@@ -952,7 +952,7 @@ namespace cubxasl
     dest->lrand = src->lrand;
     dest->drand = src->drand;
 
-    /* a descriptor no execution gate made (no gate state) copies its values only */
+    /* a descriptor no resolve_domains made (no resolved-domain state) copies its values only */
     dest->xasl_state = NULL;
 
     return dest;

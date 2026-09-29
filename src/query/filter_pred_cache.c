@@ -409,7 +409,8 @@ fpcache_claim (THREAD_ENTRY * thread_p, BTID * btid, or_predicate * or_pred, pre
 	stx_map_stream_to_filter_pred (thread_p, filter_pred, or_pred->pred_stream, or_pred->pred_stream_size);
       if (error_code != NO_ERROR)
 	{
-	  /* the caller gets the load's error (the index stream boundary included), not a missing predicate */
+	  /* the caller gets the load's error (the index stream's unresolved-domain check included), not a missing
+	   * predicate */
 	  ASSERT_ERROR ();
 	}
       (void) db_change_private_heap (thread_p, old_private_heap);

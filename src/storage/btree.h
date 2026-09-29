@@ -120,8 +120,9 @@ struct DOMAIN_SEARCH_KEYS;
  * plan, made before any row (scan_index_search_compare). */
 enum BTREE_SEARCH_COMPARE
 {
-  BTREE_SEARCH_COMPARE_PLANNED = 0,	/* develop's type and collation checks, then the key plan's comparison of a value
-					 * that does not compare as it is; a search outside a query plan: develop's */
+  BTREE_SEARCH_COMPARE_RESOLVED = 0,	/* develop's type and collation checks, then the key plan's comparison of a
+					 * value that does not compare as it is; a search outside a query plan:
+					 * develop's */
   BTREE_SEARCH_COMPARE_DIRECT,	/* a single-column key whose values all have the index column's type and collation:
 				 * the column's cmpval */
   BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN	/* a multi-column key whose values all have their columns' types and
@@ -144,9 +145,9 @@ struct btid_int
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   BTREE_SEARCH_COMPARE search_compare;	/* how the comparisons of an index scan's search key values compare; derived
-					 * with search_keys; PLANNED outside an index scan */
-  const DOMAIN_SEARCH_KEYS *search_keys;	/* what the comparisons of an index scan's search key values read; derived
-						 * from INDX_SCAN_ID's key plan; NULL outside an index scan */
+					 * with search_keys; RESOLVED outside an index scan */
+  const DOMAIN_SEARCH_KEYS *search_keys;	/* what the comparisons of an index scan's search key values read;
+						 * derived from INDX_SCAN_ID's key plan; NULL outside an index scan */
   int rev_level;
   int deduplicate_key_idx;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   OID topclass_oid;		/* class oid for which index is created */

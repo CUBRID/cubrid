@@ -189,7 +189,7 @@ typedef enum tp_domain_status
   DOMAIN_INCOMPATIBLE,		/* can't be coerced */
   DOMAIN_OVERFLOW,		/* value out of range */
   DOMAIN_ERROR,			/* an error has been set */
-  DOMAIN_TRUNCATED		/* converted value retained; caller decides acceptance */
+  DOMAIN_TRUNCATED		/* converted value retained; caller resolves acceptance */
 } TP_DOMAIN_STATUS;
 
 /* A converter of a value into a domain of another type (object_domain_convert.cpp, tp_value_find_converter): the one

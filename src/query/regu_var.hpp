@@ -176,9 +176,9 @@ const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may re
 						 * at load for a stable regu */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
-const int REGU_VARIABLE_OPEN = 0x8000;	/* load-derived: the regu's compiled domain is open, so the inline
-					 * fetch_peek_dbval () peeks it only once it took its domain in this execution
-					 * (qexec_node_took_domain) */
+const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's compiled domain is variable, so the
+					 * inline fetch_peek_dbval () peeks it only once it took its domain in this
+					 * execution (qexec_node_domain_is_set) */
 
 class regu_variable_node
 {

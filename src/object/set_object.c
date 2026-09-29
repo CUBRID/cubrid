@@ -324,14 +324,14 @@ set_final (void)
  *
  *  Note :
  *      The server reads the key pair table, which holds the comparison of
- *      every pair of keys an element can have, decided before any row:
+ *      every pair of keys an element can have, resolved before any row:
  *      the elements' types are the collection's data.
  */
 static DB_VALUE_COMPARE_RESULT
 col_element_compare (DB_VALUE * a, DB_VALUE * b, int do_coerce, int total_order)
 {
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  return domain_compare_by_keys (a, b, do_coerce, total_order, NULL);
+  return domain_compare_by_type_pair (a, b, do_coerce, total_order, NULL);
 #else
   return tp_value_compare (a, b, do_coerce, total_order);
 #endif

@@ -670,7 +670,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
       es_final ();
 #if defined(SA_MODE)
       /* the key pair table's string targets are cached domains */
-      domain_key_pairs_final ();
+      domain_type_pair_table_final ();
 #endif /* SA_MODE */
       tp_final ();
 
@@ -1568,7 +1568,7 @@ boot_client_all_finalize (int final_level)
 	  es_final ();
 #if defined(SA_MODE)
 	  /* the key pair table's string targets are cached domains */
-	  domain_key_pairs_final ();
+	  domain_type_pair_table_final ();
 #endif /* SA_MODE */
 	  tp_final ();
 	}

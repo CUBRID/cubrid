@@ -3251,7 +3251,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	  /* skip casting enum and unknown type values */
 	  continue;
 	}
-      /* a VARCHAR value bound to a CHAR(n) slot keeps its original value once the cast
+      /* a VARCHAR value bound to a CHAR(n) host variable keeps its original value once the cast
        * accepts it, as pt_set_host_variables does; re-initializing the cast value's domain here left a NULL. */
       keep_varchar = TP_IS_CHAR_TYPE (hv_dom->type->id) && hv_dom->type->id != typ && typ == DB_TYPE_VARCHAR;
       db_make_null (&char_cast);

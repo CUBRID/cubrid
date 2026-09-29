@@ -2653,7 +2653,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   /* the key pair table, the comparison of every pair of value keys, before the first query needs it: its time
    * and memory move from the first comparison to the boot */
-  domain_key_pairs_init ();
+  domain_type_pair_table_init ();
 
 #if defined (SA_MODE)
   /* Completely vacuum database. */
@@ -3923,7 +3923,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
     {
       es_final ();
       /* the key pair table's string targets are cached domains */
-      domain_key_pairs_final ();
+      domain_type_pair_table_final ();
       tp_final ();
       locator_free_areas ();
       set_final ();
