@@ -42,6 +42,7 @@ set (COMPAT_HEADERS
   )
 
 set(THREAD_SOURCES
+  ${THREAD_DIR}/concurrency_slot.cpp
   ${THREAD_DIR}/critical_section.c
   ${THREAD_DIR}/critical_section_tracker.cpp
   ${THREAD_DIR}/thread_daemon.cpp
@@ -55,6 +56,7 @@ set(THREAD_SOURCES
   ${THREAD_DIR}/thread_worker_pool_taskcap.cpp
   )
 set(THREAD_HEADERS
+  ${THREAD_DIR}/concurrency_slot.hpp
   ${THREAD_DIR}/critical_section_tracker.hpp
   ${THREAD_DIR}/thread_compat.hpp
   ${THREAD_DIR}/thread_daemon.hpp
@@ -67,6 +69,7 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_waiter.hpp
   ${THREAD_DIR}/thread_worker_pool.hpp
   ${THREAD_DIR}/thread_worker_pool_impl.hpp
+  ${THREAD_DIR}/thread_worker_pool_elastic.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
   )
 
@@ -90,6 +93,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/fixed_alloc.c
   ${BASE_DIR}/ini_parser.c
   ${BASE_DIR}/intl_support.c
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/language_support.c
   ${BASE_DIR}/locale_helper.cpp
   ${BASE_DIR}/locale_support.c
@@ -266,6 +270,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/qfile_tuple_layout.c
   ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/dblink_2pc.c
   ${QUERY_DIR}/dblink_2pc_daemon.c
@@ -299,6 +304,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/xasl_cache.c
   )
 set(QUERY_HEADERS
+  ${QUERY_DIR}/like_match_lockstep.i
   ${QUERY_DIR}/query_aggregate.hpp
   ${QUERY_DIR}/query_hash_scan.h
   ${QUERY_DIR}/query_hash_join.h
@@ -361,6 +367,7 @@ set(PARALLEL_HASH_JOIN_HEADERS
 )
 
 set(PARALLEL_SCAN_SOURCES
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.cpp
@@ -380,6 +387,7 @@ set(PARALLEL_SCAN_SOURCES
   )
 
 set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_SCAN_DIR}/px_scan_instnum.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.hpp
@@ -459,6 +467,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
+  ${TRANSACTION_DIR}/log_prior_inflight.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
@@ -483,6 +492,8 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight_ring.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_recovery.h
   ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
@@ -504,6 +515,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_sort.c
   ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
@@ -610,6 +622,7 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
 if(UNIX)
+  set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
@@ -723,6 +736,7 @@ if(UNIX)
   target_link_libraries(cubrid LINK_PUBLIC ${CMAKE_THREAD_LIBS_INIT} ${CMAKE_DL_LIBS})
   target_link_libraries(cubrid PUBLIC stdc++fs)
   target_link_libraries(cubrid PUBLIC rt)
+  target_link_options(cubrid PRIVATE "LINKER:--exclude-libs,libssl.a:libcrypto.a")
 
   # Add TBB
   target_include_directories(cubrid PUBLIC ${TBB_INCLUDES})

@@ -40,11 +40,16 @@
  *   histogram_blob[attr_cnt]  (out)           : per-column db_private_alloc'd blob (caller frees;
  *                                               NULL for unsupported types or empty result)
  *   blob_length[attr_cnt]     (out)           : per-column blob length
+ *   out_pages_seen / out_pages_kept (out)     : data pages enumerated / actually scanned (may be
+ *                                               NULL). kept == seen means the collection was a
+ *                                               full scan (NDV exact by HLL); kept < seen means
+ *                                               page sampling was realized (NDV extrapolated).
  */
 extern int xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid,
     const HFID *hfid, const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
-    int max_buckets, int sample_size, double *null_frequency, char **histogram_blob, int *blob_length,
-    INT64 *out_ndv, INT64 *out_total_rows);
+    int max_buckets, int sample_size, bool with_fullscan, UINT64 sample_seed, double *null_frequency,
+    char **histogram_blob, int *blob_length, INT64 *out_ndv, INT64 *out_total_rows,
+    INT64 *out_pages_seen = NULL, INT64 *out_pages_kept = NULL);
 
 /* true when the NDV collectors can measure a column of this type (the histogrammable type set
  * plus OBJECT/OID, which get an exact NDV from the packed OID but never a histogram). Lets
@@ -77,7 +82,7 @@ extern void stats_ndv_sketch_set_free (STATS_NDV_SKETCH_SET *set);
  *                     stats_ndv_sketch_set_free ()); may be NULL when the sketches are not needed
  */
 extern int xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
-    const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt, INT64 *out_ndv, INT64 *out_total_rows,
-    STATS_NDV_SKETCH_SET **out_sketches);
+    const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt, bool with_fullscan, INT64 *out_ndv,
+    INT64 *out_total_rows, STATS_NDV_SKETCH_SET **out_sketches);
 
 #endif /* _HISTOGRAM_SAMPLER_SR_HPP_ */

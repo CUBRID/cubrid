@@ -80,6 +80,7 @@
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
+#include "query_replace.h"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -199,6 +200,7 @@ static void set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec
 static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+static int cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size);
 static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_methfile (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
@@ -492,8 +494,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       ux_get_default_setting ();
     }
-  else if (shm_appl->cache_user_info == OFF || strcmp (database_user, db_user) != 0
-	   || strcmp (database_passwd, db_passwd) != 0)
+  else
     {
       int err_code;
       /* Already connected to a database, make sure to clear errors from previous clients */
@@ -510,13 +511,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
-    }
-  else
-    {
-      /* Already connected to a database, make sure to clear errors from previous clients */
-      er_clear ();
-      /* check session to see if it is still active and create if isn't */
-      (void) db_find_or_create_session (db_user, program_name);
     }
   return 0;
 
@@ -619,7 +613,7 @@ ux_database_shutdown (bool request_server)
 
 int
 ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
-	    unsigned int query_seq_num)
+	    unsigned int query_seq_num, int replace_rule_idx)
 {
   int stmt_id;
   T_SRV_HANDLE *srv_handle = NULL;
@@ -810,13 +804,42 @@ prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
 
+  /* query replace: the replacement (NEW) query was prepared above, so num_markers
+   * is the authoritative K_replace.  obtain K_orig from the original query, validate
+   * the BIND_MAP, and record both counts on the handle.  on an invalid mapping
+   * the rule is unusable: fail the prepare so fn_prepare_internal falls back to
+   * the original query.  (replace_rule_idx is always -1 for CCI_PREPARE_CALL.) */
+  if (replace_rule_idx >= 0)
+    {
+      /* marker counts and BIND_MAP validity depend only on the rule's immutable
+       * texts: compute + validate once per rule per CAS process, then reuse.
+       * only successful validations are cached; a rule that fails validation is disabled
+       * by fn_prepare_internal, so lookup does not return it again. */
+      int k_orig = qr_get_valid_k_orig (replace_rule_idx, num_markers);
+
+      if (k_orig < 0)
+	{
+	  k_orig = get_num_markers ((char *) qr_get_orig_query (replace_rule_idx));
+
+	  if (!qr_validate_markers (replace_rule_idx, k_orig, num_markers))
+	    {
+	      err_code = ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
+	      goto prepare_error;
+	    }
+	  qr_set_valid_k_orig (replace_rule_idx, k_orig, num_markers);
+	}
+
+      srv_handle->replace_rule_idx = replace_rule_idx;
+      srv_handle->num_orig_markers = k_orig;
+    }
+
   net_buf_cp_int (net_buf, srv_h_id, NULL);
 
   result_cache_lifetime = get_client_result_cache_lifetime (session, stmt_id);
   net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 
   net_buf_cp_byte (net_buf, stmt_type);
-  net_buf_cp_int (net_buf, num_markers, NULL);
+  net_buf_cp_int (net_buf, (replace_rule_idx >= 0) ? srv_handle->num_orig_markers : num_markers, NULL);
 
   q_result = (T_QUERY_RESULT *) malloc (sizeof (T_QUERY_RESULT));
   if (q_result == NULL)
@@ -1198,6 +1221,21 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
   srv_handle->cur_result_index = 1;
   srv_handle->max_row = max_row;
 
+  /* query replace self-healing: the handle was demoted to the original query
+   * after a replacement-query execute failure and reached here via the
+   * is_prepared == FALSE path, which recompiles srv_handle->sql_stmt but does
+   * not update q_result.  Adopt the freshly compiled statement as prepared so
+   * subsequent executes reuse it instead of recompiling every time.
+   * Must run before the has_stmt_result_set() test below, which would otherwise
+   * decide from the stale stmt_type left by the replacement query's prepare. */
+  if (srv_handle->replace_fallback)
+    {
+      srv_handle->q_result->stmt_id = stmt_id;
+      srv_handle->q_result->stmt_type = stmt_type;
+      srv_handle->is_prepared = TRUE;
+      srv_handle->replace_fallback = 0;
+    }
+
   if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
     {
       srv_handle->has_result_set = true;
@@ -1262,7 +1300,9 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
 	  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 	  net_buf_cp_byte (net_buf, srv_handle->q_result->stmt_type);
-	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+	  net_buf_cp_int (net_buf,
+			  (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers,
+			  NULL);
 	  err_code =
 	    prepare_column_list_info_set (session, srv_handle->prepare_flag, srv_handle->q_result, net_buf,
 					  client_version);
@@ -1545,6 +1585,15 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
   srv_handle->cur_result = (void *) srv_handle->q_result;
   srv_handle->cur_result_index = 1;
 
+  /* query replace self-healing: adopt the recompiled original as prepared (see
+   * ux_execute).  q_result->stmt_id/stmt_type were already set above for the
+   * is_prepared == FALSE path, so only the handle flag needs flipping. */
+  if (srv_handle->replace_fallback)
+    {
+      srv_handle->is_prepared = TRUE;
+      srv_handle->replace_fallback = 0;
+    }
+
   if (do_commit_after_execute (*srv_handle))
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
@@ -1596,7 +1645,9 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
 	  net_buf_cp_int (net_buf, result_cache_lifetime, NULL);
 	  net_buf_cp_byte (net_buf, srv_handle->q_result[0].stmt_type);
-	  net_buf_cp_int (net_buf, srv_handle->num_markers, NULL);
+	  net_buf_cp_int (net_buf,
+			  (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers,
+			  NULL);
 	  err_code =
 	    prepare_column_list_info_set (session, srv_handle->prepare_flag, &srv_handle->q_result[0], net_buf,
 					  client_version);
@@ -1959,7 +2010,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
-      cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
+      cas_log_write2 (" %s", use_plan_cache ? "(PC)" : "");
 
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
 	{
@@ -2107,6 +2158,10 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   DB_OBJECT *ins_obj_p;
   T_BROKER_VERSION client_version = req_info->client_version;
   int retried_query_num = 0;
+  void **remap_argv = NULL;	/* rewritten bind vector (query replace); freed after make_bind_value */
+  int failed_rows = 0;		/* rows that errored in this batch */
+  int qr_rep_err = 0;		/* representative error: the first failed row's */
+  int input_stride;		/* bind values consumed per row */
 
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
     {
@@ -2137,9 +2192,20 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
   num_markers = srv_handle->num_markers;
   if (num_markers < 1)
     {
-      net_buf_cp_int (net_buf, 0, NULL);	/* result code */
-      net_buf_cp_int (net_buf, 0, NULL);	/* num_query */
-      goto return_success;
+      if (srv_handle->replace_rule_idx >= 0 && srv_handle->num_orig_markers > 0)
+	{
+	  /* query replace BIND_MAP case (1): the replacement query has no marker (e.g. a rule
+	   * that pins the original's marker to a constant) while the driver still bound K_orig
+	   * values per row.  fall through: the batch loop below uses num_orig_markers as the
+	   * input stride to derive the row count and executes the replacement once per row
+	   * with no bind value. */
+	}
+      else
+	{
+	  net_buf_cp_int (net_buf, 0, NULL);	/* result code */
+	  net_buf_cp_int (net_buf, 0, NULL);	/* num_query */
+	  goto return_success;
+	}
     }
 
   net_buf_cp_int (net_buf, 0, NULL);	/* result code */
@@ -2151,9 +2217,76 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
     {
       goto return_success;
     }
+
+  /* when the prepared statement was rewritten, the driver lays out the bind
+   * values by the ORIGINAL query's markers (K_orig = num_orig_markers) for each
+   * row, but this handle executes the replacement query whose markers
+   * (K_replace = num_markers) may be reordered/reduced.  rebuild the per-row
+   * bind vector into the replacement layout before make_bind_value
+   */
+  if (srv_handle->replace_rule_idx >= 0)
+    {
+      int num_orig_binds = srv_handle->num_orig_markers;
+      int num_replace_binds = srv_handle->num_markers;
+      const short *src_orig_pos;
+
+      assert (num_replace_binds <= QR_MAX_BINDS);
+
+      src_orig_pos = qr_get_bind_src (srv_handle->replace_rule_idx);
+      if (src_orig_pos != NULL)
+	{
+	  int total_pairs = argc / 2;
+	  int rows, r, j;
+
+	  if (num_orig_binds <= 0 || (total_pairs % num_orig_binds) != 0)
+	    {
+	      err_code = ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
+	      goto execute_array_error;
+	    }
+	  rows = total_pairs / num_orig_binds;
+
+	  remap_argv = (void **) MALLOC (sizeof (void *) * 2 * num_replace_binds * rows);
+	  if (remap_argv == NULL)
+	    {
+	      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+	      goto execute_array_error;
+	    }
+
+	  for (r = 0; r < rows; r++)
+	    {
+	      for (j = 0; j < num_replace_binds; j++)
+		{
+		  int dst = 2 * (r * num_replace_binds + j);
+		  int src = 2 * (r * num_orig_binds + (src_orig_pos[j] - 1));
+
+		  remap_argv[dst] = argv[src];	/* type  */
+		  remap_argv[dst + 1] = argv[src + 1];	/* value */
+		}
+	    }
+
+	  argv = remap_argv;
+	  argc = 2 * num_replace_binds * rows;
+	}
+    }
+
   num_bind_params = num_bind = argc / 2;
 
+  /* values consumed per row.  normally the replacement query's marker count, but a
+   * markerless replacement (K_replace == 0) still receives K_orig values per row from the
+   * driver, so consume those to derive the row count while binding nothing. */
+  input_stride = num_markers;
+  if (srv_handle->replace_rule_idx >= 0 && num_markers == 0 && srv_handle->num_orig_markers > 0)
+    {
+      input_stride = srv_handle->num_orig_markers;
+      if ((num_bind % input_stride) != 0)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
+	  goto execute_array_error;
+	}
+    }
+
   err_code = make_bind_value (num_bind, argc, argv, &value_list, net_buf, DB_TYPE_NULL);
+  FREE_MEM (remap_argv);	/* value_list now owns the bind values */
   if (err_code < 0)
     {
       goto execute_array_error;
@@ -2161,7 +2294,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
   first_value = 0;
 
-  while (num_bind >= num_markers)
+  while (input_stride > 0 && num_bind >= input_stride)
     {
       num_query++;
 
@@ -2175,11 +2308,14 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	}
 
-      err_code = set_host_variables (session, num_markers, &(value_list[first_value]));
-      if (err_code != NO_ERROR)
+      if (num_markers > 0)
 	{
-	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
-	  goto exec_db_error;
+	  err_code = set_host_variables (session, num_markers, &(value_list[first_value]));
+	  if (err_code != NO_ERROR)
+	    {
+	      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	      goto exec_db_error;
+	    }
 	}
 
       if (is_prepared == FALSE)
@@ -2274,8 +2410,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       net_buf_cp_int (net_buf, res_count, NULL);
       net_buf_cp_object (net_buf, &ins_oid);
 
-      num_bind -= num_markers;
-      first_value += num_markers;
+      num_bind -= input_stride;
+      first_value += input_stride;
 
       if (srv_handle->auto_commit_mode == TRUE)
 	{
@@ -2285,6 +2421,17 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 
     exec_db_error:
       err_code = db_error_code ();
+
+      /* query replace: only real errors count toward the demote decision -- db_error_code()
+       * can report 0 on this path, and qr_exec_error_tier() expects a genuine error code. */
+      if (err_code < 0)
+	{
+	  failed_rows++;
+	  if (qr_rep_err == 0)
+	    {
+	      qr_rep_err = err_code;	/* first failed row */
+	    }
+	}
 
       if (err_code < 0)
 	{
@@ -2326,8 +2473,8 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	  session = NULL;
 	}
 
-      num_bind -= num_markers;
-      first_value += num_markers;
+      num_bind -= input_stride;
+      first_value += input_stride;
 
       if (srv_handle->auto_commit_mode == TRUE)
 	{
@@ -2337,6 +2484,53 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       if (err_code == ER_INTERRUPTED)
 	{
 	  break;
+	}
+    }
+
+  /* query replace: decide whether this batch's failures should demote the rule.
+   * demote = disable for future prepares + self-heal this handle to the original
+   * (num_query>=2 && every row failed, or the per-rule N-strike streak; see
+   * qr_exec_error_tier).  the current batch's per-row errors are already in net_buf.
+   * NOTE: unlike single execute, a self-healed handle re-executed via executeArray
+   * recompiles the original per call (no prepared-plan reuse in this path). */
+  if (srv_handle->replace_rule_idx >= 0)
+    {
+      if (num_query == 0)
+	{
+	  /* nothing executed (e.g. fewer bind values than one row's stride): neither a
+	   * success nor a failure, so leave the N-strike streak untouched. */
+	}
+      else if (failed_rows == 0)
+	{
+	  qr_record_exec_result (srv_handle->replace_rule_idx, true, QR_ERR_DATA, false);
+	  as_info->num_query_replace_execute++;	/* counted once per batch */
+	}
+      else
+	{
+	  QR_ERR_TIER tier = qr_exec_error_tier (qr_rep_err);
+	  bool all_rows = (num_query >= 2 && failed_rows == num_query);
+
+	  if (qr_record_exec_result (srv_handle->replace_rule_idx, false, tier, all_rows))
+	    {
+	      char msg[QR_RELPATH_LEN + 128];
+
+	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			     "[REPLACE-FAILED] execute_array %d/%d rows failed, disabled", failed_rows, num_query);
+	      snprintf (msg, sizeof (msg), "query replace rule disabled: %s reason=execute_array failed",
+			qr_get_rulepath (srv_handle->replace_rule_idx));
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, msg);
+
+	      qr_set_disabled (srv_handle->replace_rule_idx);
+	      as_info->num_query_replace_fallback++;
+
+	      /* defer the handle swap to fn_execute_array, which applies it after all logging
+	       * so sql.log/slow-log still name the replacement query that really ran. */
+	      srv_handle->qr_demote_pending = 1;
+	    }
+	  else if (num_query - failed_rows > 0)
+	    {
+	      as_info->num_query_replace_execute++;
+	    }
 	}
     }
 
@@ -3275,7 +3469,8 @@ ux_get_parameter_info (int srv_h_id, T_NET_BUF * net_buf)
     {
       session = (DB_SESSION *) srv_handle->session;
       stmt_id = srv_handle->q_result->stmt_id;
-      num_markers = srv_handle->num_markers;
+      /* report K_orig to the driver when the query was rewritten */
+      num_markers = (srv_handle->replace_rule_idx >= 0) ? srv_handle->num_orig_markers : srv_handle->num_markers;
     }
 
   param = NULL;
@@ -4078,6 +4273,10 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	if (type == CCI_U_TYPE_SEQUENCE)
 	  {
 	    err_code = db_make_sequence (&db_val, seq);
+	  }
+	else if (type == CCI_U_TYPE_MULTISET)
+	  {
+	    err_code = db_make_multiset (&db_val, set);
 	  }
 	else
 	  {
@@ -5269,6 +5468,33 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fe
   return 0;
 }
 
+/*
+ * cas_copy_peeked_string () - NUL-terminated copy of a string value peeked from a query result
+ *   return: 0, or ER_QPROC_INVALID_DATATYPE when the value is not a string or does not fit
+ *   A peeked string value points into the list file page: its bytes are exactly the string, with the next column
+ *   right behind them. Everything that treats the bytes as a C string needs its own copy.
+ */
+static int
+cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size)
+{
+  int size;
+
+  if (DB_IS_NULL (value) || !DB_IS_STRING (value))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  size = db_get_string_size (value);
+  if (size < 0 || (size_t) size >= buf_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  memcpy (buf, db_get_string (value), size);
+  buf[size] = '\0';
+  return 0;
+}
+
 static int
 fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 		 T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -5282,6 +5508,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_QUERY_RESULT *result;
   T_QUERY_RESULT *q_result;
   DB_VALUE val_class, val_attr;
+  char class_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];	/* unique_name = owner.class fits an identifier (DB_MAX_CLASS_LENGTH) */
+  char attr_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
   const char *attr_name;
@@ -5338,7 +5566,14 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      class_name = db_get_string (&val_class);
+      /* the value is a peek into the list file page: the bytes are not NUL-terminated (the next column follows
+       * immediately), so take a NUL-terminated copy before handing them to the C-string schema APIs */
+      err_code = cas_copy_peeked_string (&val_class, class_name_buf, sizeof (class_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      class_name = class_name_buf;
       class_obj = db_find_class (class_name);
       if (class_obj == NULL)
 	{
@@ -5351,7 +5586,12 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      attr_name = db_get_string (&val_attr);
+      err_code = cas_copy_peeked_string (&val_attr, attr_name_buf, sizeof (attr_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      attr_name = attr_name_buf;
       if (srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE)
 	{
 	  db_attr = db_get_class_attribute (class_obj, attr_name);

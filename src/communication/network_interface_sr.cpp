@@ -51,6 +51,7 @@
 #include "network.h"
 #include "log_comm.h"
 #include "network_interface_sr.h"
+#include "qfile_tuple_layout.h"
 #include "page_buffer.h"
 #include "file_manager.h"
 #include "boot_sr.h"
@@ -2096,6 +2097,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   char *send_buf = NULL;
   int send_len = 0;
   int status = NO_ERROR;
+  int with_fullscan = 0;
+  INT64 sample_seed = 0;
   ATTR_ID *attr_ids = NULL;
   DB_TYPE *attr_types = NULL;
   double *null_freqs = NULL;
@@ -2104,10 +2107,18 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   INT64 *ndvs = NULL;
   int *attr_unique = NULL;
   INT64 total_rows = 0;
+  INT64 pages_seen = 0, pages_kept = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (reqlen < OR_OID_SIZE + 3 * OR_INT_SIZE)
+  /* fixed request header size, INCLUDING the alignment padding or_pack_int64 () inserts
+   * before the seed: OID + 3 ints, aligned up to MAX_ALIGNMENT, + int64 + attr_cnt int.
+   * Without the padding a 4-byte-short packet passes the check and attr_cnt is read past
+   * the end of the receive buffer. */
+  const int fixed_request_size =
+	  DB_ALIGN (OR_OID_SIZE + 3 * OR_INT_SIZE, MAX_ALIGNMENT) + OR_INT64_SIZE + OR_INT_SIZE;
+
+  if (reqlen < fixed_request_size)
     {
       /* short packet: the fixed header must be length-checked before it is unpacked */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
@@ -2119,10 +2130,12 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   ptr = or_unpack_oid (request, &class_oid);
   ptr = or_unpack_int (ptr, &max_buckets);
   ptr = or_unpack_int (ptr, &sample_size);
+  ptr = or_unpack_int (ptr, &with_fullscan);
+  ptr = or_unpack_int64 (ptr, &sample_seed);
   ptr = or_unpack_int (ptr, &attr_cnt);
 
   if (attr_cnt <= 0
-      || (INT64) OR_OID_SIZE + 3 * OR_INT_SIZE + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
+      || (INT64) fixed_request_size + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
     {
       /* also rejects a corrupt/hostile attr_cnt whose per-column triples could not possibly fit in
        * the received request -- prevents unpacking past the request buffer and absurd allocations */
@@ -2166,7 +2179,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
       null_freqs[i] = 0.0;
     }
 
-  if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+  if (heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL) != NO_ERROR)
     {
       status = ER_FAILED;
       (void) return_error_to_client (thread_p, rid);
@@ -2184,7 +2197,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
    * class_oid) -- deferred to a dedicated security follow-up PR. */
 
   status = xhistogram_build_multi_by_fullscan_reservoir (thread_p, &class_oid, &hfid, attr_ids, attr_types,
-	   attr_unique, attr_cnt, max_buckets, sample_size, null_freqs, blobs, blob_lens, ndvs, &total_rows);
+	   attr_unique, attr_cnt, max_buckets, sample_size, with_fullscan != 0, (UINT64) sample_seed, null_freqs,
+	   blobs, blob_lens, ndvs, &total_rows, &pages_seen, &pages_kept);
   if (status != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2192,9 +2206,11 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
     }
 
   /* reply var-data (8-byte items first for natural alignment):
-   *   total_rows (int64), attr_cnt NDV (int64), attr_cnt null_frequency (double),
-   *   attr_cnt blob_length (int), then the blobs concatenated in column order. */
-  send_len = OR_INT64_SIZE + attr_cnt * OR_INT64_SIZE + attr_cnt * OR_DOUBLE_SIZE + attr_cnt * OR_INT_SIZE;
+   *   total_rows (int64), pages_seen (int64), pages_kept (int64) -- realized scan coverage, so
+   *   the client trace can report whether sampling actually happened -- then attr_cnt NDV
+   *   (int64), attr_cnt null_frequency (double), attr_cnt blob_length (int), then the blobs
+   *   concatenated in column order. */
+  send_len = 3 * OR_INT64_SIZE + attr_cnt * OR_INT64_SIZE + attr_cnt * OR_DOUBLE_SIZE + attr_cnt * OR_INT_SIZE;
   for (i = 0; i < attr_cnt; i++)
     {
       if (blob_lens[i] > 0)
@@ -2207,6 +2223,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
     {
       char *sp = send_buf;
       sp = or_pack_int64 (sp, total_rows);
+      sp = or_pack_int64 (sp, pages_seen);
+      sp = or_pack_int64 (sp, pages_kept);
       for (i = 0; i < attr_cnt; i++)
 	{
 	  sp = or_pack_int64 (sp, ndvs[i]);
@@ -5095,6 +5113,46 @@ sbtree_class_test_unique (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 }
 
 /*
+ * sbtree_compact_overflow () - CBRD-27401: ALTER INDEX ... COMPACT. Compacts the overflow OID chains of an index.
+ *
+ * return :
+ * thread_p (in) :
+ * rid (in) :
+ * request (in) : packed BTID and fill factor
+ * reqlen (in) :
+ */
+void
+sbtree_compact_overflow (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  int fill_factor;
+  INT64 keys_compacted = 0;
+  INT64 pages_freed = 0;
+  INT64 pairs_skipped = 0;
+  int error;
+  /* status, alignment padding before the first INT64 (or_pack_int64 () aligns to MAX_ALIGNMENT), three INT64 */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_int (ptr, &fill_factor);
+
+  error = xbtree_compact_overflow (thread_p, &btid, fill_factor, &keys_compacted, &pages_freed, &pairs_skipped);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int64 (ptr, keys_compacted);
+  ptr = or_pack_int64 (ptr, pages_freed);
+  ptr = or_pack_int64 (ptr, pairs_skipped);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sdk_totalpgs -
  *
  * return:
@@ -5533,12 +5591,13 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 				     bool *can_end_transaction)
 {
   QFILE_LIST_SCAN_ID scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
   OR_BUF buf;
   TP_DOMAIN **domains;
   const PR_TYPE *pr_type;
-  int i, flag, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  int i, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  bool is_null;
   char *tuple_p;
   bool found_compressible_string_domain, exceed_a_page;
 
@@ -5602,19 +5661,19 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	  break;
 	}
 
-      tuple_p = tuple_record.tpl;
-      or_init (&buf, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p));
-      tuple_p += QFILE_TUPLE_LENGTH_SIZE;
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
-	  flag = QFILE_GET_TUPLE_VALUE_FLAG (tuple_p);
-	  val_length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
-	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
-
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && TP_IS_CHAR_TYPE (pr_type->id))
+	  if (!TP_IS_CHAR_TYPE (pr_type->id))
 	    {
-	      buf.ptr = tuple_p;
+	      continue;
+	    }
+
+	  /* the body carries the same compression prefix that or_get_varchar_compression_lengths () expects */
+	  tuple_p = (char *) qfile_slot_get_column_data (&tuple_record, i, &val_length, &is_null);
+	  if (!is_null)
+	    {
+	      or_init (&buf, tuple_p, val_length);
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
 	      if (compressed_size != 0)
 		{
@@ -5628,8 +5687,6 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 		    }
 		}
 	    }
-
-	  tuple_p += val_length;
 	}
     }
 
@@ -8118,7 +8175,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
 {
   BTREE_STATS stat_info;
   int success;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
@@ -8139,7 +8196,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   ptr = or_pack_int (ptr, stat_info.leafs);
   ptr = or_pack_int (ptr, stat_info.pages);
   ptr = or_pack_int (ptr, stat_info.height);
-  ptr = or_pack_int (ptr, stat_info.keys);
+  ptr = or_pack_int64 (ptr, stat_info.keys);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -8678,12 +8735,12 @@ srepl_log_get_append_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 {
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  LOG_LSA *lsa;
+  LOG_LSA lsa;
 
   lsa = xrepl_log_get_append_lsa ();
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  (void) or_pack_log_lsa (reply, lsa);
+  (void) or_pack_log_lsa (reply, &lsa);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -11582,6 +11639,12 @@ scdc_find_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
 
       cdc_set_extraction_lsa (&start_lsa);
 
+      /* The client is about to be told to resume from here, so the volume holding that position has to be
+       * kept from now on. Waiting for the first bundle leaves a window: extraction can come back as
+       * ER_CDC_EXTRACTION_TIMEOUT before the volume is ever recorded, and archive removal is free to run
+       * in between. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
+
       cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_producer ();
@@ -11645,6 +11708,9 @@ scdc_get_loginfo_metadata (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
 	}
 
       cdc_set_extraction_lsa (&start_lsa);
+
+      /* Same window as in scdc_find_lsa(): record the volume before the first bundle is attempted. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
 
       cdc_reinitialize_queue (&start_lsa);
 
@@ -11722,7 +11788,7 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  error_code = cdc_cleanup ();
+  error_code = cdc_cleanup (thread_p);
 
   cdc_log ("%s : clean up for cdc thread has done.", __func__);
 

@@ -2881,7 +2881,7 @@ partition_load_partition_predicate (PRUNING_CONTEXT * pinfo, OR_PARTITION * mast
       return error;
     }
 
-  assert (DB_VALUE_TYPE (&val) == DB_TYPE_CHAR);
+  assert (DB_IS_STRING (&val));
   // use const_cast since of a limitation of or_unpack_* functions which do not accept const
   expr_stream = CONST_CAST (char *, db_get_string (&val));
   stream_len = db_get_string_size (&val);
@@ -3021,6 +3021,7 @@ partition_set_cache_dbvalp_for_attribute (REGU_VARIABLE * var, DB_VALUE * val)
       /* Since partition key expression can only contain a single column,
        * we can skip checking attribute id and simply check if the value is cached. */
       var->value.attr_descr.cache_dbvalp = val;
+      var->value.attr_descr.cache_slot = NULL;
       break;
 
     case TYPE_INARITH:

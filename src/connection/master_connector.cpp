@@ -91,7 +91,9 @@ namespace cubconn::master
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector: failed to create eventfd\n");
 	assert_release (false);
+	return;
       }
+
     ctx = new context ();
     if (!ctx)
       {
@@ -99,8 +101,10 @@ namespace cubconn::master
 	assert_release (false);
 	return;
       }
-    /* the eventfd has no connection entry. keep the descriptor itself in m_conn so that */
-    /* ctx->m_conn->fd reads back the eventfd (fd is the first member of css_conn_entry). */
+
+    /* the eventfd has no connection entry. keep the descriptor itself in m_conn so that
+     * ctx->m_conn->fd reads back the eventfd (fd is the first member of css_conn_entry).
+     */
     ctx->m_conn = reinterpret_cast<css_conn_entry *> (new int { m_eventfd });
     if (!ctx->m_conn)
       {
@@ -112,10 +116,11 @@ namespace cubconn::master
     if (!m_events.add_descriptor (m_eventfd, EPOLLIN, ctx))
       {
 	er_log_conn (__FILE__, __LINE__, "master::connector: add_descriptor failed\n");
-	assert_release (false);
+
 	/* m_conn was allocated as an int. it must be released as an int. */
 	delete reinterpret_cast<int *> (ctx->m_conn);
 	delete ctx;
+	assert_release (false);
 	return;
       }
     /* epoll holds ctx as its user data. release it in the destructor. */
@@ -129,15 +134,12 @@ namespace cubconn::master
 	(void) m_events.remove_descriptor (m_eventfd);
 	/* m_conn is not a real connection entry. see the constructor. */
 	delete reinterpret_cast<int *> (m_eventfd_context->m_conn);
-	m_eventfd_context->m_conn = nullptr;
 	delete m_eventfd_context;
-	m_eventfd_context = nullptr;
       }
 
     if (m_eventfd != -1)
       {
 	::close (m_eventfd);
-	m_eventfd = -1;
       }
   }
 

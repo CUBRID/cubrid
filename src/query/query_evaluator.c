@@ -32,6 +32,7 @@
 #include "heap_file.h"
 #include "fetch.h"
 #include "list_file.h"
+#include "qfile_tuple_layout.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "regu_var.hpp"
@@ -550,13 +551,11 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 {
   DB_LOGICAL res, t_res;
   QFILE_LIST_SCAN_ID s_id;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
   const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
-  char *ptr;
+  bool is_null;
 
   /* assert */
   if (list_id->type_list.domp == NULL)
@@ -586,19 +585,17 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
   res = V_FALSE;
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
-      if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &s_id);
+	  return V_ERROR;
+	}
+      if (is_null)
 	{
 	  res = V_UNKNOWN;
 	}
       else
 	{
-	  or_init (&buf, ptr, length);
-
-	  if (pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
-	    {
-	      qfile_close_scan (thread_p, &s_id);
-	      return V_ERROR;
-	    }
 
 	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL);
 	  if (t_res == V_TRUE || t_res == V_ERROR)
@@ -695,15 +692,13 @@ static int
 eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id)
 {
   QFILE_LIST_SCAN_ID s_id;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
   const PR_TYPE *pr_type;
-  OR_BUF buf;
   DB_LOGICAL rc;
-  int length;
   int card;
-  char *ptr;
+  bool is_null;
 
   /* assert */
   if (list_id->type_list.domp == NULL)
@@ -728,15 +723,16 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
-      if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &s_id);
+	  return ER_FAILED;
+	}
+      if (is_null)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return UNKNOWN_CARD;
 	}
-
-      or_init (&buf, ptr, length);
-
-      pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
       rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL);
       if (rc == V_ERROR)
@@ -910,14 +906,10 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   DB_VALUE list_val, list_val2;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
-  char *p_tplp;
   SCAN_CODE qp_scan;
-  const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
   bool list_on;
   int tpl_len;
-  char *ptr;
+  bool is_null;
 
   /* assert */
   if (list_id->type_list.domp == NULL)
@@ -939,10 +931,8 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     }
 
   res = V_TRUE;
-  pr_type = list_id->type_list.domp[0]->type;
 
-  tplrec.size = 0;
-  tplrec.tpl = NULL;
+  tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   p_tplrec.size = DB_PAGESIZE;
   p_tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
   if (p_tplrec.tpl == NULL)
@@ -957,23 +947,27 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     {
       pr_clear_value (&list_val);
 
-      if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+	{
+	  res = V_ERROR;
+	  goto end;
+	}
+      if (is_null)
 	{
 	  res = V_UNKNOWN;
 	  goto end;
 	}
 
-      or_init (&buf, ptr, length);
-
-      pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
-
       if (list_on == true)
 	{
-	  p_tplp = (char *) p_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;
-
-	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
-
-	  pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
+	  /* private copy of the previous tuple: bind + reset the slot before reading it */
+	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, tplrec.type_list);
+	  if (qfile_slot_read_column_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) !=
+	      NO_ERROR || is_null)
+	    {
+	      res = V_ERROR;
+	      goto end;
+	    }
 
 	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
@@ -1029,11 +1023,14 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (list_on == true)
     {
-      p_tplp = (char *) p_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;	/* no unbound value */
-
-      or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
-
-      pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
+      /* private copy of the last tuple (no unbound value): bind + reset the slot before reading it */
+      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, &s_id.list_id.type_list);
+      if (qfile_slot_read_column_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) !=
+	  NO_ERROR || is_null)
+	{
+	  res = V_ERROR;
+	  goto end;
+	}
 
       card2 = eval_item_card_set (thread_p, &list_val2, set, R_EQ);
       if (card2 == ER_FAILED)
@@ -1086,14 +1083,10 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   DB_VALUE list_val, list_val2;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
-  char *p_tplp;
   SCAN_CODE qp_scan;
-  const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
   bool list_on;
   int tpl_len;
-  char *ptr;
+  bool is_null;
 
   /* assert */
   if (list_id1->type_list.domp == NULL)
@@ -1115,10 +1108,8 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     }
 
   res = V_TRUE;
-  pr_type = list_id1->type_list.domp[0]->type;
 
-  tplrec.size = 0;
-  tplrec.tpl = NULL;
+  tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   p_tplrec.size = DB_PAGESIZE;
   p_tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
   if (p_tplrec.tpl == NULL)
@@ -1133,23 +1124,27 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     {
       pr_clear_value (&list_val);
 
-      if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id1->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+	{
+	  res = V_ERROR;
+	  goto end;
+	}
+      if (is_null)
 	{
 	  res = V_UNKNOWN;
 	  goto end;
 	}
 
-      or_init (&buf, ptr, length);
-
-      pr_type->data_readval (&buf, &list_val, list_id1->type_list.domp[0], -1, true, NULL, 0);
-
       if (list_on == true)
 	{
-	  p_tplp = (char *) p_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;
-
-	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
-
-	  pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
+	  /* private copy of the previous tuple: bind + reset the slot before reading it */
+	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, tplrec.type_list);
+	  if (qfile_slot_read_column_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) !=
+	      NO_ERROR || is_null)
+	    {
+	      res = V_ERROR;
+	      goto end;
+	    }
 
 	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL);
 
@@ -1206,11 +1201,10 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (list_on == true)
     {
-      p_tplp = (char *) p_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;	/* no unbound value */
-
-      or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
-
-      if (pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
+      /* private copy of the last tuple (no unbound value): bind + reset the slot before reading it */
+      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, &s_id.list_id.type_list);
+      if (qfile_slot_read_column_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) !=
+	  NO_ERROR || is_null)
 	{
 	  res = V_ERROR;
 	  goto end;
@@ -2729,6 +2723,172 @@ update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualific
 }
 
 /*
+ * eval_mark_lazy_always_eager_regu () - if regu (recursively, through arithmetic / function operands)
+ *   references an attribute of attr_cache, flag its value slot to be read eagerly even in lazy mode.
+ */
+static void
+eval_mark_lazy_always_eager_regu (const REGU_VARIABLE * regu, HEAP_CACHE_ATTRINFO * attr_cache)
+{
+  REGU_VARIABLE_LIST operand;
+  int i;
+
+  if (regu == NULL)
+    {
+      return;
+    }
+
+  switch (regu->type)
+    {
+    case TYPE_ATTR_ID:
+    case TYPE_SHARED_ATTR_ID:
+    case TYPE_CLASS_ATTR_ID:
+      if (regu->value.attr_descr.cache_attrinfo == attr_cache)
+	{
+	  for (i = 0; i < attr_cache->num_values; i++)
+	    {
+	      if (attr_cache->values[i].attrid == regu->value.attr_descr.id)
+		{
+		  attr_cache->values[i].lazy_always_eager = true;
+		  break;
+		}
+	    }
+	}
+      break;
+
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      if (regu->value.arithptr != NULL)
+	{
+	  eval_mark_lazy_always_eager_regu (regu->value.arithptr->leftptr, attr_cache);
+	  eval_mark_lazy_always_eager_regu (regu->value.arithptr->rightptr, attr_cache);
+	  eval_mark_lazy_always_eager_regu (regu->value.arithptr->thirdptr, attr_cache);
+	}
+      break;
+
+    case TYPE_FUNC:
+      if (regu->value.funcp != NULL)
+	{
+	  for (operand = regu->value.funcp->operand; operand != NULL; operand = operand->next)
+	    {
+	      eval_mark_lazy_always_eager_regu (&operand->value, attr_cache);
+	    }
+	}
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * eval_mark_first_term_attrs () - find the terms eval_pred () evaluates for EVERY row: it walks the
+ *   right-linear AND/OR chains left to right with short-circuit, so their leftmost term always runs, and
+ *   B_XOR / B_IS / B_IS_NOT have no short-circuit, so both of their sides always run. The lazy read cannot
+ *   skip those terms' attributes; it would only pay the fetch_peek_dbval_slow () dispatch on them. Flag
+ *   their slots to stay on the eager path (heap_attrinfo_read_dbvalues_lazy () reads them now).
+ *   return: none
+ *   pr(in): data filter predicate
+ *   attr_cache(in/out): predicate attribute cache
+ */
+void
+eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cache)
+{
+  while (pr != NULL)
+    {
+      if (pr->type == T_PRED)
+	{
+	  if (pr->pe.m_pred.bool_op == B_AND || pr->pe.m_pred.bool_op == B_OR)
+	    {
+	      /* short-circuit: only the leftmost term is evaluated on every row */
+	      pr = pr->pe.m_pred.lhs;
+	    }
+	  else
+	    {
+	      /* B_XOR / B_IS / B_IS_NOT evaluate both sides on every row - mark both */
+	      eval_mark_first_term_attrs (pr->pe.m_pred.lhs, attr_cache);
+	      pr = pr->pe.m_pred.rhs;
+	    }
+	}
+      else if (pr->type == T_NOT_TERM)
+	{
+	  pr = pr->pe.m_not_term;
+	}
+      else
+	{
+	  break;
+	}
+    }
+  if (pr == NULL || pr->type != T_EVAL_TERM)
+    {
+      return;
+    }
+
+  switch (pr->pe.m_eval_term.et_type)
+    {
+    case T_COMP_EVAL_TERM:
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_comp.lhs, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_comp.rhs, attr_cache);
+      break;
+    case T_ALSM_EVAL_TERM:
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_alsm.elem, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_alsm.elemset, attr_cache);
+      break;
+    case T_LIKE_EVAL_TERM:
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_like.src, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_like.pattern, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_like.esc_char, attr_cache);
+      break;
+    case T_RLIKE_EVAL_TERM:
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.src, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.pattern, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.case_sensitive, attr_cache);
+      break;
+    default:
+      break;
+    }
+}
+
+/*
+ * eval_disable_lazy_read () - turn the lazy predicate-column read off when this scan defers nothing
+ *   return: none
+ *   attr_cache(in/out): predicate attribute cache, already marked by eval_mark_first_term_attrs ()
+ *
+ * Note: with every predicate column read up front (all slots flagged lazy_always_eager) nothing is ever
+ *   deferred, so short-circuit evaluation has nothing to skip. A single predicate column, or two conditions
+ *   on the same column, is exactly this case; no measurement is needed to know it cannot pay off.
+ *   Also the feature's off switch: with the enable_lazy_predicate_read system parameter off, every scan
+ *   starts disabled and reads exactly as before.
+ */
+void
+eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache)
+{
+  int i;
+
+  if (attr_cache == NULL || attr_cache->num_values <= 0)
+    {
+      return;
+    }
+
+  if (!prm_get_bool_value (PRM_ID_ENABLE_LAZY_PREDICATE_READ))
+    {
+      /* the feature's off switch: behave as before this optimization */
+      attr_cache->lazy_disabled = true;
+      return;
+    }
+
+  for (i = 0; i < attr_cache->num_values; i++)
+    {
+      if (!attr_cache->values[i].lazy_always_eager)
+	{
+	  /* this column is deferred - the lazy read can still pay off */
+	  return;
+	}
+    }
+
+  attr_cache->lazy_disabled = true;
+}
+
+/*
  * eval_data_filter () -
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  * 	 oid(in): pointer to OID
@@ -2759,8 +2919,12 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
   if (scan_attrsp != NULL && scan_attrsp->attr_cache != NULL && scan_predp->regu_list != NULL)
     {
-      /* read the predicate values from the heap into the attribute cache */
-      if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
+      /* Defer reading the predicate values: mark them and stash the record, so columns skipped by
+       * short-circuit evaluation in eval_pred () below are never read. heap_attrvalue_peek_lazy () reads
+       * each one on demand. The first-evaluated term's column(s) were flagged lazy_always_eager at scan
+       * setup (eval_mark_first_term_attrs () in scan_start_scan ()) so they stay on the eager path. For
+       * class attribute scans (recdesp == NULL) this reads everything now. */
+      if (heap_attrinfo_read_dbvalues_lazy (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
 	{
 	  return V_ERROR;
 	}

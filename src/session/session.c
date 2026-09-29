@@ -34,7 +34,7 @@
 #include "session.h"
 
 #include "boot_sr.h"
-#include "jansson.h"
+#include "json_builder.h"
 #include "critical_section.h"
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -2905,7 +2905,7 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
   char *trace_str = NULL;
   size_t sizeloc;
   FILE *fp;
-  json_t *plan, *xasl, *stats;
+  trace_json_t *plan, *xasl, *stats;
   DB_VALUE temp_result;
 
   state_p = session_get_session_state (thread_p);
@@ -2940,30 +2940,29 @@ session_get_trace_stats (THREAD_ENTRY * thread_p, DB_VALUE * result)
     }
   else if (state_p->trace_format == QUERY_TRACE_JSON)
     {
-      stats = json_object ();
+      stats = trace_json_object ();
 
       if (state_p->plan_string != NULL)
 	{
-	  plan = json_loads (state_p->plan_string, 0, NULL);
+	  plan = trace_json_loads (state_p->plan_string);
 	  if (plan != NULL)
 	    {
-	      json_object_set_new (stats, "Query Plan", plan);
+	      trace_json_object_set_new (stats, "Query Plan", plan);
 	    }
 	}
 
       if (state_p->trace_stats != NULL)
 	{
-	  xasl = json_loads (state_p->trace_stats, 0, NULL);
+	  xasl = trace_json_loads (state_p->trace_stats);
 	  if (xasl != NULL)
 	    {
-	      json_object_set_new (stats, "Trace Statistics", xasl);
+	      trace_json_object_set_new (stats, "Trace Statistics", xasl);
 	    }
 	}
 
-      trace_str = json_dumps (stats, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+      trace_str = trace_json_dumps (stats);
 
-      json_object_clear (stats);
-      json_decref (stats);
+      trace_json_decref (stats);
     }
 
   if (trace_str != NULL)
@@ -3315,6 +3314,26 @@ session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_
     }
 
   return error;
+}
+
+/*
+ * session_clear_pl_session_interrupt - clear a collateral ER_INTERRUPTED left on the pl session
+ *
+ * Parallel query error propagation signals workers through logtb_set_tran_index_interrupt,
+ * whose TT_WORKER hook also interrupts the pl session as a side effect. Only that collateral
+ * ER_INTERRUPTED is cleared here; pl-specific interrupts (nested-call limit, OOM, shutdown, ...)
+ * are preserved. Accessing the session state directly avoids session_get_pl_session, which
+ * reports an error exactly when the session is in this poisoned state.
+ */
+void
+session_clear_pl_session_interrupt (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p != NULL && state_p->pl_session_p != NULL && state_p->pl_session_p->get_interrupt_id () == ER_INTERRUPTED)
+    {
+      state_p->pl_session_p->clear_interrupt ();
+    }
 }
 
 /*

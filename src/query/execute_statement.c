@@ -65,7 +65,7 @@
 #include "server_interface.h"
 #include "transaction_cl.h"
 #include "object_print.h"
-#include "jansson.h"
+#include "json_builder.h"
 #include "jsp_cl.h"
 #include "optimizer.h"
 #include "memory_alloc.h"
@@ -198,6 +198,8 @@ typedef struct reserved_class_info_list
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
 					 PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
+static int auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALUE * max_val, int cached_num,
+					    bool * fits);
 static bool truncate_need_repl_log (PT_NODE * statement);
 static int do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -339,6 +341,101 @@ check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int 
     }
 
   return NO_ERROR;
+}
+
+/*
+ * auto_increment_cache_fits_range() - can one cache block of cached_num values fit the serial's range?
+ *   return: Error code
+ *   inc_val(in):
+ *   min_val(in):
+ *   max_val(in):
+ *   cached_num(in):
+ *   fits(out): false when ABS (cached_num * inc_val) > max_val - min_val
+ *
+ * Note: this is the invariant CREATE SERIAL / ALTER SERIAL enforce on CACHE n (see do_create_serial).
+ *   An AUTO_INCREMENT serial takes its block size from auto_increment_cache_size rather than from the
+ *   statement, so the caller turns the cache off instead of failing the DDL. A column whose whole
+ *   range holds fewer values than one block would have its range clamped to max_val and durably
+ *   consumed by the first generated value, and it can never see the row volume a cache amortizes.
+ */
+static int
+auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALUE * max_val, int cached_num,
+				 bool * fits)
+{
+  DB_VALUE range_val, cached_num_int_val, cached_num_val, tmp_val, abs_cached_range_val, cmp_result;
+  DB_DATA_STATUS data_stat;
+  int error = NO_ERROR;
+
+  *fits = true;
+
+  db_make_null (&range_val);
+  db_make_null (&cached_num_int_val);
+  db_make_null (&cached_num_val);
+  db_make_null (&tmp_val);
+  db_make_null (&abs_cached_range_val);
+  db_make_null (&cmp_result);
+
+  error = numeric_db_value_sub (max_val, min_val, &range_val);
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      /* max - min flooded, so the range is wide enough for any block size */
+      er_clear ();
+      error = NO_ERROR;
+      goto end;
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
+
+  /* ABS (cached_num * inc_val) <= range_val */
+  db_make_int (&cached_num_int_val, cached_num);
+  db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
+  error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = numeric_db_value_mul (inc_val, &cached_num_val, &tmp_val);
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      /* the block overflows the numeric domain, so it cannot fit any range */
+      er_clear ();
+      error = NO_ERROR;
+      *fits = false;
+      goto end;
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  FLOAT_TO_FIXED_NUMERIC (&tmp_val);
+
+  error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = numeric_db_value_compare (&abs_cached_range_val, &range_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  *fits = (db_get_int (&cmp_result) <= 0);
+
+end:
+  pr_clear_value (&range_val);
+  pr_clear_value (&cached_num_int_val);
+  pr_clear_value (&cached_num_val);
+  pr_clear_value (&tmp_val);
+  pr_clear_value (&abs_cached_range_val);
+  pr_clear_value (&cmp_result);
+
+  return error;
 }
 
 /*
@@ -1115,6 +1212,11 @@ do_reset_auto_increment_serial (MOP serial_obj)
   db_make_null (&start_value);
   db_make_null (&started_flag);
 
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the reset value, or
+   * on rollback be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
+
   error_code = db_get (serial_object, SERIAL_ATTR_MIN_VAL, &start_value);
   if (error_code != NO_ERROR)
     {
@@ -1215,6 +1317,11 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       return ER_OBJ_INVALID_ARGUMENTS;
     }
+
+  /* Drop the server-side cache before rewriting cur_val, not after: decaching hands the unissued
+   * tail back to cur_val, so it has to land first. Afterwards it would clobber the rebase value, or
+   * on rollback be undone with it. */
+  (void) serial_decache (ws_oid (serial_object));
 
   db_make_null (&max_val);
   db_make_null (&new_val);
@@ -2034,6 +2141,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   DB_VALUE e38;
   char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
+  int cached_num;
 
   db_make_null (&e38);
   db_make_null (&value);
@@ -2245,10 +2353,33 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       goto end;
     }
 
+  /* cached_num comes from auto_increment_cache_size. 0 keeps the per-row durable catalog write;
+   * n >= 2 makes the serial cache a block of n values so heap_set_autoincrement_value takes the
+   * cached path. A column whose whole range holds fewer values than one block goes uncached - the
+   * parameter is a default this column did not spell out, so it cannot fail the DDL the way
+   * CREATE SERIAL ... CACHE n does. It is a session parameter, and a serial keeps the size it was
+   * created with. */
+  cached_num = prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE);
+  if (cached_num > 1)
+    {
+      bool fits = true;
+
+      error = auto_increment_cache_fits_range (&inc_val, &min_val, &max_val, cached_num, &fits);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (!fits)
+	{
+	  cached_num = 0;
+	}
+    }
+
   /* create auto increment serial object */
   error =
-    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0, 0, 0, NULL,
-			       class_name, att_name);
+    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0, cached_num, 0,
+			       NULL, class_name, att_name);
   if (error < 0)
     {
       goto end;
@@ -2567,6 +2698,12 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
    * then refetch it from server again.
    */
   assert (WS_ISDIRTY (serial_object) == false);
+
+  /* Drop the server-side cache before the refetch below takes the write lock, so the value this
+   * statement reads, checks its invariants against and writes back is the last one actually issued
+   * rather than the block end. At the end label instead, the template is already filled from the
+   * block end and its stale cur_val overwrites the write-back when the ALTER commits. */
+  (void) serial_decache (&serial_obj_id);
 
   ws_decache (serial_object);
 
@@ -3393,8 +3530,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_USER:
-	case PT_UPDATE_HISTOGRAM:
-	case PT_DROP_HISTOGRAM:
 	case PT_ALTER:
 	case PT_ALTER_INDEX:
 	case PT_ALTER_SERIAL:
@@ -3470,14 +3605,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_CREATE_INDEX:
 	  error = do_create_index (parser, statement);
-	  break;
-
-	case PT_UPDATE_HISTOGRAM:
-	  error = do_update_histogram (parser, statement);
-	  break;
-
-	case PT_DROP_HISTOGRAM:
-	  error = do_drop_histogram (parser, statement);
 	  break;
 
 
@@ -4103,7 +4230,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_VACUUM:
     case PT_QUERY_TRACE:
     case PT_KILL_STMT:
-    case PT_SHOW_HISTOGRAM:
 
       db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
       break;
@@ -4114,8 +4240,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
     case PT_CREATE_USER:
-    case PT_UPDATE_HISTOGRAM:
-    case PT_DROP_HISTOGRAM:
     case PT_ALTER:
     case PT_ALTER_INDEX:
     case PT_ALTER_SERIAL:
@@ -4188,15 +4312,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_CREATE_USER:
       err = do_create_user (parser, statement);
-      break;
-    case PT_UPDATE_HISTOGRAM:
-      err = do_update_histogram (parser, statement);
-      break;
-    case PT_DROP_HISTOGRAM:
-      err = do_drop_histogram (parser, statement);
-      break;
-    case PT_SHOW_HISTOGRAM:
-      err = do_show_histogram (parser, statement);
       break;
     case PT_ALTER:
       /* err = do_alter(parser, statement); */
@@ -4668,6 +4783,26 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
+  if (statement->info.update_stats.all_classes != 0
+      && (statement->info.update_stats.drop_histogram || statement->info.update_stats.bucket_count > 0))
+    {
+      /* DROP HISTOGRAM and n BUCKETS act on one class's histogram catalog rows; the
+       * all/catalog-classes statistics refresh runs server-side and has no per-class
+       * histogram parameters to thread them through */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  if (statement->info.update_stats.all_classes < 0
+      && (statement->info.update_stats.no_histogram || statement->info.update_stats.random_seed))
+    {
+      /* the CATALOG CLASSES refresh (sm_update_all_catalog_statistics) builds no histograms
+       * and takes no sampling seed; reject these options like DROP HISTOGRAM / n BUCKETS
+       * above instead of silently ignoring them */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   if (statement->info.update_stats.all_classes > 0)
     {
       // ALL CLASSES
@@ -4678,7 +4813,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
-					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING);
+					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
+					statement->info.update_stats.random_seed,
+					statement->info.update_stats.no_histogram);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
@@ -4742,17 +4879,82 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
+      int n_tables = 0, n_cols = 0;
+
+      int n_hist_skipped = 0;
+
       // update stats
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
+	  bool trace_on = prm_get_bool_value (PRM_ID_QUERY_TRACE);
+	  struct timeval trace_start, trace_end;
+	  SM_CLASS *sm_class = NULL;
+	  int att_count;
+
 	  class_mop = cls->info.name.db_object;
-	  class_type = ((SM_CLASS *) class_mop->object)->class_type;
+	  /* do not read class_mop->object directly: the MOP can be DECACHED (object == NULL) by the
+	   * server round-trips of a previous list entry's statistics update, or -- for the counters
+	   * consumed after the histogram build below -- by this entry's own; a concurrent DDL on the
+	   * class invalidates our cached copy while we wait on its locks (CI crash in bug_bts_14492).
+	   * au_fetch_class_force () recaches a decached class and fails cleanly on a dropped one, and
+	   * is what sm_update_statistics () itself uses in the same situation. Authorization was
+	   * already checked in the loop above, so the force (no-auth) fetch is the right flavor.
+	   * att_count is read now, next to class_type, because the class must not be touched again
+	   * after the statistics calls: it may be decached again by the time the summary needs it. */
+	  error = au_fetch_class_force (class_mop, &sm_class, AU_FETCH_READ);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  class_type = sm_class->class_type;
+	  att_count = sm_class->att_count;
+
+	  if (trace_on)
+	    {
+	      /* "page sampling eligible" is the requested mode only: sampling actually runs when the
+	       * server-side gate (statistics_sampling_threshold_pages, 0 = disabled) admits the heap.
+	       * The histogram TRACE lines report the realized coverage after the collection. */
+	      fprintf (stdout, "\nTRACE update statistics: %s (%s%s%s%s)\n", sm_get_ch_name (class_mop),
+		       statement->info.update_stats.with_fullscan ? "fullscan" : "page sampling eligible",
+		       statement->info.update_stats.random_seed ? ", random seed" : "",
+		       statement->info.update_stats.no_histogram ? ", no histogram" : "",
+		       statement->info.update_stats.drop_histogram ? ", drop histogram" : "");
+	      gettimeofday (&trace_start, NULL);
+	    }
 
 	  if (class_type == SM_CLASS_CT)
 	    {
 	      bool stats_updated = false;
 
-	      if (prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
+	      if (statement->info.update_stats.drop_histogram)
+		{
+		  DB_OBJECT *obj;
+		  PT_HISTOGRAM_INFO histogram_info;
+		  int save;
+
+		  AU_SAVE_AND_DISABLE (save);
+		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  if (obj == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      AU_RESTORE (save);
+		      return er_errid ();
+		    }
+
+		  histogram_info.target_columns = NULL;
+		  histogram_info.bucket_count = -1;
+		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
+		  histogram_info.random_seed = statement->info.update_stats.random_seed;
+		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+							   DO_HISTOGRAM_DROP, NULL);
+		  AU_RESTORE (save);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		  /* the histograms are gone; fall through to the plain statistics update below */
+		}
+	      else if (!statement->info.update_stats.no_histogram)
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
@@ -4772,9 +4974,15 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   * class once more only to have its result overwritten right away. Run the combined path first
 		   * and fall back to the plain statistics update only when it could not. */
 		  histogram_info.target_columns = NULL;
-		  histogram_info.bucket_count = -1;
+		  histogram_info.bucket_count =
+		    (statement->info.update_stats.bucket_count > 0) ? statement->info.update_stats.bucket_count : -1;
 		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
-		  error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+		  histogram_info.random_seed = statement->info.update_stats.random_seed;
+		  int hist_skipped = 0;
+
+		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+							   DO_HISTOGRAM_CREATE, &hist_skipped);
+		  n_hist_skipped += hist_skipped;
 		  if (error == NO_ERROR)
 		    {
 		      stats_updated = true;
@@ -4796,7 +5004,38 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
 		}
+
+	      if (error == NO_ERROR)
+		{
+		  n_tables++;
+		  n_cols += att_count;
+		}
 	    }
+
+	  if (trace_on)
+	    {
+	      gettimeofday (&trace_end, NULL);
+	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
+		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0
+		       + (trace_end.tv_usec - trace_start.tv_usec) / 1000.0);
+	      fflush (stdout);
+	    }
+	}
+
+      if (error == NO_ERROR && n_tables > 0)
+	{
+	  if (n_hist_skipped > 0)
+	    {
+	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
+		       " (%d skipped: histogram type not supported).\n", n_tables,
+		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
+	    }
+	  else
+	    {
+	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+	    }
+	  fflush (stdout);
 	}
 
       return error;
@@ -4961,7 +5200,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
   switch (cst_item.item)
     {
     case CST_NOBJECTS:
-      db_make_int (db_val, class_statsp->heap_num_objects);
+      db_make_bigint (db_val, class_statsp->heap_num_objects);
       break;
     case CST_NPAGES:
       db_make_int (db_val, class_statsp->heap_num_pages);
@@ -5024,7 +5263,7 @@ make_cst_item_value (DB_OBJECT * obj, const char *str, DB_VALUE * db_val)
 	}
       else
 	{
-	  db_make_int (db_val, bt_statsp->keys);
+	  db_make_bigint (db_val, bt_statsp->keys);
 	}
       break;
     default:
@@ -9716,6 +9955,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
 	    {
+	      XASL_NODE_HEADER xasl_header = { 0, 0 };
+
+	      stream.xasl_header = &xasl_header;
 	      err = prepare_query (contextp, &stream);
 
 	      if (err != NO_ERROR)
@@ -9729,6 +9971,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    {
 		      free_and_init (stream.xasl_id);
 		    }
+		}
+	      else if (stream.xasl_id != NULL && (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* the cached plan was chosen with unbound host-variable predicate markers;
+		   * record it so the first execution replans under the real values (same
+		   * driver-neutral recording as do_prepare_select ()) */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
 	    }
 
@@ -9744,6 +9993,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      /* pt_to_update_xasl() will build XASL tree from parse tree */
 	      contextp->xasl = pt_to_update_xasl (parser, statement, &not_nulls);
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* freshly compiled with unbound host-variable markers */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))
@@ -11075,6 +11329,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
 	    {
+	      XASL_NODE_HEADER xasl_header = { 0, 0 };
+
+	      stream.xasl_header = &xasl_header;
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
 		{
@@ -11087,6 +11344,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		    {
 		      free_and_init (stream.xasl_id);
 		    }
+		}
+	      else if (stream.xasl_id != NULL && (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* the cached plan was chosen with unbound host-variable predicate markers;
+		   * record it so the first execution replans under the real values (same
+		   * driver-neutral recording as do_prepare_select ()) */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -11101,6 +11365,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 
 	      /* pt_to_delete_xasl() will build XASL tree from parse tree */
 	      contextp->xasl = pt_to_delete_xasl (parser, statement);
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* freshly compiled with unbound host-variable markers */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))
@@ -15054,6 +15323,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  free_and_init (stream.xasl_id);
 		}
 	    }
+	  if (stream.xasl_header->xasl_flag & HV_PRED_PLAN_UNPEEKED)
+	    {
+	      /* the cached plan was chosen with unbound host-variable predicate markers; record it so
+	       * the first execution replans under the real values. The SQL-level PREPARE/EXECUTE
+	       * consumer of this header flag (do_get_prepared_statement_info ()) is never reached by
+	       * CCI/JDBC prepared statements, which arrive through this driver-neutral path. */
+	      statement->flag.hv_pred_plan_unpeeked = 1;
+	    }
 	}
     }
 
@@ -15070,6 +15347,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (contextp->xasl && statement->info.query.oids_included)
 	{
 	  contextp->xasl->header.xasl_flag |= RESULT_CACHE_INHIBITED;
+	}
+      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+	{
+	  /* freshly compiled with unbound host-variable markers (see the cache-hit branch above) */
+	  statement->flag.hv_pred_plan_unpeeked = 1;
 	}
       AU_RESTORE (au_save);
 
@@ -15212,7 +15494,10 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  goto err_exit;
 	}
 
-      stmt->sub_host_var_index = (int *) parser_alloc (parser, var_count * sizeof (int));
+      /* this scope operates on context, so alloc through it rather than parser.
+       * blocks added to context's string_blocks move to parser's own list
+       * after do_prepare_select, for parser_free_parser() to free later. */
+      stmt->sub_host_var_index = (int *) parser_alloc (&context, var_count * sizeof (int));
       if (stmt->sub_host_var_index == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, var_count * sizeof (int));
@@ -15264,6 +15549,9 @@ do_prepare_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
   save_flag = stmt->info.query.is_subquery;
 
   err = do_prepare_select (&context, stmt);
+
+  /* move blocks context added into parser's own list to avoid leaking them. */
+  parser->string_blocks = context.string_blocks;
 
   /* restore the flag */
   stmt->info.query.is_subquery = save_flag;
@@ -15324,11 +15612,11 @@ int
 do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
 {
   int i, q, err = NO_ERROR;
-  QUERY_ID query_id;
-  QFILE_LIST_ID *list_id;
 
   for (q = 0; q < num_query; q++)
     {
+      QUERY_ID query_id = NULL_QUERY_ID;
+      QFILE_LIST_ID *list_id = NULL;
       DB_VALUE *host_variables = NULL;
 
       if (info[q].host_var_count > 0)
@@ -15362,6 +15650,16 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	  free (host_variables);
 	}
 
+      if (list_id != NULL)
+	{
+	  cursor_free_self_list_id (list_id);
+	}
+
+      if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+	{
+	  qmgr_end_query (query_id);
+	}
+
       if (err != NO_ERROR)
 	{
 	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
@@ -15388,7 +15686,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 int
 do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  QUERY_ID query_id;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables = NULL;
   CACHE_TIME clt_cache_time;
@@ -15423,6 +15721,19 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  db_value_clear (&host_variables[i]);
 	}
       free (host_variables);
+    }
+
+  /* server already cached the result (RESULT_CACHE_REQUIRED); this only triggers that, does not read rows back. */
+  if (list_id != NULL)
+    {
+      cursor_free_self_list_id (list_id);
+    }
+
+  /* only unpins this query from the cache entry; the entry is not cleared and stays for reuse.
+   * skipping this leaks a query entry per call, exhausting max_query_per_tran and raising ER_QM_QENTRY_RUNOUT. */
+  if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+    {
+      qmgr_end_query (query_id);
     }
 
   if (err == ER_QPROC_RESULT_CACHE_INVALID)
@@ -16638,18 +16949,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
       repl_stmt.statement_type = CUBRID_STMT_DROP_INDEX;
-      break;
-
-    case PT_UPDATE_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_UPDATE_HISTOGRAM;
-      break;
-
-    case PT_DROP_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_DROP_HISTOGRAM;
-      break;
-
-    case PT_SHOW_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_SHOW_HISTOGRAM;
       break;
 
     case PT_CREATE_SERIAL:
@@ -20328,10 +20627,14 @@ do_vacuum (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 /*
  * do_set_query_trace() - Set query trace
- *   return: NO_ERROR
+ *   return: Error code if it fails
  *   parser(in): Parser context
  *   statement(in): Parse tree of a set statement
  *
+ * Note: The values go through db_set_system_parameters() rather than prm_set_*_value(),
+ *   because only the former also stores them in the server session state. A value set by
+ *   prm_set_*_value() lives in this client process alone, so it is lost once CAS restarts and
+ *   the driver reconnects with the same session id. SET NAMES and SET TIMEZONE do the same.
  */
 int
 do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -20339,25 +20642,25 @@ do_set_query_trace (PARSER_CONTEXT * parser, PT_NODE * statement)
 #if defined(SA_MODE)
   return NO_ERROR;
 #else
+#define MAX_LEN  50
+  int error = NO_ERROR;
+  char sys_prm_chg[MAX_LEN];
+
   if (statement->info.trace.on_off == PT_TRACE_ON)
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, true);
+      const char *trace_format = (statement->info.trace.format == PT_TRACE_FORMAT_JSON) ? "json" : "text";
 
-      if (statement->info.trace.format == PT_TRACE_FORMAT_TEXT)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_TEXT);
-	}
-      else if (statement->info.trace.format == PT_TRACE_FORMAT_JSON)
-	{
-	  prm_set_integer_value (PRM_ID_QUERY_TRACE_FORMAT, QUERY_TRACE_JSON);
-	}
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=y; query_trace_format=%s", trace_format);
     }
   else
     {
-      prm_set_bool_value (PRM_ID_QUERY_TRACE, false);
+      snprintf (sys_prm_chg, sizeof (sys_prm_chg) - 1, "query_trace=n");
     }
 
-  return NO_ERROR;
+  error = db_set_system_parameters (sys_prm_chg);
+
+#undef MAX_LEN
+  return (error != NO_ERROR) ? ER_OBJ_INVALID_ARGUMENTS : NO_ERROR;
 #endif /* SA_MODE */
 }
 
@@ -21009,16 +21312,16 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
     }
   else if (format == QUERY_TRACE_JSON)
     {
-      json_t *jplan;
+      trace_json_t *jplan;
 
       if (parser->num_plan_trace > 1)
 	{
-	  jplan = json_array ();
+	  jplan = trace_json_array ();
 
 	  for (i = 0; i < parser->num_plan_trace; i++)
 	    {
 	      assert (parser->plan_trace[i].format == format);
-	      json_array_append_new (jplan, parser->plan_trace[i].trace.json_plan);
+	      trace_json_array_append_new (jplan, parser->plan_trace[i].trace.json_plan);
 	      parser->plan_trace[i].trace.json_plan = NULL;
 	    }
 	}
@@ -21028,10 +21331,9 @@ do_send_plan_trace_to_session (PARSER_CONTEXT * parser)
 	  parser->plan_trace[0].trace.json_plan = NULL;
 	}
 
-      plan_str = json_dumps (jplan, JSON_INDENT (2) | JSON_PRESERVE_ORDER);
+      plan_str = trace_json_dumps (jplan);
 
-      json_object_clear (jplan);
-      json_decref (jplan);
+      trace_json_decref (jplan);
     }
 
   parser->num_plan_trace = 0;
@@ -22299,7 +22601,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 	    {
 	      goto err;
 	    }
-	  /* check if user is creator or DBA  */
+	  /* check if user is the owner, a member of the owning group, or a DBA */
 	  if (au_is_server_authorized_user (&values[1]))
 	    {
 	      rec_cnt++;
@@ -22319,7 +22621,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
       while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS);
       if (rec_cnt == 0)
 	{
-	  error = ER_DBLINK_SERVER_ALTER_NOT_ALLOWED;	// ER_DBLINK_CANNOT_UPDATE_SERVER
+	  /* Treat "exists but not authorized" as missing - a distinct error would tell the caller that
+	   * this name is taken in another user's schema. The duplicate-name checks read a miss as "this
+	   * name is free", which holds because pt_check_server_owners () has authorized the caller for
+	   * the owner they look up. Query name resolution is what still arrives here unauthorized. */
+	  error = ER_DBLINK_SERVER_NOT_FOUND;
 	}
     }
 

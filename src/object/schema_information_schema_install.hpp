@@ -53,24 +53,24 @@ namespace cubschema
   };
 }
 
-const char *sm_define_view_column_privileges_spec (void);
-const char *sm_define_view_columns_spec (void);
-const char *sm_define_view_domains_spec (void);
-const char *sm_define_view_foreign_servers_spec (void);
-const char *sm_define_view_key_column_usage_spec (void);
-const char *sm_define_view_parameters_spec (void);
-const char *sm_define_view_partitions_spec (void);
-const char *sm_define_view_referential_constraints_spec (void);
-const char *sm_define_view_routine_privileges_spec (void);
-const char *sm_define_view_routines_spec (void);
-const char *sm_define_view_schemata_spec (void);
-const char *sm_define_view_sequences_spec (void);
-const char *sm_define_view_statistics_spec (void);
-const char *sm_define_view_synonyms_spec (void);
-const char *sm_define_view_table_constraints_spec (void);
-const char *sm_define_view_table_privileges_spec (void);
-const char *sm_define_view_tables_spec (void);
-const char *sm_define_view_triggers_spec (void);
-const char *sm_define_view_views_spec (void);
+std::string sm_define_view_column_privileges_spec (void);
+std::string sm_define_view_columns_spec (void);
+std::string sm_define_view_domains_spec (void);
+std::string sm_define_view_foreign_servers_spec (void);
+std::string sm_define_view_key_column_usage_spec (void);
+std::string sm_define_view_parameters_spec (void);
+std::string sm_define_view_partitions_spec (void);
+std::string sm_define_view_referential_constraints_spec (void);
+std::string sm_define_view_routine_privileges_spec (void);
+std::string sm_define_view_routines_spec (void);
+std::string sm_define_view_schemata_spec (void);
+std::string sm_define_view_sequences_spec (void);
+std::string sm_define_view_statistics_spec (void);
+std::string sm_define_view_synonyms_spec (void);
+std::string sm_define_view_table_constraints_spec (void);
+std::string sm_define_view_table_privileges_spec (void);
+std::string sm_define_view_tables_spec (void);
+std::string sm_define_view_triggers_spec (void);
+std::string sm_define_view_views_spec (void);
 
 #endif /* _SCHEMA_INFORMATION_SCHEMA_INSTALL_HPP_ */

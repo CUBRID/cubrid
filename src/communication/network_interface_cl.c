@@ -5780,7 +5780,8 @@ stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *l
  */
 int
 histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_type, int attr_unique, int max_buckets,
-				      int sample_size, double *null_frequency, char **blob, int *blob_length)
+				      int sample_size, int with_fullscan, UINT64 sample_seed, double *null_frequency,
+				      char **blob, int *blob_length)
 {
   /* The server handler is multi-column only. Issue a 1-column multi request so single-column
    * (named-attribute) histogram builds use the same wire protocol; this avoids the request/reply
@@ -5800,8 +5801,9 @@ histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_typ
   uniq[0] = attr_unique;
 
   status =
-    histogram_build_multi_by_reservoir_request (class_oid, 1, ids, types, uniq, max_buckets, sample_size, nf, blobs,
-						blens, ndv, &total_rows);
+    histogram_build_multi_by_reservoir_request (class_oid, 1, ids, types, uniq, max_buckets, sample_size,
+						with_fullscan, sample_seed, nf, blobs, blens, ndv, &total_rows,
+						NULL, NULL);
 
   *null_frequency = nf[0];
   *blob = blobs[0];
@@ -5814,18 +5816,29 @@ histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_typ
  *   Sends all columns in one request; the server reads the heap once and returns one blob
  *   per column. Output arrays (sized attr_cnt) are filled by the caller's storage.
  *
- *   reply variable-data layout: attr_cnt doubles (null_frequency), then attr_cnt ints
- *   (blob_length), then the blobs concatenated in column order.
+ *   reply variable-data layout: total_rows / pages_seen / pages_kept (int64), attr_cnt NDV
+ *   (int64), attr_cnt doubles (null_frequency), then attr_cnt ints (blob_length), then the
+ *   blobs concatenated in column order. out_pages_seen / out_pages_kept (may be NULL) report
+ *   the realized scan coverage: kept == seen means a full scan, kept < seen page sampling.
  */
 int
 histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const int *attr_ids,
 					    const int *attr_types, const int *attr_unique, int max_buckets,
-					    int sample_size, double *null_frequency, char **blob, int *blob_length,
-					    INT64 * out_ndv, INT64 * out_total_rows)
+					    int sample_size, int with_fullscan, UINT64 sample_seed,
+					    double *null_frequency, char **blob, int *blob_length, INT64 * out_ndv,
+					    INT64 * out_total_rows, INT64 * out_pages_seen, INT64 * out_pages_kept)
 {
   int i;
 
   *out_total_rows = 0;
+  if (out_pages_seen != NULL)
+    {
+      *out_pages_seen = 0;
+    }
+  if (out_pages_kept != NULL)
+    {
+      *out_pages_kept = 0;
+    }
   for (i = 0; i < attr_cnt; i++)
     {
       blob[i] = NULL;
@@ -5841,7 +5854,9 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
   char *area = NULL;
   int area_size = 0;
   char *ptr;
-  int request_size = OR_OID_SIZE + OR_INT_SIZE * 3 + attr_cnt * (OR_INT_SIZE * 3);
+  /* or_pack_int64 aligns to 8 bytes before writing, so reserve alignment slack too;
+   * the actually packed length (ptr - request) is what gets sent */
+  int request_size = OR_OID_SIZE + OR_INT_SIZE * 4 + MAX_ALIGNMENT + OR_INT64_SIZE + attr_cnt * (OR_INT_SIZE * 3);
   char *request = (char *) malloc ((size_t) request_size);
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5855,6 +5870,8 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
   ptr = or_pack_oid (request, class_oid);
   ptr = or_pack_int (ptr, max_buckets);
   ptr = or_pack_int (ptr, sample_size);
+  ptr = or_pack_int (ptr, with_fullscan);
+  ptr = or_pack_int64 (ptr, (INT64) sample_seed);
   ptr = or_pack_int (ptr, attr_cnt);
   for (i = 0; i < attr_cnt; i++)
     {
@@ -5864,7 +5881,7 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
     }
 
   req_error =
-    net_client_request2 (NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR, request, request_size, reply,
+    net_client_request2 (NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR, request, (int) (ptr - request), reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   free (request);
 
@@ -5875,7 +5892,7 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
       ptr = or_unpack_int (reply, &data_len);
       ptr = or_unpack_int (ptr, &status);
 
-      if (area_size < OR_INT64_SIZE + attr_cnt * (OR_INT64_SIZE + OR_DOUBLE_SIZE + OR_INT_SIZE))
+      if (area_size < 3 * OR_INT64_SIZE + attr_cnt * (OR_INT64_SIZE + OR_DOUBLE_SIZE + OR_INT_SIZE))
 	{
 	  /* truncated reply: unpacking the fixed part below would read past the buffer */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
@@ -5885,6 +5902,19 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
 
       ap = or_unpack_int64 (ap, &tr);
       *out_total_rows = tr;
+      {
+	INT64 ps = 0, pk = 0;
+	ap = or_unpack_int64 (ap, &ps);
+	ap = or_unpack_int64 (ap, &pk);
+	if (out_pages_seen != NULL)
+	  {
+	    *out_pages_seen = ps;
+	  }
+	if (out_pages_kept != NULL)
+	  {
+	    *out_pages_kept = pk;
+	  }
+      }
       for (i = 0; i < attr_cnt; i++)
 	{
 	  INT64 nv = -1;
@@ -5951,7 +5981,8 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
     }
 
   thread_p = enter_server ();
-  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL) != NO_ERROR)
+
+  if (heap_get_class_hfid (thread_p, class_oid, &hfid, NULL) != NO_ERROR)
     {
       exit_server (*thread_p);
       free (priv_blobs);
@@ -5960,8 +5991,9 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
   status =
     xhistogram_build_multi_by_fullscan_reservoir (thread_p, class_oid, &hfid, (const ATTR_ID *) attr_ids,
 						  (const DB_TYPE *) attr_types, attr_unique, attr_cnt, max_buckets,
-						  sample_size, null_frequency, priv_blobs, blob_length, out_ndv,
-						  out_total_rows);
+						  sample_size, with_fullscan != 0, sample_seed, null_frequency,
+						  priv_blobs, blob_length, out_ndv, out_total_rows, out_pages_seen,
+						  out_pages_kept);
   if (status == NO_ERROR)
     {
       for (i = 0; i < attr_cnt; i++)
@@ -6134,11 +6166,12 @@ is_top_level_class (MOBJ mobj)
  * NOTE:
  */
 int
-stats_update_all_statistics (int with_fullscan)
+stats_update_all_statistics (int with_fullscan, int print_summary)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
   LIST_MOPS *lmops = NULL;
+  int n_tables = 0, n_cols = 0;
 
   lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
   if (lmops == NULL)
@@ -6156,16 +6189,29 @@ stats_update_all_statistics (int with_fullscan)
 	    {
 	      break;
 	    }
+	  n_tables++;
+	  for (DB_ATTRIBUTE * att = db_get_attributes_force (class_mop); att != NULL; att = db_attribute_next (att))
+	    {
+	      n_cols++;
+	    }
 	}
     }
 
   locator_free_list_mops (lmops);
 
+  if (error == NO_ERROR && print_summary && n_tables > 0)
+    {
+      /* WITH NO HISTOGRAM skips the histogram pass that normally prints this summary */
+      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+      fflush (stdout);
+    }
+
   return error;
 }
 
 int
-update_histogram_for_all_classes (void)
+update_histogram_for_all_classes (int random_seed)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6182,6 +6228,8 @@ update_histogram_for_all_classes (void)
       return ER_FAILED;
     }
 
+  int n_tables = 0, n_cols = 0, n_hist_skipped = 0;
+
   for (int i = 0; i < lmops->num; i++)
     {
       class_mop = lmops->mops[i];
@@ -6197,14 +6245,41 @@ update_histogram_for_all_classes (void)
       histogram_info.target_columns = NULL;
       histogram_info.bucket_count = -1;
       histogram_info.with_fullscan = false;
-      error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+      histogram_info.random_seed = random_seed;
+      int hist_skipped = 0;
+
+      error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
+					       &hist_skipped);
+      n_hist_skipped += hist_skipped;
       if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
 	{
 	  AU_RESTORE (save);
 	  return error;
 	}
+
+      n_tables++;
+      for (DB_ATTRIBUTE * att = db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
+	{
+	  n_cols++;
+	}
     }
   AU_RESTORE (save);
+
+  if (error == NO_ERROR && n_tables > 0)
+    {
+      if (n_hist_skipped > 0)
+	{
+	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
+		   " (%d skipped: histogram type not supported).\n", n_tables,
+		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
+	}
+      else
+	{
+	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+	}
+      fflush (stdout);
+    }
 
   return error;
 }
@@ -6976,6 +7051,64 @@ btree_class_test_unique (char *buf, int buf_size)
   THREAD_ENTRY *thread_p = enter_server ();
 
   success = xbtree_class_test_unique (thread_p, buf, buf_size);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * btree_compact_overflow () - CBRD-27401: ALTER INDEX ... COMPACT. Compacts the overflow OID chains of an index on
+ *			       the server.
+ *
+ * return		: Error code.
+ * btid (in)		: B-tree identifier.
+ * fill_factor (in)	: Target fill ratio in percent.
+ * keys_compacted (out) : Number of keys whose chain lost at least one page.
+ * pages_freed (out)	: Number of overflow pages deallocated.
+ * pairs_skipped (out)	: Number of page pairs that could not be compacted (no OID boundary; vacuum pending).
+ */
+int
+btree_compact_overflow (BTID * btid, int fill_factor, INT64 * keys_compacted, INT64 * pages_freed,
+			INT64 * pairs_skipped)
+{
+#if defined(CS_MODE)
+  int req_error, status = ER_NET_CLIENT_DATA_RECEIVE;
+  OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE + OR_INT_SIZE) a_request;
+  char *request;
+  /* status, alignment padding before the first INT64 (or_pack_int64 () aligns to MAX_ALIGNMENT), three INT64 */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
+  char *reply;
+  char *ptr;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_btid (request, btid);
+  ptr = or_pack_int (ptr, fill_factor);
+
+  req_error = net_client_request (NET_SERVER_BTREE_COMPACT_OVERFLOW, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_int (reply, &status);
+      ptr = or_unpack_int64 (ptr, keys_compacted);
+      ptr = or_unpack_int64 (ptr, pages_freed);
+      ptr = or_unpack_int64 (ptr, pairs_skipped);
+    }
+  else
+    {
+      status = req_error;
+    }
+
+  return status;
+#else /* CS_MODE */
+  int success = ER_FAILED;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xbtree_compact_overflow (thread_p, btid, fill_factor, keys_compacted, pages_freed, pairs_skipped);
 
   exit_server (*thread_p);
 
@@ -8741,7 +8874,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
   int req_error, status = ER_FAILED;
   OR_ALIGNED_BUF (OR_BTID_ALIGNED_SIZE) a_request;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply;
   char *ptr;
 
@@ -8759,7 +8892,7 @@ btree_get_statistics (BTID * btid, BTREE_STATS * stat_info)
       ptr = or_unpack_int (ptr, &stat_info->leafs);
       ptr = or_unpack_int (ptr, &stat_info->pages);
       ptr = or_unpack_int (ptr, &stat_info->height);
-      ptr = or_unpack_int (ptr, &stat_info->keys);
+      ptr = or_unpack_int64 (ptr, &stat_info->keys);
 
       assert_release (stat_info->leafs > 0);
       assert_release (stat_info->pages > 0);
@@ -9291,19 +9424,13 @@ repl_log_get_append_lsa (LOG_LSA * lsa)
 
   return success;
 #else /* CS_MODE */
-  LOG_LSA *tmp_lsa = NULL;
   int r = ER_FAILED;
 
   THREAD_ENTRY *thread_p = enter_server ();
-  tmp_lsa = xrepl_log_get_append_lsa ();
-  if (lsa && tmp_lsa)
+  if (lsa != NULL)
     {
-      LSA_COPY (lsa, tmp_lsa);
+      *lsa = xrepl_log_get_append_lsa ();
       r = NO_ERROR;
-    }
-  else
-    {
-      r = ER_FAILED;
     }
   exit_server (*thread_p);
 
@@ -9586,7 +9713,7 @@ logwr_get_log_pages (LOGWR_CONTEXT * ctx_ptr)
 	}
     }
 
-  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.pageid
+  if (logwr_Gl.start_pageid >= NULL_PAGEID && logwr_Gl.hdr.eof_lsa.pageid == logwr_Gl.hdr.append_lsa.load ().pageid
       && logwr_Gl.hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
     {
       ctx_ptr->shutdown = true;

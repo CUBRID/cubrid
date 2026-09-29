@@ -103,8 +103,8 @@ stats_client_unpack_statistics (char *buf_p)
   class_stats_p->time_stamp = (unsigned int) OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
 
-  class_stats_p->heap_num_objects = OR_GET_INT (buf_p);
-  buf_p += OR_INT_SIZE;
+  OR_GET_INT64 (buf_p, &class_stats_p->heap_num_objects);
+  buf_p += OR_INT64_SIZE;
   if (class_stats_p->heap_num_objects < 0)
     {
       assert (false);
@@ -185,8 +185,8 @@ stats_client_unpack_statistics (char *buf_p)
 	  btree_stats_p->has_function = OR_GET_INT (buf_p);
 	  buf_p += OR_INT_SIZE;
 
-	  btree_stats_p->keys = OR_GET_INT (buf_p);
-	  buf_p += OR_INT_SIZE;
+	  OR_GET_INT64 (buf_p, &btree_stats_p->keys);
+	  buf_p += OR_INT64_SIZE;
 
 	  btree_stats_p->dedup_idx = OR_GET_INT (buf_p);
 	  buf_p += OR_INT_SIZE;
@@ -208,7 +208,7 @@ stats_client_unpack_statistics (char *buf_p)
 	      btree_stats_p->pkeys_size = BTREE_STATS_PKEYS_NUM;
 	    }
 
-	  btree_stats_p->pkeys = (int *) db_ws_alloc (btree_stats_p->pkeys_size * sizeof (int));
+	  btree_stats_p->pkeys = (INT64 *) db_ws_alloc (btree_stats_p->pkeys_size * sizeof (INT64));
 	  if (btree_stats_p->pkeys == NULL)
 	    {
 	      stats_free_statistics (class_stats_p);
@@ -218,8 +218,8 @@ stats_client_unpack_statistics (char *buf_p)
 	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
-	      btree_stats_p->pkeys[k] = OR_GET_INT (buf_p);
-	      buf_p += OR_INT_SIZE;
+	      OR_GET_INT64 (buf_p, &btree_stats_p->pkeys[k]);
+	      buf_p += OR_INT64_SIZE;
 	    }
 	}
     }
@@ -297,8 +297,10 @@ stats_dump (const char *class_name_p, FILE * file_p)
   ATTR_STATS *attr_stats_p;
   BTREE_STATS *bt_stats_p;
   SM_CLASS *smclass_p;
+  SM_CLASS_CONSTRAINT *cons_p;
   int i, j, k;
   const char *name_p;
+  const char *index_name_p;
   const char *prefix_p = "";
   time_t tloc;
 
@@ -335,7 +337,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
       fprintf (file_p, " Timestamp: %s", ctime (&tloc));
     }
   fprintf (file_p, " Total pages in class heap: %d\n", class_stats_p->heap_num_pages);
-  fprintf (file_p, " Total objects: %d\n", class_stats_p->heap_num_objects);
+  fprintf (file_p, " Total objects: %lld\n", (long long) class_stats_p->heap_num_objects);
   fprintf (file_p, " Number of attributes: %d\n", class_stats_p->n_attrs);
 
   for (i = 0; i < class_stats_p->n_attrs; i++)
@@ -355,9 +357,20 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	    {
 	      bt_stats_p = &(attr_stats_p->bt_stats[j]);
 
-	      fprintf (file_p, "        BTID: { %d , %d }\n", bt_stats_p->btid.vfid.volid,
-		       bt_stats_p->btid.vfid.fileid);
-	      fprintf (file_p, "        Cardinality: %d (", bt_stats_p->keys);
+	      index_name_p = NULL;
+	      for (cons_p = smclass_p->constraints; cons_p != NULL; cons_p = cons_p->next)
+		{
+		  if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons_p->type)
+		      && BTID_IS_EQUAL (&bt_stats_p->btid, &cons_p->index_btid))
+		    {
+		      index_name_p = cons_p->name;
+		      break;
+		    }
+		}
+
+	      fprintf (file_p, "        Index: %s , BTID: { %d , %d }\n", (index_name_p ? index_name_p : "not found"),
+		       bt_stats_p->btid.vfid.volid, bt_stats_p->btid.vfid.fileid);
+	      fprintf (file_p, "        Cardinality: %lld (", (long long) bt_stats_p->keys);
 
 	      prefix_p = "";
 	      assert (bt_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
@@ -365,7 +378,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	      int pkeys_size = (bt_stats_p->dedup_idx >= 0) ? bt_stats_p->dedup_idx : bt_stats_p->pkeys_size;
 	      for (k = 0; k < pkeys_size; k++)
 		{
-		  fprintf (file_p, "%s%d", prefix_p, bt_stats_p->pkeys[k]);
+		  fprintf (file_p, "%s%lld", prefix_p, (long long) bt_stats_p->pkeys[k]);
 		  prefix_p = ",";
 		}
 	      fprintf (file_p, ") ,");
@@ -380,16 +393,23 @@ stats_dump (const char *class_name_p, FILE * file_p)
 }
 
 /*
- * stats_ndv_dump () - Dumps the NDV about a class
+ * stats_ndv_dump () - Dumps the stored NDV of every attribute of a class.
  *   return:
  *   classname(in): The name of class to be printed
  *   fp(in):
+ *
+ * Note: read-only; prints the values collected by the last UPDATE STATISTICS
+ *       and never triggers a new collection.
  */
 void
 stats_ndv_dump (const char *class_name_p, FILE * file_p)
 {
   MOP class_mop;
-  CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
+  SM_CLASS *smclass_p;
+  CLASS_STATS *class_stats_p;
+  ATTR_STATS *attr_stats_p;
+  const char *name_p;
+  time_t tloc;
   int i;
 
   class_mop = sm_find_class (class_name_p);
@@ -399,16 +419,34 @@ stats_ndv_dump (const char *class_name_p, FILE * file_p)
       return;
     }
 
-  /* the on-demand NDV query is deprecated; NDV is collected server-side during
-   * UPDATE STATISTICS (full-scan reservoir) and stored in the catalog. */
-  (void) i;
+  smclass_p = sm_get_class_with_statistics (class_mop);
+  if (smclass_p == NULL || smclass_p->stats == NULL)
+    {
+      fprintf (file_p, "\nNo statistics available for \"%s\".\n\n", class_name_p);
+      return;
+    }
+  class_stats_p = smclass_p->stats;
+
   fprintf (file_p, "\nNumber of Distinct Values\n");
   fprintf (file_p, "****************\n");
-  fprintf (file_p, " Class name: %s\n", sm_get_ch_name (class_mop));
-  fprintf (file_p, "  (collected server-side at UPDATE STATISTICS; see class statistics dump)\n\n");
-  if (class_attr_ndv.attr_ndv != NULL)
+  fprintf (file_p, " Class name: %s", class_name_p);
+  tloc = (time_t) class_stats_p->time_stamp;
+  if (tloc == 0)
     {
-      free_and_init (class_attr_ndv.attr_ndv);
+      fprintf (file_p, " (The 'stats' is not updated)\n");
     }
-  return;
+  else
+    {
+      fprintf (file_p, " Timestamp: %s", ctime (&tloc));
+    }
+
+  for (i = 0; i < class_stats_p->n_attrs; i++)
+    {
+      attr_stats_p = &(class_stats_p->attr_stats[i]);
+      name_p = sm_get_att_name (class_mop, attr_stats_p->id);
+      fprintf (file_p, " Attribute: %s (%s)\n", (name_p ? name_p : "not found"), pr_type_name (attr_stats_p->type));
+      fprintf (file_p, "    Number of Distinct Values: %ld\n", attr_stats_p->ndv);
+    }
+
+  fprintf (file_p, "\n");
 }

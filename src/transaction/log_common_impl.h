@@ -64,6 +64,10 @@ enum LOG_HA_FILESTAT
 extern int logtb_collect_local_clients (int **local_client_pids);
 #endif /* !defined (NDEBUG) && !defined (WINDOWS) */
 
+/* Declared here, rather than in log_impl.h, so that the backup path in file_io.c can sanitize the active log
+ * header page without taking on the whole server side log header. */
+extern void logpb_strip_cdc_arv_num_from_header_page (void *page_ptr);
+
 /************************************************************************/
 /* End of part shared with client.                                      */
 /************************************************************************/

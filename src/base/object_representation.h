@@ -69,7 +69,14 @@ struct setobj;
 #define OR_CHECK_UNS_SUB_UNDERFLOW(a, b, c) \
   (b) > (a)
 #define OR_CHECK_MULT_OVERFLOW(a, b, c) \
-  (((b) == 0) ? ((c) != 0) : ((c) / (b) != (a)))
+  (((b) == 0) ? ((c) != 0) \
+   : (((b) == -1) ? ((a) != 0 && (c) == (a)) : ((c) / (b) != (a))))
+#if defined (__GNUC__) || defined (__clang__)
+#define OR_MULT_OVERFLOW(a, b, r) __builtin_mul_overflow ((a), (b), (r))
+#else
+#define OR_MULT_OVERFLOW(a, b, r) \
+  (*(r) = (a) * (b), OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
+#endif
 #define OR_CHECK_SHORT_DIV_OVERFLOW(a, b) \
   ((a) == DB_INT16_MIN && (b) == -1)
 #define OR_CHECK_INT_DIV_OVERFLOW(a, b) \
@@ -144,8 +151,13 @@ OR_PUT_FLOAT (char *ptr, float val)
   memcpy (ptr, &ui, sizeof (ui));
 }
 
+/* ptr may not be aligned; read through memcpy, never a typed deref */
 #define OR_GET_FLOAT(ptr, value) \
-  (*(value) = ntohf (*(UINT32 *) (ptr)))
+  do { \
+    UINT32 _or_ui; \
+    memcpy (&_or_ui, (ptr), sizeof (_or_ui)); \
+    *(value) = ntohf (_or_ui); \
+  } while (0)
 
 STATIC_INLINE void
 OR_PUT_DOUBLE (char *ptr, double val)
@@ -155,7 +167,11 @@ OR_PUT_DOUBLE (char *ptr, double val)
 }
 
 #define OR_GET_DOUBLE(ptr, value) \
-  (*(value) = ntohd (*(UINT64 *) (ptr)))
+  do { \
+    UINT64 _or_ui; \
+    memcpy (&_or_ui, (ptr), sizeof (_or_ui)); \
+    *(value) = ntohd (_or_ui); \
+  } while (0)
 
 #if __WORDSIZE == 32
 #define OR_PUT_PTR(ptr, val)    OR_PUT_INT ((ptr), (val))

@@ -402,6 +402,18 @@ struct update_proc_node
 				 * in conditions and assignment reevaluation */
 };
 
+/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, and UPDATE to follow) */
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct remote_dml_sink
+{
+  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
+  char *url;			/* DBLink connection URL */
+  char *user;			/* DBLink connection user */
+  char *pwd;			/* DBLink connection password */
+  char *table_name;		/* remote target table name */
+};
+
 typedef struct insert_proc_node INSERT_PROC_NODE;
 struct insert_proc_node
 {
@@ -422,11 +434,7 @@ struct insert_proc_node
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
   /* remote INSERT SELECT sink fields (INSERT INTO remote SELECT FROM local) */
-  bool is_remote_insert;	/* true if inserting into a remote table via DBLink */
-  char *remote_url;		/* DBLink connection URL */
-  char *remote_user;		/* DBLink connection user */
-  char *remote_pwd;		/* DBLink connection password */
-  char *remote_table_name;	/* remote target table name */
+  REMOTE_DML_SINK sink;
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
 };
@@ -442,6 +450,10 @@ struct delete_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */
+  /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
+  REMOTE_DML_SINK sink;
+  char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<>", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;
@@ -529,11 +541,19 @@ struct cte_proc_node
 #define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 #define XASL_DBLINK_CURSOR_REWIND	(0x1 << 22)	/* correlated DBLink subquery: rewind CCI cursor instead of re-issuing cci_execute per outer row */
 #define XASL_CORR_DBLINK		(0x1 << 23)	/* correlated push-down (per-row bind); mutually exclusive with XASL_DBLINK_CURSOR_REWIND */
+#define XASL_NL_SEMIJOIN		(0x1 << 24)	/* this scan proc is the inner of a NL semi join (first-match) */
+#define XASL_NL_ANTIJOIN		(0x1 << 25)	/* this scan proc is the inner of a NL anti join (zero-match) */
+#define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
+#define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
 #define IS_CORR_DBLINK_XASL(x)		XASL_IS_FLAGED ((x), XASL_CORR_DBLINK)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
+
+/* qfile_open_list () backward-scan flag: set for the top-most XASL's result or a MERGELIST_PROC child list. */
+#define XASL_LIST_BACKWARD_FLAG(x) \
+  ((XASL_IS_FLAGED ((x), XASL_TOP_MOST_XASL) || XASL_IS_FLAGED ((x), XASL_LIST_BACKWARD)) ? QFILE_FLAG_BACKWARD : 0)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
 #define EXECUTE_REGU_VARIABLE_XASL(thread_p, r, v) \
@@ -595,6 +615,10 @@ struct cte_proc_node
   (((func_p)->function == PT_MEDIAN) \
    || ((func_p)->function == PT_PERCENTILE_CONT) \
    || ((func_p)->function == PT_PERCENTILE_DISC))
+
+#define QPROC_IS_CONTINUOUS_INTERPOLATION_FUNC(func_p) \
+  (((func_p)->function == PT_MEDIAN) \
+   || ((func_p)->function == PT_PERCENTILE_CONT))
 
  /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1

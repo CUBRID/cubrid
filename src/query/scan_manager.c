@@ -23,11 +23,12 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "qfile_tuple_layout.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include "jansson.h"
+#include "json_builder.h"
 
 #include "error_manager.h"
 #include "heap_file.h"
@@ -771,8 +772,8 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit_on_error;
     }
-  indx_cov->tplrec->size = 0;
-  indx_cov->tplrec->tpl = NULL;
+  *indx_cov->tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  qfile_slot_set_layout (indx_cov->tplrec, &indx_cov->list_id->type_list);
 
   indx_cov->lsid = (QFILE_LIST_SCAN_ID *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SCAN_ID));
   if (indx_cov->lsid == NULL)
@@ -4613,6 +4614,10 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	    }
 	  hsidp->caches_inited = true;
+	  /* flag the leftmost predicate term's column(s) to stay eager; once per (re)arm with the cache init */
+	  eval_mark_first_term_attrs (hsidp->scan_pred.pred_expr, hsidp->pred_attrs.attr_cache);
+	  /* nothing left to defer -> skip lazy mode for this scan */
+	  eval_disable_lazy_read (hsidp->pred_attrs.attr_cache);
 	}
       break;
     case S_PARALLEL_HEAP_SCAN:
@@ -4740,6 +4745,10 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      goto exit_on_error;
 	    }
 	  isidp->caches_inited = true;
+	  /* flag the leftmost predicate term's column(s) to stay eager; once per (re)arm with the cache init */
+	  eval_mark_first_term_attrs (isidp->scan_pred.pred_expr, isidp->pred_attrs.attr_cache);
+	  /* nothing left to defer -> skip lazy mode for this scan */
+	  eval_disable_lazy_read (isidp->pred_attrs.attr_cache);
 	}
       isidp->oids_count = 0;
       isidp->curr_keyno = -1;
@@ -6406,7 +6415,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   INDX_SCAN_ID *isidp;
   FILTER_INFO data_filter;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE lookup_status;
   TRAN_ISOLATION isolation;
 
@@ -6743,8 +6752,9 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		{
 		  return S_ERROR;
 		}
-	      tplrec.tpl = isidp->multi_range_opt.tplrec.tpl;
-	      tplrec.size = isidp->multi_range_opt.tplrec.size;
+	      /* the dumped tuple has the covering list's layout: bind + set it */
+	      qfile_slot_set_tuple_ptr_and_layout (&tplrec, isidp->multi_range_opt.tplrec.tpl, 0,
+						   &isidp->indx_cov.list_id->type_list);
 	    }
 	  else
 	    {
@@ -6758,7 +6768,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, isidp->indx_cov.regu_val_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      if (fetch_val_list (thread_p, isidp->indx_cov.regu_val_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 		  NO_ERROR)
 		{
 		  return S_ERROR;
@@ -6791,7 +6801,7 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
   BTID *btid;
   char *indx_name_p;
   char *class_name_p;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   assert (scan_id != NULL);
   assert (isidp != NULL);
@@ -7145,12 +7155,9 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   llsidp = &scan_id->s.llsid;
-
-  tplrec.size = 0;
-  tplrec.tpl = (QFILE_TUPLE) NULL;
 
   resolve_domains_on_list_scan (llsidp, scan_id->val_list);
 
@@ -7160,7 +7167,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -7223,7 +7230,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the rest of the values from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -7231,8 +7238,7 @@ scan_next_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       if (llsidp->tplrecp)
 	{
-	  llsidp->tplrecp->size = tplrec.size;
-	  llsidp->tplrecp->tpl = tplrec.tpl;
+	  qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.size, tplrec.type_list);	/* output record: carry the binding too */
 	}
 
       return S_SUCCESS;
@@ -7592,7 +7598,7 @@ scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   DBLINK_SCAN_ID *vaidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   vaidp = &scan_id->s.dblid;
 
@@ -7731,7 +7737,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       break;
 
-    case QPROC_SINGLE_INNER:	/* currently, not used */
+    case QPROC_SINGLE_INNER:	/* NL SEMI/ANTI JOIN inner: fetch at most one qualifying row (first-match) */
       /* already returned a row? */
       /* if scan works in a single_fetch mode and first qualified scan item has already been fetched, return
        * end_of_scan. */
@@ -7841,22 +7847,19 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
   switch (scan_id->type)
     {
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
 
-      tplrec.size = 0;
-      tplrec.tpl = (QFILE_TUPLE) NULL;
-
       while ((qp_scan = qfile_scan_list_prev (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
 	{
 	  /* fetch the values for the predicate from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	      if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 		  NO_ERROR)
 		{
 		  return S_ERROR;
@@ -7915,8 +7918,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* fetch the rest of the values from the tuple */
 	  if (scan_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
-		  NO_ERROR)
+	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -7924,8 +7926,7 @@ scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 	  if (llsidp->tplrecp)
 	    {
-	      llsidp->tplrecp->size = tplrec.size;
-	      llsidp->tplrecp->tpl = tplrec.tpl;
+	      qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.size, tplrec.type_list);	/* output record: carry the binding too */
 	    }
 
 	  return S_SUCCESS;
@@ -7988,7 +7989,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 {
   LLIST_SCAN_ID *llsidp;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
 
   llsidp = &s_id->s.llsid;
@@ -7998,9 +7999,6 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
   s_id->position = scan_pos->position;
 
   /* jump to the previouslt saved scan position and continue from that point on forward */
-  tplrec.size = 0;
-  tplrec.tpl = (QFILE_TUPLE) NULL;
-
   qp_scan = qfile_jump_scan_tuple_position (thread_p, &llsidp->lsid, &scan_pos->ls_tplpos, &tplrec, PEEK);
   if (qp_scan != S_SUCCESS)
     {
@@ -8016,8 +8014,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
       /* fetch the value for the predicate from the tuple */
       if (s_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, s_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
-	      NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, s_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -8080,7 +8077,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 	  /* fetch the rest of the values from the tuple */
 	  if (s_id->val_list)
 	    {
-	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, s_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	      if (fetch_val_list (thread_p, llsidp->rest_regu_list, s_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -8088,8 +8085,7 @@ scan_jump_scan_pos (THREAD_ENTRY * thread_p, SCAN_ID * s_id, SCAN_POS * scan_pos
 
 	  if (llsidp->tplrecp)
 	    {
-	      llsidp->tplrecp->size = tplrec.size;
-	      llsidp->tplrecp->tpl = tplrec.tpl;
+	      qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.size, tplrec.type_list);	/* output record: carry the binding too */
 	    }
 	  return S_SUCCESS;
 	}
@@ -8378,8 +8374,7 @@ scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * m
 	}
       memset (multi_range_opt->top_n_items, 0, max_size * sizeof (RANGE_OPT_ITEM *));
 
-      multi_range_opt->tplrec.size = 0;
-      multi_range_opt->tplrec.tpl = NULL;
+      multi_range_opt->tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 
       perfmon_inc_stat (thread_p, PSTAT_BT_NUM_MULTI_RANGE_OPT);
     }
@@ -8445,7 +8440,7 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
     }
 
   error = qdata_copy_valptr_list_to_tuple (thread_p, iscan_id->indx_cov.output_val_list, iscan_id->indx_cov.val_descr,
-					   tplrec);
+					   &iscan_id->indx_cov.list_id->type_list, tplrec);
   if (error != NO_ERROR)
     {
       return error;
@@ -8462,17 +8457,17 @@ scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_V
  * scan_id(in):
  */
 void
-scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
+scan_print_stats_json (SCAN_ID * scan_id, trace_json_t * scan_stats)
 {
-  json_t *scan, *lookup;
+  trace_json_t *scan, *lookup;
 
   if (scan_id == NULL || scan_stats == NULL)
     {
       return;
     }
 
-  scan = json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
-		    scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
+  scan = trace_json_pack ("{s:i, s:I, s:I}", "time", TO_MSEC (scan_id->scan_stats.elapsed_scan), "fetch",
+			  scan_id->scan_stats.num_fetches, "ioread", scan_id->scan_stats.num_ioreads);
 
   switch (scan_id->type)
     {
@@ -8480,8 +8475,8 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
     case S_LIST_SCAN:
     case S_PARALLEL_HEAP_SCAN:
     case S_PARALLEL_LIST_SCAN:
-      json_object_set_new (scan, "readrows", json_integer (scan_id->scan_stats.read_rows));
-      json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.qualified_rows));
+      trace_json_object_set_new (scan, "readrows", trace_json_integer (scan_id->scan_stats.read_rows));
+      trace_json_object_set_new (scan, "rows", trace_json_integer (scan_id->scan_stats.qualified_rows));
 
       if (scan_id->type == S_HEAP_SCAN || scan_id->type == S_PARALLEL_HEAP_SCAN)
 	{
@@ -8499,6 +8494,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 	      agl_index = (char *) malloc (len);
 	      if (agl_index == NULL)
 		{
+		  trace_json_decref (scan);
 		  return;
 		}
 
@@ -8514,82 +8510,82 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
 		      sprintf (agl_index, "%s", agl->agg_index_name);
 		    }
 		}
-	      json_object_set_new (scan, "agl", json_string (agl_index));
+	      trace_json_object_set_new (scan, "agl", trace_json_string (agl_index));
 	      free (agl_index);
 	    }
 
 	  if (scan_id->scan_stats.noscan)
 	    {
-	      json_object_set_new (scan_stats, "noscan", scan);
+	      trace_json_object_set_new (scan_stats, "noscan", scan);
 	    }
 	  else
 	    {
-	      json_object_set_new (scan_stats, "heap", scan);
+	      trace_json_object_set_new (scan_stats, "heap", scan);
 	    }
 	}
       else
 	{
-	  json_object_set_new (scan_stats, "temp", scan);
+	  trace_json_object_set_new (scan_stats, "temp", scan);
 	}
       break;
 
     case S_INDX_SCAN:
     case S_PARALLEL_INDEX_SCAN:
-      json_object_set_new (scan, "readkeys", json_integer (scan_id->scan_stats.read_keys));
-      json_object_set_new (scan, "filteredkeys", json_integer (scan_id->scan_stats.qualified_keys));
-      json_object_set_new (scan, "rows", json_integer (scan_id->scan_stats.key_qualified_rows));
-      json_object_set_new (scan_stats, "btree", scan);
+      trace_json_object_set_new (scan, "readkeys", trace_json_integer (scan_id->scan_stats.read_keys));
+      trace_json_object_set_new (scan, "filteredkeys", trace_json_integer (scan_id->scan_stats.qualified_keys));
+      trace_json_object_set_new (scan, "rows", trace_json_integer (scan_id->scan_stats.key_qualified_rows));
+      trace_json_object_set_new (scan_stats, "btree", scan);
 
       if (scan_id->scan_stats.covered_index == true)
 	{
-	  json_object_set_new (scan_stats, "covered", json_true ());
+	  trace_json_object_set_new (scan_stats, "covered", trace_json_true ());
 	}
       else
 	{
-	  lookup = json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
-			      scan_id->scan_stats.data_qualified_rows);
+	  lookup = trace_json_pack ("{s:i, s:i}", "time", TO_MSEC (scan_id->scan_stats.elapsed_lookup), "rows",
+				    scan_id->scan_stats.data_qualified_rows);
 
-	  json_object_set_new (scan_stats, "lookup", lookup);
+	  trace_json_object_set_new (scan_stats, "lookup", lookup);
 	}
 
       if (scan_id->scan_stats.multi_range_opt == true)
 	{
-	  json_object_set_new (scan_stats, "mro", json_true ());
+	  trace_json_object_set_new (scan_stats, "mro", trace_json_true ());
 	}
 
       if (scan_id->scan_stats.index_skip_scan == true)
 	{
-	  json_object_set_new (scan_stats, "iss", json_true ());
+	  trace_json_object_set_new (scan_stats, "iss", trace_json_true ());
 	}
 
       if (scan_id->scan_stats.loose_index_scan == true)
 	{
-	  json_object_set_new (scan_stats, "loose", json_true ());
+	  trace_json_object_set_new (scan_stats, "loose", trace_json_true ());
 	}
       break;
 
     case S_SHOWSTMT_SCAN:
-      json_object_set_new (scan_stats, "show", scan);
+      trace_json_object_set_new (scan_stats, "show", scan);
       break;
 
     case S_SET_SCAN:
-      json_object_set_new (scan_stats, "set", scan);
+      trace_json_object_set_new (scan_stats, "set", scan);
       break;
 
     case S_METHOD_SCAN:
-      json_object_set_new (scan_stats, "method", scan);
+      trace_json_object_set_new (scan_stats, "method", scan);
       break;
 
     case S_DBLINK_SCAN:
-      json_object_set_new (scan_stats, "dblink", scan);
+      trace_json_object_set_new (scan_stats, "dblink", scan);
       break;
 
     case S_CLASS_ATTR_SCAN:
-      json_object_set_new (scan_stats, "class_attr", scan);
+      trace_json_object_set_new (scan_stats, "class_attr", scan);
       break;
 
     default:
-      json_object_set_new (scan_stats, "noscan", scan);
+      trace_json_object_set_new (scan_stats, "noscan", scan);
       break;
     }
 }
@@ -8770,7 +8766,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   HASH_SCAN_KEY *key, *new_key;
   unsigned int hash_key;
   MHT_HLS_ENTRY *entry;
@@ -8780,9 +8776,6 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   key = llsidp->hlsid.temp_key;
   new_key = llsidp->hlsid.temp_new_key;
 
-  tplrec.size = 0;
-  tplrec.tpl = (QFILE_TUPLE) NULL;
-
   resolve_domains_on_list_scan (llsidp, scan_id->val_list);
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
@@ -8790,7 +8783,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -8883,20 +8876,22 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   DB_LOGICAL ev_res;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
-
-  tplrec.size = 0;
-  tplrec.tpl = (QFILE_TUPLE) NULL;
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE tpl = NULL;
 
   llsidp = &scan_id->s.llsid;
 
-  while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tplrec.tpl)) == S_SUCCESS)
+  /* the probed tuples are copies of list_id tuples; retarget the slot only through the setter */
+  qfile_slot_set_layout (&tplrec, &llsidp->list_id->type_list);
+
+  while ((qp_scan = scan_hash_probe_next (thread_p, scan_id, &tpl)) == S_SUCCESS)
     {
+      qfile_slot_set_tuple_ptr (&tplrec, tpl, 0);
 
       /* fetch the values for the predicate from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) !=
+	  if (fetch_val_list (thread_p, llsidp->scan_pred.regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) !=
 	      NO_ERROR)
 	    {
 	      return S_ERROR;
@@ -8959,7 +8954,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* fetch the rest of the values from the tuple */
       if (scan_id->val_list)
 	{
-	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, tplrec.tpl, PEEK) != NO_ERROR)
+	  if (fetch_val_list (thread_p, llsidp->rest_regu_list, scan_id->vd, NULL, NULL, &tplrec, PEEK) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
@@ -8967,8 +8962,7 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       if (llsidp->tplrecp)
 	{
-	  llsidp->tplrecp->size = tplrec.size;
-	  llsidp->tplrecp->tpl = tplrec.tpl;
+	  qfile_slot_set_tuple_ptr_and_layout (llsidp->tplrecp, tplrec.tpl, tplrec.size, tplrec.type_list);	/* output record: carry the binding too */
 	}
 
       return S_SUCCESS;
@@ -8994,7 +8988,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
   MHT_HLS_ENTRY *entry;
   QFILE_TUPLE_SIMPLE_POS *simple_pos;
   QFILE_TUPLE_POSITION tuple_pos;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   EH_SEARCH eh_search;
   TFTID result;
 

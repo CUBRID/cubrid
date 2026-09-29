@@ -233,21 +233,21 @@ namespace os::resources
 	      }
 	  }
 
-	cgroup = cgroup::cpu::quota_v2 ();
-	if (cgroup.max_v2 &&
-	    *cgroup.max_v2 != std::numeric_limits<double>::max () && ctx.max > *cgroup.max_v2)
+	cgroup = cgroup::cpu::quota ();
+	if (cgroup.max &&
+	    *cgroup.max != std::numeric_limits<double>::max () && ctx.max > *cgroup.max)
 	  {
-	    ctx.max = *cgroup.max_v2;
+	    ctx.max = *cgroup.max;
 	  }
-	if (cgroup.effective_v2)
+	if (cgroup.effective)
 	  {
 	    if (ctx.effective)
 	      {
-		ctx.effective = parser::intersection (*ctx.effective, *cgroup.effective_v2);
+		ctx.effective = parser::intersection (*ctx.effective, *cgroup.effective);
 	      }
 	    else
 	      {
-		ctx.effective = *cgroup.effective_v2;
+		ctx.effective = *cgroup.effective;
 	      }
 	  }
 

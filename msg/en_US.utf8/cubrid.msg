@@ -142,7 +142,7 @@ $set 5 MSGCAT_SET_ERROR
 70 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
 71 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
 72 Your transaction (index %1$d, %2$s@%3$s|%4$d) has been unilaterally aborted by the system.
-73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d. You are waiting for user(s) %9$s to finish.
+73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on %6$s. You are waiting for user(s) %7$s to finish.
 74 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s. You are waiting for user(s) %7$s to finish.
 75 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s. You are waiting for user(s) %10$s to finish.
 76 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s on page %6$d|%7$d. You are waiting for user(s) %8$s to release the page lock.
@@ -1036,7 +1036,7 @@ $ LOADDB
 963 Broker error.
 964 The result set handle is closed.
 965 Cannot use duplicate attribute names in index key list. Attribute name '%1$s' listed more than once.
-966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
+966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
 969 Server bit platform (%1$d) is different from client bit platform (%2$d).
@@ -1112,7 +1112,7 @@ $ LOADDB
 1039 log writer: log writer started. mode: %1$d.
 1040 HA generic: %1$s. 
 1041 A string was truncated in context of "%1$s".
-1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
+1042 Trying to create a string requiring %1$zu bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
 1044 Cannot change attribute "%1$s". CUBRID cannot change attributes that are partitioning keys.
 1045 Cannot change attribute "%1$s". CUBRID cannot change attributes used in foreign keys (either referenced or referencing).
@@ -1324,7 +1324,7 @@ $ LOADDB
 1251 Error while TDE-encrypting.
 1252 Error while TDE-decrypting.
 1253 TDE Module is not loaded.
-1254 Cannot create a key.
+1254 Cannot create or verify a key.
 1255 Cannot load TDE module. You can't use TDE feature.\n\
 Check the path of the key file (_keys) and make sure that it includes proper key.
 1256 Cannot copy key file (_keys). You can't use TDE feature on the copied database.
@@ -1481,8 +1481,16 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
 
-1378 Last Error
+1378 Cannot change the login capability of user "%1$s".
 
+1379 CDC: the extraction position (%1$lld|%2$d) handed to the client keeps archive log volume %3$d.
+
+1380 A stored procedure/function declared PARALLEL_ENABLE cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
+
+1381 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
+1382 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+
+1383 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1650,6 +1658,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
+140 FILL_FACTOR argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -1993,8 +2002,10 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
-
-337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+338 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
+342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
+343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 
 
 
@@ -2174,6 +2185,10 @@ $set 14 MSGCAT_SET_LOCK
 44 Index name: %1$s\n
 45 Object type: Generic object for Repeatable Read consistency.\n
 46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
+47 object %1$d|%2$d|%3$d
+48 class %1$s
+49 instance %1$d|%2$d|%3$d of class %4$s
+50 transaction MVCCID %1$llu
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

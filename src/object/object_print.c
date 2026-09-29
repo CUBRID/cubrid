@@ -41,6 +41,7 @@
 #include "schema_manager.h"
 #include "string_buffer.hpp"
 #include "trigger_description.hpp"
+#include "histogram_cl.hpp"
 #include "trigger_manager.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -50,7 +51,7 @@
 #define MATCH_TOKEN(string, token) \
   ((string == NULL) ? 0 : intl_mbs_casecmp(string, token) == 0)
 
-static char *obj_print_next_token (char *ptr, char *buf);
+static char *obj_print_next_token (char *ptr, char *buf, size_t buf_size);
 
 /* This will be in one of the language directories under $CUBRID/msg */
 
@@ -560,9 +561,12 @@ help_describe_mop (DB_OBJECT * obj, char *buffer, int maxlen)
  */
 
 static char *
-obj_print_next_token (char *ptr, char *buffer)
+obj_print_next_token (char *ptr, char *buffer, size_t buf_size)
 {
   char *p;
+  size_t len = 0;
+
+  assert (buffer != NULL && buf_size > 0);
 
   p = ptr;
   while (char_isspace ((DB_C_INT) (*p)) && *p != '\0')
@@ -571,11 +575,18 @@ obj_print_next_token (char *ptr, char *buffer)
     }
   while (!char_isspace ((DB_C_INT) (*p)) && *p != '\0')
     {
-      *buffer = *p;
-      buffer++;
+      /* the token is truncated rather than overflowing the caller's buffer: every caller
+       * passes a fixed-size stack array and the token comes from user input (the csql
+       * ';info ...' argument, also reachable as CALL info(...) ON CLASS db_root), so an
+       * unbounded copy was a client-side stack smash. A truncated name simply fails to
+       * match whatever it is looked up against. */
+      if (len + 1 < buf_size)
+	{
+	  buffer[len++] = *p;
+	}
       p++;
     }
-  *buffer = '\0';
+  buffer[len] = '\0';
 
   return p;
 }
@@ -601,7 +612,7 @@ help_print_info (const char *command, FILE * fpp)
       return;
     }
 
-  ptr = obj_print_next_token ((char *) command, buffer);
+  ptr = obj_print_next_token ((char *) command, buffer, sizeof (buffer));
   if (fpp == NULL)
     {
       fpp = stdout;
@@ -610,7 +621,7 @@ help_print_info (const char *command, FILE * fpp)
   file_print_output output_ctx (fpp);
   if (MATCH_TOKEN (buffer, "schema"))
     {
-      ptr = obj_print_next_token (ptr, buffer);
+      ptr = obj_print_next_token (ptr, buffer, sizeof (buffer));
       if (!strlen (buffer))
 	{
 	  help_fprint_class_names (fpp, NULL);
@@ -630,7 +641,7 @@ help_print_info (const char *command, FILE * fpp)
     }
   else if (MATCH_TOKEN (buffer, "trigger"))
     {
-      ptr = obj_print_next_token (ptr, buffer);
+      ptr = obj_print_next_token (ptr, buffer, sizeof (buffer));
       if (!strlen (buffer))
 	{
 	  if (!help_trigger_names (&names))
@@ -674,7 +685,7 @@ help_print_info (const char *command, FILE * fpp)
     }
   else if (MATCH_TOKEN (buffer, "stats"))
     {
-      ptr = obj_print_next_token (ptr, buffer);
+      ptr = obj_print_next_token (ptr, buffer, sizeof (buffer));
       if (!strlen (buffer))
 	{
 	  fprintf (fpp, "Info stats class-name\n");
@@ -706,7 +717,7 @@ help_print_info (const char *command, FILE * fpp)
     }
   else if (MATCH_TOKEN (buffer, "ndv"))
     {
-      ptr = obj_print_next_token (ptr, buffer);
+      ptr = obj_print_next_token (ptr, buffer, sizeof (buffer));
       if (!strlen (buffer))
 	{
 	  fprintf (fpp, "Info ndv class-name\n");
@@ -714,6 +725,21 @@ help_print_info (const char *command, FILE * fpp)
       else
 	{
 	  stats_ndv_dump (buffer, fpp);
+	}
+    }
+  else if (MATCH_TOKEN (buffer, "histogram"))
+    {
+      char attr_name[128];
+
+      ptr = obj_print_next_token (ptr, buffer, sizeof (buffer));
+      if (!strlen (buffer))
+	{
+	  fprintf (fpp, "Info histogram class-name [attribute-name]\n");
+	}
+      else
+	{
+	  ptr = obj_print_next_token (ptr, attr_name, sizeof (attr_name));
+	  (void) histogram_info_dump (buffer, (strlen (attr_name) > 0) ? attr_name : NULL, fpp);
 	}
     }
 }
