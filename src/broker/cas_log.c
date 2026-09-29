@@ -71,12 +71,12 @@ static char sql_log_buffer[SQL_LOG_BUFFER_SIZE];
 
 /*
  * SQL / slow logs bypass stdio to buffer writes and reduce flushes.
- * In ON(=ALL) mode a one-shot SIGUSR2 timer flushes pending data with pwrite ().
+ * In ON(=ALL) mode a one-shot SIGUSR2 timer flushes the SQL log with pwrite ().
  */
 #define SLOW_LOG_BUFFER_SIZE (SQL_LOG_BUFFER_SIZE)
 static char slow_log_buffer[SLOW_LOG_BUFFER_SIZE];
 
-/* SQL_LOG=ERROR, TIMEOUT or NOTICE keep the current unit in this scratch file and append it to the log if it is kept */
+/* SQL_LOG=ERROR, TIMEOUT or NOTICE put the current unit in this scratch file and append it to the log when cas_log_end () keeps it */
 static char scratch_filepath[BROKER_PATH_MAX];
 
 /*
@@ -95,9 +95,9 @@ static char scratch_filepath[BROKER_PATH_MAX];
  * NOTE:
  *   saved_log_fpos is SQL log only, cas_ftell () at the start of the current unit.  It is before file_buf_base
  *   only after a spill.
- *   Outside ON(=ALL) mode, the unit uses scratch_log_fd, which shares this buffer and is bound to the scratch
+ *   Outside ON(=ALL) mode, the unit uses scratch_log_fd, which shares sql_log_buffer and is bound to the scratch
  *   file.  scratch_log_fd positions, and so saved_log_fpos and saved_temp_stmt_fpos, count from the unit start.
- *   In that case, sql_log_fd keeps an empty buffer, and its file_buf_base is the SQL log position where
+ *   In that case, sql_log_fd keeps buf_used at 0, and its file_buf_base is the SQL log position where
  *   copy_scratch_to_sql_log () writes the unit.
  */
 typedef struct cas_log_fd CAS_LOG_FD;
@@ -126,6 +126,8 @@ static CAS_LOG_FD scratch_log_fd = { -1, sql_log_buffer, SQL_LOG_BUFFER_SIZE, 0,
 /* the barriers keep the compiler from moving buffer accesses across the flag update */
 #define CAS_LOG_SET_WRITING(v) \
   do { CAS_LOG_COMPILER_BARRIER (); sql_log_writing = (v); CAS_LOG_COMPILER_BARRIER (); } while (0)
+#define CAS_LOG_SET_UNMASKED(v) \
+  do { CAS_LOG_COMPILER_BARRIER (); sql_log_unmasked = (v); CAS_LOG_COMPILER_BARRIER (); } while (0)
 
 static char *make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name);
 static void cas_log_backup (T_CUBRID_FILE_ID fid);
@@ -141,6 +143,8 @@ static void cas_log_write2_internal (CAS_LOG_FD * fp, const char *fmt, va_list a
 static FILE *access_log_open (char *log_file_name);
 static void cas_log_write_query_string_internal (char *query, int size, bool newline,
 						 HIDE_PWD_INFO_PTR hide_pwd_info_ptr, bool ishidepw);
+static void cas_log_compile_begin_internal (char *query, bool newline);
+static void cas_log_compile_end_internal (char *query, bool newline, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 
 #ifdef CAS_ERROR_LOG
 static int error_file_offset;
@@ -169,8 +173,19 @@ static int cas_mkdir (const char *pathname, mode_t mode);
 static void access_log_backup (char *access_log_file, struct tm *ct);
 
 static volatile sig_atomic_t sql_log_writing = 0;
-static volatile sig_atomic_t sql_log_flush_pending = 0;
-static timer_t sql_log_timer;	/* SQL log only: cas_slow_log_end () flushes the slow log */
+static volatile sig_atomic_t sql_log_write_flush_pending = 0;
+
+/*
+ * One of the following indicates how the statement between compile_begin and compile_end is handled.
+ *   BUFFERED  its text is in the buffer with passwords visible, so nothing flushes it until compile_end masks it.
+ *   OVERFLOW  its text did not fit in the buffer, so nothing is written until compile_end writes it masked.
+ */
+#define SQL_LOG_UNMASKED_NONE      0
+#define SQL_LOG_UNMASKED_BUFFERED  1
+#define SQL_LOG_UNMASKED_OVERFLOW  2
+static volatile sig_atomic_t sql_log_unmasked = SQL_LOG_UNMASKED_NONE;
+static volatile sig_atomic_t sql_log_unmask_flush_pending = 0;
+static timer_t sql_log_timer;	/* SQL log only, cas_slow_log_end () flushes the slow log */
 static bool sql_log_timer_created = false;
 
 static void arm_flush_timer (void);
@@ -287,8 +302,8 @@ cas_log_open (char *br_name)
 		  scratch_log_fd.buf_used = 0;
 		  scratch_log_fd.buf_flushed = 0;
 		  scratch_log_fd.fd = scratch_fd;
-		  log_fp = &scratch_log_fd;
 		  saved_log_fpos = 0;
+		  log_fp = &scratch_log_fd;
 		}
 	      else
 		{
@@ -375,7 +390,7 @@ void
 cas_log_flush_on_exit (void)
 {
   CAS_LOG_SET_WRITING (1);
-  if (sql_log_fd.fd >= 0)
+  if (sql_log_fd.fd >= 0 && !sql_log_unmasked)
     {
       (void) cas_fflush (&sql_log_fd);
     }
@@ -530,8 +545,8 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
  *
  * NOTE:
  *   A unit is the part of the log that one cas_log_end () decision keeps or discards.  In ON(=ALL) mode,
- *   every unit is kept.  In other modes, moving the boundary keeps the preceding part even if the new
- *   unit is later discarded.
+ *   every unit that reaches cas_log_end () is kept.  In other modes, moving the boundary keeps the preceding
+ *   part even if the new unit is later discarded.
  */
 static void
 cas_log_start_unit (void)
@@ -551,7 +566,7 @@ cas_log_start_unit (void)
  * copy_scratch_to_sql_log () - copy the current unit from the scratch to the end of the SQL log file.
  *   If the unit has not spilled, copy it directly from the buffer.  Otherwise, flush the scratch buffer
  *   and copy the whole scratch file with sendfile ().  The unit is reset afterwards.
- *   A copy failure drops the unit, like a failed flush drops the buffer.
+ *   A copy failure drops the unit or keeps the part already copied, like a failed flush drops the buffer.
  *
  * NOTE:
  *   sendfile () reads the scratch file, so cas_log_open () opens it with O_RDWR.
@@ -912,56 +927,53 @@ cas_log_write_value_string (char *value, int size)
 void
 cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
-  if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
-    {
-      cas_log_open (shm_appl->broker_name);
-    }
-
-  if (log_fp != NULL && query != NULL)
-    {
-      saved_temp_stmt_fpos = cas_ftell (log_fp);
-      cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
-    }
+  cas_log_compile_begin_internal (query, true);
 }
 
 void
 cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
-  if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
-    {
-      cas_log_open (shm_appl->broker_name);
-    }
-
-  if (log_fp != NULL && query != NULL)
-    {
-      /* If the password information does not exist or the password exists in the query */
-      if (hide_pwd_info_ptr == NULL || (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0))
-	{
-	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
-	  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
-	}
-    }
-
-  saved_temp_stmt_fpos = 0;
+  cas_log_compile_end_internal (query, true, hide_pwd_info_ptr);
 }
 
 void
 cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  cas_log_compile_begin_internal (query, false);
+}
+
+void
+cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+{
+  cas_log_compile_end_internal (query, false, hide_pwd_info_ptr);
+}
+
+static void
+cas_log_compile_begin_internal (char *query, bool newline)
+{
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
       cas_log_open (shm_appl->broker_name);
     }
 
+  assert (!sql_log_unmasked);	/* every compile_begin is followed by compile_end */
   if (log_fp != NULL && query != NULL)
     {
       saved_temp_stmt_fpos = cas_ftell (log_fp);
-      cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
+      if ((int) strlen (query) < log_fp->buf_capacity - log_fp->buf_used)
+	{
+	  CAS_LOG_SET_UNMASKED (SQL_LOG_UNMASKED_BUFFERED);
+	  cas_log_write_query_string_internal (query, 0, newline, NULL, CAS_LOG_VISIBLE_PW);
+	}
+      else
+	{
+	  CAS_LOG_SET_UNMASKED (SQL_LOG_UNMASKED_OVERFLOW);
+	}
     }
 }
 
-void
-cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
+static void
+cas_log_compile_end_internal (char *query, bool newline, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
@@ -970,15 +982,24 @@ cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INF
 
   if (log_fp != NULL && query != NULL)
     {
-      /* If the password information does not exist or the password exists in the query */
-      if (hide_pwd_info_ptr == NULL || (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->used > 0))
+      /* rewrite unless the text is already there and has no password */
+      if (sql_log_unmasked == SQL_LOG_UNMASKED_OVERFLOW || hide_pwd_info_ptr == NULL || hide_pwd_info_ptr->used > 0)
 	{
 	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
-	  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
+	  cas_log_write_query_string_internal (query, 0, newline, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
 	}
     }
 
+  CAS_LOG_SET_UNMASKED (SQL_LOG_UNMASKED_NONE);
   saved_temp_stmt_fpos = 0;
+
+  if (sql_log_unmask_flush_pending)
+    {
+      CAS_LOG_SET_WRITING (1);
+      cas_fflush (&sql_log_fd);
+      sql_log_unmask_flush_pending = 0;
+      CAS_LOG_SET_WRITING (0);
+    }
 }
 
 void
@@ -1533,14 +1554,20 @@ cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx)
     }
   if (as_info == NULL || as_info->cur_sql_log_mode != SQL_LOG_MODE_ALL)
     {
-      /* the mode changed and the log is reopened at the next request boundary, which discards this unit */
+      /* the log mode changed before the timer fired, so ignore it.
+       * Modes other than ON(=ALL) flush at unit boundaries */
       return;
     }
 
+  if (sql_log_unmasked)
+    {
+      sql_log_unmask_flush_pending = 1;	/* compile_end flushes once the statement is masked */
+      errno = saved_errno;
+      return;
+    }
   if (sql_log_writing)
     {
-      /* defer the flush until cas_fwrite () completes the write */
-      sql_log_flush_pending = 1;
+      sql_log_write_flush_pending = 1;	/* cas_fwrite () flushes once the write is complete */
       errno = saved_errno;
       return;
     }
@@ -1729,10 +1756,10 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd)
     }
 
 done:
-  if (sql_log_flush_pending)
+  if (sql_log_write_flush_pending)
     {
       cas_fflush (&sql_log_fd);
-      sql_log_flush_pending = 0;
+      sql_log_write_flush_pending = 0;
     }
   CAS_LOG_SET_WRITING (0);
   return result;
