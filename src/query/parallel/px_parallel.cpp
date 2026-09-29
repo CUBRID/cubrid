@@ -24,6 +24,7 @@
 
 #include <mutex>
 
+#include "log_impl.h"		/* LOG_FIND_CURRENT_TDES, log_tdes::is_under_sysop */
 #include "system.h"		/* UINT32, UINT64 */
 #include "system_parameter.h"	/* sysprm_get_range, PRM_ID_PARALLELISM */
 #include "thread_manager.hpp"	/* cubthread::system_core_count */
@@ -173,4 +174,27 @@ namespace parallel_query
     /* SCAN/HASH_JOIN/SORT use 0 for serial execution and require at least 2 for real parallelism. */
     return (degree < start_degree) ? 0 : degree;
   }
+
+  /*
+   * is_under_system_operation () - is the calling transaction inside a system operation?
+   *   return: true if a system operation is open on the current transaction
+   *   thread_p (in): thread whose transaction is checked
+   *
+   * A system operation (log_sysop_start) holds the transaction's rmutex_topop, which is re-entrant only for the
+   * owning thread. Parallel workers run on the leader's transaction index, so a worker that needs a system
+   * operation of its own (e.g. creating a temporary file when the temp file cache is empty: file_create ->
+   * disk_reserve_sectors -> log_sysop_start) blocks on that mutex forever while the leader waits for the worker.
+   * MERGE opens its statement-level system operation before executing its sub-SELECTs (CBRD-27492), and the same
+   * risk exists for any other context that starts parallel sort / hash join while a system operation is open.
+   *
+   * topops.last is read without synchronization: the caller is either the leader itself (exact) or a worker of a
+   * leader that keeps its system operation open until all workers finish (stable while the worker runs).
+   */
+  bool is_under_system_operation (THREAD_ENTRY *thread_p) noexcept
+  {
+    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+    return tdes != NULL && tdes->is_under_sysop ();
+  }
+
 }				/* namespace parallel_query */
