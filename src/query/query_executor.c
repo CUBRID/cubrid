@@ -8263,28 +8263,32 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 
 /*
  * qexec_next_scan_block_renew_memoize () - move a node to its next scan block for the chain block
- *                                          iterator and give the node a fresh memoize storage
+ *                                          iterator and renew the row memo of a partitioned node
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   thread_p(in): Thread entry
  *   xasl(in)    : XASL Tree block
  *
- * Note: a memoize storage belongs to the scan block it was filled in. The chain block
- * iterator (qexec_next_scan_block_iterations) is the only thing that moves an inner to a
- * new block, and for a partitioned inner a block is one partition, so a row memo would
- * replay another partition's rows if it outlived the block. A SEMI / ANTI inner is never
- * split into blocks by the iterator: its partition sweep is one probe of one outer row
- * (qexec_execute_scan, CBRD-26872), so its match memo lives as long as the parent's block
- * and the sweep itself never touches it (CBRD-27465).
+ * Note: a row memo belongs to the scan block it was filled in. The chain block iterator
+ * (qexec_next_scan_block_iterations) is the only thing that moves an inner to a new block.
+ * For a partitioned inner a block is one partition, and the restart for the next outer block
+ * opens its empty parent class first, so a row memo would replay another block's rows if it
+ * outlived the block: renew it on every block. An unpartitioned inner has one block, which the
+ * iterator only restarts; its memo stays valid, and renewing it would read every key again and
+ * reset the hit / miss counts once per outer block. A SEMI / ANTI inner is never split into
+ * blocks by the iterator: its partition sweep is one probe of one outer row (qexec_execute_scan,
+ * CBRD-26872), so its match memo answers for all partitions and no restart invalidates it
+ * (CBRD-27465).
  */
 static SCAN_CODE
 qexec_next_scan_block_renew_memoize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
 
-  if (sb_scan == S_SUCCESS && xasl->memoize_storage)
+  if (sb_scan == S_SUCCESS && xasl->memoize_storage && xasl->spec_list != NULL && xasl->spec_list->parts != NULL
+      && !XASL_IS_NL_SEMI_OR_ANTI (xasl))
     {
       clear_memoize_storage (thread_p, xasl);
-      if (new_memoize_storage (thread_p, xasl, XASL_IS_NL_SEMI_OR_ANTI (xasl)) != NO_ERROR)
+      if (new_memoize_storage (thread_p, xasl, false) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
