@@ -51,13 +51,14 @@
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
 /* What an ALL/SOME term compares its item with in this execution: a constant right side's elements
- * by position (`constant`), else a computed collection's elements by their keys (`table`), else `each` for every
- * element; `all` for every value of a list or a right side that is no collection. */
+ * by position (`constant`), else a computed collection's elements by their keys in the item's row of the type pair
+ * comparison table (`row`), else `each` for every element; `all` for every value of a list or a right side that is
+ * no collection. */
 struct EVAL_ELEMENTS
 {
   const DOMAIN_COMPARE *all;
   const DOMAIN_COMPARE *each;
-  const DOMAIN_ELEMENT_TABLE *table;
+  int row;			/* -1: none */
   const DOMAIN_ELEMENTS *constant;
 };
 
@@ -249,6 +250,18 @@ eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
   return eval_site_compare (site, vd);
 }
 
+/* A computed collection's elements against the item's row of the type pair comparison table; an item whose key has no
+ * row (domain_compare_key_row) compares each element by the two values' keys. */
+static inline void
+eval_element_row (int row, EVAL_ELEMENTS * elements)
+{
+  elements->row = row;
+  if (row < 0)
+    {
+      elements->each = &eval_Compare_elements;
+    }
+}
+
 /*
  * eval_planned_elements () - what an ALL/SOME term compares its item with in this execution
  *
@@ -260,7 +273,7 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
 {
   const DOMAIN_ELEMENT_COMPARE_PLAN *site = et_alsm->domain_compare;
   elements->all = elements->each = &eval_Compare_unplanned;
-  elements->table = NULL;
+  elements->row = -1;
   elements->constant = NULL;
   if (site == NULL)
     {
@@ -276,9 +289,9 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
 	}
       return;
     }
-  if (site->kind == DOMAIN_ELEMENTS_TABLE)
+  if (site->kind == DOMAIN_ELEMENTS_ROW)
     {
-      elements->table = site->table;
+      eval_element_row (site->row, elements);
       return;
     }
   if (vd == NULL || vd->xasl_state == NULL || vd->xasl_state->resolved.elements == NULL)
@@ -297,8 +310,8 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
     case DOMAIN_READ_POSITIONS:
       elements->constant = decided;
       break;
-    case DOMAIN_READ_TABLE:
-      elements->table = decided->table;
+    case DOMAIN_READ_ROW:
+      eval_element_row (decided->row, elements);
       break;
     case DOMAIN_READ_PAIR:
       elements->all = &decided->compares[0];
@@ -309,20 +322,12 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
     }
 }
 
-/* The decision a table holds for an element: by its type and, for a string or an ENUM, its collation. */
+/* The decision an item's row holds for an element: by its type and, for a string or an ENUM, its collation. */
 static inline const DOMAIN_COMPARE *
-eval_element_compare (const DOMAIN_ELEMENT_TABLE * table, const DB_VALUE * element)
+eval_element_compare (int row, const DB_VALUE * element)
 {
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (element);
-  int entry = type >= 0 && type < DOMAIN_ELEMENT_TYPES ? table->first[type] : -1;
-  if (entry >= 0 && TP_TYPE_HAS_COLLATION (type))
-    {
-      const int collation = type == DB_TYPE_ENUMERATION ? db_get_enum_collation (element)
-	: db_get_string_collation (element);
-      const int ordinal = collation >= 0 && collation < DOMAIN_ELEMENT_COLLATIONS ? table->ordinal[collation] : -1;
-      entry = ordinal >= 0 ? entry + ordinal : -1;
-    }
-  return entry >= 0 ? &table->entry[entry] : &eval_Compare_unplanned;
+  const DOMAIN_COMPARE *compare = domain_compare_row_cell (row, element);
+  return compare != NULL ? compare : &eval_Compare_unplanned;
 }
 
 /* Whether develop's comparison of two values decides anything: a coercion between their types or a merge of their
@@ -903,7 +908,7 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
 	      return V_ERROR;
 	    }
 	  compare = DB_IS_NULL (&elem_val) ? &eval_Compare_null
-	    : elements->table != NULL ? eval_element_compare (elements->table, &elem_val) : elements->each;
+	    : elements->row >= 0 ? eval_element_compare (elements->row, &elem_val) : elements->each;
 	}
 
       t_res = eval_value_rel_cmp (thread_p, item, element, rel_operator, NULL, vd, compare, develop2);

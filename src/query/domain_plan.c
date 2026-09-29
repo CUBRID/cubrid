@@ -1186,8 +1186,12 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
 	{
 	  /* Static operand targets come from compiled operand domains, never
 	   * from an arithmetic result domain (DATE + INTEGER is not DATE + DATE).
-	   * CAST alone explicitly supplies its consumer target. */
-	  domain_fixed_operand (item, i, operands[i]->domain, is_cast ? arith->domain : operands[i]->domain,
+	   * A CAST, and a NVL, IFNULL, COALESCE or NVL2 result operand, is cast into the node's domain at the row
+	   * (fetch_cast_operand): its target is that domain, and the cast takes the converter found here. */
+	  const bool casts_into_node = is_cast
+	    || ((arith->opcode == T_NVL || arith->opcode == T_IFNULL || arith->opcode == T_COALESCE) && i < 2)
+	    || (arith->opcode == T_NVL2 && i > 0);
+	  domain_fixed_operand (item, i, operands[i]->domain, casts_into_node ? arith->domain : operands[i]->domain,
 				DOMAIN_CTX_ASSIGN);
 	}
     }
@@ -3258,105 +3262,12 @@ domain_compare_pair_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *
 }
 
 /*
- * domain_element_keys () - the keys the elements of a collection the row computes can have
- *   return: false on an allocation failure
- *   keys(out): the keys; NULL for any key
- *
- * A set function's elements are its operand values as they are (qdata_convert_dbvals_to_set puts them with
- * col_put / col_add, which convert nothing): its operands' keys, when the plan has every one. A set attribute's stored
- * elements were coerced into its element domains. Anything else - a value pointer, a set expression, a stored
- * procedure's result - can hold elements its compiled element domains do not describe (a SEQUENCE OF CHAR function
- * holding VARCHAR operands): any key.
- */
-static bool
-domain_element_keys (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records,
-		     int constant_base, REGU_VARIABLE * elemset, const DOMAIN_COMPARE_KEY ** keys, int *n_keys)
-{
-  *keys = NULL;
-  *n_keys = 0;
-  const bool set_function = elemset->type == TYPE_FUNC
-    && (elemset->value.funcp->ftype == F_SET || elemset->value.funcp->ftype == F_MULTISET
-	|| elemset->value.funcp->ftype == F_SEQUENCE);
-  const bool set_attribute = (elemset->type == TYPE_ATTR_ID || elemset->type == TYPE_SHARED_ATTR_ID
-			      || elemset->type == TYPE_CLASS_ATTR_ID) && elemset->domain != NULL;
-  int n = 0;
-  if (set_function)
-    {
-      for (REGU_VARIABLE_LIST op = elemset->value.funcp->operand; op != NULL; op = op->next)
-	{
-	  n++;
-	}
-    }
-  else if (set_attribute)
-    {
-      for (const TP_DOMAIN * d = elemset->domain->setdomain; d != NULL; d = d->next)
-	{
-	  if (!domain_fixes_values (d))
-	    {
-	      return true;
-	    }
-	  n++;
-	}
-    }
-  if (n == 0)
-    {
-      return true;
-    }
-  DOMAIN_COMPARE_KEY *list = (DOMAIN_COMPARE_KEY *) domain_plan_alloc (thread_p, n, sizeof (*list));
-  if (list == NULL)
-    {
-      return false;
-    }
-  int k = 0;
-  if (set_function)
-    {
-      for (REGU_VARIABLE_LIST op = elemset->value.funcp->operand; op != NULL; op = op->next)
-	{
-	  DOMAIN_COMPARE_PLAN scratch;
-	  memset (&scratch, 0, sizeof (scratch));
-	  unsigned long long reads = 0;
-	  if (domain_compare_side (plan, records, constant_base, &op->value, &scratch, 0, &list[k], &reads)
-	      != DOMAIN_SIDE_KNOWN || reads != 0)
-	    {
-	      /* an operand the gate types - a bind, a slot, a constant subtree - or leaves open: any key */
-	      return true;
-	    }
-	  k++;
-	}
-    }
-  else
-    {
-      for (const TP_DOMAIN * d = elemset->domain->setdomain; d != NULL; d = d->next)
-	{
-	  domain_compare_key_of (d, &list[k++]);
-	}
-    }
-  *keys = list;
-  *n_keys = k;
-  return true;
-}
-
-/* The load's element table of a collection the row computes, for an item whose key is the plan's. */
-static const DOMAIN_ELEMENT_TABLE *
-domain_publish_element_table (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys,
-			      int n_keys)
-{
-  const size_t bytes = domain_element_table_bytes (item, keys, n_keys);
-  DOMAIN_ELEMENT_TABLE *table = (DOMAIN_ELEMENT_TABLE *) domain_plan_alloc (thread_p, 1, bytes);
-  if (table == NULL || domain_resolve_element_table (item, keys, n_keys, table, bytes) != NO_ERROR)
-    {
-      return NULL;
-    }
-  return table;
-}
-
-/*
  * domain_publish_elements () - one ALL/SOME term's comparisons, each decided before any row
  *
  * The item against a list's column or a right side that is no collection: a comparison record, as a comparison
- * term's. Against a collection the row computes: the load's table of every key its elements can have, or the gate's
- * when the gate decides the item. Against a constant (a literal, a bind, a constant subtree): the gate decides and
- * converts each element once, by position. A right side the gate types is the gate's too.
+ * term's. Against a collection the row computes: the item's row of the type pair comparison table, the load's, or the
+ * gate's when the gate decides the item. Against a constant (a literal, a bind, a constant subtree): the gate decides
+ * and converts each element once, by position. A right side the gate types is the gate's too.
  */
 static bool
 domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records,
@@ -3370,6 +3281,7 @@ domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOA
       return false;
     }
   memset (site, 0, sizeof (*site));
+  site->row = -1;
   site->site = -1;
   DOMAIN_COMPARE_PLAN *pair = &site->pair;
   pair->predicate = true;
@@ -3400,11 +3312,7 @@ domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOA
 	}
       else if (right == DOMAIN_SIDE_KNOWN && TP_IS_SET_TYPE (key[1].type))
 	{
-	  site->kind = item == DOMAIN_SIDE_KNOWN ? DOMAIN_ELEMENTS_TABLE : DOMAIN_ELEMENTS_GATE;
-	  if (!domain_element_keys (thread_p, plan, records, constant_base, term->elemset, &site->keys, &site->n_keys))
-	    {
-	      return false;
-	    }
+	  site->kind = item == DOMAIN_SIDE_KNOWN ? DOMAIN_ELEMENTS_ROW : DOMAIN_ELEMENTS_GATE;
 	}
     }
   if (item == DOMAIN_SIDE_OPEN || right == DOMAIN_SIDE_OPEN)
@@ -3419,12 +3327,8 @@ domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOA
 	  return false;
 	}
       break;
-    case DOMAIN_ELEMENTS_TABLE:
-      site->table = domain_publish_element_table (thread_p, &key[0], site->keys, site->n_keys);
-      if (site->table == NULL)
-	{
-	  return false;
-	}
+    case DOMAIN_ELEMENTS_ROW:
+      site->row = domain_compare_key_row (&key[0]);
       break;
     default:
       site->site = *n_element_gate;
@@ -4031,63 +3935,26 @@ domain_plan_key_bound (THREAD_ENTRY * thread_p, domain_plan_index * index, REGU_
   return true;
 }
 
-/* domain_key_compare_keys () - the key comparison table's input: each key column's own key, and the key its
- * values take under each load-fixed element */
-int
-domain_key_compare_keys (const domain_plan_index * index, int *columns, DOMAIN_COMPARE_KEY * keys)
+/* Whether a key column takes values of a key other than its own under a load-fixed element: the scan compares them
+ * by the type pair comparison table. The gate decides it for an index whose elements wait for it
+ * (qexec_resolve_index_keys). */
+static bool
+domain_key_other_keys (const domain_plan_index * index)
 {
-  int n = 0;
   for (int b = 0; b < 2 * index->n_ranges + 1; b++)
     {
       const domain_plan_key *bound = &index->bounds[b];
       for (int i = 0; i < bound->n_elems; i++)
 	{
 	  const domain_plan_key_elem *elem = &bound->elems[i];
-	  columns[n] = i;
-	  domain_compare_key_of (elem->index_elem, &keys[n++]);
-	  if (elem->rule != DOMAIN_KEY_CONSTANT && elem->rule != DOMAIN_KEY_DECIDED && elem->keep_elem != NULL)
+	  if (elem->rule != DOMAIN_KEY_CONSTANT && elem->rule != DOMAIN_KEY_DECIDED
+	      && domain_key_differs (elem->keep_elem, elem->index_elem))
 	    {
-	      columns[n] = i;
-	      domain_compare_key_of (elem->keep_elem, &keys[n++]);
+	      return true;
 	    }
 	}
     }
-  return n;
-}
-
-/* An index's key comparison table the load can build: none of its elements waits for the gate. */
-static bool
-domain_publish_key_compares (THREAD_ENTRY * thread_p, domain_plan_index * index)
-{
-  int n_elems = 0;
-  for (int b = 0; b < 2 * index->n_ranges + 1; b++)
-    {
-      n_elems += index->bounds[b].n_elems;
-    }
-  if (n_elems == 0)
-    {
-      return true;
-    }
-  int *columns = (int *) db_private_alloc (thread_p, sizeof (int) * 2 * n_elems);
-  DOMAIN_COMPARE_KEY *keys = (DOMAIN_COMPARE_KEY *) db_private_alloc (thread_p, sizeof (*keys) * 2 * n_elems);
-  bool ok = columns != NULL && keys != NULL;
-  if (ok)
-    {
-      const int n = domain_key_compares_distinct (columns, keys, domain_key_compare_keys (index, columns, keys));
-      const size_t bytes = domain_key_compares_bytes (columns, keys, n);
-      DOMAIN_KEY_COMPARES *table = (DOMAIN_KEY_COMPARES *) domain_plan_alloc (thread_p, 1, bytes);
-      ok = table != NULL && domain_resolve_key_compares (columns, keys, n, table, bytes) == NO_ERROR;
-      index->compares = ok && table->n_entries > 0 ? table : NULL;
-    }
-  if (columns != NULL)
-    {
-      db_private_free (thread_p, columns);
-    }
-  if (keys != NULL)
-    {
-      db_private_free (thread_p, keys);
-    }
-  return ok;
+  return false;
 }
 
 /*
@@ -4147,9 +4014,9 @@ domain_publish_indexes (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMA
 	{
 	  index->site = plan->n_index_sites++;
 	}
-      else if (!domain_publish_key_compares (thread_p, index))
+      else
 	{
-	  return false;
+	  index->other_keys = domain_key_other_keys (index);
 	}
       indx_info->domain_plan = index;
     }
@@ -4235,8 +4102,8 @@ domain_stream_compare (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * lhs, c
   return site;
 }
 
-/* An ALL/SOME term of a stream: a literal item against the elements of its collection by the table of every key an
- * element can have, any other item by the key pair table. */
+/* An ALL/SOME term of a stream: a literal item against the elements of its collection by the item's row of the type
+ * pair comparison table, any other item by the two values' keys. */
 static const DOMAIN_ELEMENT_COMPARE_PLAN *
 domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
 {
@@ -4247,6 +4114,7 @@ domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
       return NULL;
     }
   memset (site, 0, sizeof (*site));
+  site->row = -1;
   site->site = -1;
   site->pair.guard = -1;
   DOMAIN_COMPARE_KEY item;
@@ -4256,15 +4124,8 @@ domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
       domain_stream_by_keys (&site->pair.fixed);
       return site;
     }
-  const size_t bytes = domain_element_table_bytes (&item, NULL, 0);
-  DOMAIN_ELEMENT_TABLE *table = (DOMAIN_ELEMENT_TABLE *) stx_alloc_struct (ctx->thread_p, (int) bytes);
-  if (table == NULL || domain_resolve_element_table (&item, NULL, 0, table, bytes) != NO_ERROR)
-    {
-      ctx->failed = true;
-      return NULL;
-    }
-  site->kind = DOMAIN_ELEMENTS_TABLE;
-  site->table = table;
+  site->kind = DOMAIN_ELEMENTS_ROW;
+  site->row = domain_compare_key_row (&item);
   return site;
 }
 

@@ -50,7 +50,7 @@ struct DOMAIN_OPERAND
   bool is_gate_slot;
 };
 
-/* The conversion table's cell for a resolver context (its mode): the context adapter of tp_value_find_converter */
+/* The converter mode of a resolver context: the mode tp_value_find_converter finds its converters in */
 DOMAIN_CONVERT_MODE domain_convert_mode (DOMAIN_CTX context);
 
 /*
@@ -208,7 +208,9 @@ void domain_compare_key_of (const TP_DOMAIN * domain, DOMAIN_COMPARE_KEY * key);
 /* A key whose values the fetch gives another codeset and collation (a COLLATE modifier): the key takes them. */
 void domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate);
 
-/* The comparison develop's tp_value_compare_with_error makes between a value of each key. */
+/* The comparison develop's tp_value_compare_with_error makes between a value of each key: the type pair comparison
+ * table's cell for the two keys, copied. A key the table has no row for - a NULL key, or a string or ENUM key whose
+ * codeset is not its collation's - gets the comparison computed for it. */
 int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result);
 
 /* The same comparison without coercion (do_coercion 0): types that compare as they are by the first one's cmpval,
@@ -216,8 +218,16 @@ int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMP
 void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
 					  DOMAIN_COMPARE * result);
 
-/* A planned converter on a value, with the target initialized as tp_value_cast_internal initializes it before its
- * cell (the domain, and a string target's codeset and collation). */
+/*
+ * An item's comparisons with the elements of a collection the row computes: one row of the type pair comparison
+ * table, the item's key's, and the cell of each element's key in it.
+ * domain_compare_key_row () - the row of an item's key; -1 for a key the table has no row for (a NULL key, or a
+ *   string or ENUM key whose codeset is not its collation's) or when the table cannot be made
+ * domain_compare_row_cell () - the comparison of an item of row `row` with an element value; NULL for an element of
+ *   a type the table has no column for
+ */
+int domain_compare_key_row (const DOMAIN_COMPARE_KEY * key);
+const DOMAIN_COMPARE *domain_compare_row_cell (int row, const DB_VALUE * element);
 
 /*
  * domain_compare_values () - a comparison decided before any row, on the two values it compares (the
@@ -277,48 +287,12 @@ void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * k
 const TP_DOMAIN *domain_value_domain (const DB_VALUE * value);
 
 /*
- * DOMAIN_KEY_COMPARES - an index scan's comparisons of values of a key column whose types or collations do not compare
- *   as they are: a search key value against an index key, or two search key values (the ranges' sort and
- *   merge), each develop's tp_value_compare_with_error decided before any row. The B-tree and the range build read it
- *   by the values' keys; they decide nothing. One block without pointers into itself: a PX copy takes its bytes.
- */
-struct DOMAIN_KEY_COMPARE_ENTRY
-{
-  int column;			/* the key column; 0 for a single-column key */
-  DOMAIN_COMPARE_KEY key[2];	/* the first value's key, the second's */
-  DOMAIN_COMPARE compare;
-};
-
-struct DOMAIN_KEY_COMPARES
-{
-  int bytes;			/* the block's size */
-  int n_entries;
-  DOMAIN_KEY_COMPARE_ENTRY entry[1];	/* [n_entries] */
-};
-
-/* The distinct (column, key) pairs of keys[0..n_keys), first occurrences in order, compacted in place; returns their
- * count. A key repeats once per range of a K-element IN list and adds no entry to the table; a NULL key
- * compares nothing (its values are NULL, which the B-tree and the range build answer first), so it is dropped. */
-int domain_key_compares_distinct (int *columns, DOMAIN_COMPARE_KEY * keys, int n_keys);
-
-/* The comparisons among the keys a scan's key columns take - every ordered pair of different keys of one column - as a
- * table: its size, then the table itself. columns[i] is keys[i]'s column; the keys are distinct
- * (domain_key_compares_distinct), so the work grows with the distinct keys, not with the ranges. */
-size_t domain_key_compares_bytes (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys);
-int domain_resolve_key_compares (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys,
-				 DOMAIN_KEY_COMPARES * table, size_t bytes);
-
-/* The table's comparison of two values of a key column, found by their keys; NULL: the table has none. */
-const DOMAIN_COMPARE *domain_key_compare_find (const DOMAIN_KEY_COMPARES * table, int column, const DB_VALUE * value1,
-					       const DB_VALUE * value2);
-
-/*
  * How a column of a search key takes its value. A multi-column key follows develop's
  * scan_dbvals_to_midxkey: a value of another type is converted strictly into the index column's domain or else kept
  * under its own domain, a NUMERIC, CHAR or BIT value of the column's type with other parameters is kept, any
  * other value is written under the column's domain; once a column is kept, every column is written under its value's
  * domain. A single-column key takes its value as it is: only the comparisons of a value
- * its index column does not compare as it is are planned (the key comparison table).
+ * its index column does not compare as it is are planned (domain_search_key_compare).
  */
 enum DOMAIN_KEY_RULE
 {
@@ -359,18 +333,24 @@ DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * co
  * key types and, for strings, the same collation. */
 bool domain_key_compares_as_is (const DOMAIN_COMPARE_KEY * a, const DOMAIN_COMPARE_KEY * b);
 
+/* Whether values of this domain have a key other than an index column's own (a NULL domain or key has none): an index
+ * scan whose key column takes such values compares them by the type pair comparison table (DOMAIN_SEARCH_KEYS). */
+bool domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column);
+
 /*
- * DOMAIN_SEARCH_KEYS - what an index scan's comparisons of its search key values read: the scan's key
- *   comparison table (NULL: none planned). A B-tree search outside a query plan has none.
+ * DOMAIN_SEARCH_KEYS - what an index scan's comparisons of its search key values read. A B-tree search outside a query
+ *   plan has none.
  */
 struct DOMAIN_SEARCH_KEYS
 {
-  const DOMAIN_KEY_COMPARES *compares;
+  bool other_keys;		/* a key column takes values of a key other than its own (domain_key_differs): their
+				 * comparisons are the type pair comparison table's cells; false: every value compares with
+				 * the index as it is */
 };
 
-/* A search key comparison of two values of a key column whose keys do not compare as they are: the table's, the
- * execution boundary (b) for a pair it does not hold - every key column's rule is decided before any row, a
- * constant's included. */
+/* A search key comparison of two values of a key column whose keys differ: the type pair comparison table's cell for
+ * the two keys; the unresolved-domain check (execution) for a scan whose values all have their columns' keys, and for
+ * a key the table has no row for - every key column's rule is decided before any row, a constant's included. */
 DB_VALUE_COMPARE_RESULT domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1,
 						   DB_VALUE * value2, int do_coercion, int total_order,
 						   bool * can_compare);
@@ -379,31 +359,5 @@ DB_VALUE_COMPARE_RESULT domain_search_key_compare (const DOMAIN_SEARCH_KEYS * ke
 DB_VALUE_COMPARE_RESULT domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value1,
 							   DB_VALUE * value2, int do_coercion, int total_order,
 							   bool * can_compare);
-
-/* The element types a table covers, by DB_TYPE, and the collation ids it tells apart (LANG_MAX_COLLATIONS). */
-#define DOMAIN_ELEMENT_TYPES (DB_TYPE_LAST + 1)
-#define DOMAIN_ELEMENT_COLLATIONS 256
-
-/*
- * DOMAIN_ELEMENT_TABLE - an item's comparisons against the elements of a collection the row computes, decided before
- *   any row: an entry for each key an element can have, found by the element's type and, for a
- *   string or an ENUM, its collation (a type's entries in ordinal order). The row reads it; it decides nothing. One
- *   block without pointers into itself: a PX copy takes its bytes.
- */
-struct DOMAIN_ELEMENT_TABLE
-{
-  int bytes;			/* the block's size */
-  int n_entries;
-  short first[DOMAIN_ELEMENT_TYPES];	/* an element type's entry, a string or ENUM type's first; -1: a type the
-					 * collection does not hold */
-  short ordinal[DOMAIN_ELEMENT_COLLATIONS];	/* a collation's entry among its type's; -1: not one the table covers */
-  DOMAIN_COMPARE entry[1];	/* [n_entries] */
-};
-
-/* The table of an item's comparisons against elements of these keys (NULL: any key an element can have): its size,
- * then the table itself. */
-size_t domain_element_table_bytes (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys);
-int domain_resolve_element_table (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys,
-				  DOMAIN_ELEMENT_TABLE * table, size_t bytes);
 
 #endif /* _DOMAIN_RULES_H_ */

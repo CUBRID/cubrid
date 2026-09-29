@@ -51,21 +51,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* The distinct (column, key) pairs an index scan's key columns take in one execution, the key comparison table's input:
- * each column's own key, then any other key an element gives its values. They are few - one per column but
- * for a column whose values take other types - and stay on the stack until they outgrow it. */
-typedef struct qexec_key_pairs QEXEC_KEY_PAIRS;
-struct qexec_key_pairs
-{
-  DOMAIN_COMPARE_KEY *keys;	/* [n] */
-  int *columns;			/* [n] keys[i]'s key column */
-  int n;
-  int max;			/* the room keys and columns have */
-  int limit;			/* the most pairs the scan's elements can give: the room once off the stack */
-  DOMAIN_COMPARE_KEY key_space[16];
-  int column_space[16];
-};
-
 /* Releases one execution's decisions for an ALL/SOME term: the gate's values and arrays are the owner's. */
 static void
 qexec_clear_elements (THREAD_ENTRY * thread_p, DOMAIN_ELEMENTS * elements)
@@ -83,10 +68,6 @@ qexec_clear_elements (THREAD_ENTRY * thread_p, DOMAIN_ELEMENTS * elements)
     {
       db_private_free (thread_p, elements->compares);
     }
-  if (elements->table != NULL)
-    {
-      db_private_free (thread_p, elements->table);
-    }
   memset (elements, 0, sizeof (*elements));
 }
 
@@ -103,12 +84,13 @@ qexec_positions_bytes (int n, int n_compares, size_t * decision_offset, size_t *
 }
 
 /* A PX copy of one execution's decisions for an ALL/SOME term, on the worker's heap: its own values; the
- * decisions and the table carry no pointers into themselves. */
+ * decisions carry no pointers into themselves, and a row is the shared type pair comparison table's. */
 static int
 qexec_copy_elements (THREAD_ENTRY * thread_p, const DOMAIN_ELEMENTS * src, DOMAIN_ELEMENTS * dest)
 {
   memset (dest, 0, sizeof (*dest));
   dest->read = src->read;
+  dest->row = src->row;
   dest->n = src->n;
   dest->n_compares = src->n_compares;
   if (src->value != NULL)
@@ -145,15 +127,6 @@ qexec_copy_elements (THREAD_ENTRY * thread_p, const DOMAIN_ELEMENTS * src, DOMAI
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       memcpy (dest->compares, src->compares, sizeof (DOMAIN_COMPARE) * src->n_compares);
-    }
-  if (src->table != NULL)
-    {
-      dest->table = (DOMAIN_ELEMENT_TABLE *) db_private_alloc (thread_p, src->table->bytes);
-      if (dest->table == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      memcpy (dest->table, src->table, src->table->bytes);
     }
   return NO_ERROR;
 }
@@ -1501,9 +1474,8 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolv
  *   step 5, or step 7 when a side is a constant subtree
  *   return: NO_ERROR, or ER_code
  *
- * A constant right side is decided element by element; a collection the row computes gets the table of its element
- * keys against this execution's item key (a slot's collection: any key); a right side the gate typed that
- * is no collection gets one decision.
+ * A constant right side is decided element by element; a collection the row computes gets this execution's item key's
+ * row of the type pair comparison table; a right side the gate typed that is no collection gets one decision.
  */
 static int
 qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
@@ -1547,17 +1519,8 @@ qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolve
     }
   if (TP_IS_SET_TYPE (key[1].type))
     {
-      const bool slot = pair->operand[1] != NULL && pair->operand[1]->slot >= 0;
-      const DOMAIN_COMPARE_KEY *keys = slot ? NULL : site->keys;
-      const int n_keys = slot ? 0 : site->n_keys;
-      const size_t bytes = domain_element_table_bytes (&key[0], keys, n_keys);
-      out->table = (DOMAIN_ELEMENT_TABLE *) db_private_alloc (thread_p, bytes);
-      if (out->table == NULL || domain_resolve_element_table (&key[0], keys, n_keys, out->table, bytes) != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      out->read = DOMAIN_READ_TABLE;
+      out->row = domain_compare_key_row (&key[0]);
+      out->read = DOMAIN_READ_ROW;
       return NO_ERROR;
     }
   out->compares = (DOMAIN_COMPARE *) db_private_alloc (thread_p, sizeof (DOMAIN_COMPARE));
@@ -2023,146 +1986,16 @@ error:
 }
 
 /*
- * qexec_add_key_pair () - a key a key column's values take, into an index scan's distinct pairs unless they hold it
- *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
- *
- * A NULL key compares nothing (its values are NULL, which the B-tree and the range build answer first): it is left
- * out, as domain_key_compares_distinct leaves it out.
- */
-static int
-qexec_add_key_pair (THREAD_ENTRY * thread_p, QEXEC_KEY_PAIRS * pairs, int column, const TP_DOMAIN * domain)
-{
-  DOMAIN_COMPARE_KEY key;
-  domain_compare_key_of (domain, &key);
-  if (key.type == DB_TYPE_NULL)
-    {
-      return NO_ERROR;
-    }
-  for (int d = 0; d < pairs->n; d++)
-    {
-      if (pairs->columns[d] == column && pairs->keys[d].type == key.type && pairs->keys[d].codeset == key.codeset
-	  && pairs->keys[d].collation == key.collation)
-	{
-	  return NO_ERROR;
-	}
-    }
-  if (pairs->n == pairs->max)
-    {
-      /* off the stack, once: room for every pair the elements can give */
-      assert (pairs->keys == pairs->key_space && pairs->limit > pairs->n);
-      const size_t bytes = (sizeof (DOMAIN_COMPARE_KEY) + sizeof (int)) * (size_t) pairs->limit;
-      DOMAIN_COMPARE_KEY *keys = (DOMAIN_COMPARE_KEY *) db_private_alloc (thread_p, bytes);
-      if (keys == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      int *columns = (int *) (keys + pairs->limit);
-      memcpy (keys, pairs->keys, sizeof (*keys) * (size_t) pairs->n);
-      memcpy (columns, pairs->columns, sizeof (*columns) * (size_t) pairs->n);
-      pairs->keys = keys;
-      pairs->columns = columns;
-      pairs->max = pairs->limit;
-    }
-  pairs->columns[pairs->n] = column;
-  pairs->keys[pairs->n++] = key;
-  return NO_ERROR;
-}
-
-#if !defined (NDEBUG)
-/*
- * qexec_check_key_pairs () - the shadow check of an index scan's key comparison table: the keys the gate
- *   collected element by element - every element's column key and load-fixed key (domain_key_compare_keys), then
- *   each decided element's - reduce to the same distinct pairs, and to a table of the same entries
- *
- * The entries are compared by their column and keys: a table is found by them (domain_key_compare_find), and each
- * comparison is domain_resolve_comparison's of its keys in both.
- */
-static void
-qexec_check_key_pairs (THREAD_ENTRY * thread_p, const domain_plan_index * index, const DOMAIN_INDEX_DECISIONS * out,
-		       const QEXEC_KEY_PAIRS * pairs)
-{
-  int n_elems = 0;
-  for (int b = 0; b < out->n_bounds; b++)
-    {
-      n_elems += index->bounds[b].n_elems;
-    }
-  const int room = 3 * n_elems + 1;
-  const size_t bytes = (sizeof (DOMAIN_COMPARE_KEY) + sizeof (int)) * (size_t) room;
-  DOMAIN_COMPARE_KEY *keys = (DOMAIN_COMPARE_KEY *) db_private_alloc (thread_p, bytes);
-  if (keys == NULL)
-    {
-      return;
-    }
-  int *columns = (int *) (keys + room);
-  int n = domain_key_compare_keys (index, columns, keys);
-  for (int b = 0; b < out->n_bounds; b++)
-    {
-      const domain_plan_key *bound = &index->bounds[b];
-      for (int i = 0; i < bound->n_elems; i++)
-	{
-	  const domain_plan_key_elem *elem = &bound->elems[i];
-	  const TP_DOMAIN *decided = elem->rule == DOMAIN_KEY_CONSTANT ? out->decisions[elem->decision].domain
-	    : elem->rule == DOMAIN_KEY_DECIDED ? out->decisions[elem->decision].keep_elem : NULL;
-	  if (decided != NULL)
-	    {
-	      columns[n] = i;
-	      domain_compare_key_of (decided, &keys[n++]);
-	    }
-	}
-    }
-  n = domain_key_compares_distinct (columns, keys, n);
-  assert (n == pairs->n);
-  for (int d = 0; d < pairs->n; d++)
-    {
-      int e = 0;
-      while (e < n && (columns[e] != pairs->columns[d] || keys[e].type != pairs->keys[d].type
-		       || keys[e].codeset != pairs->keys[d].codeset || keys[e].collation != pairs->keys[d].collation))
-	{
-	  e++;
-	}
-      assert (e < n);
-    }
-  const size_t table_bytes = domain_key_compares_bytes (columns, keys, n);
-  DOMAIN_KEY_COMPARES *table = (DOMAIN_KEY_COMPARES *) db_private_alloc (thread_p, table_bytes);
-  if (table != NULL && domain_resolve_key_compares (columns, keys, n, table, table_bytes) == NO_ERROR)
-    {
-      assert (table->n_entries == (out->compares != NULL ? out->compares->n_entries : 0));
-      for (int k = 0; out->compares != NULL && k < out->compares->n_entries; k++)
-	{
-	  const DOMAIN_KEY_COMPARE_ENTRY *entry = &out->compares->entry[k];
-	  int e = 0;
-	  while (e < table->n_entries
-		 && (table->entry[e].column != entry->column
-		     || memcmp (table->entry[e].key, entry->key, sizeof (entry->key)) != 0))
-	    {
-	      e++;
-	    }
-	  assert (e < table->n_entries);
-	}
-    }
-  if (table != NULL)
-    {
-      db_private_free (thread_p, table);
-    }
-  db_private_free (thread_p, keys);
-}
-#endif /* !NDEBUG */
-
-/*
  * qexec_resolve_index_keys () - G1 step 8 for one index scan's key plan
  *   return: NO_ERROR, or ER_code
  *
  * Each constant key element is converted or kept once, by develop's rule on its value; an element whose domain the
- * gate decided takes its rule from that domain; a constant multi-column bound gets its domain; and the scan's key
- * comparison table covers every key its columns' values take. A constant no index key can hold is an error here,
- * before any row; every other outcome of a value is the range's.
- *
- * The distinct keys are collected as the elements are decided, each column's own key first; a column whose values take
- * no other key compares nothing, and a scan none of whose columns does has no table.
+ * gate decided takes its rule from that domain; a constant multi-column bound gets its domain; and the scan learns
+ * whether a key column takes values of a key other than its own, which compare by the type pair comparison table. A
+ * constant no index key can hold is an error here, before any row; every other outcome of a value is the range's.
  *
  * Only a scan with an element to decide has a site (domain_publish_indexes): one with none - its literals included,
- * which the load fixes - allocates and decides nothing here, and the load built its table.
+ * which the load fixes - allocates and decides nothing here, and the load decided whether it takes other keys.
  */
 static int
 qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const domain_plan_index * index)
@@ -2186,33 +2019,14 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
   out->domains = (const TP_DOMAIN **) (block + domains_offset);
   out->n_decisions = index->n_decisions;
   out->n_bounds = n_bounds;
-  out->compares = NULL;
+  out->other_keys = false;
   for (int i = 0; i < index->n_decisions; i++)
     {
       db_make_null (&out->decisions[i].value);
       out->decisions[i].rule = DOMAIN_KEY_DECIDED;
     }
 
-  /* each key column's own key: every bound's columns are the index's, the widest bound has them all */
-  QEXEC_KEY_PAIRS pairs;
-  pairs.keys = pairs.key_space;
-  pairs.columns = pairs.column_space;
-  pairs.n = 0;
-  pairs.max = (int) (sizeof (pairs.key_space) / sizeof (pairs.key_space[0]));
-  const domain_plan_key *widest = &index->bounds[0];
-  int n_elems = 0;
-  for (int b = 0; b < n_bounds; b++)
-    {
-      n_elems += index->bounds[b].n_elems;
-      widest = index->bounds[b].n_elems > widest->n_elems ? &index->bounds[b] : widest;
-    }
-  pairs.limit = widest->n_elems + n_elems;
   int error = NO_ERROR;
-  for (int i = 0; i < widest->n_elems && error == NO_ERROR; i++)
-    {
-      error = qexec_add_key_pair (thread_p, &pairs, i, widest->elems[i].index_elem);
-    }
-  const int n_own = pairs.n;
   for (int b = 0; b < n_bounds && error == NO_ERROR; b++)
     {
       const domain_plan_key *bound = &index->bounds[b];
@@ -2246,7 +2060,7 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
 	    }
 	  if (error == NO_ERROR && domain != NULL && domain != elem->index_elem)
 	    {
-	      error = qexec_add_key_pair (thread_p, &pairs, i, domain);
+	      out->other_keys = out->other_keys || domain_key_differs (domain, elem->index_elem);
 	    }
 	}
       if (error == NO_ERROR && bound->constant)
@@ -2263,33 +2077,10 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
 	  error = !failed && out->domains[b] == NULL ? ER_OUT_OF_VIRTUAL_MEMORY : NO_ERROR;
 	}
     }
-  if (error == NO_ERROR && pairs.n > n_own)
-    {
-      /* a column's values take a key other than its own */
-      const size_t table_bytes = domain_key_compares_bytes (pairs.columns, pairs.keys, pairs.n);
-      DOMAIN_KEY_COMPARES *table = (DOMAIN_KEY_COMPARES *) db_private_alloc (thread_p, table_bytes);
-      error = table == NULL ? ER_OUT_OF_VIRTUAL_MEMORY
-	: domain_resolve_key_compares (pairs.columns, pairs.keys, pairs.n, table, table_bytes);
-      if (table != NULL && (error != NO_ERROR || table->n_entries == 0))
-	{
-	  db_private_free (thread_p, table);
-	  table = NULL;
-	}
-      out->compares = table;
-    }
-#if !defined (NDEBUG)
-  if (error == NO_ERROR)
-    {
-      qexec_check_key_pairs (thread_p, index, out, &pairs);
-    }
-#endif
-  if (pairs.keys != pairs.key_space)
-    {
-      db_private_free (thread_p, pairs.keys);
-    }
   if (error == ER_OUT_OF_VIRTUAL_MEMORY && er_errid () == NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DOMAIN_KEY_COMPARES));
+      /* a domain the gate could not cache */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
     }
   return error;
 }
@@ -2312,19 +2103,16 @@ qexec_clear_index_keys (THREAD_ENTRY * thread_p, DOMAIN_INDEX_DECISIONS * out)
     {
       db_private_free (thread_p, out->domains);
     }
-  if (out->compares != NULL)
-    {
-      db_private_free (thread_p, out->compares);
-    }
   memset (out, 0, sizeof (*out));
 }
 
 /* A PX copy of one execution's key decisions for an index scan, on the worker's heap: its own values; the
- * domains are cached and the comparison table has no pointers into itself. */
+ * domains are cached. */
 static int
 qexec_copy_index_keys (THREAD_ENTRY * thread_p, const DOMAIN_INDEX_DECISIONS * src, DOMAIN_INDEX_DECISIONS * dest)
 {
   memset (dest, 0, sizeof (*dest));
+  dest->other_keys = src->other_keys;
   if (src->decisions == NULL && src->domains == NULL)
     {
       return NO_ERROR;
@@ -2352,15 +2140,6 @@ qexec_copy_index_keys (THREAD_ENTRY * thread_p, const DOMAIN_INDEX_DECISIONS * s
 	{
 	  return ER_FAILED;
 	}
-    }
-  if (src->compares != NULL)
-    {
-      dest->compares = (DOMAIN_KEY_COMPARES *) db_private_alloc (thread_p, src->compares->bytes);
-      if (dest->compares == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      memcpy (dest->compares, src->compares, src->compares->bytes);
     }
   return NO_ERROR;
 }

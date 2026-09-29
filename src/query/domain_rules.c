@@ -1546,110 +1546,6 @@ domain_compare_key_equal (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_K
   return lhs->type == rhs->type && lhs->codeset == rhs->codeset && lhs->collation == rhs->collation;
 }
 
-int
-domain_key_compares_distinct (int *columns, DOMAIN_COMPARE_KEY * keys, int n_keys)
-{
-  int n_distinct = 0;
-  for (int i = 0; i < n_keys; i++)
-    {
-      if (keys[i].type == DB_TYPE_NULL)
-	{
-	  continue;
-	}
-      int d = 0;
-      while (d < n_distinct && (columns[d] != columns[i] || !domain_compare_key_equal (&keys[d], &keys[i])))
-	{
-	  d++;
-	}
-      if (d == n_distinct)
-	{
-	  columns[n_distinct] = columns[i];
-	  keys[n_distinct++] = keys[i];
-	}
-    }
-  return n_distinct;
-}
-
-static int
-domain_key_compares_count (const int *columns, int n_keys)
-{
-  int n_entries = 0;
-  for (int i = 0; i < n_keys; i++)
-    {
-      for (int j = 0; j < n_keys; j++)
-	{
-	  if (j != i && columns[j] == columns[i])
-	    {
-	      n_entries++;
-	    }
-	}
-    }
-  return n_entries;
-}
-
-size_t
-domain_key_compares_bytes (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys)
-{
-  const int n_entries = domain_key_compares_count (columns, n_keys);
-  const size_t n_slots = n_entries > 0 ? (size_t) n_entries : 1;
-  return offsetof (DOMAIN_KEY_COMPARES, entry) + sizeof (DOMAIN_KEY_COMPARE_ENTRY) * n_slots;
-}
-
-int
-domain_resolve_key_compares (const int *columns, const DOMAIN_COMPARE_KEY * keys, int n_keys,
-			     DOMAIN_KEY_COMPARES * table, size_t bytes)
-{
-  assert (bytes == domain_key_compares_bytes (columns, keys, n_keys));
-  table->bytes = (int) bytes;
-  table->n_entries = 0;
-  for (int i = 0; i < n_keys; i++)
-    {
-      for (int j = 0; j < n_keys; j++)
-	{
-	  /* the keys are distinct (domain_key_compares_distinct): two of one column are different keys */
-	  if (j == i || columns[j] != columns[i])
-	    {
-	      continue;
-	    }
-	  DOMAIN_KEY_COMPARE_ENTRY *entry = &table->entry[table->n_entries++];
-	  entry->column = columns[i];
-	  entry->key[0] = keys[i];
-	  entry->key[1] = keys[j];
-	  const int error = domain_resolve_comparison (&keys[i], &keys[j], &entry->compare);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-    }
-  return NO_ERROR;
-}
-
-static const DOMAIN_COMPARE *
-domain_key_compare_find_keys (const DOMAIN_KEY_COMPARES * table, int column, const DOMAIN_COMPARE_KEY * key)
-{
-  for (int i = 0; table != NULL && i < table->n_entries; i++)
-    {
-      const DOMAIN_KEY_COMPARE_ENTRY *entry = &table->entry[i];
-      if (entry->column == column && domain_compare_key_equal (&entry->key[0], &key[0])
-	  && domain_compare_key_equal (&entry->key[1], &key[1]))
-	{
-	  return &entry->compare;
-	}
-    }
-  return NULL;
-}
-
-const DOMAIN_COMPARE *
-domain_key_compare_find (const DOMAIN_KEY_COMPARES * table, int column, const DB_VALUE * value1,
-			 const DB_VALUE * value2)
-{
-  DOMAIN_COMPARE_KEY key[2];
-  domain_compare_key_of_value (value1, &key[0]);
-  domain_compare_key_of_value (value2, &key[1]);
-  return domain_key_compare_find_keys (table, column, key);
-}
-
 const TP_DOMAIN *
 domain_key_value_domain (const TP_DOMAIN * domain)
 {
@@ -1788,48 +1684,20 @@ domain_key_compares_as_is (const DOMAIN_COMPARE_KEY * a, const DOMAIN_COMPARE_KE
   return !(TP_IS_CHAR_TYPE (a->type) && TP_IS_CHAR_TYPE (b->type) && a->collation != b->collation);
 }
 
-DB_VALUE_COMPARE_RESULT
-domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1, DB_VALUE * value2,
-			   int do_coercion, int total_order, bool * can_compare)
+bool
+domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column)
 {
   DOMAIN_COMPARE_KEY key[2];
-  domain_compare_key_of_value (value1, &key[0]);
-  domain_compare_key_of_value (value2, &key[1]);
-  if (domain_compare_key_equal (&key[0], &key[1]))
-    {
-      /* one type and one collation: nothing to coerce or merge (a kept column of the index column's type with other
-       * parameters, whose precision or length alone differs) */
-      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
-    }
-  const DOMAIN_COMPARE *compare = domain_key_compare_find_keys (keys != NULL ? keys->compares : NULL, column, key);
-  if (compare != NULL)
-    {
-      if (compare->kernel == DOMAIN_COMPARE_OBJECT)
-	{
-	  /* an object side: develop's comparison, which meets OIDs on the server */
-	  return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
-	}
-      return domain_compare_values (compare, value1, value2, total_order, can_compare);
-    }
-  /* the execution boundary (b): the plan knows every key a column's values take */
-  assert (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", column,
-	  pr_type_name (key[0].type));
-  *can_compare = false;
-  return DB_UNK;
-}
-
-DB_VALUE_COMPARE_RESULT
-domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
-				   int total_order, bool * can_compare)
-{
-  return domain_search_key_compare ((const DOMAIN_SEARCH_KEYS *) arg, column, value1, value2, do_coercion,
-				    total_order, can_compare);
+  domain_compare_key_of (domain, &key[0]);
+  domain_compare_key_of (column, &key[1]);
+  /* a NULL key compares nothing: its values are NULL, which the B-tree and the range build answer first */
+  return key[0].type != DB_TYPE_NULL && !domain_compare_key_equal (&key[0], &key[1]);
 }
 
 /*
- * domain_resolve_comparison () - the comparison develop's tp_value_compare_with_error makes between a value of each
- *   key, decided before any row
+ * domain_compute_comparison () - the comparison develop's tp_value_compare_with_error makes between a value of each
+ *   key, decided before any row: the type pair comparison table's cells, and a comparison of keys the table has no row
+ *   for (domain_resolve_comparison)
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when a target domain cannot be cached
  *
  * Follows od:tp_value_compare_with_error step by step: the direction of tp_value_compare_common_domain (TO_DOUBLE
@@ -1838,8 +1706,8 @@ domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value
  * otherwise -1), and the type whose cmpval compares. A NULL key (a side whose values are NULL) and an OBJECT key keep
  * develop's comparison: NULL answers before any coercion, and the server holds an object as its OID.
  */
-int
-domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result)
+static int
+domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result)
 {
   const DOMAIN_COMPARE_KEY *key[2] = { lhs, rhs };
   DB_TYPE after[2] = { lhs->type, rhs->type };
@@ -1975,7 +1843,10 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
   return NO_ERROR;
 }
 
-static_assert (DOMAIN_ELEMENT_COLLATIONS == LANG_MAX_COLLATIONS, "element table collations");
+/* The element types the type pair comparison table covers, by DB_TYPE, and the collation ids it tells apart. */
+#define DOMAIN_ELEMENT_TYPES (DB_TYPE_LAST + 1)
+#define DOMAIN_ELEMENT_COLLATIONS 256
+static_assert (DOMAIN_ELEMENT_COLLATIONS == LANG_MAX_COLLATIONS, "type pair comparison table collations");
 
 /* A type a collection element can have as a value: NULL answers before any comparison, and the national character
  * types have no values (the parser takes NCHAR for CHAR). */
@@ -2026,137 +1897,6 @@ domain_collation_registered (int collation)
 {
   const LANG_COLLATION *lang_coll = lang_get_collation (collation);
   return lang_coll != NULL && lang_coll->coll.coll_id == collation;
-}
-
-/* The element types a table covers and the collations its string and ENUM entries go by. */
-struct DOMAIN_ELEMENT_LAYOUT
-{
-  bool type[DOMAIN_ELEMENT_TYPES];
-  short ordinal[DOMAIN_ELEMENT_COLLATIONS];
-  int collation_of[DOMAIN_ELEMENT_COLLATIONS];	/* an ordinal's collation: a representative one when one entry serves
-						 * every collation */
-  int n_collations;
-  int n_entries;
-};
-
-static void
-domain_element_layout (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys,
-		       DOMAIN_ELEMENT_LAYOUT * layout)
-{
-  layout->n_collations = 0;
-  layout->n_entries = 0;
-  for (int c = 0; c < DOMAIN_ELEMENT_COLLATIONS; c++)
-    {
-      layout->ordinal[c] = -1;
-    }
-  for (int t = 0; t < DOMAIN_ELEMENT_TYPES; t++)
-    {
-      layout->type[t] = keys == NULL && domain_element_type (t);
-    }
-  for (int i = 0; keys != NULL && i < n_keys; i++)
-    {
-      if (domain_element_type (keys[i].type))
-	{
-	  layout->type[keys[i].type] = true;
-	  /* the server holds an object as its OID */
-	  layout->type[DB_TYPE_OID] = layout->type[DB_TYPE_OID] || keys[i].type == DB_TYPE_OBJECT;
-	}
-    }
-  if (!TP_TYPE_HAS_COLLATION (item->type))
-    {
-      /* an element's collation changes nothing in its comparison with this item: one entry serves every collation */
-      for (int c = 0; c < DOMAIN_ELEMENT_COLLATIONS; c++)
-	{
-	  if (domain_collation_registered (c))
-	    {
-	      layout->ordinal[c] = 0;
-	      if (layout->n_collations == 0)
-		{
-		  layout->collation_of[layout->n_collations++] = c;
-		}
-	    }
-	}
-    }
-  else
-    {
-      /* each collation an element can have: the keys', or every registered one */
-      for (int i = 0; i < (keys == NULL ? DOMAIN_ELEMENT_COLLATIONS : n_keys); i++)
-	{
-	  const int c = keys == NULL ? i : TP_TYPE_HAS_COLLATION (keys[i].type) ? keys[i].collation : -1;
-	  if (c >= 0 && c < DOMAIN_ELEMENT_COLLATIONS && layout->ordinal[c] < 0
-	      && (keys != NULL || domain_collation_registered (c)))
-	    {
-	      layout->ordinal[c] = (short) layout->n_collations;
-	      layout->collation_of[layout->n_collations++] = c;
-	    }
-	}
-    }
-  for (int t = 0; t < DOMAIN_ELEMENT_TYPES; t++)
-    {
-      if (layout->type[t])
-	{
-	  layout->n_entries += TP_TYPE_HAS_COLLATION (t) ? layout->n_collations : 1;
-	}
-    }
-}
-
-size_t
-domain_element_table_bytes (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys)
-{
-  DOMAIN_ELEMENT_LAYOUT layout;
-  domain_element_layout (item, keys, n_keys, &layout);
-  const size_t n_entries = layout.n_entries > 0 ? layout.n_entries : 1;
-  return offsetof (DOMAIN_ELEMENT_TABLE, entry) + sizeof (DOMAIN_COMPARE) * n_entries;
-}
-
-/*
- * domain_resolve_element_table () - the comparisons of an item of key `item` (the left side) against every element
- *   key a collection can hold (the right side), decided now
- *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when a target domain cannot be cached
- *   keys(in): the keys the collection's elements can have (its element domains', a set function's operands'); NULL:
- *	       any key
- *   table(out): a block of `bytes`, domain_element_table_bytes of the same keys
- *
- * A string or ENUM type has an entry per collation the table covers - the keys' collations, or every registered one
- * when any key can come - and a single entry when the item's comparison does not depend on it.
- */
-int
-domain_resolve_element_table (const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys, int n_keys,
-			      DOMAIN_ELEMENT_TABLE * table, size_t bytes)
-{
-  DOMAIN_ELEMENT_LAYOUT layout;
-  domain_element_layout (item, keys, n_keys, &layout);
-  assert (bytes == domain_element_table_bytes (item, keys, n_keys));
-  table->bytes = (int) bytes;
-  table->n_entries = layout.n_entries;
-  memcpy (table->ordinal, layout.ordinal, sizeof (table->ordinal));
-  int next = 0;
-  for (int t = 0; t < DOMAIN_ELEMENT_TYPES; t++)
-    {
-      table->first[t] = -1;
-      const int n = !layout.type[t] ? 0 : TP_TYPE_HAS_COLLATION (t) ? layout.n_collations : 1;
-      if (n == 0)
-	{
-	  continue;
-	}
-      table->first[t] = (short) next;
-      for (int o = 0; o < n; o++)
-	{
-	  DOMAIN_COMPARE_KEY element = { (DB_TYPE) t, -1, -1 };
-	  if (TP_TYPE_HAS_COLLATION (t))
-	    {
-	      element.collation = layout.collation_of[o];
-	      element.codeset = lang_get_collation (element.collation)->codeset;
-	    }
-	  const int error = domain_resolve_comparison (item, &element, &table->entry[next++]);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
-    }
-  assert (next == layout.n_entries);
-  return NO_ERROR;
 }
 
 void
@@ -2232,7 +1972,8 @@ struct DOMAIN_KEY_PAIRS
   short first[DOMAIN_ELEMENT_TYPES];	/* a type's key, a string or ENUM type's first; -1: no element type */
   short ordinal[DOMAIN_ELEMENT_COLLATIONS];	/* a registered collation's key among its type's; -1 */
   int n_keys;
-  int *entry[2];		/* [coercion][key1 * n_keys + key2]: the pair's decision in pool; the diagonal is unused */
+  int *entry[2];		/* [coercion][key1 * n_keys + key2]: the pair's decision in pool; the diagonal is a key
+				 * against itself, which an item's row (domain_compare_key_row) reads */
   DOMAIN_COMPARE *pool;
   int n_pool;
 };
@@ -2336,15 +2077,10 @@ domain_key_pairs_make (void)
 		    {
 		      int *entry = &pairs->entry[mode][i * n + j];
 		      *entry = -1;
-		      if (i == j)
-			{
-			  /* one key: the comparison's own reading (domain_compare_by_keys) */
-			  continue;
-			}
 		      DOMAIN_COMPARE decision;
 		      if (mode == 1)
 			{
-			  ok = domain_resolve_comparison (&keys[i], &keys[j], &decision) == NO_ERROR;
+			  ok = domain_compute_comparison (&keys[i], &keys[j], &decision) == NO_ERROR;
 			}
 		      else
 			{
@@ -2436,6 +2172,54 @@ domain_key_pair_index (const DOMAIN_KEY_PAIRS * pairs, const DOMAIN_COMPARE_KEY 
   return ordinal >= 0 ? first + ordinal : -1;
 }
 
+/* A key's row and column in the table when it is one of the table's keys exactly: a string or ENUM key whose codeset
+ * is its collation's, as the table's keys have it; -1 otherwise. The codesets decide a coerced string's target and
+ * whether two collations merge, so a comparison resolved for its keys copies the table's cell only then. */
+static int
+domain_key_pair_index_exact (const DOMAIN_KEY_PAIRS * pairs, const DOMAIN_COMPARE_KEY * key)
+{
+  const int index = domain_key_pair_index (pairs, key);
+  if (index >= 0 && TP_TYPE_HAS_COLLATION (key->type) && key->codeset != lang_get_collation (key->collation)->codeset)
+    {
+      return -1;
+    }
+  return index;
+}
+
+int
+domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result)
+{
+  const DOMAIN_KEY_PAIRS *pairs = domain_key_pairs ();
+  const int row = pairs != NULL ? domain_key_pair_index_exact (pairs, lhs) : -1;
+  const int column = pairs != NULL ? domain_key_pair_index_exact (pairs, rhs) : -1;
+  if (row < 0 || column < 0)
+    {
+      /* a key the table has no row for, or no table (no memory): the same computation the table's cells come from */
+      return domain_compute_comparison (lhs, rhs, result);
+    }
+  *result = pairs->pool[pairs->entry[1][row * pairs->n_keys + column]];
+  return NO_ERROR;
+}
+
+int
+domain_compare_key_row (const DOMAIN_COMPARE_KEY * key)
+{
+  const DOMAIN_KEY_PAIRS *pairs = domain_key_pairs ();
+  return pairs != NULL ? domain_key_pair_index_exact (pairs, key) : -1;
+}
+
+const DOMAIN_COMPARE *
+domain_compare_row_cell (int row, const DB_VALUE * element)
+{
+  /* a row was given out, so the table was made; it lives until the server stops */
+  const DOMAIN_KEY_PAIRS *pairs = domain_key_pairs ();
+  assert (pairs != NULL && row >= 0 && row < pairs->n_keys);
+  DOMAIN_COMPARE_KEY key;
+  domain_compare_key_of_value (element, &key);
+  const int column = pairs != NULL ? domain_key_pair_index (pairs, &key) : -1;
+  return column >= 0 ? &pairs->pool[pairs->entry[1][row * pairs->n_keys + column]] : NULL;
+}
+
 DB_VALUE_COMPARE_RESULT
 domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
 			bool * can_compare)
@@ -2508,6 +2292,53 @@ domain_compare_by_keys (const DB_VALUE * value1, const DB_VALUE * value2, int do
   }
 #endif
   return result;
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1, DB_VALUE * value2,
+			   int do_coercion, int total_order, bool * can_compare)
+{
+  DOMAIN_COMPARE_KEY key[2];
+  domain_compare_key_of_value (value1, &key[0]);
+  domain_compare_key_of_value (value2, &key[1]);
+  if (domain_compare_key_equal (&key[0], &key[1]))
+    {
+      /* one type and one collation: nothing to coerce or merge (a kept column of the index column's type with other
+       * parameters, whose precision or length alone differs) */
+      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    }
+  const DOMAIN_KEY_PAIRS *pairs = keys != NULL && keys->other_keys ? domain_key_pairs () : NULL;
+  const int index[2] = {
+    pairs != NULL ? domain_key_pair_index (pairs, &key[0]) : -1,
+    pairs != NULL ? domain_key_pair_index (pairs, &key[1]) : -1
+  };
+  if (index[0] >= 0 && index[1] >= 0)
+    {
+      /* the table's keys take their collations' codesets, as the values an index scan compares have them */
+      assert (!TP_TYPE_HAS_COLLATION (key[0].type) || key[0].codeset == lang_get_collation (key[0].collation)->codeset);
+      assert (!TP_TYPE_HAS_COLLATION (key[1].type) || key[1].codeset == lang_get_collation (key[1].collation)->codeset);
+      const DOMAIN_COMPARE *compare = &pairs->pool[pairs->entry[1][index[0] * pairs->n_keys + index[1]]];
+      if (compare->kernel == DOMAIN_COMPARE_OBJECT)
+	{
+	  /* an object side: develop's comparison, which meets OIDs on the server */
+	  return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+	}
+      return domain_compare_values (compare, value1, value2, total_order, can_compare);
+    }
+  /* the unresolved-domain check (execution): the plan knows whether a column's values take a key other than its own */
+  assert (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", column,
+	  pr_type_name (key[0].type));
+  *can_compare = false;
+  return DB_UNK;
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
+				   int total_order, bool * can_compare)
+{
+  return domain_search_key_compare ((const DOMAIN_SEARCH_KEYS *) arg, column, value1, value2, do_coercion,
+				    total_order, can_compare);
 }
 
 int

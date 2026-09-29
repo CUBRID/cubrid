@@ -747,14 +747,6 @@ tp_make_time_conversion (DB_VALUE *value, int hour, int minute, int second, date
   return db_time_encode_core (&value->data.time, hour, minute, second, error);
 }
 
-/* Keep the legacy first-conversion snapshot shared by both call paths. */
-bool
-tp_conversion_ignore_trailing_space ()
-{
-  static bool value = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
-  return value;
-}
-
 static TP_DOMAIN_STATUS
 tp_finish_enumeration_conversion (DB_VALUE *target, const TP_DOMAIN *desired_domain, DB_VALUE &conv_val,
 				  unsigned short val_idx, const char *val_str, int val_str_size,
@@ -9329,24 +9321,4 @@ tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMA
     default:
       return tp_value_convert_incompatible;
     }
-}
-
-/*
- * tp_value_convert () - run a converter the caller found before its rows
- *   return: the converter's status; a date or time conversion that failed with an error is DOMAIN_INCOMPATIBLE:
- *	     only a cast (tp_value_cast_internal) publishes that error
- *   converter(in): not NULL
- *   target(in): the domain result takes
- */
-TP_DOMAIN_STATUS
-tp_value_convert (TP_VALUE_CONVERTER converter, const TP_DOMAIN *target, const DB_VALUE *source, DB_VALUE *result)
-{
-  db_value_domain_init (result, TP_DOMAIN_TYPE (target), target->precision, target->scale);
-  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (target)))
-    {
-      db_string_put_cs_and_collation (result, TP_DOMAIN_CODESET (target), TP_DOMAIN_COLLATION (target));
-    }
-  date_conversion_error error;
-  const TP_DOMAIN_STATUS status = converter (source, result, target, &error);
-  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
 }

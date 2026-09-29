@@ -186,9 +186,9 @@ struct DOMAIN_PLAN_GUARD
 enum DOMAIN_ELEMENTS_KIND
 {
   DOMAIN_ELEMENTS_PAIR,		/* a list's column, or a right side whose values are no collection: the record `pair` */
-  DOMAIN_ELEMENTS_TABLE,	/* a collection the row computes: the load's table of the keys its elements can have */
+  DOMAIN_ELEMENTS_ROW,		/* a collection the row computes: the item's row of the type pair comparison table */
   DOMAIN_ELEMENTS_GATE		/* the gate's decisions (resolved.elements[site]): a constant right side's elements by
-				 * position, the table of an item the gate decides, or the record of a right side the
+				 * position, the row of an item the gate decides, or the record of a right side the
 				 * gate types */
 };
 
@@ -199,9 +199,8 @@ enum DOMAIN_ELEMENTS_KIND
 struct DOMAIN_ELEMENT_COMPARE_PLAN
 {
   DOMAIN_COMPARE_PLAN pair;	/* side 0 the item, side 1 the list's column or the right side; PAIR: their record */
-  const DOMAIN_ELEMENT_TABLE *table;	/* TABLE: the load's table */
-  const DOMAIN_COMPARE_KEY *keys;	/* TABLE, GATE: the keys a computed collection's elements can have; NULL: any */
-  int n_keys;
+  int row;			/* ROW: the item's row (domain_compare_key_row); -1: the item's key has none, and each
+				 * element compares by the two values' keys */
   int site;			/* GATE: resolved.elements index; -1 */
   unsigned long long volatile_reads;	/* GATE: the session variable reads the gate's decisions depend on */
   unsigned char kind;		/* DOMAIN_ELEMENTS_KIND */
@@ -212,7 +211,7 @@ enum DOMAIN_ELEMENTS_READ
 {
   DOMAIN_READ_NONE,		/* nothing: a NULL constant */
   DOMAIN_READ_POSITIONS,	/* a constant right side: each element's decision and the gate's own value, by position */
-  DOMAIN_READ_TABLE,		/* a collection the row computes: `table` */
+  DOMAIN_READ_ROW,		/* a collection the row computes: `row` */
   DOMAIN_READ_PAIR		/* a right side whose values are no collection: compares[0] */
 };
 
@@ -222,7 +221,8 @@ struct DOMAIN_ELEMENTS
 				 * converts it; one block with decision and compares */
   int *decision;		/* POSITIONS: [n] the element's decision in compares */
   DOMAIN_COMPARE *compares;	/* POSITIONS: the decisions of the elements' keys; PAIR: the one decision */
-  DOMAIN_ELEMENT_TABLE *table;	/* TABLE */
+  int row;			/* ROW: the item's row of the type pair comparison table; -1: the item's key has none, and
+				 * each element compares by the two values' keys */
   int n;
   int n_compares;
   unsigned char read;		/* DOMAIN_ELEMENTS_READ */
@@ -286,11 +286,12 @@ struct domain_plan_index
   int n_ranges;
   int n_decisions;		/* the CONSTANT and DECIDED elements */
   int n_scratch;		/* the bounds with a scratch chain */
-  int site;			/* resolved.indexes index: the gate decides the CONSTANT and DECIDED elements and builds
-				 * the key comparison table once per execution; -1 none */
+  int site;			/* resolved.indexes index: the gate decides the CONSTANT and DECIDED elements and whether
+				 * a key column takes other keys once per execution; -1 none */
   int guard;			/* the innermost branch guard around the scan (DOMAIN_PLAN_GUARD); -1 none */
-  const DOMAIN_KEY_COMPARES *compares;	/* site -1: the load's key comparison table; NULL when every value compares
-					 * with its index column as it is */
+  bool other_keys;		/* site -1: a key column takes values of a key other than its own (domain_key_differs),
+				 * which compare by the type pair comparison table; false: every value compares with its
+				 * index column as it is */
 };
 
 /* One execution's decision for a key element the gate decides. */
@@ -307,16 +308,17 @@ struct DOMAIN_KEY_DECISION
   bool kept;			/* CONSTANT: its column is kept, so its key is mixed */
 };
 
-/* One execution's key decisions for an index scan: one block with the element decisions, the bounds' domains and
- * the key comparison table; the owner's. */
+/* One execution's key decisions for an index scan: one block with the element decisions and the bounds' domains; the
+ * owner's. */
 struct DOMAIN_INDEX_DECISIONS
 {
   DOMAIN_KEY_DECISION *decisions;	/* [n_decisions] */
   const TP_DOMAIN **domains;	/* [2 * n_ranges + 1] a constant multi-column bound's domain (the index's, or its kept
 				 * columns' mix, cached) */
-  DOMAIN_KEY_COMPARES *compares;	/* NULL: no value compares with its index column other than as it is */
   int n_decisions;
   int n_bounds;
+  bool other_keys;		/* a key column takes values of a key other than its own (domain_key_differs); false: no
+				 * value compares with its index column other than as it is */
 };
 
 typedef struct domain_plan DOMAIN_PLAN;
@@ -464,9 +466,5 @@ int stx_build_domain_plan (THREAD_ENTRY * thread_p, xasl_node * root, xasl_unpac
  * any other side by the key pair table. */
 int domain_plan_stream_compares (THREAD_ENTRY * thread_p, cubxasl::pred_expr * pred, regu_variable_node * regu);
 bool domain_plan_validate (const DOMAIN_PLAN * plan);
-/* The keys an index's key columns and its load-fixed elements give their values: columns and keys hold at most
- * two per element. The load builds its key comparison table from them; the gate collects its distinct keys as it
- * decides the elements, and a debug build checks them against these and its decided elements'. */
-int domain_key_compare_keys (const domain_plan_index * index, int *columns, DOMAIN_COMPARE_KEY * keys);
 
 #endif /* _DOMAIN_PLAN_H_ */

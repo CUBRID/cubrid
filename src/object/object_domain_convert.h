@@ -24,8 +24,13 @@
 #ifndef _OBJECT_DOMAIN_CONVERT_H_
 #define _OBJECT_DOMAIN_CONVERT_H_
 
+#include "db_date_status.h"
+#include "dbtype.h"
 #include "numeric_opfunc.h"	/* DB_DATA_STATUS */
 #include "object_domain.h"
+#include "object_primitive.h"	/* struct pr_type, which TP_DOMAIN_TYPE reads */
+#include "object_representation.h"	/* db_string_put_cs_and_collation */
+#include "system_parameter.h"
 
 /* The conversion a caller asks for: a cast's, an implicit coercion's, a comparison's or an arithmetic operand's */
 enum DOMAIN_CONVERT_MODE
@@ -72,13 +77,42 @@ TP_COMPARE_COERCION tp_value_compare_common_domain (DB_TYPE type1, DB_TYPE type2
 
 TP_VALUE_CONVERTER tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain,
 					    DOMAIN_CONVERT_MODE mode);
-TP_DOMAIN_STATUS tp_value_convert (TP_VALUE_CONVERTER converter, const TP_DOMAIN * target, const DB_VALUE * source,
-				   DB_VALUE * result);
+
+/*
+ * tp_value_convert () - run a converter the caller found before its rows
+ *   return: the converter's status; a date or time conversion that failed with an error is DOMAIN_INCOMPATIBLE:
+ *	     only a cast (tp_value_cast_internal) publishes that error
+ *   converter(in): not NULL
+ *   target(in): the domain result takes
+ *
+ * Inline: the rows of a resolved conversion call it for every value.
+ */
+inline TP_DOMAIN_STATUS
+tp_value_convert (TP_VALUE_CONVERTER converter, const TP_DOMAIN * target, const DB_VALUE * source, DB_VALUE * result)
+{
+  db_value_domain_init (result, TP_DOMAIN_TYPE (target), target->precision, target->scale);
+  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (target)))
+    {
+      db_string_put_cs_and_collation (result, TP_DOMAIN_CODESET (target), TP_DOMAIN_COLLATION (target));
+    }
+  date_conversion_error error;
+  const TP_DOMAIN_STATUS status = converter (source, result, target, &error);
+  return status == DOMAIN_ERROR && error.code != NO_ERROR ? DOMAIN_INCOMPATIBLE : status;
+}
+
 /* ENUM -> its name -> DOUBLE, ASSIGN: the ENUM operand of ENUM + string without plus_as_concat */
 TP_VALUE_CONVERTER domain_enumeration_name_converter (void);
 
+/* The IGNORE_TRAILING_SPACE value the first conversion of the process saw: the casts and the converters keep it.
+ * Inline: a cast takes the snapshot at every value. */
+inline bool
+tp_conversion_ignore_trailing_space ()
+{
+  static bool value = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  return value;
+}
+
 /* shared by the casts of object_domain.c and the converters */
-bool tp_conversion_ignore_trailing_space ();
 bool tp_json_unwrap_scalar (const DB_VALUE * src, bool bool_as_string, DB_VALUE * scalar);
 int tp_atof (const DB_VALUE * src, double *num_value, DB_DATA_STATUS * data_stat);
 int tp_atobi (const DB_VALUE * src, DB_BIGINT * num_value, DB_DATA_STATUS * data_stat);

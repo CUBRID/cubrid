@@ -614,9 +614,18 @@ static void tp_ftoa (DB_VALUE const *src, DB_VALUE * result);
 static void tp_dtoa (DB_VALUE const *src, DB_VALUE * result);
 
 
+/* A converter a plan found before any row for the casts of values of one type into one domain, in ASSIGN mode: a cast
+ * takes it in place of its lookup when the value it converts has that type and it converts into that domain. */
+struct tp_cast_converter
+{
+  DB_TYPE src_type;
+  const TP_DOMAIN *domain;
+  TP_VALUE_CONVERTER converter;
+};
+
 static TP_DOMAIN_STATUS tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 						TP_COERCION_MODE coercion_mode, bool do_domain_select,
-						bool preserve_domain);
+						bool preserve_domain, const tp_cast_converter * found = NULL);
 static DB_VALUE_COMPARE_RESULT oidcmp (OID * oid1, OID * oid2);
 static int tp_domain_match_internal (const TP_DOMAIN * dom1, const TP_DOMAIN * dom2, TP_MATCH exact, bool match_order);
 #if defined(CUBRID_DEBUG)
@@ -5730,7 +5739,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
  */
 static TP_DOMAIN_STATUS
 tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
-			const TP_COERCION_MODE coercion_mode, bool do_domain_select, bool preserve_domain)
+			const TP_COERCION_MODE coercion_mode, bool do_domain_select, bool preserve_domain,
+			const tp_cast_converter * found)
 {
   date_conversion_error conversion_error;
   DB_TYPE desired_type, original_type;
@@ -6058,9 +6068,20 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     }
   else
     {
-      TP_VALUE_CONVERTER converter = tp_value_find_converter (original_type, desired_domain,
-							      coercion_mode == TP_IMPLICIT_COERCION
-							      ? DOMAIN_CONVERT_IMPLICIT : DOMAIN_CONVERT_ASSIGN);
+      const DOMAIN_CONVERT_MODE mode = coercion_mode == TP_IMPLICIT_COERCION
+	? DOMAIN_CONVERT_IMPLICIT : DOMAIN_CONVERT_ASSIGN;
+      TP_VALUE_CONVERTER converter;
+      if (found != NULL && found->src_type == original_type && found->domain == desired_domain
+	  && mode == DOMAIN_CONVERT_ASSIGN)
+	{
+	  /* the plan found this pair's converter before any row (tp_value_cast_with_converter) */
+	  converter = found->converter;
+	  assert (converter == tp_value_find_converter (original_type, desired_domain, mode));
+	}
+      else
+	{
+	  converter = tp_value_find_converter (original_type, desired_domain, mode);
+	}
 
       /* a type whose domains are not parameterized returned above when it is the desired type: the same type reaches
        * here only for a parameterized domain, and those convert */
@@ -6183,6 +6204,21 @@ tp_value_cast_force (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * de
 
   mode = TP_FORCE_COERCION;
   return tp_value_cast_internal (src, dest, desired_domain, mode, true, false);
+}
+
+/*
+ * tp_value_cast_with_converter () - tp_value_cast (force: tp_value_cast_force) with the converter a plan found before
+ *   any row for values of type src_type into desired_domain: the cast skips its lookup for such a value
+ *   return: as tp_value_cast
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_ASSIGN); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool force,
+			      DB_TYPE src_type, TP_VALUE_CONVERTER converter)
+{
+  const tp_cast_converter found = { src_type, desired_domain, converter };
+  return tp_value_cast_internal (src, dest, desired_domain, force ? TP_FORCE_COERCION : TP_EXPLICIT_COERCION, true,
+				 false, converter != NULL ? &found : NULL);
 }
 
 /*

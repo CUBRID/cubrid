@@ -915,6 +915,27 @@ fetch_arith_binary_precast (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH
 }
 
 /*
+ * fetch_cast_operand () - develop's cast of operand i's value into the node's domain (a CAST; the operand a NVL,
+ *   IFNULL, COALESCE or NVL2 row picks), with the converter the load found for the operand's compiled type
+ *   (domain_fixed_operand): the cast skips its per-value lookup for a value of that type
+ *   force(in): tp_value_cast_force's coercion, else tp_value_cast's
+ */
+static inline TP_DOMAIN_STATUS
+fetch_cast_operand (const ARITH_TYPE * arithptr, int i, const DB_VALUE * value, DB_VALUE * result,
+		    const TP_DOMAIN * domain, bool force)
+{
+  const DOMAIN_PLAN_ITEM *item = arithptr->domain_plan;
+  const REGU_VARIABLE *operand = i == 0 ? arithptr->leftptr : i == 1 ? arithptr->rightptr : arithptr->thirdptr;
+  if (item != NULL && item->fixed.conv[i] != NULL && item->fixed.operand_domain[i] == domain && operand != NULL
+      && operand->domain != NULL)
+    {
+      return tp_value_cast_with_converter (value, result, domain, force, TP_DOMAIN_TYPE (operand->domain),
+					   item->fixed.conv[i]);
+    }
+  return force ? tp_value_cast_force (value, result, domain, false) : tp_value_cast (value, result, domain, false);
+}
+
+/*
  * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
  *   regu_var(in/out): Regulator Variable of an ARITH node.
@@ -3460,14 +3481,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
-	  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST) && arithptr->opcode == T_CAST_WRAP)
-	    {
-	      dom_status = tp_value_cast (peek_right, arithptr->value, arith_domain, false);
-	    }
-	  else
-	    {
-	      dom_status = tp_value_cast_force (peek_right, arithptr->value, arith_domain, false);
-	    }
+	  dom_status = fetch_cast_operand (arithptr, 1, peek_right, arithptr->value, arith_domain,
+					   !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST)
+					   || arithptr->opcode != T_CAST_WRAP);
 
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
@@ -3618,7 +3634,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  }
 
 	src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
-	dom_status = tp_value_cast (src, arithptr->value, target_domain, false);
+	dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value, target_domain,
+					 false);
 	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
 	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, target_domain);
@@ -3686,7 +3703,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    src = peek_right;
 	  }
 
-	dom_status = tp_value_cast (src, arithptr->value, target_domain, false);
+	dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value, target_domain,
+					 false);
 	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
 	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, target_domain);

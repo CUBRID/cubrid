@@ -357,7 +357,7 @@ enum SCAN_KEY_CHOICE
 };
 
 /* The search keys of an index scan whose plan keeps nothing for them: its values compare with the index as they are. */
-static const DOMAIN_SEARCH_KEYS scan_No_search_keys = { NULL };
+static const DOMAIN_SEARCH_KEYS scan_No_search_keys = { false };
 
 /* What the B-tree's comparisons of an index scan's search key values read; NULL for a B-tree search outside a
  * query plan (an index scan identifier without a key plan). */
@@ -380,7 +380,7 @@ scan_index_search_compare (const INDX_SCAN_ID * isidp)
     {
       return BTREE_SEARCH_COMPARE_PLANNED;
     }
-  /* a scan without storage has a single-column key and no key comparison table */
+  /* a scan without storage has a single-column key whose values all have the column's key */
   return isidp->key_state != NULL ? isidp->key_state->search_compare : BTREE_SEARCH_COMPARE_DIRECT;
 }
 
@@ -416,8 +416,8 @@ scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp)
  *
  * The load derived the plan from the stream's key domain, the root header's; a scan whose B-tree has
  * another is the execution boundary (b). The scan's storage is made once here for every range it builds, and the
- * B-tree's comparison of its search key values is chosen here. A single-column key without a key comparison
- * table needs no storage, whatever the gate decided for it: it takes its values as they are.
+ * B-tree's comparison of its search key values is chosen here. A single-column key whose values all have the
+ * column's key needs no storage, whatever the gate decided for it: it takes its values as they are.
  */
 static int
 scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const INDX_INFO * indx_info,
@@ -430,7 +430,7 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
     {
       return scan_key_plan_unresolved (key_type);
     }
-  const DOMAIN_KEY_COMPARES *compares = plan->compares;
+  bool other_keys = plan->other_keys;
   const DOMAIN_INDEX_DECISIONS *decisions = NULL;
   if (plan->site >= 0)
     {
@@ -441,12 +441,12 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
 	  return scan_key_plan_unresolved (key_type);
 	}
       decisions = &resolved->indexes[plan->site];
-      compares = decisions->compares;
+      other_keys = decisions->other_keys;
     }
   isidp->key_plan = plan;
   isidp->key_decisions = decisions;
   const bool midxkey = TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY;
-  if (!midxkey && compares == NULL)
+  if (!midxkey && !other_keys)
     {
       /* no storage: its values compare as they are (scan_index_search_compare), and a single-column key takes each as
        * it is, whatever the gate decided for it - no scratch chain, no strict conversion */
@@ -484,10 +484,10 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   scan_key_state *state = (scan_key_state *) block;
-  state->search_keys.compares = compares;
-  /* a key comparison table is made only for a column whose values take more than the column's own type and collation
-   * (domain_resolve_key_compares): without one, every value compares with the index as it is */
-  state->search_compare = compares != NULL ? BTREE_SEARCH_COMPARE_PLANNED
+  state->search_keys.other_keys = other_keys;
+  /* without a column whose values take a key other than its own (domain_key_differs), every value compares with the
+   * index as it is */
+  state->search_compare = other_keys ? BTREE_SEARCH_COMPARE_PLANNED
     : midxkey ? BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN : BTREE_SEARCH_COMPARE_DIRECT;
   state->n_columns = n_columns;
   state->chains = n_chains > 0 ? (TP_DOMAIN *) (block + chains_offset) : NULL;
@@ -1752,9 +1752,9 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DO
     }
   else
     {
-      /* search keys without a key comparison table: every value has its column's type and collation, and compares as
-       * it is (scan_open_index_key_plan) */
-      const DOMAIN_SEARCH_KEYS *planned = search_keys != NULL && search_keys->compares != NULL ? search_keys : NULL;
+      /* search keys without other keys: every value has its column's type and collation, and compares as it is
+       * (scan_open_index_key_plan) */
+      const DOMAIN_SEARCH_KEYS *planned = search_keys != NULL && search_keys->other_keys ? search_keys : NULL;
       key_type = DB_VALUE_DOMAIN_TYPE (val1);
       if (key_type == DB_TYPE_MIDXKEY)
 	{
@@ -2070,8 +2070,8 @@ scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals,
 }
 
 /* Whether a value is one of a plan domain's: its type and, for a string, its collation - what a mixed key and
- * the key comparison table take from the domain. The server holds an object as its OID, and an OID value's own domain
- * is OBJECT (tp_domain_resolve_value), which is the domain the gate records for a constant object. */
+ * the type pair comparison table take from the domain. The server holds an object as its OID, and an OID value's own
+ * domain is OBJECT (tp_domain_resolve_value), which is the domain the gate records for a constant object. */
 static bool
 scan_key_value_holds (const DB_VALUE * value, const TP_DOMAIN * domain)
 {
@@ -2496,8 +2496,8 @@ err_exit:
 
 /*
  * scan_key_single_column () - a single-column search key at a range: the value as it is; the
- *   B-tree compares it with the index through the key comparison table, which the gate built for the key the element's
- *   decision gives.
+ *   B-tree compares it with the index by the type pair comparison table when the key the element's decision gives is
+ *   not the column's own.
  *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the execution boundary (b)) for a value of an element the gate
  *	     derived no rule for: the gate decides every string and gives every constant its value
  *
