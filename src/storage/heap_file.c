@@ -910,6 +910,7 @@ static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, cons
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
+static int heap_try_refix_home_page (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
 static int heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p,
@@ -26082,10 +26083,22 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
       if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
 	{
+	  /* The walk reads only the log from the header copied above, so writers of this page need not wait for it. */
+	  if (context->fwd_page_watcher.pgptr != NULL)
+	    {
+	      pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
+	    }
+	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+
 	  /* current version is not visible, check previous versions from log and skip record get from heap */
 	  scan =
 	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
 					       context->scan_cache, context->old_chn);
+	  if (scan != S_ERROR && context->scan_cache->cache_last_fix_page
+	      && heap_try_refix_home_page (thread_p, context) != NO_ERROR)
+	    {
+	      scan = S_ERROR;
+	    }
 	  goto exit;
 	}
       else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
@@ -26338,6 +26351,52 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
     }
 
   return ret;
+}
+
+/*
+ * heap_try_refix_home_page () - Fix the home page again for the scan cache, only if it can be latched right away.
+ *
+ * return	 : NO_ERROR, or ER_INTERRUPTED.
+ * thread_p (in) : Thread entry.
+ * context (in)	 : Heap get context whose pages were released for a previous-version walk.
+ *
+ * NOTE: When the latch is taken, the watcher stays empty and the next access fixes the page as usual.
+ *	 Do not wrap an ordered fix in xlogtb_reset_wait_msecs (LK_FORCE_ZERO_WAIT) instead: the wait is per
+ *	 transaction, and parallel workers of the same transaction would stop waiting too.
+ */
+static int
+heap_try_refix_home_page (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  VPID home_vpid;
+  PAGE_PTR home_page;
+
+  assert (context->home_page_watcher.pgptr == NULL && context->fwd_page_watcher.pgptr == NULL);
+
+  if (HFID_IS_NULL (&context->scan_cache->node.hfid))
+    {
+      return NO_ERROR;
+    }
+
+  VPID_GET_FROM_OID (&home_vpid, context->oid_p);
+  /* not OLD_PAGE_PREVENT_DEALLOC: a conditional fix that fails would leave its guard raised */
+  home_page = pgbuf_fix (thread_p, &home_vpid, OLD_PAGE, context->latch_mode, PGBUF_CONDITIONAL_LATCH);
+  if (home_page == NULL)
+    {
+      if (er_errid () == ER_INTERRUPTED)
+	{
+	  return ER_INTERRUPTED;
+	}
+      if (er_errid () == ER_LK_PAGE_TIMEOUT)
+	{
+	  /* set only under lock_timeout 0; the read itself has succeeded */
+	  er_clear ();
+	}
+      return NO_ERROR;
+    }
+
+  pgbuf_attach_watcher (thread_p, home_page, context->latch_mode, &context->scan_cache->node.hfid,
+			&context->home_page_watcher);
+  return NO_ERROR;
 }
 
 /*
