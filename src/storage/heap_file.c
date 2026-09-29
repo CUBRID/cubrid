@@ -26356,7 +26356,7 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
 /*
  * heap_try_refix_home_page () - Fix the home page again for the scan cache, only if it can be latched right away.
  *
- * return	 : NO_ERROR, or ER_INTERRUPTED.
+ * return	 : NO_ERROR, or the error of a fix that failed for a reason other than the latch being taken.
  * thread_p (in) : Thread entry.
  * context (in)	 : Heap get context whose pages were released for a previous-version walk.
  *
@@ -26369,6 +26369,7 @@ heap_try_refix_home_page (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
   VPID home_vpid;
   PAGE_PTR home_page;
+  int error_before, error;
 
   assert (context->home_page_watcher.pgptr == NULL && context->fwd_page_watcher.pgptr == NULL);
 
@@ -26378,20 +26379,24 @@ heap_try_refix_home_page (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
     }
 
   VPID_GET_FROM_OID (&home_vpid, context->oid_p);
+  error_before = er_errid ();
   /* not OLD_PAGE_PREVENT_DEALLOC: a conditional fix that fails would leave its guard raised */
   home_page = pgbuf_fix (thread_p, &home_vpid, OLD_PAGE, context->latch_mode, PGBUF_CONDITIONAL_LATCH);
   if (home_page == NULL)
     {
-      if (er_errid () == ER_INTERRUPTED)
+      if (er_errid () == error_before)
 	{
-	  return ER_INTERRUPTED;
+	  /* the latch is taken; nothing was set */
+	  return NO_ERROR;
 	}
       if (er_errid () == ER_LK_PAGE_TIMEOUT)
 	{
 	  /* set only under lock_timeout 0; the read itself has succeeded */
 	  er_clear ();
+	  return NO_ERROR;
 	}
-      return NO_ERROR;
+      ASSERT_ERROR_AND_SET (error);
+      return error;
     }
 
   pgbuf_attach_watcher (thread_p, home_page, context->latch_mode, &context->scan_cache->node.hfid,
