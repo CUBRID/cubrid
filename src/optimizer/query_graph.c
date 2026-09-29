@@ -43,6 +43,7 @@
 #include "optimizer.h"
 #include "query_graph.h"
 #include "query_planner.h"
+#include "histogram_cl.hpp"
 #include "schema_manager.h"
 #include "statistics.h"
 #include "system_parameter.h"
@@ -205,6 +206,10 @@ static void qo_estimate_statistics (MOP class_mop, CLASS_STATS *);
 static void qo_node_free (QO_NODE *);
 static void qo_node_dump (QO_NODE *, FILE *);
 static void qo_node_add_sarg (QO_NODE *, QO_TERM *);
+static int qo_snapshot_threshold (void);
+static DB_VALUE *qo_snapshot_const_value (QO_ENV * env, PT_NODE * node);
+static int qo_snapshot_sarg_matches (QO_ENV * env, QO_NODE * node, QO_TERM * sarg, DB_OBJECT * obj);
+static void qo_snapshot_apply (QO_ENV * env);
 static QO_TERM *qo_derived_term_origin (QO_ENV * env, QO_TERM * derived, int idx, BITSET * taken);
 static void qo_derived_term_compensate (QO_ENV * env);
 
@@ -617,6 +622,12 @@ qo_optimize_helper (QO_ENV * env)
    * one) will be pointing to the wrong term after they're rearranged.
    */
   qo_assign_eq_classes (env);
+
+  /* Row snapshot for small constant-filtered nodes (CBRD-27478). It has to run exactly here: the
+   * node sargs it evaluates are attached in qo_discover_edges () (qo_node_add_sarg ()) and the
+   * term array is final after that call, while get_rank () below orders terms by the selectivity
+   * this pass rewrites. */
+  qo_snapshot_apply (env);
 
   get_local_subqueries (env, tree);
   get_rank (env);
@@ -1290,6 +1301,7 @@ qo_add_node (PT_NODE * entity, QO_ENV * env)
   QO_NODE_NAME (node) = entity->info.spec.range_var->info.name.original;
   QO_NODE_IDX (node) = env->nnodes;
   QO_NODE_SORT_LIMIT_CANDIDATE (node) = false;
+  QO_NODE_SNAPSHOT_CARD (node) = -1;
 
   env->nnodes++;
 
@@ -8284,6 +8296,471 @@ qo_assign_eq_classes (QO_ENV * env)
 }
 
 /*
+ * qo_snapshot_threshold () - row count up to which a node is a row-snapshot candidate
+ *   return: threshold in rows; 0 turns the pass off
+ *
+ * Stage 1 of CBRD-27478 is a prototype behind an environment variable, as the JIRA plan states:
+ * QO_SNAPSHOT_ROWS=<rows>. Unset, empty or non-positive means off, and off has to leave the
+ * compile path exactly as it was -- the pass costs one server fetch per candidate node, which is
+ * why the production design (stage 2) moves the rows into the statistics blob instead.
+ */
+static int
+qo_snapshot_threshold (void)
+{
+  const char *env_val = getenv ("QO_SNAPSHOT_ROWS");
+  long rows;
+
+  if (env_val == NULL || *env_val == '\0')
+    {
+      return 0;
+    }
+  rows = strtol (env_val, NULL, 10);
+  if (rows <= 0)
+    {
+      return 0;
+    }
+  if (rows > 1000000)
+    {
+      /* a snapshot this large is not "small"; also bounds the survivors array below */
+      rows = 1000000;
+    }
+  return (int) rows;
+}
+
+/*
+ * qo_snapshot_const_value () - the constant a snapshot-evaluable sarg compares against
+ *   return: the constant's DB_VALUE, or NULL when the node is not such a constant
+ *   env(in): optimizer environment
+ *   node(in): the non-column side of the sarg (or one element of its IN list)
+ *
+ * A literal in the statement text is rewritten into an auto-parameterized host variable (?:n)
+ * before the optimizer runs, so its value lives in parser->host_variables and the valid index
+ * range is [0, host_var_count + auto_param_count). Only the auto-parameterized range
+ * (index >= host_var_count) is accepted: a user host variable (a real '?') may be unbound at
+ * plan time, is excluded by the JIRA scope, and its value would also have to enter the bind
+ * fingerprint of the plan cache (CBRD-27143) before it would be safe to plan on.
+ */
+static DB_VALUE *
+qo_snapshot_const_value (QO_ENV * env, PT_NODE * node)
+{
+  PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
+  int idx;
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+      if (PT_IS_SET_TYPE (node) || node->type_enum == PT_TYPE_NULL || !node->info.value.db_value_is_initialized)
+	{
+	  return NULL;
+	}
+      return &node->info.value.db_value;
+
+    case PT_HOST_VAR:
+      if (node->info.host_var.var_type != PT_HOST_IN || parser->host_variables == NULL)
+	{
+	  return NULL;
+	}
+      idx = node->info.host_var.index;
+      if (idx < parser->host_var_count || idx >= parser->host_var_count + parser->auto_param_count)
+	{
+	  return NULL;
+	}
+      return &parser->host_variables[idx];
+
+    default:
+      return NULL;
+    }
+}
+
+/*
+ * qo_snapshot_sarg_matches () - evaluate one constant sarg of a node against one of its rows
+ *   return: 1 when the row satisfies the sarg, 0 when it does not, -1 when the sarg is not one this
+ *           pass can evaluate (the caller then leaves the whole node alone)
+ *   env(in): optimizer environment
+ *   node(in): the node the sarg belongs to
+ *   sarg(in): a QO_TC_SARG term of that node
+ *   obj(in): a fetched instance of the node's class; NULL asks only whether the sarg is evaluable
+ *
+ * The supported shapes are the ones the JIRA scope names: `col = const`, `col IN (c1, c2, ...)`
+ * -- either as the folded set VALUE it usually arrives as or as an element list -- and the
+ * rewritten form `col RANGE (c1 =, c2 =, ...)`. Anything else (LIKE, ranges, subqueries,
+ * expressions over the column, OR chains) reports -1 rather than guessing: a node with one
+ * unevaluable sarg keeps its histogram estimate, which is the current behavior. The comparison
+ * goes through tp_value_compare () with coercion allowed, the comparator the executor applies,
+ * so CHAR/VARCHAR padding and numeric promotion agree with execution.
+ */
+static int
+qo_snapshot_sarg_matches (QO_ENV * env, QO_NODE * node, QO_TERM * sarg, DB_OBJECT * obj)
+{
+  PT_NODE *pt_expr, *lhs, *rhs, *elem;
+  DB_VALUE row_val, elem_val, *const_val;
+  DB_SET *in_set = NULL;
+  UINTPTR spec_id;
+  int matched = 0, i, set_size = 0;
+  PT_OP_TYPE op;
+
+  pt_expr = QO_TERM_PT_EXPR (sarg);
+  if (pt_expr == NULL || pt_expr->node_type != PT_EXPR || pt_expr->or_next != NULL
+      || !QO_TERM_IS_FLAGED (sarg, QO_TERM_SINGLE_PRED) || QO_TERM_IS_FLAGED (sarg, QO_TERM_OR_PRED))
+    {
+      return -1;
+    }
+
+  spec_id = QO_NODE_ENTITY_SPEC (node)->info.spec.id;
+  lhs = pt_expr->info.expr.arg1;
+  rhs = pt_expr->info.expr.arg2;
+  op = pt_expr->info.expr.op;
+
+  /* the column must be a plain name of this node; qo_analyze_term () already turned
+   * `const = col` into `col = const`, so the name is on the left */
+  if (lhs == NULL || lhs->node_type != PT_NAME || lhs->info.name.spec_id != spec_id
+      || lhs->info.name.original == NULL || rhs == NULL)
+    {
+      return -1;
+    }
+
+  /* first pass: is every constant one we can read? */
+  switch (op)
+    {
+    case PT_EQ:
+      if (qo_snapshot_const_value (env, rhs) == NULL)
+	{
+	  return -1;
+	}
+      break;
+
+    case PT_RANGE:
+      for (elem = rhs; elem != NULL; elem = elem->or_next)
+	{
+	  if (elem->node_type != PT_EXPR || elem->info.expr.op != PT_BETWEEN_EQ_NA
+	      || qo_snapshot_const_value (env, elem->info.expr.arg1) == NULL)
+	    {
+	      return -1;
+	    }
+	}
+      break;
+
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+      if (rhs->node_type == PT_VALUE && PT_IS_SET_TYPE (rhs) && rhs->info.value.db_value_is_initialized)
+	{
+	  in_set = db_get_set (&rhs->info.value.db_value);
+	  set_size = (in_set != NULL) ? db_set_size (in_set) : 0;
+	  if (set_size <= 0)
+	    {
+	      return -1;
+	    }
+	}
+      else if (rhs->node_type == PT_FUNCTION && PT_IS_SET_TYPE (rhs))
+	{
+	  for (elem = rhs->info.function.arg_list; elem != NULL; elem = elem->next)
+	    {
+	      if (qo_snapshot_const_value (env, elem) == NULL)
+		{
+		  return -1;
+		}
+	    }
+	}
+      else
+	{
+	  return -1;		/* a subquery or a host-variable set */
+	}
+      break;
+
+    default:
+      return -1;
+    }
+
+  if (obj == NULL)
+    {
+      return 1;			/* evaluable */
+    }
+
+  db_make_null (&row_val);
+  if (db_get (obj, lhs->info.name.original, &row_val) != NO_ERROR)
+    {
+      pr_clear_value (&row_val);
+      return -1;
+    }
+  if (DB_IS_NULL (&row_val))
+    {
+      /* NULL = anything is not true */
+      pr_clear_value (&row_val);
+      return 0;
+    }
+
+  switch (op)
+    {
+    case PT_EQ:
+      const_val = qo_snapshot_const_value (env, rhs);
+      matched = (tp_value_compare (&row_val, const_val, 1, 1) == DB_EQ);
+      break;
+
+    case PT_RANGE:
+      for (elem = rhs; elem != NULL && !matched; elem = elem->or_next)
+	{
+	  const_val = qo_snapshot_const_value (env, elem->info.expr.arg1);
+	  matched = (tp_value_compare (&row_val, const_val, 1, 1) == DB_EQ);
+	}
+      break;
+
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+      if (in_set != NULL)
+	{
+	  for (i = 0; i < set_size && !matched; i++)
+	    {
+	      db_make_null (&elem_val);
+	      if (db_set_get (in_set, i, &elem_val) == NO_ERROR)
+		{
+		  matched = (tp_value_compare (&row_val, &elem_val, 1, 1) == DB_EQ);
+		}
+	      pr_clear_value (&elem_val);
+	    }
+	}
+      else
+	{
+	  for (elem = rhs->info.function.arg_list; elem != NULL && !matched; elem = elem->next)
+	    {
+	      const_val = qo_snapshot_const_value (env, elem);
+	      matched = (tp_value_compare (&row_val, const_val, 1, 1) == DB_EQ);
+	    }
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  pr_clear_value (&row_val);
+  return matched;
+}
+
+/*
+ * qo_snapshot_apply () - re-derive join selectivities from the rows of small constant-filtered nodes
+ *   return: void
+ *   env(in): optimizer environment, after qo_discover_edges () and qo_assign_eq_classes ()
+ *
+ * A code/dimension table filtered by a constant and joined to a large table on its key gets the
+ * join estimated at 1/NDV, because the planner does not know WHICH key the constant selects:
+ * histograms are kept per column, so the pair ('release dates', 16) is lost at collection time
+ * (JOB 19c: 124x underestimate, 37x slower than the reference). For a node small enough
+ * (QO_SNAPSHOT_ROWS) this pass fetches its rows, applies the constant sargs to them and, for every
+ * equi-join term the node takes part in, replaces the term's selectivity with the mean over the
+ * surviving rows of the OTHER column's equality estimate for that row's key:
+ *
+ *     sel = (1 / k) * SUM_i P (other.col = v_i)
+ *
+ * The node's own selectivity becomes the exact k / ncard. Nothing else changes: no derived term
+ * is injected, so the value reaches qo_iscan_cost () through the very join-term selectivity the
+ * index scan cost already reads. Every failure along the way -- an unevaluable sarg, a fetch
+ * error, a key the histogram cannot price, zero survivors, more rows than the threshold -- leaves
+ * that node or term exactly as the histogram pass estimated it.
+ *
+ * Stage 1 (this code) sources the rows with a plan-time fetch, one server round trip per candidate
+ * node; that is why the switch defaults to off and stage 2 stores the rows in the statistics blob.
+ */
+static void
+qo_snapshot_apply (QO_ENV * env)
+{
+  int threshold, n, t, k, i, r, rows;
+  QO_NODE *node;
+  QO_TERM *term, *sarg;
+  BITSET_ITERATOR iter;
+  DB_OBJLIST *objs, *o;
+  DB_OBJECT **survivors;
+  PT_NODE *pt_expr, *lhs, *rhs, *my_name, *other_name;
+  DB_VALUE key_val;
+  UINTPTR spec_id;
+  double sum, one, nf_other, sel;
+  bool ok, success;
+
+  threshold = qo_snapshot_threshold ();
+  if (threshold <= 0)
+    {
+      return;
+    }
+
+  for (n = 0; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+
+      /* one real class (no hierarchy or partition set), with statistics, small, and filtered */
+      if (QO_NODE_INFO (node) == NULL || QO_NODE_INFO_N (node) != 1 || QO_NODE_INFO (node)->info[0].mop == NULL
+	  || PT_SPEC_IS_DERIVED (QO_NODE_ENTITY_SPEC (node)) || PT_SPEC_IS_CTE (QO_NODE_ENTITY_SPEC (node))
+	  || QO_NODE_ENTITY_SPEC (node)->info.spec.meta_class == PT_META_CLASS || QO_NODE_NCARD (node) == 0
+	  || QO_NODE_NCARD (node) > (unsigned long) threshold || bitset_is_empty (&(QO_NODE_SARGS (node))))
+	{
+	  continue;
+	}
+
+      /* every sarg has to be one this pass can evaluate, or the node keeps its estimate */
+      ok = true;
+      for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &iter); t != -1 && ok; t = bitset_next_member (&iter))
+	{
+	  sarg = QO_ENV_TERM (env, t);
+	  if (QO_TERM_CLASS (sarg) != QO_TC_SARG || qo_snapshot_sarg_matches (env, node, sarg, NULL) < 0)
+	    {
+	      ok = false;
+	    }
+	}
+      if (!ok)
+	{
+	  continue;
+	}
+
+      objs = db_get_all_objects (QO_NODE_INFO (node)->info[0].mop);
+      if (objs == NULL)
+	{
+	  continue;
+	}
+      survivors = (DB_OBJECT **) malloc (sizeof (DB_OBJECT *) * threshold);
+      if (survivors == NULL)
+	{
+	  db_objlist_free (objs);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_OBJECT *) * threshold);
+	  return;
+	}
+
+      /* apply the sargs row by row; the statistics said <= threshold rows, but the table may have
+       * grown since, and a snapshot bigger than the threshold is not "small" */
+      k = 0;
+      rows = 0;
+      for (o = objs; o != NULL && ok; o = o->next)
+	{
+	  if (++rows > threshold)
+	    {
+	      ok = false;
+	      break;
+	    }
+	  r = 1;
+	  for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &iter); t != -1 && r == 1; t = bitset_next_member (&iter))
+	    {
+	      r = qo_snapshot_sarg_matches (env, node, QO_ENV_TERM (env, t), o->op);
+	    }
+	  if (r < 0)
+	    {
+	      ok = false;
+	    }
+	  else if (r == 1)
+	    {
+	      survivors[k++] = o->op;
+	    }
+	}
+
+      if (ok && k > 0)
+	{
+	  /* (a) the node's own output is exactly k of its ncard rows */
+	  QO_NODE_SELECTIVITY (node) = (double) k / (double) QO_NODE_NCARD (node);
+	  QO_NODE_SNAPSHOT_CARD (node) = k;
+	  spec_id = QO_NODE_ENTITY_SPEC (node)->info.spec.id;
+
+	  /* (b) every equi-join term this node takes part in */
+	  for (t = 0; t < env->nterms; t++)
+	    {
+	      term = QO_ENV_TERM (env, t);
+	      if (QO_TERM_CLASS (term) != QO_TC_JOIN || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
+		  || !QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED) || !BITSET_MEMBER (QO_TERM_NODES (term), n))
+		{
+		  continue;
+		}
+	      pt_expr = QO_TERM_PT_EXPR (term);
+	      if (pt_expr == NULL || pt_expr->node_type != PT_EXPR || pt_expr->info.expr.op != PT_EQ)
+		{
+		  continue;
+		}
+	      lhs = pt_expr->info.expr.arg1;
+	      rhs = pt_expr->info.expr.arg2;
+	      if (lhs == NULL || rhs == NULL || lhs->node_type != PT_NAME || rhs->node_type != PT_NAME)
+		{
+		  continue;
+		}
+	      if (lhs->info.name.spec_id == spec_id && rhs->info.name.spec_id != spec_id)
+		{
+		  my_name = lhs;
+		  other_name = rhs;
+		}
+	      else if (rhs->info.name.spec_id == spec_id && lhs->info.name.spec_id != spec_id)
+		{
+		  my_name = rhs;
+		  other_name = lhs;
+		}
+	      else
+		{
+		  continue;
+		}
+	      if (my_name->info.name.original == NULL)
+		{
+		  continue;
+		}
+
+	      sum = 0.0;
+	      ok = true;
+	      for (i = 0; i < k && ok; i++)
+		{
+		  db_make_null (&key_val);
+		  if (db_get (survivors[i], my_name->info.name.original, &key_val) != NO_ERROR)
+		    {
+		      ok = false;
+		    }
+		  else if (!DB_IS_NULL (&key_val))
+		    {
+		      one = 0.0;
+		      success = false;
+		      histogram_get_equal_selectivity (other_name, &key_val, &one, &success);
+		      if (success)
+			{
+			  sum += one;
+			}
+		      else
+			{
+			  ok = false;
+			}
+		    }
+		  /* a NULL key matches no row of the other side: it stays in k and adds 0 */
+		  pr_clear_value (&key_val);
+		}
+	      if (!ok)
+		{
+		  ok = true;	/* this term keeps its estimate; the next term is independent */
+		  continue;
+		}
+
+	      /* histogram_get_equal_selectivity () returns the NON-null-conditional fraction of the
+	       * other column (it divides its own null mass out, see there). A join term's selectivity
+	       * is a fraction of the whole cross product, so the other side's non-null fraction has to
+	       * be multiplied back in. This side needs no such factor: the k rows are concrete values,
+	       * and a NULL key among them already contributed 0 above. */
+	      sel = sum / (double) k;
+	      nf_other = other_name->info.name.null_frequency;
+	      if (nf_other >= 0.0 && nf_other < 1.0)
+		{
+		  sel *= (1.0 - nf_other);
+		}
+	      if (sel <= 0.0)
+		{
+		  continue;	/* nothing to say; keep the histogram estimate */
+		}
+	      if (sel > 1.0)
+		{
+		  sel = 1.0;
+		}
+	      QO_TERM_SELECTIVITY (term) = sel;
+	      QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_SNAPSHOT);
+	    }
+	}
+
+      free_and_init (survivors);
+      db_objlist_free (objs);
+    }
+}
+
+/*
  * qo_generate_implied_join_terms () - Generate implied join terms from
  *   segment equivalence groups using transitive closure.
  *   env(in):
@@ -9117,6 +9594,11 @@ qo_node_dump (QO_NODE * node, FILE * f)
     }
 
   fprintf (f, "(%lu/%lu)", QO_NODE_NCARD (node), QO_NODE_TCARD (node));
+  if (QO_NODE_SNAPSHOT_CARD (node) >= 0)
+    {
+      /* the constant sargs were evaluated on the rows: this many survived (CBRD-27478) */
+      fprintf (f, " (snapshot %d)", QO_NODE_SNAPSHOT_CARD (node));
+    }
   if (!bitset_is_empty (&(QO_NODE_SARGS (node))))
     {
       fputs (" (sargs ", f);
@@ -9843,6 +10325,10 @@ qo_term_dump (QO_TERM * term, FILE * f)
       fprintf (f, " (ord %d)", QO_TERM_PRED_ORDER (term));
     }
   fprintf (f, " (sel %G)", QO_TERM_SELECTIVITY (term));
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_SEL_FROM_SNAPSHOT))
+    {
+      fputs (" (snapshot)", f);
+    }
 
   if (QO_TERM_RANK (term) > 1)
     {
