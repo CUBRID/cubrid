@@ -4379,10 +4379,28 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
       /* NO_MULTI_RANGE_OPT was hinted */
       return false;
     }
+
+  all_distinct = query->info.query.all_distinct;
+  order_by = query->info.query.order_by;
+
+  // MRO only applies to ORDER BY ... FOR ORDERBY_NUM(). These are constant time checks and this function is called
+  // once per candidate index scan plan, so they must be evaluated before pt_has_aggregate () below, which walks the
+  // whole parse tree.
+  if (order_by == NULL || all_distinct == PT_DISTINCT)
+    {
+      return false;
+    }
+
+  if (query->info.query.orderby_for == NULL)
+    {
+      return false;
+    }
+
   if (query->info.query.q.select.connect_by != NULL)
     {
       return false;
     }
+
   if (pt_has_aggregate (parser, query))
     {
       // CBRD-22696
@@ -4396,18 +4414,6 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
       // but sometimes a safe-guard is hit (when order by position number is not found in outptr_list).
       //
       // until a proper fix is found, MRO is disabled for aggregate queries.
-      return false;
-    }
-  all_distinct = query->info.query.all_distinct;
-  order_by = query->info.query.order_by;
-
-  if (order_by == NULL || all_distinct == PT_DISTINCT)
-    {
-      return false;
-    }
-
-  if (query->info.query.orderby_for == NULL)
-    {
       return false;
     }
 
