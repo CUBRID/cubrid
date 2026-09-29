@@ -17,7 +17,7 @@
  */
 
 /*
- * px_merge_join_partition.hpp - range partitioning of the two sorted inputs of a merge join (CBRD-27307)
+ * px_merge_join_partition.hpp - range partitioning of the two sorted inputs of a merge join
  */
 
 #ifndef _PX_MERGE_JOIN_PARTITION_HPP_
@@ -56,11 +56,8 @@ namespace parallel_query
       bool m_exhausted;		/* no tuple with key > boundary: this and all later ranges are empty on this side */
     };
 
-    /* B boundary keys split each list into B + 1 aligned ranges:
-     * (-inf incl. NULL keys, k0], (k0, k1], ..., (k_B-1, +inf).
-     * Boundaries are key VALUES, so a duplicate-key group never straddles two ranges
-     * and outer/inner ranges align by construction. Range 0 starts at the list head;
-     * range i + 1 starts at starts[i]. */
+    /* B boundary keys split each list into B + 1 aligned ranges (-inf incl. NULL, k0], (k0, k1], ... Keys, not
+     * positions: a duplicate group never straddles ranges; range i + 1 starts at starts[i] */
     struct merge_partitions
     {
       std::vector<partition_key> m_boundaries;
@@ -82,19 +79,15 @@ namespace parallel_query
     int read_key (QFILE_TUPLE tpl, const key_spec &spec, bool copy, DB_VALUE *vals);
     void clear_key (DB_VALUE *vals, int cnt);
 
-    /* Total order matching the inputs' ASC / NULLS FIRST sort. Unlike qexec_cmp_tpl_vals_merge,
-     * NULL == NULL here: partitioning only needs "first tuple with key > boundary", and treating
-     * the NULL prefix as one equal group keeps it whole in range 0. DB_UNK means an incomparable
-     * pair (e.g. collections containing NULL) — callers must fall back to the serial merge. */
+    /* NULL == NULL here, unlike qexec_cmp_tpl_vals_merge: partitioning only needs "first key > boundary" and the
+     * NULL prefix stays whole in range 0. DB_UNK = incomparable pair, callers fall back to the serial merge */
     DB_VALUE_COMPARE_RESULT cmp_keys (const DB_VALUE *left, const DB_VALUE *right, int cnt);
 
-    /* phase-1 gate: inner join, no single-fetch, both inputs large enough */
     bool is_applicable (const QFILE_LIST_MERGE_INFO &merge_info, const QFILE_LIST_ID *outer_list_id,
 			const QFILE_LIST_ID *inner_list_id);
 
-    /* Computes the range split of both sorted inputs. can_partition comes back false (with NO_ERROR)
-     * when no useful split exists: degree <= 1, boundaries collapse under heavy duplication, or an
-     * incomparable key pair (DB_UNK) was met — callers fall back to the serial merge. */
+    /* can_partition == false with NO_ERROR: no useful split (degree <= 1, collapsed boundaries, DB_UNK); use the
+     * serial merge */
     int compute_partitions (THREAD_ENTRY *thread_p, QFILE_LIST_ID *outer_list_id, QFILE_LIST_ID *inner_list_id,
 			    const QFILE_LIST_MERGE_INFO &merge_info, int degree, merge_partitions &result,
 			    bool &can_partition);

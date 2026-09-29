@@ -770,10 +770,8 @@ namespace parallel_scan
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       case MERGELIST_PROC:
-	/* only the merge's own spec lists need blocking (llsid union guard); the aptr children are
-	 * make_buildlist_proc products whose list opens with sort_list == NULL, so the join-column
-	 * sort always runs (qexec_orderby_distinct cannot skip it) and pre-sort scan order in the
-	 * input subtrees does not affect results — the generic gates below suffice. */
+	/* only the merge's own spec lists need blocking (llsid union guard): the aptr inputs always re-sort on the
+	 * join columns, so their scan order does not matter */
 	for (ACCESS_SPEC_TYPE *specp = arg->proc.mergelist.outer_spec_list; specp; specp = specp->next)
 	  {
 	    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);

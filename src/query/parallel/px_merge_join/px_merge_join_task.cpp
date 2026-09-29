@@ -17,31 +17,24 @@
  */
 
 /*
- * px_merge_join_task.cpp - per-range worker of the parallel merge join (CBRD-27307)
- *
- * Each task merges one key range of the two sorted inputs into a private output list.
- * The loop is a range-bounded replica of qexec_merge_list (query_executor.c) — same comparator
- * (qexec_cmp_tpl_vals_merge), same emission (qexec_merge_tuple_add_list), same duplicate-group
- * backtracking — so concatenating the per-range outputs in range order reproduces the serial
- * merge output tuple for tuple.
+ * px_merge_join_task.cpp - per-range worker of the parallel merge join
  */
 
 #include "px_merge_join_task.hpp"
 
 #include "dbtype.h"
 #include "error_manager.h"
-#include "file_io.h"			/* PEEK */
+#include "file_io.h"
 #include "list_file.h"
 #include "memory_alloc.h"
 #include "object_representation.h"
-#include "query_executor.h"		/* qexec_cmp_tpl_vals_merge, qexec_merge_tuple_add_list */
+#include "query_executor.h"
 #include "storage_common.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* range-bounded replicas of the QEXEC_MERGE_* macros of qexec_merge_list (query_executor.c).
- * pre-defined vars: thread_p, list_idp, merge_infop, nvals, tplrec, bound_vals, upper,
+/* pre-defined vars: thread_p, list_idp, merge_infop, nvals, tplrec, bound_vals, upper,
  *                   {outer,inner}_{sid,scan,tplrec,indp,valp,key_spec} */
 
 #define PXMJ_ADD_MERGETUPLE(t1, t2)                                          \
@@ -146,11 +139,9 @@ namespace parallel_query
   {
     namespace
     {
-      /* Range-bounded replica of qexec_merge_list (query_executor.c). Deviations:
-       * - the private output list is opened by the coordinator and passed in
-       * - each side starts at its range start position instead of the list head
-       * - a fetched tuple with key > the range's upper boundary ends the merge (PXMJ_CHECK_UPPER)
-       * - polls the task manager for peer errors / interrupts */
+      /* deviations from qexec_merge_list: the output list comes from the coordinator; each side starts at its
+       * range start; key > the upper boundary ends the merge (PXMJ_CHECK_UPPER); peer errors and interrupts
+       * are polled */
       int
       execute_range_merge (cubthread::entry &thread_ref, task_manager &task_mgr, merge_manager *m, int range_index,
 			   QFILE_LIST_ID *list_idp)
@@ -252,7 +243,6 @@ namespace parallel_query
 	      }
 	  }
 
-	/* position the outer scan at the start of the range */
 	if (outer_start != NULL)
 	  {
 	    QFILE_TUPLE_POSITION start_pos = outer_start->m_pos;
@@ -284,7 +274,6 @@ namespace parallel_query
 	  }
 	PXMJ_CHECK_UPPER (outer);
 
-	/* position the inner scan at the start of the range */
 	if (inner_start != NULL)
 	  {
 	    QFILE_TUPLE_POSITION start_pos = inner_start->m_pos;
@@ -328,7 +317,6 @@ namespace parallel_query
 		goto exit_on_stop;
 	      }
 
-	    /* compare two tuple values, if they have not been compared yet */
 	    if (!already_compared)
 	      {
 		val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
@@ -362,7 +350,6 @@ namespace parallel_query
 		goto exit_on_error;
 	      }
 
-	    /* values of the outer and inner are equal, do a scan group processing */
 	    if (direction == S_FORWARD)
 	      {
 		cnt = 0;
@@ -386,17 +373,17 @@ namespace parallel_query
 			      {
 				goto exit_on_error;
 			      }
-			    break;	/* found the bottom of the group */
+			    break;
 			  }
 		      }
 		    else
 		      {
 			if (cnt >= group_cnt)
 			  {
-			    break;	/* reached the bottom of the group */
+			    break;
 			  }
-			/* PVALS too: this walk can cross a page, and crossing unfixes the page the previous peek
-			 * pointers point into -- that frame becomes reusable immediately. */
+			/* PVALS: the walk can cross a page, which unfixes the page the previous peek pointers
+			 * point into */
 			PXMJ_NEXT_SCAN_PVALS (inner, true);
 		      }
 		  }
@@ -406,7 +393,6 @@ namespace parallel_query
 
 		if (group_cnt == 0)
 		  {
-		    /* save the position of inner scan; it is the bottom of the group */
 		    qfile_save_current_scan_tuple_position (&inner_sid, &inner_tplpos);
 
 		    if (inner_scan == S_END)
@@ -441,7 +427,7 @@ namespace parallel_query
 			    else
 			      {
 				PXMJ_NEXT_SCAN_PVALS (inner, true);
-				val_cmp = DB_LT;	/* restore comparison */
+				val_cmp = DB_LT;
 			      }
 			  }
 
@@ -455,7 +441,6 @@ namespace parallel_query
 	      }
 	    else
 	      {
-		/* direction == S_BACKWARD: move backwards within a group */
 		cnt = group_cnt;
 		while (1)
 		  {
@@ -481,7 +466,6 @@ namespace parallel_query
 
 		if (val_cmp != DB_EQ)
 		  {
-		    /* jump to the previously saved scan position (the bottom of the group) */
 		    inner_scan = qfile_jump_scan_tuple_position (thread_p, &inner_sid, &inner_tplpos, &inner_tplrec, PEEK);
 		    if (inner_scan == S_END)
 		      {

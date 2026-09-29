@@ -91,7 +91,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_scan_trace_handler.hpp"
 #include "px_scan.hpp"
-#include "px_merge_join.hpp"	/* parallel_query::merge_join::try_parallel_merge */
+#include "px_merge_join.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
 #include <vector>
@@ -6533,8 +6533,7 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
 		      break;	/* reached the bottom of the group */
 		    }
 
-		  /* move the inner(right) scan to the next tuple, and re-position the tuple values: the
-		   * move can cross a page, which unfixes the page the current peek pointers point into. */
+		  /* PVALS: the move can cross a page, which unfixes the page the peek pointers point into */
 		  QEXEC_MERGE_NEXT_SCAN_PVALS (thread_p, inner, true);
 		}
 	    }			/* while (1) */
@@ -7421,7 +7420,6 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       bool px_merge_executed = false;
 
 #if SERVER_MODE && !WINDOWS
-      /* enabled by the parallel_merge_join system parameter (default off); falls through to the serial merge */
       int px_merge_parallelism = 0;
       if (parallel_query::merge_join::try_parallel_merge (thread_p, outer_xasl->list_id, inner_xasl->list_id,
 							  merge_infop, ls_flag, &list_id,
@@ -7478,10 +7476,8 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* make this the resultant list file. MOVE_DEPENDENT: the parallel merge gathers its ranges by
-   * splicing their page chains (qfile_connect_list), so list_id may carry a dependent_list_id chain
-   * whose ownership must transfer here. The serial paths produce no dependent chain, for which MOVE
-   * and PROHIBIT behave identically. */
+  /* MOVE_DEPENDENT: the parallel merge gathers ranges with qfile_connect_list, so list_id may carry a dependent
+   * chain whose ownership transfers here; serial paths have none, so MOVE == PROHIBIT for them */
   qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_MOVE_DEPENDENT);
   QFILE_FREE_AND_INIT_LIST_ID (list_id);
 

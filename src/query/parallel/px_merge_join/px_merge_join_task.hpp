@@ -17,7 +17,7 @@
  */
 
 /*
- * px_merge_join_task.hpp - per-range worker task of the parallel merge join (CBRD-27307)
+ * px_merge_join_task.hpp - per-range worker task of the parallel merge join
  */
 
 #ifndef _PX_MERGE_JOIN_TASK_HPP_

@@ -25,7 +25,7 @@
 #include "query_hash_join.h"
 
 #include "px_hash_join_spawn_manager.hpp"	/* parallel_query::hash_join::spawn_manager */
-#include "px_task_manager.hpp"		/* parallel_query::task_manager, task_execution_guard */
+#include "px_task_manager.hpp"
 #include "thread_entry.hpp"		/* cubthread::entry */
 #include "thread_entry_task.hpp"	/* cubthread::entry_task */
 
@@ -48,7 +48,6 @@ namespace parallel_query
     /* Forward Declarations */
     class base_task;
 
-    /* worker coordination lives in parallel_query; keep the short names usable here */
     using parallel_query::task_manager;
     using parallel_query::task_execution_guard;
 

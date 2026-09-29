@@ -17,34 +17,20 @@
  */
 
 /*
- * px_merge_join_partition.cpp - range partitioning of the two sorted inputs of a merge join (CBRD-27307)
- *
- * Both inputs are sorted ASC / NULLS FIRST on the join columns (make_mergelist_proc's orderby_list),
- * with tp_value_compare semantics — the same comparison qexec_cmp_tpl_vals_merge applies during the
- * serial merge, so the split below is consistent with both the sort and the merge.
- *
- * Both passes work on whole pages (page headers carry the tuple count and the last tuple's offset).
- * When the sector layout of the list file is available, the pages form an ordered directory and each
- * boundary is placed by BINARY SEARCH over it; otherwise the page chain is walked. A tuple-by-tuple scan
- * remains as the last fallback.
- *
- * TODO (next increments):
- * - fold boundary sampling into the positioning pass
- * - derive boundaries/start positions from the px_sort final merge for free
- * - outer joins (phase 2)
+ * px_merge_join_partition.cpp - range partitioning of the two sorted inputs of a merge join
  */
 
 #include "px_merge_join_partition.hpp"
 
 #include "dbtype.h"
-#include "error_manager.h"		/* er_clear */
+#include "error_manager.h"
 #include "file_manager.h"
 #include "list_file.h"
-#include "memory_alloc.h"		/* db_private_free_and_init */
+#include "memory_alloc.h"
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "query_manager.h"		/* qmgr_get_old_page, qmgr_free_old_page_and_init */
+#include "query_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -99,7 +85,7 @@ namespace parallel_query
 	  int len = QFILE_GET_TUPLE_VALUE_LENGTH (valhp);
 	  if (len == 0)
 	    {
-	      continue;	/* NULL */
+	      continue;
 	    }
 	  or_init (&buf, valhp + QFILE_TUPLE_VALUE_HEADER_SIZE, len);
 	  bool is_set = pr_is_set_type (TP_DOMAIN_TYPE (dom)) ? true : false;
@@ -143,7 +129,7 @@ namespace parallel_query
 
     namespace
     {
-      /* Dedupes a freshly sampled key against the last kept boundary (sorted input: only < or == occur). */
+      /* sorted input: a fresh sample is either == or > the last kept boundary */
       void
       push_boundary (partition_key &candidate, const key_spec &spec, std::vector<partition_key> &boundaries,
 		     bool &incomparable)
@@ -164,7 +150,6 @@ namespace parallel_query
 	boundaries.push_back (std::move (candidate));
       }
 
-      /* Advances the sample index past idx: repeated small-n targets must not re-sample the same tuple. */
       void
       next_target (INT64 n, int degree, INT64 idx, int &j, INT64 &target)
       {
@@ -176,8 +161,7 @@ namespace parallel_query
 	while (j < degree && target <= idx);
       }
 
-      /* The tuple starting at page + offset. An overflow tuple is the only tuple of its home page and its
-       * key may lie past the first fragment, so it is reassembled into ovf_rec (as qfile_retrieve_tuple does). */
+      /* an overflow tuple's key may lie past its first fragment: reassemble it like qfile_retrieve_tuple */
       int
       fetch_tuple_at (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, PAGE_PTR page, int offset,
 		      QFILE_TUPLE_RECORD &ovf_rec, QFILE_TUPLE &tpl)
@@ -196,7 +180,6 @@ namespace parallel_query
 	return NO_ERROR;
       }
 
-      /* Next page on the chain (overflow continuation pages hang off their home page, not off this chain). */
       void
       release_page (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, PAGE_PTR &page, VPID &vpid)
       {
@@ -211,8 +194,7 @@ namespace parallel_query
 	qmgr_free_old_page_and_init (thread_p, page, list_id->tfile_vfid);
       }
 
-      /* What qfile_save_current_scan_tuple_position records for a forward scan standing on tuple tplno of
-       * the page (status stays S_OPENED while scanning; tpl is recomputed by the jump). */
+      /* mirrors qfile_save_current_scan_tuple_position for a forward scan on tplno; tpl is recomputed by the jump */
       void
       set_start (partition_start &start, const VPID &vpid, int offset, int tplno)
       {
@@ -227,23 +209,20 @@ namespace parallel_query
 
       constexpr size_t MIN_PAGES_FOR_SECTOR = 32;
 
-      /* pre-pass cost, reported under er_log_debug */
       struct prepass_stats
       {
 	int fixes = 0;
 	int decodes = 0;
       };
 
-      /* The list's data pages in allocation order, read from the sector bitmaps: membuf pages first, then
-       * every dependent file's sectors in table order with each sector's bits ascending. That is the order
-       * qfile_allocate_new_page linked them in, so page last keys are non-decreasing along it. */
+      /* data pages in allocation order (membuf, then each dependent file's sectors, bits ascending) — the order
+       * qfile_allocate_new_page linked them, so page last keys are non-decreasing */
       struct page_dir
       {
 	std::vector<VPID> m_vpids;
 	QMGR_TEMP_FILE *m_membuf_tfile = NULL;
       };
 
-      /* false = no usable directory (collect failed, page count disagrees, too few pages): use the walk. */
       bool
       build_page_dir (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, page_dir &dir)
       {
@@ -314,7 +293,6 @@ namespace parallel_query
 	PAGE_KEY_ERROR
       };
 
-      /* Copies the last tuple's key of directory page idx into key; the page is released before returning. */
       page_key_result
       read_page_last_key (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir, size_t idx,
 			  const key_spec &spec, QFILE_TUPLE_RECORD &ovf_rec, DB_VALUE *key, prepass_stats &st)
@@ -341,7 +319,7 @@ namespace parallel_query
 	return (error == NO_ERROR) ? PAGE_KEY_OK : PAGE_KEY_ERROR;
       }
 
-      /* First data page in [idx, hi); its last key lands in key. found == hi means there is none. */
+      /* found == hi: no data page in [idx, hi) */
       int
       first_data_page (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir, size_t idx, size_t hi,
 		       const key_spec &spec, QFILE_TUPLE_RECORD &ovf_rec, DB_VALUE *key, size_t &found,
@@ -362,7 +340,7 @@ namespace parallel_query
 	return NO_ERROR;
       }
 
-      /* Last data page before idx; found == the directory size means there is none. */
+      /* found == dir size: none */
       int
       prev_data_page (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir, size_t idx,
 		      const key_spec &spec, QFILE_TUPLE_RECORD &ovf_rec, DB_VALUE *key, size_t &found,
@@ -385,8 +363,7 @@ namespace parallel_query
 	return NO_ERROR;
       }
 
-      /* Boundary keys at page fractions j / degree rather than tuple fractions: pages hold a near constant
-       * number of tuples, and an uneven split only costs balance, never correctness. */
+      /* page fractions, not tuple fractions: an uneven split costs balance, never correctness */
       int
       collect_boundaries_by_sector (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir,
 				    const key_spec &spec, int degree, std::vector<partition_key> &boundaries,
@@ -429,8 +406,6 @@ namespace parallel_query
 	return error;
       }
 
-      /* Scans one page for the first tuple past boundaries[bi], exactly as the page walk does on the page
-       * it lands on. One tuple can cross several boundaries at once. */
       int
       scan_landing_page (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir, size_t idx,
 			 const key_spec &spec, const std::vector<partition_key> &boundaries,
@@ -461,6 +436,7 @@ namespace parallel_query
 	      {
 		break;
 	      }
+	    /* one tuple can cross several boundaries at once */
 	    while (bi < boundaries.size ())
 	      {
 		DB_VALUE_COMPARE_RESULT c = cmp_keys (key.data (), boundaries[bi].m_vals.data (), spec.cnt);
@@ -471,7 +447,7 @@ namespace parallel_query
 		  }
 		if (c != DB_GT)
 		  {
-		    break;	/* still inside range bi */
+		    break;
 		  }
 		set_start (starts[bi], dir.m_vpids[idx], offset, tplno);
 		bi++;
@@ -484,10 +460,8 @@ namespace parallel_query
 	return error;
       }
 
-      /* Same result as find_starts_by_page, but each boundary is located by binary search over the page
-       * directory: log2 (P) page fixes instead of one per page. Boundaries are sorted, so the search for
-       * the next one starts past the page the previous one landed on.
-       * handled = false asks the caller to redo this side with the page walk. */
+      /* binary search over the page directory: log2(P) fixes instead of one per page.
+       * handled == false asks the caller to redo this side with the page walk */
       int
       find_starts_by_sector (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir,
 			     const key_spec &spec, const std::vector<partition_key> &boundaries,
@@ -552,11 +526,10 @@ namespace parallel_query
 	      }
 	    if (land >= npages)
 	      {
-		break;		/* list ends inside range bi: it and every later range stay exhausted */
+		break;		/* list ends inside range bi: later ranges stay exhausted */
 	      }
 
-	    /* guard: the page before the landing page must not sort after it, or the order the search
-	     * assumed does not hold and this side has to be redone by the walk */
+	    /* the page before the landing page sorting after it means the directory order is not the key order */
 	    size_t prev = npages;
 	    error = prev_data_page (thread_p, list_id, dir, land, spec, ovf_rec, key.data (), prev, st);
 	    if (error == NO_ERROR && prev < npages)
@@ -582,9 +555,7 @@ namespace parallel_query
 	return error;
       }
 
-      /* Samples degree - 1 boundary keys at tuple indices j * n / degree of one list.
-       * Equal consecutive samples are dropped (heavy skew: fewer ranges, still correct).
-       * Pages are skipped by their header tuple count; only the pages holding a sample are entered. */
+      /* equal consecutive samples are dropped: fewer ranges under skew, still correct */
       int
       collect_boundaries_by_page (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const key_spec &spec, int degree,
 				  std::vector<partition_key> &boundaries, bool &incomparable, bool &handled,
@@ -666,7 +637,6 @@ namespace parallel_query
 	return error;
       }
 
-      /* Tuple-by-tuple variant of collect_boundaries_by_page; same samples, same dedupe. */
       int
       collect_boundaries_by_scan (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const key_spec &spec, int degree,
 				  std::vector<partition_key> &boundaries, bool &incomparable)
@@ -747,10 +717,6 @@ namespace parallel_query
 	return collect_boundaries_by_scan (thread_p, list_id, spec, degree, boundaries, incomparable);
       }
 
-      /* One key-only pass: for every boundary i, records the position of the first tuple with
-       * key > boundary[i] (ranges left exhausted when the list ends first).
-       * A page whose last key is <= the current boundary lies entirely inside that range (sorted input)
-       * and is skipped whole; only pages containing a crossing are read tuple by tuple. */
       int
       find_starts_by_page (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const key_spec &spec,
 			   const std::vector<partition_key> &boundaries, std::vector<partition_start> &starts,
@@ -830,7 +796,7 @@ namespace parallel_query
 		      }
 		    if (c != DB_GT)
 		      {
-			break;	/* still inside range bi */
+			break;
 		      }
 		    set_start (starts[bi], vpid, offset, tplno);
 		    bi++;
@@ -849,7 +815,6 @@ namespace parallel_query
 	return error;
       }
 
-      /* Tuple-by-tuple variant of find_starts_by_page; compares every key with the current boundary. */
       int
       find_starts_by_scan (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const key_spec &spec,
 			   const std::vector<partition_key> &boundaries, std::vector<partition_start> &starts,
@@ -896,7 +861,7 @@ namespace parallel_query
 		    break;
 		  }
 		qfile_save_current_scan_tuple_position (&scan, &starts[bi].m_pos);
-		starts[bi].m_pos.tpl = NULL;	/* jump recomputes it from the fetched page */
+		starts[bi].m_pos.tpl = NULL;
 		starts[bi].m_exhausted = false;
 		bi++;
 	      }
@@ -918,8 +883,7 @@ namespace parallel_query
 	  }
       }
 
-      /* page_skip = false forces the exhaustive scan: page skipping only compares each page's last key,
-       * so it cannot screen a value-level DB_UNK (see can_skip_pages). */
+      /* page skipping compares only page last keys, so it cannot screen a value-level DB_UNK */
       int
       find_starts (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir *dir, const key_spec &spec,
 		   const std::vector<partition_key> &boundaries, std::vector<partition_start> &starts,
@@ -964,10 +928,8 @@ namespace parallel_query
 	return find_starts_by_scan (thread_p, list_id, spec, boundaries, starts, incomparable);
       }
 
-      /* Page skipping is exact for sorted keys but compares far fewer tuple pairs than the scan, so a
-       * DB_UNK that depends on the VALUE pair (a collection holding NULL, a per-value coercion failure
-       * between differing key types, JSON) could slip through and only surface inside a worker.
-       * Type-level DB_UNK (every pair incomparable) is still caught by the very first page peek. */
+      /* a value-level DB_UNK (collection holding NULL, per-value coercion failure, JSON) would only surface
+       * inside a worker; type-level DB_UNK is caught by the first page peek */
       bool
       can_skip_pages (const key_spec &outer_spec, const key_spec &inner_spec)
       {
@@ -1029,7 +991,7 @@ namespace parallel_query
     {
       if (merge_info.join_type != JOIN_INNER)
 	{
-	  return false;		/* phase 1: inner joins only */
+	  return false;
 	}
       if (merge_info.single_fetch != QPROC_NO_SINGLE_INNER)
 	{

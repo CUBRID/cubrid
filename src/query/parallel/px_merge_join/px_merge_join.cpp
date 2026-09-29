@@ -17,24 +17,21 @@
  */
 
 /*
- * px_merge_join.cpp - parallel range-partitioned merge of a merge join's sorted inputs (CBRD-27307)
- *
- * Coordinator: gate -> compute range partitions -> one merge_task per range (each merges its key
- * range into a private output list) -> gather the outputs in range order into the result list.
+ * px_merge_join.cpp - parallel range-partitioned merge of a merge join's sorted inputs
  */
 
 #include "px_merge_join.hpp"
 
 #include "px_merge_join_partition.hpp"
 #include "px_merge_join_task.hpp"
-#include "px_parallel.hpp"		/* parallel_query::compute_parallel_degree */
+#include "px_parallel.hpp"
 #include "px_worker_manager.hpp"
 
 #include "error_manager.h"
 #include "list_file.h"
 #include "memory_alloc.h"
-#include "system_parameter.h"	/* prm_get_bool_value, PRM_ID_PARALLEL_MERGE_JOIN */
-#include "thread_entry.hpp"		/* thread_get_main_thread */
+#include "system_parameter.h"
+#include "thread_entry.hpp"
 
 #include <vector>
 
@@ -104,7 +101,7 @@ namespace parallel_query
 	      return er_errid ();
 	    }
 	  er_clear ();
-	  return NO_ERROR;	/* no workers available: serial merge */
+	  return NO_ERROR;
 	}
       degree = px_worker_manager->get_reserved_workers ();
 
@@ -132,13 +129,11 @@ namespace parallel_query
 	  || make_key_spec (inner_list_id, merge_infop->ls_inner_column, merge_infop->ls_column_cnt,
 			    manager.m_inner_key_spec) != NO_ERROR)
 	{
-	  /* unreachable: compute_partitions already validated the same specs */
 	  px_worker_manager->release_workers ();
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_GENERIC_ERROR;
 	}
 
-      /* result type list: same construction as the serial qexec_merge_list */
       QFILE_TUPLE_VALUE_TYPE_LIST type_list;
       type_list.type_cnt = merge_infop->ls_pos_cnt;
       type_list.domp = (TP_DOMAIN **) malloc (type_list.type_cnt * sizeof (TP_DOMAIN *));
@@ -159,9 +154,8 @@ namespace parallel_query
       manager.m_outputs.assign (range_cnt, NULL);
       for (int i = 0; i < range_cnt; i++)
 	{
-	  /* range 0's list becomes the gathered result (base-reuse below), so it must carry the caller's
-	   * ls_flag (e.g. QFILE_FLAG_RESULT_FILE). All outputs are file-backed: the gather splices their
-	   * page chains by VPID (qfile_connect_list), which membuf pages cannot take part in. */
+	  /* range 0's list becomes the gathered result, so it carries the caller's ls_flag. All outputs are
+	   * file-backed: qfile_connect_list splices page chains, which membuf pages cannot join */
 	  int out_flag = ((i == 0) ? ls_flag : QFILE_FLAG_ALL) | QFILE_NOT_USE_MEMBUF;
 	  manager.m_outputs[i] = qfile_open_list (thread_p, &type_list, NULL, outer_list_id->query_id,
 						  out_flag, NULL);
@@ -197,9 +191,6 @@ namespace parallel_query
 	  }
       }
 
-      /* gather: range 0's list is the base; ranges 1..n-1 are spliced onto its page chain in order by
-       * qfile_connect_list (next/prev VPID rewiring, no page copy). A connected list is then owned by
-       * merged's dependent chain, so it is dropped from m_outputs. Tuple order identical to serial. */
       free_and_init (type_list.domp);
       QFILE_LIST_ID *merged = manager.m_outputs[0];
       manager.m_outputs[0] = NULL;	/* ownership transferred; destroy_lists must skip it */
