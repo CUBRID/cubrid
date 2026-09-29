@@ -1351,42 +1351,6 @@ qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CONSTRAINT * c
  *   return: void
  *   parser(in): parser global context info for reentrancy
  *   query(in/out): query node has GROUP BY
- *
- * Note:
- *   When every column of a table's primary key, or of one of its NOT NULL unique keys, is
- *   listed in the GROUP BY clause, the other GROUP BY columns of that same table cannot vary
- *   inside a group, so they never split a group. Removing them shrinks the grouping key that
- *   pt_to_buildlist_proc () builds later on, which makes both the sort key and the hash key
- *   narrower. Their values are still produced for the output, because pt_to_aggregate ()
- *   appends every select list name that is missing from the intermediate output list.
- *
- *   e.g. create table t (pk int primary key, name varchar (100), amount int);
- *
- *        select pk, name, sum (amount) from t group by pk, name;
- *          -> select pk, name, sum (amount) from t group by pk;
- *
- *        select pk, name, sum (amount) from t group by name, pk;
- *          -> select pk, name, sum (amount) from t group by pk;
- *
- *   When more than one key of the table is covered, the one with the fewest columns wins,
- *   because everything outside the chosen key is removed. A key column written twice keeps
- *   only its first occurrence.
- *
- *   When every table of the FROM clause hands over such a key, the grouping key picks out a single
- *   row of the join, so every group holds exactly one row. With no aggregate to fold, the clause
- *   does nothing but sort or hash the rows and is removed altogether.
- *
- *        select pk, name from t group by pk, name;
- *          -> select pk, name from t;
- *
- *   pt_has_aggregate () reports a GROUP BY as aggregation by itself, and both pt_is_single_tuple ()
- *   and pt_to_buildlist_proc () build the grouping machinery on that flag, so PT_SELECT_INFO_HAS_AGG
- *   is cleared together with the clause.
- *
- *   A column goes wherever it is written, so the order in which a sorted GROUP BY hands out its
- *   groups may change, and once the clause is gone the rows come out in no order at all. This must
- *   therefore run before qo_reduce_order_by (), which drops an ORDER BY only when the GROUP BY that
- *   will actually run still covers it.
  */
 static void
 qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
@@ -1413,6 +1377,16 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
   remove_all = (query->info.query.q.select.from != NULL && query->info.query.q.select.having == NULL
 		&& query->info.query.q.select.connect_by == NULL
 		&& (query->info.query.limit == NULL || query->info.query.order_by != NULL));
+
+
+  for (group = query->info.query.q.select.group_by; remove_all && group != NULL; group = group->next)
+    {
+      col = group->info.sort_spec.expr;
+      if (col == NULL || col->node_type != PT_NAME)
+	{
+	  remove_all = false;
+	}
+    }
 
   for (spec = query->info.query.q.select.from; spec != NULL; spec = spec->next)
     {
