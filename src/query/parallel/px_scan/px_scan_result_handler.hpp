@@ -24,6 +24,7 @@
 #define _PX_SCAN_RESULT_HANDLER_HPP_
 
 #include "query_list.h"
+#include "qfile_tuple_layout.h"	/* QFILE_TUPLE_WALK */
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
@@ -87,14 +88,12 @@ namespace parallel_scan
       mergeable_list_variables()
 	: orig_xasl (nullptr),
 	  active_results (0),
-	  is_list_id_domain_resolved (false),
 	  trace_handler_p (nullptr) {}
       ~mergeable_list_variables() = default;
       std::vector<QFILE_LIST_ID *> writer_results;
       std::mutex writer_results_mutex;
       XASL_NODE *orig_xasl;
       int active_results;
-      bool is_list_id_domain_resolved;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
       trace_handler *trace_handler_p;
