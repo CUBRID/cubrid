@@ -279,7 +279,7 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
       encrypt_salt_generate (salt_in, sizeof (salt_in));
       salt = salt_in;
     }
-  else if (IS_ENCODED_SHA2_512 (pass))
+  else if (IS_ENCODED_SHA2_512 (pass) && strlen (pass + 1) == ENCRYPT_SHA2_512_HEX_SIZE)
     {
       strcpy (sha512, Au_user_password_sha2_512);
     }
@@ -557,6 +557,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 
       if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value) && db_get_string (&nm_value) != NULL)
 	{
+#define CUBRID_ENABLE_LEGACY_PASSWORD_TEST
 #if defined(CUBRID_ENABLE_LEGACY_PASSWORD_TEST)
 #ifdef NDEBUG
 #error "Notice: CUBRID_ENABLE_LEGACY_PASSWORD_TEST is enabled."
