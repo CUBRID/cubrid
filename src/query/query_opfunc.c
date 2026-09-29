@@ -2476,7 +2476,7 @@ qdata_assert_precast_planned (OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * prec
 	  const DB_TYPE sibling =
 	    type == DB_TYPE_CHAR ? DB_TYPE_VARCHAR : type == DB_TYPE_VARCHAR ? DB_TYPE_CHAR : type;
 	  same = sibling != type && precast->conv[i] != NULL && develop.conv[i] != NULL
-	    && precast->conv[i] == domain_lookup_converter_for_context (sibling, planned, DOMAIN_CTX_ASSIGN);
+	    && precast->conv[i] == tp_value_find_converter (sibling, planned, DOMAIN_CONVERT_ASSIGN);
 	}
       if (!same)
 	{
@@ -2560,8 +2560,8 @@ qdata_precast_arith_dbval (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, const 
 	  continue;
 	}
       used |= 1 << i;
-      const TP_DOMAIN_STATUS status = domain_run_converter (precast->conv[i], precast->operand_domain[i], operand[i],
-							    &converted[i]);
+      const TP_DOMAIN_STATUS status = tp_value_convert (precast->conv[i], precast->operand_domain[i], operand[i],
+							&converted[i]);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))

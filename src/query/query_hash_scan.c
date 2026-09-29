@@ -526,7 +526,7 @@ enum hash_scan_key_rule
 typedef struct hash_scan_key_entry HASH_SCAN_KEY_ENTRY;
 struct hash_scan_key_entry
 {
-  DOMAIN_CONVERTER conv;	/* CONVERT: the cell tp_value_coerce runs (domain_lookup_coerce_converter) */
+  TP_VALUE_CONVERTER conv;	/* CONVERT: the converter tp_value_coerce runs (DOMAIN_CONVERT_IMPLICIT) */
   const TP_DOMAIN *target;	/* the probe key's domain */
   DB_TYPE source;		/* COPY, CONVERT: the type of the key's values */
   unsigned char rule;		/* hash_scan_key_rule */
@@ -632,7 +632,7 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
       else
 	{
 	  key->rule = HASH_SCAN_KEY_CONVERT;
-	  key->conv = domain_lookup_coerce_converter (key->source, key->target);
+	  key->conv = tp_value_find_converter (key->source, key->target, DOMAIN_CONVERT_IMPLICIT);
 	}
     }
   return NO_ERROR;
@@ -709,7 +709,7 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 		}
 	      continue;
 	    case HASH_SCAN_KEY_CONVERT:
-	      status = domain_run_converter (entry->conv, entry->target, value, new_key->values[i]);
+	      status = tp_value_convert (entry->conv, entry->target, value, new_key->values[i]);
 	      break;
 	    case HASH_SCAN_KEY_COERCE:
 	      status = tp_value_coerce (value, new_key->values[i], entry->target);

@@ -299,6 +299,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_domain_convert.cpp
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_print.c
   ${OBJECT_DIR}/object_printer.cpp

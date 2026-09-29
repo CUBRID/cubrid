@@ -42,13 +42,12 @@ static int domain_character_result (int opcode, const DOMAIN_OPERAND * operands,
 				    const TP_DOMAIN * compiled, RESOLVED_DOMAIN * result);
 static const TP_DOMAIN *domain_variable_string_value (const TP_DOMAIN * domain);
 
-/* CAST and pre-cast consumers supply ASSIGN explicitly. */
-DOMAIN_CONVERTER
-domain_lookup_converter_for_context (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CTX context)
+/* The conversion a context's consumer makes. CAST and pre-cast consumers supply ASSIGN explicitly. */
+DOMAIN_CONVERT_MODE
+domain_convert_mode (DOMAIN_CTX context)
 {
-  DOMAIN_CONVERT_MODE mode = context == DOMAIN_CTX_ASSIGN ? DOMAIN_CONVERT_ASSIGN
+  return context == DOMAIN_CTX_ASSIGN ? DOMAIN_CONVERT_ASSIGN
     : context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_CONVERT_COMPARE : DOMAIN_CONVERT_OPERAND;
-  return domain_lookup_converter (source, target, mode);
 }
 
 static DB_TYPE
@@ -85,7 +84,7 @@ domain_set_operand (RESOLVED_DOMAIN * result, int i, const DOMAIN_OPERAND * oper
       return;
     }
   result->operand_domain[i] = tp_domain_resolve_default (target);
-  result->conv[i] = domain_lookup_converter (domain_operand_type (operand), result->operand_domain[i], mode);
+  result->conv[i] = tp_value_find_converter (domain_operand_type (operand), result->operand_domain[i], mode);
 }
 
 /* Result of two numbers after the pre-cast: the typed dispatch of qdata_{add,subtract,multiply,divide}_*_to_dbval. */
@@ -690,7 +689,7 @@ domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * resul
     {
       result->operand_domain[i] = targets[i];
       result->conv[i] = targets[i] == domain_operand_domain (&operands[i]) ? NULL
-	: domain_lookup_converter (domain_operand_type (&operands[i]), targets[i], DOMAIN_CONVERT_ASSIGN);
+	: tp_value_find_converter (domain_operand_type (&operands[i]), targets[i], DOMAIN_CONVERT_ASSIGN);
     }
   result->domain = target1 != domain_operand_domain (&operands[0]) ? target1 : target2;
   return NO_ERROR;
@@ -712,7 +711,7 @@ domain_resolve_common_value (const DOMAIN_OPERAND * operands, int n_operands, RE
   for (int i = 0; i < n_operands && i < 3; i++)
     {
       result->operand_domain[i] = common;
-      result->conv[i] = domain_lookup_converter (domain_operand_type (&operands[i]), common, DOMAIN_CONVERT_OPERAND);
+      result->conv[i] = tp_value_find_converter (domain_operand_type (&operands[i]), common, DOMAIN_CONVERT_OPERAND);
     }
   /* the value cast to the common domain reads as a floating string's maximum precision */
   result->domain = domain_variable_string_value (common);
@@ -913,11 +912,11 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
 	  || (TP_IS_CHAR_TYPE (val_type) && TP_DOMAIN_TYPE (accumulator) == DB_TYPE_DOUBLE
 	      && (function == PT_MEDIAN || function == PT_PERCENTILE_CONT || function == PT_PERCENTILE_DISC))))
     {
-      result->conv[0] = domain_lookup_converter (TP_DOMAIN_TYPE (operand->domain), accumulator, DOMAIN_CONVERT_ASSIGN);
+      result->conv[0] = tp_value_find_converter (TP_DOMAIN_TYPE (operand->domain), accumulator, DOMAIN_CONVERT_ASSIGN);
     }
   else
     {
-      result->conv[0] = domain_lookup_converter (val_type, accumulator, DOMAIN_CONVERT_OPERAND);
+      result->conv[0] = tp_value_find_converter (val_type, accumulator, DOMAIN_CONVERT_OPERAND);
     }
   return NO_ERROR;
 }
@@ -989,7 +988,7 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
     }
   result->domain = argument;
   result->operand_domain[0] = argument;
-  result->conv[0] = domain_lookup_converter (val_type, argument, DOMAIN_CONVERT_OPERAND);
+  result->conv[0] = tp_value_find_converter (val_type, argument, DOMAIN_CONVERT_OPERAND);
   return NO_ERROR;
 }
 
@@ -1268,15 +1267,15 @@ domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
 
 /* The converter a comparison runs on a side: the ASSIGN cell (today's tp_value_coerce on the cells a
  * comparison reaches), failing what implicit coercion refuses. */
-static DOMAIN_CONVERTER
+static TP_VALUE_CONVERTER
 domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target)
 {
   if (domain_implicit_coercion_refused (source, TP_DOMAIN_TYPE (target)))
     {
       /* the incompatible cell */
-      return domain_lookup_converter (source, NULL, DOMAIN_CONVERT_ASSIGN);
+      return tp_value_find_converter (source, NULL, DOMAIN_CONVERT_ASSIGN);
     }
-  return domain_lookup_converter (source, target, DOMAIN_CONVERT_ASSIGN);
+  return tp_value_find_converter (source, target, DOMAIN_CONVERT_ASSIGN);
 }
 
 bool
@@ -1303,17 +1302,6 @@ domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate)
       key->codeset = TP_DOMAIN_CODESET (collate);
       key->collation = TP_DOMAIN_COLLATION (collate);
     }
-}
-
-TP_DOMAIN_STATUS
-domain_run_converter (DOMAIN_CONVERTER converter, const TP_DOMAIN * target, const DB_VALUE * source, DB_VALUE * result)
-{
-  db_value_domain_init (result, TP_DOMAIN_TYPE (target), target->precision, target->scale);
-  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (target)))
-    {
-      db_string_put_cs_and_collation (result, TP_DOMAIN_CODESET (target), TP_DOMAIN_COLLATION (target));
-    }
-  return converter (source, result, target);
 }
 
 /* develop's outcome of a conversion that failed: the rank of the two sides' types at that point, and -181 where the
@@ -1363,7 +1351,7 @@ domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value
 	  continue;
 	}
       used |= 1 << s;
-      if (domain_run_converter (compare->conv[s], compare->target[s], side[s], &converted[s]) != DOMAIN_COMPATIBLE)
+      if (tp_value_convert (compare->conv[s], compare->target[s], side[s], &converted[s]) != DOMAIN_COMPATIBLE)
 	{
 	  result = domain_compare_conversion_failed (compare, k == 1, can_compare);
 	  goto end;
@@ -1754,7 +1742,7 @@ domain_copy_one (const TP_DOMAIN * domain)
   return tp_domain_copy (&one, false);
 }
 
-DOMAIN_CONVERTER
+TP_VALUE_CONVERTER
 domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column)
 {
   const DB_TYPE target = TP_DOMAIN_TYPE (column);
@@ -1763,11 +1751,11 @@ domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column)
     {
       return NULL;
     }
-  return domain_lookup_converter_for_context (source, column, DOMAIN_CTX_KEY_ELEM);
+  return tp_value_find_converter (source, column, DOMAIN_CONVERT_COMPARE);
 }
 
 DOMAIN_KEY_RULE
-domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey, DOMAIN_CONVERTER * strict_conv)
+domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey, TP_VALUE_CONVERTER * strict_conv)
 {
   *strict_conv = NULL;
   if (!midxkey)
@@ -2570,7 +2558,7 @@ domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands,
       assert (consumer_domain != NULL);
       result->domain = result->operand_domain[0] = consumer_domain;
       result->conv[0] =
-	domain_lookup_converter_for_context (domain_operand_type (&operands[0]), consumer_domain, context);
+	tp_value_find_converter (domain_operand_type (&operands[0]), consumer_domain, domain_convert_mode (context));
       return NO_ERROR;
 
     case DOMAIN_CTX_LIST_COLUMN:
@@ -2595,14 +2583,13 @@ domain_classify_interpolation (const DB_VALUE * value)
 for (DB_TYPE candidate:candidates)
     {
       const TP_DOMAIN *target = tp_domain_resolve_default (candidate);
-      DOMAIN_CONVERTER converter = domain_lookup_converter (type, target, DOMAIN_CONVERT_ASSIGN);
+      TP_VALUE_CONVERTER converter = tp_value_find_converter (type, target, DOMAIN_CONVERT_ASSIGN);
       if (converter == NULL)
 	{
 	  return candidate;
 	}
       DB_VALUE converted;
-      db_value_domain_init (&converted, candidate, target->precision, target->scale);
-      TP_DOMAIN_STATUS status = converter (value, &converted, target);
+      TP_DOMAIN_STATUS status = tp_value_convert (converter, target, value, &converted);
       pr_clear_value (&converted);
       if (status == DOMAIN_COMPATIBLE)
 	{
@@ -3152,7 +3139,7 @@ domain_resolve_branch_merge (const DOMAIN_OPERAND * operands, int n_operands, RE
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   result->domain = domain_as_value_domain (domain);
-  result->conv[0] = domain_lookup_converter_for_context (DB_TYPE_VARCHAR, result->domain, DOMAIN_CTX_ASSIGN);
-  result->conv[1] = domain_lookup_converter_for_context (DB_TYPE_CHAR, result->domain, DOMAIN_CTX_ASSIGN);
+  result->conv[0] = tp_value_find_converter (DB_TYPE_VARCHAR, result->domain, DOMAIN_CONVERT_ASSIGN);
+  result->conv[1] = tp_value_find_converter (DB_TYPE_CHAR, result->domain, DOMAIN_CONVERT_ASSIGN);
   return NO_ERROR;
 }

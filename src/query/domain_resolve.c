@@ -1268,8 +1268,7 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
 	  continue;
 	}
       const int saved_error = er_errid ();
-      if (domain_run_converter (compare->conv[side], compare->target[side], constant[side], converted) ==
-	  DOMAIN_COMPATIBLE)
+      if (tp_value_convert (compare->conv[side], compare->target[side], constant[side], converted) == DOMAIN_COMPATIBLE)
 	{
 	  compare->value[side] = site->value[side];
 	  compare->conv[side] = NULL;
@@ -1441,8 +1440,7 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolv
 	{
 	  DB_VALUE converted;
 	  const int saved_error = er_errid ();
-	  if (domain_run_converter (compare->conv[1], compare->target[1], &out->value[i], &converted) ==
-	      DOMAIN_COMPATIBLE)
+	  if (tp_value_convert (compare->conv[1], compare->target[1], &out->value[i], &converted) == DOMAIN_COMPATIBLE)
 	    {
 	      pr_clear_value (&out->value[i]);
 	      out->value[i] = converted;
@@ -1907,11 +1905,11 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bo
       decision->domain = value_domain;
       return NO_ERROR;
     }
-  DOMAIN_CONVERTER strict_conv = NULL;
+  TP_VALUE_CONVERTER strict_conv = NULL;
   const DOMAIN_KEY_RULE rule = domain_key_rule (value_domain, column, true, &strict_conv);
   if (rule == DOMAIN_KEY_STRICT)
     {
-      if (domain_run_converter (strict_conv, column, value, &decision->value) == DOMAIN_COMPATIBLE)
+      if (tp_value_convert (strict_conv, column, value, &decision->value) == DOMAIN_COMPATIBLE)
 	{
 #if !defined (NDEBUG)
 	  qexec_check_key_strict (value, column, &decision->value);
@@ -3170,7 +3168,7 @@ qexec_enter_domain_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
  */
 const DB_VALUE *
 qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_HELD_VALUE * entry,
-			  DOMAIN_CONVERTER conv, const TP_DOMAIN * target, const DB_VALUE * value)
+			  TP_VALUE_CONVERTER conv, const TP_DOMAIN * target, const DB_VALUE * value)
 {
   const unsigned long long epoch = resolved.scope_epochs[entry->scope];
   if (epoch == 0 || resolved.owner != thread_p)
@@ -3184,7 +3182,7 @@ qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resol
   entry->target = target;
   /* a failure is the row's to report, in develop's order: this attempt leaves no error */
   er_stack_push ();
-  const bool failed = domain_run_converter (conv, target, value, &entry->value) != DOMAIN_COMPATIBLE;
+  const bool failed = tp_value_convert (conv, target, value, &entry->value) != DOMAIN_COMPATIBLE;
   er_stack_pop ();
   if (failed)
     {

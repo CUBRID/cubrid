@@ -2122,7 +2122,7 @@ scan_key_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const domain_pla
   const TP_DOMAIN *column = elem->index_elem;
   unsigned char rule = elem->rule;
   const TP_DOMAIN *keep = elem->keep_elem;
-  DOMAIN_CONVERTER strict_conv = elem->strict_conv;
+  TP_VALUE_CONVERTER strict_conv = elem->strict_conv;
   *kept = false;
   if (rule == DOMAIN_KEY_CONSTANT || rule == DOMAIN_KEY_DECIDED)
     {
@@ -2172,7 +2172,7 @@ scan_key_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const domain_pla
 	assert (rule == DOMAIN_KEY_STRICT && strict_conv != NULL);
 	DB_VALUE *converted = &isidp->key_state->converted[column_index];
 	pr_clear_value (converted);
-	if (domain_run_converter (strict_conv, column, *value, converted) == DOMAIN_COMPATIBLE)
+	if (tp_value_convert (strict_conv, column, *value, converted) == DOMAIN_COMPATIBLE)
 	  {
 #if !defined (NDEBUG)
 	    scan_check_key_strict (*value, column, converted);

@@ -24,6 +24,7 @@
 #endif
 
 #include "object_domain.h"	/* TP_DOMAIN_STATUS and shared value types, no client API. */
+#include "object_domain_convert.h"
 #include "thread_compat.hpp"
 #include <cstddef>
 
@@ -36,7 +37,7 @@ enum DOMAIN_CTX
 struct RESOLVED_DOMAIN
 {
   const TP_DOMAIN *domain;
-  DOMAIN_CONVERTER conv[3];
+  TP_VALUE_CONVERTER conv[3];
   const TP_DOMAIN *operand_domain[3];
 };
 
@@ -49,8 +50,8 @@ struct DOMAIN_OPERAND
   bool is_gate_slot;
 };
 
-/* The conversion table's cell for a resolver context (its mode): the context adapter of domain_lookup_converter */
-DOMAIN_CONVERTER domain_lookup_converter_for_context (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CTX context);
+/* The conversion table's cell for a resolver context (its mode): the context adapter of tp_value_find_converter */
+DOMAIN_CONVERT_MODE domain_convert_mode (DOMAIN_CTX context);
 
 /*
  * The single home of the server G-row grid: the value-type rules that execution applies today
@@ -165,7 +166,7 @@ struct DOMAIN_COMPARE
   const DOMAIN_COMPARE_LEAF *leaves;	/* the kernel's leaves by REL_OP, a comparison term's row by its operator
 					 * (domain_compare_leaves); NULL: eval_value_rel_cmp */
   const struct pr_type *cmp;	/* cmpval of the compared values */
-  DOMAIN_CONVERTER conv[2];	/* side i's converter at the row, NULL none; develop's order: first, then the other */
+  TP_VALUE_CONVERTER conv[2];	/* side i's converter at the row, NULL none; develop's order: first, then the other */
   const TP_DOMAIN *target[2];	/* the domain side i is converted into */
   int value[2];			/* resolved.vals index of a constant side the gate converted once; -1: the row's value;
 				 * -2: the gate's own value of a constant's element, the row's operand */
@@ -217,8 +218,6 @@ void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const 
 
 /* A planned converter on a value, with the target initialized as tp_value_cast_internal initializes it before its
  * cell (the domain, and a string target's codeset and collation). */
-TP_DOMAIN_STATUS domain_run_converter (DOMAIN_CONVERTER converter, const TP_DOMAIN * target, const DB_VALUE * source,
-				       DB_VALUE * result);
 
 /*
  * domain_compare_values () - a comparison decided before any row, on the two values it compares (the
@@ -349,12 +348,12 @@ TP_DOMAIN *domain_copy_one (const TP_DOMAIN * domain);
 
 /* The cell develop's tp_value_coerce_strict runs to bring a value of a type into an index column's domain; NULL where
  * it refuses the column's type (only a number or a date and time is a strict target). */
-DOMAIN_CONVERTER domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column);
+TP_VALUE_CONVERTER domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column);
 
 /* The rule a column of a search key follows for values of an element's domain (DOMAIN_KEY_INDEX, _STRICT or _KEEP),
  * and the strict converter of rule STRICT. */
 DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey,
-				 DOMAIN_CONVERTER * strict_conv);
+				 TP_VALUE_CONVERTER * strict_conv);
 
 /* Whether the B-tree compares a value of key a with an index key of key b as they are (btree_compare_key): comparable
  * key types and, for strings, the same collation. */

@@ -761,14 +761,14 @@ fetch_convert_to_branch_value (THREAD_ENTRY * thread_p, const val_descr * vd, co
 			       const RESOLVED_DOMAIN * decision, DB_VALUE * value)
 {
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
-  const DOMAIN_CONVERTER converter = type == DB_TYPE_VARCHAR ? decision->conv[0]
+  const TP_VALUE_CONVERTER converter = type == DB_TYPE_VARCHAR ? decision->conv[0]
     : type == DB_TYPE_CHAR ? decision->conv[1] : NULL;
   if (converter == NULL)
     {
       return domain_unresolved_error ("", qexec_item_index (vd, item), type);
     }
   DB_VALUE converted;
-  if (domain_run_converter (converter, decision->domain, value, &converted) != DOMAIN_COMPATIBLE)
+  if (tp_value_convert (converter, decision->domain, value, &converted) != DOMAIN_COMPATIBLE)
     {
       pr_clear_value (&converted);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type),

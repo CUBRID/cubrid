@@ -67,7 +67,7 @@ inline void qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITE
 				     DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 inline int qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
 inline const DB_VALUE *qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held,
-					 DOMAIN_CONVERTER conv, const TP_DOMAIN * target, const DB_VALUE * value)
+					 TP_VALUE_CONVERTER conv, const TP_DOMAIN * target, const DB_VALUE * value)
   __attribute__ ((ALWAYS_INLINE));
 
 /* Whether a plan item's slot is this execution's gate table slot: an item of the plan the gate resolved, or, in a PX
@@ -268,7 +268,7 @@ qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 extern const TP_DOMAIN *qexec_value_domain (const VAL_DESCR * vd, const regu_variable_node * regu);
 extern void qexec_enter_domain_scope (const VAL_DESCR * vd, const val_list_node * val_list);
 extern const DB_VALUE *qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
-						 DOMAIN_HELD_VALUE * entry, DOMAIN_CONVERTER conv,
+						 DOMAIN_HELD_VALUE * entry, TP_VALUE_CONVERTER conv,
 						 const TP_DOMAIN * target, const DB_VALUE * value);
 
 /*
@@ -286,7 +286,7 @@ extern const DB_VALUE *qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLV
  * target is compared on the row. Only the thread that owns the execution's state reads it.
  */
 inline const DB_VALUE *
-qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONVERTER conv,
+qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, TP_VALUE_CONVERTER conv,
 		  const TP_DOMAIN * target, const DB_VALUE * value)
 {
   assert (vd != NULL && vd->xasl_state != NULL && held > 0);

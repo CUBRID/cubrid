@@ -778,7 +778,7 @@ domain_fixed_operand (DOMAIN_PLAN_ITEM * item, int i, const TP_DOMAIN * source,
   item->fixed.operand_domain[i] = target;
   if (domain_is_fixed (source) && domain_is_fixed (target))
     {
-      item->fixed.conv[i] = domain_lookup_converter_for_context (TP_DOMAIN_TYPE (source), target, mode);
+      item->fixed.conv[i] = tp_value_find_converter (TP_DOMAIN_TYPE (source), target, domain_convert_mode (mode));
     }
 }
 
@@ -3937,7 +3937,7 @@ domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE 
   if (item != NULL && item->operand_class == OPERAND_CONST)
     {
       const TP_DOMAIN *literal = domain_key_literal (regu);
-      DOMAIN_CONVERTER strict_conv = NULL;
+      TP_VALUE_CONVERTER strict_conv = NULL;
       const DOMAIN_KEY_RULE rule = literal != NULL ? domain_key_rule (literal, column, midxkey, &strict_conv)
 	: DOMAIN_KEY_CONSTANT;
       if (rule == DOMAIN_KEY_INDEX || rule == DOMAIN_KEY_KEEP)
