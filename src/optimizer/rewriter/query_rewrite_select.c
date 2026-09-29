@@ -1374,9 +1374,15 @@ qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query)
       return;
     }
 
+  /* ROWNUM is read where the clause leaves it: a GROUP BY hands the select list the counter the scan
+   * finished on, and without one the select list reads it per row. Its value, and which rows its
+   * predicate keeps, would both change. pt_has_inst_num () stops at a query node, so ask it per clause */
   remove_all = (query->info.query.q.select.from != NULL && query->info.query.q.select.having == NULL
 		&& query->info.query.q.select.connect_by == NULL
-		&& (query->info.query.limit == NULL || query->info.query.order_by != NULL));
+		&& (query->info.query.limit == NULL || query->info.query.order_by != NULL)
+		&& !pt_has_inst_num (parser, query->info.query.q.select.list)
+		&& !pt_has_inst_num (parser, query->info.query.q.select.where)
+		&& !pt_has_inst_num (parser, query->info.query.order_by));
 
 
   for (group = query->info.query.q.select.group_by; remove_all && group != NULL; group = group->next)
