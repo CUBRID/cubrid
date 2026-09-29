@@ -888,7 +888,7 @@ qfile_compare_tuple_values (QFILE_TUPLE tuple1, QFILE_TUPLE tuple2, TP_DOMAIN * 
  *       set it to the source type.
  *       This should probably set an error for non-null mismatches.
  *
- * A list opens with the plan's domains (#341, S-15): an empty side contributes no values, so its domain does not
+ * A list opens with the plan's domains: an empty side contributes no values, so its domain does not
  * constrain the other side's, as its columns did not when no first tuple typed them (develop's DB_TYPE_VARIABLE).
  */
 int
@@ -4508,7 +4508,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->use_cmp_dom = false;
 	  subkey->cmp_dom_volatile = false;
 
-	  /* #341 (S-16): the key's domain is the plan's */
+	  /* the key's domain is the plan's */
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
@@ -7242,9 +7242,9 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
 
 #if !defined (NDEBUG)
 /*
- * qfile_check_interpolation_class () - shadow check (optdebug, #362): the class the analytic setup gave the key before
+ * qfile_check_interpolation_class () - shadow check (optdebug): the class the analytic setup gave the key before
  *   the sort is the one develop's first value gave it, unless that class rejects the value (a string column or
- *   expression is DOUBLE, D-335-10: the function's evaluation rejects the value too); a key without a class holds values
+ *   expression is DOUBLE, the function's evaluation rejects the value too); a key without a class holds values
  *   develop could not classify either
  */
 static void
@@ -7286,8 +7286,8 @@ qfile_check_interpolation_class (DB_VALUE * value, const TP_DOMAIN * planned)
  *
  *  NOTE: median analytic function sort string in different domain
  *
- *  #362: the analytic setup gives the key its class before the sort (qexec_plan_interpolation_sort_key), so the workers
- *  of a parallel sort, which share the key, only read it - a class over a session variable read too (#366).
+ *  The analytic setup gives the key its class before the sort (qexec_plan_interpolation_sort_key), so the workers
+ *  of a parallel sort, which share the key, only read it - a class over a session variable read too.
  */
 static int
 qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * subkey, SORTKEY_INFO * key_info)
@@ -7322,8 +7322,8 @@ qfile_compare_with_interpolation_domain (char *fp0, char *fp1, SUBKEY_INFO * sub
 	  goto end;
 	}
 
-      /* a value argument the gate could not classify (D-328-06): every value is that one, whose classification
-       * failed for develop's first value too; a session variable read keeps that for the statement (#366) */
+      /* a value argument the gate could not classify: every value is that one, whose classification
+       * failed for develop's first value too; a session variable read keeps that for the statement */
 #if !defined (NDEBUG)
       if (!subkey->cmp_dom_volatile)
 	{

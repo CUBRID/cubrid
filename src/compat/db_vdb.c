@@ -3251,7 +3251,7 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 	  /* skip casting enum and unknown type values */
 	  continue;
 	}
-      /* D-327-01 (pd:3128): a VARCHAR value bound to a CHAR(n) slot keeps its original value once the cast
+      /* a VARCHAR value bound to a CHAR(n) slot keeps its original value once the cast
        * accepts it, as pt_set_host_variables does; re-initializing the cast value's domain here left a NULL. */
       keep_varchar = TP_IS_CHAR_TYPE (hv_dom->type->id) && hv_dom->type->id != typ && typ == DB_TYPE_VARCHAR;
       db_make_null (&char_cast);
@@ -3489,7 +3489,7 @@ exit:
  *   already-compiled statement with the CURRENT bind values in place, so the optimizer's
  *   histogram probes price the predicates with the actual values. Only called when the
  *   statement has a host-variable predicate the histogram can use (see the call sites).
- *   The values only price the plan: the host variables keep their compiled domains (D-318-05).
+ *   The values only price the plan: the host variables keep their compiled domains.
  * return : error code
  * parser (in)    : parser holding the compiled statement and the bound values
  * statement (in) : compiled statement to replan

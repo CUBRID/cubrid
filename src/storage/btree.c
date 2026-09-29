@@ -18428,7 +18428,7 @@ btree_prepare_bts (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTID * btid, INDX_
       /* TODO: Use index_scan_id_p->copy_buf directly. */
       bts->btid_int.copy_buf = index_scan_id_p->copy_buf;
       bts->btid_int.copy_buf_len = index_scan_id_p->copy_buf_len;
-      /* the comparisons of the scan's search key values (#342), and how they compare (#371) */
+      /* the comparisons of the scan's search key values, and how they compare */
       bts->btid_int.search_keys = scan_index_search_keys (index_scan_id_p);
       bts->btid_int.search_compare = scan_index_search_compare (index_scan_id_p);
     }
@@ -22021,10 +22021,10 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 }
 
 /*
- * btree_compare_search_key () - an index scan's comparison of a key with a key of its search (#342): the columns whose
- *   values do not compare as they are compare as the scan's key plan decided before any row (B30, B31)
+ * btree_compare_search_key () - an index scan's comparison of a key with a key of its search: the columns whose
+ *   values do not compare as they are compare as the scan's key plan decided before any row
  *
- * The scan chose the comparison when it opened (#371, BTID_INT.search_compare): a search whose values all have their
+ * The scan chose the comparison when it opened (BTID_INT.search_compare): a search whose values all have their
  * index columns' types and collations compares a single-column key by the column's cmpval and a multi-column key
  * column by column, without develop's type and collation checks at each comparison; optdebug still makes them and
  * checks the answer.
@@ -22075,7 +22075,7 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
     }
 
 #if !defined (NDEBUG)
-  /* develop's checks with the scan's search keys give the same answer: else the scan chose wrongly (#371) */
+  /* develop's checks with the scan's search keys give the same answer: else the scan chose wrongly */
   assert (c == btree_compare_key_with (key1, key2, btid->key_type, btid->search_keys, 1, 1,
 				       start_colp != NULL ? &check_col : NULL));
   assert (start_colp == NULL || check_col == *start_colp);
@@ -22085,13 +22085,13 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
 }
 
 /*
- * btree_compare_key_with () - btree_compare_key, with an index scan's search keys (#342)
+ * btree_compare_key_with () - btree_compare_key, with an index scan's search keys
  *
  * search_keys NULL is a B-tree search outside a query plan, whose keys are the index's own: a column whose values do
  * not compare as they are compares by value. An index scan's search keys compare such columns as its key plan says;
  * one the plan has no comparison for is the execution boundary (b). Inlined into btree_compare_key and
  * btree_compare_search_key: a key comparison is one call, as develop's btree_compare_key is, and a single-column key
- * reads search_keys only for values that do not compare as they are (#371).
+ * reads search_keys only for values that do not compare as they are.
  */
 STATIC_INLINE DB_VALUE_COMPARE_RESULT
 btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
@@ -22204,7 +22204,7 @@ btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain
 	{
 	  if (search_keys != NULL)
 	    {
-	      /* a search key value of a type the index does not compare as it is (B30, S-12) */
+	      /* a search key value of a type the index does not compare as it is */
 	      c = domain_search_key_compare (search_keys, 0, key1, key2, do_coercion, total_order, &comparable);
 	    }
 	  else
@@ -22378,7 +22378,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
     }
 
   /* the sort columns' domains: the index's columns, ascending (the sort order is is_desc_order's), from the scan's key
-   * plan once (S-32, L-44) */
+   * plan once */
   if (multi_range_opt->sort_col_dom == NULL)
     {
       const domain_plan_index *key_plan = bts->index_scan_idp != NULL ? bts->index_scan_idp->key_plan : NULL;
@@ -23395,7 +23395,7 @@ btree_ils_adjust_range (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
     {
       int cmp_res;
 
-      /* range did not modify, check if we're advancing (the target is a search key, #342) */
+      /* range did not modify, check if we're advancing (the target is a search key) */
       cmp_res = btree_compare_search_key (&bts->btid_int, target_key, &new_key, NULL);
       if (use_desc_index)
 	{

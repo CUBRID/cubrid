@@ -1553,7 +1553,7 @@ extern "C"
     }
 
     /* Free scan-specific resources (bt_attr_ids, oid_list, copy_buf, etc.). The key plan storage stays with the scan:
-     * the key ranges init_on_main built and the workers' comparisons read it (BTID_INT.search_keys, #342), and the
+     * the key ranges init_on_main built and the workers' comparisons read it (BTID_INT.search_keys), and the
      * parallel scan's close releases it after its workers. */
     const domain_plan_index *key_plan = scan_id->s.isid.key_plan;
     const DOMAIN_INDEX_DECISIONS *key_decisions = scan_id->s.isid.key_decisions;
@@ -1660,7 +1660,7 @@ namespace parallel_scan
       {
 	m_uses_xasl_clone = true;
       }
-    /* m_vd is the vd of this thread's copy, so m_vd->xasl_state is what close frees (D-318-06). */
+    /* m_vd is the vd of this thread's copy, so m_vd->xasl_state is what close frees. */
     assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
     xasl_state *new_xasl_state = qexec_deep_copy_xasl_state (m_thread_p, m_orig_vd->xasl_state, false);
     if (new_xasl_state == nullptr)
@@ -1962,7 +1962,7 @@ namespace parallel_scan
 	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
 	if (m_g_agg_domain_resolve_need && scan_code == S_SUCCESS)
 	  {
-	    /* #341: what the leader's aggregates still take from their first values (its setup ran before the scan) */
+	    /* what the leader's aggregates still take from their first values (its setup ran before the scan) */
 	    if (qexec_parallel_aggregate_first_values (m_thread_p, m_xasl, m_vd,
 		&m_xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
 	      {

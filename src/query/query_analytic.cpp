@@ -64,9 +64,9 @@ qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p, const VAL_DESCR *v
       || TP_DOMAIN_COLLATION_FLAG (qexec_node_domain (val_desc_p, func_p->domain, func_p->domain_plan))
       != TP_DOMAIN_COLL_NORMAL)
     {
-      /* #337: the gate decided the domain before the first row, so the domain does not block the fast path. The
+      /* the gate decided the domain before the first row, so the domain does not block the fast path. The
        * first non-NULL value still takes the general path (curr_cnt < 1, sum_acc inactive), which applies that
-       * decision before the accumulator is activated (#341 S-29, a decision over a session variable read too, #366); a
+       * decision before the accumulator is activated (a decision over a session variable read too); a
        * decision without a value leaves only NULLs. */
       return qexec_gate_domain (val_desc_p, func_p->domain_plan, false) != NULL;
     }
@@ -94,7 +94,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
     }
 
   const FUNC_CODE fcode = func_p->function;
-  /* #368 (D-368-06): a value a SUM / AVG adds after the first takes the pre-cast develop's qdata_add_dbval took by its
+  /* a value a SUM / AVG adds after the first takes the pre-cast develop's qdata_add_dbval took by its
    * type - a string into the sum the first value became - planned here from the function's domain and its argument's
    * in this execution */
   func_p->precast = RESOLVED_DOMAIN ();
@@ -195,7 +195,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
   /* Fast path for a plain SUM/AVG over one operand: peek the operand and add
    * it directly to the accumulator. The first value, a restored partial, and
    * NULL stay on the general path, which owns the fetched value and clears it
-   * afterward. The row's own state is tested first (#372). */
+   * afterward. The row's own state is tested first. */
   if (func_p->curr_cnt >= 1 && func_p->sum_acc.is_active && qdata_analytic_is_plain_sum_avg (func_p, val_desc_p))
     {
       DB_VALUE *peek_operand_p = NULL;
@@ -218,8 +218,8 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	}
     }
 
-  /* the function's domain and operand type in this execution: what its first binding took into its cells (#355); the
-   * fast path above needs neither, and fetching its operand takes none of the function's (#372) */
+  /* the function's domain and operand type in this execution: what its first binding took into its cells; the
+   * fast path above needs neither, and fetching its operand takes none of the function's */
   TP_DOMAIN *domain = qexec_node_domain (val_desc_p, func_p->domain, func_p->domain_plan);
   DB_TYPE opr_type = qexec_node_operand_type (val_desc_p, func_p->opr_dbtype, func_p->domain_plan);
 
@@ -229,9 +229,9 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       return ER_FAILED;
     }
 
-  /* #337: the gate decided the function once for the execution; the first value no longer decides it, over a session
-   * variable read too (#366). A value the gate could not classify is rejected by the first execution below, as
-   * develop's was (#341 S-27). */
+  /* the gate decided the function once for the execution; the first value no longer decides it, over a session
+   * variable read too. A value the gate could not classify is rejected by the first execution below, as
+   * develop's was. */
   const TP_DOMAIN *gate_decided = NULL;
   bool first_binding = (opr_type == DB_TYPE_VARIABLE
 			|| TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL) && !DB_IS_NULL (&dbval);
@@ -240,7 +240,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       gate_decided = qexec_gate_domain (val_desc_p, func_p->domain_plan, false);
       if (gate_decided == NULL && !QPROC_IS_INTERPOLATION_FUNC (func_p))
 	{
-	  /* the gate decides every open function (#337): the execution boundary (b) */
+	  /* the gate decides every open function: the execution boundary (b) */
 	  error = qexec_domain_unresolved (val_desc_p, func_p->domain_plan, domain);
 	  goto exit;
 	}
@@ -257,16 +257,16 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  if (QPROC_IS_INTERPOLATION_FUNC (func_p) && TP_IS_CHAR_TYPE (value_type)
 	      && (func_p->domain_plan == NULL || ! (func_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT)))
 	    {
-	      /* D-344-02: a string the gate typed by its type (D-335-10: DOUBLE) whose first value does not convert
+	      /* a string the gate typed by its type (DOUBLE) whose first value does not convert
 	       * reports ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, as the aggregate's first value does
 	       * (qexec_interpolation_first_value) and develop's did; a later value fails as the row's conversion does.
-	       * A value argument keeps the conversion's error (#366, D-366-06). */
+	       * A value argument keeps the conversion's error. */
 	      er_clear ();
 	      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function), "DOUBLE");
 	      goto exit;
 	    }
-	  /* D4 (#337): the failure used to leave no error, so the query ended silently with no rows (an assertion in
+	  /* the failure used to leave no error, so the query ended silently with no rows (an assertion in
 	   * qexec_analytic_add_tuple under optdebug) */
 	  error = er_errid ();
 	  if (error == NO_ERROR)
@@ -314,7 +314,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
     {
       /* later rows may have different types because only the first row is coerced.
        * coerce all values to the list domain for consistent duplicate elimination and finalize
-       * (#341: a conversion to the function's domain, not a decision) */
+       * (a conversion to the function's domain, not a decision) */
       if (TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
 	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
 	{
@@ -520,7 +520,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : domain);
-	  /* after the pre-cast the partition planned for a value (#368, D-368-06) */
+	  /* after the pre-cast the partition planned for a value */
 	  if (qdata_precast_arith_dbval (thread_p, T_ADD, &func_p->precast, func_p->value, &dbval, func_p->value,
 					 result_domain) != NO_ERROR)
 	    {
@@ -689,7 +689,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	{
 	  if (func_p->function == PT_PERCENTILE_CONT || func_p->function == PT_PERCENTILE_DISC)
 	    {
-	      /* the execution's descriptor: a constant ratio reads the gate's value (#354) */
+	      /* the execution's descriptor: a constant ratio reads the gate's value */
 	      error =
 		      fetch_peek_dbval (thread_p, percentile_info_p->percentile_reguvar, val_desc_p, NULL, NULL, NULL,
 					&peek_value_p);
@@ -720,14 +720,14 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  if (func_p->is_first_exec_time)
 	    {
 	      func_p->is_first_exec_time = false;
-	      /* #337: an open function the gate decided takes that class; the value is coerced to it below */
+	      /* an open function the gate decided takes that class; the value is coerced to it below */
 	      const TP_DOMAIN *planned = TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
 					 ? qexec_gate_domain (val_desc_p, func_p->domain_plan, false) : NULL;
 	      if (planned != NULL)
 		{
 		  domain = (TP_DOMAIN *) planned;
 		}
-	      /* #341 (S-28): a value the gate could not classify is rejected below as develop's was; a function whose
+	      /* a value the gate could not classify is rejected below as develop's was; a function whose
 	       * decision has no value sees only NULLs */
 	      /* determine domain based on first value */
 	      if (planned == NULL)
@@ -771,7 +771,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		  case DB_TYPE_TIMESTAMPTZ:
 		  case DB_TYPE_TIMESTAMPLTZ:
 		  case DB_TYPE_TIME:
-		    /* a date or time value's type is the function's (#368, review 2 R2-23: one body) */
+		    /* a date or time value's type is the function's (one body) */
 		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 		      {
 			domain = tp_domain_resolve_default (opr_type);
@@ -785,7 +785,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		    if (func_p->domain_plan != NULL && func_p->domain_plan->fixed.domain != NULL
 			&& TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain) != DB_TYPE_VARIABLE)
 		      {
-			/* D-335-10: a string column or expression is DOUBLE, the compiled function domain */
+			/* a string column or expression is DOUBLE, the compiled function domain */
 			tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain_plan->fixed.domain));
 			dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
 		      }
@@ -798,7 +798,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		    else
 		      {
 			/* a value the gate could not classify - a literal, a bind, a session variable read - is the gate's
-			 * -1118 before any row (#367, D-367-04), and one it classified has its decision (planned) */
+			 * -1118 before any row, and one it classified has its decision (planned) */
 			error = qexec_domain_unresolved (val_desc_p, func_p->domain_plan, func_p->domain);
 			goto exit;
 		      }
@@ -1296,7 +1296,7 @@ qdata_analytic_interpolation (cubthread::entry *thread_p, const VAL_DESCR *vd, c
       c_row_num_d = ceil (row_num_d);
     }
 
-  /* the function takes the domain the interpolation gives, and its type as the operand type, into its cells (#355) */
+  /* the function takes the domain the interpolation gives, and its type as the operand type, into its cells */
   TP_DOMAIN *domain = qexec_node_domain (vd, ana_p->domain, ana_p->domain_plan);
   error =
 	  qdata_get_interpolation_function_result (thread_p, scan_id, scan_id->list_id.type_list.domp[0], 0, row_num_d,

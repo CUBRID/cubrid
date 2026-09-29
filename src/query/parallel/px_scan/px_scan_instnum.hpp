@@ -51,7 +51,7 @@ namespace parallel_scan
   };
 
   /* rhs of a single-term "inst_num() <= ?" (or "< ?") instnum_pred, else nullptr; *compare gets the term's comparison
-   * record (workspace#354). */
+   * record. */
   inline REGU_VARIABLE *
   get_instnum_upper_limit_rhs (XASL_NODE *x, bool *is_less_than, const DOMAIN_COMPARE_PLAN **compare = nullptr)
   {

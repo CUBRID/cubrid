@@ -127,7 +127,7 @@ struct SUBKEY_INFO
   bool use_cmp_dom;		/* when true, use cmp_dom to make comparing */
 
   bool cmp_dom_volatile;	/* cmp_dom rests on a session variable read: the class holds for the statement, a value
-				 * of another class converts to it or fails (#366); the optdebug shadow check, which
+				 * of another class converts to it or fails; the optdebug shadow check, which
 				 * compares with develop's class of each value, skips it */
 };
 

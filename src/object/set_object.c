@@ -324,8 +324,8 @@ set_final (void)
  *
  *  Note :
  *      The server reads the key pair table, which holds the comparison of
- *      every pair of keys an element can have, decided before any row
- *      (workspace#354): the elements' types are the collection's data.
+ *      every pair of keys an element can have, decided before any row:
+ *      the elements' types are the collection's data.
  */
 static DB_VALUE_COMPARE_RESULT
 col_element_compare (DB_VALUE * a, DB_VALUE * b, int do_coerce, int total_order)

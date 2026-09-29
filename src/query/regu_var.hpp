@@ -173,13 +173,13 @@ const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly: set
-						 * at load for a stable regu (#355, D-355-03) */
+						 * at load for a stable regu */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
 const int REGU_VARIABLE_GATE = 0x4000; /* the execution gate takes this host variable's domain from its value */
 const int REGU_VARIABLE_OPEN = 0x8000;	/* load-derived: the regu's compiled domain is open, so the inline
 					 * fetch_peek_dbval () peeks it only once it took its domain in this execution
-					 * (qexec_node_took_domain, #355, D-355-03) */
+					 * (qexec_node_took_domain) */
 
 class regu_variable_node
 {

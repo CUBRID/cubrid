@@ -50,7 +50,7 @@
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
-/* What an ALL/SOME term compares its item with in this execution (#352, D-352-03): a constant right side's elements
+/* What an ALL/SOME term compares its item with in this execution: a constant right side's elements
  * by position (`constant`), else a computed collection's elements by their keys (`table`), else `each` for every
  * element; `all` for every value of a list or a right side that is no collection. */
 struct EVAL_ELEMENTS
@@ -70,7 +70,7 @@ static DB_LOGICAL eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE
 					       , const DB_VALUE * develop2
 #endif				/* !NDEBUG */
   );
-/* develop2, the value the shadow checks compare, is an optdebug argument (#368, review 2 R2-09, D-368-08) */
+/* develop2, the value the shadow checks compare, is an optdebug argument */
 #if !defined (NDEBUG)
 #define eval_value_rel_cmp(thread_p, dbval1, dbval2, rel_operator, et_comp, vd, compare, develop2) \
   eval_value_rel_cmp_internal (thread_p, dbval1, dbval2, rel_operator, et_comp, vd, compare, develop2)
@@ -168,14 +168,14 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
  */
 
 /*
- * Planned comparisons (#352, D-352-01/02)
+ * Planned comparisons
  *
  * A comparison term's record holds the comparison develop's tp_value_compare_with_error makes between its sides'
  * values, decided by the load or, once per execution, by the gate: the converters in develop's order, the type whose
  * cmpval compares, the collation, and develop's outcome when a conversion fails. The row runs them; it decides nothing.
  */
 
-/* develop's comparison of the values, for a reason no record carries (#352); constant-initialized (#368, R2-10) */
+/* develop's comparison of the values, for a reason no record carries; constant-initialized */
 static constexpr DOMAIN_COMPARE
 eval_values_decision (DOMAIN_COMPARE_REASON reason)
 {
@@ -194,7 +194,7 @@ static constexpr DOMAIN_COMPARE eval_Compare_null = eval_values_decision (DOMAIN
 static constexpr DOMAIN_COMPARE eval_Compare_unplanned = eval_values_decision (DOMAIN_REASON_UNPLANNED);
 
 /* The element comparisons of a set or list comparison: the collections' elements are their data, so the comparison
- * reads the key pair table by the two values' keys (#354, D-354-01). */
+ * reads the key pair table by the two values' keys. */
 static constexpr DOMAIN_COMPARE
 eval_keys_decision (void)
 {
@@ -222,7 +222,7 @@ eval_site_compare (const DOMAIN_COMPARE_PLAN * site, const val_descr * vd)
 	}
       const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
       /* a PX worker's own XASL clone loaded the same stream: its sites number the leader's decisions as the leader's
-       * plan does, and it reads them by that number (D-M3, #340) */
+       * plan does, and it reads them by that number */
       assert (compare->site >= 0 && compare->site < resolved.n_compares && resolved.plan != NULL
 	      && (resolved.inherited
 		  ? resolved.plan->compares[compare->site]->value[0] == site->value[0]
@@ -234,9 +234,9 @@ eval_site_compare (const DOMAIN_COMPARE_PLAN * site, const val_descr * vd)
 }
 
 /*
- * eval_planned_compare () - the comparison this execution makes for a term (D-352-01/02)
+ * eval_planned_compare () - the comparison this execution makes for a term
  *   return: its record's decision; a term without a record is the load's omission: every load plans its terms, a
- *	     predicate stream's included (#354)
+ *	     predicate stream's included
  */
 static inline const DOMAIN_COMPARE *
 eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
@@ -250,7 +250,7 @@ eval_planned_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
 }
 
 /*
- * eval_planned_elements () - what an ALL/SOME term compares its item with in this execution (#352, D-352-03)
+ * eval_planned_elements () - what an ALL/SOME term compares its item with in this execution
  *
  * The load's record or table, or the gate's decisions: the row reads them and decides nothing. Where neither holds,
  * the comparisons keep develop's with the reason (the execution boundary (b) for an unplanned one).
@@ -271,7 +271,7 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
       elements->all = eval_site_compare (&site->pair, vd);
       if (elements->all->kernel == DOMAIN_COMPARE_KEYS)
 	{
-	  /* the key pair table (a stream's item, #354) holds for any value the right side has */
+	  /* the key pair table (a stream's item) holds for any value the right side has */
 	  elements->each = elements->all;
 	}
       return;
@@ -286,7 +286,7 @@ eval_planned_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVA
       return;
     }
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved;
-  /* a PX worker's own XASL clone numbers its sites as the leader's plan does (D-M3) */
+  /* a PX worker's own XASL clone numbers its sites as the leader's plan does */
   assert (site->site >= 0 && site->site < resolved.n_elements && resolved.plan != NULL
 	  && site->site < resolved.plan->n_element_sites
 	  && (resolved.inherited ? resolved.plan->element_sites[site->site]->kind == site->kind
@@ -350,9 +350,9 @@ eval_compare_side (const DOMAIN_COMPARE * compare, const val_descr * vd, int sid
 }
 
 /*
- * eval_compare_planned () - a comparison planned before any row (D-352-02): develop's NULL rule, then the kernel the
+ * eval_compare_planned () - a comparison planned before any row: develop's NULL rule, then the kernel the
  *			     record names, on the row's values and the gate's own values of the constant sides
- *   site(in): the comparison's record; a side it names fixed for a scope comes in converted once per scope (#368)
+ *   site(in): the comparison's record; a side it names fixed for a scope comes in converted once per scope
  */
 static DB_VALUE_COMPARE_RESULT
 eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const DOMAIN_COMPARE_PLAN * site,
@@ -368,7 +368,7 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
     {
       return total_order ? DB_GT : DB_UNK;
     }
-  /* one switch on the kernel the record names (#368, review 2 R2-08) */
+  /* one switch on the kernel the record names */
   switch (compare->kernel)
     {
     case DOMAIN_COMPARE_DIRECT:
@@ -380,7 +380,7 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
 	unsigned char converted = 0;
 	for (int side = 0; site != NULL && side < 2; side++)
 	  {
-	    /* D-368-01: a correlated side is converted once per scope (its outer row), not at every inner row */
+	    /* a correlated side is converted once per scope (its outer row), not at every inner row */
 	    const DB_VALUE *held = site->held[side] != 0 && compare->conv[side] != NULL
 	      ? qexec_held_value (thread_p, vd, site->held[side], compare->conv[side], compare->target[side],
 				  value[side]) : NULL;
@@ -396,7 +396,7 @@ eval_compare_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, c
     case DOMAIN_COMPARE_OBJECT:
     case DOMAIN_COMPARE_KEYS:
       /* an object side meets OIDs on the server, and a collection's elements are its data: the key pair table's
-       * comparison of the two values' keys (#354) */
+       * comparison of the two values' keys */
       return domain_compare_by_keys (dbval1, dbval2, 1, total_order, can_compare);
 
     default:
@@ -466,7 +466,7 @@ eval_report_planned_compare (const char *what, const DOMAIN_COMPARE * compare, c
 }
 
 /*
- * eval_assert_planned_sides () - #352 shadow check before the kernel: a side read from the row has the type its
+ * eval_assert_planned_sides () - shadow check before the kernel: a side read from the row has the type its
  *				  converters and cmpval were planned for (a constant side compares the gate's own value)
  */
 static void
@@ -490,10 +490,10 @@ eval_assert_planned_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbva
 }
 
 /*
- * eval_assert_planned_compare () - #352 shadow check after the kernel: develop's comparison of the same values
+ * eval_assert_planned_compare () - shadow check after the kernel: develop's comparison of the same values
  *				    gives the planned comparison's result, comparability and error
  *   asks_comparable(in): the caller asks whether the values compare (tp_value_compare_with_error's contract); false
- *			  for tp_value_compare's, which asks nothing (#354)
+ *			  for tp_value_compare's, which asks nothing
  */
 static void
 eval_assert_planned_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
@@ -520,7 +520,7 @@ eval_assert_planned_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * db
 #endif
 
 /*
- * eval_compare_values_planned () - a comparison of two values planned before any row outside a predicate term (#354):
+ * eval_compare_values_planned () - a comparison of two values planned before any row outside a predicate term:
  *				    the site's decision in this execution, develop's NULL rule and the kernel it names
  *   return: the result; *can_compare false with develop's error where the values do not compare, and at the execution
  *	     boundary (b) (ER_QPROC_DOMAIN_UNRESOLVED)
@@ -568,7 +568,7 @@ eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN 
   return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
 }
 
-/* a comparison's result as its relational operator reads it (eval_value_rel_cmp and the leaves, #371) */
+/* a comparison's result as its relational operator reads it (eval_value_rel_cmp and the leaves) */
 STATIC_INLINE DB_LOGICAL eval_rel_result (REL_OP rel_operator, int result, const DB_VALUE * dbval1,
 					  const DB_VALUE * dbval2) __attribute__ ((ALWAYS_INLINE));
 
@@ -579,10 +579,10 @@ STATIC_INLINE DB_LOGICAL eval_rel_result (REL_OP rel_operator, int result, const
  *   dbval1(in): first db_value
  *   dbval2(in): second db_value
  *   rel_operator(in): Relational operator
- *   et_comp(in): compound evaluation term; its record's correlated sides are converted once per scope (#368)
- *   vd(in): value descriptor of the term's execution (the gate's decisions and converted constants, #352)
- *   compare(in): the decision of an element comparison (#352, D-352-03), or the term's decision its caller read
- *		  (eval_compare_term, #371); NULL: the term's
+ *   et_comp(in): compound evaluation term; its record's correlated sides are converted once per scope
+ *   vd(in): value descriptor of the term's execution (the gate's decisions and converted constants)
+ *   compare(in): the decision of an element comparison, or the term's decision its caller read
+ *		  (eval_compare_term); NULL: the term's
  *   develop2(in): (optdebug only) the right side develop compares where dbval2 is the gate's converted copy of it (the
  *		   shadow checks compare that one); NULL: dbval2
  */
@@ -618,7 +618,7 @@ eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALU
       {
 	/* R_EQ_TORDER compares in total order; the others compare ordinally, and NULL's still yield UNKNOWN */
 	const int total_order = rel_operator == R_EQ_TORDER;
-	/* the term's record, whose correlated sides its scope converts once (#368); an element's decision has none */
+	/* the term's record, whose correlated sides its scope converts once; an element's decision has none */
 	const DOMAIN_COMPARE_PLAN *site = et_comp != NULL ? et_comp->domain_compare : NULL;
 	if (compare == NULL)
 	  {
@@ -626,7 +626,7 @@ eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALU
 	  }
 	if (compare->kernel != DOMAIN_COMPARE_VALUES)
 	  {
-	    /* S-09, S-10: the comparison the load or the gate planned (D-352-01/02); a constant is converted once,
+	    /* the comparison the load or the gate planned; a constant is converted once,
 	     * into a value of its own, and the shared value stays as it is */
 #if !defined (NDEBUG)
 	    eval_assert_planned_sides (compare, dbval1, dbval2, et_comp, vd);
@@ -639,8 +639,7 @@ eval_value_rel_cmp_internal (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALU
 	  }
 	else if (eval_compare_decides (dbval1, dbval2))
 	  {
-	    /* the execution boundary (b): no plan holds this comparison, and develop would decide it from the values
-	     * (#352) */
+	    /* the execution boundary (b): no plan holds this comparison, and develop would decide it from the values */
 #if !defined (NDEBUG)
 	    eval_report_planned_compare ("boundary", compare, dbval1, dbval2, et_comp, vd);
 #endif
@@ -733,7 +732,7 @@ eval_rel_result (REL_OP rel_operator, int result, const DB_VALUE * dbval1, const
 }
 
 /*
- * Comparison term leaves (#371)
+ * Comparison term leaves
  *
  * A comparison term's decided record names the functions its row runs for the record's kernel, one for each relational
  * operator, when the load or the gate decides it: a decision of kernel DIRECT compares its sides by cmpval and reads
@@ -809,7 +808,7 @@ domain_compare_leaves (DOMAIN_COMPARE * compare)
 
 #if !defined (NDEBUG)
 /*
- * eval_assert_leaf () - #371 shadow check of a term's leaf: eval_value_rel_cmp's evaluation of the term, the path the
+ * eval_assert_leaf () - shadow check of a term's leaf: eval_value_rel_cmp's evaluation of the term, the path the
  *			 leaf takes the place of, gives the leaf's answer
  */
 static void
@@ -831,7 +830,7 @@ STATIC_INLINE DB_LOGICAL eval_compare_term (THREAD_ENTRY * thread_p, const COMP_
 					    DB_VALUE * dbval1, DB_VALUE * dbval2) __attribute__ ((ALWAYS_INLINE));
 
 /*
- * eval_compare_term () - a comparison term's row on the values it fetched (#371): the leaf its record's decision in
+ * eval_compare_term () - a comparison term's row on the values it fetched: the leaf its record's decision in
  *			  this execution names for the term's operator, or eval_value_rel_cmp on that decision
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  */
@@ -858,7 +857,7 @@ eval_compare_term (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * et_comp, val_
  *   item(in): db_value item
  *   set(in): collection of elements
  *   rel_operator(in): relational comparison operator
- *   elements(in): the element comparisons planned for this execution (#352, D-352-03)
+ *   elements(in): the element comparisons planned for this execution
  *   vd(in): value descriptor of the term's execution
  */
 
@@ -932,7 +931,7 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
  *   item(in): db_value item
  *   set(in): collection of elements
  *   rel_operator(in): relational comparison operator
- *   elements(in): the element comparisons planned for this execution (#352, D-352-03)
+ *   elements(in): the element comparisons planned for this execution
  *   vd(in): value descriptor of the term's execution
  *
  * Note: This routine tries to determine whether a specific relation
@@ -1068,7 +1067,7 @@ eval_item_card_set (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_
  *   item(in): db_value item
  *   list_id(in): list file identifier
  *   rel_operator(in): relational comparison operator
- *   compare(in): the comparison of the item with the list's column planned for this execution (#352, D-352-03)
+ *   compare(in): the comparison of the item with the list's column planned for this execution
  *   vd(in): value descriptor of the term's execution
  *
  * Note: This routine tries to determine whether a specific relation
@@ -1172,7 +1171,7 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
  *   item(in): db_value
  *   list_id(in): list file identifier
  *   rel_operator(in): relational comparison operator
- *   compare(in): the comparison of the item with the list's column planned for this execution (#352, D-352-03)
+ *   compare(in): the comparison of the item with the list's column planned for this execution
  *   vd(in): value descriptor of the term's execution
  *
  * Note: This routine tries to determine whether a specific relation
@@ -2507,7 +2506,7 @@ eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * 
 	    }
 	  else
 	    {
-	      /* general case: compare values as the term's record decided before any row (#371) */
+	      /* general case: compare values as the term's record decided before any row */
 	      result = eval_compare_term (thread_p, et_comp, vd, peek_val1, peek_val2);
 	    }
 	  break;
@@ -2740,7 +2739,7 @@ eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, 
       return V_UNKNOWN;
     }
 
-  /* general case: compare values as the term's record decided before any row (#371) */
+  /* general case: compare values as the term's record decided before any row */
   return eval_compare_term (thread_p, et_comp, vd, peek_val1, peek_val2);
 }
 

@@ -77,9 +77,8 @@ extern int qdata_divide_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * 
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
-/* #368 (D-368-02, D-368-06): T_ADD, T_SUB, T_MUL or T_DIV over its operands' pre-cast, planned before any row
- * (domain_resolve_precast); precast NULL converts nothing; held[i]: operand i converted once for its scope already
- * (D-368-01, D-368-07) */
+/* T_ADD, T_SUB, T_MUL or T_DIV over its operands' pre-cast, planned before any row
+ * (domain_resolve_precast); precast NULL converts nothing; held[i]: operand i converted once for its scope already */
 extern int qdata_precast_arith_dbval (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * precast,
 				      DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p,
 				      const DB_VALUE * const *held = NULL);

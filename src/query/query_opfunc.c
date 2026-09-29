@@ -2436,7 +2436,7 @@ qdata_precast_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_D
 }
 
 #if !defined (NDEBUG)
-/* Whether two types are one for a pre-cast (#368): a character, bit or collection type stands for its class */
+/* Whether two types are one for a pre-cast: a character, bit or collection type stands for its class */
 static bool
 qdata_precast_type_holds (DB_TYPE value, DB_TYPE planned)
 {
@@ -2445,9 +2445,9 @@ qdata_precast_type_holds (DB_TYPE value, DB_TYPE planned)
 }
 
 /*
- * qdata_assert_precast_planned () - #368 shadow check: the pre-cast a caller planned for two values that are not NULL
- *   is the resolver's grid over the values' own types - develop's, which qdata_*_dbval took by the values' types (its
- *   shadow check held the grid to it until #368): the same target types, and the converter of the value's own type,
+ * qdata_assert_precast_planned () - shadow check: the pre-cast a caller planned for two values that are not NULL
+ *   is the resolver's grid over the values' own types - develop's, which qdata_*_dbval took by the values' types:
+ *   the same target types, and the converter of the value's own type,
  *   CHAR and VARCHAR standing for each other (their converters read any string)
  */
 static void
@@ -2491,7 +2491,7 @@ qdata_assert_precast_planned (OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * prec
 }
 
 /*
- * qdata_assert_precast_done () - #368 shadow check: qdata_{add,subtract,multiply,divide}_dbval cast nothing, so the
+ * qdata_assert_precast_done () - shadow check: qdata_{add,subtract,multiply,divide}_dbval cast nothing, so the
  *   two values that are not NULL come in the types their pre-cast gives - the resolver's grid over them converts
  *   nothing more. A caller that did not plan the pre-cast fails here.
  */
@@ -2515,11 +2515,11 @@ qdata_assert_precast_done (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, cons
 
 /*
  * qdata_precast_arith_dbval () - an addition, subtraction, multiplication or division over its operands' pre-cast,
- *   planned before any row (xmilex-git/workspace#368, D-368-02, D-368-06), then the typed operator, which casts nothing
+ *   planned before any row, then the typed operator, which casts nothing
  *   return: NO_ERROR or ER_code
  *   opcode(in): T_ADD, T_SUB, T_MUL or T_DIV
  *   precast(in): operand_domain[0..1] and conv[0..1] of domain_resolve_precast; NULL converts nothing
- *   held(in): [2] an operand its scope converted once already (#368, D-368-01, D-368-07): the operator takes it in place
+ *   held(in): [2] an operand its scope converted once already: the operator takes it in place
  *	       of the conversion; NULL none
  *
  * Over two values that are not NULL, each operand the plan converts gets a value of its own, in develop's order - the
@@ -2637,8 +2637,8 @@ qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, 
       return NO_ERROR;
     }
 
-  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval,
-   * xmilex-git/workspace#368, D-368-02): an ENUM's name or ordinal, a string as DOUBLE, a floating number or a string
+  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval):
+   * an ENUM's name or ordinal, a string as DOUBLE, a floating number or a string
    * next to a date as BIGINT. */
 #if !defined (NDEBUG)
   qdata_assert_precast_done (T_ADD, dbval1_p, dbval2_p);
@@ -4905,8 +4905,8 @@ qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       return NO_ERROR;
     }
 
-  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval,
-   * xmilex-git/workspace#368, D-368-02): an ENUM's ordinal, a string as DOUBLE, TIME or DATETIME and the date beside it
+  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval):
+   * an ENUM's ordinal, a string as DOUBLE, TIME or DATETIME and the date beside it
    * as DATETIME, a floating number next to a date as BIGINT. */
 #if !defined (NDEBUG)
   qdata_assert_precast_done (T_SUB, dbval1_p, dbval2_p);
@@ -5475,8 +5475,8 @@ qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * resul
       return NO_ERROR;
     }
 
-  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval,
-   * xmilex-git/workspace#368, D-368-02): a string as DOUBLE. */
+  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval):
+   * a string as DOUBLE. */
 #if !defined (NDEBUG)
   qdata_assert_precast_done (T_MUL, dbval1_p, dbval2_p);
 #endif
@@ -6044,8 +6044,8 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       return NO_ERROR;
     }
 
-  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval,
-   * xmilex-git/workspace#368, D-368-02): a string as DOUBLE, two discrete numbers as NUMERIC under
+  /* The operands come in the types their pre-cast gave them, planned before any row (qdata_precast_arith_dbval):
+   * a string as DOUBLE, two discrete numbers as NUMERIC under
    * oracle_compat_number_behavior. */
 #if !defined (NDEBUG)
   qdata_assert_precast_done (T_DIV, dbval1_p, dbval2_p);
@@ -6633,8 +6633,8 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
  * entered as part of the type list because they are not entered
  * in the list file.
  *
- * A column the compiler left open takes the plan's domain for this execution (#341, S-14): the list holds that domain
- * from its first tuple on, a column over a session variable read too (#366). An open column without one is the
+ * A column the compiler left open takes the plan's domain for this execution: the list holds that domain
+ * from its first tuple on, a column over a session variable read too. An open column without one is the
  * execution boundary (b).
  */
 int
@@ -6680,7 +6680,7 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
     {
       if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
-	  /* the column regu's domain now: its cell once this execution gave it one (#355) */
+	  /* the column regu's domain now: its cell once this execution gave it one */
 	  TP_DOMAIN *now = qexec_node_domain (vd, reg_var_p->value.domain, reg_var_p->value.domain_plan);
 	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, now, reg_var_p->value.domain_plan);
 	  if (domain == NULL)
@@ -6774,7 +6774,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
       val_type = DB_VALUE_TYPE (peek_value_p);
       assert (val_type != DB_TYPE_NULL);
 
-      /* the column's domain in this execution: the one its fetch took, or its compiled one (#355) */
+      /* the column's domain in this execution: the one its fetch took, or its compiled one */
       TP_DOMAIN *domain = qexec_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->domain_plan);
       dom_type = TP_DOMAIN_TYPE (domain);
       if (dom_type != DB_TYPE_NULL)
@@ -8780,7 +8780,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
     {
       // we're trying to benchmark the expression in target reguvar by running it many times. even if all operands are
       // constant, we still have to repeat the operations: the load classes the target's nodes as row operands, so the
-      // gate never evaluates them once (#352)
+      // gate never evaluates them once
       //
       // node that they still may be other optimizations that are not so easily disabled
       error = fetch_peek_dbval (thread_p, target_reguvar, val_desc_p, NULL, obj_oid_p, tuple, &target_value);

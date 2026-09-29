@@ -38,7 +38,7 @@ struct regu_variable_list_node;
 
 /* Read-only execution views. Peek callers retain the existing no-write
  * contract even though their public DB_VALUE ** output is not const. The row path calls them: inlined at every call
- * in a release build (#371). */
+ * in a release build. */
 inline const DB_VALUE *REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
   __attribute__ ((ALWAYS_INLINE));
 inline const RESOLVED_DOMAIN *RESOLVED (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
@@ -72,7 +72,7 @@ extern int fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, regu_variable_node * 
  * fetch_peek_dbval () - returns a POINTER to an existing db_value
  *   Inline fast-path for the dominant per-row cases: a regu_var the load confirmed simple
  *   (REGU_VARIABLE_FAST_PEEK; a regu whose domain is open once it took its domain in this execution,
- *   REGU_VARIABLE_OPEN, #355). Returns the value pointer directly - no call frame, no type switch, no
+ *   REGU_VARIABLE_OPEN). Returns the value pointer directly - no call frame, no type switch, no
  *   domain dereference:
  *     TYPE_DBVAL     -> the embedded constant db_value;
  *     TYPE_CONSTANT  -> the value-pointer slot, only when there is no linked subquery to execute;
@@ -101,7 +101,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 	  *peek_dbval = regu_var->value.dbvalptr;
 	  return NO_ERROR;
 	case TYPE_POS_VALUE:
-	  /* the reference's own value (D-323-03): the slow path flags only a bind reference with a plan item */
+	  /* the reference's own value: the slow path flags only a bind reference with a plan item */
 	  *peek_dbval = (DB_VALUE *) REGU_RESOLVED_VALUE (vd, regu_var);
 	  return NO_ERROR;
 	case TYPE_ATTR_ID:

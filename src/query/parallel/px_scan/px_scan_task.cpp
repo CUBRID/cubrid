@@ -610,7 +610,7 @@ namespace parallel_scan
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
 
-    /* #341: the agg-expr marking is the clone's load's (domain_mark_aggregate_operands) */
+    /* the agg-expr marking is the clone's load's (domain_mark_aggregate_operands) */
     m_scan_id = &m_xasl->spec_list->s_id;
 
     for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
@@ -622,7 +622,7 @@ namespace parallel_scan
 	  }
       }
 
-    /* The worker's own copy on its own heap (D-318-06): it frees it in finalize. */
+    /* The worker's own copy on its own heap: it frees it in finalize. */
     assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
     m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state, true);
     if (m_xasl_state == nullptr)

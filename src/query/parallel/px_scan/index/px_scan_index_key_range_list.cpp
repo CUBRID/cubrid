@@ -106,7 +106,7 @@ namespace parallel_index_scan
 	return NO_ERROR;
       }
 
-    /* the coordinator's scan holds the key plan storage its ranges are built with (#342): scan_open_index_scan made it */
+    /* the coordinator's scan holds the key plan storage its ranges are built with: scan_open_index_scan made it */
     if (worker_scan_id == nullptr || worker_scan_id->s.isid.key_plan == nullptr)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
@@ -115,7 +115,7 @@ namespace parallel_index_scan
     INDX_SCAN_ID *isidp = &worker_scan_id->s.isid;
     TP_DOMAIN *btree_domainp = m_btid_int.key_type;
     /* the workers' comparisons of these ranges' values read the coordinator's search keys, which outlive them, and
-     * compare as the coordinator's scan chose at open (#371) */
+     * compare as the coordinator's scan chose at open */
     m_btid_int.search_keys = scan_index_search_keys (isidp);
     m_btid_int.search_compare = scan_index_search_compare (isidp);
 

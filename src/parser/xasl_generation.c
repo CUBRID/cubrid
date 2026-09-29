@@ -1353,7 +1353,7 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 	  et_comp->rhs = (REGU_VARIABLE *) arg2;
 	  et_comp->rel_op = rop;
 	  et_comp->type = data_type;
-	  et_comp->domain_compare = NULL;	/* the server's load derives it (workspace#352) */
+	  et_comp->domain_compare = NULL;	/* the server's load derives it */
 	}
     }
 
@@ -1391,7 +1391,7 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * ar
 	  et_alsm->rel_op = rop;
 	  et_alsm->item_type = data_type;
 	  et_alsm->eq_flag = some_all;
-	  et_alsm->domain_compare = NULL;	/* the server's load derives it (workspace#352) */
+	  et_alsm->domain_compare = NULL;	/* the server's load derives it */
 	}
     }
 
@@ -5444,7 +5444,7 @@ pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METHOD access, INDX_INFO * in
 
 /*
  * pt_set_hq_probe_numeric_domain () - give the hash probe key of a hierarchical join the precision and scale of the
- *                                     first fixed NUMERIC list column (S-21, #337)
+ *                                     first fixed NUMERIC list column
  *   spec(in/out): the CONNECT BY list scan spec
  *
  * The key is typed float NUMERIC when a join or an expression widened it. Its values are cast to the key domain
@@ -6453,11 +6453,11 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
       if (node->info.host_var.index < parser->host_var_count)
 	{
 	  /* A user host variable: the plan states the domain the client casts the bound value into
-	   * (host_var_expected_domains, D-335-08), so value type == plan domain holds by construction (#336). It
+	   * (host_var_expected_domains), so value type == plan domain holds by construction. It
 	   * is left to the gate when the client does not cast: no expected domain, an ENUM domain (never cast,
-	   * CUBRIDSUS-9007; `enum_col op ?` compares the bound value, B13/B14), or an untyped copy (the LIMIT
+	   * CUBRIDSUS-9007; `enum_col op ?` compares the bound value), or an untyped copy (the LIMIT
 	   * operand). A compile-only expected domain the client does not apply -- the collation axis's ENFORCE
-	   * on `str_col + ?` / `enum_col + ?` (A3''/A13) -- is not a plan domain (F-335-06). */
+	   * on `str_col + ?` / `enum_col + ?` -- is not a plan domain. */
 	  TP_DOMAIN *cast_domain = NULL;
 	  if (parser->host_var_expected_domains != NULL)
 	    {
@@ -6467,10 +6467,10 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	      && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_ENUMERATION
 	      && cast_domain->collation_flag != TP_DOMAIN_COLL_ENFORCE)
 	    {
-	      /* an ENFORCE domain (the collation axis's sibling collation, C1/C5) casts nothing: the client gives a
+	      /* an ENFORCE domain (the collation axis's sibling collation) casts nothing: the client gives a
 	       * string value the sibling's collation and passes any other value through (tp_value_cast_internal),
 	       * so the slot's type is the value's -- a gate slot whose value already carries the enforced
-	       * collation (A3''/A13/C5) */
+	       * collation */
 	      regu->domain = cast_domain;
 	    }
 	}
@@ -6481,9 +6481,9 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	}
 
       /* A user host variable never takes its domain from the bound value, so the plan does
-       * not depend on the values (D-318-05); the client casts the value to its expected
-       * domain (D-335-08). An auto-parameter's value is its literal, so it keeps the literal
-       * domain (rule B33). */
+       * not depend on the values; the client casts the value to its expected
+       * domain. An auto-parameter's value is its literal, so it keeps the literal
+       * domain. */
       if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && typ != DB_TYPE_NULL)
 	{
 	  TP_DOMAIN *domain;
@@ -6528,7 +6528,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 
       if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
 	{
-	  /* D-323-14, D-325-09: no sibling fixes this slot; the execution gate takes the
+	  /* no sibling fixes this slot; the execution gate takes the
 	   * bound value's own domain, once per execution. */
 	  regu->domain = &tp_Variable_domain;
 	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_GATE);
@@ -6552,7 +6552,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 		   || (TP_TYPE_HAS_COLLATION (typ) && TP_TYPE_HAS_COLLATION (exptyp)
 		       && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain)))))
 	{
-	  /* D-335-08: a value given before compilation is still cast where develop cast it -- an
+	  /* a value given before compilation is still cast where develop cast it -- an
 	   * auto-parameter, or a host variable with its own data type; any other host variable's
 	   * value is cast by the client to its expected domain. */
 	  if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)
@@ -6575,8 +6575,8 @@ error_exit:
 }
 
 /*
- * pt_gate_limit_regu () - a LIMIT / KEYLIMIT operand that is a host variable slot leaves its domain to the gate
- *   (#336): auto-parameterized limits of different literal types (`limit 4`, `limit 2147483648`, `limit 3/2`)
+ * pt_gate_limit_regu () - a LIMIT / KEYLIMIT operand that is a host variable slot leaves its domain to the gate:
+ *   auto-parameterized limits of different literal types (`limit 4`, `limit 2147483648`, `limit 3/2`)
  *   share one plan, and execution reads the bound value (qexec_check_limit_clause: tp_value_compare against 0), so
  *   no compiled domain describes every execution.
  */
@@ -12354,7 +12354,7 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       return NULL;
     }
 
-  /* the B-tree's key domain, from which the server derives its key plan (#342, L-45 (f)): the bytes of its root header
+  /* the B-tree's key domain, from which the server derives its key plan: the bytes of its root header
    * the index statistics carry, or else the domain the index was allocated with */
   indx_infop->key_type = index_entryp->key_type;
   if (indx_infop->key_type == NULL || TP_DOMAIN_TYPE (indx_infop->key_type) == DB_TYPE_NULL)
@@ -23839,7 +23839,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      /* L-30: the tree reads only positions the client sends (host variables, then
+      /* the tree reads only positions the client sends (host variables, then
        * auto-parameters). A nested parser_generate_xasl () or a statement the client
        * compiles in parts references a subset, so the count may be smaller. */
       assert (parser->dbval_cnt <= parser->host_var_count + parser->auto_param_count);

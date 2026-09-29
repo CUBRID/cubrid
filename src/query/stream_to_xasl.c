@@ -280,7 +280,7 @@ end:
     {
       free_xasl_unpack_info (thread_p, unpack_info_p);
 #if !defined (SERVER_MODE)
-      /* the stand-alone pointer is a global; a freed block must not stay behind it (#336) */
+      /* the stand-alone pointer is a global; a freed block must not stay behind it */
       set_xasl_unpack_info_ptr (thread_p, NULL);
 #endif
     }
@@ -292,7 +292,7 @@ end:
 }
 
 /*
- * stx_index_stream_rejected () - the load boundary (a) of a filter or function index stream (S-42, #343)
+ * stx_index_stream_rejected () - the load boundary (a) of a filter or function index stream
  *   return: true when the stream is rejected (error set, unpack info freed)
  *
  * Such a stream is loaded and evaluated without the execution gate, so a regu the gate would decide - a GATE slot or
@@ -369,7 +369,7 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
     {
       goto end;
     }
-  /* the predicate's comparisons, decided from the stream's fixed domains (#354) */
+  /* the predicate's comparisons, decided from the stream's fixed domains */
   if (domain_plan_stream_compares (thread_p, pwc->pred, NULL) != NO_ERROR)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
@@ -439,7 +439,7 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
     {
       goto end;
     }
-  /* the expression's comparisons, decided from the stream's fixed domains (#354) */
+  /* the expression's comparisons, decided from the stream's fixed domains */
   if (domain_plan_stream_compares (thread_p, NULL, p_xasl->func_regu) != NO_ERROR)
     {
       stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
@@ -4890,7 +4890,7 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   ptr = or_unpack_int (ptr, &indx_info->func_idx_col_id);
 
-  /* the B-tree's key domain (#342); the key plan is derived from it once the tree is loaded */
+  /* the B-tree's key domain; the key plan is derived from it once the tree is loaded */
   ptr = or_unpack_domain (ptr, &indx_info->key_type, NULL);
   indx_info->domain_plan = NULL;
 
@@ -5588,7 +5588,7 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &val_list->val_cnt);
-  /* the load gives it its block's scope, if any (#368) */
+  /* the load gives it its block's scope, if any */
   val_list->domain_scope = 0;
 
   value_list =
@@ -5700,7 +5700,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   ptr = or_unpack_int (ptr, &regu_var->flags);
   if (xasl_unpack_info->index_stream && REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_GATE))
     {
-      /* S-42 (#343): a filter or function index stream has no gate to decide it (stx_index_stream_rejected) */
+      /* a filter or function index stream has no gate to decide it (stx_index_stream_rejected) */
       xasl_unpack_info->index_stream_gate = true;
     }
 
@@ -5746,8 +5746,8 @@ error:
 }
 
 /*
- * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at load (#355,
- *   D-355-03): a cached attribute, a literal, a value pointer without a linked subquery, whose compiled domain fixes its
+ * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at load:
+ *   a cached attribute, a literal, a value pointer without a linked subquery, whose compiled domain fixes its
  *   values. A bind reference gets it with its plan item, and a regu with an open domain gets it with its cell
  *   (domain_plan.c). A COLLATE modifier's regu takes the slow path, which applies the collation.
  */
@@ -6961,7 +6961,7 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
       if (regu->type == TYPE_POS_VALUE && domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 	{
 	  /* the item stream carries no flags: a slot row of an all-slot VALUES column is a gate slot, as the
-	   * compiler marked it (D-323-14: GATE == the VARIABLE placeholder on a slot; #336) */
+	   * compiler marked it (GATE == the VARIABLE placeholder on a slot) */
 	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_GATE);
 	}
 

@@ -179,7 +179,7 @@ namespace cubxasl
     dest->rhs = spawner::spawn (src->rhs);
     dest->rel_op = src->rel_op;
     dest->type = src->type;
-    /* the leader's comparison record, as the copied operands take the leader's plan items (F-334-01) */
+    /* the leader's comparison record, as the copied operands take the leader's plan items */
     dest->domain_compare = src->domain_compare;
 
     return er_errid ();
@@ -198,7 +198,7 @@ namespace cubxasl
     dest->eq_flag = src->eq_flag;
     dest->rel_op = src->rel_op;
     dest->item_type = src->item_type;
-    /* the leader's element comparisons, as the copied operands take the leader's plan items (F-334-01) */
+    /* the leader's element comparisons, as the copied operands take the leader's plan items */
     dest->domain_compare = src->domain_compare;
 
     return er_errid ();
@@ -281,7 +281,7 @@ namespace cubxasl
     dest->type = src->type;
     dest->flags = src->flags;
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    /* the leader's plan item: immutable and alive until the leader retires its clone, after every worker (F-334-01) */
+    /* the leader's plan item: immutable and alive until the leader retires its clone, after every worker */
     dest->domain_plan = src->domain_plan;
     dest->vfetch_to = spawn (src->vfetch_to);
 
@@ -403,7 +403,7 @@ namespace cubxasl
       }
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    /* the plan item carries the node's comparison records, as a term's (workspace#354, #355) */
+    /* the plan item carries the node's comparison records, as a term's */
     dest->domain_plan = src->domain_plan;
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
@@ -862,7 +862,7 @@ namespace cubxasl
     assert_release_error (i == src->val_cnt);
 
     dest->val_cnt = src->val_cnt;
-    /* the spawned nodes share the source's plan items, which number the scopes (#368) */
+    /* the spawned nodes share the source's plan items, which number the scopes */
     dest->domain_scope = src->domain_scope;
 
     return dest;
@@ -883,7 +883,7 @@ namespace cubxasl
     return er_errid ();
   }
 
-  /* frees a worker's copy of the execution gate state on the thread that made it (D-318-06) */
+  /* frees a worker's copy of the execution gate state on the thread that made it */
   static void
   spawner_free_xasl_state (cubthread::entry *thread_p, void *ptr, int)
   {
@@ -904,7 +904,7 @@ namespace cubxasl
 
     if (src != nullptr && src->xasl_state != nullptr)
       {
-	/* the worker inherits the gate's decisions and values through the one PX copy (D-318-06, F-334-01): every
+	/* the worker inherits the gate's decisions and values through the one PX copy: every
 	 * reference value (secondary references included) and the gate table, owned and freed by this thread */
 	xasl_state *copy = qexec_deep_copy_xasl_state (&m_thread_ref, src->xasl_state, false);
 	if (copy == nullptr)

@@ -277,7 +277,7 @@ namespace parallel_scan
 		/* The coercion rounds, so ask the comparison itself - the question serial asks every
 		 * row - whether the rounded candidate qualifies, and step down once if it does not.
 		 * Rounding lands within 1, so that candidate and its predecessor are the only two.
-		 * It is the term's own comparison, as the load or the gate planned it (workspace#354). */
+		 * It is the term's own comparison, as the load or the gate planned it. */
 		DB_VALUE_COMPARE_RESULT cmp =
 			eval_compare_values_planned (thread_p, draw.limit_compare, vd, &coerced, limit_val, 0, NULL);
 		const bool qualifies = draw.is_less_than ? (cmp == DB_LT) : (cmp != DB_GT);

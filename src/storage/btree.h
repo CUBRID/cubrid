@@ -116,7 +116,7 @@ struct leaf_rec
 
 struct DOMAIN_SEARCH_KEYS;
 
-/* How an index scan's B-tree compares its search key values with the index keys (#371): the scan's choice from its key
+/* How an index scan's B-tree compares its search key values with the index keys: the scan's choice from its key
  * plan, made before any row (scan_index_search_compare). */
 enum BTREE_SEARCH_COMPARE
 {
@@ -144,9 +144,9 @@ struct btid_int
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   BTREE_SEARCH_COMPARE search_compare;	/* how the comparisons of an index scan's search key values compare; derived
-					 * with search_keys (#371); PLANNED outside an index scan */
+					 * with search_keys; PLANNED outside an index scan */
   const DOMAIN_SEARCH_KEYS *search_keys;	/* what the comparisons of an index scan's search key values read; derived
-						 * from INDX_SCAN_ID's key plan (#342); NULL outside an index scan */
+						 * from INDX_SCAN_ID's key plan; NULL outside an index scan */
   int rev_level;
   int deduplicate_key_idx;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   OID topclass_oid;		/* class oid for which index is created */

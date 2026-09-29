@@ -103,7 +103,7 @@ struct file_hash_scan_id
   char alignment;		/* alignment value used on slots of bucket pages */
 };
 
-/* How the build keys of one scan open enter the hash table, planned before the first build row (#356): query_hash_scan.c */
+/* How the build keys of one scan open enter the hash table, planned before the first build row: query_hash_scan.c */
 typedef struct hash_scan_key_plan HASH_SCAN_KEY_PLAN;
 
 /* hash list scan */
@@ -131,7 +131,7 @@ struct hash_list_scan
   HASH_METHOD hash_list_scan_type;	/* IN_MEM, HYBRID or HASH_FILE */
   unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */
-  HASH_SCAN_KEY_PLAN *key_plan;	/* need_coerce_type: each build key's copy or conversion (#356) */
+  HASH_SCAN_KEY_PLAN *key_plan;	/* need_coerce_type: each build key's copy or conversion */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);

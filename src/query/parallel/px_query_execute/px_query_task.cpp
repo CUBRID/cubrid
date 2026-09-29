@@ -136,7 +136,7 @@ namespace parallel_query_execute
 		  syscall (SYS_gettid), xasl->header.id);
 #endif
     /* job execution */
-    /* a state copy that failed (no memory, #368) fails the job as an execution error does */
+    /* a state copy that failed (no memory) fails the job as an execution error does */
     err_code = new_xasl_state == nullptr ? ER_OUT_OF_VIRTUAL_MEMORY
 	       : qexec_execute_mainblock (cur_thread_p, xasl, new_xasl_state, NULL);
 

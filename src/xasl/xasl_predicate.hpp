@@ -112,7 +112,7 @@ namespace cubxasl
     regu_variable_node *rhs;
     REL_OP rel_op;
     DB_TYPE type;
-    /* load-derived, not serialized (workspace#352): the comparison the load or the gate decided; the union already
+    /* load-derived, not serialized: the comparison the load or the gate decided; the union already
      * holds rlike_eval_term's four pointers, so this changes neither the node's size nor the stream */
     const DOMAIN_COMPARE_PLAN *domain_compare;
   };
@@ -124,8 +124,8 @@ namespace cubxasl
     QL_FLAG eq_flag;
     REL_OP rel_op;
     DB_TYPE item_type;
-    /* load-derived, not serialized (workspace#352): the element comparisons the load or the gate decided; the union
-     * grows to 40 bytes in memory, the stream is unchanged (F-352-10) */
+    /* load-derived, not serialized: the element comparisons the load or the gate decided; the union
+     * grows to 40 bytes in memory, the stream is unchanged */
     const DOMAIN_ELEMENT_COMPARE_PLAN *domain_compare;
   };
 

@@ -95,8 +95,7 @@ struct xasl_state
   RESOLVED_DOMAIN_TABLE resolved;
 };
 
-/* The accessors of this execution's gate state, which the row path calls: inlined at every call in a release build
- * (#371). */
+/* The accessors of this execution's gate state, which the row path calls: inlined at every call in a release build. */
 inline bool RESOLVED_OWNS_SLOT (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
   __attribute__ ((ALWAYS_INLINE));
 inline bool RESOLVED_OWNS_CELL (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
@@ -126,8 +125,7 @@ inline const DB_VALUE *qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESC
   __attribute__ ((ALWAYS_INLINE));
 
 /* Whether a plan item's slot is this execution's gate table slot: an item of the plan the gate resolved, or, in a PX
- * worker's inherited copy, an item of the worker's own load of the same stream, which numbers its slots alike
- * (D-318-06, #340). */
+ * worker's inherited copy, an item of the worker's own load of the same stream, which numbers its slots alike. */
 inline bool
 RESOLVED_OWNS_SLOT (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
 {
@@ -141,7 +139,7 @@ RESOLVED_OWNS_SLOT (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_IT
 }
 
 /* Whether a plan item's cell is this execution's: an item of the plan the gate resolved, or, in a PX worker's inherited
- * copy, an item of the worker's own load of the same stream, which numbers its cells alike (#355, D-355-07). */
+ * copy, an item of the worker's own load of the same stream, which numbers its cells alike. */
 inline bool
 RESOLVED_OWNS_CELL (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
 {
@@ -152,17 +150,17 @@ RESOLVED_OWNS_CELL (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_IT
 
 /* The gate's decision for a gate-dependent node of the tree this execution loaded, or NULL when the gate did not
  * decide it (a node the gate does not decide, a node it left undecided). fetch reads it in place of a row-time late
- * binding (#336); the #335 shadow checks compare against it. */
+ * binding; the shadow checks compare against it. */
 inline const RESOLVED_DOMAIN *
 RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  /* a node the gate does not decide answers before the descriptor's gate state is read (#368, R2-03 (a)) */
+  /* a node the gate does not decide answers before the descriptor's gate state is read */
   if (vd == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_GATE))
     {
       return NULL;
     }
   /* every read comes after the gate sealed its decisions, with the descriptor of the execution that loaded the node or
-   * a PX worker's copy of its state: what an execution never changes is asserted, not tested at every row (#372) */
+   * a PX worker's copy of its state: what an execution never changes is asserted, not tested at every row */
   assert (vd->xasl_state != NULL && RESOLVED_OWNS_SLOT (vd->xasl_state->resolved, item));
   const RESOLVED_DOMAIN *decision = &vd->xasl_state->resolved.table[item->slot];
   return decision->domain != NULL ? decision : NULL;
@@ -170,10 +168,10 @@ RESOLVED_GATE_NODE (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 
 /* The index of a node's cell in this execution's state, or -1 when it has none: an item without a cell - most nodes,
  * at every row - or no descriptor. The descriptor comes first: a temporary regu fetched without one
- * (qdata_get_interpolation_function_result) leaves its position's item pointer unset (#368, review 2 R2-03 (a)). A node
+ * (qdata_get_interpolation_function_result) leaves its position's item pointer unset. A node
  * with a cell is read with the descriptor of the execution that loaded it, or with a PX worker's copy of its state,
- * whose own load numbers the cells as the plan does (#355, D-355-01, D-355-07): that never changes during an
- * execution, so it is asserted, not tested at every row (#372). */
+ * whose own load numbers the cells as the plan does: that never changes during an
+ * execution, so it is asserted, not tested at every row. */
 inline int
 RESOLVED_CELL (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
@@ -186,9 +184,9 @@ RESOLVED_CELL (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 }
 
 /*
- * qexec_node_domain () - the domain a plan node has now in this execution (#355, D-355-01)
+ * qexec_node_domain () - the domain a plan node has now in this execution
  *   return: the domain the node took in this execution, or its compiled domain
- *   compiled(in): the node's domain field, as the stream loaded it; the execution never writes it (ADR 0020)
+ *   compiled(in): the node's domain field, as the stream loaded it; the execution never writes it
  *   item(in): the node's plan item
  */
 inline TP_DOMAIN *
@@ -204,7 +202,7 @@ qexec_node_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN
 }
 
 /* Whether a node with a cell took its domain in this execution (qexec_take_domain): the inline fetch_peek_dbval () peeks
- * an open regu directly from then on (#355, D-355-03) */
+ * an open regu directly from then on */
 inline bool
 qexec_node_took_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
@@ -213,7 +211,7 @@ qexec_node_took_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 }
 
 /*
- * qexec_node_open () - whether a plan node's domain is still open in this execution (#355, D-355-06)
+ * qexec_node_open () - whether a plan node's domain is still open in this execution
  *   return: its compiled domain is open - the load's answer to VARIABLE || collation flag != NORMAL, DOMAIN_PLAN_OPEN -
  *	     and the node took no domain yet
  *
@@ -227,7 +225,7 @@ qexec_node_open (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 }
 
 /* The same for a list position's value descriptor, which shares the position's cell: its own compiled domain is open
- * (DOMAIN_PLAN_OPEN_POSITION) and the position took no domain yet (#355, D-355-09) */
+ * (DOMAIN_PLAN_OPEN_POSITION) and the position took no domain yet */
 inline bool
 qexec_position_open (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
@@ -236,7 +234,7 @@ qexec_position_open (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 
 /*
  * qexec_take_domain () - a plan node takes a domain for the rest of this execution, where develop wrote it into the
- *   node and the XASL clear restored it (#355, D-355-01)
+ *   node and the XASL clear restored it
  *   compiled(in): the node's domain field; a node without a cell keeps it, and then takes nothing else
  *   domain(in): the domain; NULL takes the compiled one back
  *
@@ -257,7 +255,7 @@ qexec_take_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP
 }
 
 /* The domain a MEDIAN / PERCENTILE list holds and its sort key sorts in this execution (qexec_setup_interpolation_list):
- * the key's compiled domain until the setup gives the function its class (#355, D-355-02). The key shares the
+ * the key's compiled domain until the setup gives the function its class. The key shares the
  * function's item, so the list domain has a cell array of its own. */
 inline TP_DOMAIN *
 qexec_interpolation_list_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
@@ -281,7 +279,7 @@ qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_IT
     }
 }
 
-/* An aggregate's or an analytic function's operand type now in this execution (#355, D-355-01): the one it took, or
+/* An aggregate's or an analytic function's operand type now in this execution: the one it took, or
  * its compiled opr_dbtype. */
 inline DB_TYPE
 qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, const DOMAIN_PLAN_ITEM * item)
@@ -312,8 +310,7 @@ extern const TP_DOMAIN *qexec_consumer_domain (const VAL_DESCR * vd, const TP_DO
 					       const DOMAIN_PLAN_ITEM * item);
 extern int qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled);
 
-/* A plan item's index in this execution's plan, which the boundary (b) names; -1 for an item of another load (#368,
- * review 2 R2-04) */
+/* A plan item's index in this execution's plan, which the boundary (b) names; -1 for an item of another load */
 inline int
 qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
@@ -329,7 +326,7 @@ extern const DB_VALUE *qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLV
 						 const TP_DOMAIN * target, const DB_VALUE * value);
 
 /*
- * qexec_held_value () - the value a scope fixes, converted once in the scope (#368, D-368-01, D-368-07): a comparison
+ * qexec_held_value () - the value a scope fixes, converted once in the scope: a comparison
  *   side, an arithmetic operand or the value a SUM or AVG adds that is a constant (the execution's scope) or a
  *   correlated value (its block's scope)
  *   return: the converted value; NULL when the row converts it - the scope was not entered, or the conversion failed
@@ -340,7 +337,7 @@ extern const DB_VALUE *qexec_convert_held_value (THREAD_ENTRY * thread_p, RESOLV
  *
  * The first read in the scope's epoch converts the value (qexec_convert_held_value). Every other read is one
  * comparison of epochs and the pointer that read left, which is NULL in a scope never entered: no owner, converter or
- * target is compared on the row (#371). Only the thread that owns the execution's state reads it.
+ * target is compared on the row. Only the thread that owns the execution's state reads it.
  */
 inline const DB_VALUE *
 qexec_held_value (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int held, DOMAIN_CONVERTER conv,

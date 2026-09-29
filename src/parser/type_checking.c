@@ -6001,7 +6001,7 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       && !(op == PT_ADDTIME && PT_IS_STRING_TYPE (arg1_type)))
     {
       /* an operator whose result type an undetermined argument can still change; ADDTIME's result is decided by its
-       * first argument alone, and a string first argument is VARCHAR (the manual's "date/time string" row, D-335-10) */
+       * first argument alone, and a string first argument is VARCHAR (the manual's "date/time string" row) */
       expr->type_enum = PT_TYPE_MAYBE;
     }
   else
@@ -20510,7 +20510,7 @@ pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM a
 
 /*
  * pt_is_op_gate_dependent () - the operators whose result type is decided by the server gate when a host
- *			       variable argument has no compile-time type (#335/#336; was pt_is_op_hv_late_bind)
+ *			       variable argument has no compile-time type (was pt_is_op_hv_late_bind)
  *
  *   return: true if the operator leaves a MAYBE host variable argument to the gate
  *   op(in): operator type

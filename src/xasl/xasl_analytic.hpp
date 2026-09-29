@@ -104,7 +104,7 @@ namespace cubxasl
     db_value part_value;		/* partition temporary accumulator */
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-    RESOLVED_DOMAIN precast;		/* SUM / AVG: the pre-cast of value + a value, set per partition (#368, D-368-06) */
+    RESOLVED_DOMAIN precast;		/* SUM / AVG: the pre-cast of value + a value, set per partition */
 #endif
     INT64 curr_cnt;			/* current number of items */
     bool is_first_exec_time;	        /* the fist time to be executed */

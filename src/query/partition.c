@@ -991,7 +991,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
     {
     case TYPE_DBVAL:
       /* use dbval; a query's constant against the partition expression's: the key pair table's comparison of their
-       * types (workspace#354) */
+       * types */
       if (domain_compare_by_keys (&left->value.dbval, &right->value.dbval, 1, 0, NULL) != DB_EQ)
 	{
 	  return false;
@@ -1014,7 +1014,7 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_POS_VALUE:
       {
-	/* each reference reads its own value (D-323-03) */
+	/* each reference reads its own value */
 	const DB_VALUE *val_left, *val_right;
 
 	val_left = REGU_RESOLVED_VALUE (pinfo->vd, left);
@@ -1431,7 +1431,7 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
       else
 	{
 	  /* the bounds are the partition expression's type, the catalog's and not the plan's: the key pair table's
-	   * comparison of the two types (workspace#354) */
+	   * comparison of the two types */
 	  rmin = domain_compare_by_keys (&min, val, 1, 1, NULL);
 	}
 
@@ -1801,7 +1801,7 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
 
     case TYPE_POS_VALUE:
       {
-	/* each reference reads its own value (D-323-03) */
+	/* each reference reads its own value */
 	const DB_VALUE *val = REGU_RESOLVED_VALUE (pinfo->vd, key);
 	error = pr_clone_value (val, attr_key);
 

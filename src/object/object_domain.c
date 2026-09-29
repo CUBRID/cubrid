@@ -12033,7 +12033,7 @@ tp_value_convert_bit_to_bit_core (const DB_VALUE * src, DB_VALUE * target, const
   DB_DATA_STATUS data_stat = DATA_STATUS_OK;
 
   /* develop coerces a bit string of the same precision too: a value can hold more bits than its precision (a DBLink
-   * BIT(n) value holds whole bytes, dblink_scan.c), which the coercion truncates (#345) */
+   * BIT(n) value holds whole bytes, dblink_scan.c), which the coercion truncates */
   do
     {
 
@@ -25952,7 +25952,7 @@ static const DOMAIN_CONVERTER domain_convert_table[3][DB_TYPE_LAST + 1][DB_TYPE_
 /*
  * tp_value_convert_enumeration_name_to_double () - an ENUM added to a string without plus_as_concat: its name, then
  *   the name read as a number (qdata_add_dbval casts the ENUM to VARCHAR, then both strings to DOUBLE). The table
- *   cell (ENUM, DOUBLE) stays the ordinal; the domain resolver picks this one for that grid position (D-335-05).
+ *   cell (ENUM, DOUBLE) stays the ordinal; the domain resolver picks this one for that grid position.
  */
 static TP_DOMAIN_STATUS
 tp_value_convert_enumeration_name_to_double (const DB_VALUE * src, DB_VALUE * target, const TP_DOMAIN * desired_domain)
@@ -25996,7 +25996,7 @@ domain_lookup_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain, DOM
 
 /*
  * domain_lookup_coerce_converter () - the cell tp_value_coerce (TP_IMPLICIT_COERCION) runs on a value of src_type
- *   brought into desired_domain, a domain of another type (#356): the incompatible cell for a pair implicit coercion
+ *   brought into desired_domain, a domain of another type: the incompatible cell for a pair implicit coercion
  *   refuses, the implicit cell of a collection pair (set_coerce converts the elements implicitly), the ASSIGN cell
  *   otherwise. A JSON value is not covered: tp_value_cast_internal checks the pair after it replaced the value by its
  *   scalar.
@@ -29696,7 +29696,7 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
  *    type1(in): type of the first value
  *    type2(in): type of the second value
  * Note:
- *    Pure rule shared by tp_value_compare_with_error and the server domain resolver (dpin-07, D-328-05).
+ *    Pure rule shared by tp_value_compare_with_error and the server domain resolver.
  */
 TP_COMPARE_COERCION
 tp_value_compare_common_domain (const DB_TYPE type1, const DB_TYPE type2)

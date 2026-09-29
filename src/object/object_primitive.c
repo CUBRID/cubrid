@@ -7712,7 +7712,7 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
 
   if (element_compare != NULL)
     {
-      /* the caller's plan for this column's two keys (#342) */
+      /* the caller's plan for this column's two keys */
       c = element_compare (arg, column, &val1, &val2, do_coercion, total_order, &comparable);
     }
   else
@@ -15506,7 +15506,7 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
     }
 
   /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
-   * every pair of keys a value can have, decided before any row (workspace#354) */
+   * every pair of keys a value can have, decided before any row */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   cmp_result = domain_compare_by_keys (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
 #else

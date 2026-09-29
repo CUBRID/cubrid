@@ -37,32 +37,31 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* Load boundary (a) (#336, D-323-09; #337 removed the derived-consumer exceptions X-8..X-10): every item the compiler
+/* Load boundary (a): every item the compiler
  * left without a type is a gate slot, a gate-dependent node or an alias of one; anything else refuses the load with
  * ER_QPROC_DOMAIN_UNRESOLVED. A derived consumer (a value pointer, a list position, a sort key, an accumulator)
- * reads its producer: the producer's gate slot (ALIAS) or its domain. The collation axis (#338): a string the
+ * reads its producer: the producer's gate slot (ALIAS) or its domain. The collation axis: a string the
  * compiler typed but whose collation the values give (LEAVE, ENFORCE) is a slot recording its bound value's domain,
  * a node the gate decides from its operands (COLLATION_GATE), or a consumer reading its producer. */
 static const bool domain_plan_check_load = true;
 struct DOMAIN_PLAN_LOAD_EXCEPTION
 {
-  const char *id;
   const char *site;
   const char *action;
 };
 static const DOMAIN_PLAN_LOAD_EXCEPTION domain_plan_load_exceptions[] = {
-  {"X-1", "TYPE_REGU_VAR_LIST", "no item; visit children"},
-  {"X-2", "REGU_VARIABLE_ANALYTIC_WINDOW", "alias list column"},
-  {"X-3", "set-operation position", "alias producer"},
-  {"X-4", "TYPE_LIST_ID / TYPE_ORDERBY_NUM", "no value-domain item"},
-  {"X-5", "collection constructor", "static element domains"}
+  {"TYPE_REGU_VAR_LIST", "no item; visit children"},
+  {"REGU_VARIABLE_ANALYTIC_WINDOW", "alias list column"},
+  {"set-operation position", "alias producer"},
+  {"TYPE_LIST_ID / TYPE_ORDERBY_NUM", "no value-domain item"},
+  {"collection constructor", "static element domains"}
 };
 
 /* Temporary load records are freed before publishing the plan. No record, owner
  * link or traversal scratch survives in the hot arrays. Shared XASLs are marked
  * on entry; expression items are appended after their operands (producer order). */
 
-/* What the resolution pass decides for a record after the walk (#337). */
+/* What the resolution pass decides for a record after the walk. */
 enum DOMAIN_LOAD_KIND
 {
   DOMAIN_LOAD_LEAF,		/* a bind, a literal, an attribute, a compiled node: nothing to derive */
@@ -70,7 +69,7 @@ enum DOMAIN_LOAD_KIND
   DOMAIN_LOAD_NODE,		/* a node the compiler left without a type: a gate-dependent node when every operand
 				 * is known */
   DOMAIN_LOAD_ARITH_REGU,	/* the regu wrapping an arithmetic node: carries that node's answer */
-  DOMAIN_LOAD_FIXED_AGG		/* a compiled aggregate or analytic: accumulator derived once (L-43) */
+  DOMAIN_LOAD_FIXED_AGG		/* a compiled aggregate or analytic: accumulator derived once */
 };
 
 struct DOMAIN_LOAD_RECORD
@@ -89,14 +88,14 @@ struct DOMAIN_LOAD_RECORD
   bool literal_value;		/* a bind or a literal: the gate reads its value */
   bool follows_producer;	/* after resolution: this record carries its producer's answer (a link source goes
 				 * through it to the producer, a bind's value included) */
-  bool needs_cell;		/* the node gets a cell in an execution's state (domain_give_cell, #355) */
-  bool open;			/* its compiled domain is open: DOMAIN_PLAN_OPEN once published (#355) */
-  bool open_position;		/* a list position whose pos_descr.dom is open: DOMAIN_PLAN_OPEN_POSITION (#355) */
+  bool needs_cell;		/* the node gets a cell in an execution's state (domain_give_cell) */
+  bool open;			/* its compiled domain is open: DOMAIN_PLAN_OPEN once published */
+  bool open_position;		/* a list position whose pos_descr.dom is open: DOMAIN_PLAN_OPEN_POSITION */
   bool row_invariant;		/* no row changes its value: a constant, or a branch or collection node over such
-				 * operands - what a branch guard's condition reads (#368) */
+				 * operands - what a branch guard's condition reads */
   DOMAIN_LOAD_RECORD *producer;	/* CONSUMER / ARITH_REGU: whose answer this record reads */
   /* NODE / FIXED_AGG: the operands in operand order, and the literal a TYPE_DBVAL operand carries; the inline arrays
-   * hold three, a function with more operands allocates its own (#343) */
+   * hold three, a function with more operands allocates its own */
   DOMAIN_PLAN_ITEM **link;
   const DB_VALUE **literal;
   DOMAIN_PLAN_ITEM *link_inline[3];
@@ -108,7 +107,7 @@ struct DOMAIN_LOAD_RECORD
   const TP_DOMAIN *argument;	/* FIXED_AGG: the argument's compiled domain when it is not open (DOMAIN_GATE_LINK) */
   int gate_order;		/* index into plan->gate_nodes once this record is a gate-dependent node */
   DOMAIN_PLAN_ITEM *self_owner;	/* owner storage of a synthetic record (a set-operation column) */
-  /* T_ADD, T_SUB, T_MUL, T_DIV, a SUM or AVG (#368): the operands whose pre-cast the execution may convert once per
+  /* T_ADD, T_SUB, T_MUL, T_DIV, a SUM or AVG: the operands whose pre-cast the execution may convert once per
    * scope ([1]: the value an aggregate adds), and for a correlated one the block whose scans fix it */
   REGU_VARIABLE *held_operand[2];
   XASL_NODE *held_scope[2];
@@ -119,16 +118,16 @@ struct DOMAIN_LOAD_BINDING
   DOMAIN_PLAN_ITEM **owner;
   DOMAIN_PLAN_ITEM *target;
 };
-/* An ALL/SOME term the walk met (#352): the list column its item compares with, bound to the published item. */
+/* An ALL/SOME term the walk met: the list column its item compares with, bound to the published item. */
 struct DOMAIN_LOAD_ELEMENT_TERM
 {
   DOMAIN_LOAD_ELEMENT_TERM *next;
   ALSM_EVAL_TERM *term;
   DOMAIN_PLAN_ITEM *list_column;
-  int guard;			/* the branch guard around the term (#367) */
-  bool key_range;		/* a term of an index scan's key range (#345) */
+  int guard;			/* the branch guard around the term */
+  bool key_range;		/* a term of an index scan's key range */
 };
-/* A comparison of two values outside a predicate term the walk met (#354): FIELD, NULLIF, LEAST and GREATEST over
+/* A comparison of two values outside a predicate term the walk met: FIELD, NULLIF, LEAST and GREATEST over
  * their operands, LIMIT's row count against 0, a merge join's column pair. A side is a regu, a list column (bound to
  * the published item) or a literal no regu holds; the published record goes to owner. */
 struct DOMAIN_LOAD_COMPARE_PAIR
@@ -139,7 +138,7 @@ struct DOMAIN_LOAD_COMPARE_PAIR
   const DB_VALUE *literal[2];
   const DOMAIN_COMPARE_PLAN **owner;
 };
-/* A set-operation or CTE list column, unified from its branches (X-3), made once per (list, column). */
+/* A set-operation or CTE list column, unified from its branches, made once per (list, column). */
 struct DOMAIN_LOAD_LIST_COLUMN
 {
   DOMAIN_LOAD_LIST_COLUMN *next;
@@ -163,42 +162,42 @@ struct DOMAIN_LOAD_CONTEXT
   DOMAIN_LOAD_RECORD **gate_order;	/* gate-dependent nodes in resolution order (producers first) */
   int n_gate_order;
   int max_gate_order;
-  COMP_EVAL_TERM **compare_terms;	/* the comparison terms met, in walk order (#352) */
-  int *compare_term_guards;	/* [max_compare_terms] the branch guard around each term (#367) */
+  COMP_EVAL_TERM **compare_terms;	/* the comparison terms met, in walk order */
+  int *compare_term_guards;	/* [max_compare_terms] the branch guard around each term */
   XASL_NODE **compare_term_scopes;	/* [2 * max_compare_terms] per side, the block whose scans fix a correlated side
-					 * (domain_outer_scope, #368); NULL */
-  bool *compare_term_ranges;	/* [max_compare_terms] a term of an index scan's key range (#345) */
-  bool in_key_range;		/* the walk is in an index scan's key range predicate, where_range (#345) */
+					 * (domain_outer_scope); NULL */
+  bool *compare_term_ranges;	/* [max_compare_terms] a term of an index scan's key range */
+  bool in_key_range;		/* the walk is in an index scan's key range predicate, where_range */
   int n_compare_terms;
   int max_compare_terms;
-  DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first (#352) */
+  DOMAIN_LOAD_ELEMENT_TERM *element_terms;	/* the ALL/SOME terms met, last first */
   int n_element_terms;
-  DOMAIN_LOAD_COMPARE_PAIR *compare_pairs;	/* the comparisons outside a term met, last first (#354) */
+  DOMAIN_LOAD_COMPARE_PAIR *compare_pairs;	/* the comparisons outside a term met, last first */
   int n_compare_pairs;
-  INDX_INFO **indexes;		/* the index scans met, in walk order (#342) */
-  int *index_guards;		/* [max_indexes] the branch guard around each scan (#367) */
+  INDX_INFO **indexes;		/* the index scans met, in walk order */
+  int *index_guards;		/* [max_indexes] the branch guard around each scan */
   int n_indexes;
   int max_indexes;
-  ARITH_TYPE **defines;		/* the session variable assignments met (T_DEFINE_VARIABLE, #366) */
+  ARITH_TYPE **defines;		/* the session variable assignments met (T_DEFINE_VARIABLE) */
   int n_defines;
   int max_defines;
-  /* the branches taken by a constant condition (#367): the innermost one around the walk's position, and all of them,
+  /* the branches taken by a constant condition: the innermost one around the walk's position, and all of them,
    * outer ones first */
   int guard;
   DOMAIN_PLAN_GUARD *guards;
   int n_guards;
   int max_guards;
   bool guards_ambiguous;	/* a node met under two guards (domain_note_met_again) */
-  XASL_NODE **blocks;		/* the blocks walked, and the guard each was first walked below (#367) */
+  XASL_NODE **blocks;		/* the blocks walked, and the guard each was first walked below */
   int *block_guards;
   int n_blocks;
   int max_blocks;
-  /* the blocks whose execution holds the walk's position, the outermost first, the block walked last (#368): a value
+  /* the blocks whose execution holds the walk's position, the outermost first, the block walked last: a value
    * of one of them but the last is fixed while the last one's scan runs */
   XASL_NODE **ancestors;
   int n_ancestors;
   int max_ancestors;
-  /* the values converted once per scope published so far (plan->n_held, #368): each one's scope, and the block whose
+  /* the values converted once per scope published so far (plan->n_held): each one's scope, and the block whose
    * scans fix a correlated one (NULL for a constant) */
   int *held_scopes;
   XASL_NODE **held_blocks;
@@ -221,7 +220,7 @@ domain_is_fixed (const TP_DOMAIN * domain)
     && domain->collation_flag != TP_DOMAIN_COLL_LEAVE;
 }
 
-/* The type axis only: the collation of a character result is merged at the gate (#338, D-335-03). */
+/* The type axis only: the collation of a character result is merged at the gate. */
 static bool
 domain_type_is_fixed (const TP_DOMAIN * domain)
 {
@@ -229,7 +228,7 @@ domain_type_is_fixed (const TP_DOMAIN * domain)
 }
 
 /* A typed character domain whose collation the compiler left to the values (LEAVE) or enforced over an operand it
- * could not type (ENFORCE): the values give it, so the gate decides it (#338). */
+ * could not type (ENFORCE): the values give it, so the gate decides it. */
 static bool
 domain_character_open (const TP_DOMAIN * domain)
 {
@@ -239,7 +238,7 @@ domain_character_open (const TP_DOMAIN * domain)
 
 /* A domain the execution used to complete in the plan node itself: a VARIABLE type, or a collation the values give
  * (LEAVE, ENFORCE). The pair condition of 26 execution sites (VARIABLE || collation flag != NORMAL) asked this of the
- * node's domain at every row; the load asks it once (#355, D-355-06). */
+ * node's domain at every row; the load asks it once. */
 static bool
 domain_is_open (const TP_DOMAIN * domain)
 {
@@ -256,12 +255,12 @@ domain_record_of (const DOMAIN_PLAN_ITEM * item)
 }
 
 /*
- * domain_give_cell () - the node of an item gets a cell in an execution's state (#355, D-355-01)
+ * domain_give_cell () - the node of an item gets a cell in an execution's state
  *   open(in): the node's compiled domain is open (domain_is_open): DOMAIN_PLAN_OPEN, set when the plan is published so
- *	       that it does not change which value pointers share their producer's item (D-355-09)
+ *	       that it does not change which value pointers share their producer's item
  *
  * The domain an execution gives a node - a gate decision the node reads at its first computation or its consumer's
- * setup - lives in the cell, never in the node: the plan stays what the stream loaded (ADR 0020, G-02). An aggregate
+ * setup - lives in the cell, never in the node: the plan stays what the stream loaded. An aggregate
  * or an analytic function gets one whether or not its domain is open: its execution also records the operand type it
  * evaluates with.
  */
@@ -308,8 +307,8 @@ domain_gate_context (OPERATOR_TYPE opcode)
     }
 }
 
-/* Records the operands a node the compiler left without a type is decided from (resolution pass, #337). A record links
- * three operands in place; a function with more links an array of its own, freed with the load records (#343). */
+/* Records the operands a node the compiler left without a type is decided from (resolution pass). A record links
+ * three operands in place; a function with more links an array of its own, freed with the load records. */
 static void
 domain_set_links (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record, REGU_VARIABLE * const *operands,
 		  int n_operands, const TP_DOMAIN * consumer)
@@ -417,10 +416,10 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
 }
 
 /*
- * domain_regu_is_row_invariant () - whether no row changes the value of a regu the walk met (#367, #368): a bind, a
+ * domain_regu_is_row_invariant () - whether no row changes the value of a regu the walk met: a bind, a
  *   literal, a constant subtree, or a CASE, IF, DECODE, predicate or collection node over such operands. A branch
- *   guard's condition reads only these (D-367-07); the cache class is another question - develop computes a branch
- *   node at every fetch, so its class stays VOLATILE (D-323-18).
+ *   guard's condition reads only these; the cache class is another question - develop computes a branch
+ *   node at every fetch, so its class stays VOLATILE.
  */
 static bool
 domain_regu_is_row_invariant (const REGU_VARIABLE * regu)
@@ -428,7 +427,7 @@ domain_regu_is_row_invariant (const REGU_VARIABLE * regu)
   return regu != NULL && regu->domain_plan != NULL && domain_record_of (regu->domain_plan)->row_invariant;
 }
 
-/* Whether no row changes a predicate the walk met (#367, #368): every value each of its terms compares is so. */
+/* Whether no row changes a predicate the walk met: every value each of its terms compares is so. */
 static bool
 domain_pred_is_row_invariant (const PRED_EXPR * pred)
 {
@@ -470,7 +469,7 @@ domain_pred_is_row_invariant (const PRED_EXPR * pred)
 
 /*
  * domain_push_guard () - a branch the walk enters whose condition is a constant becomes the innermost guard of what
- *   lies below it (#367, D-367-07); the caller restores ctx->guard when it leaves the branch
+ *   lies below it; the caller restores ctx->guard when it leaves the branch
  */
 static void
 domain_push_guard (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_GUARD_KIND kind, const void *selector)
@@ -513,7 +512,7 @@ domain_guard_encloses (const DOMAIN_LOAD_CONTEXT * ctx, int outer, int inner)
   return outer < 0;
 }
 
-/* A node the walk meets again, first met below guard (#367): its guard chain holds for this place too when the first
+/* A node the walk meets again, first met below guard: its guard chain holds for this place too when the first
  * place's guard is around this one; otherwise the node is also reached another way than its chain says, and the plan
  * keeps no guards (every failure is the gate's error). */
 static void
@@ -546,7 +545,7 @@ domain_bind_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, DOMAIN_P
 }
 
 /*
- * domain_add_compare_pair () - a comparison of two values outside a predicate term (#354): its record is published
+ * domain_add_compare_pair () - a comparison of two values outside a predicate term: its record is published
  *   with the terms' (domain_publish_compares) into *owner
  *   regu(in), column(in), literal(in): per side, the regu, the list column item or the literal it compares; one each
  */
@@ -577,8 +576,8 @@ domain_add_compare_pair (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * const regu[2
   ctx->n_compare_pairs++;
 }
 
-/* The two comparison record slots of a FIELD, NULLIF, LEAST or GREATEST node, in the plan's arena (#354): the node's
- * item carries them (#355, D-355-04); NULL for any other operator */
+/* The two comparison record slots of a FIELD, NULLIF, LEAST or GREATEST node, in the plan's arena: the node's
+ * item carries them; NULL for any other operator */
 static const DOMAIN_COMPARE_PLAN **
 domain_arith_compares (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, bool * failed)
 {
@@ -603,7 +602,7 @@ domain_arith_compares (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, bool * fai
   return compares;
 }
 
-/* A comparison of two regus outside a predicate term (#354). */
+/* A comparison of two regus outside a predicate term. */
 static void
 domain_add_regu_compare (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * lhs, REGU_VARIABLE * rhs,
 			 const DOMAIN_COMPARE_PLAN ** owner)
@@ -670,7 +669,7 @@ domain_volatile_operator (OPERATOR_TYPE opcode)
 }
 
 /* The volatile operators develop computes at every fetch only because it never analyzed their predicate: over operands
- * no row changes, no row changes them either (#368). */
+ * no row changes, no row changes them either. */
 static bool
 domain_branch_operator (OPERATOR_TYPE opcode)
 {
@@ -678,7 +677,7 @@ domain_branch_operator (OPERATOR_TYPE opcode)
 }
 
 /* develop's fetch cached a function over constant operands only for these (the FETCH_ALL_CONST decision of
- * TYPE_FUNC); every other function computed each time it was fetched, so it is no constant the gate evaluates (#352) */
+ * TYPE_FUNC); every other function computed each time it was fetched, so it is no constant the gate evaluates */
 static bool
 domain_function_caches (FUNC_CODE ftype)
 {
@@ -722,7 +721,7 @@ domain_function_caches (FUNC_CODE ftype)
 
 /* develop recomputed a BENCHMARK target and a stored procedure's arguments at every call: fetch marked them not
  * constant through regu_variable_node::map_regu (arithmetic left and right operands, function operands, procedure
- * arguments, value and regu lists), so none of them is a constant the gate evaluates once (#352) */
+ * arguments, value and regu lists), so none of them is a constant the gate evaluates once */
 static void
 domain_force_row (REGU_VARIABLE * regu)
 {
@@ -797,7 +796,7 @@ domain_fixed_operand (DOMAIN_PLAN_ITEM * item, int i, const TP_DOMAIN * source,
 }
 
 /* The operators qdata_*_dbval took through a pre-cast by their values' types; the resolver's grid is its one rule, and
- * the plan carries it (#368, D-368-02). */
+ * the plan carries it. */
 static bool
 domain_precast_operator (OPERATOR_TYPE opcode)
 {
@@ -806,7 +805,7 @@ domain_precast_operator (OPERATOR_TYPE opcode)
 
 /*
  * domain_plan_precast () - the operand converters of an addition, subtraction, multiplication or division over its
- *   operands' compiled domains (#368, D-368-02): fetch converts the operands with them and qdata_*_dbval casts nothing.
+ *   operands' compiled domains: fetch converts the operands with them and qdata_*_dbval casts nothing.
  *   A node the gate decides the type of reads the gate's instead; an operand whose domain is open plans nothing here
  *   (the item keeps no converter: the ASSIGN cells domain_fixed_operand looked up are not a pre-cast).
  */
@@ -844,7 +843,7 @@ domain_walk_list (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST list, DOMAIN_CTX
 }
 
 /* Walks regu lists that read the list file of `source` (or whose columns are `columns`): their TYPE_POSITION regus
- * read that list's columns (#337). */
+ * read that list's columns. */
 static void
 domain_walk_position_list (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST list, XASL_NODE * source,
 			   REGU_VARIABLE_LIST columns)
@@ -888,7 +887,7 @@ domain_column_item (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST columns, int p
 /* The name of a synthetic list-column item: boundary (a) checks its readers, not the item (it has no XASL node). */
 static const char domain_list_column_name[] = "list column";
 
-/* A synthetic record owning an item no XASL node points at: a set-operation or CTE list column (X-3). */
+/* A synthetic record owning an item no XASL node points at: a set-operation or CTE list column. */
 static DOMAIN_LOAD_RECORD *
 domain_add_synthetic (DOMAIN_LOAD_CONTEXT * ctx, const char *name)
 {
@@ -907,11 +906,11 @@ domain_add_synthetic (DOMAIN_LOAD_CONTEXT * ctx, const char *name)
 }
 
 /*
- * domain_list_column () - the item giving column `pos` of the list file `xasl` produces (L-41)
+ * domain_list_column () - the item giving column `pos` of the list file `xasl` produces
  *
  * A block's list holds its output columns. A set operation's list unifies its branches' lists, and a CTE's list its
  * non-recursive part's with the rows its recursive part appends (qfile_unify_types): that column is a node over the
- * branch columns (X-3), made once per (list, column).
+ * branch columns, made once per (list, column).
  */
 static DOMAIN_PLAN_ITEM *
 domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos)
@@ -1000,7 +999,7 @@ domain_block_output (XASL_NODE * xasl)
   return xasl->outptr_list;
 }
 
-/* Every column of a set operation's or a CTE's list is a node over its branches' columns, read or not (#341): the gate
+/* Every column of a set operation's or a CTE's list is a node over its branches' columns, read or not: the gate
  * rejects branches it cannot unify before execution (qexec_resolve_gate_node), whether a reader asks for the column
  * or the list is the statement's result. */
 static void
@@ -1059,7 +1058,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
       domain_note_met_again (ctx, met->cold.guard);
       for (int i = 0; i < 2; i++)
 	{
-	  /* #368: an operand a scope fixes is converted once per scope only where this place is in the same scope */
+	  /* an operand a scope fixes is converted once per scope only where this place is in the same scope */
 	  if (met->held_operand[i] != NULL && met->held_scope[i] != domain_outer_scope (ctx, met->held_operand[i]))
 	    {
 	      met->held_operand[i] = NULL;
@@ -1071,10 +1070,10 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
   REGU_VARIABLE *operands[] = { arith->leftptr, arith->rightptr, arith->thirdptr };
   DOMAIN_OPERAND_CLASS cls = domain_volatile_operator (arith->opcode) || arith->pred != NULL
     ? OPERAND_VOLATILE : OPERAND_CONST;
-  /* #367: CASE, DECODE and IF take one arm by their predicate, which develop evaluates first; COALESCE, NVL, IFNULL
+  /* CASE, DECODE and IF take one arm by their predicate, which develop evaluates first; COALESCE, NVL, IFNULL
    * and NVL2 read their other operands by the first one's NULL-ness - when the node's domain is fixed: of an open
    * (VARIABLE) domain, develop's fetch_peek_arith reads every operand to infer the domain from the values. A selector
-   * no row changes guards each arm it may skip (#368: a branch node inside it too, domain_regu_is_row_invariant). */
+   * no row changes guards each arm it may skip (a branch node inside it too, domain_regu_is_row_invariant). */
   const int entry_guard = ctx->guard;
   const bool by_predicate = arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_IF;
   const bool by_first = (arith->opcode == T_COALESCE || arith->opcode == T_NVL || arith->opcode == T_IFNULL
@@ -1110,8 +1109,8 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     {
       domain_walk_pred (ctx, arith->pred);
     }
-  /* the comparisons the node makes are planned like a term's (#354): FIELD compares its third operand with each value,
-   * NULLIF and LEAST / GREATEST their two operands; the node's item carries them (#355) */
+  /* the comparisons the node makes are planned like a term's: FIELD compares its third operand with each value,
+   * NULLIF and LEAST / GREATEST their two operands; the node's item carries them */
   const DOMAIN_COMPARE_PLAN **compares = domain_arith_compares (ctx->thread_p, arith->opcode, &ctx->failed);
   if (compares != NULL)
     {
@@ -1128,7 +1127,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	  domain_add_regu_compare (ctx, arith->leftptr, arith->rightptr, &compares[0]);
 	}
     }
-  /* #368: no row changes a CASE, DECODE, IF or predicate node over operands no row changes, though develop computes it
+  /* no row changes a CASE, DECODE, IF or predicate node over operands no row changes, though develop computes it
    * at every fetch (its class stays VOLATILE); a volatile operator's value is the row's */
   bool row_invariant = (!domain_volatile_operator (arith->opcode) || domain_branch_operator (arith->opcode))
     && (arith->pred == NULL || domain_pred_is_row_invariant (arith->pred));
@@ -1144,7 +1143,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     }
   if (arith->opcode == T_DEFINE_VARIABLE)
     {
-      /* #366: the gate types a variable the statement reads from the values the statement assigns it */
+      /* the gate types a variable the statement reads from the values the statement assigns it */
       domain_add_define (ctx, arith);
     }
   if (item != NULL)
@@ -1156,15 +1155,15 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	  domain_give_cell (item, true);
 	}
     }
-  /* A node the compiler left without a result type (a late-bound operator over a slot, A8'') is decided by the gate
-   * once per execution when every operand gives it a type the gate knows (#335). Whether an operand is known is
-   * settled only after derived consumers read their producers, so the resolution pass decides it (#337); a session
-   * variable read (S5, #336) is such a node too. CONNECT_BY_ROOT and QPRIOR carry their XASL in thirdptr. */
+  /* A node the compiler left without a result type (a late-bound operator over a slot) is decided by the gate
+   * once per execution when every operand gives it a type the gate knows. Whether an operand is known is
+   * settled only after derived consumers read their producers, so the resolution pass decides it; a session
+   * variable read is such a node too. CONNECT_BY_ROOT and QPRIOR carry their XASL in thirdptr. */
   const bool late_bound = arith->domain != NULL && TP_DOMAIN_TYPE (arith->domain) == DB_TYPE_VARIABLE;
-  /* #338: a string the compiler typed but whose collation its values give (LEAVE, ENFORCE) is decided by the gate
+  /* a string the compiler typed but whose collation its values give (LEAVE, ENFORCE) is decided by the gate
    * from its operands' decided domains, as a gate-dependent node on the collation axis */
   const bool collation_open = !marked_gate && !late_bound && domain_character_open (arith->domain);
-  /* #368 (D-368-02): an addition, subtraction, multiplication or division the compiler typed over an operand it did
+  /* an addition, subtraction, multiplication or division the compiler typed over an operand it did
    * not (LIMIT's offset + count, an ORDERBY_NUM bound over a bind) keeps its compiled domain; the gate decides its
    * operands' pre-cast from their decided domains */
   const bool precast_open = domain_precast_operator (arith->opcode) && !marked_gate && !late_bound && !collation_open
@@ -1189,7 +1188,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	{
 	  if (operands[i] != NULL && operands[i]->domain_plan == NULL)
 	    {
-	      /* an operand without a value domain (X-4) leaves the node undecided */
+	      /* an operand without a value domain leaves the node undecided */
 	      record->n_link = -1;
 	    }
 	}
@@ -1200,12 +1199,12 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
 	{
 	  /* Static operand targets come from compiled operand domains, never
 	   * from an arithmetic result domain (DATE + INTEGER is not DATE + DATE).
-	   * CAST alone explicitly supplies its consumer target. The G grid is dpin-07. */
+	   * CAST alone explicitly supplies its consumer target. */
 	  domain_fixed_operand (item, i, operands[i]->domain, is_cast ? arith->domain : operands[i]->domain,
 				DOMAIN_CTX_ASSIGN);
 	}
     }
-  /* #368 (D-368-02): the pre-cast of a node the compiler typed - its collation may still be the gate's - is the
+  /* the pre-cast of a node the compiler typed - its collation may still be the gate's - is the
    * resolver's over its operands' compiled domains */
   if (domain_precast_operator (arith->opcode) && !marked_gate && !late_bound && operands[0] != NULL
       && operands[1] != NULL)
@@ -1214,7 +1213,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool marked_ga
     }
   if (item != NULL && domain_precast_operator (arith->opcode) && operands[0] != NULL && operands[1] != NULL)
     {
-      /* #368 (D-368-01, D-368-07): an operand a scope fixes - a constant, or a value an outer block's scan fixes - has
+      /* an operand a scope fixes - a constant, or a value an outer block's scan fixes - has
        * its pre-cast converted once per scope (domain_publish_held) */
       DOMAIN_LOAD_RECORD *record = domain_record_of (item);
       for (int i = 0; i < 2; i++)
@@ -1277,7 +1276,7 @@ domain_local_value (XASL_NODE * block, DB_VALUE * value)
 }
 
 /*
- * domain_outer_scope () - the block whose scans fix a correlated value the walk meets (#368, D-368-01): the block
+ * domain_outer_scope () - the block whose scans fix a correlated value the walk meets: the block
  *   walked, when the value is one of an outer block's - an outer scan's row, which an inner scan restarts for and a
  *   correlated subquery runs for; NULL otherwise
  *
@@ -1305,16 +1304,16 @@ domain_outer_scope (const DOMAIN_LOAD_CONTEXT * ctx, const REGU_VARIABLE * regu)
 
 /*
  * domain_link_string_function () - a function the compiler typed as a string whose collation its values give: a node
- *   the gate decides from its string operands (#338, #343; #368, review 2 R2-20: out of domain_walk_regu)
+ *   the gate decides from its string operands (out of domain_walk_regu)
  *   return: false when the walk stops (no memory)
  */
 static bool
 domain_link_string_function (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_PLAN_ITEM * item,
 			     DOMAIN_LOAD_RECORD * record)
 {
-  /* #338: a function the compiler typed as a string whose collation its values give is decided by the gate from
-   * its string operands, every one of them (#343: a node links as many as it has). ELT links all its operands in
-   * order: the gate picks the branch its index names, or merges the branches' collations (D-343-01). */
+  /* a function the compiler typed as a string whose collation its values give is decided by the gate from
+   * its string operands, every one of them (a node links as many as it has). ELT links all its operands in
+   * order: the gate picks the branch its index names, or merges the branches' collations. */
   const bool elt = regu->value.funcp->ftype == F_ELT;
   REGU_VARIABLE_LIST index = regu->value.funcp->operand;
   /* the index joins the links only where the gate reads its value: a bind or a literal, which the compiler wraps
@@ -1463,7 +1462,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
 	  /* the target, recomputed at every iteration */
 	  domain_force_row (&regu->value.funcp->operand->next->value);
 	}
-      /* #368: a collection built from values no row changes is one too (an IN list of binds in a branch condition) */
+      /* a collection built from values no row changes is one too (an IN list of binds in a branch condition) */
       row_invariant = domain_function_caches (regu->value.funcp->ftype) || regu->value.funcp->ftype == F_SET
 	|| regu->value.funcp->ftype == F_MULTISET || regu->value.funcp->ftype == F_SEQUENCE;
       for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
@@ -1503,7 +1502,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       domain_record_of (item)->row_invariant = true;
     }
   /* a list position's value descriptor shares the regu's item: one cell for both, which develop wrote together; each
-   * half keeps its own openness (#355) */
+   * half keeps its own openness */
   const bool position_open = regu->type == TYPE_POSITION && domain_is_open (regu->value.pos_descr.dom);
   const bool open = domain_is_open (regu->domain) || position_open;
   if (open)
@@ -1512,7 +1511,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
       domain_record_of (item)->open_position = position_open;
       REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_OPEN);
     }
-  /* D-355-03: the load marks what the inline fetch_peek_dbval () may peek directly - a bind reference with its item, and
+  /* the load marks what the inline fetch_peek_dbval () may peek directly - a bind reference with its item, and
    * a stable regu whose domain is open, once it took its domain (the stream load marked the fixed ones) */
   if (!REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION)
       && ((regu->type == TYPE_POS_VALUE)
@@ -1538,9 +1537,9 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     }
   else if (regu->type == TYPE_POS_VALUE && domain_character_open (regu->domain))
     {
-      /* a string slot the compiler typed but whose collation is the bound value's (C3/C12, LEAVE) or enforced over
+      /* a string slot the compiler typed but whose collation is the bound value's (LEAVE) or enforced over
        * the value the client sends as it is (an auto-parameter, ENFORCE): the gate records the value domain in this
-       * slot; the compiled type stays the plan type (#336, #338) */
+       * slot; the compiled type stays the plan type */
       item->flags |= DOMAIN_PLAN_COLLATION_GATE;
       item->slot = ctx->plan->n_slots++;
     }
@@ -1548,19 +1547,19 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     {
       /* an output list's bind - an UPDATE's SET value among them, an auto-parameterized literal typed by its own
        * type. A statement sharing the plan (one hash text) can bind a literal of another type: DEFAULT (another column)
-       * is not coerced into the assigned column's type (B33, #345) */
+       * is not coerced into the assigned column's type */
       item->flags |= DOMAIN_PLAN_LIST_BIND;
     }
   if (regu->type == TYPE_CONSTANT)
     {
       /* a value pointer holds what its producer wrote there, whatever domain the reader was compiled with (an
        * INSERT ... SELECT reader carries the target column's domain): its producer is found by value identity after
-       * the walk (#337, F-335-07) */
+       * the walk */
       record->kind = DOMAIN_LOAD_CONSUMER;
     }
   else if (regu->type == TYPE_POSITION)
     {
-      /* a list position reads its list's column: the gate's slot for it, or its domain (X-2, X-3, L-41) */
+      /* a list position reads its list's column: the gate's slot for it, or its domain */
       record->kind = DOMAIN_LOAD_CONSUMER;
       record->producer = domain_record_of (domain_position_producer (ctx, regu->value.pos_descr.pos_no));
       domain_bind_item (ctx, &regu->value.pos_descr.domain_plan, item);
@@ -1569,7 +1568,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
 	   && !domain_type_is_fixed (regu->domain))
     {
       /* a multi-row VALUES column takes its first row's domain; later rows are checked against it as they are read
-       * (fetch_peek_dbval_slow, U3) */
+       * (fetch_peek_dbval_slow) */
       record->kind = DOMAIN_LOAD_CONSUMER;
       record->producer = domain_record_of (regu->value.reguval_list->regu_list->value->domain_plan);
     }
@@ -1608,7 +1607,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     }
 }
 
-/* A comparison term of two values (#352): the load decides it or gives it a gate site when the plan is published.
+/* A comparison term of two values: the load decides it or gives it a gate site when the plan is published.
  * The set comparisons (subset and superset, tp_set_compare) and a list side (eval_set_list_cmp) are not these. */
 static void
 domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
@@ -1673,7 +1672,7 @@ domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
   ctx->compare_terms[ctx->n_compare_terms++] = term;
 }
 
-/* An ALL/SOME term (#352, D-352-03): its comparisons are published with the plan; a list's column is found now. */
+/* An ALL/SOME term: its comparisons are published with the plan; a list's column is found now. */
 static void
 domain_add_element_term (DOMAIN_LOAD_CONTEXT * ctx, ALSM_EVAL_TERM * term)
 {
@@ -1713,7 +1712,7 @@ domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
 	  const BOOL_OP op = pred->pe.m_pred.bool_op;
 	  if ((op == B_AND || op == B_OR) && domain_pred_is_row_invariant (pred->pe.m_pred.lhs))
 	    {
-	      /* #367: eval_pred evaluates the rest of an AND only when this term is not false, of an OR only when it is
+	      /* eval_pred evaluates the rest of an AND only when this term is not false, of an OR only when it is
 	       * not true */
 	      domain_push_guard (ctx, op == B_AND ? DOMAIN_GUARD_TERM_NOT_FALSE : DOMAIN_GUARD_TERM_NOT_TRUE,
 				 pred->pe.m_pred.lhs);
@@ -1758,7 +1757,7 @@ domain_walk_pred (DOMAIN_LOAD_CONTEXT * ctx, PRED_EXPR * pred)
   ctx->guard = entry_guard;
 }
 
-/* A sort key reads column pos_no of the list it sorts: the producer's item is the key's item (X-2). An aggregate's
+/* A sort key reads column pos_no of the list it sorts: the producer's item is the key's item. An aggregate's
  * ORDER BY sorts the aggregate's own list, whose columns are its operands. */
 static void
 domain_walk_sort (DOMAIN_LOAD_CONTEXT * ctx, SORT_LIST * list, REGU_VARIABLE_LIST columns, XASL_NODE * source = NULL)
@@ -1798,7 +1797,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	}
       if (agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
 	{
-	  /* the fraction is fetched with the execution's value descriptor (qdata_evaluate_aggregate_list) (#340) */
+	  /* the fraction is fetched with the execution's value descriptor (qdata_evaluate_aggregate_list) */
 	  domain_walk_regu (ctx, agg->info.percentile.percentile_reguvar);
 	}
       DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &agg->domain_plan, agg->domain, OPERAND_ROW,
@@ -1812,7 +1811,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	    {
 	      REGU_VARIABLE *operand = &agg->operands->value;
 	      domain_fixed_operand (item, 0, operand->domain, operand->domain, DOMAIN_CTX_FUNC_ARG);
-	      /* the function, accumulator and list domains follow the argument (F7, L-43): the gate decides them when
+	      /* the function, accumulator and list domains follow the argument: the gate decides them when
 	       * it decides the argument or the compiler left the function open; a compiled one gets its accumulator
 	       * derived once (resolution pass) */
 	      record->kind = DOMAIN_LOAD_FIXED_AGG;
@@ -1825,7 +1824,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 		}
 	      if ((agg->function == PT_SUM || agg->function == PT_AVG) && agg->option != Q_DISTINCT)
 		{
-		  /* #368 (D-368-01, D-368-07): the value SUM and AVG add, when a scope fixes it (domain_publish_held) */
+		  /* the value SUM and AVG add, when a scope fixes it (domain_publish_held) */
 		  record->held_operand[1] = operand;
 		  record->held_scope[1] = domain_outer_scope (ctx, operand);
 		}
@@ -1833,7 +1832,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	}
       if (QPROC_IS_INTERPOLATION_FUNC (agg) && agg->domain_plan != NULL)
 	{
-	  /* MEDIAN / PERCENTILE sort values cast to the function's domain, the type their list holds (#341): the key
+	  /* MEDIAN / PERCENTILE sort values cast to the function's domain, the type their list holds: the key
 	   * reads the aggregate */
 	  for (SORT_LIST * key = agg->sort_list; key != NULL && !ctx->failed; key = key->next)
 	    {
@@ -1842,7 +1841,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	}
       else
 	{
-	  /* CUME_DIST / PERCENT_RANK wrap their ORDER BY values in one TYPE_REGU_VAR_LIST operand (X-1): those values
+	  /* CUME_DIST / PERCENT_RANK wrap their ORDER BY values in one TYPE_REGU_VAR_LIST operand: those values
 	   * are the columns of the list the key sorts */
 	  REGU_VARIABLE_LIST columns = agg->operands;
 	  if (columns != NULL && columns->value.type == TYPE_REGU_VAR_LIST)
@@ -1868,7 +1867,7 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	  domain_walk_regu (ctx, &analytic->operand, DOMAIN_CTX_ANALYTIC);
 	  if (analytic->function == PT_PERCENTILE_CONT || analytic->function == PT_PERCENTILE_DISC)
 	    {
-	      /* the ratio, fetched with the execution's descriptor as an aggregate's is (#354) */
+	      /* the ratio, fetched with the execution's descriptor as an aggregate's is */
 	      domain_walk_regu (ctx, analytic->info.percentile.percentile_reguvar);
 	    }
 	  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &analytic->domain_plan, analytic->domain, OPERAND_ROW,
@@ -1881,7 +1880,7 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	      record->output[0] = analytic->value;
 	      record->output[1] = analytic->out_value;
 	      domain_fixed_operand (item, 0, operand->domain, operand->domain, DOMAIN_CTX_FUNC_ARG);
-	      /* as an aggregate's: the operand is a value pointer into a_val_list, so its producer decides (#337) */
+	      /* as an aggregate's: the operand is a value pointer into a_val_list, so its producer decides */
 	      record->kind = DOMAIN_LOAD_FIXED_AGG;
 	      domain_set_links (ctx, record, &operand, 1, analytic->domain);
 	      record->argument = analytic->opr_dbtype != DB_TYPE_VARIABLE && domain_type_is_fixed (operand->domain)
@@ -1896,7 +1895,7 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
     }
 }
 
-/* An index scan the walk meets: its key plan is published once its elements' items are (#342). */
+/* An index scan the walk meets: its key plan is published once its elements' items are. */
 static void
 domain_add_index (DOMAIN_LOAD_CONTEXT * ctx, INDX_INFO * index)
 {
@@ -1931,7 +1930,7 @@ domain_add_index (DOMAIN_LOAD_CONTEXT * ctx, INDX_INFO * index)
   ctx->indexes[ctx->n_indexes++] = index;
 }
 
-/* Records a session variable assignment (#366): the gate types the variable from the values the statement assigns. */
+/* Records a session variable assignment: the gate types the variable from the values the statement assigns. */
 static void
 domain_add_define (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * define)
 {
@@ -1968,13 +1967,13 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 	  domain_walk_regu (ctx, key->key_limit_u);
 	  /* the scan computes its key limits when it opens, and turns an overflow of their arithmetic into a limit
 	   * (scan_handle_overflow_subtraction_upper, fetch_and_coerce_key_limit_lower): a constant there is the scan's
-	   * to compute, not one whose failure is the gate's error (#367) */
+	   * to compute, not one whose failure is the gate's error */
 	  domain_force_row (key->key_limit_l);
 	  domain_force_row (key->key_limit_u);
 	}
       domain_walk_pred (ctx, spec->where_key);
       domain_walk_pred (ctx, spec->where_pred);
-      /* develop meets a key range term's constant that does not coerce in the B-tree search, not in the term (#345) */
+      /* develop meets a key range term's constant that does not coerce in the B-tree search, not in the term */
       ctx->in_key_range = true;
       domain_walk_pred (ctx, spec->where_range);
       ctx->in_key_range = false;
@@ -2039,7 +2038,7 @@ domain_walk_assignments (DOMAIN_LOAD_CONTEXT * ctx, UPDATE_ASSIGNMENT * assignme
 }
 
 /*
- * domain_fix_connect_by_probe () - the probe domain of a START WITH ... CONNECT BY hash list scan (#341, S-21)
+ * domain_fix_connect_by_probe () - the probe domain of a START WITH ... CONNECT BY hash list scan
  *
  * The scan coerces its probe values to the first probe item's domain. When the join widened that domain to a float
  * NUMERIC, the first fixed-precision NUMERIC of the rest list gives its precision and scale, so integers scale the way
@@ -2082,13 +2081,13 @@ domain_fix_connect_by_probe (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     }
   domain->precision = fixed->precision;
   domain->scale = fixed->scale;
-  /* the load's fix of the stream: every execution of this clone reads it (S-21) */
+  /* the load's fix of the stream: every execution of this clone reads it */
   probe->domain = tp_domain_cache (domain);
 }
 
 /*
  * domain_mark_aggregate_operands () - flag the expressions that only feed a SUM / AVG (REGU_VARIABLE_AGG_OPERAND), once
- *   at load (#341, D-341-07; each execution marked them before its scan, and each PX worker its own copy)
+ *   at load (each execution marked them before its scan, and each PX worker its own copy)
  *
  * BUILDLIST reaches the aggregate through a TYPE_CONSTANT operand pointing to the DB_VALUE the scan's expression writes
  * (regu->vfetch_to); BUILDVALUE's operand is the expression itself. fetch_peek_arith evaluates a flagged expression in
@@ -2138,7 +2137,7 @@ domain_mark_aggregate_operands (XASL_NODE * xasl)
     }
 }
 
-/* The INT 0 a LIMIT row count is compared with (qexec_check_limit_clause, #354). */
+/* The INT 0 a LIMIT row count is compared with (qexec_check_limit_clause). */
 /* *INDENT-OFF* */
 static const DB_VALUE domain_Int_zero = []
 {
@@ -2149,7 +2148,7 @@ static const DB_VALUE domain_Int_zero = []
 /* *INDENT-ON* */
 
 /* A merge join compares each pair of merge columns, the outer list's with the inner list's (qexec_cmp_tpl_vals_merge):
- * one record per pair (#354). */
+ * one record per pair. */
 static void
 domain_add_merge_compares (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 {
@@ -2236,14 +2235,14 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   ctx->ancestors[ctx->n_ancestors++] = xasl;
   XASL_NODE *previous_block = ctx->block;
   const int entry_guard = ctx->guard;
-  /* a subquery of a key range term is no part of the key range (#345) */
+  /* a subquery of a key range term is no part of the key range */
   const bool entry_key_range = ctx->in_key_range;
   ctx->in_key_range = false;
   ctx->block = xasl;
   xasl->domain_plan = ctx->plan;
   if (XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) && xasl->limit_row_count != NULL)
     {
-      /* #367: qexec_execute_mainblock_internal checks the top-most block's LIMIT first and executes nothing more when
+      /* qexec_execute_mainblock_internal checks the top-most block's LIMIT first and executes nothing more when
        * its row count is not above 0 - a constant row count guards everything else of the statement */
       domain_walk_regu (ctx, xasl->limit_offset);
       domain_walk_regu (ctx, xasl->limit_row_count);
@@ -2261,7 +2260,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_xasl (ctx, xasl->aptr_list);
   domain_walk_xasl (ctx, xasl->bptr_list);
   domain_walk_xasl (ctx, xasl->dptr_list);
-  /* #367: the scan loop takes a row on only when the block's if_pred holds (qexec_intprt_fnc, after the join
+  /* the scan loop takes a row on only when the block's if_pred holds (qexec_intprt_fnc, after the join
    * predicates): what reads the qualified rows - fptr, the inner scans, the row numbers, the outputs - lies below it,
    * so a constant if_pred guards them */
   const int block_guard = ctx->guard;
@@ -2330,7 +2329,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   ctx->guard = block_guard;
   if (xasl->limit_row_count != NULL)
     {
-      /* qexec_check_limit_clause runs the query only for a row count greater than an INT 0 (#354) */
+      /* qexec_check_limit_clause runs the query only for a row count greater than an INT 0 */
       REGU_VARIABLE *const regu[2] = { xasl->limit_row_count, NULL };
       DOMAIN_PLAN_ITEM *const column[2] = { NULL, NULL };
       const DB_VALUE *const literal[2] = { NULL, &domain_Int_zero };
@@ -2443,13 +2442,13 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 	}
     }
   /* an uncorrelated scalar subquery runs once before the scan that reads it (qexec_execute_mainblock_internal), fetched
-   * through the regu that owns it: a predicate operand, or a regu no predicate holds (an index key range reads a copy)
-   * (#340) */
+   * through the regu that owns it: a predicate operand, or a regu no predicate holds (an index key range reads a
+   * copy) */
   ctx->guard = block_guard;
   domain_walk_regu (ctx, xasl->precomp_owner_regu, DOMAIN_CTX_COMPARE);
   ctx->guard = if_guard;
   domain_walk_xasl (ctx, xasl->scan_ptr);
-  /* the next block is no part of this one's execution: outside its guards, and not an outer block of it (#368) */
+  /* the next block is no part of this one's execution: outside its guards, and not an outer block of it */
   ctx->guard = entry_guard;
   assert (ctx->n_ancestors > 0 && ctx->ancestors[ctx->n_ancestors - 1] == xasl);
   ctx->n_ancestors--;
@@ -2459,7 +2458,7 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 }
 
 /*
- * Resolution pass (#337): after the walk every derived consumer reads its producer and every node the compiler left
+ * Resolution pass: after the walk every derived consumer reads its producer and every node the compiler left
  * without a type becomes a gate-dependent node when all its operands are known. It recurses producer first, so the
  * gate nodes come out in an order the gate can decide them in, whatever order the walk met them.
  */
@@ -2490,7 +2489,7 @@ domain_reads_group_concat_value (const DOMAIN_LOAD_RECORD * reader, const DOMAIN
 static void domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record);
 
 /* The item a node's operand is decided from: through value pointers, list positions and wrappers that share a slot
- * to the bind or node owning it, so the gate sees a bind's value (value classification, D-328-06). */
+ * to the bind or node owning it, so the gate sees a bind's value (value classification). */
 static DOMAIN_PLAN_ITEM *
 domain_link_source (DOMAIN_PLAN_ITEM * item)
 {
@@ -2514,14 +2513,14 @@ domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
 {
   DOMAIN_PLAN_ITEM *item = &record->item;
   const bool value_pointer = domain_is_value_pointer (record);
-  /* a compiled position keeps its domain unless the values give its collation (#338): then its list's column does */
+  /* a compiled position keeps its domain unless the values give its collation: then its list's column does */
   if (!value_pointer && domain_type_is_fixed (item->fixed.domain) && !domain_character_open (item->fixed.domain))
     {
       record->known = true;
       if (record->regu != NULL && record->regu->type == TYPE_POSITION && record->producer != NULL)
 	{
 	  /* the list holds its producer's values: when the producer carries a literal or a bind of the position's
-	   * type, a node over the position classifies that value (D-328-06) as develop's first value does */
+	   * type, a node over the position classifies that value as develop's first value does */
 	  domain_resolve_record (ctx, record->producer);
 	  DOMAIN_LOAD_RECORD *producer = domain_owner_record (record->producer);
 	  const DOMAIN_LOAD_RECORD *root =
@@ -2563,7 +2562,7 @@ domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
       && domain_character_open (item->fixed.domain))
     {
       /* a reader of the accumulator of a GROUP_CONCAT the gate decides takes the accumulator's string under the decided
-       * collation, a gate-dependent node on the collation axis (#340): the resolver's GROUP_CONCAT rule */
+       * collation, a gate-dependent node on the collation axis: the resolver's GROUP_CONCAT rule */
       record->kind = DOMAIN_LOAD_NODE;
       record->cold.opcode = PT_GROUP_CONCAT;
       record->link[0] = &producer->item;
@@ -2590,7 +2589,7 @@ domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
 }
 
 /* A node over known operands becomes a gate-dependent node; a compiled aggregate or analytic gets its accumulator
- * domain derived once from its operand's (L-43). A set-operation column over compiled branches of one type is that
+ * domain derived once from its operand's. A set-operation column over compiled branches of one type is that
  * type. */
 static void
 domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
@@ -2622,7 +2621,7 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
       && (record->cold.opcode == PT_MEDIAN || record->cold.opcode == PT_PERCENTILE_CONT
 	  || record->cold.opcode == PT_PERCENTILE_DISC))
     {
-      /* D-335-10 at execution: a value argument is classified, a value-less string is DOUBLE. The argument of a
+      /* at execution: a value argument is classified, a value-less string is DOUBLE. The argument of a
        * function over a list (GROUP BY, analytic) is a value pointer; its source tells which. */
       const DOMAIN_LOAD_RECORD *argument = domain_owner_record (domain_record_of (record->link[0]));
       if (argument->literal_value
@@ -2722,7 +2721,7 @@ domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_RECORD * record)
   record->state = 2;
 }
 
-/* Boundary (a): both axes are strict (#338 removed X-11): an item the gate does not decide has a fixed type, and a
+/* Boundary (a): both axes are strict: an item the gate does not decide has a fixed type, and a
  * fixed string whose collation the values give is a slot recording its bound value's domain. */
 bool
 domain_plan_validate (const DOMAIN_PLAN * plan)
@@ -2773,7 +2772,7 @@ domain_compare_refs (const void *lhs, const void *rhs)
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/* The constant subtree a record's regu computes, if the gate evaluates it once (#352): a constant arithmetic node (its
+/* The constant subtree a record's regu computes, if the gate evaluates it once: a constant arithmetic node (its
  * value is the node's item's) or a constant function that caches. */
 static DOMAIN_PLAN_ITEM *
 domain_constant_of (const DOMAIN_LOAD_RECORD * record)
@@ -2796,8 +2795,8 @@ domain_constant_of (const DOMAIN_LOAD_RECORD * record)
 }
 
 /*
- * domain_publish_item_copies () - the item copy of a value pointer that does not share its producer's cell (#355,
- *   D-355-09): the producer's published item - its slot, reference and answers, so the consumer reads the same
+ * domain_publish_item_copies () - the item copy of a value pointer that does not share its producer's cell:
+ *   the producer's published item - its slot, reference and answers, so the consumer reads the same
  *   decisions - with the consumer's cell and openness; after the constant references, which the producer's item takes
  */
 static void
@@ -2820,7 +2819,7 @@ domain_publish_item_copies (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
 
 /*
  * domain_publish_constants () - every constant subtree gets a value of its own in the gate's array, which the gate
- *   fills once before the main block (interface §10, #352): this replaces fetch's FETCH_ALL_CONST marking.
+ *   fills once before the main block: this replaces fetch's FETCH_ALL_CONST marking.
  *   Nested constants come first, in the order the walk appended them.
  */
 static bool
@@ -2858,7 +2857,7 @@ domain_publish_constants (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
   return true;
 }
 
-/* Whether the gate decides a slot only in G1 step 7 (#364): the slot of a node that waits for constant subtrees. */
+/* Whether the gate decides a slot only in G1 step 7: the slot of a node that waits for constant subtrees. */
 static bool
 domain_slot_after_constants (const DOMAIN_PLAN * plan, int slot)
 {
@@ -2868,7 +2867,7 @@ domain_slot_after_constants (const DOMAIN_PLAN * plan, int slot)
 
 /*
  * domain_publish_gate_waits () - the gate-dependent nodes the gate decides only once the constant subtrees they read
- *   were evaluated (#364): a common value folds its operands' value domains (develop's S-04), and a constant subtree's
+ *   were evaluated: a common value folds its operands' value domains as develop does, and a constant subtree's
  *   value is known only in G1 step 7 - a NULL without a type drops out of the fold, which its compiled domain does not
  *   tell. A node above such a node reads its decision, so it waits too (producers come first).
  */
@@ -2932,7 +2931,7 @@ domain_session_define_variable (const DOMAIN_SESSION_VARIABLE * variables, int n
 
 /*
  * domain_publish_session_variables () - the session variables the statement reads, each with its reads and the values
- *   its assignments store (#366, D-366-01): the gate gives each of them one type per execution. A variable the
+ *   its assignments store: the gate gives each of them one type per execution. A variable the
  *   statement only assigns is none of them: nothing here reads it.
  */
 static bool
@@ -3020,7 +3019,7 @@ domain_publish_session_variables (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT *
 
 /* Whether a record reads an aggregate that finalizes to DOUBLE whatever its function domain says: AVG, STDDEV* and
  * VAR* (qdata_finalize_aggregate_list), whose function domain over a late-bound argument is the argument's, as develop
- * binds it (F-352-16). Through value pointers and list positions to the producer. */
+ * binds it. Through value pointers and list positions to the producer. */
 static bool
 domain_reads_double_aggregate (const DOMAIN_LOAD_RECORD * record)
 {
@@ -3060,16 +3059,16 @@ domain_reads_double_aggregate (const DOMAIN_LOAD_RECORD * record)
   return false;
 }
 
-/* What the load knows of one side of a comparison (#352). */
+/* What the load knows of one side of a comparison. */
 enum DOMAIN_COMPARE_SIDE
 {
   DOMAIN_SIDE_KNOWN,		/* its key is the plan's */
-  DOMAIN_SIDE_AT_GATE,		/* a bind (it compares with its value's type, F-335-06), a slot or gate-dependent side */
+  DOMAIN_SIDE_AT_GATE,		/* a bind (it compares with its value's type), a slot or gate-dependent side */
   DOMAIN_SIDE_OPEN		/* the plan leaves its values' type or collation open: the row compares by value */
 };
 
 /* One side of a comparison at publication: a literal gives its value's key, a bind, a slot or a gate-dependent side
- * is the gate's, a reader of an aggregate that finalizes to DOUBLE a DOUBLE, anything else its plan domain (#352).
+ * is the gate's, a reader of an aggregate that finalizes to DOUBLE a DOUBLE, anything else its plan domain.
  * records(in): the load record of each published item, by index */
 static DOMAIN_COMPARE_SIDE
 domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records, int constant_base,
@@ -3087,7 +3086,7 @@ domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *recor
   if (item != NULL && regu->type != TYPE_DBVAL && regu->type != TYPE_POS_VALUE
       && domain_reads_double_aggregate (records[item - plan->items]))
     {
-      /* F-352-16: the value is a DOUBLE (or NULL) whatever the aggregate's decided domain says; the gate reads the
+      /* the value is a DOUBLE (or NULL) whatever the aggregate's decided domain says; the gate reads the
        * side's domain, not its item */
       site->operand[side] = NULL;
       site->domain[side] = &tp_Double_domain;
@@ -3121,7 +3120,7 @@ domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *recor
     {
       /* a constant subtree compares with its value's key, as a bind or a literal does: the gate evaluates it before
        * any row, and its compiled domain need not describe its value (a LIKE bound's collation is its pattern
-       * value's, F-352-17) */
+       * value's) */
       site->constant[side] = cached;
       site->after_constants = true;
       return DOMAIN_SIDE_AT_GATE;
@@ -3132,7 +3131,7 @@ domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *recor
 	{
 	  *volatile_reads |= plan->slot_volatile_reads[item->slot];
 	}
-      /* a node the gate decides in step 7: the site waits for its decision (#364) */
+      /* a node the gate decides in step 7: the site waits for its decision */
       site->after_constants = site->after_constants || domain_slot_after_constants (plan, item->slot);
       return DOMAIN_SIDE_AT_GATE;
     }
@@ -3154,7 +3153,7 @@ domain_compare_constant_side (const DOMAIN_COMPARE_PLAN * site, int side)
 }
 
 /*
- * domain_publish_record () - one comparison record's decision (D-352-01): the load's when both sides' keys are the
+ * domain_publish_record () - one comparison record's decision: the load's when both sides' keys are the
  *   plan's and no constant side needs converting, otherwise a gate site the gate decides once per execution (and
  *   converts its constant sides into values of their own). A side whose values the plan leaves open keeps develop's
  *   comparison (kernel VALUES, the boundary (b) reason OPEN).
@@ -3210,8 +3209,8 @@ domain_publish_record (DOMAIN_PLAN * plan, DOMAIN_COMPARE_PLAN * site, DOMAIN_CO
   return true;
 }
 
-/* A list column side of an ALL/SOME term (#352): the gate's slot, a DOUBLE for a reader of AVG, STDDEV* or VAR*
- * (F-352-16), or its plan domain; open when the plan leaves its values' type or collation open. */
+/* A list column side of an ALL/SOME term: the gate's slot, a DOUBLE for a reader of AVG, STDDEV* or VAR*,
+ * or its plan domain; open when the plan leaves its values' type or collation open. */
 static DOMAIN_COMPARE_SIDE
 domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records,
 			    const DOMAIN_PLAN_ITEM * column, DOMAIN_COMPARE_PLAN * site, int side,
@@ -3249,7 +3248,7 @@ domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const
   return DOMAIN_SIDE_KNOWN;
 }
 
-/* One side of a comparison outside a term (#354): a regu as a term's side, a list column as an ALL/SOME term's list
+/* One side of a comparison outside a term: a regu as a term's side, a list column as an ALL/SOME term's list
  * side, a literal no regu holds by its value's key. */
 static DOMAIN_COMPARE_SIDE
 domain_compare_pair_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records, int constant_base,
@@ -3274,7 +3273,7 @@ domain_compare_pair_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *
 }
 
 /*
- * domain_element_keys () - the keys the elements of a collection the row computes can have (#352, D-352-03)
+ * domain_element_keys () - the keys the elements of a collection the row computes can have
  *   return: false on an allocation failure
  *   keys(out): the keys; NULL for any key
  *
@@ -3282,7 +3281,7 @@ domain_compare_pair_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *
  * col_put / col_add, which convert nothing): its operands' keys, when the plan has every one. A set attribute's stored
  * elements were coerced into its element domains. Anything else - a value pointer, a set expression, a stored
  * procedure's result - can hold elements its compiled element domains do not describe (a SEQUENCE OF CHAR function
- * holding VARCHAR operands, F-352-18): any key.
+ * holding VARCHAR operands): any key.
  */
 static bool
 domain_element_keys (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, DOMAIN_LOAD_RECORD * const *records,
@@ -3352,7 +3351,7 @@ domain_element_keys (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, DOMAIN_L
   return true;
 }
 
-/* The load's element table of a collection the row computes, for an item whose key is the plan's (#352). */
+/* The load's element table of a collection the row computes, for an item whose key is the plan's. */
 static const DOMAIN_ELEMENT_TABLE *
 domain_publish_element_table (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_KEY * item, const DOMAIN_COMPARE_KEY * keys,
 			      int n_keys)
@@ -3367,7 +3366,7 @@ domain_publish_element_table (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_KEY 
 }
 
 /*
- * domain_publish_elements () - one ALL/SOME term's comparisons (#352, D-352-03), each decided before any row
+ * domain_publish_elements () - one ALL/SOME term's comparisons, each decided before any row
  *
  * The item against a list's column or a right side that is no collection: a comparison record, as a comparison
  * term's. Against a collection the row computes: the load's table of every key its elements can have, or the gate's
@@ -3453,7 +3452,7 @@ domain_publish_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LOA
 }
 
 /*
- * domain_block_scope () - the scope of a block whose scans fix the correlated values it reads (#368, D-368-01)
+ * domain_block_scope () - the scope of a block whose scans fix the correlated values it reads
  *   return: the scope; -1 when the block's scans do not start it anew
  *
  * The value lists the block's scans fill carry it: a scan filling one starts the scope anew (scan_start_scan,
@@ -3489,7 +3488,7 @@ domain_block_scope (DOMAIN_PLAN * plan, XASL_NODE * block)
 }
 
 /*
- * domain_add_held () - a value the execution converts once per scope (#368): a constant's scope is the execution's, a
+ * domain_add_held () - a value the execution converts once per scope: a constant's scope is the execution's, a
  *   correlated value's its block's
  *   return: 1 + its resolved.held index; 0 when there is none (the block's scans do not start a scope; no memory:
  *	     ctx->failed)
@@ -3527,7 +3526,7 @@ domain_add_held (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, XASL_NODE * bloc
 }
 
 /* Whether a node's pre-cast may convert operand i at the row: the gate decides the pre-cast (a gate-dependent node, a
- * compiled one over an operand it did not type), or the load's converts it (#368). */
+ * compiled one over an operand it did not type), or the load's converts it. */
 static bool
 domain_arith_may_convert (const DOMAIN_PLAN_ITEM * item, int i)
 {
@@ -3536,7 +3535,7 @@ domain_arith_may_convert (const DOMAIN_PLAN_ITEM * item, int i)
 }
 
 /* Whether an operand is a constant the execution fixes: a literal, a bind, or a constant subtree the gate evaluates
- * (#368, as domain_compare_side knows one). */
+ * (as domain_compare_side knows one). */
 static bool
 domain_constant_operand (const REGU_VARIABLE * regu, int constant_base)
 {
@@ -3556,8 +3555,8 @@ domain_constant_operand (const REGU_VARIABLE * regu, int constant_base)
   return cached != NULL && cached->ref >= constant_base;
 }
 
-/* Whether a comparison record may convert a side at the row: the gate decides it, or the load's decision converts it
- * (#368). */
+/* Whether a comparison record may convert a side at the row: the gate decides it, or the load's decision converts
+ * it. */
 static bool
 domain_record_may_convert (const DOMAIN_COMPARE_PLAN * site, int side)
 {
@@ -3566,10 +3565,10 @@ domain_record_may_convert (const DOMAIN_COMPARE_PLAN * site, int side)
 }
 
 /*
- * domain_publish_compares () - every comparison term gets its comparison record (D-352-01), every ALL/SOME term its
- *   element comparisons (D-352-03), and every comparison outside a term its record (#354)
+ * domain_publish_compares () - every comparison term gets its comparison record, every ALL/SOME term its
+ *   element comparisons, and every comparison outside a term its record
  *
- * #368 (D-368-01): a term's side that is a correlated value an outer block's scan fixes is converted once per scope,
+ * a term's side that is a correlated value an outer block's scan fixes is converted once per scope,
  * where every place the walk met the term is in that scope.
  */
 static bool
@@ -3595,7 +3594,7 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	}
       else if (r->index != r->alias->index)
 	{
-	  /* a value pointer's item copy answers as the producer's item it shared (D-355-09) */
+	  /* a value pointer's item copy answers as the producer's item it shared */
 	  records[r->index] = r->alias;
 	}
     }
@@ -3610,7 +3609,7 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	    {
 	      ctx->guards_ambiguous = true;
 	    }
-	  /* and a side is converted once per scope only where the second place is in the same scope (#368) */
+	  /* and a side is converted once per scope only where the second place is in the same scope */
 	  DOMAIN_COMPARE_PLAN *met = const_cast < DOMAIN_COMPARE_PLAN * >(term->domain_compare);
 	  for (int side = 0; side < 2; side++)
 	    {
@@ -3640,7 +3639,7 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
       const DOMAIN_COMPARE_SIDE rhs = domain_compare_side (plan, records, constant_base, term->rhs, site, 1, &key[1],
 							   &volatile_reads);
       ok = domain_publish_record (plan, site, lhs, rhs, key, volatile_reads, gate_sites, &n_gate);
-      /* a fixed decision's leaves; a gate site's come with the gate's decisions (#371) */
+      /* a fixed decision's leaves; a gate site's come with the gate's decisions */
       domain_compare_leaves (&site->fixed);
       term->domain_compare = site;
       for (int side = 0; ok && side < 2; side++)
@@ -3665,7 +3664,7 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 	  met->pair.key_range = met->pair.key_range || e->key_range;
 	  if (!domain_guard_encloses (ctx, met->pair.guard, e->guard))
 	    {
-	      /* a term the walk met twice below guards neither of which is around the other (#367) */
+	      /* a term the walk met twice below guards neither of which is around the other */
 	      ctx->guards_ambiguous = true;
 	    }
 	}
@@ -3730,8 +3729,8 @@ domain_publish_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOM
 }
 
 /*
- * domain_publish_held () - the arithmetic operands and the values SUM and AVG add that a scope fixes (#368, D-368-01,
- *   D-368-07): a constant - a literal, a bind, a constant subtree - for the execution, a correlated value for its
+ * domain_publish_held () - the arithmetic operands and the values SUM and AVG add that a scope fixes:
+ *   a constant - a literal, a bind, a constant subtree - for the execution, a correlated value for its
  *   block's scope; the execution converts each once per scope where the node's pre-cast converts it. Then the scope
  *   of every such value, the comparison sides' (domain_publish_compares) included.
  */
@@ -3778,9 +3777,9 @@ domain_publish_held (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_
 }
 
 /*
- * domain_site_ready_at () - the constant G1 step 7 decides a waiting comparison or ALL/SOME site before (#368): one past
+ * domain_site_ready_at () - the constant G1 step 7 decides a waiting comparison or ALL/SOME site before: one past
  *   its last constant subtree, or the constant a waiting node it reads is (the gate decides it just before evaluating
- *   it, #364); n_constants when it reads a waiting node that reads a row - after the last constant
+ *   it); n_constants when it reads a waiting node that reads a row - after the last constant
  */
 static int
 domain_site_ready_at (const DOMAIN_PLAN * plan, const DOMAIN_COMPARE_PLAN * site, int constant_base)
@@ -3810,8 +3809,8 @@ domain_site_ready_at (const DOMAIN_PLAN * plan, const DOMAIN_COMPARE_PLAN * site
 
 /*
  * domain_publish_constant_sites () - for each constant subtree, the waiting comparison and ALL/SOME sites G1 step 7
- *   decides just before it evaluates that constant (#368): step 7 decides a site as soon as its constants have their
- *   values (D-354-08, D-364-02), and this list lets it do so without going over every site before every constant
+ *   decides just before it evaluates that constant: step 7 decides a site as soon as its constants have their
+ *   values, and this list lets it do so without going over every site before every constant
  */
 static bool
 domain_publish_constant_sites (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, int constant_base)
@@ -3882,10 +3881,10 @@ domain_publish_constant_sites (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, int 
 }
 
 /*
- * domain_key_literal () - the domain of a literal key element's value, which the load reads once (#371); NULL for a
+ * domain_key_literal () - the domain of a literal key element's value, which the load reads once; NULL for a
  *   constant the gate forms at every execution: a bind (a WHERE literal the parser auto-parameterized is one,
  *   qo_auto_parameterize) or a constant subtree, a NULL (the range answers it), a value no index key holds (the gate's
- *   error before any row, D-367-03), a literal under a COLLATE modifier (the fetch gives its value the modifier's
+ *   error before any row), a literal under a COLLATE modifier (the fetch gives its value the modifier's
  *   collation)
  */
 static const TP_DOMAIN *
@@ -3900,7 +3899,7 @@ domain_key_literal (const REGU_VARIABLE * regu)
   return domain_fixes_values (domain) ? domain : NULL;
 }
 
-/* Whether key2's constant element reads key1's value at its column (#372): two binds of one reference - the gate's
+/* Whether key2's constant element reads key1's value at its column: two binds of one reference - the gate's
  * vals[ref] - without a COLLATE modifier, against the same column. */
 static bool
 domain_key_same_bind (const domain_plan_key_elem * pair, const domain_plan_key_elem * elem)
@@ -3918,20 +3917,20 @@ domain_key_same_bind (const domain_plan_key_elem * pair, const domain_plan_key_e
 }
 
 /*
- * domain_plan_key_element () - how one column of a search key takes its value (#342, interface section 5)
+ * domain_plan_key_element () - how one column of a search key takes its value
  *
  * A constant is the gate's (its value, once per execution); so is an element whose domain the gate decides (its rule,
  * from that domain). The load derives the rule of any other element from its domain: the column's type, strict or kept
  * (domain_key_rule). keep_elem is the element's domain in the column's direction, which a multi-column key writes the
  * value with once any column is kept.
  *
- * A literal is the load's (#371): its value's domain gives the rule the gate gave it at every execution
+ * A literal is the load's: its value's domain gives the rule the gate gave it at every execution
  * (qexec_resolve_key_constant). One the gate converts strictly stays the gate's: the gate converts it once per
  * execution, the range would at every range it builds.
  *
  * pair(in): key1's element at this column when this is key2's, else NULL. A key2 constant over the same bind (an IN
  * list's range, key1 = key2 = ?) takes key1's decision: the same value against the same column in the same index is
- * one decision, which the gate makes once (#372).
+ * one decision, which the gate makes once.
  */
 static bool
 domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE * regu, const TP_DOMAIN * column,
@@ -3985,7 +3984,7 @@ domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE 
   return elem->keep_elem != NULL;
 }
 
-/* One bound of a key range (#342): the columns of a multi-column key's F_MIDXKEY, or the single-column key itself.
+/* One bound of a key range: the columns of a multi-column key's F_MIDXKEY, or the single-column key itself.
  * pair(in): key1's bound when this is key2's (domain_plan_key_element), else NULL */
 static bool
 domain_plan_key_bound (THREAD_ENTRY * thread_p, domain_plan_index * index, REGU_VARIABLE * bound_regu, bool skip_first,
@@ -4039,15 +4038,15 @@ domain_plan_key_bound (THREAD_ENTRY * thread_p, domain_plan_index * index, REGU_
     }
   if (bound->midxkey && mixes)
     {
-      /* constants only: the gate writes the domain once per execution (every constant has its value before any row,
-       * #367); the scan fills a scratch chain otherwise */
+      /* constants only: the gate writes the domain once per execution (every constant has its value before any row);
+       * the scan fills a scratch chain otherwise */
       bound->constant = constant && !row;
       bound->scratch = bound->constant ? -1 : index->n_scratch++;
     }
   return true;
 }
 
-/* domain_key_compare_keys () - the key comparison table's input (#342): each key column's own key, and the key its
+/* domain_key_compare_keys () - the key comparison table's input: each key column's own key, and the key its
  * values take under each load-fixed element */
 int
 domain_key_compare_keys (const domain_plan_index * index, int *columns, DOMAIN_COMPARE_KEY * keys)
@@ -4071,7 +4070,7 @@ domain_key_compare_keys (const domain_plan_index * index, int *columns, DOMAIN_C
   return n;
 }
 
-/* An index's key comparison table the load can build: none of its elements waits for the gate (#342). */
+/* An index's key comparison table the load can build: none of its elements waits for the gate. */
 static bool
 domain_publish_key_compares (THREAD_ENTRY * thread_p, domain_plan_index * index)
 {
@@ -4107,8 +4106,8 @@ domain_publish_key_compares (THREAD_ENTRY * thread_p, domain_plan_index * index)
 }
 
 /*
- * domain_publish_indexes () - every index scan's key plan (#342, interface section 5): its bounds' elements and their
- *   rules, from INDX_INFO.key_type (D-318 decision 5); the scan finds it through INDX_INFO.domain_plan
+ * domain_publish_indexes () - every index scan's key plan: its bounds' elements and their
+ *   rules, from INDX_INFO.key_type; the scan finds it through INDX_INFO.domain_plan
  */
 static bool
 domain_publish_indexes (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
@@ -4173,13 +4172,13 @@ domain_publish_indexes (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMA
 }
 
 /*
- * Predicate and function streams (#354, S-42): a filter index predicate, a function index expression and a partition
+ * Predicate and function streams: a filter index predicate, a function index expression and a partition
  * expression are loaded without an execution and evaluated without the gate. A regu the gate would decide refuses the
  * stream at its load (stx_index_stream_rejected), but the stream's domains need not describe its values either: the
  * catalog keeps a stream compiled against a column's type across an ALTER that changes that type
  * (filtered_index_basicfunction_delete_004: a SMALLINT column MODIFY'd to CHAR(10) under its filter predicate). So the
  * load decides a comparison of two literals, and any comparison over another side reads the key pair table by the two
- * values' keys (kernel KEYS, D-354-01) - decided before any row, the stream's domains unused.
+ * values' keys (kernel KEYS) - decided before any row, the stream's domains unused.
  */
 struct DOMAIN_STREAM_CONTEXT
 {
@@ -4252,7 +4251,7 @@ domain_stream_compare (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * lhs, c
 }
 
 /* An ALL/SOME term of a stream: a literal item against the elements of its collection by the table of every key an
- * element can have (D-352-07), any other item by the key pair table. */
+ * element can have, any other item by the key pair table. */
 static const DOMAIN_ELEMENT_COMPARE_PLAN *
 domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
 {
@@ -4284,7 +4283,7 @@ domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
   return site;
 }
 
-/* A stream has no plan items: a node that needs one gets a bare item (#355, D-355-04) */
+/* A stream has no plan items: a node that needs one gets a bare item */
 static DOMAIN_PLAN_ITEM *
 domain_stream_item (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
 {
@@ -4303,7 +4302,7 @@ domain_stream_item (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
   return item;
 }
 
-/* A FIELD, NULLIF, LEAST or GREATEST node's comparison records, carried by its bare item (#355, D-355-04); NULL for
+/* A FIELD, NULLIF, LEAST or GREATEST node's comparison records, carried by its bare item; NULL for
  * any other operator */
 static const DOMAIN_COMPARE_PLAN **
 domain_stream_arith_compares (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
@@ -4340,8 +4339,8 @@ domain_stream_walk_arith (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith, bool 
   if (domain_precast_operator (arith->opcode) && arith->domain_plan == NULL && arith->leftptr != NULL
       && arith->rightptr != NULL)
     {
-      /* #368 (D-368-02): the pre-cast over the stream's operand domains, which describe its values - ALTER compiles
-       * anew a stream that reads a changed column (D-368-05) */
+      /* the pre-cast over the stream's operand domains, which describe its values - ALTER compiles
+       * anew a stream that reads a changed column */
       domain_plan_precast (domain_stream_item (ctx, arith), arith->opcode, arith->leftptr->domain,
 			   arith->rightptr->domain);
     }
@@ -4431,7 +4430,7 @@ domain_stream_walk_pred (DOMAIN_STREAM_CONTEXT * ctx, PRED_EXPR * pred)
 		DOMAIN_COMPARE_PLAN *site = domain_stream_compare (ctx, comp->lhs, comp->rhs);
 		if (site != NULL)
 		  {
-		    /* the term's row runs its decision's leaves (#371) */
+		    /* the term's row runs its decision's leaves */
 		    domain_compare_leaves (&site->fixed);
 		  }
 		comp->domain_compare = site;
@@ -4475,7 +4474,7 @@ domain_plan_stream_compares (THREAD_ENTRY * thread_p, PRED_EXPR * pred, REGU_VAR
 
 /*
  * A record's output - the value it writes: a fetch into a value list, an arithmetic result, an accumulator, an analytic
- * result, a single-row subquery's column - for finding the records a value pointer reads (#368, review 2 R2-21). The
+ * result, a single-row subquery's column - for finding the records a value pointer reads. The
  * outputs are sorted by the value and then by walk order, so a value's writers come in the order a scan of the records
  * met them.
  */
@@ -4519,7 +4518,7 @@ domain_first_output (const DOMAIN_LOAD_OUTPUT * outputs, int n, const DB_VALUE *
   return lo;
 }
 
-/* A (domain, failure policy) a bind position's references were given, and its reference (#368, R2-21): the positions'
+/* A (domain, failure policy) a bind position's references were given, and its reference: the positions'
  * lists replace a scan of the records before each bind. */
 struct DOMAIN_LOAD_REF
 {
@@ -4530,7 +4529,7 @@ struct DOMAIN_LOAD_REF
 };
 
 /* The load context's lists and records, once the plan is published; on a failure the owners the walk bound are left
- * without an item (#368, review 2 R2-20: one function of stx_build_domain_plan's steps). */
+ * without an item (one function of stx_build_domain_plan's steps). */
 static void
 domain_load_context_free (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
 {
@@ -4636,13 +4635,12 @@ domain_load_context_free (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
     }
 }
 
-/* The value pointers' aliases and producers (#337, F-335-07), found through the records' sorted outputs (#368, review 2
- * R2-20, R2-21) */
+/* The value pointers' aliases and producers, found through the records' sorted outputs */
 static void
 domain_match_value_pointers (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
 {
   /* the records' outputs, sorted: a value pointer finds the records writing its value by a binary search, not by a
-   * scan of every record (#368, review 2 R2-21) */
+   * scan of every record */
   int n_outputs = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
     {
@@ -4698,7 +4696,7 @@ domain_match_value_pointers (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
 	    }
 	}
     }
-  /* A value pointer's producer is the node writing the value it points at (#337, F-335-07): a fetch into a value
+  /* A value pointer's producer is the node writing the value it points at: a fetch into a value
    * list, an arithmetic result, an accumulator, an analytic result, a single-row subquery's column. */
   for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL && !ctx->failed; r = r->next)
     {
@@ -4724,14 +4722,14 @@ domain_match_value_pointers (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
     }
 }
 
-/* Each bind's reference and the constant and volatile counts (#368, review 2 R2-20: one of stx_build_domain_plan's
+/* Each bind's reference and the constant and volatile counts (one of stx_build_domain_plan's
  * steps) */
 static void
 domain_assign_references (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
 {
   /* References are assigned in deterministic traversal order. The first use of
    * each bind keeps val_pos; only a different (domain, failure policy) adds a value.
-   * Each position keeps the pairs its references were given so far (#368, R2-21). */
+   * Each position keeps the pairs its references were given so far. */
   int n_binds = 0;
   for (DOMAIN_LOAD_RECORD * r = ctx->head; r != NULL; r = r->next)
     {
@@ -4813,7 +4811,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   memset (plan, 0, sizeof (*plan));
   plan->dbval_cnt = root->dbval_cnt;
   plan->n_refs = root->dbval_cnt;
-  /* the execution's scope comes first (DOMAIN_SCOPE_EXECUTION, #368) */
+  /* the execution's scope comes first (DOMAIN_SCOPE_EXECUTION) */
   plan->n_scopes = 1;
   DOMAIN_LOAD_CONTEXT ctx;
   memset (&ctx, 0, sizeof (ctx));
@@ -4835,7 +4833,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     {
       domain_resolve_record (&ctx, r);
     }
-  /* D-355-09: a value pointer reads its producer's decisions through the producer's item, but develop wrote each node's
+  /* a value pointer reads its producer's decisions through the producer's item, but develop wrote each node's
    * domain on its own - an aggregate's late binding, say, left the column over its accumulator as compiled. Where either
    * has a cell, the consumer's node gets its own copy of the item (domain_publish_item_copies) and its own cell. */
   plan->n_items = 0;
@@ -4869,7 +4867,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     }
   plan->n_refs = plan->dbval_cnt;
   domain_assign_references (thread_p, &ctx, plan);
-  /* gate-dependent nodes in resolution order: producers first (#337) */
+  /* gate-dependent nodes in resolution order: producers first */
   plan->n_gate_nodes = ctx.n_gate_order;
   plan->items = (DOMAIN_PLAN_ITEM *) domain_plan_alloc (thread_p, plan->n_items, sizeof (*plan->items));
   plan->items_cold = (DOMAIN_PLAN_ITEM_COLD *) domain_plan_alloc (thread_p, plan->n_items, sizeof (*plan->items_cold));
@@ -4913,7 +4911,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  *r->owner = NULL;
 	}
     }
-  /* a binding's target is a record's item: the binding takes that record's published item (#368, R2-21: not a scan
+  /* a binding's target is a record's item: the binding takes that record's published item (not a scan
    * of the bindings for each record) */
   for (DOMAIN_LOAD_BINDING * b = ctx.bindings; b != NULL && !ctx.failed; b = b->next)
     {
@@ -4957,7 +4955,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  if (r->cold.opcode == T_EVALUATE_VARIABLE)
 	    {
 	      /* a session variable read is its own source: the decisions above it wait for G1 step 7b, where the
-	       * variable gets its type for the statement (#366) */
+	       * variable gets its type for the statement */
 	      reads = n_reads < 63 ? 1ULL << n_reads : 1ULL << 63;
 	      n_reads++;
 	    }
@@ -4980,13 +4978,13 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     }
   if (!ctx.failed)
     {
-      /* #352: constant subtrees before comparisons, whose constant sides read them */
+      /* constant subtrees before comparisons, whose constant sides read them */
       const int constant_base = plan->n_refs;
       ctx.failed = !domain_publish_constants (thread_p, &ctx, plan);
       if (!ctx.failed)
 	{
 	  domain_publish_item_copies (&ctx, plan);
-	  /* before the comparisons, whose sites wait for the nodes that wait (#364) */
+	  /* before the comparisons, whose sites wait for the nodes that wait */
 	  domain_publish_gate_waits (plan, constant_base);
 	  ctx.failed = !domain_publish_session_variables (thread_p, &ctx, plan);
 	}
@@ -4996,7 +4994,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     }
   if (!ctx.failed && ctx.guards_ambiguous)
     {
-      /* #367: a node below two guards neither of which is around the other - no guard chain says every way to it,
+      /* a node below two guards neither of which is around the other - no guard chain says every way to it,
        * so the plan keeps no guards and every failure is the gate's error */
       for (int i = 0; i < plan->n_items; i++)
 	{
@@ -5037,7 +5035,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   if (plan->n_const_refs > 0)
     {
       /* each reference's bind position beside it, in the sorted order: G1 step 2 walks the references at every
-       * execution (#372) */
+       * execution */
       plan->const_ref_pos = (int *) domain_plan_alloc (thread_p, plan->n_const_refs, sizeof (*plan->const_ref_pos));
       if (plan->const_ref_pos == NULL)
 	{
@@ -5048,8 +5046,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  plan->const_ref_pos[i] = plan->items_cold[plan->const_refs[i] - plan->items].val_pos;
 	}
     }
-  /* Predicate streams are wired at the final boundary ticket. They have no
-   * XASL root today; no persisted regu/arith/predicate layout changes here. */
+  /* Predicate streams have no XASL root today; no persisted regu/arith/predicate layout changes here. */
   (void) is_pred_stream;
   (void) domain_plan_load_exceptions;
   if (domain_plan_check_load && !domain_plan_validate (plan))

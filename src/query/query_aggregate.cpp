@@ -476,7 +476,7 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
  *   func_domain(in): function domain
  *   value(in): value
  *   value_next(int): value of the second argument; used only for JSON_OBJECTAGG
- *   held(in): SUM, AVG: the value converted once for its scope for the pre-cast of the add (#368, D-368-07); NULL none
+ *   held(in): SUM, AVG: the value converted once for its scope for the pre-cast of the add; NULL none
  */
 static int
 qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
@@ -623,8 +623,8 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
 	      return ER_FAILED;
 	    }
-	  /* unsupported types keep the per-row add into acc->value, after the pre-cast the setup planned for a value
-	   * (#368, D-368-06); another accumulator comes in the accumulator's type */
+	  /* unsupported types keep the per-row add into acc->value, after the pre-cast the setup planned for a value;
+	   * another accumulator comes in the accumulator's type */
 	  const DB_VALUE *const held_values[2] = { NULL, held };
 	  if (qdata_precast_arith_dbval (thread_p, T_ADD, is_acc_to_acc ? NULL : &domain->precast, acc->value, value,
 					 acc->value, domain->value_dom, held_values) != NO_ERROR)
@@ -834,7 +834,7 @@ qdata_agg_share_args_equal (const regu_variable_node *arg, const regu_variable_n
     }
 
   /* the compiled domains: a value pointer's regus share its producer's cell, and arithmetic over equal operands takes
-   * equal domains in an execution (#355) */
+   * equal domains in an execution */
   if (arg->type != other->type || arg->domain != other->domain)
     {
       return false;
@@ -1071,8 +1071,8 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      continue;
 	    }
 
-	  /* #368 (D-368-01, D-368-07): a value a scope fixes is converted once per scope for the pre-cast of the add;
-	   * the first value is the accumulator's as it is. The setup fixed whether it is one (#371). */
+	  /* a value a scope fixes is converted once per scope for the pre-cast of the add;
+	   * the first value is the accumulator's as it is. The setup fixed whether it is one. */
 	  const cubxasl::aggregate_accumulator_domain *acc_dom = &agg_p->accumulator_domain;
 	  const DB_VALUE *held = acc_dom->held != 0 && accumulator->curr_cnt >= 1
 				 ? qexec_held_value (thread_p, val_desc_p, acc_dom->held, acc_dom->precast.conv[1],
@@ -1090,7 +1090,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	}
 
       /* the function's domain and operand type in this execution: its setup's, or what its interpolation took at an
-       * earlier group's end (#355). The rows never change them, so only the paths that use them read them (#372). */
+       * earlier group's end. The rows never change them, so only the paths that use them read them. */
       TP_DOMAIN *agg_domain = qexec_node_domain (val_desc_p, agg_p->domain, agg_p->domain_plan);
       const DB_TYPE agg_operand_type = qexec_node_operand_type (val_desc_p, agg_p->opr_dbtype, agg_p->domain_plan);
 
@@ -1357,7 +1357,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
 			      || agg_p->operands->value.type == TYPE_POS_VALUE);
 
-		      /* #341: the setup gave the function the class the gate took from this value (D-335-10) - a value it
+		      /* the setup gave the function the class the gate took from this value - a value it
 		       * could not classify was rejected at the first value (qexec_interpolation_first_value) - so the value
 		       * converts to that class; no cascade decides it here */
 		      if (TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_DOUBLE && TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_DATETIME
@@ -1803,9 +1803,9 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
       TP_DOMAIN *tmp_domain_ptr = NULL;
-      /* the function's domain in this execution (#355) */
+      /* the function's domain in this execution */
       TP_DOMAIN *agg_domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
-      /* a SUM / AVG over distinct values holds the first one as it is until it adds another (#368) */
+      /* a SUM / AVG over distinct values holds the first one as it is until it adds another */
       const TP_DOMAIN *raw_domain = NULL;
 
       if (agg_p->function == PT_VARIANCE || agg_p->function == PT_STDDEV || agg_p->function == PT_VAR_POP
@@ -1883,8 +1883,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  if (agg_p->flag.agg_optimized == false)
 	    {
-	      /* #341 (S-25): the key sorts the list's column, which the plan typed (a MEDIAN / PERCENTILE key sorts its
-	       * list's domain: qexec_setup_interpolation_list), in a sort list the execution owns (#355) */
+	      /* the key sorts the list's column, which the plan typed (a MEDIAN / PERCENTILE key sorts its
+	       * list's domain: qexec_setup_interpolation_list), in a sort list the execution owns */
 	      SORT_LIST *sort_list = agg_p->sort_list;
 	      if (sort_list != NULL)
 		{
@@ -1983,7 +1983,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		    }
 		  else
 		    {
-		      /* #368 (D-368-06): develop took the first distinct value as it is, added the second to it and every
+		      /* develop took the first distinct value as it is, added the second to it and every
 		       * later one to the sum's domain, each with the pre-cast its qdata_add_dbval took by the values'
 		       * types; a SUM or an AVG plans both from the list's column domain */
 		      const bool sum_or_avg = agg_p->function == PT_SUM || agg_p->function == PT_AVG;
@@ -2227,7 +2227,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
 	  /* compute AVG(X) = SUM(X)/COUNT(X), after the pre-cast develop's qdata_divide_dbval took by the sum's type - a
-	   * distinct string held as it is - planned from the sum's domain (#368, D-368-06) */
+	   * distinct string held as it is - planned from the sum's domain */
 	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	  const TP_DOMAIN *sum_domain = raw_domain != NULL ? raw_domain : agg_p->accumulator_domain.value_dom;
@@ -2924,8 +2924,8 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
   for (i = 0; i < ckey1->val_count; i++)
     {
       /* a key from the scan against one read back from a partial list: two sources whose types can differ, compared
-       * by the key pair table (workspace#354); one type without a collation compares as it is, which is
-       * domain_compare_by_keys's first answer, here without its call at every probe (workspace#372) */
+       * by the key pair table; one type without a collation compares as it is, which is
+       * domain_compare_by_keys's first answer, here without its call at every probe */
       const DB_VALUE *value1 = ckey1->values[i];
       const DB_VALUE *value2 = ckey2->values[i];
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
@@ -3416,7 +3416,7 @@ qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table
 }
 
 /*
- * qdata_aggregate_list_domain () - the domain an aggregate's DISTINCT or sorted list opens with (#341, S-26)
+ * qdata_aggregate_list_domain () - the domain an aggregate's DISTINCT or sorted list opens with
  *   return: a MEDIAN / PERCENTILE's list domain, which its key sorts (qexec_setup_interpolation_list); the argument's
  *	     for any other aggregate (qexec_setup_aggregate_lists), and for a MEDIAN / PERCENTILE over a constant or a
  *	     host variable, which has no sort list
@@ -3424,7 +3424,7 @@ qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table
 tp_domain *
 qdata_aggregate_list_domain (const VAL_DESCR *vd, const cubxasl::aggregate_list_node *agg_p)
 {
-  /* the domains in this execution: the setup's, in the cells (#355) */
+  /* the domains in this execution: the setup's, in the cells */
   return QPROC_IS_INTERPOLATION_FUNC (agg_p) && agg_p->sort_list != NULL
 	 ? qexec_interpolation_list_domain (vd, agg_p->sort_list->pos_descr.dom, agg_p->domain_plan)
 	 : qexec_node_domain (vd, agg_p->operands->value.domain, agg_p->operands->value.domain_plan);
@@ -3432,13 +3432,13 @@ qdata_aggregate_list_domain (const VAL_DESCR *vd, const cubxasl::aggregate_list_
 
 /*
  * qdata_update_agg_interpolation_func_value_and_domain () - a MEDIAN / PERCENTILE value converted to the function's
- *   domain before it goes into the function's list (#341, S-26)
+ *   domain before it goes into the function's list
  *   return: NO_ERROR, the conversion's error (a later value of a string that does not convert: -181), or
  *	     ER_QPROC_DOMAIN_UNRESOLVED (the boundary (b)) where the function or its list has no class
  *   agg_p(in): the function; its domain and its list's were set before the first row
  *   dbval(in/out): the value, converted in place
  *
- * The function's domain is DOUBLE for a number or a string (D-335-10), a date or time type's own, or any number for
+ * The function's domain is DOUBLE for a number or a string, a date or time type's own, or any number for
  * PERCENTILE_DISC; the list holds that type (qexec_setup_interpolation_list). Neither changes here.
  */
 int
@@ -3453,7 +3453,7 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
       return NO_ERROR;
     }
 
-  /* the function's domain in this execution (#355) */
+  /* the function's domain in this execution */
   TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
 
   const DB_TYPE domain_type = TP_DOMAIN_TYPE (domain);
@@ -3490,7 +3490,7 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
 int
 qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue)
 {
-  /* the function's domain in this execution (#355) */
+  /* the function's domain in this execution */
   TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
@@ -3560,7 +3560,7 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGG
 int
 qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue)
 {
-  /* the function's domain in this execution (#355) */
+  /* the function's domain in this execution */
   TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
@@ -3676,7 +3676,7 @@ qdata_aggregate_interpolation (cubthread::entry *thread_p, const VAL_DESCR *vd, 
       c_row_num_d = ceil (row_num_d);
     }
 
-  /* the function takes the domain the interpolation gives, and its type as the operand type, into its cells (#355) */
+  /* the function takes the domain the interpolation gives, and its type as the operand type, into its cells */
   TP_DOMAIN *domain = qexec_node_domain (vd, agg_p->domain, agg_p->domain_plan);
   error =
 	  qdata_get_interpolation_function_result (thread_p, scan_id, scan_id->list_id.type_list.domp[0], 0, row_num_d,

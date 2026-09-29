@@ -10512,7 +10512,7 @@ mem_error:
  *   return: a cached domain, or NULL on error
  *   con(in): the constraint
  *
- * The query compiler streams it with an index scan when the index statistics carry no key type (#342, L-45 (f)).
+ * The query compiler streams it with an index scan when the index statistics carry no key type.
  */
 TP_DOMAIN *
 sm_constraint_key_domain (const SM_CLASS_CONSTRAINT * con)
