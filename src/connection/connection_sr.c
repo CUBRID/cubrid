@@ -301,9 +301,8 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->db_error = 0;
   conn->in_transaction = false;
   conn->in_flashback = false;
-  conn->cdc_auth_expected[0] = '\0';
-  conn->cdc_auth_is_dba = false;
   conn->cdc_auth_done = false;
+  conn->cdc_auth_busy = 0;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;

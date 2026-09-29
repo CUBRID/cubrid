@@ -14514,10 +14514,12 @@ cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oi
 {
   BTID btid;
   DB_VALUE key;
-  char upper_name[DB_MAX_IDENTIFIER_LENGTH];
+  /* upper-casing can grow a name by up to INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER */
+  char upper_name[DB_MAX_USER_LENGTH * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER + 1];
   BTREE_SEARCH search;
 
-  if (user_name == NULL || *user_name == '\0' || strlen (user_name) >= DB_MAX_IDENTIFIER_LENGTH)
+  /* the same limit au_login () applies; longer can be no account */
+  if (user_name == NULL || *user_name == '\0' || strlen (user_name) >= DB_MAX_USER_LENGTH)
     {
       return false;
     }
@@ -14798,7 +14800,7 @@ bool
 cdc_check_dba_authorization (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
-  return (thread_p->conn_entry != NULL && thread_p->conn_entry->cdc_auth_done && thread_p->conn_entry->cdc_auth_is_dba);
+  return (thread_p->conn_entry != NULL && thread_p->conn_entry->cdc_auth_done);
 #else
   return false;
 #endif

@@ -446,9 +446,8 @@ struct css_conn_entry
   /* CDC channel authentication (CBRD-27436). The CDC log-server channel is not a
    * booted client, so it has no server-verified identity; it proves one with a
    * challenge-response of its own and the outcome is kept here. */
-  char cdc_auth_expected[CSS_CDC_AUTH_RESPONSE_SIZE];	/* answer to the outstanding challenge, empty if none */
-  bool cdc_auth_is_dba;		/* the challenged account is DBA or a DBA group member */
-  bool cdc_auth_done;		/* the challenge was answered correctly */
+  bool cdc_auth_done;		/* a DBA answered a challenge on this connection */
+  volatile int cdc_auth_busy;	/* an account lookup for the handshake is running */
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
   SYNC_RMUTEX rmutex;		/* connection mutex */
