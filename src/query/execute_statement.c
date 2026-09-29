@@ -3429,13 +3429,25 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+      if (error >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
 	  (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
 	}
     }
 
 end:
+  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
+   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
+  if (cls_info[0] != NULL)
+    {
+      int i = 0;
+
+      while (cls_info[i] != NULL)
+	{
+	  free_and_init (cls_info[i++]);
+	}
+    }
+
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
   /* There may be parse tree fragments that were collected during the execution of the statement that should be freed
@@ -3930,12 +3942,24 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+  if (err >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
     {
       (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
     }
 
 end:
+
+  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
+   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
+  if (cls_info[0] != NULL)
+    {
+      int i = 0;
+
+      while (cls_info[i] != NULL)
+	{
+	  free_and_init (cls_info[i++]);
+	}
+    }
 
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
@@ -15194,7 +15218,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_CREATE_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	oid = (OID *) malloc (sizeof (OID));
@@ -15210,8 +15234,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* the index must be resolved by its constraint name; sm_get_index () looks up attribute names only */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
+	else
+	  {
+	    OID_SET_NULL (oid);
+	  }
 
 	ddl_type = CDC_CREATE;
 	objtype = CDC_INDEX;
@@ -15220,7 +15252,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_ALTER_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	oid = (OID *) malloc (sizeof (OID));
@@ -15236,8 +15268,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* the index must be resolved by its constraint name; sm_get_index () looks up attribute names only */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
+	else
+	  {
+	    OID_SET_NULL (oid);
+	  }
 
 	ddl_type = CDC_ALTER;
 	objtype = CDC_INDEX;
@@ -15246,7 +15286,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_DROP_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	oid = (OID *) malloc (sizeof (OID));
@@ -15262,8 +15302,16 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* after a successful DROP INDEX the constraint is already gone; oid then remains a NULL OID */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
+	else
+	  {
+	    OID_SET_NULL (oid);
+	  }
 
 	ddl_type = CDC_DROP;
 	objtype = CDC_INDEX;
