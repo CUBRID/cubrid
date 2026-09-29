@@ -692,7 +692,7 @@ namespace cubconn::connection
 
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
-    claimed = !ctx->m_recv.m_recv_busy.load (std::memory_order_relaxed);
+    claimed = !ctx->m_recv.m_recv_busy.load (std::memory_order_acquire);
     if (claimed)
       {
 	ctx->m_recv.m_recv_busy.store (true, std::memory_order_relaxed);
@@ -709,7 +709,7 @@ namespace cubconn::connection
 
   void worker::release_reading (context *ctx)
   {
-    ctx->m_recv.m_recv_busy.store (false, std::memory_order_relaxed);
+    ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
   }
 
   /*
@@ -732,7 +732,7 @@ namespace cubconn::connection
     struct pollfd po;
     SOCKET fd;
     result status;
-    int n;
+    int n, r;
     bool more_data, hand_back;
 
     count_out = 0;
@@ -746,17 +746,19 @@ namespace cubconn::connection
       }
     self = conn.worker;
     ctx = reinterpret_cast<context *> (conn.context);
-    if (self == nullptr || ctx == nullptr || ctx->m_recv.m_recv_busy.load (std::memory_order_relaxed)
+    if (self == nullptr || ctx == nullptr || ctx->m_recv.m_recv_busy.load (std::memory_order_acquire)
 	|| conn.status != CONN_OPEN || conn.stop_talk)
       {
-	rmutex_unlock (entry, &conn.cmutex);
+	r = rmutex_unlock (entry, &conn.cmutex);
+	assert (r == NO_ERROR);
 	handed_back_out = true;
 	return result::Error;
       }
     ctx->m_recv.m_recv_busy.store (true, std::memory_order_relaxed);
     ctx->m_recv.m_missed_edge = false;
     fd = conn.fd;
-    rmutex_unlock (entry, &conn.cmutex);
+    r = rmutex_unlock (entry, &conn.cmutex);
+    assert (r == NO_ERROR);
 
     po.fd = fd;
     po.events = POLLIN;
@@ -784,11 +786,11 @@ namespace cubconn::connection
       {
 	/* an edge recorded in m_missed_edge cannot be handed back without the lock;
 	 * the worker's next level-triggered wake is the only recovery */
-	ctx->m_recv.m_recv_busy.store (false, std::memory_order_relaxed);
+	ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
 	handed_back_out = true;
 	return result::Error;
       }
-    ctx->m_recv.m_recv_busy.store (false, std::memory_order_relaxed);
+    ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
     if (!hand_back && ctx->m_recv.m_missed_edge)
       {
 	/* the dropped edge is usually data this thread already drained */
@@ -810,7 +812,8 @@ namespace cubconn::connection
 	  }
       }
     ctx->m_recv.m_missed_edge = false;
-    rmutex_unlock (entry, &conn.cmutex);
+    r = rmutex_unlock (entry, &conn.cmutex);
+    assert (r == NO_ERROR);
 
     return status;
   }
@@ -823,7 +826,7 @@ namespace cubconn::connection
    *   socket comes back to the worker.
    *
    *   The context's own m_stats are written here only by the receiver, and the
-   *   worker and this thread never receive at the same time -- m_owner sees to that
+   *   worker and this thread never receive at the same time -- m_recv_busy sees to that
    *   through m_conn->cmutex, whose release and acquire order the two. LAST_ACTIVE_NS
    *   is deliberately not written from here: no one reads it (the coordinator scores
    *   a worker by BYTES_IN_TOTAL, BYTES_OUT_TOTAL and the budget hits), and the
@@ -833,7 +836,7 @@ namespace cubconn::connection
   {
     std::vector<cubbase::span<std::byte>> *packets;
     result status, io_status;
-    int count, i;
+    int count, r;
 
     count_out = 0;
     more_data_out = false;
@@ -865,14 +868,14 @@ namespace cubconn::connection
 	return result::Ok;
       }
 
-
     if (rmutex_lock (entry, &ctx->m_conn->rmutex) != NO_ERROR)
       {
 	return result::Error;
       }
     if (ctx->m_conn->status != CONN_OPEN || ctx->m_conn->stop_talk == true)
       {
-	rmutex_unlock (entry, &ctx->m_conn->rmutex);
+	r = rmutex_unlock (entry, &ctx->m_conn->rmutex);
+	assert (r == NO_ERROR);
 	return result::Error;
       }
 
@@ -892,7 +895,8 @@ namespace cubconn::connection
 	  {
 	    er_log_conn (__FILE__, __LINE__, "connection::worker->sticky_drain: handle_packet status = %d\n", status);
 	    this->sticky_inline_abort (ctx);
-	    rmutex_unlock (entry, &ctx->m_conn->rmutex);
+	    r = rmutex_unlock (entry, &ctx->m_conn->rmutex);
+	    assert (r == NO_ERROR);
 	    return status;
 	  }
       }
@@ -910,7 +914,8 @@ namespace cubconn::connection
       }
     ctx->m_recv.m_inline = false;
 
-    rmutex_unlock (entry, &ctx->m_conn->rmutex);
+    r = rmutex_unlock (entry, &ctx->m_conn->rmutex);
+    assert (r == NO_ERROR);
 
     packets->clear ();
 
@@ -1640,6 +1645,55 @@ retry:
     return true;
   }
 
+  bool worker::handle_message_queue_release_packet (message &item)
+  {
+    context *ctx;
+    css_conn_entry *conn;
+    int r;
+
+    assert (item.conn);
+    assert (item.packet);
+
+    r = rmutex_lock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
+
+    ctx = reinterpret_cast<context *> (item.conn->context);
+    if (ctx == nullptr)
+      {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
+	er_log_conn (__FILE__, __LINE__,
+		     "connection::worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
+		     static_cast<void *> (item.conn));
+	return true;
+      }
+
+    conn = item.conn;
+    if (!this->validate_message_generation (item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	return true;
+      }
+    if (this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	return true;
+      }
+
+    ctx->m_recv.m_receiver.release (item.packet);
+    er_log_conn (__FILE__, __LINE__,
+		 "connection::worker->handle_message_queue_release_packet: release packet pointer = %p\n", item.packet);
+
+    r = rmutex_unlock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
+
+    return true;
+  }
 
   bool worker::handle_message_queue_recv_recheck (message &item)
   {
@@ -1711,56 +1765,6 @@ retry:
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_recv_recheck: handle_reception failed\n");
 	return false;
       }
-    return true;
-  }
-
-  bool worker::handle_message_queue_release_packet (message &item)
-  {
-    context *ctx;
-    css_conn_entry *conn;
-    int r;
-
-    assert (item.conn);
-    assert (item.packet);
-
-    r = rmutex_lock (m_entry, &item.conn->cmutex);
-    assert (r == NO_ERROR);
-
-    ctx = reinterpret_cast<context *> (item.conn->context);
-    if (ctx == nullptr)
-      {
-	r = rmutex_unlock (m_entry, &item.conn->cmutex);
-	assert (r == NO_ERROR);
-
-	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
-		     static_cast<void *> (item.conn));
-	return true;
-      }
-
-    conn = item.conn;
-    if (!this->validate_message_generation (item, ctx))
-      {
-	r = rmutex_unlock (m_entry, &conn->cmutex);
-	assert (r == NO_ERROR);
-
-	return true;
-      }
-    if (this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
-      {
-	r = rmutex_unlock (m_entry, &conn->cmutex);
-	assert (r == NO_ERROR);
-
-	return true;
-      }
-
-    ctx->m_recv.m_receiver.release (item.packet);
-    er_log_conn (__FILE__, __LINE__,
-		 "connection::worker->handle_message_queue_release_packet: release packet pointer = %p\n", item.packet);
-
-    r = rmutex_unlock (m_entry, &item.conn->cmutex);
-    assert (r == NO_ERROR);
-
     return true;
   }
 

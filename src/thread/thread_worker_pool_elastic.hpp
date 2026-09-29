@@ -655,7 +655,9 @@ namespace cubthread
       {
 	return false;
       }
-    return static_cast<const core_elastic *> (this->m_cores[core_hash % this->m_cores.size ()].get ())->has_queued_task ();
+    std::size_t index = core_hash % this->m_cores.size ();
+
+    return static_cast<const core_elastic *> (this->m_cores[index].get ())->has_queued_task ();
   }
 
   template <stats_t Stats>

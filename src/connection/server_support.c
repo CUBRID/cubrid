@@ -199,6 +199,7 @@ static int css_get_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
 
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static void css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref);
 static void css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
@@ -2176,7 +2177,7 @@ css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 	{
 	  return;
 	}
-      if (css_Server_request_worker_pool->has_queued_task (static_cast < std::size_t > (conn_ref.idx)))
+      if (css_Server_request_worker_pool->has_queued_task (static_cast<std::size_t> (conn_ref.idx)))
 	{
 	  /* the core this connection's tasks go to has work waiting; that work
 	   * outranks this thread's wait, so give the thread back */

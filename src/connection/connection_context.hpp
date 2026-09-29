@@ -184,7 +184,7 @@ namespace cubconn::connection
       bool m_inline { false };
       int m_inline_count { 0 };
       /* the worker met an EPOLLIN edge while the sticky thread owned this socket
-       * and dropped it; guarded by m_conn->cmutex like m_owner's transitions */
+       * and dropped it; guarded by m_conn->cmutex like m_recv_busy's transitions */
       bool m_missed_edge { false };
     } m_recv;
 

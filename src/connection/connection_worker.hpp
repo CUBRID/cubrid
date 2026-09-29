@@ -327,12 +327,12 @@ namespace cubconn::connection
       bool validate_message_generation (const message &item, context *ctx) const;
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
-      result sticky_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
       void sticky_inline_abort (context *ctx);
       void sticky_flush_counted_to_pool (context *ctx, int count);
 
       bool claim_reading (context *ctx, bool from_edge);
       void release_reading (context *ctx);
+      result sticky_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
 
       bool handle_message_queue_release_packet (message &item);
       bool handle_message_queue_recv_recheck (message &item);
