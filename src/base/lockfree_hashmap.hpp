@@ -720,7 +720,7 @@ namespace lockfree
 	    // (lock_free.c:640-646) and the callers are written to find it: xcache_new_entry () runs
 	    // ASSERT_ERROR_AND_SET (xasl_cache.c:1574-1578), which assert (false)s and degrades to ER_FAILED
 	    // when nothing is set. Raised here rather than in alloc_list (): a short block there is not yet a
-	    // failure - claim () goes on to force_alloc_block () - and the freelist is generic code with no
+	    // failure - alloc_block () keeps it - and the freelist is generic code with no
 	    // business in the error manager.
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) sizeof (free_node_type));
 	    if (is_local_tran)

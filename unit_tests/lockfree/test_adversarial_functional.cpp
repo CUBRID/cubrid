@@ -474,8 +474,7 @@ namespace test_lockfree
   // out-of-memory path runs deterministically. claim () must answer NULL, and must leave the transaction it
   // started ENDED - a descriptor keeping a published id pins the table's minimum active id and stops
   // reclamation for good, and lf_freelist_claim () does end it (lock_free.c:850-857). The freelist must also
-  // survive its own destructor: it cannot fill the back-buffer here, and final_sanity_checks () has to admit
-  // the empty buffer alloc_backbuffer () deliberately leaves behind.
+  // survive its own destructor with nothing allocated.
   //
   // The legacy side is read, not run: er_set () asserts with no error manager in this binary.
   //
@@ -508,13 +507,11 @@ namespace test_lockfree
       }
     (void) BLOCK_COUNT;
 
-    const size_t bb_count = l_freelist->get_backbuffer_count ();
     const size_t alloc_count = l_freelist->get_alloc_count ();
 
     string_buffer line;
-    line ("  claim () = %s, transaction left %s, alloc = %zu, backbuffer = %zu (block size %zu)\n",
-	  node == NULL ? "NULL" : "a node", tran_left_started ? "STARTED" : "ended", alloc_count, bb_count,
-	  BLOCK_SIZE);
+    line ("  claim () = %s, transaction left %s, alloc = %zu (block size %zu)\n",
+	  node == NULL ? "NULL" : "a node", tran_left_started ? "STARTED" : "ended", alloc_count, BLOCK_SIZE);
     say (line);
 
     if (node != NULL)
@@ -528,8 +525,8 @@ namespace test_lockfree
 	err = 1;
       }
 
-    // the destructor runs final_sanity_checks (): with nothing allocated the back-buffer is empty, and the
-    // invariant has to accept that rather than abort a debug build on a boot-time out-of-memory.
+    // the destructor runs final_sanity_checks () with nothing allocated, which must not abort a debug build on a
+    // boot-time out-of-memory.
     l_transys->free_index (l_index);
     delete l_freelist;
     delete l_transys;
@@ -666,7 +663,7 @@ namespace test_lockfree
   case_max_alloc_cap ()
   {
     const int CAP = 128;
-    // the cap only stops recycling, so a block in the back-buffer and a couple of forced blocks are expected
+    // the cap only stops recycling, so the blocks threads add when they find the list empty together are expected
     const size_t CAP_SLACK = 4 * CAP_BLOCK_SIZE;
 
     test_common::sync_cout ("case_max_alloc_cap\n");
@@ -1219,14 +1216,13 @@ namespace test_lockfree
   }
 
   //
-  // case_tiny_block_pressure () - the back-buffer head/tail protocol with a block of one, at 64 threads.
+  // case_tiny_block_pressure () - the allocation path with a block of one, at 64 threads.
   //
   // A block of one is the newest shape in the freelist - the constructor asserted block_size > 1 until two
-  // commits ago - and the worst case for the protocol this branch last touched: every claim empties the
-  // available list, so swap_backbuffer (), alloc_backbuffer () and force_alloc_block () all race. Checked at
-  // quiescence: available + back-buffer + retired == alloc, the back-buffer holds exactly one block, and
-  // nothing is still claimed. claim () also asserts m_available_count > 0, so a credit lost by the swap aborts
-  // here rather than wrapping.
+  // commits ago - and the worst case for allocating on demand: every claim empties the available list, so
+  // alloc_block () runs concurrently with pops and with other threads' allocations. Checked at quiescence:
+  // available + retired == alloc, and nothing is still claimed. claim () also asserts m_available_count > 0,
+  // so a credit published after its nodes aborts here rather than wrapping.
   //
   struct adv_item
   {
@@ -1381,25 +1377,18 @@ namespace test_lockfree
 
 	const size_t alloc = l_freelist.get_alloc_count ();
 	const size_t available = l_freelist.get_available_count ();
-	const size_t backbuffer = l_freelist.get_backbuffer_count ();
 	const size_t retired = l_freelist.get_transaction_table ().get_current_retire_count ();
 	const size_t claimed = l_freelist.get_claimed_count ();
-	const size_t forced = l_freelist.get_forced_allocation_count ();
 
 	string_buffer line;
-	line ("  lockfree::freelist  block size %zu: alloc = %zu, available = %zu, backbuffer = %zu, retired = %zu,"
-	      " claimed = %zu, forced blocks = %zu, double handouts = %llu\n", block_size, alloc, available,
-	      backbuffer, retired, claimed, forced, (unsigned long long) g_double_handout.load ());
+	line ("  lockfree::freelist  block size %zu: alloc = %zu, available = %zu, retired = %zu, claimed = %zu,"
+	      " double handouts = %llu\n", block_size, alloc, available, retired, claimed,
+	      (unsigned long long) g_double_handout.load ());
 	say (line);
 
-	if (available + backbuffer + retired != alloc)
+	if (available + retired != alloc)
 	  {
-	    test_common::sync_cout ("  FAILED: available + backbuffer + retired does not add up to alloc\n");
-	    err = 1;
-	  }
-	if (backbuffer != block_size)
-	  {
-	    test_common::sync_cout ("  FAILED: the back-buffer does not hold exactly one block\n");
+	    test_common::sync_cout ("  FAILED: available + retired does not add up to alloc\n");
 	    err = 1;
 	  }
 	if (claimed != 0)

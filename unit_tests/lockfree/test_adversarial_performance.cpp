@@ -1314,16 +1314,12 @@ namespace test_lockfree
     suite_startup (size_t reps)
     {
       say ("");
-      say ("#### SUITE startup - the two newest commits made the freelist constructor allocate initial_block_count");
-      say ("####                 blocks instead of initial_block_count + 1. total allocation is now the same as");
-      say ("####                 legacy, but one of those blocks sits in the back-buffer, so the available list");
-      say ("####                 starts one block shorter. a burst whose peak demand falls between one block and");
-      say ("####                 two must therefore swap the back-buffer and allocate a replacement, which legacy");
-      say ("####                 serves out of what it already had.");
+      say ("#### SUITE startup - a burst whose peak demand falls between one block and two. the rewrite used to keep");
+      say ("####                 one of its initial blocks in a back-buffer and allocate the next block as soon as");
+      say ("####                 it handed that one over; it now starts with the same available list as legacy and");
+      say ("####                 allocates only when it runs empty, so neither side should allocate here.");
 
-      // 64 threads x 200 = 12800 concurrent claims. block of 10000: legacy starts with 20000 available and never
-      // allocates; the rewrite starts with 10000 available plus 10000 in the back-buffer, so it runs dry, swaps,
-      // and allocates a third block of 10000 while the burst is in flight.
+      // 64 threads x 200 = 12800 concurrent claims against two blocks of 10000: 20000 available on both sides.
       spec a = make_spec (WL_CLAIM_HOLD_RETIRE, "burst_between_one_and_two_blocks");
       a.m_p1 = 1;
       a.m_p2 = 200;
@@ -1333,7 +1329,7 @@ namespace test_lockfree
       a.m_block_count = 2;
       measure (a, reps);
 
-      // same burst, four blocks: 30000 available on the rewrite, 40000 on legacy, neither runs dry
+      // same burst, four blocks: 40000 available on both sides, neither runs dry
       spec b = a;
       b.m_name = "burst_inside_four_blocks";
       b.m_block_count = 4;

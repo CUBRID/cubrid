@@ -26,7 +26,6 @@
 #include "lockfree_transaction_system.hpp"
 #include "string_buffer.hpp"
 
-#include <algorithm>
 #include <cassert>
 #include <condition_variable>
 #include <cstdlib>
@@ -116,14 +115,16 @@ namespace test_lockfree
 
   //
   // test_initial_allocation () - the constructor must accept a block of one and must allocate exactly the
-  //                              number of blocks it was asked for.
+  //                              number of blocks it was asked for, and claim () one more only on demand.
   //
   // Two defects, both reachable only once new_lfhash defaults on. assert (block_size > 1) aborted the server in
   // boot_restart_server () for every database with max_plan_cache_entries <= 3, where xcache_initialize ()
   // computes a block size of one - a block lf_freelist_init () has always accepted. And the constructor
   // allocated one block more than asked, alloc_backbuffer () once and another inside every swap_backbuffer (),
   // which lf_freelist_init () does not: lock_dump_resource () reads that count, so cubrid lockdb reported 1500
-  // allocated objects where it had always reported 1000.
+  // allocated objects where it had always reported 1000. The same count moved again once a table outgrew its
+  // initial blocks: the back-buffer allocated the next block as soon as it handed over the last one, so the
+  // freelist ran a block ahead of legacy, which allocates only when it runs empty.
   //
   int
   test_initial_allocation ()
@@ -138,7 +139,7 @@ namespace test_lockfree
       { 1, 2 },     // xcache_initialize () for max_plan_cache_entries <= 3
       { 500, 2 },   // the object lock resource table's defaults, the count cubrid lockdb prints
       { 16, 3 },
-      { 1, 1 },     // the "minimum two blocks" path with nothing left to halve
+      { 1, 1 },
       { 16, 1 },
     };
 
@@ -147,24 +148,37 @@ namespace test_lockfree
     int err = 0;
     for (const block_request &request : REQUESTS)
       {
-	// what the constructor promises for a request of a single block
-	const size_t block_size =
-		request.block_count <= 1 ? std::max<size_t> (request.block_size / 2, 1) : request.block_size;
-	const size_t block_count = request.block_count <= 1 ? 2 : request.block_count;
-	const size_t expected = block_size * block_count;
+	const size_t expected = request.block_size * request.block_count;
 
 	lockfree::tran::system l_lfsys { 1 };
 	my_freelist l_freelist { l_lfsys, request.block_size, request.block_count };
 
 	const size_t allocated = l_freelist.get_alloc_count ();
-	const size_t on_hand = l_freelist.get_available_count () + l_freelist.get_backbuffer_count ();
+	const size_t on_hand = l_freelist.get_available_count ();
+
+	// claim every node plus one: exactly one more block, allocated by the claim that found the list empty
+	tran::index l_index = l_lfsys.assign_index ();
+	std::vector<my_node *> held;
+	for (size_t i = 0; i <= expected; i++)
+	  {
+	    held.push_back (l_freelist.claim (l_index));
+	  }
+	l_freelist.get_transaction_table ().end_tran (l_index);
+	const size_t grown = l_freelist.get_alloc_count ();
+	const size_t expected_grown = expected + request.block_size;
+	for (my_node *node : held)
+	  {
+	    l_freelist.retire (l_index, *node);
+	  }
+	l_lfsys.free_index (l_index);
 
 	string_buffer result_str;
-	result_str ("  block_size = %zu, block_count = %zu: allocated = %zu, expected = %zu, on hand = %zu\n",
-		    request.block_size, request.block_count, allocated, expected, on_hand);
+	result_str ("  block_size = %zu, block_count = %zu: allocated = %zu, expected = %zu, on hand = %zu;"
+		    " after %zu claims = %zu, expected = %zu\n", request.block_size, request.block_count, allocated,
+		    expected, on_hand, expected + 1, grown, expected_grown);
 	test_common::sync_cout (result_str.get_buffer ());
 
-	if (allocated != expected || on_hand != allocated)
+	if (allocated != expected || on_hand != allocated || grown != expected_grown)
 	  {
 	    err = 1;
 	  }
@@ -381,7 +395,6 @@ namespace test_lockfree
       size_t alloc_count =
 	      l_remaining_nodes.size ()
 	      + l_freelist.get_available_count ()
-	      + l_freelist.get_backbuffer_count ()
 	      + l_freelist.get_transaction_table ().get_current_retire_count ();
       test_common::custom_assert (alloc_count == l_freelist.get_alloc_count ());
 
@@ -394,10 +407,8 @@ namespace test_lockfree
 
       alloc_count =
 	      l_freelist.get_available_count ()
-	      + l_freelist.get_backbuffer_count ()
 	      + l_freelist.get_transaction_table ().get_current_retire_count ();
       test_common::custom_assert (alloc_count == l_freelist.get_alloc_count ());
-      test_common::custom_assert (l_freelist.get_backbuffer_count () == BLOCK_SIZE);
     }
 
     // check all have been deallocated

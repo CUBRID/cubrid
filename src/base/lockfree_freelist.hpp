@@ -24,7 +24,6 @@
 #include "lockfree_transaction_reclaimable.hpp"
 #include "lockfree_transaction_table.hpp"
 
-#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <limits>
@@ -80,8 +79,6 @@ namespace lockfree
 
       size_t get_alloc_count () const;
       size_t get_available_count () const;
-      size_t get_backbuffer_count () const;
-      size_t get_forced_allocation_count () const;
       size_t get_retired_count () const;
       size_t get_claimed_count () const;
 
@@ -97,23 +94,14 @@ namespace lockfree
 
       std::atomic<free_node *> m_available_list;      // list of available entries
 
-      // backbuffer head & tail; when available list is consumed, it is quickly replaced with back-buffer; without
-      // backbuffer, multiple threads can race to allocate multiple blocks at once
-      std::atomic<free_node *> m_backbuffer_head;
-      std::atomic<free_node *> m_backbuffer_tail;
-
       // statistics:
       std::atomic<size_t> m_available_count;
       std::atomic<size_t> m_alloc_count;
       // above this, reclaim frees instead of recycling - edesc->max_alloc_cnt (CBRD-24474). uncapped by default.
       std::atomic<size_t> m_max_alloc_count;
-      std::atomic<size_t> m_bb_count;
-      std::atomic<size_t> m_forced_alloc_count;
       std::atomic<size_t> m_retired_count;
 
-      void swap_backbuffer ();
-      void alloc_backbuffer ();
-      bool force_alloc_block ();
+      bool alloc_block ();
 
       size_t alloc_list (free_node *&head, free_node *&tail);
       size_t dealloc_list (free_node *head);
@@ -165,94 +153,27 @@ namespace lockfree
     , m_node_reclaim (reclaim)
     , m_block_size (block_size)
     , m_available_list { NULL }
-    , m_backbuffer_head { NULL }
-    , m_backbuffer_tail { NULL }
     , m_available_count { 0 }
     , m_alloc_count { 0 }
     , m_max_alloc_count { std::numeric_limits<size_t>::max () }
-    , m_bb_count { 0 }
-    , m_forced_alloc_count { 0 }
     , m_retired_count { 0 }
   {
-    // minimum two blocks
-    if (initial_block_count <= 1)
-      {
-	// halve, but never below one: at zero alloc_backbuffer () publishes an empty block and push_to_list ()
-	// dereferences NULL. lf_freelist_init () accepts a block of one - xcache_initialize () passes one for
-	// max_plan_cache_entries <= 3 - so this constructor must not be stricter.
-	m_block_size = std::max<size_t> (m_block_size / 2, 1);
-	initial_block_count = 2;
-      }
     assert (m_block_size > 0);
 
-
-    // initial_block_count blocks in total, the back-buffer's included. lf_freelist_init () allocates exactly
-    // that many, and lock_dump_resource () prints the count, so one block more would change cubrid lockdb.
-    alloc_backbuffer ();
-    for (size_t i = 1; i < initial_block_count; i++)
+    // initial_block_count blocks of block_size, as lf_freelist_init () allocates; lock_dump_resource () prints the
+    // count, so any other number changes cubrid lockdb. a block that cannot be allocated is left to claim ().
+    for (size_t i = 0; i < initial_block_count; i++)
       {
-	swap_backbuffer ();
+	if (!alloc_block ())
+	  {
+	    break;
+	  }
       }
-  }
-
-  template <class T, class R>
-  void
-  freelist<T, R>::swap_backbuffer ()
-  {
-    free_node *bb_head = m_backbuffer_head;
-    if (bb_head == NULL)
-      {
-	// somebody already allocated block
-	return;
-      }
-    free_node *bb_head_copy = bb_head; // make sure a copy is passed to compare exchange
-    if (!m_backbuffer_head.compare_exchange_strong (bb_head_copy, NULL))
-      {
-	// somebody already changing it
-	return;
-      }
-
-    free_node *bb_tail = m_backbuffer_tail.exchange (NULL);
-    assert (bb_tail != NULL);
-
-    // credit what is moved, not m_bb_count: a swap racing alloc_backbuffer () used to read 0 here and publish
-    // a whole block with no count behind it, so claim () popped a node with m_available_count already at 0 and
-    // wrapped it. the back-buffer holds exactly one block, as final_sanity_checks () also relies on.
-    m_bb_count -= m_block_size;
-    m_available_count += m_block_size;
-    push_to_list (*bb_head, *bb_tail, m_available_list);
-
-    alloc_backbuffer ();
-  }
-
-  template <class T, class R>
-  void
-  freelist<T, R>::alloc_backbuffer ()
-  {
-    free_node *new_bb_head = NULL;
-    free_node *new_bb_tail = NULL;
-
-    if (alloc_list (new_bb_head, new_bb_tail) < m_block_size)
-      {
-	// the back-buffer must hold a whole block or nothing: swap_backbuffer () credits m_block_size for it, and
-	// final_sanity_checks () asserts the same. give a short block back and leave the buffer empty - claim ()
-	// falls through to force_alloc_block () and reports the failure from there.
-	m_alloc_count -= dealloc_list (new_bb_head);
-	return;
-      }
-
-    // update backbuffer tail
-    free_node *dummy_null = NULL;
-    m_backbuffer_tail.compare_exchange_strong (dummy_null, new_bb_tail);
-
-    // count the block before publishing it, so a swap that takes the list never finds it uncounted
-    m_bb_count += m_block_size;
-    push_to_list (*new_bb_head, *new_bb_tail, m_backbuffer_head);
   }
 
   template <class T, class R>
   bool
-  freelist<T, R>::force_alloc_block ()
+  freelist<T, R>::alloc_block ()
   {
     free_node *new_head = NULL;
     free_node *new_tail = NULL;
@@ -262,9 +183,8 @@ namespace lockfree
 	return false;
       }
 
-    // push directly to available; a short block is still usable here
+    // a short block is still usable
     m_available_count += allocated;
-    ++m_forced_alloc_count;
     push_to_list (*new_head, *new_tail, m_available_list);
     return true;
   }
@@ -330,15 +250,10 @@ namespace lockfree
   {
     final_sanity_checks ();
 
-    // move back-buffer to available
-    dealloc_list (m_backbuffer_head.load ());
-    m_backbuffer_head = NULL;
-    m_backbuffer_tail = NULL;
-
     dealloc_list (m_available_list.load ());
     m_available_list = NULL;
 
-    m_available_count = m_bb_count = m_alloc_count = 0;
+    m_available_count = m_alloc_count = 0;
   }
 
   template<class T, class R>
@@ -356,19 +271,12 @@ namespace lockfree
     tdes.start_tran ();
     tdes.reclaim_retired_list ();
 
-    free_node *node;
-    size_t count = 0;
-    for (node = pop_from_available (); node == NULL && count < 100; node = pop_from_available (), ++count)
-      {
-	// if it loops many times, it is probably because the back-buffer allocator was preempted for a very long time.
-	// force allocations
-	swap_backbuffer ();
-      }
-    // if swapping backbuffer didn't work (probably back-buffer allocator was preempted for a long time), force
-    // allocating directly into available list
+    // allocate only when the available list is empty, as lf_freelist_claim () does. threads that find it empty
+    // together may each add a block, as lf_freelist_claim () also allows.
+    free_node *node = pop_from_available ();
     while (node == NULL)
       {
-	if (!force_alloc_block ())
+	if (!alloc_block ())
 	  {
 	    // out of memory. legacy lf_freelist_claim () answered NULL here and its callers - xcache_new_entry ()
 	    // among them - already expect that. It also ended the transaction it had opened
@@ -480,20 +388,6 @@ namespace lockfree
 
   template<class T, class R>
   size_t
-  freelist<T, R>::get_backbuffer_count () const
-  {
-    return m_bb_count;
-  }
-
-  template<class T, class R>
-  size_t
-  freelist<T, R>::get_forced_allocation_count () const
-  {
-    return m_forced_alloc_count;
-  }
-
-  template<class T, class R>
-  size_t
   freelist<T, R>::get_retired_count () const
   {
     return m_retired_count;
@@ -504,7 +398,7 @@ namespace lockfree
   freelist<T, R>::get_claimed_count () const
   {
     size_t alloc_count = m_alloc_count;
-    size_t unused_count = m_available_count + m_bb_count + m_retired_count;
+    size_t unused_count = m_available_count + m_retired_count;
     if (alloc_count > unused_count)
       {
 	return alloc_count - unused_count;
@@ -534,24 +428,9 @@ namespace lockfree
   freelist<T, R>::final_sanity_checks () const
   {
 #if !defined (NDEBUG)
-    assert (m_available_count + m_bb_count == m_alloc_count);
+    assert (m_available_count == m_alloc_count);
 
-    // check back-buffer
     size_t list_count = 0;
-    free_node *save_last = NULL;
-    for (free_node *iter = m_backbuffer_head; iter != NULL; iter = iter->get_freelist_next ())
-      {
-	++list_count;
-	save_last = iter;
-      }
-    assert (list_count == m_bb_count);
-    // a whole block, or nothing: alloc_backbuffer () gives a short block back and leaves the buffer empty when
-    // it cannot allocate, and claim () falls through to force_alloc_block () from there.
-    assert (list_count == m_block_size || list_count == 0);
-    assert (save_last == m_backbuffer_tail);
-
-    // check available
-    list_count = 0;
     for (free_node *iter = m_available_list; iter != NULL; iter = iter->get_freelist_next ())
       {
 	++list_count;
