@@ -1815,6 +1815,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		  goto error_exit;
 		}
 	    }
+	  if (utility_check_class_is_vclass (class_name) != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 	  error_code = heap_dump_heap_file (thread_p, outfp, dump_records, class_name);
 	  if (error_code != NO_ERROR)
 	    {
@@ -1854,6 +1858,10 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 		    {
 		      goto error_exit;
 		    }
+		}
+	      if (utility_check_class_is_vclass (input_class) != NO_ERROR)
+		{
+		  goto error_exit;
 		}
 
 	      error_code = heap_dump_heap_file (thread_p, outfp, dump_records, input_class);
