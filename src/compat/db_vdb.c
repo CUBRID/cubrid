@@ -168,34 +168,6 @@ db_is_bind_sensitive (PT_NODE * statement)
 }
 
 /*
- * db_stmt_bind_fp_ptr () - the statement's bind-value fingerprint slot, when the statement
- *   type takes part in bind-value plan fixing (queries, UPDATE, DELETE)
- * return         : pointer to the fingerprint or NULL
- * statement (in) : statement being executed
- */
-static UINT64 *
-db_stmt_bind_fp_ptr (PT_NODE * statement)
-{
-  if (statement == NULL)
-    {
-      return NULL;
-    }
-  if (PT_IS_QUERY (statement))
-    {
-      return &statement->info.query.bind_fp;
-    }
-  if (statement->node_type == PT_UPDATE)
-    {
-      return &statement->info.update.bind_fp;
-    }
-  if (statement->node_type == PT_DELETE)
-    {
-      return &statement->info.delete_.bind_fp;
-    }
-  return NULL;
-}
-
-/*
  * db_stmt_bind_watch_ptr () - the statement's bind-value watch slot, when the statement type
  *   takes part in bind-value plan fixing (queries, UPDATE, DELETE)
  * return         : pointer to the watch-state pointer, or NULL
@@ -224,44 +196,37 @@ db_stmt_bind_watch_ptr (PT_NODE * statement)
 }
 
 /*
- * db_bind_watch_is_open () - is this statement still inside its bind-value watch window?
- * return         : true when a check is owed on this execution
+ * db_bind_watch_is_open () - does this execution owe a bind-value check?
+ * return         : true when the fingerprint must be compared on this execution
  * statement (in) : statement being executed
  *
- * Note: the window is the whole feature gate on the execution path. With
- *       plan_cache_bind_watch_checks at its default 0, or on a statement target selection did
- *       not pick (BIND_WATCH_CANDIDATE absent), this is a parameter read and a bit test, and
- *       everything downstream -- including the per-node cardinality walk -- is skipped, so the
- *       statement executes exactly as it does without the feature.
+ * Three reasons, in order:
+ *   - the hint (BIND_SENSITIVE / plan_cache_bind_sensitivity): every execution, any statement,
+ *     no window -- the user asked for it;
+ *   - the driver-neutral first peek: the plan was chosen with unbound markers, so the first
+ *     execution prices it once (this is what develop does with the feature off);
+ *   - the watch: statements target selection picked, while their window is open.
+ * With plan_cache_bind_watch_checks at its default 0 and no hint, only the first peek runs,
+ * so the statement executes exactly as it does without the feature.
  */
 static bool
 db_bind_watch_is_open (PT_NODE * statement)
 {
-  BIND_WATCH_STATE **ws_p;
+  BIND_WATCH_STATE **ws_p = db_stmt_bind_watch_ptr (statement);
 
-  if (prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS) <= 0 || statement == NULL
-      || statement->flag.bind_watch_candidate == 0)
-    {
-      return false;
-    }
-  ws_p = db_stmt_bind_watch_ptr (statement);
   if (ws_p == NULL)
     {
       return false;
     }
-  /* a statement that asked for continuous sensitivity (BIND_SENSITIVE hint or
-   * plan_cache_bind_sensitivity) is not put behind the band and the window: it keeps the
-   * per-predicate selectivity fingerprint, which replans on any change of an estimate and
-   * never stops. The two paths do not mix. */
-  if (db_is_bind_sensitive (statement))
+  if (db_is_bind_sensitive (statement) || statement->flag.hv_pred_plan_unpeeked)
+    {
+      return true;
+    }
+  if (prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS) <= 0 || statement->flag.bind_watch_candidate == 0)
     {
       return false;
     }
-  if (*ws_p == NULL)
-    {
-      return true;		/* nothing checked yet: the whole window is ahead */
-    }
-  return (*ws_p)->checks_left > 0;
+  return (*ws_p == NULL) || (*ws_p)->checks_left > 0;
 }
 
 /*
@@ -277,7 +242,7 @@ db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
   BIND_WATCH_STATE *ws;
   UINT64 value_hash;
   bool usable = false;
-  bool replan;
+  bool replan, hinted;
 
   if (!db_bind_watch_is_open (statement))
     {
@@ -292,7 +257,7 @@ db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  return BIND_WATCH_OFF;
 	}
-      ws->nodes = -1;
+      ws->terms = -1;
       ws->checks_left = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS);
       ws->replans = 0;
       ws->value_hash = 0;
@@ -308,12 +273,14 @@ db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
       return BIND_WATCH_KEEP;
     }
   ws->value_hash = value_hash;
-  if (ws->checks_left > 0)
+  hinted = db_is_bind_sensitive (statement);
+  if (!hinted && ws->checks_left > 0)
     {
+      /* only the watch spends the window (the hint has none); the first peek is its first check */
       ws->checks_left--;
     }
 
-  replan = histogram_bind_watch_check (parser, statement, ws, &usable);
+  replan = histogram_bind_watch_check (parser, statement, ws, hinted ? BIND_WATCH_HINT_BAND : BIND_WATCH_BAND, &usable);
   if (!usable)
     {
       /* nothing in this statement is priced by a histogram, and that cannot change while this
@@ -2147,7 +2114,6 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   PT_NODE *statement;
   DB_QUERY_RESULT *qres;
   DB_VALUE *val;
-  UINT64 *bind_fp_p;
   int err = NO_ERROR;
   int server_info_bits;
 
@@ -2382,53 +2348,18 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
        * this, CCI/JDBC prepared statements -- which never build a PT_EXECUTE_PREPARE node and so never
        * reach the header-flag consumer in do_get_prepared_statement_info () -- would never price a
        * `?` predicate with real values. */
-      bind_fp_p = db_stmt_bind_fp_ptr (statement);
-      if ((statement->flag.hv_pred_plan_unpeeked || db_is_bind_sensitive (statement)
-	   || db_bind_watch_is_open (statement)) && bind_fp_p != NULL
-	  && parser->flag.set_host_var && parser->host_var_count > 0 && statement->xasl_id != NULL)
+      if (db_bind_watch_is_open (statement) && parser->flag.set_host_var && parser->host_var_count > 0
+	  && statement->xasl_id != NULL)
 	{
-	  UINT64 bind_fp = 0;
 	  BIND_WATCH_VERDICT watch = db_bind_watch_verdict (parser, statement);
 
-	  if (watch != BIND_WATCH_OFF)
+	  if (watch == BIND_WATCH_REPLAN)
 	    {
-	      /* The watched statements compare the estimated rows per node against the ones the
-	       * plan was chosen under, for the first plan_cache_bind_watch_checks distinct-value
-	       * executions only. The scalar per-predicate fingerprint below stays for everything
-	       * else -- statements the feature does not watch, and statements that asked for
-	       * continuous sensitivity through the hint or plan_cache_bind_sensitivity -- so
-	       * turning the feature off leaves this path exactly as it was. */
-	      if (watch == BIND_WATCH_REPLAN)
-		{
-		  err = do_replan_statement_with_bind_peek (parser, statement);
-		  if (err != NO_ERROR)
-		    {
-		      update_execution_values (parser, -1, CUBRID_MAX_STMT_TYPE);
-		      assert (result == NULL || *result == NULL);
-		      return err;
-		    }
-		}
-	      /* the plan has now been priced under real values (or was already), so the unpeeked
-	       * contract is satisfied whichever way the check went */
-	      statement->flag.hv_pred_plan_unpeeked = 0;
-	    }
-	  else if (!histogram_bind_fingerprint (parser, statement, &bind_fp))
-	    {
-	      /* nothing in this statement is priced by a histogram (e.g. its tables have no
-	       * collected statistics), and that cannot change while this plan lives -- the plan
-	       * is invalidated with the statistics. Clear the unpeeked flag so later executions
-	       * stop re-walking the tree for an answer that cannot change. */
-	      statement->flag.hv_pred_plan_unpeeked = 0;
-	    }
-	  else if (*bind_fp_p != bind_fp)
-	    {
-	      /* The bound values land in different histogram territory (a different MCV/bucket,
-	       * hence a different selectivity) than the values the cached plan was chosen under --
-	       * or this is the first execution and the plan was compiled with unbound markers.
-	       * Regenerate the plan FROM THE KEPT POST-TRANSFORM TREE: do_prepare_statement ()
-	       * redoes only plan selection and XASL generation; parsing, semantic checks and
-	       * rewrites are NOT repeated. With the values now bound, the histogram probes price
-	       * the predicates with their real selectivities. */
+	      /* The values price at least one predicate out of band against the plan -- or this
+	       * is the first execution and the plan was compiled with unbound markers. Regenerate
+	       * the plan FROM THE KEPT POST-TRANSFORM TREE: do_prepare_statement () redoes only
+	       * plan selection and XASL generation; parsing, semantic checks and rewrites are NOT
+	       * repeated. */
 	      err = do_replan_statement_with_bind_peek (parser, statement);
 	      if (err != NO_ERROR)
 		{
@@ -2436,11 +2367,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		  assert (result == NULL || *result == NULL);
 		  return err;
 		}
-	      *bind_fp_p = bind_fp;
-	      /* the regenerated plan was chosen under real values, so the unpeeked contract is
-	       * satisfied; any further replan is up to the parameter / hint */
-	      statement->flag.hv_pred_plan_unpeeked = 0;
 	    }
+	  /* the plan has now been priced under real values (or nothing in it can be priced, which
+	   * cannot change while it lives), so the unpeeked contract is satisfied either way */
+	  statement->flag.hv_pred_plan_unpeeked = 0;
 	}
 
       /* now, execute the statement by calling do_execute_statement() */
@@ -3794,54 +3724,30 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
 
   {
     PT_NODE *stmt0 = kept->statements[0];
-    UINT64 fp = 0;
-    UINT64 *fp_p = db_stmt_bind_fp_ptr (stmt0);
     bool replan = force_replan;
-    bool have_fp = false;
 
     if (db_bind_watch_is_open (stmt0))
       {
-	/* watched statement: the node-cardinality check decides, and it also records the vector
-	 * the next check compares against -- so it runs even when something else already forced
-	 * a replan, or the baseline would be the one the forced plan replaced. */
+	/* the check runs even when something else already forced a replan: it records the rows
+	 * the next check compares against, and without it the baseline would be the one the
+	 * forced plan replaced. It has to happen here: the equivalent check in
+	 * db_execute_and_keep_statement_local () is gated on parser->flag.set_host_var, which
+	 * this path clears before execution, so on the kept tree it never fires. */
 	if (db_bind_watch_verdict (kept->parser, stmt0) == BIND_WATCH_REPLAN)
 	  {
 	    replan = true;
 	  }
-	fp_p = NULL;		/* the scalar fingerprint does not decide for this statement */
-      }
-    else if (fp_p != NULL && (replan || db_is_bind_sensitive (stmt0)))
-      {
-	/* walk for the fingerprint only when something consumes it: the bucket comparison
-	 * below (parameter / hint on) or the baseline recorded after a forced replan. With
-	 * the parameter off and no replan signal the value would go unread, so the kept
-	 * re-execution skips the tree walk entirely. */
-	have_fp = histogram_bind_fingerprint (kept->parser, stmt0, &fp);
-      }
-
-    if (!replan && have_fp && *fp_p != fp)
-      {
-	/* plan_cache_bind_sensitivity: this execution's values land in different histogram
-	 * territory (a different MCV / bucket, hence a different selectivity) than the values
-	 * the kept plan was fixed under, so the plan is regenerated for them. The check has to
-	 * happen here: the equivalent check in db_execute_and_keep_statement_local () is gated
-	 * on parser->flag.set_host_var, which this path (like the recompile path) clears before
-	 * execution, so on the kept tree it never fires. */
-	replan = true;
+	stmt0->flag.hv_pred_plan_unpeeked = 0;
       }
 
     if (replan)
       {
 	/* regenerate plan + XASL from the kept post-transform tree (no parse / semantic /
-	 * rewrite pass) and record the fingerprint of the values it was fixed under */
+	 * rewrite pass) */
 	err = do_replan_statement_with_bind_peek (kept->parser, stmt0);
 	if (err != NO_ERROR)
 	  {
 	    return err;
-	  }
-	if (have_fp && fp_p != NULL)
-	  {
-	    *fp_p = fp;
 	  }
       }
   }
@@ -3970,25 +3876,21 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
        || statement->info.execute.stmt_type == CUBRID_STMT_UPDATE
        || statement->info.execute.stmt_type == CUBRID_STMT_DELETE)
       && statement->info.execute.using_list != NULL && new_session->statements[0] != NULL
-      && db_stmt_bind_fp_ptr (new_session->statements[0]) != NULL)
+      && db_stmt_bind_watch_ptr (new_session->statements[0]) != NULL)
     {
-      UINT64 fp = 0;
-
       /* first execution: if the statement has a host-variable PREDICATE the histogram can
-       * price (histogram_bind_fingerprint returns true), fix the plan under the actual
-       * bind values instead of the unbound markers the PREPARE-time plan was chosen under.
-       * Gating on a real predicate candidate keeps the value-typed regeneration off
-       * statements whose only host variables are select-list arguments (e.g. analytic
-       * min(?) over ()), which must stay generically typed for per-execution typing.
-       * This runs regardless of plan_cache_bind_sensitivity -- with the parameter off the
-       * fixed plan simply stays for every later execution; with it on, later bucket
-       * changes replan again. */
+       * price, fix the plan under the actual bind values instead of the unbound markers the
+       * PREPARE-time plan was chosen under, and record the rows those values price so the
+       * next EXECUTE compares against them -- otherwise it would find nothing recorded and
+       * replan a plan that is already right for its values. Gating on a real predicate
+       * candidate keeps the value-typed regeneration off statements whose only host variables
+       * are select-list arguments (e.g. analytic min(?) over ()), which must stay generically
+       * typed for per-execution typing. */
       if (db_bind_watch_is_open (new_session->statements[0]))
 	{
-	  /* watched statement: spend the window's first check here, so the vector recorded as the
-	   * baseline is the one this execution's values produce -- otherwise the next EXECUTE
-	   * would find nothing recorded and replan a plan that is already correct for them */
-	  if (db_bind_watch_verdict (new_session->parser, new_session->statements[0]) == BIND_WATCH_REPLAN)
+	  BIND_WATCH_VERDICT watch = db_bind_watch_verdict (new_session->parser, new_session->statements[0]);
+
+	  if (watch == BIND_WATCH_REPLAN)
 	    {
 	      err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
 	      if (err != NO_ERROR)
@@ -3996,17 +3898,8 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 		  return err;
 		}
 	    }
-	  is_bind_candidate = true;
-	}
-      else if (histogram_bind_fingerprint (new_session->parser, new_session->statements[0], &fp))
-	{
-	  err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
-	  if (err != NO_ERROR)
-	    {
-	      return err;
-	    }
-	  *db_stmt_bind_fp_ptr (new_session->statements[0]) = fp;
-	  is_bind_candidate = true;
+	  new_session->statements[0]->flag.hv_pred_plan_unpeeked = 0;
+	  is_bind_candidate = (watch != BIND_WATCH_OFF && watch != BIND_WATCH_STOP);
 	}
     }
 

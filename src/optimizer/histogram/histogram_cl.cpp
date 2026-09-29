@@ -2624,7 +2624,7 @@ is_histogrammable_type (DB_TYPE type)
 }
 
 /*===========================================================================*/
-/* bind-value plan fingerprint */
+/* bind-value plan watch: shared predicate recognizers */
 
 /* splitmix64-style mixing step: order-sensitive, well distributed */
 static std::uint64_t
@@ -2633,21 +2633,6 @@ bind_fp_mix (std::uint64_t h, std::uint64_t v)
   h ^= v + 0x9E3779B97F4A7C15ULL + (h << 6) + (h >> 2);
   return h;
 }
-
-static std::uint64_t
-bind_fp_hash_name (const PT_NODE *name)
-{
-  const char *s = (name->info.name.original != NULL) ? name->info.name.original : "";
-  std::uint64_t h = 1469598103934665603ULL;	/* FNV-1a */
-
-  for (; *s != '\0'; s++)
-    {
-      h ^= (unsigned char) (*s);
-      h *= 1099511628211ULL;
-    }
-  return bind_fp_mix (h, (std::uint64_t) name->info.name.spec_id);
-}
-
 
 /*
  * histogram_split_hv_predicate () - recognize a histogram-priceable host-variable predicate
@@ -2793,205 +2778,6 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
   return false;
 }
 
-struct bind_fp_walk_ctx
-{
-  PARSER_CONTEXT *parser;
-  PT_NODE *statement;		/* for resolving a column's class through its spec (an aliased
-				 * spec exposes the alias in name.resolved, not the class name) */
-  std::uint64_t fp;
-  bool found;
-};
-
-/* fingerprint contribution of one host-variable bound of a range item: the same histogram
- * probe and the same quantization the (column op ?) path uses, so a bound that lands in
- * the same estimate band keeps the plan. include_equal/is_ge follow the range op. */
-static void
-bind_fp_mix_range_bound (bind_fp_walk_ctx *ctx, PT_NODE *name, PT_NODE *bound, PT_OP_TYPE range_op, bool is_ge,
-			 bool include_equal, bool equality)
-{
-  DB_VALUE *val;
-  int idx;
-  double sel = 0.0;
-  bool ok = false;
-  std::uint64_t component;
-
-  if (!histogram_is_user_host_var (ctx->parser, bound))
-    {
-      return;
-    }
-
-  idx = bound->info.host_var.index;
-  if (idx < 0 || idx >= ctx->parser->host_var_count + ctx->parser->auto_param_count
-      || ctx->parser->host_variables == NULL)
-    {
-      return;
-    }
-  val = &ctx->parser->host_variables[idx];
-
-  if (equality)
-    {
-      histogram_get_equal_selectivity (name, val, &sel, &ok);
-    }
-  else
-    {
-      histogram_get_comp_selectivity (name, val, is_ge, include_equal, &sel, &ok);
-    }
-
-  if (!ok)
-    {
-      /* no histogram estimate for this bound -> no band to fingerprint; contribute
-       * nothing (see the (column op ?) path for the full rationale) */
-      return;
-    }
-
-  /* stepwise for equality, 0.01 steps for the linearly interpolated range estimate
-   * (see the (column op ?) path for both rationales) */
-  component = equality ? (std::uint64_t) (sel * 1.0e12) : (std::uint64_t) (sel * 100.0);
-
-  ctx->fp = bind_fp_mix (bind_fp_mix (bind_fp_mix (ctx->fp, (std::uint64_t) range_op), bind_fp_hash_name (name)),
-			 component);
-  ctx->found = true;
-}
-
-/* fingerprint of a (column RANGE {...}) term: mix every host-variable bound of every range
- * item. The plan-relevant quantity is the term's total selectivity, which the optimizer
- * derives from these same per-bound probes (qo_range_selectivity), so banding each bound
- * bands the total. */
-static void
-bind_fp_mix_range (bind_fp_walk_ctx *ctx, PT_NODE *node, PT_NODE *name)
-{
-  PT_NODE *range_node;
-
-  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->or_next)
-    {
-      if (range_node->node_type != PT_EXPR)
-	{
-	  continue;
-	}
-
-      switch (range_node->info.expr.op)
-	{
-	case PT_BETWEEN_EQ_NA:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_EQ_NA, false, false, true);
-	  break;
-	case PT_BETWEEN_GT_INF:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_GT_INF, true, false, false);
-	  break;
-	case PT_BETWEEN_GE_INF:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_GE_INF, true, true, false);
-	  break;
-	case PT_BETWEEN_INF_LT:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_INF_LT, false, false, false);
-	  break;
-	case PT_BETWEEN_INF_LE:
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_INF_LE, false, true, false);
-	  break;
-	case PT_BETWEEN_GE_LE:
-	case PT_BETWEEN_GE_LT:
-	case PT_BETWEEN_GT_LE:
-	case PT_BETWEEN_GT_LT:
-	{
-	  /* two-sided: the lower bound prices as a >= / > probe, the upper as a <= / < one */
-	  const PT_OP_TYPE op = range_node->info.expr.op;
-	  const bool lo_include = (op == PT_BETWEEN_GE_LE || op == PT_BETWEEN_GE_LT);
-	  const bool hi_include = (op == PT_BETWEEN_GE_LE || op == PT_BETWEEN_GT_LE);
-
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, op, true, lo_include, false);
-	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg2, op, false, hi_include, false);
-	  break;
-	}
-	default:
-	  break;
-	}
-    }
-}
-
-static PT_NODE *
-bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
-{
-  bind_fp_walk_ctx *ctx = (bind_fp_walk_ctx *) arg;
-
-  PT_NODE *name, *hv;
-  bool reversed = false;
-
-  if (histogram_split_hv_range (parser, node, &name))
-    {
-      bind_fp_mix_range (ctx, node, name);
-      return node;
-    }
-
-  if (!histogram_split_hv_predicate (parser, node, &name, &hv, &reversed))
-    {
-      return node;
-    }
-
-  PT_OP_TYPE op = node->info.expr.op;
-
-  int idx = hv->info.host_var.index;
-  if (idx < 0 || idx >= parser->host_var_count + parser->auto_param_count || parser->host_variables == NULL)
-    {
-      return node;
-    }
-  DB_VALUE *val = &parser->host_variables[idx];
-
-  double sel = 0.0;
-  bool ok = false;
-  switch (op)
-    {
-    case PT_EQ:
-      histogram_get_equal_selectivity (name, val, &sel, &ok);
-      break;
-    case PT_GT:
-      histogram_get_comp_selectivity (name, val, !reversed, false, &sel, &ok);
-      break;
-    case PT_GE:
-      histogram_get_comp_selectivity (name, val, !reversed, true, &sel, &ok);
-      break;
-    case PT_LT:
-      histogram_get_comp_selectivity (name, val, reversed, false, &sel, &ok);
-      break;
-    case PT_LE:
-      histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
-      break;
-    default:
-      break;
-    }
-
-  if (!ok)
-    {
-      /* the histogram cannot price this predicate (no histogram on the column, or an
-       * unprobeable type/value). The whole machine is specified over histogram estimate
-       * bands -- without an estimate there is no band, so this term contributes nothing:
-       * a raw value hash here would (a) replan the first execution of statements on
-       * never-analyzed tables for zero gain (the recompile still prices with
-       * DEFAULT_*_SELECTIVITY) and (b) under bind sensitivity give every distinct value
-       * its own fingerprint, replanning per value. Value-shape recompiles (LIKE, MRO,
-       * SORT-LIMIT) have their own machinery and do not need this one. */
-      return node;
-    }
-
-  std::uint64_t component;
-  if (op == PT_EQ)
-    {
-      /* equality estimates are stepwise (MCV hit or the flat non-MCV residual): values in
-       * the same class produce the same estimate, hence the same fingerprint, hence reuse */
-      component = (std::uint64_t) (sel * 1.0e12);
-    }
-  else
-    {
-      /* range estimates interpolate LINEARLY inside the straddling bucket, so the raw
-       * estimate is continuous in the bound value: a fine quantization would hand nearly
-       * every bound its own fingerprint (a replan per value). 0.01 steps bound the
-       * distinct fingerprints of one predicate to ~100. */
-      component = (std::uint64_t) (sel * 100.0);
-    }
-
-  ctx->fp = bind_fp_mix (bind_fp_mix (bind_fp_mix (ctx->fp, (std::uint64_t) op), bind_fp_hash_name (name)),
-			 component);
-  ctx->found = true;
-  return node;
-}
-
 struct hv_pred_ctx
 {
   bool found;
@@ -3023,117 +2809,52 @@ histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
   return ctx.found;
 }
 
-bool
-histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp)
-{
-  assert (out_fp != NULL);
-
-  bind_fp_walk_ctx ctx;
-  ctx.parser = parser;
-  ctx.statement = statement;
-  ctx.fp = 0;
-  ctx.found = false;
-
-  bind_fp_active_parser = parser;
-  bind_fp_active_statement = statement;
-
-  (void) parser_walk_tree (parser, statement, bind_fp_walk, &ctx, NULL, NULL);
-
-  bind_fp_active_parser = NULL;
-  bind_fp_active_statement = NULL;
-
-  if (!ctx.found)
-    {
-      return false;
-    }
-  *out_fp = (ctx.fp == 0) ? 1 : ctx.fp;	/* 0 is the "not recorded" sentinel */
-  return true;
-}
-
 /*===========================================================================*/
-/* bind-value plan watch: node-cardinality fingerprint, target selection, early window */
+/* bind-value plan watch: per-predicate fingerprint, target selection, early window */
 
 /* Tuning constants of the watch. Deliberately not system parameters: the one thing a DBA
  * decides is whether to watch and for how many executions (plan_cache_bind_watch_checks);
- * nobody has a basis to pick a band or a floor per installation. These are the issue's
- * starting values and are fixed by the phase-1 measurement -- change here and rebuild. */
-/* a node whose estimate moved by this factor (either way) against the one the plan was chosen
- * under triggers a replan. One band, per node: the phase-1 measurement on JOB (105 statements,
- * 352 value changes, see CBRD-27490) found no basis for the original shape/scale split -- the
- * shape variants (mean, pairwise, rank) all decided identically, and 35 of the 40 changes that
- * moved every node together still flipped the plan. It also fixed the value: no plan changed
- * for a move between 2x and 5x, every band from 2x to 10x lost the same 742 s to statements
- * whose estimate moved 1.79x across a cost tie (JOB 19d: 505 s on the stale plan vs 11 s), and
- * 1.5x recovered 99% of the time at stake for 51 more replans. */
-static constexpr double BIND_WATCH_BAND = 1.5;
-/* a node estimated below this on both sides is ignored: 1 row becoming 3 moves no plan */
+ * nobody has a basis to pick a band or a floor per installation. The bands live in the header
+ * (they are part of the contract); these two are internal. */
+/* a predicate expected to scan fewer rows than this on both sides is ignored: 1 row becoming 3
+ * moves no plan. Applied at comparison time, never at recording time -- 10 rows today can be
+ * 200,000 on the next value, and that move must be seen. */
 static constexpr double BIND_WATCH_ROW_FLOOR = 1000.0;
 /* a plan cheaper than this cannot get expensive enough for a replan to pay for itself */
 static constexpr double BIND_WATCH_COST_THRESHOLD = 100.0;
 
-/* the value-dependent row estimate of one FROM spec: the rows its histogram was built from,
- * scaled by every histogram-priceable host-variable term on it. Terms the histogram cannot
- * price are left out of BOTH the recorded and the current vector, so the ratio between them
- * is exactly the ratio of the value-dependent part -- which is the only part a new bind value
- * can move. The absolute number is therefore an over-estimate (value-independent predicates
- * are not applied); only the row floor reads it as an absolute, and reading it high there
- * errs toward watching. */
-struct bind_card_ctx
+/* the predicates of one fingerprint walk, in tree order */
+struct bind_term_ctx
 {
   PARSER_CONTEXT *parser;
-  PT_NODE *statement;
   int count;
-  bool overflow;		/* more distinct specs than the vector holds */
-  UINTPTR spec_id[BIND_WATCH_MAX_NODES];
-  double rows[BIND_WATCH_MAX_NODES];
-  double sel[BIND_WATCH_MAX_NODES];
-  char name[BIND_WATCH_MAX_NODES][BIND_WATCH_NAME_LEN];
+  double rows[BIND_WATCH_MAX_TERMS];
+  char name[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
 };
 
-/* slot of the spec this column belongs to, creating it on first sight. -1 when the column has
- * no usable histogram (nothing to price) or the vector is full. */
-static int
-bind_card_slot (bind_card_ctx *ctx, PT_NODE *name)
+/* record one priced predicate: the rows it is expected to scan, and a label for the log */
+static void
+bind_term_add (bind_term_ctx *ctx, PT_NODE *name, const char *opstr, double sel)
 {
-  UINTPTR id = name->info.name.spec_id;
   double total_rows;
   int i;
 
-  for (i = 0; i < ctx->count; i++)
+  if (ctx->count >= BIND_WATCH_MAX_TERMS)
     {
-      if (ctx->spec_id[i] == id)
-	{
-	  return i;
-	}
+      return;			/* the first BIND_WATCH_MAX_TERMS are watched, the rest are not */
     }
-
   if (!histogram_get_total_rows (name, &total_rows))
     {
-      return -1;
-    }
-  if (ctx->count >= BIND_WATCH_MAX_NODES)
-    {
-      ctx->overflow = true;
-      return -1;
+      return;
     }
 
   i = ctx->count++;
-  ctx->spec_id[i] = id;
-  ctx->rows[i] = total_rows;
-  ctx->sel[i] = 1.0;
-
-  {
-    /* a replan reason naming "spec 94896027952800" is unreadable; name the table, falling back to
-     * the exposed spec name (an alias, which is what the query text shows) */
-    const char *label = histogram_spec_class_name (ctx->parser, ctx->statement, name);
-
-    if (label == NULL)
-      {
-	label = (name->info.name.resolved != NULL) ? name->info.name.resolved : "?";
-      }
-    snprintf (ctx->name[i], BIND_WATCH_NAME_LEN, "%s", label);
-  }
-  return i;
+  /* a predicate the current value rules out entirely still costs one row's worth of work, and
+   * a ratio needs a non-zero base */
+  ctx->rows[i] = MAX (1.0, sel * total_rows);
+  snprintf (ctx->name[i], BIND_WATCH_NAME_LEN, "%s.%s%s",
+	    (name->info.name.resolved != NULL) ? name->info.name.resolved : "?",
+	    (name->info.name.original != NULL) ? name->info.name.original : "?", opstr);
 }
 
 /* value behind a comparison operand: a bound host variable, or a constant the rewriter left in
@@ -3237,27 +2958,22 @@ bind_card_range_selectivity (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *nam
 }
 
 static PT_NODE *
-bind_card_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+bind_term_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
-  bind_card_ctx *ctx = (bind_card_ctx *) arg;
+  bind_term_ctx *ctx = (bind_term_ctx *) arg;
   PT_NODE *name, *hv;
   bool reversed = false;
   double sel = 0.0;
   bool ok = false;
-  int slot;
+  const char *opstr;
 
   if (histogram_split_hv_range (parser, node, &name))
     {
       bool value_dependent = false;
 
-      if (!bind_card_range_selectivity (parser, node, name, &sel, &value_dependent) || !value_dependent)
+      if (bind_card_range_selectivity (parser, node, name, &sel, &value_dependent) && value_dependent)
 	{
-	  return node;
-	}
-      slot = bind_card_slot (ctx, name);
-      if (slot >= 0)
-	{
-	  ctx->sel[slot] *= sel;
+	  bind_term_add (ctx, name, " RANGE", sel);
 	}
       return node;
     }
@@ -3279,75 +2995,55 @@ bind_card_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_
       {
       case PT_EQ:
 	histogram_get_equal_selectivity (name, val, &sel, &ok);
+	opstr = "=?";
 	break;
       case PT_GT:
 	histogram_get_comp_selectivity (name, val, !reversed, false, &sel, &ok);
+	opstr = reversed ? "<?" : ">?";
 	break;
       case PT_GE:
 	histogram_get_comp_selectivity (name, val, !reversed, true, &sel, &ok);
+	opstr = reversed ? "<=?" : ">=?";
 	break;
       case PT_LT:
 	histogram_get_comp_selectivity (name, val, reversed, false, &sel, &ok);
+	opstr = reversed ? ">?" : "<?";
 	break;
       case PT_LE:
 	histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
+	opstr = reversed ? ">=?" : "<=?";
 	break;
       default:
-	break;
+	return node;
       }
   }
 
-  if (!ok)
+  if (ok)
     {
-      /* same contract as the scalar fingerprint: without an estimate there is no band, so the
-       * term is outside the comparison on both sides rather than hashed raw */
-      return node;
-    }
-
-  slot = bind_card_slot (ctx, name);
-  if (slot >= 0)
-    {
-      ctx->sel[slot] *= sel;
+      /* without an estimate there is no ratio, so an unpriceable predicate is outside the
+       * comparison on both sides rather than hashed raw */
+      bind_term_add (ctx, name, opstr, sel);
     }
   return node;
 }
 
-/* build the current node-cardinality vector into out. false = nothing priceable (or the
- * statement is wider than the vector), which the caller reads as "stop watching". */
+/* price every predicate under the current values, in tree order. false = nothing priceable,
+ * which the caller reads as "stop watching". */
 static bool
-bind_card_vector (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *out)
+bind_term_vector (PARSER_CONTEXT *parser, PT_NODE *statement, bind_term_ctx *ctx)
 {
-  bind_card_ctx ctx;
-  int i;
-
-  ctx.parser = parser;
-  ctx.statement = statement;
-  ctx.count = 0;
-  ctx.overflow = false;
+  ctx->parser = parser;
+  ctx->count = 0;
 
   bind_fp_active_parser = parser;
   bind_fp_active_statement = statement;
 
-  (void) parser_walk_tree (parser, statement, bind_card_walk, &ctx, NULL, NULL);
+  (void) parser_walk_tree (parser, statement, bind_term_walk, ctx, NULL, NULL);
 
   bind_fp_active_parser = NULL;
   bind_fp_active_statement = NULL;
 
-  if (ctx.count == 0 || ctx.overflow)
-    {
-      return false;
-    }
-
-  out->nodes = ctx.count;
-  for (i = 0; i < ctx.count; i++)
-    {
-      out->spec_id[i] = ctx.spec_id[i];
-      /* a node the current values rule out entirely still occupies one row's worth of work,
-       * and log space has no room for zero */
-      out->card[i] = MAX (1.0, ctx.rows[i] * ctx.sel[i]);
-      memcpy (out->name[i], ctx.name[i], BIND_WATCH_NAME_LEN);
-    }
-  return true;
+  return ctx->count > 0;
 }
 
 UINT64
@@ -3376,30 +3072,29 @@ histogram_bind_value_hash (PARSER_CONTEXT *parser)
 }
 
 /*
- * histogram_bind_watch_check () - compare the node cardinalities the current bind values imply
- *   against the ones the plan was chosen under: a replan when any node's estimate moved by
- *   BIND_WATCH_BAND or more, either way. Nodes estimated below the row floor on both sides are
- *   ignored (1 row becoming 3 moves no plan).
+ * histogram_bind_watch_check () - price the statement's predicates under the current bind
+ *   values and compare each with the rows it was expected to scan when the plan was chosen:
+ *   a replan when any one moved by the band or more, either way. Predicates expected to scan
+ *   fewer rows than the floor on both sides are ignored (1 row becoming 3 moves no plan).
  */
 bool
-histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws, bool *out_usable)
+histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws, double band,
+			    bool *out_usable)
 {
-  BIND_WATCH_STATE cur;
+  bind_term_ctx cur;
   const double row_floor = BIND_WATCH_ROW_FLOOR;
-  const double band = BIND_WATCH_BAND;
   /* the per-check dump rides on the general debug-log switch (on by default in debug builds,
    * where the phase-1 measurement runs); the replan reason below is logged unconditionally,
    * since it is bounded by the window and is what a DBA asks for when a plan changed */
   const bool trace = prm_get_bool_value (PRM_ID_ER_LOG_DEBUG);
   double worst_fold = 1.0;
-  int worst_i = -1, compared = 0, i, j;
+  int worst_i = -1, compared = 0, i;
   bool out_of_band = false;
 
   assert (ws != NULL && out_usable != NULL);
   *out_usable = false;
 
-  cur.nodes = 0;
-  if (!bind_card_vector (parser, statement, &cur))
+  if (!bind_term_vector (parser, statement, &cur))
     {
       return false;
     }
@@ -3407,59 +3102,37 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
 
   if (trace)
     {
-      for (i = 0; i < cur.nodes; i++)
+      for (i = 0; i < cur.count; i++)
 	{
-	  double recorded = -1.0;
-
-	  for (j = 0; j < ws->nodes; j++)
-	    {
-	      if (ws->spec_id[j] == cur.spec_id[i])
-		{
-		  recorded = ws->card[j];
-		  break;
-		}
-	    }
-	  _er_log_debug (ARG_FILE_LINE, "bind watch dump: %s estimated rows %.0f (plan was chosen at %.0f)\n",
-			 cur.name[i], cur.card[i], recorded);
+	  _er_log_debug (ARG_FILE_LINE, "bind watch dump: %s scans %.0f rows (plan was chosen at %.0f)\n",
+			 cur.name[i], cur.rows[i], (ws->terms > i) ? ws->rows[i] : -1.0);
 	}
     }
 
-  if (ws->nodes < 0 || ws->nodes != cur.nodes)
+  if (ws->terms < 0 || ws->terms != cur.count)
     {
-      /* nothing recorded yet, or the set of priceable nodes itself changed (a value that makes
-       * a term unpriceable drops its node): there is no vector to compare against */
-      out_of_band = (ws->nodes >= 0);
+      /* nothing recorded yet, or the set of priceable predicates itself changed (a NULL makes
+       * a term unpriceable and drops it): there is nothing to compare against */
+      out_of_band = (ws->terms >= 0);
       if (out_of_band)
 	{
 	  _er_log_debug (ARG_FILE_LINE,
-			 "bind watch replan (nodes): %d priced node(s), the plan was chosen with %d\n",
-			 cur.nodes, ws->nodes);
+			 "bind watch replan (terms): %d priced predicate(s), the plan was chosen with %d\n", cur.count,
+			 ws->terms);
 	}
       goto record;
     }
 
-  for (i = 0; i < cur.nodes; i++)
+  for (i = 0; i < cur.count; i++)
     {
-      double then, fold;
+      double then = ws->rows[i], fold;
 
-      /* the recorded vector is built by the same walk in the same order, but a NULL value can
-       * reorder first-sight, so match by spec */
-      for (j = 0; j < ws->nodes && ws->spec_id[j] != cur.spec_id[i]; j++)
-	{
-	  ;
-	}
-      if (j == ws->nodes)
-	{
-	  out_of_band = true;
-	  goto record;
-	}
-      then = ws->card[j];
-      if (cur.card[i] < row_floor && then < row_floor)
+      if (cur.rows[i] < row_floor && then < row_floor)
 	{
 	  continue;
 	}
       compared++;
-      fold = (cur.card[i] >= then) ? cur.card[i] / then : then / cur.card[i];
+      fold = (cur.rows[i] >= then) ? cur.rows[i] / then : then / cur.rows[i];
       if (fold > worst_fold)
 	{
 	  worst_fold = fold;
@@ -3474,51 +3147,37 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
 
   if (worst_fold >= band)
     {
-      /* one line, every node: "<table> then -> now (Nx up|down)" -- with the dump off (release
-       * builds) this is the only account of why the plan changed, so it must be complete */
-      char nodes_buf[BIND_WATCH_MAX_NODES * (BIND_WATCH_NAME_LEN + 48)];
+      /* one line, every predicate: "<label> then->now" -- with the dump off (release builds)
+       * this is the only account of why the plan changed, so it must be complete */
+      char buf[BIND_WATCH_MAX_TERMS * (BIND_WATCH_NAME_LEN + 32)];
       size_t used = 0;
 
       out_of_band = true;
-      nodes_buf[0] = '\0';
-      for (i = 0; i < cur.nodes && used < sizeof (nodes_buf); i++)
+      buf[0] = '\0';
+      for (i = 0; i < cur.count && used < sizeof (buf); i++)
 	{
-	  double then = -1.0, fold = 0.0;
-	  int n;
+	  int n = snprintf (buf + used, sizeof (buf) - used, "%s%s %.0f->%.0f", (i > 0) ? ", " : "", cur.name[i],
+			    ws->rows[i], cur.rows[i]);
 
-	  for (j = 0; j < ws->nodes; j++)
-	    {
-	      if (ws->spec_id[j] == cur.spec_id[i])
-		{
-		  then = ws->card[j];
-		  break;
-		}
-	    }
-	  if (then > 0.0)
-	    {
-	      fold = (cur.card[i] >= then) ? cur.card[i] / then : then / cur.card[i];
-	    }
-	  n = snprintf (nodes_buf + used, sizeof (nodes_buf) - used, "%s%s %.0f -> %.0f (%.1fx %s)",
-			(i > 0) ? "; " : "", cur.name[i], then, cur.card[i], fold,
-			(cur.card[i] >= then) ? "up" : "down");
 	  if (n < 0)
 	    {
 	      break;
 	    }
 	  used += (size_t) n;
 	}
-      _er_log_debug (ARG_FILE_LINE, "bind watch replan: %s moved %.1fx over the %.1fx band; %s\n",
-		     cur.name[worst_i], worst_fold, band, nodes_buf);
+      _er_log_debug (ARG_FILE_LINE,
+		     "bind watch replan: %s scans %.0f -> %.0f rows (%.1fx %s) over the %.1fx band; %s\n",
+		     cur.name[worst_i], ws->rows[worst_i], cur.rows[worst_i], worst_fold,
+		     (cur.rows[worst_i] >= ws->rows[worst_i]) ? "up" : "down", band, buf);
     }
 
 record:
-  if (out_of_band || ws->nodes < 0)
+  if (out_of_band || ws->terms < 0)
     {
-      ws->nodes = cur.nodes;
-      for (i = 0; i < cur.nodes; i++)
+      ws->terms = cur.count;
+      for (i = 0; i < cur.count; i++)
 	{
-	  ws->spec_id[i] = cur.spec_id[i];
-	  ws->card[i] = cur.card[i];
+	  ws->rows[i] = cur.rows[i];
 	  memcpy (ws->name[i], cur.name[i], BIND_WATCH_NAME_LEN);
 	}
       return true;
@@ -3544,7 +3203,7 @@ struct bind_target_ctx
   int specs;			/* FROM specs over real classes */
   int terms;
   bool overflow;
-  bind_target_term term[BIND_WATCH_MAX_NODES * 2];
+  bind_target_term term[BIND_WATCH_MAX_TERMS];
 };
 
 static bool

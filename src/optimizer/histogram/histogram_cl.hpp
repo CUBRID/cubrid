@@ -96,53 +96,61 @@ int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_
 					int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
 					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect,
 					INT64 *out_pages_seen = NULL, INT64 *out_pages_kept = NULL);
-/* fingerprint of the host-variable predicate values as the plan would see them: for each
- * (column op ?) predicate mix in the quantized histogram selectivity of the bound value (same
- * MCV/bucket -> same fingerprint -> same plan), or a typed value hash when no histogram applies.
- * Returns false when the statement has no such predicate (no bind sensitivity). */
-bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp);
 /* structural (value-independent): true if the statement has a (column op ?) predicate the
  * bind-sensitive planner could price. Used at plan generation to flag a plan built with
  * unbound host-variable markers so the first execution replans under the real values. */
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /*===========================================================================*/
-/* bind-value plan watch (node-cardinality fingerprint)
+/* bind-value plan watch (per-predicate fingerprint)
  *
- * The scalar fingerprint above bands each predicate's selectivity on its own, so it changes
- * when the plan would not (0.001 -> 0.002) and it does not look at the quantity that actually
- * moves a plan: how many rows each node is expected to produce. The watch below records the
- * per-node estimated row counts the current plan was chosen under and, on a later execution
- * with different values, replans when any node's estimate moved by BIND_WATCH_BAND or more.
- * It does so only for the first plan_cache_bind_watch_checks distinct-value executions of a
- * statement, after which the plan is left alone until it is invalidated.
+ * When a plan is chosen under bound values, the rows each histogram-priceable host-variable
+ * predicate is expected to scan (its selectivity times the rows its histogram was built from)
+ * are recorded, in tree order. On a later execution with different values the same predicates
+ * are priced again and the plan is regenerated when any one of them moved by the band or more,
+ * either way. The unit is the predicate, not the FROM node: what a node produces decides the
+ * join order, but which predicate the node is scanned by -- the index choice -- is decided
+ * predicate by predicate, and combining a node's predicates into one number hides exactly the
+ * change that flips it (two predicates moving opposite ways leave the product untouched while
+ * the optimizer swaps the index; measured at 10.7 s against 8.6 ms). A range term (IN-list,
+ * BETWEEN) is still one predicate: the optimizer prices it as one number too.
  *
- * A statement that asks for continuous sensitivity (BIND_SENSITIVE or
- * plan_cache_bind_sensitivity) is NOT watched this way: it keeps the scalar per-predicate
- * fingerprint, which replans on any change of a predicate's histogram estimate -- finer than
- * the band, and without a window. The two never overlap: the band-and-window watch is the
- * default that must not surprise anyone in production; the hint is the user saying "this
- * statement is value-sensitive, chase every estimate change".
+ * Two users of the same fingerprint:
+ *   - the watch: statements picked by target selection, for the first
+ *     plan_cache_bind_watch_checks distinct-value executions only, with BIND_WATCH_BAND.
+ *     After the window the plan is left alone until it is invalidated.
+ *   - the hint (BIND_SENSITIVE / plan_cache_bind_sensitivity): any statement, no window, with the
+ *     narrower BIND_WATCH_HINT_BAND -- the user said the statement is value-sensitive.
  */
 
-/* Nodes tracked per statement. A node here is a FROM spec carrying at least one
- * histogram-priceable host-variable predicate; queries wide enough to overflow this are not
- * watched (the vector would be partial, and a partial vector cannot be compared honestly). */
-#define BIND_WATCH_MAX_NODES 16
-/* enough to recognize a table in a log line; longer names are truncated */
+/* Predicates fingerprinted per statement, in tree order. A statement with more keeps the first
+ * BIND_WATCH_MAX_TERMS: the order is the same on every execution, so the comparison stays
+ * consistent, and a partial watch is still better than none on the wide statements that
+ * overflow. */
+#define BIND_WATCH_MAX_TERMS 32
+/* "alias.column op" for the log; longer labels are truncated */
 #define BIND_WATCH_NAME_LEN 32
 
 struct bind_watch_state
 {
-  int nodes;			/* recorded nodes; -1 = nothing recorded yet */
+  int terms;			/* recorded predicates; -1 = nothing recorded yet */
   int checks_left;		/* early-window checks still allowed; 0 = watching finished */
   int replans;			/* replans this statement's watch has caused (observability) */
   UINT64 value_hash;		/* hash of the values the last check ran on; 0 = none yet */
-  UINTPTR spec_id[BIND_WATCH_MAX_NODES];
-  double card[BIND_WATCH_MAX_NODES];	/* estimated rows of each node under those values */
-  char name[BIND_WATCH_MAX_NODES][BIND_WATCH_NAME_LEN];	/* class (or exposed) name, for the log */
+  double rows[BIND_WATCH_MAX_TERMS];	/* rows each predicate was expected to scan */
+  char name[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
 };
 typedef struct bind_watch_state BIND_WATCH_STATE;
+
+/* replan when a predicate's expected scan moved by this factor. The phase-1 measurement on JOB
+ * (CBRD-27490) found no plan change for a move between 2x and 5x, and every band from 2x to
+ * 10x lost the same 742 s of 2,392 s at stake to statements whose estimate moved 1.79x across a
+ * cost tie (19d: 505 s on the stale plan against 11 s); 1.5x recovered 99% of it. */
+#define BIND_WATCH_BAND 1.5
+/* the hint's band: the user asked for sensitivity, so nearly any real move replans -- but not
+ * the 1% steps a range bound takes inside one histogram bucket, which the old hash fingerprint
+ * recompiled on (17 recompiles for 17 nearby bounds, none of which changed the plan) */
+#define BIND_WATCH_HINT_BAND 1.1
 
 /* target selection, decided once when the plan is built: is this statement worth watching?
  * Requires two or more joined nodes, a histogram-priceable host-variable predicate on a column
@@ -151,13 +159,14 @@ typedef struct bind_watch_state BIND_WATCH_STATE;
  * when the feature is off. */
 bool histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement, double plan_cost);
 
-/* one early-window check under the values currently bound in parser.
- * return            : true when the recorded cardinalities are out of band (caller replans);
- *                     ws is then updated to the current vector
+/* one check under the values currently bound in parser.
+ * return            : true when some predicate's expected scan is out of band (caller replans);
+ *                     ws is then updated to the current values
  * ws (in/out)       : the statement's watch state
+ * band (in)         : BIND_WATCH_BAND or BIND_WATCH_HINT_BAND
  * out_usable (out)  : false when nothing in the statement can be priced by a histogram, which
  *                     cannot change while this plan lives -- the caller stops watching */
-bool histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws,
+bool histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WATCH_STATE *ws, double band,
 				 bool *out_usable);
 
 /* hash of the user host-variable values themselves, so a check can be skipped when the

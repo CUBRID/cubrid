@@ -2194,9 +2194,7 @@ struct pt_delete_info
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
-  BIND_WATCH_STATE *bind_watch;	/* node-cardinality watch state (see pt_query_info.bind_watch) */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -2956,13 +2954,10 @@ struct pt_query_info
     PT_SELECT_INFO select;
     PT_UNION_INFO union_;
   } q;
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (quantized selectivities of host-var predicates); 0 = not recorded.
-				 * See histogram_bind_fingerprint (). */
-  BIND_WATCH_STATE *bind_watch;	/* per-node estimated row counts the current plan was chosen under,
-				 * plus how many early-window checks are left. NULL until the first
-				 * watched execution allocates it (parser lifetime).
-				 * See histogram_bind_watch_check (). */
+  BIND_WATCH_STATE *bind_watch;	/* rows each host-variable predicate was expected to scan when the
+				 * current plan was chosen, plus how many early-window checks are
+				 * left. NULL until the first checked execution allocates it (parser
+				 * lifetime). See histogram_bind_watch_check (). */
 };
 
 /* Info for Set Optimization Level statement */
@@ -3058,9 +3053,7 @@ struct pt_update_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
-  BIND_WATCH_STATE *bind_watch;	/* node-cardinality watch state (see pt_query_info.bind_watch) */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
