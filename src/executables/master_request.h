@@ -42,6 +42,7 @@ extern pthread_mutex_t css_Master_socket_anchor_lock;
 #endif
 
 extern void css_process_info_request (CSS_CONN_ENTRY * conn);
+extern bool css_master_request_is_local (SOCKET fd);
 extern void css_process_stop_shutdown (void);
 extern void css_process_start_shutdown (SOCKET_QUEUE_ENTRY * sock_entq, int timeout, char *buffer);
 extern void css_process_heartbeat_request (CSS_CONN_ENTRY * conn);

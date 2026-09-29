@@ -87,6 +87,7 @@ static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, c
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_client);
+static bool css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int buffer_length);
 #if defined(WINDOWS)
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
 #endif /* WINDOWS */
@@ -343,6 +344,58 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
 }
 
 /*
+ * css_validate_proc_register () - validate an off-the-wire process-register image
+ *   return: true if the buffer is a well-formed CSS_SERVER_PROC_REGISTER whose
+ *           exec_path is a trusted server binary path; false otherwise.
+ *   proc_register(in): the received buffer, reinterpreted as the struct
+ *   buffer_length(in): number of bytes actually received
+ *
+ * Note: cub_master authenticates nothing on this port, so a server-registration
+ *   buffer must be treated as hostile. Every field later dereferenced
+ *   (server_name and the version/env/pid strings packed inside it, exec_path,
+ *   args) is bounded here before use, and exec_path is confined to the trusted
+ *   bin directory so that a REGISTER_SERVER job cannot turn later process
+ *   revival into arbitrary command execution.
+ */
+static bool
+css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int buffer_length)
+{
+  if (proc_register == NULL || buffer_length < (int) sizeof (CSS_SERVER_PROC_REGISTER))
+    {
+      return false;
+    }
+
+  /* server_name, and the strings packed within it, must be terminated inside
+   * the field so every strlen()/strdup() on it below stays in bounds */
+  if (proc_register->server_name[proc_register->CSS_SERVER_MAX_SZ_SERVER_NAME - 1] != '\0')
+    {
+      return false;
+    }
+  if (proc_register->server_name_length <= 0
+      || proc_register->server_name_length > proc_register->CSS_SERVER_MAX_SZ_SERVER_NAME)
+    {
+      return false;
+    }
+
+  /* exec_path and args must be terminated within their own fields */
+  if (proc_register->exec_path[proc_register->CSS_SERVER_MAX_SZ_PROC_EXEC_PATH - 1] != '\0')
+    {
+      return false;
+    }
+  if (proc_register->args[proc_register->CSS_SERVER_MAX_SZ_PROC_ARGS - 1] != '\0')
+    {
+      return false;
+    }
+
+  if (!master_util_exec_path_is_trusted (proc_register->exec_path))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * css_accept_new_request() - Accepts a connect request from a new server
  *   return: none
  *   conn(in)
@@ -367,6 +420,16 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
 
   datagram = NULL;
   datagram_length = 0;
+
+  /* CBRD-27511: for a server self-registration the buffer is a
+   * CSS_SERVER_PROC_REGISTER received off the wire whose exec_path/args can reach
+   * execv (); fully validate its size, field termination, and exec_path location
+   * before trusting it. is_client uses the plain server-name buffer and never
+   * reaches produce_job (), so it is not validated here. */
+  if (!is_client && !css_validate_proc_register ((const CSS_SERVER_PROC_REGISTER *) buffer, buffer_length))
+    {
+      return;
+    }
 
   css_accept_server_request (conn, SERVER_REQUEST_ACCEPTED);
 
@@ -507,6 +570,21 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_clie
   int data_length;
   char *data = NULL;
   SOCKET_QUEUE_ENTRY *entry;
+
+#if !defined(WINDOWS)
+  /* CBRD-27511: server self-registration (SERVER_REQUEST_FROM_SERVER) ultimately
+   * leads to process registration and, on connection loss, execv() of the
+   * registered exec_path. A legitimate cub_server always registers with its
+   * co-located cub_master over a local connection, so a non-local peer on this
+   * path is the unauthenticated remote registration/execv vector and is rejected
+   * here. is_client (SERVER_REQUEST_FROM_CLIENT) is the remote client-redirect
+   * path and must stay reachable from remote peers. */
+  if (!is_client && !css_master_request_is_local (conn->fd))
+    {
+      __gv_cvar.css_free_conn (conn);
+      return;
+    }
+#endif /* ! WINDOWS */
 
   //  Note: css_register_new_server() is used in two situations:
   //  1. When a client requests to connect a cub_server to cub_master, which is already registered.

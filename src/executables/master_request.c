@@ -2001,7 +2001,7 @@ send_to_client:
  *   on where a request came from. Used to reject administrative master
  *   requests arriving from a remote, unauthenticated client.
  */
-static bool
+bool
 css_master_request_is_local (SOCKET fd)
 {
   struct sockaddr_storage addr;
