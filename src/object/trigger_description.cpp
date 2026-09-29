@@ -459,18 +459,8 @@ tr_dump_selective_triggers (extract_context &ctxt, print_output &output_ctx, DB_
 
   for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      trigger = tr_map_trigger (o->op, 1);
-      if (trigger == NULL)
-	{
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      /* dropped by another transaction after the query read it */
-	      er_clear ();
-	      continue;
-	    }
-	  ASSERT_ERROR_AND_SET (error);
-	}
-      else
+      error = tr_map_trigger_if_exists (o->op, &trigger);
+      if (trigger != NULL)
 	{
 	  int is_system_class = 0;
 

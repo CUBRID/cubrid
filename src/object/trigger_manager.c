@@ -1940,19 +1940,9 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 
   for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      trigger = tr_map_trigger (o->op, 1);
-      if (trigger == NULL)
-	{
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      /* dropped by another transaction after the query read it */
-	      er_clear ();
-	      continue;
-	    }
-	  ASSERT_ERROR_AND_SET (error);
-	}
-      else if ((!active_filter || trigger->status == TR_STATUS_ACTIVE)
-	       && (event == TR_EVENT_NULL || trigger->event == event))
+      error = tr_map_trigger_if_exists (o->op, &trigger);
+      if (trigger != NULL && (!active_filter || trigger->status == TR_STATUS_ACTIVE)
+	  && (event == TR_EVENT_NULL || trigger->event == event))
 	{
 	  error = ml_ext_add (trigger_list, o->op, NULL);
 	}
@@ -2004,18 +1994,8 @@ tr_update_user_cache (void)
 
   for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      trigger = tr_map_trigger (o->op, 1);
-      if (trigger == NULL)
-	{
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      /* dropped by another transaction after the query read it */
-	      er_clear ();
-	      continue;
-	    }
-	  ASSERT_ERROR_AND_SET (error);
-	}
-      else
+      error = tr_map_trigger_if_exists (o->op, &trigger);
+      if (trigger != NULL)
 	{
 	  error = insert_trigger_list (&tr_User_triggers, trigger);
 	}
@@ -2830,7 +2810,8 @@ find_trigger_by_name (const char *name, DB_OBJECT ** trigger_p)
  *    objects(out): object list (returned)
  *
  * Note:
- *    The list must be freed with ml_free.
+ *    Another transaction can drop a trigger after the query read it, so each object must be mapped with
+ *    tr_map_trigger_if_exists, which skips such a trigger. The list must be freed with ml_free.
  */
 int
 tr_find_trigger_objects (const char *query, DB_OBJLIST ** objects)
@@ -2915,6 +2896,38 @@ end:
     {
       ml_free (*objects);
       *objects = NULL;
+    }
+
+  return error;
+}
+
+/*
+ * tr_map_trigger_if_exists() - Like tr_map_trigger, but returns NULL without an error when the trigger was dropped
+ *    return: error code
+ *    object(in): trigger object
+ *    trigger(out): trigger structure, NULL on error or when the trigger was dropped
+ *
+ * Note:
+ *    Another transaction can drop a trigger after the query read it. That is not an error:
+ *    NO_ERROR is returned with a NULL trigger, and the caller skips it.
+ */
+int
+tr_map_trigger_if_exists (DB_OBJECT * object, TR_TRIGGER ** trigger)
+{
+  int error = NO_ERROR;
+
+  *trigger = tr_map_trigger (object, 1);
+  if (*trigger == NULL)
+    {
+      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  /* dropped by another transaction after the query read it */
+	  er_clear ();
+	}
+      else
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	}
     }
 
   return error;
@@ -3012,18 +3025,9 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
 
   for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      trigger = tr_map_trigger (o->op, 1);
-      if (trigger == NULL)
-	{
-	  if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
-	    {
-	      /* dropped by another transaction after the query read it */
-	      er_clear ();
-	      continue;
-	    }
-	  ASSERT_ERROR_AND_SET (error);
-	}
-      else if ((!active_filter || trigger->status == TR_STATUS_ACTIVE) && check_authorization (trigger, alter_filter))
+      error = tr_map_trigger_if_exists (o->op, &trigger);
+      if (trigger != NULL && (!active_filter || trigger->status == TR_STATUS_ACTIVE)
+	  && check_authorization (trigger, alter_filter))
 	{
 	  error = ml_ext_add (list, o->op, NULL);
 	}
