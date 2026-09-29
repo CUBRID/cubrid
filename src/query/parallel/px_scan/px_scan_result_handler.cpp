@@ -629,15 +629,13 @@ namespace parallel_scan
   {
     if (part_list_id->tpl_descr.f_valp == nullptr && part_list_id->type_list.type_cnt > 0)
       {
-	size_t size = part_list_id->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
-
-	part_list_id->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
-	if (part_list_id->tpl_descr.f_valp == nullptr)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	    return ER_OUT_OF_VIRTUAL_MEMORY;
-	  }
+	/* f_len lives inside the f_valp allocation, so the array has to come from the allocator that sizes both:
+	 * a bare f_valp malloc would leave the size pass writing f_len through the null the copy left behind. */
 	part_list_id->tpl_descr.f_cnt = part_list_id->type_list.type_cnt;
+	if (qfile_tpl_descr_alloc_values (&part_list_id->tpl_descr, part_list_id->type_list.type_cnt) != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
       }
 
     if (part_list_id->tuple_cnt > 0 && part_list_id->last_pgptr == nullptr)
