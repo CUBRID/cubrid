@@ -751,6 +751,7 @@ namespace memoize
     , m_key_value_map ()
     , m_current_value_list ()
     , disabled (false)
+    , insert_stopped (false)
     , has_range (false)
     , key_changed (false)
     , current_key_joined (false)
@@ -817,9 +818,8 @@ namespace memoize
       db_change_private_heap (thread_get_thread_entry_info(), heap_id);
     });
     value *v;
-    if (disabled || get_current_size() >= m_max_storage_size)
+    if (disabled)
       {
-	disabled = true;
 	return result_code::FULL;
       }
 
@@ -899,18 +899,9 @@ namespace memoize
 
     try
       {
-	if (disabled || get_current_size() >= m_max_storage_size)
+	if (!can_insert ())
 	  {
-	    disabled = true;
-	    return result_code::FULL;
-	  }
-	if (hit+miss > MEMOIZE_FREE_ITERATION_LIMIT)
-	  {
-	    if (((double)hit)/ (hit+miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
-	      {
-		disabled = true;
-		return result_code::FULL;
-	      }
+	    return disabled ? result_code::FULL : result_code::SUCCESS;
 	  }
 
 	current_key_joined = true;
@@ -945,19 +936,9 @@ namespace memoize
       {
 	if (!current_key_joined)
 	  {
-	    if (disabled || get_current_size() >= m_max_storage_size)
+	    if (!can_insert ())
 	      {
-		disabled = true;
-		return result_code::FULL;
-	      }
-
-	    if (hit+miss > MEMOIZE_FREE_ITERATION_LIMIT)
-	      {
-		if (((double)hit)/ (hit+miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
-		  {
-		    disabled = true;
-		    return result_code::FULL;
-		  }
+		return disabled ? result_code::FULL : result_code::SUCCESS;
 	      }
 
 	    assert (m_last_key != nullptr);
@@ -975,6 +956,76 @@ namespace memoize
       {
 	return result_code::ERROR;
       }
+  }
+
+  /* Whether put () and put_nullptr () may add an entry; false either because the storage was disabled just now
+   * or before (the caller then returns FULL and frees it) or because its budget is used up. */
+  bool storage::can_insert ()
+  {
+    if (disabled)
+      {
+	return false;
+      }
+
+    size_t size = get_current_size ();
+
+    /* Until the storage holds 60% of its budget every key has cost one miss at most, so a low hit ratio says
+     * nothing yet: keys that repeat but have not come round again look like distinct keys. Judging after a fixed
+     * 1,000 probes turned memoize off whenever the keys outnumbered ~630 (CBRD-27487).
+     * Once inserts have stopped, every miss is judged whatever the size: taking out the partial key in
+     * stop_insert () can bring the storage back under 60%, and it must not then be kept unjudged. */
+    if ((insert_stopped || size > m_max_storage_size * MEMOIZE_HIT_RATIO_CHECK_SIZE)
+	&& ((double) hit) / (hit + miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
+      {
+	disabled = true;
+	return false;
+      }
+
+    if (insert_stopped)
+      {
+	return false;
+      }
+
+    if (size >= m_max_storage_size)
+      {
+	stop_insert ();
+	return false;
+      }
+
+    return true;
+  }
+
+  /* The budget is used up: keep answering from what is stored instead of dropping it all (CBRD-27487);
+   * can_insert () goes on judging the hit ratio on every miss and releases the storage below the threshold.
+   * put () stores one entry per inner row, so the current key holds only part of its result; a later hit
+   * would replay just that part, so its entries are taken out. */
+  void storage::stop_insert ()
+  {
+    if (current_key_joined)
+      {
+	auto range = m_key_value_map.equal_range (m_last_key);
+
+	for (auto it = range.first; it != range.second;)
+	  {
+	    key *k = it->first;
+	    value *v = it->second;
+
+	    m_key_sz -= k->get_size ();
+	    m_hash_sz -= hash_entry_sz;
+	    it = m_key_value_map.erase (it);
+
+	    k->~key ();
+	    m_key_fixed_allocator.deallocate (k);
+	    if (v != nullptr)
+	      {
+		m_value_sz -= v->get_size ();
+		v->~value ();
+		free (v);
+	      }
+	  }
+      }
+
+    insert_stopped = true;
   }
 
   key *storage::get_key()
