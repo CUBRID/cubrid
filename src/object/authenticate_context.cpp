@@ -40,10 +40,7 @@
 // static functions
 static int au_add_method_check_authorization (void);
 
-/*
- * the order matters: init_dba_user () makes DBA the current user that creates the others,
- * and au_add_user () puts every user created after PUBLIC into PUBLIC
- */
+/* DBA and PUBLIC must come first, in this order */
 const authenticate_context::system_user authenticate_context::system_users[] =
 {
   {AU_DBA_USER_NAME, &authenticate_context::dba_user, true, &authenticate_context::init_dba_user},

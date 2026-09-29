@@ -34,6 +34,7 @@
 #define AU_PUBLIC_USER_NAME     "PUBLIC"
 #define AU_DBA_USER_NAME        "DBA"
 #define AU_INFORMATION_SCHEMA_USER_NAME        "INFORMATION_SCHEMA"
+/* a system group that grants a privilege is named CUB_<GRANT privilege keyword>_<target>; CUB_ is not reserved */
 #define AU_SELECT_CATALOG_USER_NAME        "CUB_SELECT_CATALOG"
 
 /*
