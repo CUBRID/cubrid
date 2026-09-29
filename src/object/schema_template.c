@@ -4228,6 +4228,26 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
 }
 
 /*
+ * smt_reset_vclass_definition() - Empties a template so a virtual class can be
+ *    re-defined in place.
+ *   return: none
+ *   template(in/out): schema template
+ */
+
+void
+smt_reset_vclass_definition (SM_TEMPLATE * template_)
+{
+  WS_LIST_FREE (template_->attributes, classobj_free_attribute);
+  template_->attributes = NULL;
+
+  WS_LIST_FREE (template_->class_methods, classobj_free_method);
+  template_->class_methods = NULL;
+
+  WS_LIST_FREE (template_->query_spec, classobj_free_query_spec);
+  template_->query_spec = NULL;
+}
+
+/*
  * smt_reset_query_spec() - Clears the query_spec list of a template.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   template(in/out): schema template
