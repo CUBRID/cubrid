@@ -92,10 +92,12 @@ namespace lockfree
 
       size_t m_block_size;
 
-      std::atomic<free_node *> m_available_list;      // list of available entries
+      // the list head every claim () and reclaim_run () CASes, on a cache line of its own: sharing one with the
+      // counters below is measurable on the claim/retire mix at 64 threads
+      alignas (64) std::atomic<free_node *> m_available_list;
 
       // statistics:
-      std::atomic<size_t> m_available_count;
+      alignas (64) std::atomic<size_t> m_available_count;
       std::atomic<size_t> m_alloc_count;
       // above this, reclaim frees instead of recycling - edesc->max_alloc_cnt (CBRD-24474). uncapped by default.
       std::atomic<size_t> m_max_alloc_count;
