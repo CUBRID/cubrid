@@ -477,6 +477,10 @@ namespace parallel_scan
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl, m_vd);
       }
+    /* set before the er_errid () check on purpose: an error still pending here (left by a callee whose
+     * return code is not checked) is detected only after the handlers were initialized, and finalize ()
+     * must still run their finalizers. write_initialize () moves its own errors out, so its early
+     * returns do not depend on this order. */
     m_handlers_initialized = true;
     if (er_errid () != NO_ERROR)
       {
@@ -552,7 +556,7 @@ namespace parallel_scan
 	      }
 
 	    /* init btid regardless of parts: initialize () overwrites indexptr->btid with the partition BTID
-	     * even though this clone was never pruned (parts is NULL unless trace pruned it). The clone goes
+	     * even when this clone was not pruned (only trace or a SEMI / ANTI inner prunes it). The clone goes
 	     * back to the shared XASL cache clone pool, and a leader that picks it up would prune the
 	     * partitioned class with a partition BTID, which heap_get_indexinfo_of_btid () rejects without
 	     * setting an error (CBRD-27484). */
