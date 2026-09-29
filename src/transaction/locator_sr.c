@@ -11823,6 +11823,14 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
   int error_code;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
 
+  /* The parent learns of this foreign key only after this check, so keep its writers out until commit, as
+   * btree_load_check_fk () does when it builds the index. */
+  if (lock_object (thread_p, pk_cls_oid, oid_Root_class_oid, SIX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   if (mvcc_snapshot == NULL)
     {
