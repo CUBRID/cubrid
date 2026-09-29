@@ -8001,6 +8001,35 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 }
 
 /*
+ * lock_get_total_holders_mode () - The mode in which the object is held, combined over its holders
+ *
+ * return: the holders' total mode; NULL_LOCK when nobody holds the object
+ *   oid(in): the object
+ *   class_oid(in): its class
+ */
+LOCK
+lock_get_total_holders_mode (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
+{
+#if !defined (SERVER_MODE)
+  return NULL_LOCK;
+#else /* !SERVER_MODE */
+  LK_RES_KEY search_key = lock_create_search_key (oid, class_oid);
+  LK_RES *res_ptr;
+  LOCK mode;
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      return NULL_LOCK;
+    }
+  /* find() leaves the resource mutex locked. */
+  mode = res_ptr->total_holders_mode;
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  return mode;
+#endif /* !SERVER_MODE */
+}
+
+/*
  * lock_has_xlock - Does transaction have an exclusive lock on any resource ?
  *
  * return:

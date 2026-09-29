@@ -13172,12 +13172,13 @@ locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * cont
  *   thread_p(in): thread entry
  *   context(in/out): heap get context; given back unfixed, as it was on entry
  *
- * Note: a row whose last version we stamped needs no row lock to be touched again.  Any other writer meets that
- *	stamp and settles on our MVCCID self-lock first, so while that lock stands we are the row's only writer,
- *	and the settle below never waits for us either.  Taking the row lock anyway would queue us behind a
- *	waiter that already holds it while it waits on us -- a cycle the deadlock detector then has to break.
- *	This is the same ground on which locator_update_force () asks for the lock only of a version it did not
- *	insert.  Read the header, decide, and give the page back so the caller starts from one state either way.
+ * Note: a row whose last version we stamped needs no row lock to be touched again while only an X holder has it.
+ *	Any other writer meets that stamp and settles on our MVCCID self-lock first, so while that lock stands we
+ *	are the row's only writer, and the settle below never waits for us either.  Taking the row lock anyway
+ *	would queue us behind a waiter that already holds it while it waits on us -- a cycle the deadlock detector
+ *	then has to break.  This is the same ground on which locator_update_force () asks for the lock only of a
+ *	version it did not insert.  An S holder is not waiting on us: it has decided on the row and must be waited
+ *	for.  Read the header, decide, and give the page back so the caller starts from one state either way.
  */
 static bool
 locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
@@ -13253,7 +13254,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
     {
       lock_acquired = true;
     }
-  else if (owner_bypass_ok && is_mvcc_class && locator_last_version_is_ours (thread_p, context))
+  else if (owner_bypass_ok && is_mvcc_class && locator_last_version_is_ours (thread_p, context)
+	   && lock_get_total_holders_mode (thread_p, context->oid_p, context->class_oid_p) == X_LOCK)
     {
       /* lock_acquired stays false: there is nothing to give back */
     }
