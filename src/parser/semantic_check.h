@@ -76,4 +76,7 @@ extern PT_NODE *pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, ST
 
 extern bool pt_compare_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * expr1, PT_NODE * expr2);
 
+extern bool pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id,
+						   PT_NODE * from_list);
+
 #endif /* _SEMANTIC_CHECK_H_ */
