@@ -713,7 +713,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
   if (ha_conf->db_names == NULL)
     {
       const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-      fprintf (stderr, message);
+      fprintf (stderr, "%s", message);
 
       error = ER_GENERIC_ERROR;
       goto ret;
@@ -723,7 +723,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
   if (ha_node_list_pp == NULL)
     {
       const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-      fprintf (stderr, message);
+      fprintf (stderr, "%s", message);
 
       error = ER_GENERIC_ERROR;
       goto ret;
@@ -739,7 +739,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
   if (ha_conf->node_conf == NULL)
     {
       const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-      fprintf (stderr, message);
+      fprintf (stderr, "%s", message);
 
       error = ER_GENERIC_ERROR;
       goto ret;
@@ -757,7 +757,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	  if (ha_conf->node_conf[i].copy_sync_mode == NULL)
 	    {
 	      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      fprintf (stderr, message);
+	      fprintf (stderr, "%s", message);
 
 	      error = ER_GENERIC_ERROR;
 	      goto ret;
@@ -774,7 +774,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	      if (ha_conf->node_conf[i].copy_sync_mode == NULL)
 		{
 		  const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-		  fprintf (stderr, message);
+		  fprintf (stderr, "%s", message);
 
 		  error = ER_GENERIC_ERROR;
 		  goto ret;
@@ -789,7 +789,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	  if (ha_sync_mode_pp == NULL)
 	    {
 	      const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	      fprintf (stderr, message);
+	      fprintf (stderr, "%s", message);
 
 	      error = ER_GENERIC_ERROR;
 	      goto ret;
@@ -813,7 +813,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
 	      if (ha_conf->node_conf[i].copy_sync_mode == NULL)
 		{
 		  const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-		  fprintf (stderr, message);
+		  fprintf (stderr, "%s", message);
 
 		  error = ER_GENERIC_ERROR;
 		  goto ret;
@@ -833,7 +833,7 @@ util_make_ha_conf (HA_CONF * ha_conf)
       if (ha_conf->node_conf[i].node_name == NULL || ha_conf->node_conf[i].copy_log_base == NULL)
 	{
 	  const char *message = utility_get_generic_message (MSGCAT_UTIL_GENERIC_NO_MEM);
-	  fprintf (stderr, message);
+	  fprintf (stderr, "%s", message);
 
 	  error = ER_GENERIC_ERROR;
 	  goto ret;
