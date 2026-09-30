@@ -107,7 +107,7 @@ bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UIN
 bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
-int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc);
+int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc, bool with_fullscan);
 /* free everything owned by a HISTOGRAM_COLLECT and reset it. */
 void histogram_collect_clear (HISTOGRAM_COLLECT *hc);
 
@@ -129,6 +129,7 @@ void histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success);
 bool histogram_get_total_rows (PT_NODE *lhs, double *total_rows);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
+int db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 bool is_histogrammable_type (DB_TYPE type);
 int stats_get_histogram (MOP classop, HIST_STATS **histogram);
 int stats_free_histogram_and_init (HIST_STATS *histogram);

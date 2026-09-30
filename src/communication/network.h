@@ -289,6 +289,8 @@
   /* server-side full-scan reservoir histogram build */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR) \
   \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_BTREE_COMPACT_OVERFLOW) \
+  \
   /* shared client->server byte-stream transport */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_INIT) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_SEND_DATA) \
