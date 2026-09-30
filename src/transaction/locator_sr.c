@@ -4291,6 +4291,9 @@ locator_child_still_refers (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_
     {
       if (DB_VALUE_TYPE (child_key) == DB_TYPE_MIDXKEY)
 	{
+	  /* Read in the PK's domain, as the foreign key check reads it: the FK index orders every column ascending,
+	   * and pr_midxkey_compare () refuses columns whose directions differ. */
+	  key_domain = parent_key->data.midxkey.domain;
 	  child_key->data.midxkey.domain = key_domain;
 	}
       c = btree_compare_key (parent_key, child_key, key_domain, 1, 1, NULL);
