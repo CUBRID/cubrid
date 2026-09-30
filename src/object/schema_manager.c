@@ -10803,10 +10803,20 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
       has_instances = 0;
       for (i = 0; i < n_classes; i++)
 	{
-	  if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+	  if (HFID_IS_NULL (&hfids[i]))
 	    {
-	      /* in case of error and instances exist */
-	      has_instances = 1;
+	      continue;
+	    }
+
+	  has_instances = heap_has_instance (&hfids[i], &oids[i], false);
+	  if (has_instances < 0)
+	    {
+	      /* e.g. the server went down and the client workspace was cleared, so class_ and con may be freed */
+	      ASSERT_ERROR_AND_SET (error);
+	      goto gen_error;
+	    }
+	  else if (has_instances > 0)
+	    {
 	      break;
 	    }
 	}
@@ -10943,11 +10953,25 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
   TP_DOMAIN *domain = NULL;
   OID *cls_oid;
   HFID *hfid;
+  int has_instances;
 
   cls_oid = ws_oid (classop);
   hfid = sm_ch_heap ((MOBJ) class_);
 
-  if (!HFID_IS_NULL (hfid) && heap_has_instance (hfid, cls_oid, 0))
+  if (HFID_IS_NULL (hfid))
+    {
+      return NO_ERROR;
+    }
+
+  has_instances = heap_has_instance (hfid, cls_oid, 0);
+  if (has_instances < 0)
+    {
+      /* e.g. the server went down and the client workspace was cleared, so class_ and key_attrs may be freed */
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  if (has_instances > 0)
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
@@ -13200,9 +13224,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   error = flatten_template (template_, NULL, &flat, auto_res);
   if (error != NO_ERROR)
     {
-      /* If we aborted the operation (error == ER_LK_UNILATERALLY_ABORTED) then the class may no longer be in the
-       * workspace.  So make sure that the class exists before using it.  */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      /* If we aborted the operation (error == ER_LK_UNILATERALLY_ABORTED or ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+       * then the class may no longer be in the workspace.  So make sure that the class exists before using it.  */
+      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	{
 	  class_->new_ = NULL;
 	}
@@ -13223,7 +13247,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	{
 	  classobj_free_template (flat);
 	  /* don't touch this class if we aborted ! */
-	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	    {
 	      class_->new_ = NULL;
 	    }
@@ -13246,7 +13270,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       classobj_free_template (flat);
 
       /* don't touch this class if we aborted ! */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	{
 	  class_->new_ = NULL;
 	}
@@ -13389,7 +13413,7 @@ error_return:
   classobj_free_template (flat);
 
   /* don't touch this class if we aborted ! */
-  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
       class_->new_ = NULL;
     }
