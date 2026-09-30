@@ -2615,7 +2615,6 @@ tp_value_convert_datetimeltz_to_date (const DB_VALUE *src, DB_VALUE *target, con
 
   {
     DB_DATETIME *utc_dt_p;
-    DB_DATETIMETZ *dt_tz_p;
     TZ_ID tz_id;
 
     /* DATETIMELTZ and DATETIMETZ store in UTC, convert to session */
@@ -3120,9 +3119,6 @@ tp_value_convert_pointer_to_object (const DB_VALUE *src, DB_VALUE *target, const
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
   {
-    DB_OBJECT *v_obj = NULL;
-    int is_vclass = 0;
-
     /* Make sure the domains are compatible.  Coerce view objects to real objects. */
     if (!sm_check_class_domain ((TP_DOMAIN *) desired_domain, ((DB_OTMPL *) db_get_pointer (src))->classobj))
       {
@@ -3281,7 +3277,6 @@ tp_value_convert_vobj_to_vobj (const DB_VALUE *src, DB_VALUE *target, const TP_D
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
 
   {
-    SETREF *setref;
     /*
      * We should try and convert the view of the src to match
      * the view of the desired_domain. However, the desired
@@ -3291,7 +3286,6 @@ tp_value_convert_vobj_to_vobj (const DB_VALUE *src, DB_VALUE *target, const TP_D
      * as success.
      */
     status = DOMAIN_COMPATIBLE;
-    setref = db_get_set (src);
     {
       pr_clone_value ((DB_VALUE *) src, target);
     }
@@ -5441,7 +5435,6 @@ tp_value_convert_numeric_to_enumeration (const DB_VALUE *src, DB_VALUE *target, 
 
     {
       DB_VALUE val;
-      DB_DATA_STATUS stat = DATA_STATUS_OK;
 
       db_make_double (&val, 0);
       err = numeric_coerce_num_to_double (src, db_get_numeric_scale (src, NULL), &val);
@@ -6527,7 +6520,6 @@ tp_value_convert_datetimeltz_to_date_strict (const DB_VALUE *src, DB_VALUE *targ
 {
   {
     DB_DATETIME *utc_dt_p;
-    DB_DATETIMETZ *dt_tz_p;
     DB_DATETIME local_dt;
     TZ_ID tz_id;
 
@@ -8304,12 +8296,14 @@ tp_value_convert_json_scalar_to_clob (const DB_VALUE *src, DB_VALUE *target, con
   return status;
 }
 
+#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_oid_to_oid (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *, date_conversion_error *)
 {
   pr_clone_value (src, target);
   return DOMAIN_COMPATIBLE;
 }
+#endif /* !defined (SERVER_MODE) */
 
 /*
  * tp_value_convert_enumeration_name_to_double () - an ENUM added to a string without plus_as_concat: its name, then

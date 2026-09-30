@@ -7550,9 +7550,9 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
     DB_TYPE left_class = !zone_to_string ? domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left)
       : DB_VALUE_DOMAIN_TYPE (left);
     DOMAIN_OPERAND operands[2] = {
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (left)), left_class, -1, -1, false}
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (left)), left_class, -1, false}
       ,
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (right)), DB_VALUE_DOMAIN_TYPE (right), -1, -1, false}
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (right)), DB_VALUE_DOMAIN_TYPE (right), -1, false}
     };
     RESOLVED_DOMAIN resolved;
     bool needs_late_bind;
@@ -22662,9 +22662,9 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
     /* debug cross-check: resolve_domains' format type and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
     DB_TYPE format_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, 1, format);
     DOMAIN_OPERAND operands[2] = {
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, -1, false}
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, false}
       ,
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (format)), format_class, -1, -1, false}
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (format)), format_class, -1, false}
     };
     RESOLVED_DOMAIN resolved;
     bool needs_late_bind;

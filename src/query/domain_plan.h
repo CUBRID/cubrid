@@ -456,7 +456,7 @@ struct RESOLVED_DOMAIN_TABLE
   THREAD_ENTRY *owner;		/* the thread that allocated the state and alone writes it: the execution's, a PX
 				 * worker's in its copy */
   const DOMAIN_PLAN *plan;	/* the plan the load derived; a PX copy keeps the leader's */
-  bool frozen;			/* the values and resolutions may be read (RESOLVED, REGU_RESOLVED_VALUE,
+  bool frozen;			/* the values and resolutions may be read (REGU_RESOLVED_VALUE,
 				 * qexec_owns_resolved_index): set before the constant expression step, whose
 				 * computations fetch through them. resolve_domains goes on resolving what a constant,
 				 * a session variable or an index key decides until it returns; the rows start after

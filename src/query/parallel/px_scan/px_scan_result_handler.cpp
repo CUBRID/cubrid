@@ -328,7 +328,7 @@ namespace parallel_scan
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    /* the clone's aggregates are set up from the plan resolutions it copied from the leader, before its first
 	     * row */
-	    if (qexec_setup_parallel_aggregates (thread_p, curr_xasl, vd, &tl.g_agg_domains_resolved) != NO_ERROR)
+	    if (qexec_setup_parallel_aggregates (curr_xasl, vd, &tl.g_agg_domains_resolved) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
@@ -1592,7 +1592,7 @@ namespace parallel_scan
 	agg_node->accumulator_domain.value2_dom = NULL;
       }
     /* set up from the plan resolutions the clone copied from the leader before its lists open (initialize_node) */
-    if (qexec_setup_parallel_aggregates (thread_p, tl_xasl_p, vd, &tl_xasl_p->proc.buildvalue.agg_domains_resolved)
+    if (qexec_setup_parallel_aggregates (tl_xasl_p, vd, &tl_xasl_p->proc.buildvalue.agg_domains_resolved)
 	!= NO_ERROR)
       {
 	m_err_messages_p->move_top_error_message_to_this ();

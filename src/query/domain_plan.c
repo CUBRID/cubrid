@@ -97,7 +97,6 @@ struct DOMAIN_LOAD_ENTRY
   const TP_DOMAIN *elt_index_cast;	/* ELT: the cast the compiler wraps that index in (DOMAIN_LATE_BIND_LINK) */
   const TP_DOMAIN *consumer;
   const TP_DOMAIN *argument;	/* FIXED_AGG: the argument's compiled domain when it is fixed (DOMAIN_LATE_BIND_LINK) */
-  int late_bind_order;		/* index into plan->late_bind_nodes once this entry's node is a late-binding node */
   DOMAIN_PLAN_ITEM *self_owner;	/* owner storage of a synthetic entry (a set-operation column) */
   /* T_ADD, T_SUB, T_MUL, T_DIV, a SUM or AVG: the operands whose operand coercion the execution may convert once per
    * scope ([1]: the value an aggregate adds), and for a correlated one the block whose scans fix it */
@@ -358,7 +357,6 @@ domain_mark_late_bind_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_
   load_entry->item.flags |= DOMAIN_PLAN_LATE_BIND;
   load_entry->item.resolved_index = ctx->plan->n_resolved++;
   load_entry->item.fixed.domain = NULL;
-  load_entry->late_bind_order = ctx->n_late_bind_order;
   ctx->late_bind_order[ctx->n_late_bind_order++] = load_entry;
 }
 
@@ -380,7 +378,6 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
   load_entry->link = load_entry->link_inline;
   load_entry->literal = load_entry->literal_inline;
   load_entry->owner = owner;
-  load_entry->late_bind_order = -1;
   load_entry->index = ctx->plan->n_items++;
   load_entry->item.resolved_index = -1;
   load_entry->item.ref = -1;
@@ -818,7 +815,7 @@ domain_plan_operand_coercion (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, con
       return;
     }
   const DOMAIN_OPERAND operands[2] = {
-    {left, TP_DOMAIN_TYPE (left), -1, -1, false}, {right, TP_DOMAIN_TYPE (right), -1, -1, false}
+    {left, TP_DOMAIN_TYPE (left), -1, false}, {right, TP_DOMAIN_TYPE (right), -1, false}
   };
   DOMAIN_OPERAND_COERCION operand_coercion;
   domain_resolve_operand_coercion (opcode, operands, &operand_coercion);
@@ -2644,7 +2641,7 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
   if (load_entry->kind == DOMAIN_LOAD_FIXED_AGG && compiled && !any_variable_pos)
     {
       const DOMAIN_PLAN_ITEM *argument = load_entry->link[0];
-      DOMAIN_OPERAND operand = { argument->fixed.domain, TP_DOMAIN_TYPE (argument->fixed.domain), -1, -1, false };
+      DOMAIN_OPERAND operand = { argument->fixed.domain, TP_DOMAIN_TYPE (argument->fixed.domain), -1, false };
       RESOLVED_DOMAIN resolved;
       bool needs_late_bind = false;
       if (domain_type_is_fixed (argument->fixed.domain)
@@ -2720,7 +2717,7 @@ domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry
     case DOMAIN_LOAD_FIXED_AGG:
       domain_resolve_node (ctx, load_entry);
       break;
-    default:
+    case DOMAIN_LOAD_LEAF:
       load_entry->known = item->resolved_index >= 0 || load_entry->literal_value
 	|| domain_type_is_fixed (item->fixed.domain);
       break;

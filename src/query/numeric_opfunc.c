@@ -6879,13 +6879,6 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
-/*
- * numeric_db_value_coerce_from_num_strict () - coerce a numeric to the type
- *						of dest
- * return : error code or NO_ERROR
- * src (in)	: the numeric value
- * dest(in/out) : the value to coerce to
- */
 int
 numeric_coerce_num_to_double_strict (const DB_VALUE * src, int scale, DB_VALUE * dest)
 {
@@ -6981,53 +6974,6 @@ numeric_coerce_num_to_short_strict (const DB_VALUE * src, int scale, DB_VALUE * 
   db_make_short (dest, (DB_C_SHORT) ROUND (adouble));
 
   /* Preserve the legacy strict entry point, including its failure after writing a value. */
-  return ER_FAILED;
-}
-
-int
-numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest)
-{
-  int ret = NO_ERROR;
-  int scale = db_get_numeric_scale (src, NULL);
-
-  switch (DB_VALUE_DOMAIN_TYPE (dest))
-    {
-    case DB_TYPE_DOUBLE:
-      ret = numeric_coerce_num_to_double_strict (src, scale, dest);
-      break;
-
-    case DB_TYPE_FLOAT:
-      ret = numeric_coerce_num_to_float_strict (src, scale, dest);
-      break;
-
-    case DB_TYPE_MONETARY:
-      ret = numeric_coerce_num_to_monetary_strict (src, scale, dest);
-      break;
-
-    case DB_TYPE_INTEGER:
-      ret = numeric_coerce_num_to_int_strict (src, scale, dest);
-      break;
-
-    case DB_TYPE_BIGINT:
-      ret = numeric_coerce_num_to_bigint_strict (src, scale, dest);
-      break;
-
-    case DB_TYPE_SMALLINT:
-      ret = numeric_coerce_num_to_short_strict (src, scale, dest);
-      break;
-
-    case DB_TYPE_NUMERIC:
-      {
-	DB_DATA_STATUS data_status = DATA_STATUS_OK;
-	ret = numeric_db_value_coerce_to_num (src, dest, &data_status);
-	break;
-      }
-
-    default:
-      ret = ER_FAILED;
-      break;
-    }
-
   return ER_FAILED;
 }
 

@@ -208,7 +208,7 @@ static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp);
+static int scan_plan_list_scan_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp);
 static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * multi_range_opt,
 					       bool use_range_opt, int max_size);
 static int scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_VALUE * key, OID * oid,
@@ -2120,8 +2120,8 @@ scan_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const D
  * It resolves nothing.
  */
 static int
-scan_key_column (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const domain_plan_key_elem * elem, int column_index,
-		 const DB_VALUE ** value, const TP_DOMAIN ** domain, unsigned char *choice, bool * kept)
+scan_key_column (INDX_SCAN_ID * isidp, const domain_plan_key_elem * elem, int column_index, const DB_VALUE ** value,
+		 const TP_DOMAIN ** domain, unsigned char *choice, bool * kept)
 {
   const TP_DOMAIN *column = elem->index_elem;
   unsigned char rule = elem->rule;
@@ -2360,8 +2360,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	}
 
       bool kept = false;
-      ret = scan_key_column (thread_p, isidp, elem, i, &state->values[i], &state->domains[i], &state->choices[i],
-			     &kept);
+      ret = scan_key_column (isidp, elem, i, &state->values[i], &state->domains[i], &state->choices[i], &kept);
       if (ret != NO_ERROR)
 	{
 	  goto err_exit;
@@ -5039,7 +5038,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       llsidp = &scan_id->s.llsid;
       /* the domains its positions and predicate operands take for the execution, once per start rather than at every
        * row it returns */
-      if (scan_plan_list_scan_domains (thread_p, scan_id->vd, llsidp) != NO_ERROR)
+      if (scan_plan_list_scan_domains (scan_id->vd, llsidp) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -8446,7 +8445,7 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEY
  * execution, a column over a session variable read too.
  */
 static int
-scan_plan_list_scan_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
+scan_plan_list_scan_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
 {
   regu_variable_list_node *lists[] = { llsidp->scan_pred.regu_list, llsidp->rest_regu_list };
   for (int l = 0; l < 2; l++)
@@ -8951,7 +8950,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   key = llsidp->hlsid.temp_key;
   new_key = llsidp->hlsid.temp_new_key;
 
-  if (scan_plan_list_scan_domains (thread_p, scan_id->vd, llsidp) != NO_ERROR)
+  if (scan_plan_list_scan_domains (scan_id->vd, llsidp) != NO_ERROR)
     {
       return S_ERROR;
     }

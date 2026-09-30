@@ -676,14 +676,6 @@ fetch_session_read_value (const VAL_DESCR * vd, ARITH_TYPE * arithptr, const DB_
   return qexec_session_variable_type_error (name, type, value_domain);
 }
 
-/* Whether a domain fixes its values' type and collation: not VARIABLE, and a NORMAL collation flag */
-static inline bool
-fetch_domain_fixed (const TP_DOMAIN * domain)
-{
-  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
-    && TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL;
-}
-
 /* How a late-binding node takes its domain at its first computation in an execution */
 enum FETCH_RESOLVED_READING
 {
@@ -762,7 +754,7 @@ fetch_arith_resolved_domain (const VAL_DESCR * vd, const ARITH_TYPE * arithptr, 
  *	     for a value of a type resolve_domains chose no converter for
  */
 static int
-fetch_convert_to_branch_value (THREAD_ENTRY * thread_p, const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
+fetch_convert_to_branch_value (const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
 			       const RESOLVED_DOMAIN * resolved_domain, DB_VALUE * value)
 {
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
@@ -789,8 +781,7 @@ fetch_convert_to_branch_value (THREAD_ENTRY * thread_p, const val_descr * vd, co
  * converters only for merged branches (a type-dependent node's are its operands'), so any other node costs a flag
  * test. */
 static inline int
-fetch_convert_to_resolved_branch (THREAD_ENTRY * thread_p, const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
-				  DB_VALUE * value)
+fetch_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_ITEM * item, DB_VALUE * value)
 {
   if (item == NULL || !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
     {
@@ -802,7 +793,7 @@ fetch_convert_to_resolved_branch (THREAD_ENTRY * thread_p, const val_descr * vd,
     {
       return NO_ERROR;
     }
-  return fetch_convert_to_branch_value (thread_p, vd, item, resolved_domain, value);
+  return fetch_convert_to_branch_value (vd, item, resolved_domain, value);
 }
 
 /* The resolved comparison k an arithmetic node makes: its plan item carries them. A stream's
@@ -3578,7 +3569,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  goto error;
 	}
       /* branches whose collations resolve_domains merged: the picked value takes the merged domain */
-      if (fetch_convert_to_resolved_branch (thread_p, vd, arithptr->domain_plan, arithptr->value) != NO_ERROR)
+      if (fetch_convert_to_resolved_branch (vd, arithptr->domain_plan, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -5210,7 +5201,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       assert (funcp != NULL);
 
       /* ELT over branches whose collations resolve_domains merged: the picked value takes the merged domain */
-      if (fetch_convert_to_resolved_branch (thread_p, vd, regu_var->domain_plan, funcp->value) != NO_ERROR)
+      if (fetch_convert_to_resolved_branch (vd, regu_var->domain_plan, funcp->value) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}

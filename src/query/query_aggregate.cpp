@@ -1974,12 +1974,12 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			{
 			  const DOMAIN_OPERAND second[2] =
 			  {
-			    {column, TP_DOMAIN_TYPE (column), -1, -1, false}, {column, TP_DOMAIN_TYPE (column), -1, -1, false}
+			    {column, TP_DOMAIN_TYPE (column), -1, false}, {column, TP_DOMAIN_TYPE (column), -1, false}
 			  };
 			  const DOMAIN_OPERAND later[2] =
 			  {
-			    {sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, -1, false},
-			    {column, TP_DOMAIN_TYPE (column), -1, -1, false}
+			    {sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, false},
+			    {column, TP_DOMAIN_TYPE (column), -1, false}
 			  };
 			  domain_resolve_operand_coercion (T_ADD, second, &coerce_second);
 			  domain_resolve_operand_coercion (T_ADD, later, &coerce_later);
@@ -2216,7 +2216,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    {
 	      const DOMAIN_OPERAND operands[2] =
 	      {
-		{sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, -1, false}, {double_domain_ptr, DB_TYPE_DOUBLE, -1, -1, false}
+		{sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, false}, {double_domain_ptr, DB_TYPE_DOUBLE, -1, false}
 	      };
 	      domain_resolve_operand_coercion (T_DIV, operands, &operand_coercion);
 	    }

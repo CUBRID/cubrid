@@ -114,7 +114,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
 	  const TP_DOMAIN *sum = TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (argument)) ? function : argument;
 	  const DOMAIN_OPERAND operands[2] =
 	  {
-	    {sum, TP_DOMAIN_TYPE (sum), -1, -1, false}, {argument, TP_DOMAIN_TYPE (argument), -1, -1, false}
+	    {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, TP_DOMAIN_TYPE (argument), -1, false}
 	  };
 	  domain_resolve_operand_coercion (T_ADD, operands, &func_p->info.sum_avg.operand_coercion);
 	}

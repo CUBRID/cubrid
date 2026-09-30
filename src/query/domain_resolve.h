@@ -318,12 +318,10 @@ qexec_execution_temporary (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int te
 
 extern int qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other);
 
-/* Read-only execution views. Peek callers retain the existing no-write
- * contract even though their public DB_VALUE ** output is not const. The row path calls them: inlined at every call
+/* Read-only execution view. Peek callers retain the existing no-write
+ * contract even though their public DB_VALUE ** output is not const. The row path calls it: inlined at every call
  * in a release build. */
 inline const DB_VALUE *REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
-  __attribute__ ((ALWAYS_INLINE));
-inline const RESOLVED_DOMAIN *RESOLVED (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
   __attribute__ ((ALWAYS_INLINE));
 
 inline const DB_VALUE *
@@ -333,18 +331,6 @@ REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
   assert (regu->domain_plan != NULL && regu->domain_plan->ref >= 0);
   assert (regu->domain_plan->ref < vd->xasl_state->resolved_domain.n_vals);
   return vd->dbval_ptr + regu->domain_plan->ref;
-}
-
-inline const RESOLVED_DOMAIN *
-RESOLVED (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
-{
-  assert (item != NULL);
-  if (item->resolved_index < 0)
-    {
-      return &item->fixed;
-    }
-  assert (vd->xasl_state->resolved_domain.frozen && item->resolved_index < vd->xasl_state->resolved_domain.n_resolved);
-  return &vd->xasl_state->resolved_domain.domains[item->resolved_index];
 }
 
 extern int qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state);
@@ -357,14 +343,12 @@ extern int qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR
 					SORT_LIST ** resolved_groupby);
 extern void qexec_finish_group_by_domains (const VAL_DESCR * vd, buildlist_proc_node * buildlist);
 extern void qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, buildlist_proc_node * buildlist);
-extern int qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list,
-					  const VAL_DESCR * vd, int *resolved);
+extern int qexec_setup_aggregate_domains (cubxasl::aggregate_list_node * agg_list, const VAL_DESCR * vd, int *resolved);
 extern int qexec_aggregate_first_values (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list,
 					 VAL_DESCR * vd, QFILE_TUPLE_RECORD * tplrec,
 					 regu_variable_list_node * regu_list, int *resolved);
 extern void qexec_type_accumulator_outputs (const VAL_DESCR * vd, xasl_node * xasl);
-extern int qexec_setup_parallel_aggregates (THREAD_ENTRY * thread_p, xasl_node * xasl, const VAL_DESCR * vd,
-					    int *resolved);
+extern int qexec_setup_parallel_aggregates (xasl_node * xasl, const VAL_DESCR * vd, int *resolved);
 extern int qexec_parallel_aggregate_first_values (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL_DESCR * vd,
 						  int *resolved);
 

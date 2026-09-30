@@ -1682,16 +1682,6 @@ domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxk
 }
 
 bool
-domain_key_compares_as_is (const DOMAIN_COMPARE_KEY * a, const DOMAIN_COMPARE_KEY * b)
-{
-  if (!TP_ARE_COMPARABLE_KEY_TYPES (a->type, b->type))
-    {
-      return false;
-    }
-  return !(TP_IS_CHAR_TYPE (a->type) && TP_IS_CHAR_TYPE (b->type) && a->collation != b->collation);
-}
-
-bool
 domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column)
 {
   DOMAIN_COMPARE_KEY key[2];

@@ -47,7 +47,6 @@ struct DOMAIN_OPERAND
   DB_TYPE val_type;		/* resolve_domains only (the type of a value-dependent argument); DB_TYPE_NULL at
 				 * load */
   int coll_id;			/* character operands only; -1 otherwise */
-  int coercibility;		/* character operands only; -1 otherwise */
   bool is_variable_pos;
 };
 
@@ -354,10 +353,6 @@ TP_VALUE_CONVERTER domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN 
  * and the strict converter of rule STRICT. */
 DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey,
 				 TP_VALUE_CONVERTER * strict_conv);
-
-/* Whether the B-tree compares a value of key a with an index key of key b as they are (btree_compare_key): comparable
- * key types and, for strings, the same collation. */
-bool domain_key_compares_as_is (const DOMAIN_COMPARE_KEY * a, const DOMAIN_COMPARE_KEY * b);
 
 /* Whether values of this domain have a key other than an index column's own (a NULL domain or key has none): an index
  * scan whose key column takes such values compares them by the type pair comparison table (DOMAIN_SEARCH_KEYS). */

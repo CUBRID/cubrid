@@ -884,7 +884,7 @@ db_timestamp_decode_utc (const DB_TIMESTAMP * utime, DB_DATE * date, DB_TIME * t
 }
 
 /*
- * db_timestamp_decode_w_reg() - This function converts a DB_TIMESTAMP into
+ * db_timestamp_decode_w_reg_core() - This function converts a DB_TIMESTAMP into
  *    a DB_DATE and DB_TIME pair, directly into a time zone specified by
  *    tz_region
  * return : error code
@@ -958,15 +958,6 @@ db_timestamp_decode_w_reg_core (const DB_TIMESTAMP * utime, const TZ_REGION * tz
     }
 
   return err;
-}
-
-int
-db_timestamp_decode_w_reg (const DB_TIMESTAMP * utime, const TZ_REGION * tz_region, DB_DATE * date, DB_TIME * timeval)
-{
-  date_conversion_error error;
-  int status = db_timestamp_decode_w_reg_core (utime, tz_region, date, timeval, &error);
-  error.publish ();
-  return status;
 }
 
 /*
@@ -3524,7 +3515,7 @@ db_date_parse_datetime_parts (char const *str, int str_len, DB_DATETIME * dateti
 }
 
 /*
- * db_date_parse_datetime() - Reads a DATETIME from a DATE or DATETIME string, in any
+ * db_date_parse_datetime_core() - Reads a DATETIME from a DATE or DATETIME string, in any
  *			    of the separated or compact formats the string
  *			    might be in.
  * returns:	0 on success, ER_DATE_CONVERSION on error.
@@ -3539,17 +3530,8 @@ db_date_parse_datetime_core (char const *str, int str_len, DB_DATETIME * datetim
   return db_date_parse_datetime_parts_core (str, str_len, datetime, NULL, NULL, NULL, NULL, date_error);
 }
 
-int
-db_date_parse_datetime (char const *str, int str_len, DB_DATETIME * datetime)
-{
-  date_conversion_error error;
-  int status = db_date_parse_datetime_core (str, str_len, datetime, &error);
-  error.publish ();
-  return status;
-}
-
 /*
- * db_date_parse_timestamp() - Reads a TIMESTAMP from a DATE or DATETIME
+ * db_date_parse_timestamp_core() - Reads a TIMESTAMP from a DATE or DATETIME
  *			    string, in any of the separated or compact formats
  *			    the string might be in.
  * returns:	0 on success, ER_DATE_CONVERSION on error.
@@ -3591,17 +3573,8 @@ db_date_parse_timestamp_core (char const *str, int str_len, DB_TIMESTAMP * utime
   return ER_TIMESTAMP_CONVERSION;
 }
 
-int
-db_date_parse_timestamp (char const *str, int str_len, DB_TIMESTAMP * utime)
-{
-  date_conversion_error error;
-  int status = db_date_parse_timestamp_core (str, str_len, utime, &error);
-  error.publish ();
-  return status;
-}
-
 /*
- * db_date_parse_date() - Reads a DATE from a DATE string or a DATETIME
+ * db_date_parse_date_core() - Reads a DATE from a DATE string or a DATETIME
  *			    string, in any of the separated or compact formats
  *			    the string might be in.
  * returns:	0 on success, ER_DATE_CONVERSION on error.
@@ -3628,15 +3601,6 @@ db_date_parse_date_core (char const *str, int str_len, DB_DATE * date, date_conv
     }
 
   return err;
-}
-
-int
-db_date_parse_date (char const *str, int str_len, DB_DATE * date)
-{
-  date_conversion_error error;
-  int status = db_date_parse_date_core (str, str_len, date, &error);
-  error.publish ();
-  return status;
 }
 
 /*

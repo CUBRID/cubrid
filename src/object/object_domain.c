@@ -69,10 +69,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#if defined (SUPPRESS_STRLEN_WARNING)
-#define strlen(s1)  ((int) strlen(s1))
-#endif /* defined (SUPPRESS_STRLEN_WARNING) */
-
 /*
  * used by versant_driver to avoid doing foolish things
  * like au_fetch_instance on DB_TYPE_OBJECT values that
@@ -600,18 +596,10 @@ static const TP_DOMAIN *tp_domain_find_compatible (const TP_DOMAIN * src, const 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static int tp_null_terminate (const DB_VALUE * src, char **strp, int str_len, bool * do_alloc);
 #endif
-static int tp_atotime (const DB_VALUE * src, DB_TIME * temp);
-static int tp_atodate (const DB_VALUE * src, DB_DATE * temp);
-static int tp_atoutime (const DB_VALUE * src, DB_UTIME * temp);
-static int tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp);
-static int tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp);
-static int tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp);
 static int tp_atonumeric (const DB_VALUE * src, DB_VALUE * temp);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static char *tp_itoa (int value, char *string, int radix);
 #endif
-static void tp_ftoa (DB_VALUE const *src, DB_VALUE * result);
-static void tp_dtoa (DB_VALUE const *src, DB_VALUE * result);
 
 
 /* A converter a plan found before any row for the casts of values of one type into one domain, in ASSIGN mode: a cast
@@ -4663,153 +4651,6 @@ tp_null_terminate (const DB_VALUE * src, char **strp, int str_len, bool * do_all
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * tp_atotime - coerce a string to a time
- *    return: NO_ERROR or error code
- *    src(in): string DB_VALUE
- *    temp(out): time container
- * Note:
- *    Accepts strings that are not null terminated. Don't call this unless
- *    src is a string db_value.
- */
-static int
-tp_atotime (const DB_VALUE * src, DB_TIME * temp)
-{
-  int milisec;
-  const char *strp = db_get_string (src);
-  int str_len = db_get_string_size (src);
-  int status = NO_ERROR;
-
-  if (db_date_parse_time (strp, str_len, temp, &milisec) != NO_ERROR)
-    {
-      status = ER_FAILED;
-    }
-
-  return status;
-}
-
-/*
- * tp_atodate - coerce a string to a date
- *    return: NO_ERROR or error code
- *    src(in): string DB_VALUE
- *    temp(out): date container
- * Note:
- *    Accepts strings that are not null terminated. Don't call this unless
- *    src is a string db_value.
- */
-static int
-tp_atodate (const DB_VALUE * src, DB_DATE * temp)
-{
-  const char *strp = db_get_string (src);
-  int str_len = db_get_string_size (src);
-  int status = NO_ERROR;
-
-  if (db_date_parse_date (strp, str_len, temp) != NO_ERROR)
-    {
-      status = ER_FAILED;
-    }
-
-  return status;
-}
-
-/*
- * tp_atoutime - coerce a string to a utime.
- *    return: NO_ERROR or error code
- *    src(in): string DB_VALUE
- *    temp(out): utime container
- * Note:
- *    Accepts strings that are not null terminated. Don't call this unless
- *    src is a string db_value.
- */
-static int
-tp_atoutime (const DB_VALUE * src, DB_UTIME * temp)
-{
-  const char *strp = db_get_string (src);
-  int str_len = db_get_string_size (src);
-  int status = NO_ERROR;
-
-  if (db_date_parse_utime (strp, str_len, temp) != NO_ERROR)
-    {
-      status = ER_FAILED;
-    }
-
-  return status;
-}
-
-/*
- * tp_atotimestamptz - coerce a string to a timestamp with time zone.
- *    return: NO_ERROR or error code
- *    src(in): string DB_VALUE
- *    temp(out): timestamp with TZ info container
- * Note:
- *    Accepts strings that are not null terminated. Don't call this unless
- *    src is a string db_value.
- */
-static int
-tp_atotimestamptz (const DB_VALUE * src, DB_TIMESTAMPTZ * temp)
-{
-  const char *strp = db_get_string (src);
-  int str_len = db_get_string_size (src);
-  int status = NO_ERROR;
-  bool dummy_has_zone;
-
-  if (db_string_to_timestamptz_ex (strp, str_len, temp, &dummy_has_zone, true) != NO_ERROR)
-    {
-      status = ER_FAILED;
-    }
-
-  return status;
-}
-
-/*
- * tp_atoudatetime - coerce a string to a datetime.
- *    return: NO_ERROR or error code
- *    src(in): string DB_VALUE
- *    temp(out): datetime container
- * Note:
- *    Accepts strings that are not null terminated. Don't call this unless
- *    src is a string db_value.
- */
-static int
-tp_atoudatetime (const DB_VALUE * src, DB_DATETIME * temp)
-{
-  const char *strp = db_get_string (src);
-  int str_len = db_get_string_size (src);
-  int status = NO_ERROR;
-
-  if (db_date_parse_datetime (strp, str_len, temp) != NO_ERROR)
-    {
-      status = ER_FAILED;
-    }
-
-  return status;
-}
-
-/*
- * tp_atoudatetimetz - coerce a string to a datetime with time zone.
- *    return: NO_ERROR or error code
- *    src(in): string DB_VALUE
- *    temp(out): datetime with time zone container
- * Note:
- *    Accepts strings that are not null terminated. Don't call this unless
- *    src is a string db_value.
- */
-static int
-tp_atodatetimetz (const DB_VALUE * src, DB_DATETIMETZ * temp)
-{
-  const char *strp = db_get_string (src);
-  int str_len = db_get_string_size (src);
-  int status = NO_ERROR;
-  bool dummy_has_zone;
-
-  if (db_string_to_datetimetz_ex (strp, str_len, temp, &dummy_has_zone) != NO_ERROR)
-    {
-      status = ER_FAILED;
-    }
-
-  return status;
-}
-
-/*
  * tp_atonumeric - Coerce a string to a numeric.
  *    return: NO_ERROR or error code
  *    src(in): string DB_VALUE
@@ -5390,80 +5231,6 @@ format_floating_point (char *new_string, char *rve, int ndigits, int decpt, int 
       rve[0] = '\0';
       *new_string = '-';
     }
-}
-
-/*
- * tp_ftoa() - convert a float DB_VALUE to a string DB_VALUE.
- *	       Only the decimal representation is preserved by
- *	       by the conversion, in order to avoid printing
- *	       inexact digits. This means that if the number is
- *	       read back from string into a float, the binary
- *	       representation for the float might be different
- *	       than the original, but the printed number shall
- *             always be the same.
- *
- * return:
- * src(in):	    float DB_VALUE to be converted to string
- * result(in/out):  string DB_VALUE of the desired [VAR][N]CHAR
- *		    domain type and null value, that receives
- *		    the string resulting from conversion.
- */
-void
-tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
-{
-  switch (DB_VALUE_DOMAIN_TYPE (result))
-    {
-    case DB_TYPE_CHAR:
-      tp_ftoa_char (src, result);
-      return;
-    case DB_TYPE_VARCHAR:
-      tp_ftoa_varchar (src, result);
-      return;
-    default:
-      break;
-    }
-  char *str_float = tp_ftoa_buffer (src, result);
-  if (str_float == nullptr)
-    return;
-  db_private_free_and_init (NULL, str_float);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-	  pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
-  db_make_null (result);
-
-}
-
-/*
- *  tp_dtoa():	    converts a double DB_VALUE to a string DB_VALUE.
- *		    Only as many digits as can be computed exactly are
- *		    written in the resulting string.
- *
- * return:
- * src(in):	    double DB_VALUE to be converted to string
- * result(in/out):  string DB_VALUE of the desired [VAR][N]CHAR domain
- *		    type and null value, to receive the converted float
- */
-void
-tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
-{
-  switch (DB_VALUE_DOMAIN_TYPE (result))
-    {
-    case DB_TYPE_CHAR:
-      tp_dtoa_char (src, result);
-      return;
-    case DB_TYPE_VARCHAR:
-      tp_dtoa_varchar (src, result);
-      return;
-    default:
-      break;
-    }
-  char *str_double = tp_dtoa_buffer (src, result);
-  if (str_double == nullptr)
-    return;
-  db_private_free_and_init (NULL, str_double);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (src)),
-	  pr_type_name (DB_VALUE_DOMAIN_TYPE (result)));
-  db_make_null (result);
-
 }
 
 /*

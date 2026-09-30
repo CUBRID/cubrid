@@ -242,7 +242,7 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   if (n_vals != 0)
     {
       resolved.value_states = (unsigned char *) next;
-      memset (resolved.value_states, 0, (size_t) n_vals);
+      memset (resolved.value_states, DOMAIN_VALUE_PENDING, (size_t) n_vals);
     }
   return NO_ERROR;
 }
@@ -525,7 +525,7 @@ qexec_resolve_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const 
 
   *operand = DOMAIN_OPERAND
   {
-  NULL, DB_TYPE_NULL, -1, -1, false};
+  NULL, DB_TYPE_NULL, -1, false};
   if (value != NULL)
     {
       operand->domain = domain_value_domain (value);
@@ -2772,9 +2772,9 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
 	}
     }
 
-  /* the constant expression step's computations fetch through the values and resolutions made so far (RESOLVED,
-   * REGU_RESOLVED_VALUE): they are readable from here on; the steps below go on resolving what a constant, a session
-   * variable or an index key decides */
+  /* the constant expression step's computations fetch through the values and resolutions made so far
+   * (REGU_RESOLVED_VALUE, qexec_late_bind_domain): they are readable from here on; the steps below go on resolving
+   * what a constant, a session variable or an index key decides */
   resolved.frozen = true;
 
   /* the constant expression step (qexec_evaluate_constant_expression): each constant
@@ -3496,8 +3496,8 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 	    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL)
 	  {
 	    const DOMAIN_OPERAND operands[2] = {
-	      {accumulator, TP_DOMAIN_TYPE (accumulator), -1, -1, false},
-	      {argument, TP_DOMAIN_TYPE (argument), -1, -1, false}
+	      {accumulator, TP_DOMAIN_TYPE (accumulator), -1, false},
+	      {argument, TP_DOMAIN_TYPE (argument), -1, false}
 	    };
 	    domain_resolve_operand_coercion (T_ADD, operands, &agg_p->accumulator_domain.operand_coercion);
 	  }
@@ -3641,7 +3641,7 @@ qexec_setup_interpolation_list (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
  * checked (qexec_interpolation_waits). No row resolves an aggregate's domain.
  */
 int
-qexec_setup_aggregate_domains (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, int *resolved)
+qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, int *resolved)
 {
   *resolved = 1;
   for (AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
@@ -3894,11 +3894,11 @@ qexec_type_accumulator_outputs (const VAL_DESCR * vd, XASL_NODE * xasl)
  *   resolved(out): 0 while an aggregate waits for its first value (qexec_parallel_aggregate_first_values)
  */
 int
-qexec_setup_parallel_aggregates (THREAD_ENTRY * thread_p, XASL_NODE * xasl, const VAL_DESCR * vd, int *resolved)
+qexec_setup_parallel_aggregates (XASL_NODE * xasl, const VAL_DESCR * vd, int *resolved)
 {
   AGGREGATE_TYPE *agg_list = xasl->type == BUILDLIST_PROC ? xasl->proc.buildlist.g_agg_list
     : xasl->proc.buildvalue.agg_list;
-  return qexec_setup_aggregate_domains (thread_p, agg_list, vd, resolved);
+  return qexec_setup_aggregate_domains (agg_list, vd, resolved);
 }
 
 /* A PX block's aggregates at its first rows: qexec_aggregate_first_values. */

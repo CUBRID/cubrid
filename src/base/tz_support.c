@@ -140,22 +140,15 @@ static int tz_load_data_from_lib (TZ_DATA * tzd, void *lib_handle);
 static bool tz_get_leapsec_support (void);
 static const TZ_REGION *tz_get_invalid_tz_region (void);
 static DB_DATE tz_get_current_date (void);
-static int tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info,
-				   const char **tz_end);
 static int tz_zone_info_to_str (const TZ_DECODE_INFO * tz_info, char *tz_str, const int tz_str_size);
 static void tz_encode_tz_id (const TZ_DECODE_INFO * tz_info, TZ_ID * tz_id);
 static void tz_encode_tz_region (const TZ_DECODE_INFO * tz_info, TZ_REGION * tz_region);
 static void tz_decode_tz_id (const TZ_ID * tz_id, const bool is_full_decode, TZ_DECODE_INFO * tz_info);
 static void tz_decode_tz_region (const TZ_REGION * tz_region, TZ_DECODE_INFO * tz_info);
-static int tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, const int src_julian_date,
-				 const int src_year, const int src_month, int *ds_rule_id);
 static bool tz_check_ds_match_string (const TZ_OFFSET_RULE * off_rule, const TZ_DS_RULE * ds_rule,
 				      const char *ds_string, const char *default_abrev);
 static int tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool src_is_utc,
 				 bool only_tz_adjust, DB_DATETIME * dest_dt);
-static int tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
-					    const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
-					    TZ_DECODE_INFO * src_zone_info_out, TZ_DECODE_INFO * dest_zone_info_out);
 static int tz_print_tz_offset (char *result, int tz_offset);
 static int starts_with (const char *prefix, const char *str);
 static int tz_get_zone_id_by_name (const char *name, const int name_size);
@@ -163,11 +156,6 @@ static void tz_timestamp_decode_leap_sec_adj (int timestamp, int *yearp, int *mo
 					      int *minutesp, int *secondsp);
 static int tz_offset (const bool src_is_utc, const TZ_TIME_TYPE until_time_type, const int gmt_offset_sec,
 		      const int ds_save_time);
-static int get_date_diff_from_ds_rule (const int src_julian_date, const int src_time_sec, const TZ_DS_RULE * ds_rule,
-				       const DS_SEARCH_DIRECTION direction, full_date_t * date_diff);
-static int get_closest_ds_rule (const int src_julian_date, const int src_time_sec, const TZ_DS_RULESET * ds_ruleset,
-				const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction);
-static int get_saving_time_from_offset_rule (const TZ_OFFSET_RULE * offset_rule, const TZ_DATA * tzd, int *save_time);
 static bool is_in_overlap_interval (const TZ_TIME_TYPE time_type, const full_date_t offset_rule_diff,
 				    const full_date_t gmt_diff, const int save_time_diff);
 static int get_year_to_apply_rule (const int src_year, const TZ_DS_RULE * ds_rule);
@@ -1198,7 +1186,7 @@ tz_get_zone_id_by_name (const char *name, const int name_size)
 }
 
 /*
- * tz_str_timezone_decode () -
+ * tz_str_timezone_decode_core () -
  *
  * Return: error code
  * tz_str(in): string containing timezone information (zone, daylight saving); not null-terminated
@@ -1314,15 +1302,6 @@ tz_str_timezone_decode_core (const char *tz_str, const int tz_str_size, TZ_DECOD
     }
 
   return NO_ERROR;
-}
-
-static int
-tz_str_timezone_decode (const char *tz_str, const int tz_str_size, TZ_DECODE_INFO * tz_info, const char **tz_end)
-{
-  date_conversion_error error;
-  int status = tz_str_timezone_decode_core (tz_str, tz_str_size, tz_info, tz_end, &error);
-  error.publish ();
-  return status;
 }
 
 /*
@@ -2492,7 +2471,7 @@ tz_get_ds_change_julian_date_diff (const int src_julian_date, const TZ_DS_RULE *
 }
 
 /*
- * tz_fast_find_ds_rule () - Performs a search to find the daylight saving rule for which a certain date applies to
+ * tz_fast_find_ds_rule_core () - Performs a search to find the daylight saving rule for which a certain date applies to
  *
  * Returns: error code
  * tzd(in): Daylight saving data context
@@ -2605,16 +2584,6 @@ exit:
   return er_status;
 }
 
-static int
-tz_fast_find_ds_rule (const TZ_DATA * tzd, const TZ_DS_RULESET * ds_ruleset, const int src_julian_date,
-		      const int src_year, const int src_month, int *ds_rule_id)
-{
-  date_conversion_error error;
-  int status = tz_fast_find_ds_rule_core (tzd, ds_ruleset, src_julian_date, src_year, src_month, ds_rule_id, &error);
-  error.publish ();
-  return status;
-}
-
 /*
  * tz_check_ds_match_string () - Checks if user supplied daylight saving string specifier matches the DS rule
  *
@@ -2716,7 +2685,7 @@ tz_offset (const bool src_is_utc, const TZ_TIME_TYPE until_time_type, const int 
 }
 
 /*
- * get_date_diff_from_ds_rule  () - Returns the date difference between a source date and the date when applying
+ * get_date_diff_from_ds_rule_core  () - Returns the date difference between a source date and the date when applying
  *				    a daylight saving rule using from_year or to_year
  *
  * Returns: error or no error
@@ -2763,18 +2732,8 @@ exit:
   return err_status;
 }
 
-static int
-get_date_diff_from_ds_rule (const int src_julian_date, const int src_time_sec, const TZ_DS_RULE * ds_rule,
-			    const DS_SEARCH_DIRECTION direction, full_date_t * date_diff)
-{
-  date_conversion_error error;
-  int status = get_date_diff_from_ds_rule_core (src_julian_date, src_time_sec, ds_rule, direction, date_diff, &error);
-  error.publish ();
-  return status;
-}
-
 /*
- * get_closest_ds_rule() - Returns the id of the closest daylight saving rule in the ds_ruleset relative to to_year
+ * get_closest_ds_rule_core() - Returns the id of the closest daylight saving rule in the ds_ruleset relative to to_year
  *			   or from_year
  *
  * Returns: the id of the rule or -1 in case of error
@@ -2819,18 +2778,8 @@ get_closest_ds_rule_core (const int src_julian_date, const int src_time_sec, con
   return closest_ds_rule_id;
 }
 
-static int
-get_closest_ds_rule (const int src_julian_date, const int src_time_sec, const TZ_DS_RULESET * ds_ruleset,
-		     const TZ_DATA * tzd, const DS_SEARCH_DIRECTION direction)
-{
-  date_conversion_error error;
-  int status = get_closest_ds_rule_core (src_julian_date, src_time_sec, ds_ruleset, tzd, direction, &error);
-  error.publish ();
-  return status;
-}
-
 /*
- * get_saving_time_from_offset_rule() - Computes the daylight saving time for the last day when the input offset
+ * get_saving_time_from_offset_rule_core() - Computes the daylight saving time for the last day when the input offset
  *					rule applies
  *
  * Returns: error or no error
@@ -2880,15 +2829,6 @@ get_saving_time_from_offset_rule_core (const TZ_OFFSET_RULE * offset_rule, const
     }
 exit:
   return err_status;
-}
-
-static int
-get_saving_time_from_offset_rule (const TZ_OFFSET_RULE * offset_rule, const TZ_DATA * tzd, int *save_time)
-{
-  date_conversion_error error;
-  int status = get_saving_time_from_offset_rule_core (offset_rule, tzd, save_time, &error);
-  error.publish ();
-  return status;
 }
 
 /*
@@ -3898,7 +3838,7 @@ tz_datetime_utc_conv (const DB_DATETIME * src_dt, TZ_DECODE_INFO * tz_info, bool
 }
 
 /*
- * tz_conv_tz_datetime_w_zone_info () - Converts a source DATETIME from one timezone to another
+ * tz_conv_tz_datetime_w_zone_info_core () - Converts a source DATETIME from one timezone to another
  *
  * Return: error code
  * src_dt(in): object containing source datetime value;
@@ -3978,19 +3918,6 @@ tz_conv_tz_datetime_w_zone_info_core (const DB_DATETIME * src_dt, const TZ_DECOD
 
 exit:
   return err_status;
-}
-
-static int
-tz_conv_tz_datetime_w_zone_info (const DB_DATETIME * src_dt, const TZ_DECODE_INFO * src_zone_info_in,
-				 const TZ_DECODE_INFO * dest_zone_info_in, DB_DATETIME * dest_dt,
-				 TZ_DECODE_INFO * src_zone_info_out, TZ_DECODE_INFO * dest_zone_info_out)
-{
-  date_conversion_error error;
-  int status =
-    tz_conv_tz_datetime_w_zone_info_core (src_dt, src_zone_info_in, dest_zone_info_in, dest_dt, src_zone_info_out,
-					  dest_zone_info_out, &error);
-  error.publish ();
-  return status;
 }
 
 /*

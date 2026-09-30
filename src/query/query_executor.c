@@ -16300,7 +16300,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	   * are set. The aggregate-only operand expressions are marked at load (domain_mark_aggregate_operands). */
 	  if (xasl->proc.buildlist.g_agg_list != NULL)
 	    {
-	      if (qexec_setup_aggregate_domains (thread_p, xasl->proc.buildlist.g_agg_list, &xasl_state->vd,
+	      if (qexec_setup_aggregate_domains (xasl->proc.buildlist.g_agg_list, &xasl_state->vd,
 						 &xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -16339,7 +16339,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	   * are set. The aggregate operand expressions are marked at load (domain_mark_aggregate_operands). */
 	  if (xasl->proc.buildvalue.agg_list != NULL)
 	    {
-	      if (qexec_setup_aggregate_domains (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd,
+	      if (qexec_setup_aggregate_domains (xasl->proc.buildvalue.agg_list, &xasl_state->vd,
 						 &xasl->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -27476,7 +27476,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  DB_VALUE one_val;
 	  db_make_int (&one_val, 1);
 	  const DOMAIN_OPERAND operands[2] = {
-	    {NULL, DB_VALUE_DOMAIN_TYPE (val), -1, -1, false}, {NULL, DB_TYPE_INTEGER, -1, -1, false}
+	    {NULL, DB_VALUE_DOMAIN_TYPE (val), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
 	  };
 	  DOMAIN_OPERAND_COERCION operand_coercion;
 	  domain_resolve_operand_coercion (T_SUB, operands, &operand_coercion);

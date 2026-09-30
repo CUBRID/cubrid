@@ -2386,7 +2386,7 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
 {
   const DB_VALUE *values[2] = { dbval1_p, dbval2_p };
   const DOMAIN_OPERAND operands[2] = {
-    {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, -1, false}
+    {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, false}
   };
   DOMAIN_OPERAND_COERCION develop;
   domain_resolve_operand_coercion (opcode, operands, &develop);
@@ -2428,7 +2428,7 @@ static void
 qdata_assert_operands_coerced (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, const DB_VALUE * dbval2_p)
 {
   const DOMAIN_OPERAND operands[2] = {
-    {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, -1, false}
+    {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, false}
   };
   DOMAIN_OPERAND_COERCION operand_coercion;
   domain_resolve_operand_coercion (opcode, operands, &operand_coercion);
@@ -5965,7 +5965,6 @@ int
 qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
 {
   DB_TYPE type1;
-  DB_TYPE type2;
   int error = NO_ERROR;
 
   if ((domain_p != NULL && TP_DOMAIN_TYPE (domain_p) == DB_TYPE_NULL) || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
@@ -5980,7 +5979,6 @@ qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
   qdata_assert_operands_coerced (T_DIV, dbval1_p, dbval2_p);
 #endif
   type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
-  type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
 
   if (qdata_is_divided_zero (dbval2_p))
     {
