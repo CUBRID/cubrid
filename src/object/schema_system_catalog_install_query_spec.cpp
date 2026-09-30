@@ -1243,7 +1243,7 @@ sm_define_view_stored_procedure_spec (void)
   sprintf (stmt,
 	"SELECT "
 	  "[sp].[sp_name] AS [sp_name], "
-          "[sp].[pkg_name] AS [pkg_name], "
+          "CAST ([sp].[pkg_of].[pkg_name] AS VARCHAR(255)) AS [pkg_name], " /* string -> varchar(255) */
 	  "CASE [sp].[sp_type] WHEN 1 THEN 'PROCEDURE' ELSE 'FUNCTION' END AS [sp_type], "
 	  "CASE [sp].[return_type] "
 	    "WHEN 0 THEN 'void' "
@@ -1295,7 +1295,7 @@ sm_define_view_stored_procedure_spec (void)
 	  /* CT_STORED_PROC_NAME */
 	  "[%s] AS [sp] "
 	  /* CT_STORED_PROC_CODE_NAME */
-          "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp].[target_class] = [sp_code].[name] "
+          "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp].[code] = [sp_code] "
         "WHERE "
           "[sp].[is_system_generated] = 0"
           "AND ("
@@ -1360,7 +1360,7 @@ sm_define_view_stored_procedure_args_spec (void)
 	"SELECT "
 	  "[sp].[sp_of].[sp_name] AS [sp_name], "
 	  "[sp].[sp_of].[owner].[name] AS [sp_owner_name], "
-          "CAST ([sp].[sp_of].[pkg_name] AS VARCHAR(255)) AS [pkg_name], " /* string -> varchar(255) */
+          "CAST ([sp].[sp_of].[pkg_of].[pkg_name] AS VARCHAR(255)) AS [pkg_name], " /* string -> varchar(255) */
 	  "[sp].[index_of] AS [index_of], "
 	  "[sp].[arg_name] AS [arg_name], "
 	  "CASE [sp].[data_type] "
