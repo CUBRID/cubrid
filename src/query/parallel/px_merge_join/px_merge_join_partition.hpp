@@ -71,12 +71,14 @@ namespace parallel_query
       const int *columns;
       std::vector<TP_DOMAIN *> domains;
       int cnt;
+      const QFILE_TUPLE_VALUE_TYPE_LIST *type_list;
     };
 
     int make_key_spec (const QFILE_LIST_ID *list_id, const int *columns, int cnt, key_spec &spec);
 
-    /* reads the join-key columns of tpl into vals; copy must be true when vals outlive the page */
-    int read_key (QFILE_TUPLE tpl, const key_spec &spec, bool copy, DB_VALUE *vals);
+    /* reads the join-key columns of the slot rec (bound to spec.type_list) into vals; copy must be true when vals
+     * outlive the page */
+    int read_key (QFILE_TUPLE_RECORD *rec, const key_spec &spec, bool copy, DB_VALUE *vals);
     void clear_key (DB_VALUE *vals, int cnt);
 
     /* NULL == NULL here, unlike qexec_cmp_tpl_vals_merge: partitioning only needs "first key > boundary" and the

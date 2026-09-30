@@ -28,6 +28,7 @@
 #include "list_file.h"
 #include "memory_alloc.h"
 #include "object_representation.h"
+#include "qfile_tuple_layout.h"
 #include "query_executor.h"
 #include "storage_common.h"
 
@@ -35,12 +36,12 @@
 #include "memory_wrapper.hpp"
 
 /* pre-defined vars: thread_p, list_idp, merge_infop, nvals, tplrec, bound_vals, upper,
- *                   {outer,inner}_{sid,scan,tplrec,indp,valp,key_spec} */
+ *                   {outer,inner}_{sid,scan,tplrec,indp,valp,lenp,key_spec} */
 
 #define PXMJ_ADD_MERGETUPLE(t1, t2)                                          \
   do                                                                         \
     {                                                                        \
-      if (qexec_merge_tuple_add_list (thread_p, list_idp, (t1), (t2), merge_infop, &tplrec) != NO_ERROR) \
+      if (qfile_merge_tuple_add_list (thread_p, list_idp, (t1), (t2), merge_infop, &tplrec) != NO_ERROR) \
 	{                                                                    \
 	  goto exit_on_error;                                                \
 	}                                                                    \
@@ -51,9 +52,15 @@
   do                                                                         \
     {                                                                        \
       int _v;                                                                \
+      bool _null;                                                            \
       for (_v = 0; _v < nvals; _v++)                                         \
 	{                                                                    \
-	  QFILE_GET_TUPLE_VALUE_HEADER_POSITION ((pre##_tplrec).tpl, (pre##_indp)[_v], (pre##_valp)[_v]); \
+	  (pre##_valp)[_v] = (char *) qfile_slot_get_column_data (&(pre##_tplrec), (pre##_indp)[_v], \
+				&(pre##_lenp)[_v], &_null);                  \
+	  if (_null)                                                         \
+	    {                                                                \
+	      (pre##_lenp)[_v] = 0;                                          \
+	    }                                                                \
 	}                                                                    \
     }                                                                        \
   while (0)
@@ -113,7 +120,7 @@
       if (upper != NULL)                                                     \
 	{                                                                    \
 	  DB_VALUE_COMPARE_RESULT _bc;                                       \
-	  if (read_key ((pre##_tplrec).tpl, *pre##_key_spec, false, bound_vals) != NO_ERROR) \
+	  if (read_key (&(pre##_tplrec), *pre##_key_spec, false, bound_vals) != NO_ERROR) \
 	    {                                                                \
 	      goto exit_on_error;                                            \
 	    }                                                                \
@@ -159,11 +166,12 @@ namespace parallel_query
 	const key_spec *inner_key_spec = &m->m_inner_key_spec;
 
 	int nvals;
-	QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
-	QFILE_TUPLE_RECORD outer_tplrec = { NULL, 0 };
-	QFILE_TUPLE_RECORD inner_tplrec = { NULL, 0 };
+	QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+	QFILE_TUPLE_RECORD outer_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+	QFILE_TUPLE_RECORD inner_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 	int *outer_indp, *inner_indp;
 	char **outer_valp = NULL, **inner_valp = NULL;
+	int *outer_lenp = NULL, *inner_lenp = NULL;
 	SCAN_CODE outer_scan = S_END, inner_scan = S_END;
 	QFILE_LIST_SCAN_ID outer_sid, inner_sid;
 
@@ -234,6 +242,18 @@ namespace parallel_query
 	    goto exit_on_error;
 	  }
 
+	outer_lenp = (int *) db_private_alloc (thread_p, nvals * sizeof (int));
+	if (outer_lenp == NULL)
+	  {
+	    goto exit_on_error;
+	  }
+
+	inner_lenp = (int *) db_private_alloc (thread_p, nvals * sizeof (int));
+	if (inner_lenp == NULL)
+	  {
+	    goto exit_on_error;
+	  }
+
 	if (upper != NULL)
 	  {
 	    bound_vals = (DB_VALUE *) db_private_alloc (thread_p, nvals * sizeof (DB_VALUE));
@@ -261,7 +281,7 @@ namespace parallel_query
 		PXMJ_NEXT_SCAN_PVALS (outer, true);
 		for (k = 0; k < nvals; k++)
 		  {
-		    if (QFILE_GET_TUPLE_VALUE_FLAG (outer_valp[k]) == V_UNBOUND)
+		    if (outer_lenp[k] == 0)
 		      {
 			break;
 		      }
@@ -291,7 +311,7 @@ namespace parallel_query
 		PXMJ_NEXT_SCAN_PVALS (inner, true);
 		for (k = 0; k < nvals; k++)
 		  {
-		    if (QFILE_GET_TUPLE_VALUE_FLAG (inner_valp[k]) == V_UNBOUND)
+		    if (inner_lenp[k] == 0)
 		      {
 			break;
 		      }
@@ -319,7 +339,8 @@ namespace parallel_query
 
 	    if (!already_compared)
 	      {
-		val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
+						    inner_indp, inner_domp, nvals);
 		if (val_cmp == DB_UNK)
 		  {
 		    goto exit_on_error;
@@ -366,7 +387,8 @@ namespace parallel_query
 			    break;
 			  }
 
-			val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+			val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
+							    inner_indp, inner_domp, nvals);
 			if (val_cmp != DB_EQ)
 			  {
 			    if (val_cmp == DB_UNK)
@@ -382,9 +404,7 @@ namespace parallel_query
 			  {
 			    break;
 			  }
-			/* PVALS: the walk can cross a page, which unfixes the page the previous peek pointers
-			 * point into */
-			PXMJ_NEXT_SCAN_PVALS (inner, true);
+			PXMJ_NEXT_SCAN (inner, true);
 		      }
 		  }
 
@@ -403,7 +423,8 @@ namespace parallel_query
 		      }
 		    else
 		      {
-			val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+			val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
+							    inner_indp, inner_domp, nvals);
 			if (val_cmp == DB_UNK)
 			  {
 			    goto exit_on_error;
@@ -413,7 +434,8 @@ namespace parallel_query
 			  {
 			    PXMJ_REV_SCAN_PVALS (inner);
 
-			    val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+			    val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
+								inner_indp, inner_domp, nvals);
 			    if (val_cmp == DB_UNK)
 			      {
 				goto exit_on_error;
@@ -458,7 +480,8 @@ namespace parallel_query
 		PXMJ_NEXT_SCAN_PVALS (outer, true);
 		PXMJ_CHECK_UPPER (outer);
 
-		val_cmp = qexec_cmp_tpl_vals_merge (outer_valp, outer_domp, inner_valp, inner_domp, nvals);
+		val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
+						    inner_indp, inner_domp, nvals);
 		if (val_cmp == DB_UNK)
 		  {
 		    goto exit_on_error;
@@ -510,6 +533,14 @@ exit_on_end:
 	if (inner_valp)
 	  {
 	    db_private_free_and_init (thread_p, inner_valp);
+	  }
+	if (outer_lenp)
+	  {
+	    db_private_free_and_init (thread_p, outer_lenp);
+	  }
+	if (inner_lenp)
+	  {
+	    db_private_free_and_init (thread_p, inner_lenp);
 	  }
 	if (bound_vals)
 	  {

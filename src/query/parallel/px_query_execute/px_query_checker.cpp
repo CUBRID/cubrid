@@ -21,6 +21,8 @@
  */
 
 #include "px_query_checker.hpp"
+#include "px_sp_eligibility.hpp"
+#include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include <set>
@@ -36,9 +38,11 @@ namespace parallel_query_execute
       xasl_checker()=default;
       ~xasl_checker()=default;
       bool is_parallel_executable (XASL_NODE *xasl);
+      void mark_sp_blocks (XASL_NODE *xasl);
     private:
       void add_xasl_recursive (XASL_NODE *xasl);
       void check_xasl_recursive (XASL_NODE *xasl);
+      bool mark_sp_blocks_recursive (XASL_NODE *xasl, bool is_root);
       void check_regu_var (REGU_VARIABLE *regu_var);
       void check_pred_expr (PRED_EXPR *pred_expr);
       void check_pred (PRED *pred);
@@ -49,13 +53,20 @@ namespace parallel_query_execute
       void check_rlike_eval_term (RLIKE_EVAL_TERM *rlike_eval_term);
       void check_regu_var_list (REGU_VARIABLE_LIST regu_var_list);
       void check_analytic_eval_list (ANALYTIC_EVAL_TYPE *a_eval_list);
-      void check_xasl_node (XASL_NODE *xasl);
+      void check_agg_list (AGGREGATE_TYPE *agg_list);
+      void check_arith_list (ARITH_TYPE *arith_list);
+      void check_xasl_node (XASL_NODE *xasl, XASL_NODE *owner);
       void check_access_spec_type (ACCESS_SPEC_TYPE *access_spec_type);
       std::set<XASL_NODE *> get_child_xasl_set_recursive (XASL_NODE *xasl);
       std::multimap<XASL_NODE *, XASL_NODE *> m_xasl_map;
       std::multimap<XASL_NODE *, XASL_NODE *> m_list_scan_map;
       std::set<XASL_NODE *> m_aptr_head_set;
       std::set<XASL_NODE *> m_aptr_set;
+      /* SP/method occurrences are not a statement-wide disqualifier: they are collected
+       * per owning (dispatchable) xasl node and later marked locally with
+       * XASL_NO_PARALLEL_SUBQUERY on that node, so sibling blocks keep parallelism. */
+      std::set<XASL_NODE *> m_sp_dirty_set;
+      XASL_NODE *m_owner=nullptr;
       bool m_is_parallel_executable=true;
   };
 
@@ -172,7 +183,24 @@ namespace parallel_query_execute
 	check_regu_var (regu_var->value.arithptr->thirdptr);
 	break;
       case TYPE_SP:
-	m_is_parallel_executable = false;
+	if (px_sp_is_parallel_eligible (regu_var->value.sp_ptr->sig))
+	  {
+	    /* declared PARALLEL_ENABLE: the SP may run inside a px worker, so it does not dirty
+	     * its owning block. Its arguments are evaluated in the worker too, so they are
+	     * still checked. */
+	    check_regu_var_list (regu_var->value.sp_ptr->args);
+	  }
+	/* ineligible: exclude only the owning block from parallel execution, not the whole
+	 * statement (a block mixing eligible and ineligible SPs stays blocked — conservative AND) */
+	else if (m_owner)
+	  {
+	    m_sp_dirty_set.insert (m_owner);
+	  }
+	else
+	  {
+	    assert (0);
+	    m_is_parallel_executable = false;
+	  }
 	break;
       default:
 	assert (0);
@@ -306,12 +334,39 @@ namespace parallel_query_execute
       }
   }
 
-  void xasl_checker::check_xasl_node (XASL_NODE *xasl)
+  void xasl_checker::check_agg_list (AGGREGATE_TYPE *agg_list)
+  {
+    for (AGGREGATE_TYPE *agg = agg_list; agg != nullptr; agg = agg->next)
+      {
+	check_regu_var_list (agg->operands);
+	if (agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
+	  {
+	    check_regu_var (agg->info.percentile.percentile_reguvar);
+	  }
+      }
+  }
+
+  void xasl_checker::check_arith_list (ARITH_TYPE *arith_list)
+  {
+    /* outarith_list is a single node (see qexec_clear_arith_list) */
+    if (arith_list)
+      {
+	check_regu_var (arith_list->leftptr);
+	check_regu_var (arith_list->rightptr);
+	check_regu_var (arith_list->thirdptr);
+	check_pred_expr (arith_list->pred);
+      }
+  }
+
+  void xasl_checker::check_xasl_node (XASL_NODE *xasl, XASL_NODE *owner)
   {
     if (!xasl)
       {
 	return;
       }
+    /* owner: the dispatchable job node the checked content belongs to; SP/method
+     * occurrences found below are attributed to it (see m_sp_dirty_set) */
+    m_owner = owner;
     ACCESS_SPEC_TYPE *spec_list;
     check_pred_expr (xasl->ordbynum_pred);
     check_regu_var (xasl->orderby_limit);
@@ -359,7 +414,17 @@ namespace parallel_query_execute
 	check_regu_var_list (xasl->proc.buildlist.g_scan_regu_list);
 	check_pred_expr (xasl->proc.buildlist.g_having_pred);
 	check_pred_expr (xasl->proc.buildlist.g_grbynum_pred);
+	check_agg_list (xasl->proc.buildlist.g_agg_list);
 	check_analytic_eval_list (xasl->proc.buildlist.a_eval_list);
+      }
+    else if (xasl->type == BUILDVALUE_PROC)
+      {
+	/* a buildvalue aggregate evaluates its argument itself (pt_to_aggregate_node stores the
+	 * argument regu as the operand, e.g. SUM (sp (c1)) carries a TYPE_SP operand), so an SP
+	 * hidden here would otherwise be dispatched to a px worker unseen */
+	check_agg_list (xasl->proc.buildvalue.agg_list);
+	check_arith_list (xasl->proc.buildvalue.outarith_list);
+	check_pred_expr (xasl->proc.buildvalue.having_pred);
       }
   }
 
@@ -390,9 +455,20 @@ namespace parallel_query_execute
 	check_regu_var_list (access_spec_type->s.cls_node.cls_regu_list_rest);
       }
       break;
+      case TARGET_METHOD:
+	/* exclude only the owning block from parallel execution, not the whole statement */
+	if (m_owner)
+	  {
+	    m_sp_dirty_set.insert (m_owner);
+	  }
+	else
+	  {
+	    assert (0);
+	    m_is_parallel_executable = false;
+	  }
+	break;
       case TARGET_CLASS_ATTR:
       case TARGET_DBLINK:
-      case TARGET_METHOD:
       case TARGET_REGUVAL_LIST:
       case TARGET_SET:
       case TARGET_SHOWSTMT:
@@ -472,14 +548,14 @@ namespace parallel_query_execute
 		return;
 	      }
 	  }
-	check_xasl_node (aptr);
+	check_xasl_node (aptr, aptr);
 	if (aptr->spec_list && aptr->spec_list->type == TARGET_LIST)
 	  {
 	    m_list_scan_map.insert (std::make_pair (aptr, aptr->spec_list->s.list_node.xasl_node));
 	  }
 	for (XASL_NODE *aptr_scan_ptr = aptr->scan_ptr; aptr_scan_ptr != nullptr; aptr_scan_ptr = aptr_scan_ptr->scan_ptr)
 	  {
-	    check_xasl_node (aptr_scan_ptr);
+	    check_xasl_node (aptr_scan_ptr, aptr);
 	    if (aptr_scan_ptr->spec_list && aptr_scan_ptr->spec_list->type == TARGET_LIST)
 	      {
 		m_list_scan_map.insert (std::make_pair (aptr, aptr_scan_ptr->spec_list->s.list_node.xasl_node));
@@ -488,7 +564,7 @@ namespace parallel_query_execute
       }
     for (XASL_NODE *scan_ptr = xasl->scan_ptr; scan_ptr != nullptr; scan_ptr = scan_ptr->scan_ptr)
       {
-	check_xasl_node (scan_ptr);
+	check_xasl_node (scan_ptr, xasl);
 	if (scan_ptr ->spec_list && scan_ptr ->spec_list->type == TARGET_LIST)
 	  {
 	    m_list_scan_map.insert (std::make_pair (xasl, scan_ptr->spec_list->s.list_node.xasl_node));
@@ -513,14 +589,14 @@ namespace parallel_query_execute
 		    return;
 		  }
 	      }
-	    check_xasl_node (aptr);
+	    check_xasl_node (aptr, aptr);
 	    if (aptr->spec_list && aptr->spec_list->type == TARGET_LIST)
 	      {
 		m_list_scan_map.insert (std::make_pair (aptr, aptr->spec_list->s.list_node.xasl_node));
 	      }
 	    for (XASL_NODE *aptr_scan_ptr = aptr->scan_ptr; aptr_scan_ptr != nullptr; aptr_scan_ptr = aptr_scan_ptr->scan_ptr)
 	      {
-		check_xasl_node (aptr_scan_ptr);
+		check_xasl_node (aptr_scan_ptr, aptr);
 		if (aptr_scan_ptr->spec_list && aptr_scan_ptr->spec_list->type == TARGET_LIST)
 		  {
 		    m_list_scan_map.insert (std::make_pair (aptr, aptr_scan_ptr->spec_list->s.list_node.xasl_node));
@@ -565,7 +641,7 @@ namespace parallel_query_execute
 	    m_xasl_map.insert (std::make_pair (xasl, eptr));
 	  }
       }
-    check_xasl_node (xasl);
+    check_xasl_node (xasl, xasl);
 
     if (xasl->spec_list)
       {
@@ -580,6 +656,34 @@ namespace parallel_query_execute
 	  {
 	    m_list_scan_map.insert (std::make_pair (xasl, xasl->merge_spec->s.list_node.xasl_node));
 	  }
+      }
+  }
+
+  /* propagate SP/method dirt bottom-up: a node whose subtree contains an SP call must
+   * not be dispatched to a px worker (the SP would run in worker context), so it gets
+   * XASL_NO_PARALLEL_SUBQUERY locally. The root is exempt -- it always executes on the
+   * main thread, and flagging it would disable the whole statement (the previous
+   * statement-global behavior this change removes). */
+  bool xasl_checker::mark_sp_blocks_recursive (XASL_NODE *xasl, bool is_root)
+  {
+    bool dirty = (m_sp_dirty_set.find (xasl) != m_sp_dirty_set.end ());
+    auto child_set = m_xasl_map.equal_range (xasl);
+    for (auto it = child_set.first; it != child_set.second; it++)
+      {
+	dirty |= mark_sp_blocks_recursive (it->second, false);
+      }
+    if (dirty && !is_root)
+      {
+	XASL_SET_FLAG (xasl, XASL_NO_PARALLEL_SUBQUERY);
+      }
+    return dirty;
+  }
+
+  void xasl_checker::mark_sp_blocks (XASL_NODE *xasl)
+  {
+    if (xasl)
+      {
+	mark_sp_blocks_recursive (xasl, true);
       }
   }
 
@@ -621,6 +725,12 @@ check_parallel_subquery_possible (XASL_NODE *xasl)
       if (!checker.is_parallel_executable (xasl))
 	{
 	  XASL_SET_FLAG (xasl, XASL_NO_PARALLEL_SUBQUERY);
+	}
+      else
+	{
+	  /* statement stays parallel-eligible; only SP/method-containing blocks are
+	   * excluded locally (query_executor.c runs flagged aptrs inline) */
+	  checker.mark_sp_blocks (xasl);
 	}
     }
   return NO_ERROR;

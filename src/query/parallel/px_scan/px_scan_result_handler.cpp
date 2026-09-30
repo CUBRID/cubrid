@@ -27,6 +27,7 @@
 #include "object_primitive.h"
 #include "query_opfunc.h"
 #include "list_file.h"
+#include "qfile_tuple_layout.h"
 #include "dbtype_def.h"
 #include "object_representation.h"
 #include <chrono>
@@ -36,6 +37,7 @@
 #include "db_json.hpp"
 #include "query_aggregate.hpp"
 #include "xasl_aggregate.hpp"
+#include "numeric_opfunc.h"	// SUM_ACC word accumulator
 #include "object_domain.h"
 #include "query_executor.h"
 #include "px_scan_trace_handler.hpp"
@@ -79,6 +81,7 @@ namespace parallel_scan
 	    list_id_p->type_list.domp[i] = valp->dom;
 	  }
       }
+    qfile_set_layout (&list_id_p->type_list);	/* this worker's own list */
     return NO_ERROR;
   }
 
@@ -95,7 +98,6 @@ namespace parallel_scan
       {
 	m_.orig_xasl = orig_xasl_tree_for_domain_resolve;
 	m_.active_results = parallelism;
-	m_.is_list_id_domain_resolved = false;
 	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
 
 	m_.instnum_mode = parallel_scan::detect_instnum_mode (orig_xasl_tree_for_domain_resolve,
@@ -151,8 +153,7 @@ namespace parallel_scan
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
-	tl.tpl_buf.tpl = nullptr;
-	tl.tpl_buf.size = 0;
+	tl.tpl_buf = QFILE_TUPLE_RECORD_INITIALIZER;
       }
     else
       {
@@ -229,7 +230,6 @@ namespace parallel_scan
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
-	int size;
 	tl.vd = vd;
 	{
 	  std::lock_guard<std::mutex> lock (m_.writer_results_mutex);
@@ -243,7 +243,8 @@ namespace parallel_scan
 	      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	      return;
 	    }
-	  list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, QFILE_FLAG_ALL|QFILE_NOT_USE_MEMBUF, NULL );
+	  list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id,
+				     QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF | XASL_LIST_BACKWARD_FLAG (curr_xasl), NULL);
 	  if (!list_id)
 	    {
 	      m_err_messages_p->move_top_error_message_to_this();
@@ -267,16 +268,12 @@ namespace parallel_scan
 		}
 	    }
 	}
-	size = tl.writer_result_p->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
-	tl.writer_result_p->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
-	if (tl.writer_result_p->tpl_descr.f_valp == NULL)
+	if (qfile_tpl_descr_alloc_values (&tl.writer_result_p->tpl_descr, tl.writer_result_p->type_list.type_cnt) != NO_ERROR)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 	    m_err_messages_p->move_top_error_message_to_this();
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return;
 	  }
-	size = tl.writer_result_p->type_list.type_cnt * sizeof (bool);
 	tl.tpl_buf.tpl = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
 	if (tl.tpl_buf.tpl == nullptr)
 	  {
@@ -627,6 +624,28 @@ namespace parallel_scan
     return error;
   }
 
+  /* merge_list_ids () leaves this list closed and descriptor-less, but the main thread still appends to it. */
+  int restore_agg_part_list_for_append (THREAD_ENTRY *thread_p, QFILE_LIST_ID *part_list_id)
+  {
+    if (part_list_id->tpl_descr.f_valp == nullptr && part_list_id->type_list.type_cnt > 0)
+      {
+	/* f_len lives inside the f_valp allocation, so the array has to come from the allocator that sizes both:
+	 * a bare f_valp malloc would leave the size pass writing f_len through the null the copy left behind. */
+	part_list_id->tpl_descr.f_cnt = part_list_id->type_list.type_cnt;
+	if (qfile_tpl_descr_alloc_values (&part_list_id->tpl_descr, part_list_id->type_list.type_cnt) != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+      }
+
+    if (part_list_id->tuple_cnt > 0 && part_list_id->last_pgptr == nullptr)
+      {
+	return qfile_reopen_list_as_append_mode (thread_p, part_list_id);
+      }
+
+    return NO_ERROR;
+  }
+
   template <RESULT_TYPE result_type>
   SCAN_CODE result_handler<result_type>::read (THREAD_ENTRY *thread_p, read_dest_type *dest)
   {
@@ -679,6 +698,9 @@ namespace parallel_scan
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return S_ERROR;
 	  }
+	/* the merged worker lists became the (top-most) xasl's result: it must be backward capable */
+	assert (!XASL_IS_FLAGED (m_.orig_xasl, XASL_TOP_MOST_XASL) || dest->type_list.type_cnt == 0
+		|| QFILE_LIST_IS_BACKWARD (dest));
 
 	if (m_.instnum_mode != parallel_scan::instnum_mode::NONE)
 	  {
@@ -694,6 +716,12 @@ namespace parallel_scan
 	  {
 	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
 	    if (merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
+	    if (restore_agg_part_list_for_append (thread_p, buildlist_proc->agg_hash_context->part_list_id) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
@@ -720,8 +748,8 @@ namespace parallel_scan
 	VPID next_vpid;
 	int err_code;
 	TP_DOMAIN *domain_p;
-	OR_BUF iterator, buf;
-	QFILE_TUPLE_VALUE_FLAG flag;
+	QFILE_TUPLE_WALK walk;
+	bool is_null;
 	QPROC_DB_VALUE_LIST val_list_iterator;
 	int val_list_index;
 
@@ -809,24 +837,23 @@ namespace parallel_scan
 		  }
 	      }
 
-	    or_init (&iterator, tl.tpl_buf.tpl, QFILE_GET_TUPLE_LENGTH (tl.tpl_buf.tpl));
-	    or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
+	    /* domain-driven sequential walk: the atomic domains drive the deform, read only after the header is published. */
+	    qfile_tuple_walk_init (&walk, tl.tpl_buf.tpl, list_id_header_p->m_list_id_p->type_list.hdr_size,
+				   list_id_header_p->m_type_cnt);
 
 	    for (val_list_iterator = dest->valp, val_list_index = 0; val_list_iterator
 		 && val_list_index < dest->val_cnt; val_list_iterator = val_list_iterator->next, val_list_index++)
 	      {
-		qfile_locate_tuple_next_value (&iterator, &buf, &flag);
-		pr_clear_value (val_list_iterator->val);
-		if (flag == V_UNBOUND)
-		  {
-		    db_make_null (val_list_iterator->val);
-		    continue;
-		  }
 		domain_p = (TP_DOMAIN *)list_id_header_p->m_type_list[val_list_index]->load (std::memory_order_acquire);
-		err_code = domain_p->type->data_readval (&buf, val_list_iterator->val, domain_p, -1, false, NULL, 0);
+		pr_clear_value (val_list_iterator->val);
+		err_code = qfile_tuple_walk_read_value (&walk, domain_p, val_list_iterator->val, false, &is_null);
 		if (err_code != NO_ERROR)
 		  {
 		    return S_ERROR;
+		  }
+		if (is_null)
+		  {
+		    db_make_null (val_list_iterator->val);
 		  }
 	      }
 	    return S_SUCCESS;
@@ -880,12 +907,13 @@ namespace parallel_scan
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
-	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, & (tl.writer_result_p->tpl_descr));
-
-	if (unlikely (!m_.is_list_id_domain_resolved))
+	/* Each worker resolves and sizes against its own destination list. */
+	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, tl.writer_result_p);
+	if (unlikely (status == QPROC_TPLDESCR_FAILURE))
 	  {
-	    qfile_update_domains_on_type_list (thread_p, tl.writer_result_p, input);
-	    m_.is_list_id_domain_resolved = tl.writer_result_p->is_domain_resolved;
+	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	    return false;
 	  }
 	if (unlikely (!tl.val_list_domain_resolved))
 	  {
@@ -929,6 +957,12 @@ namespace parallel_scan
 			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 			return false;
 		      }
+
+		    /* The serial path's marking does not reach a worker's own XASL copy.
+		     * Mark it here, once per worker, like the domain resolve above. */
+		    qexec_mark_aggregate_operand_expressions (tl.xasl);
+		    /* Sharing needs the resolved accumulator domains, so it is linked here. */
+		    qdata_link_shared_accumulators (tl.xasl->proc.buildlist.g_agg_list);
 		  }
 		if (qexec_hash_gby_agg_tuple_public (thread_p, tl.xasl, tl.vd->xasl_state, &tl.tpl_buf,
 						     & (tl.writer_result_p->tpl_descr), tl.writer_result_p, &output_tuple) != NO_ERROR)
@@ -985,12 +1019,6 @@ namespace parallel_scan
 		  }
 	      }
 	  }
-	else if (unlikely (status == QPROC_TPLDESCR_FAILURE))
-	  {
-	    m_err_messages_p->move_top_error_message_to_this();
-	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-	    return false;
-	  }
 	else if (unlikely (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
 	  {
 	    /* RETRY path: tpldescr incomplete; drain residual heap to list before plain insertion. */
@@ -1008,7 +1036,7 @@ namespace parallel_scan
 		tl.is_topn = false;
 		assert (tl.xasl->topn_items == nullptr);
 	      }
-	    err_code = qdata_copy_valptr_list_to_tuple (thread_p, input, tl.vd, &tl.tpl_buf);
+	    err_code = qdata_copy_valptr_list_to_tuple (thread_p, input, tl.vd, &tl.writer_result_p->type_list, &tl.tpl_buf);
 	    if (err_code != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
@@ -1065,7 +1093,17 @@ namespace parallel_scan
 	      }
 	  }
 	list_id_p = tl_list_id_header->m_list_id_p;
-	err_code = qdata_copy_val_list_to_tuple (thread_p, input, &tl_tpl_buf);
+	if (unlikely (!list_id_p->is_domain_resolved))
+	  {
+	    /* resolve the list domains from this value list first so the tuple matches the descriptor readers use */
+	    (void) update_domains_on_type_list_by_val_list (thread_p, list_id_p, input);
+	    for (int i = 0; i < tl_list_id_header->m_type_cnt; i++)
+	      {
+		tl_list_id_header->m_type_list[i]->store ((TP_DOMAIN *) list_id_p->type_list.domp[i],
+		    std::memory_order_release);
+	      }
+	  }
+	err_code = qdata_copy_val_list_to_tuple (thread_p, input, &list_id_p->type_list, &tl_tpl_buf);
 	prefetch (list_id_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 	if (unlikely (err_code != NO_ERROR))
 	  {
@@ -1080,15 +1118,6 @@ namespace parallel_scan
 	    m_err_messages_p->move_top_error_message_to_this();
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return false;
-	  }
-	if (unlikely (!tl_list_id_header->m_list_id_p->is_domain_resolved))
-	  {
-	    (void) update_domains_on_type_list_by_val_list (thread_p, tl_list_id_header->m_list_id_p, input);
-	    for (int i = 0; i < tl_list_id_header->m_type_cnt; i++)
-	      {
-		tl_list_id_header->m_type_list[i]->store ((TP_DOMAIN *)tl_list_id_header->m_list_id_p->type_list.domp[i],
-		    std::memory_order_release);
-	      }
 	  }
 	if (unlikely (!VPID_EQ (&old_last_vpid, &tl_list_id_header->m_list_id_p->last_vpid)
 		      && old_last_vpid.pageid != NULL_PAGEID))
@@ -1421,6 +1450,9 @@ namespace parallel_scan
   template <FUNC_CODE F>
   bool result_handler<RESULT_TYPE::BUILDVALUE_OPT>::initialize_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node)
   {
+    /* execution-only field, not part of the stream, so initialize it here */
+    agg_node->accumulator.sum_acc.is_active = false;
+
     if constexpr (F == PT_COUNT_STAR)
       {
 	agg_node->accumulator.curr_cnt = 0;
@@ -1746,6 +1778,42 @@ namespace parallel_scan
 	      }
 	    acc_dom->value2_dom = &tp_Null_domain;
 	  }
+	/* Supported types use the word accumulator, as on the serial path.
+	 * Each worker owns its accumulator; finalize_node () merges it through
+	 * qdata_aggregate_accumulator_to_accumulator (). acc->value retains the
+	 * first value so its domain information is preserved.
+	 */
+	if (SUM_ACC_IS_AGG_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (db_value_p)))
+	  {
+	    if (acc->curr_cnt < 1)
+	      {
+		pr_clear_value (acc->value);
+		if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+
+	    /* No seed source: this worker-local accumulator never leaves memory, so
+	     * acc->value cannot contain a partial sum not already in the word state.
+	     */
+	    if (qdata_sum_acc_accumulate (&acc->sum_acc, acc->curr_cnt < 1, NULL, db_value_p) != NO_ERROR)
+	      {
+		return false;
+	      }
+
+	    acc->curr_cnt++;
+	    return true;
+	  }
+
+	/* guard: an unsupported type must not arrive while the accumulator is active */
+	if (acc->sum_acc.is_active)
+	  {
+	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	    return false;
+	  }
+
 	if (acc->curr_cnt < 1)
 	  {
 	    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
@@ -1831,7 +1899,7 @@ namespace parallel_scan
 	/* per-row domain fallback: qexec_resolve_domains_for_aggregation may leave NULL domain for covering index NULL values. */
 	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
 	  {
-	    acc_dom->value_dom = agg_node->domain;
+	    acc_dom->value_dom = &tp_Bigint_domain;	/* qdata_bit_*_dbval accumulate in BIGINT */
 	    acc_dom->value2_dom = &tp_Null_domain;
 	  }
 	DB_VALUE tmp_val;
@@ -1870,26 +1938,8 @@ namespace parallel_scan
 	if (agg_node->sort_list != NULL)
 	  {
 	    /* GROUP_CONCAT(ORDER BY): push first operand value to list_id */
-	    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-	    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
-	    if (pr_type_p == nullptr)
-	      {
-		return false;
-	      }
-	    int dbval_size = pr_data_writeval_disk_size (db_value_p);
-	    if (dbval_size > tl_tpl_buf.size)
-	      {
-		char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
-		if (new_tpl == nullptr)
-		  {
-		    return false;
-		  }
-		tl_tpl_buf.tpl = new_tpl;
-		tl_tpl_buf.size = dbval_size;
-	      }
-	    or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
-	    pr_type_p->data_writeval (&tl_or_buf, db_value_p);
-	    if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+	    /* the list assembler encodes the value for the list's column layout */
+	    if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &db_value_p, 1) != NO_ERROR)
 	      {
 		return false;
 	      }
@@ -1968,7 +2018,7 @@ namespace parallel_scan
 	else
 	  {
 	    if (fetch_peek_dbval (thread_p, &second_operand->value, tl_vd, NULL, NULL,
-				  tl_tpl_buf.tpl, &db_value2_p) != NO_ERROR)
+				  &tl_tpl_buf, &db_value2_p) != NO_ERROR)
 	      {
 		return false;
 	      }
@@ -2056,28 +2106,8 @@ namespace parallel_scan
 	    return false;
 	  }
 	write_val_p = &median_cast_val;
-	DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (write_val_p);
-	const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
-	if (pr_type_p == nullptr)
-	  {
-	    pr_clear_value (&median_cast_val);
-	    return false;
-	  }
-	int dbval_size = pr_data_writeval_disk_size (write_val_p);
-	if (dbval_size > tl_tpl_buf.size)
-	  {
-	    char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
-	    if (new_tpl == nullptr)
-	      {
-		pr_clear_value (&median_cast_val);
-		return false;
-	      }
-	    tl_tpl_buf.tpl = new_tpl;
-	    tl_tpl_buf.size = dbval_size;
-	  }
-	or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
-	pr_type_p->data_writeval (&tl_or_buf, write_val_p);
-	if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+	/* the list assembler encodes the value for the list's column layout */
+	if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &write_val_p, 1) != NO_ERROR)
 	  {
 	    pr_clear_value (&median_cast_val);
 	    return false;
@@ -2101,10 +2131,28 @@ namespace parallel_scan
 	  {
 	    return false;
 	  }
+
+	if (tl_xasl_p->proc.buildvalue.agg_domains_resolved)
+	  {
+	    /* Sharing needs the resolved accumulator domains, so it is linked here once
+	     * per worker. Any rows accumulated into a sharer before resolution are
+	     * overwritten during propagation; this only adds work, not a correctness issue.
+	     */
+	    qdata_link_shared_accumulators (tl_xasl_p->proc.buildvalue.agg_list);
+	  }
       }
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
 	AGGREGATE_ACCUMULATOR *acc = &agg_node->accumulator;
+
+	if (acc->shared_from > 0)
+	  {
+	    /* The sum is accumulated by an earlier aggregate and copied here at finalize
+	     * time (qdata_propagate_shared_accumulators ()). Skipping this also avoids
+	     * fetching the operand below.
+	     */
+	    continue;
+	  }
 
 	if (agg_node->function == PT_COUNT_STAR)
 	  {
@@ -2136,7 +2184,7 @@ namespace parallel_scan
 	else
 	  {
 	    int err_code = fetch_peek_dbval (thread_p, &agg_node->operands->value, tl_vd, NULL, NULL,
-					     tl_tpl_buf.tpl, &db_value_p);
+					     &tl_tpl_buf, &db_value_p);
 	    if (err_code != NO_ERROR)
 	      {
 		return false;
@@ -2187,26 +2235,8 @@ namespace parallel_scan
 	     * they pollute the distinct value set (matches serial
 	     * qdata_evaluate_aggregate_list, which inserts only db_values[0]).
 	     * db_value_p (operand[0]) was already fetched and NULL-checked above. */
-	    DB_TYPE dbval_type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-	    const PR_TYPE *pr_type_p = pr_type_from_id (dbval_type);
-	    if (pr_type_p == nullptr)
-	      {
-		return false;
-	      }
-	    int dbval_size = pr_data_writeval_disk_size (db_value_p);
-	    if (dbval_size > tl_tpl_buf.size)
-	      {
-		char *new_tpl = (char *) db_private_realloc (thread_p, tl_tpl_buf.tpl, dbval_size);
-		if (new_tpl == nullptr)
-		  {
-		    return false;
-		  }
-		tl_tpl_buf.tpl = new_tpl;
-		tl_tpl_buf.size = dbval_size;
-	      }
-	    or_init (&tl_or_buf, tl_tpl_buf.tpl, dbval_size);
-	    pr_type_p->data_writeval (&tl_or_buf, db_value_p);
-	    if (qfile_add_item_to_list (thread_p, tl_tpl_buf.tpl, dbval_size, agg_node->list_id) != NO_ERROR)
+	    /* the list assembler encodes the value for the list's column layout */
+	    if (qfile_add_values_tuple_to_list (thread_p, agg_node->list_id, &db_value_p, 1) != NO_ERROR)
 	      {
 		return false;
 	      }

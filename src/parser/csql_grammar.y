@@ -113,6 +113,7 @@ extern int expecting_pl_lang_spec;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
+static void pt_fill_sp_option_container(PARSER_CONTEXT *parser, int buffer_pos, container_3 *ctn, container_2 info);
 /*%CODE_END%*/%}
 
 %{
@@ -313,6 +314,13 @@ typedef enum
   CONN_INFO_COMMENT,
   CONN_INFO_OWNER,
 } CONN_INFO_DEFINE;
+
+typedef enum
+{
+  SP_OPTION_AUTHID = 0,
+  SP_OPTION_DETERMINISTIC,
+  SP_OPTION_PARALLEL_ENABLE,
+} SP_OPTION_DEFINE;
 
 FUNCTION_MAP *keyword_offset (const char *name);
 
@@ -598,6 +606,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> stats_option_list
 %type <number> stats_option
 %type <number> online_parallel
+%type <number> opt_compact_fill_factor
 %type <number> comp_op
 %type <number> opt_of_all_some_any
 %type <number> set_op
@@ -662,6 +671,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> opt_index_with_clause_no_online
 %type <number> opt_authid
 %type <number> opt_deterministic
+%type <c3> opt_sp_option_list
+%type <c3> sp_option_list
+%type <c2> sp_option_item
 /*}}}*/
 
 /* define rule type (node) */
@@ -1099,7 +1111,6 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c2> class_name_with_server_name
 %type <c2> opt_index_with_clause
 %type <c2> index_with_item_list
-%type <c2> opt_authid_and_deterministic
 
 /*}}}*/
 
@@ -1517,6 +1528,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ADDDATE
 %token <cptr> AES
 %token <cptr> ANALYZE
+%token <cptr> ANTI
 %token <cptr> APPROX
 %token <cptr> ARCHIVE
 %token <cptr> ARIA
@@ -1539,6 +1551,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> COLUMNS
 %token <cptr> COMMENT
 %token <cptr> COMMITTED
+%token <cptr> COMPACT
 %token <cptr> COMPILE
 %token <cptr> COST
 %token <cptr> CRITICAL
@@ -1559,6 +1572,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ERROR_
 %token <cptr> EXACT
 %token <cptr> EXPLAIN
+%token <cptr> FILL_FACTOR
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
 %token <cptr> FULLSCAN
@@ -1652,6 +1666,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> OWNER
 %token <cptr> PAGE
 %token <cptr> PARALLEL
+%token <cptr> PARALLEL_ENABLE
 %token <cptr> PARTITIONING
 %token <cptr> PARTITIONS
 %token <cptr> PASSWORD
@@ -1692,6 +1707,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
 %token <cptr> SEED_
+%token <cptr> SEMI
 %token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
@@ -2965,16 +2981,11 @@ create_stmt
 		}
 	  procedure_or_function_name_without_dot        /* 5 */
 	  opt_sp_param_list	                        /* 6 */
-          opt_authid_and_deterministic                  /* 7 */
+          opt_sp_option_list                            /* 7 */
 	  is_or_as pl_language_spec		        /* 8, 9 */
 	  opt_comment_spec				/* 10 */
 		{ pop_msg(); }
 		{{
-			if (TO_NUMBER (CONTAINER_AT_1 ($7)) != 0)
-                          {
-                            push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PROCEDURE);
-                          }
-
                         PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
@@ -3006,6 +3017,18 @@ create_stmt
                               {
                                 node->info.sp.auth_id = PT_AUTHID_OWNER;
                               }
+                            if (TO_NUMBER (CONTAINER_AT_1 ($7)) != 0)
+                              {
+                                /* DETERMINISTIC | NOT DETERMINISTIC is allowed only for functions */
+                                PT_ERROR (this_parser, node, "DETERMINISTIC can be specified only for FUNCTION");
+                              }
+                            if (((int) TO_NUMBER (CONTAINER_AT_2 ($7)) & (0x01 << SP_OPTION_PARALLEL_ENABLE)) != 0)
+                              {
+                                /* PARALLEL_ENABLE is allowed only for functions: a procedure never appears in a
+                                 * query expression, so the declaration could not take effect anywhere */
+                                PT_ERROR (this_parser, node, "PARALLEL_ENABLE can be specified only for FUNCTION");
+                              }
+                            node->info.sp.parallel_enable = 0;
 			    node->info.sp.param_list = $6;
 			    node->info.sp.ret_type = PT_TYPE_NONE;
 			    node->info.sp.ret_data_type = NULL;
@@ -3028,7 +3051,7 @@ create_stmt
 	  procedure_or_function_name_without_dot        /* 5 */
 	  opt_sp_param_list	                        /* 6 */
 	  RETURN sp_return_type		                /* 7, 8 */
-          opt_authid_and_deterministic                  /* 9 */
+          opt_sp_option_list                            /* 9 */
 	  is_or_as pl_language_spec		        /* 10, 11 */
 	  opt_comment_spec				/* 12 */
 		{ pop_msg(); }
@@ -3070,6 +3093,8 @@ create_stmt
                               {
                                 node->info.sp.dtrm_type = PT_NOT_DETERMINISTIC;
                               }
+                            node->info.sp.parallel_enable =
+                              ((int) TO_NUMBER (CONTAINER_AT_2 ($9)) & (0x01 << SP_OPTION_PARALLEL_ENABLE)) ? 1 : 0;
 			    node->info.sp.param_list = $6;
 
                             ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
@@ -3893,6 +3918,42 @@ alter_stmt
 
 		  $$ = node;
 		  PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| ALTER						/* 1 */
+	  INDEX						/* 2 */
+	  identifier					/* 3 */
+	  ON_						/* 4 */
+	  only_class_name				/* 5 */
+	  COMPACT					/* 6 */
+	  opt_compact_fill_factor			/* 7 */
+		{{
+			/* CBRD-27401: ALTER INDEX idx ON tbl COMPACT [WITH FILL_FACTOR = n] */
+			PT_NODE* node = parser_new_node(this_parser, PT_ALTER_INDEX);
+
+			if (node)
+			  {
+			    node->info.index.code = PT_COMPACT_INDEX;
+			    node->info.index.index_name = $3;
+			    node->info.index.fill_factor = $7;
+
+			    if (node->info.index.index_name)
+			      {
+			        node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
+			      }
+
+			    if ($5 != NULL)
+			      {
+			        PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			        ocs->info.spec.entity_name = $5;
+			        ocs->info.spec.only_all = PT_ONLY;
+			        ocs->info.spec.meta_class = PT_CLASS;
+
+			        node->info.index.indexed_class = ocs;
+			      }
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	| ALTER						/* 1 */
 	  INDEX						/* 2 */
@@ -5063,6 +5124,35 @@ join_table_spec
 			  }
 			$$ = sopt;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| SEMI JOIN table_spec join_condition
+		{{
+			/* SEMI/ANTI JOIN: explicit Trino-style keyword. ON rule (outer-ref conjunct) enforced in semantic check. */
+			PT_NODE *sopt = $3;
+
+			if (sopt)
+			  {
+			    sopt->info.spec.natural = false;
+			    sopt->info.spec.join_type = PT_JOIN_SEMI;
+			    sopt->info.spec.on_cond = $4;
+			  }
+			$$ = sopt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			parser_restore_pseudoc ();
+		}}
+	| ANTI JOIN table_spec join_condition
+		{{
+			PT_NODE *sopt = $3;
+
+			if (sopt)
+			  {
+			    sopt->info.spec.natural = false;
+			    sopt->info.spec.join_type = PT_JOIN_ANTI;
+			    sopt->info.spec.on_cond = $4;
+			  }
+			$$ = sopt;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			parser_restore_pseudoc ();
 		}}
 	;
 
@@ -11701,37 +11791,56 @@ opt_deterministic
                 }}
         ;
 
-opt_authid_and_deterministic
+opt_sp_option_list
         : /* empty */
 		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, NULL, NULL);
+			container_3 ctn;
+			SET_CONTAINER_3 (ctn, NULL, NULL, FROM_NUMBER (0));
 			$$ = ctn;
 		}}
-        | opt_authid opt_deterministic
+        | sp_option_list
 		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), FROM_NUMBER($2));
-			$$ = ctn;
+			$$ = $1;
 		}}
-        | opt_deterministic opt_authid
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($2), FROM_NUMBER($1));
-			$$ = ctn;
-		}}
-        | opt_authid
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER($1), NULL);
-			$$ = ctn;
-		}}
+        ;
+
+sp_option_list
+        : sp_option_list sp_option_item
+          {{
+                container_3 ctn = $1;
+
+                pt_fill_sp_option_container (this_parser, @$.buffer_pos, &ctn, $2);
+		$$ = ctn;
+           }}
+        | sp_option_item
+          {{
+                container_3 ctn;
+                SET_CONTAINER_3 (ctn, NULL, NULL, FROM_NUMBER (0));
+
+                pt_fill_sp_option_container (this_parser, @$.buffer_pos, &ctn, $1);
+		$$ = ctn;
+           }}
+        ;
+
+sp_option_item
+        : opt_authid
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_AUTHID), FROM_NUMBER ($1));
+                $$ = ctn;
+          }}
         | opt_deterministic
-		{{
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, NULL, FROM_NUMBER($1));
-			$$ = ctn;
-		}}
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_DETERMINISTIC), FROM_NUMBER ($1));
+                $$ = ctn;
+          }}
+        | PARALLEL_ENABLE
+          {{
+                container_2 ctn;
+                SET_CONTAINER_2 (ctn, FROM_NUMBER (SP_OPTION_PARALLEL_ENABLE), FROM_NUMBER (1));
+                $$ = ctn;
+          }}
         ;
 
 is_or_as
@@ -19957,6 +20066,29 @@ index_with_item_list
           }
         ;        
 
+opt_compact_fill_factor
+	: /* empty */
+	   {{
+		$$ = BTREE_COMPACT_DEFAULT_FILL_FACTOR;
+	   }}
+	| WITH FILL_FACTOR opt_equalsign unsigned_integer
+	   {{
+		/* unsigned_integer keeps a literal that does not fit an int in the bigint member of the value union,
+		 * so reading the int member would silently truncate it: FILL_FACTOR = 4294967386 would pass as 90.
+		 * Anything but an int literal is out of range by definition. */
+		int fill_factor =
+		  ($4->type_enum == PT_TYPE_INTEGER) ? (int) $4->info.value.data_value.i : BTREE_COMPACT_MAX_FILL_FACTOR + 1;
+		if (fill_factor < BTREE_COMPACT_MIN_FILL_FACTOR || fill_factor > BTREE_COMPACT_MAX_FILL_FACTOR)
+		  {
+		    pt_cat_error (this_parser, NULL, MSGCAT_SET_PARSER_SYNTAX,
+				  MSGCAT_SYNTAX_INVALID_FILL_FACTOR_ARGUMENT, BTREE_COMPACT_MIN_FILL_FACTOR,
+				  BTREE_COMPACT_MAX_FILL_FACTOR);
+		    fill_factor = BTREE_COMPACT_DEFAULT_FILL_FACTOR;
+		  }
+		$$ = fill_factor;
+	   }}
+	;
+
 online_parallel
 	: ONLINE
 	   {{
@@ -20639,6 +20771,7 @@ identifier
 	| COLUMNS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMMENT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMPACT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20661,6 +20794,7 @@ identifier
 	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXACT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FILL_FACTOR            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20751,6 +20885,7 @@ identifier
 	| OWNER                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PAGE                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARALLEL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARALLEL_ENABLE        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARTITIONING           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PARTITIONS             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PASSWORD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -24019,6 +24154,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_HASH_LIST_SCAN", PT_HINT_NO_HASH_LIST_SCAN),
   INIT_PT_HINT("NO_PUSH_PRED", PT_HINT_NO_PUSH_PRED),
   INIT_PT_HINT("NO_MERGE", PT_HINT_NO_MERGE),
+  INIT_PT_HINT("NO_UNNEST", PT_HINT_NO_UNNEST),
   INIT_PT_HINT("NO_SUBQUERY_CACHE", PT_HINT_NO_SUBQUERY_CACHE),
   INIT_PT_HINT("NO_PARALLEL_SCAN", PT_HINT_NO_PARALLEL_SCAN),
   INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
@@ -25913,6 +26049,50 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
     unsigned int set_bits = (unsigned int)TO_NUMBER(CONTAINER_AT_9(*ctn));
     set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
     ctn->c10 = FROM_NUMBER(set_bits);
+}
+
+static void
+pt_fill_sp_option_container(PARSER_CONTEXT *parser,  int buffer_pos, container_3 *ctn, container_2 info)
+{
+  /* container order
+  * 1: AUTHID
+  * 2: DETERMINISTIC
+  * 3: bits
+  */
+   PT_NODE* node = pt_top(parser);
+   PARSER_SAVE_ERR_CONTEXT (node, buffer_pos)
+
+   unsigned int set_bits = (unsigned int)TO_NUMBER(CONTAINER_AT_2(*ctn));
+
+   switch(TO_NUMBER (CONTAINER_AT_0(info)))
+     {
+        case SP_OPTION_AUTHID:
+                if (set_bits & (0x01 << SP_OPTION_AUTHID))
+                {
+                    PT_ERROR (parser, node, "AUTHID option was duplicated.");
+                }
+                ctn->c1 = CONTAINER_AT_1(info);
+                break;
+        case SP_OPTION_DETERMINISTIC:
+                if (set_bits & (0x01 << SP_OPTION_DETERMINISTIC))
+                {
+                    PT_ERROR (parser, node, "DETERMINISTIC option was duplicated.");
+                }
+                ctn->c2 = CONTAINER_AT_1(info);
+                break;
+        case SP_OPTION_PARALLEL_ENABLE:
+                if (set_bits & (0x01 << SP_OPTION_PARALLEL_ENABLE))
+                {
+                    PT_ERROR (parser, node, "PARALLEL_ENABLE option was duplicated.");
+                }
+                break;
+        default:
+                assert(0);
+                break;
+    }
+
+    set_bits |= (0x01 << TO_NUMBER (CONTAINER_AT_0(info)));
+    ctn->c3 = FROM_NUMBER(set_bits);
 }
 
 static bool

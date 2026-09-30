@@ -121,6 +121,7 @@ int qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggreg
 int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_CODE func_type,
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc);
+void qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list);
 int qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list, val_descr *vd,
 				   cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index);
 int qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_ptr, HFID *hfid,
@@ -150,7 +151,8 @@ void qdata_load_agg_hvalue_in_agg_list (cubquery::aggregate_hash_value *value, c
 int qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key,
 				   cubquery::aggregate_hash_value *value, DB_VALUE *temp_dbval_array,
 				   qfile_list_id *list_id);
-int qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, cubquery::aggregate_hash_key *key,
+int qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size,
+				      cubquery::aggregate_hash_key *key,
 				      cubquery::aggregate_hash_value *value, tp_domain **key_dom,
 				      cubxasl::aggregate_accumulator_domain **acc_dom);
 SCAN_CODE qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id,

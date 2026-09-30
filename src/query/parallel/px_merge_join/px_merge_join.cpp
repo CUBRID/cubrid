@@ -154,9 +154,10 @@ namespace parallel_query
       manager.m_outputs.assign (range_cnt, NULL);
       for (int i = 0; i < range_cnt; i++)
 	{
-	  /* range 0's list becomes the gathered result, so it carries the caller's ls_flag. All outputs are
-	   * file-backed: qfile_connect_list splices page chains, which membuf pages cannot join */
-	  int out_flag = ((i == 0) ? ls_flag : QFILE_FLAG_ALL) | QFILE_NOT_USE_MEMBUF;
+	  /* range 0's list becomes the gathered result, so it carries the caller's ls_flag; the others only inherit
+	   * its backward flag so every range has the same tuple header size. All outputs are file-backed:
+	   * qfile_connect_list splices page chains, which membuf pages cannot join */
+	  int out_flag = ((i == 0) ? ls_flag : (QFILE_FLAG_ALL | (ls_flag & QFILE_FLAG_BACKWARD))) | QFILE_NOT_USE_MEMBUF;
 	  manager.m_outputs[i] = qfile_open_list (thread_p, &type_list, NULL, outer_list_id->query_id,
 						  out_flag, NULL);
 	  if (manager.m_outputs[i] == NULL)

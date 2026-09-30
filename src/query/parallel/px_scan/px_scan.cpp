@@ -28,6 +28,7 @@
 #include "query_evaluator.h"
 #include "error_context.hpp"
 #include "query_executor.h"
+#include "query_aggregate.hpp"		/* qdata_link_shared_accumulators */
 #include "system.h"
 #include "xasl.h"
 #include "fetch.h"
@@ -434,12 +435,6 @@ extern "C"
 
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
-
-    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
-    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
-      {
-	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
-      }
 
     /* should check LIST_MERGE in checker */
     if (ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
@@ -871,8 +866,10 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
-    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* mergeable results are flattened at the result-cache point in xqmgr_execute_query when the query is
+     * cacheable; other cacheable result types would still leak worker intermediate state, so they stay blocked. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
+	&& !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
 	return NO_ERROR;
       }
@@ -1324,8 +1321,10 @@ extern "C"
 	return NO_ERROR;
       }
 
-    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
-    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* mergeable results are flattened at the result-cache point in xqmgr_execute_query when the query is
+     * cacheable; other cacheable result types would still leak worker intermediate state, so they stay blocked. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED)
+	&& !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST))
       {
 	return NO_ERROR;
       }
@@ -1977,6 +1976,15 @@ namespace parallel_scan
 	  {
 	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (m_thread_p, m_xasl, m_vd,
 		&m_xasl->proc.buildlist.g_agg_domains_resolved);
+
+	    if (m_xasl->proc.buildlist.g_agg_domains_resolved)
+	      {
+		/* Sharing needs the resolved accumulator domains, so it is linked here,
+		 * at the parallel BUILDLIST's resolve point. The sort-based group-by
+		 * after the gather reads the links. */
+		qdata_link_shared_accumulators (m_xasl->proc.buildlist.g_agg_list);
+		m_g_agg_domain_resolve_need = false;
+	      }
 	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)

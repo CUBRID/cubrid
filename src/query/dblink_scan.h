@@ -84,6 +84,13 @@ struct dblink_conn_info
   char conn_url[MAX_LEN_CONNECTION_URL + 1];
   char user_name[DB_MAX_USER_LENGTH + 1];
   char password[DB_MAX_PASSWORD_LENGTH + 1];
+  /* true if the participant cannot execute XA prepare (e.g. a gateway to a
+   * third-party DBMS); such a participant is committed with a plain end-tran
+   * at prepare time and must be excluded from the XA decision-delivery and
+   * daemon-enqueue paths that assume an XA-prepared branch.  In-memory only:
+   * entries rebuilt from _db_global_tran during recovery lose this flag and
+   * are guarded by the permanent-failure error-code check instead */
+  bool xa_unsupported;
 };
 
 /*

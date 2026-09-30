@@ -121,6 +121,8 @@ void histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selecti
 void histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success);
 void histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case_sensitive,
 				      double fallback_sel, double *selectivity, bool *success);
+/* distinct value count of the column the node resolves to (MCV entries + non-MCV distinct) */
+void histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success);
 /* the row count the column's histogram was built from, for callers that combine two probes and
  * need the same one-row floor the single probes apply. Returns false when the column has no
  * usable histogram. */

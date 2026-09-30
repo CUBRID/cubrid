@@ -30,6 +30,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "qfile_tuple_layout.h"
 #include "query_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -59,6 +60,7 @@ namespace parallel_query
 	    }
 	  spec.domains[i] = list_id->type_list.domp[columns[i]];
 	}
+      spec.type_list = &list_id->type_list;
       return NO_ERROR;
     }
 
@@ -72,24 +74,16 @@ namespace parallel_query
     }
 
     int
-    read_key (QFILE_TUPLE tpl, const key_spec &spec, bool copy, DB_VALUE *vals)
+    read_key (QFILE_TUPLE_RECORD *rec, const key_spec &spec, bool copy, DB_VALUE *vals)
     {
       for (int i = 0; i < spec.cnt; i++)
 	{
-	  char *valhp;
 	  TP_DOMAIN *dom = spec.domains[i];
-	  OR_BUF buf;
+	  bool is_null;
 
 	  db_make_null (&vals[i]);
-	  QFILE_GET_TUPLE_VALUE_HEADER_POSITION (tpl, spec.columns[i], valhp);
-	  int len = QFILE_GET_TUPLE_VALUE_LENGTH (valhp);
-	  if (len == 0)
-	    {
-	      continue;
-	    }
-	  or_init (&buf, valhp + QFILE_TUPLE_VALUE_HEADER_SIZE, len);
 	  bool is_set = pr_is_set_type (TP_DOMAIN_TYPE (dom)) ? true : false;
-	  if (dom->type->data_readval (&buf, &vals[i], dom, -1, (copy || is_set), NULL, 0) != NO_ERROR)
+	  if (qfile_slot_read_column_value (rec, spec.columns[i], dom, &vals[i], (copy || is_set), &is_null) != NO_ERROR)
 	    {
 	      clear_key (vals, i);
 	      return ER_FAILED;
@@ -309,10 +303,12 @@ namespace parallel_query
 	  }
 
 	QFILE_TUPLE tpl = NULL;
+	QFILE_TUPLE_RECORD cur = QFILE_TUPLE_RECORD_INITIALIZER;
 	int error = fetch_tuple_at (thread_p, list_id, page, QFILE_GET_LAST_TUPLE_OFFSET (page), ovf_rec, tpl);
 	if (error == NO_ERROR)
 	  {
-	    error = read_key (tpl, spec, true, key);
+	    qfile_slot_set_tuple_ptr_and_layout (&cur, tpl, 0, spec.type_list);
+	    error = read_key (&cur, spec, true, key);
 	    st.decodes++;
 	  }
 	free_dir_page (thread_p, list_id, dir, idx, page);
@@ -369,7 +365,7 @@ namespace parallel_query
 				    const key_spec &spec, int degree, std::vector<partition_key> &boundaries,
 				    bool &incomparable, prepass_stats &st)
       {
-	QFILE_TUPLE_RECORD ovf_rec = { NULL, 0 };
+	QFILE_TUPLE_RECORD ovf_rec = QFILE_TUPLE_RECORD_INITIALIZER;
 	std::vector<DB_VALUE> key (spec.cnt);
 	size_t npages = dir.m_vpids.size ();
 	int error = NO_ERROR;
@@ -413,6 +409,7 @@ namespace parallel_query
 			 QFILE_TUPLE_RECORD &ovf_rec, prepass_stats &st)
       {
 	std::vector<DB_VALUE> key (spec.cnt);
+	QFILE_TUPLE_RECORD cur = QFILE_TUPLE_RECORD_INITIALIZER;
 	PAGE_PTR page = fix_dir_page (thread_p, list_id, dir, idx, st);
 	int error = NO_ERROR;
 
@@ -429,7 +426,8 @@ namespace parallel_query
 	    error = fetch_tuple_at (thread_p, list_id, page, offset, ovf_rec, tpl);
 	    if (error == NO_ERROR)
 	      {
-		error = read_key (tpl, spec, false, key.data ());
+		qfile_slot_set_tuple_ptr_and_layout (&cur, tpl, 0, spec.type_list);
+		error = read_key (&cur, spec, false, key.data ());
 		st.decodes++;
 	      }
 	    if (error != NO_ERROR)
@@ -468,7 +466,7 @@ namespace parallel_query
 			     std::vector<partition_start> &starts, bool &incomparable, bool &handled,
 			     prepass_stats &st)
       {
-	QFILE_TUPLE_RECORD ovf_rec = { NULL, 0 };
+	QFILE_TUPLE_RECORD ovf_rec = QFILE_TUPLE_RECORD_INITIALIZER;
 	std::vector<DB_VALUE> key (spec.cnt), land_key (spec.cnt);
 	size_t npages = dir.m_vpids.size ();
 	size_t bi = 0;
@@ -561,7 +559,8 @@ namespace parallel_query
 				  std::vector<partition_key> &boundaries, bool &incomparable, bool &handled,
 				  prepass_stats &st)
       {
-	QFILE_TUPLE_RECORD ovf_rec = { NULL, 0 };
+	QFILE_TUPLE_RECORD ovf_rec = QFILE_TUPLE_RECORD_INITIALIZER;
+	QFILE_TUPLE_RECORD cur = QFILE_TUPLE_RECORD_INITIALIZER;
 	INT64 n = list_id->tuple_cnt;
 	INT64 page_first_idx = 0;
 	VPID vpid = list_id->first_vpid;
@@ -608,7 +607,8 @@ namespace parallel_query
 
 		partition_key candidate;
 		candidate.m_vals.resize (spec.cnt);
-		error = read_key (tpl, spec, true, candidate.m_vals.data ());
+		qfile_slot_set_tuple_ptr_and_layout (&cur, tpl, 0, spec.type_list);
+		error = read_key (&cur, spec, true, candidate.m_vals.data ());
 		st.decodes++;
 		if (error != NO_ERROR)
 		  {
@@ -642,7 +642,7 @@ namespace parallel_query
 				  std::vector<partition_key> &boundaries, bool &incomparable)
       {
 	QFILE_LIST_SCAN_ID scan;
-	QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+	QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 	INT64 n = list_id->tuple_cnt;
 	int error = NO_ERROR;
 
@@ -672,7 +672,7 @@ namespace parallel_query
 
 	    partition_key candidate;
 	    candidate.m_vals.resize (spec.cnt);
-	    error = read_key (tplrec.tpl, spec, true, candidate.m_vals.data ());
+	    error = read_key (&tplrec, spec, true, candidate.m_vals.data ());
 	    if (error != NO_ERROR)
 	      {
 		break;
@@ -722,7 +722,8 @@ namespace parallel_query
 			   const std::vector<partition_key> &boundaries, std::vector<partition_start> &starts,
 			   bool &incomparable, bool &handled, prepass_stats &st)
       {
-	QFILE_TUPLE_RECORD ovf_rec = { NULL, 0 };
+	QFILE_TUPLE_RECORD ovf_rec = QFILE_TUPLE_RECORD_INITIALIZER;
+	QFILE_TUPLE_RECORD cur = QFILE_TUPLE_RECORD_INITIALIZER;
 	std::vector<DB_VALUE> key (spec.cnt);
 	VPID vpid = list_id->first_vpid;
 	size_t bi = 0;
@@ -755,7 +756,8 @@ namespace parallel_query
 		error = fetch_tuple_at (thread_p, list_id, page, QFILE_GET_LAST_TUPLE_OFFSET (page), ovf_rec, tpl);
 		if (error == NO_ERROR)
 		  {
-		    error = read_key (tpl, spec, false, key.data ());
+		    qfile_slot_set_tuple_ptr_and_layout (&cur, tpl, 0, spec.type_list);
+		    error = read_key (&cur, spec, false, key.data ());
 		    st.decodes++;
 		  }
 		if (error == NO_ERROR)
@@ -778,7 +780,8 @@ namespace parallel_query
 		error = fetch_tuple_at (thread_p, list_id, page, offset, ovf_rec, tpl);
 		if (error == NO_ERROR)
 		  {
-		    error = read_key (tpl, spec, false, key.data ());
+		    qfile_slot_set_tuple_ptr_and_layout (&cur, tpl, 0, spec.type_list);
+		    error = read_key (&cur, spec, false, key.data ());
 		    st.decodes++;
 		  }
 		if (error != NO_ERROR)
@@ -821,7 +824,7 @@ namespace parallel_query
 			   bool &incomparable)
       {
 	QFILE_LIST_SCAN_ID scan;
-	QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+	QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 	std::vector<DB_VALUE> key (spec.cnt);
 	int error = NO_ERROR;
 
@@ -843,7 +846,7 @@ namespace parallel_query
 		error = ER_FAILED;
 		break;
 	      }
-	    error = read_key (tplrec.tpl, spec, false, key.data ());
+	    error = read_key (&tplrec, spec, false, key.data ());
 	    if (error != NO_ERROR)
 	      {
 		break;
