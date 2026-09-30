@@ -2712,9 +2712,10 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	{
 	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
 	    {
-	      if (t != location)
+	      /* meth_translate() moves a method call in an ON clause into a derived table appended to FROM;
+	       * a node after the outer join comes only from that rewrite, so it keeps the old behavior */
+	      if (t < location)
 		{
-		  QO_ASSERT (env, t < location);
 		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
 		}
 	    }
