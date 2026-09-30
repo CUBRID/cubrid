@@ -4336,6 +4336,12 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    {
 	      pr_clone_value (key, &key_val_range.key1);
 	      pr_clone_value (key, &key_val_range.key2);
+	      if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
+		{
+		  /* key may carry the PK's domain; btree_prepare_bts () gives the range the FK index's. */
+		  key_val_range.key1.data.midxkey.domain = NULL;
+		  key_val_range.key2.data.midxkey.domain = NULL;
+		}
 	    }
 
 	  key_val_range.range = GE_LE;
@@ -4715,6 +4721,12 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    {
 	      pr_clone_value (key, &key_val_range.key1);
 	      pr_clone_value (key, &key_val_range.key2);
+	      if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
+		{
+		  /* key may carry the PK's domain; btree_prepare_bts () gives the range the FK index's. */
+		  key_val_range.key1.data.midxkey.domain = NULL;
+		  key_val_range.key2.data.midxkey.domain = NULL;
+		}
 	    }
 
 	  key_val_range.range = GE_LE;
