@@ -268,6 +268,7 @@ static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep, BI
 static bool qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node);
 static int qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_idx,
 			       QO_SEGMENT ** fk_col_segs_out, QO_EQCLASS ** col_eqclasses_out);
+static QO_EQCLASS *qo_find_term_eqclass_of_segs (QO_ENV * env, QO_SEGMENT * seg1, QO_SEGMENT * seg2);
 static void qo_mark_fk_join_selectivity_floor (QO_ENV * env);
 static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p);
 
@@ -10606,6 +10607,42 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 }
 
 /*
+ * qo_find_term_eqclass_of_segs () - find the eqclass of an equality term that joins two segments
+ * return : the term's own eqclass, or NULL if no such term
+ * env (in)  : environment
+ * seg1 (in) : one segment
+ * seg2 (in) : the other segment
+ *
+ * Note: a semi/anti equi-join term does not merge its segments into a column eqclass;
+ *  qo_assign_eq_classes () gives the term an eqclass of its own instead.
+ */
+static QO_EQCLASS *
+qo_find_term_eqclass_of_segs (QO_ENV * env, QO_SEGMENT * seg1, QO_SEGMENT * seg2)
+{
+  int i;
+
+  for (i = 0; i < env->nedges; i++)
+    {
+      QO_TERM *term = QO_ENV_TERM (env, i);
+      QO_EQCLASS *eqc = QO_TERM_EQCLASS (term);
+
+      if (eqc == NULL || eqc == QO_UNORDERED || QO_EQCLASS_TERM (eqc) != term)
+	{
+	  continue;
+	}
+
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP) && bitset_cardinality (&(QO_TERM_SEGS (term))) == 2
+	  && BITSET_MEMBER (QO_TERM_SEGS (term), QO_SEG_IDX (seg1))
+	  && BITSET_MEMBER (QO_TERM_SEGS (term), QO_SEG_IDX (seg2)))
+	{
+	  return eqc;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * qo_match_fk_prefix () - match composite FK columns with the referenced PK
  * return : number of leading columns matched
  * env (in)              : environment
@@ -10646,7 +10683,14 @@ qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_i
       eqc = QO_SEG_EQCLASS (fk_seg);
       if (eqc == NULL || eqc == QO_UNORDERED || eqc != QO_SEG_EQCLASS (pk_seg))
 	{
-	  break;
+	  /* semi/anti equi-join columns are not merged into a column eqclass,
+	   * but their term has an eqclass of its own
+	   */
+	  eqc = qo_find_term_eqclass_of_segs (env, fk_seg, pk_seg);
+	  if (eqc == NULL)
+	    {
+	      break;
+	    }
 	}
 
       fk_col_segs_out[i] = fk_seg;
@@ -10713,13 +10757,6 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 
 	  fk_node = node_i;
 	  pk_node = node_j;
-
-	  if (QO_NODE_IS_SEMI_ANTI_JOIN (fk_node) || QO_NODE_IS_SEMI_ANTI_JOIN (pk_node))
-	    {
-	      /* Semi/anti equi-join columns are excluded from EQCLASS, so this path is currently unreachable.
-	       * Keep this guard in case that policy changes in the future. */
-	      continue;
-	    }
 
 	  pk_node_indexp = QO_NODE_INDEXES (pk_node);
 	  if (pk_node_indexp == NULL)

@@ -8395,8 +8395,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   if (new_info == NULL)
     {
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
-      double ndv_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
       double fk_floor_product;
+      double ndv_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
       BITSET eqclasses;
       BITSET fk_excluded_terms;
       BITSET fk_col_terms;
@@ -8406,14 +8406,16 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_init (&fk_col_terms, planner->env);
 
       selectivity = 1.0;	/* init */
+      fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
+
+      total_rows = head_info->total_rows * tail_info->total_rows;
+      head_hit_prob = 1.0;
+      tail_hit_prob = 1.0;
+
       ndv_sel = 1.0;
       on_sel = 1.0;
       during_sel = 1.0;
       filter_sel = 1.0;
-      fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
-      total_rows = head_info->total_rows * tail_info->total_rows;
-      head_hit_prob = 1.0;
-      tail_hit_prob = 1.0;
 
       if (join_type == JOIN_RIGHT)
 	{
@@ -8582,7 +8584,38 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		      has_ndv =
 			qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
 
-		      if (!QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+		      if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+			{
+			  if (!QO_ON_COND_TERM (term))
+			    {
+			      /* WHERE-clause term: filters the semi/anti result rows and does not decide the match */
+			      filter_sel *= QO_TERM_SELECTIVITY (term);
+			    }
+			  else if (BITSET_MEMBER (fk_excluded_terms, i))
+			    {
+			      /* semi/anti PK-FK column term: its FK floor goes into on_sel below */
+			    }
+			  else if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN
+				   && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (tail_node)))
+			    {
+			      /* during-join term that does not read the inner: decided once per outer row */
+			      during_sel *= QO_TERM_SELECTIVITY (term);
+			    }
+			  else if (has_ndv && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+			    {
+			      /* semi/anti equi-join term with known NDVs,
+			       * decided by whether the outer key is among the inner keys
+			       */
+			      ndv_sel *= head_factor;
+			    }
+			  else
+			    {
+			      /* semi/anti ON-clause term that reads the inner: decided per pair of rows */
+			      on_sel *= QO_TERM_SELECTIVITY (term);
+			      on_sel = MAX (1.0 / MAX (cardinality, 1.0), on_sel);
+			    }
+			}
+		      else
 			{
 			  if (!BITSET_MEMBER (fk_excluded_terms, i))
 			    {
@@ -8594,30 +8627,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			      selectivity *= QO_TERM_SELECTIVITY (term);
 			      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
 			    }
-			}
-		      else if (!QO_ON_COND_TERM (term))
-			{
-			  /* WHERE-clause term: filters the semi/anti result rows and does not decide the match */
-			  filter_sel *= QO_TERM_SELECTIVITY (term);
-			}
-		      else if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN
-			       && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (tail_node)))
-			{
-			  /* during-join term that does not read the inner: decided once per outer row */
-			  during_sel *= QO_TERM_SELECTIVITY (term);
-			}
-		      else if (has_ndv && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
-			{
-			  /* semi/anti equi-join term with known NDVs,
-			   * decided by whether the outer key is among the inner keys
-			   */
-			  ndv_sel *= head_factor;
-			}
-		      else
-			{
-			  /* semi/anti ON-clause term that reads the inner: decided per pair of rows */
-			  on_sel *= QO_TERM_SELECTIVITY (term);
-			  on_sel = MAX (1.0 / MAX (cardinality, 1.0), on_sel);
 			}
 
 		      head_hit_prob *= head_factor;
@@ -8634,7 +8643,10 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 	  if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	    {
-	      double match_prob = during_sel * ndv_sel * MIN (1.0, on_sel * tail_info->cardinality);
+	      double match_prob;
+
+	      on_sel *= fk_floor_product;
+	      match_prob = during_sel * ndv_sel * MIN (1.0, on_sel * tail_info->cardinality);
 
 	      /* semi/anti returns at most one row per outer row,
 	       * so the estimate uses the probability that an outer row finds a matching inner row, as below
@@ -8644,7 +8656,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	       *   semijoin   = outer * match_prob * filter_sel
 	       *
 	       *   ndv_sel    = MIN (1, NDV (inner key) / NDV (outer key)) of the equi-join terms with known NDVs
-	       *   on_sel     = selectivity of one pair for the other ON-clause terms that read the inner
+	       *   on_sel     = selectivity of one pair for the other ON-clause terms that read the inner,
+	       *                with the FK floor (fk_floor_product) in place of the PK-FK column terms
 	       *   during_sel = selectivity of the during-join terms that do not read the inner
 	       *   filter_sel = selectivity of the WHERE-clause terms
 	       *   N          = inner rows (tail_info->cardinality)
