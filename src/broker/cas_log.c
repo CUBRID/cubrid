@@ -187,6 +187,8 @@ static volatile sig_atomic_t sql_log_unmasked = SQL_LOG_UNMASKED_NONE;
 static volatile sig_atomic_t sql_log_unmask_flush_pending = 0;
 static timer_t sql_log_timer;	/* SQL log only, cas_slow_log_end () flushes the slow log */
 static bool sql_log_timer_created = false;
+/* a flush is scheduled, so do not arm another timer until it fires */
+static volatile sig_atomic_t sql_log_timer_armed = 0;
 
 static void arm_flush_timer (void);
 static void cas_log_timer_init (void);
@@ -1552,6 +1554,7 @@ cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx)
     {
       return;
     }
+  sql_log_timer_armed = 0;
   if (as_info == NULL || as_info->cur_sql_log_mode != SQL_LOG_MODE_ALL)
     {
       /* the log mode changed before the timer fired, so ignore it.
@@ -1610,7 +1613,10 @@ arm_flush_timer (void)
 
   memset (&its, 0, sizeof (its));
   its.it_value.tv_sec = 1;
-  timer_settime (sql_log_timer, 0, &its, NULL);
+  if (timer_settime (sql_log_timer, 0, &its, NULL) == 0)
+    {
+      sql_log_timer_armed = 1;
+    }
 }
 
 static int
@@ -1696,7 +1702,6 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd)
   size_t result;
   bool buf_overflow;
   bool oversized_log_data;
-  bool was_empty;
 
   n = size * nmemb;
   if (n == 0)
@@ -1746,13 +1751,12 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd)
       goto done;
     }
 
-  was_empty = (lfd->buf_used == lfd->buf_flushed);
   memcpy (lfd->buf + lfd->buf_used, ptr, n);
   CAS_LOG_COMPILER_BARRIER ();
   lfd->buf_used += (int) n;
-  if (was_empty && lfd == &sql_log_fd)
+  if (!sql_log_timer_armed && !sql_log_write_flush_pending && lfd == &sql_log_fd)
     {
-      arm_flush_timer ();	/* arm once when the buffer turns non-empty, never per line */
+      arm_flush_timer ();
     }
 
 done:
@@ -1948,6 +1952,7 @@ cas_fclose (CAS_LOG_FD * lfd)
 
       memset (&off, 0, sizeof (off));
       timer_settime (sql_log_timer, 0, &off, NULL);
+      sql_log_timer_armed = 0;
     }
   fd = lfd->fd;
   lfd->fd = -1;			/* fd first: the handler must not write to a closed descriptor */
