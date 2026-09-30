@@ -96,8 +96,8 @@ extern "C"
 #endif
   extern int db_ping_server (int client_val, int *server_val);
 #if !defined(SERVER_MODE)
-  extern void db_disable_modification (void);
-  extern void db_enable_modification (void);
+  extern int db_disable_modification (void);
+  extern int db_enable_modification (void);
 #endif
   extern int db_commit_transaction (void);
   extern int db_abort_transaction (void);

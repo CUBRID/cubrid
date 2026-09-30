@@ -1153,12 +1153,13 @@ db_ping_server (int client_val, int *server_val)
  *
  * NOTE: This function will change 'db_Disable_modifications'.
  */
-void
+int
 db_disable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
   assert (db_Disable_modifications >= 0);
   db_Disable_modifications++;
+  return NO_ERROR;
 }
 
 /*
@@ -1167,12 +1168,13 @@ db_disable_modification (void)
  *
  * NOTE: This function will change 'db_Disable_modifications'.
  */
-void
+int
 db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
   db_Disable_modifications--;
   assert (db_Disable_modifications >= 0);
+  return NO_ERROR;
 }
 #endif
 

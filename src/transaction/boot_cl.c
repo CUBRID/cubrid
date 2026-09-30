@@ -1492,7 +1492,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 
   //oid_set_root (&boot_Server_credential.root_class_oid);
-  //OID_INIT_TEMPID ();
+  OID_INIT_TEMPID ();
 
   sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, true);
   au_init ();			/* initialize authorization globals */
