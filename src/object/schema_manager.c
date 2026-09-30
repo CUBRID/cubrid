@@ -15575,6 +15575,24 @@ sm_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool wit
   set_savepoint = true;
 
   error = smt_add_histogram (classop, attr_name, bucket_count, with_fullscan);
+  if (error == ER_BTREE_UNIQUE_FAILED)
+    {
+      /* Another session inserted this column's row while we were inserting ours.  The existence
+       * check above reads the latest committed version and takes no lock (CBRD-27369), so it
+       * cannot see a concurrent uncommitted insert -- this unique violation is the only place
+       * that race shows, and any two sessions first-collecting the same column reach it.  The
+       * unique insert waits for the other transaction, so by the time this error comes back that
+       * row is committed: the entry does exist, which is what the caller asked.  Undo our own
+       * attempt and report it as existing, so the caller stores its histogram into the row that
+       * is there instead of failing (before this, the caller printed the error, rolled the
+       * statement's histograms and statistics back to its own savepoint, and still reported
+       * success).  _db_histogram carries exactly one constraint -- UNIQUE (class_of, key_attr),
+       * see system_catalog_initializer::get_histogram () -- so this error cannot mean any other
+       * key. */
+      (void) tran_abort_upto_system_savepoint (SM_ADD_HISTOGRAM_SAVEPOINT_NAME);
+      er_clear ();
+      return ER_LC_CLASSNAME_EXIST;
+    }
   if (error != NO_ERROR)
     {
       goto error_exit;
