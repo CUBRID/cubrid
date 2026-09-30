@@ -27,7 +27,11 @@
  * test_writeset_stress.cpp.
  */
 
-#include "test_wset_common.hpp"
+#include "test_writeset_common.hpp"
+
+#include <atomic>
+#include <cerrno>
+#include <chrono>
 
 using namespace wstest;
 
@@ -391,6 +395,31 @@ TEST_CASE ("read slot on a never-written key: parallel siblings, monotonic stamp
   delete parent_delete;
 }
 
+TEST_CASE ("write slot keeps the newest commit when publishes arrive out of order", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA newer_lsa = lsa_of (50, 0);
+  LOG_LSA older_lsa = lsa_of (30, 0);
+
+  log_tdes *newer = make_tdes (1);
+  add_write_int (newer, &cls, 7);
+  wset_publish_commit_to_history (newer, &newer_lsa);
+
+  log_tdes *delayed_older = make_tdes (2);
+  add_write_int (delayed_older, &cls, 7);
+  wset_publish_commit_to_history (delayed_older, &older_lsa);
+
+  log_tdes *successor = make_tdes (3);
+  add_write_int (successor, &cls, 7);
+  LOG_LSA dependency = probe (successor);
+  REQUIRE (LSA_EQ (&dependency, &newer_lsa));
+
+  delete newer;
+  delete delayed_older;
+  delete successor;
+}
+
 TEST_CASE ("overflow demotes to commit order and raises the history floor", "[writeset]")
 {
   ws_history_guard history;
@@ -421,6 +450,139 @@ TEST_CASE ("overflow demotes to commit order and raises the history floor", "[wr
   delete t1;
   delete ovf;
   delete t3;
+}
+
+TEST_CASE ("delayed overflow clear preserves a newer published commit as the history floor", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA older_lsa = lsa_of (100, 0);
+  LOG_LSA newer_lsa = lsa_of (110, 0);
+
+  log_tdes *newer = make_tdes (2);
+  add_write_int (newer, &cls, 7);
+  wset_publish_commit_to_history (newer, &newer_lsa);
+
+  log_tdes *delayed_overflow = make_tdes (1);
+  delayed_overflow->wset_overflow = true;
+  wset_publish_commit_to_history (delayed_overflow, &older_lsa);
+
+  REQUIRE (LSA_EQ (&wset_History.history_start, &newer_lsa));
+  REQUIRE (wset_History.map.size () == 0);
+
+  log_tdes *successor = make_tdes (3);
+  add_write_int (successor, &cls, 7);
+  LOG_LSA dependency = probe (successor);
+  REQUIRE (LSA_EQ (&dependency, &newer_lsa));
+
+  delete newer;
+  delete delayed_overflow;
+  delete successor;
+}
+
+TEST_CASE ("probe keeps the sequence lock until the history snapshot is acquired", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  log_tdes *tx = make_tdes (1);
+  LOG_LSA dependency;
+  std::atomic<bool> probe_entered {false};
+
+  add_write_int (tx, &cls, 7);
+
+  /* Hold the history lock so the probe has to stop between acquiring seq_lock and taking its
+   * history snapshot. The fixed protocol retains seq_lock at that point; the former mixed-snapshot
+   * protocol released it before waiting for history_lock. */
+  pthread_rwlock_wrlock (&wset_History.history_lock);
+  std::thread worker ([&] ()
+  {
+    probe_entered.store (true, std::memory_order_release);
+    wset_find_dependency_from_history (tx, &dependency);
+  });
+
+  while (!probe_entered.load (std::memory_order_acquire))
+    {
+      std::this_thread::yield ();
+    }
+
+  bool observed_seq_lock = false;
+  bool retained_seq_lock = false;
+  int unexpected_lock_result = 0;
+  auto observe_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (1);
+  while (std::chrono::steady_clock::now () < observe_deadline)
+    {
+      int lock_result = pthread_mutex_trylock (&wset_History.seq_lock);
+      if (lock_result == EBUSY)
+	{
+	  observed_seq_lock = true;
+	  break;
+	}
+      if (lock_result != 0)
+	{
+	  unexpected_lock_result = lock_result;
+	  break;
+	}
+      pthread_mutex_unlock (&wset_History.seq_lock);
+      std::this_thread::yield ();
+    }
+
+  if (observed_seq_lock)
+    {
+      retained_seq_lock = true;
+      auto retain_deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (10);
+      while (std::chrono::steady_clock::now () < retain_deadline)
+	{
+	  int lock_result = pthread_mutex_trylock (&wset_History.seq_lock);
+	  if (lock_result == 0)
+	    {
+	      pthread_mutex_unlock (&wset_History.seq_lock);
+	      retained_seq_lock = false;
+	      break;
+	    }
+	  if (lock_result != EBUSY)
+	    {
+	      unexpected_lock_result = lock_result;
+	      retained_seq_lock = false;
+	      break;
+	    }
+	  std::this_thread::yield ();
+	}
+    }
+
+  pthread_rwlock_unlock (&wset_History.history_lock);
+  worker.join ();
+
+  REQUIRE (unexpected_lock_result == 0);
+  REQUIRE (observed_seq_lock);
+  REQUIRE (retained_seq_lock);
+  REQUIRE (LSA_ISNULL (&dependency));
+
+  delete tx;
+}
+
+TEST_CASE ("probe never lowers a dependency below the observed history floor", "[writeset]")
+{
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA old_baseline = lsa_of (100, 0);
+  LOG_LSA new_floor = lsa_of (200, 0);
+  log_tdes *tx = make_tdes (1);
+
+  /* Inject the mixed values that exposed R02 to pin the final defensive floor independently of the
+   * locking protocol. A normal execution cannot create this pair once snapshot locking is correct. */
+  pthread_mutex_lock (&wset_History.seq_lock);
+  pthread_rwlock_wrlock (&wset_History.history_lock);
+  LSA_COPY (&wset_History.prev_commit_lsa, &old_baseline);
+  LSA_COPY (&wset_History.history_start, &new_floor);
+  pthread_rwlock_unlock (&wset_History.history_lock);
+  pthread_mutex_unlock (&wset_History.seq_lock);
+
+  add_write_int (tx, &cls, 7);
+  LOG_LSA dependency = probe (tx);
+
+  REQUIRE (LSA_EQ (&dependency, &new_floor));
+
+  delete tx;
 }
 
 TEST_CASE ("per-transaction key limit flips the transaction to overflow", "[writeset]")

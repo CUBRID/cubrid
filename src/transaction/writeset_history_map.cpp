@@ -59,7 +59,10 @@ wset_history_map::publish (LOG_WSET_HASH hash, LOG_WSET_KIND kind, const LOG_LSA
 
   if (kind == LOG_WSET_KIND_WRITE)
     {
-      LSA_COPY (&acc->second.write_seq, &commit_lsa);
+      if (LSA_GT (&commit_lsa, &acc->second.write_seq))
+	{
+	  LSA_COPY (&acc->second.write_seq, &commit_lsa);
+	}
       return;
     }
 

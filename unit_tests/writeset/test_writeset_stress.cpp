@@ -49,7 +49,7 @@
 #include <cstdio>
 #include <string>
 
-#include "test_wset_common.hpp"
+#include "test_writeset_common.hpp"
 
 using namespace wstest;
 

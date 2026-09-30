@@ -57,7 +57,7 @@
 #include <string>
 #include <vector>
 
-#include "test_wset_common.hpp"
+#include "test_writeset_common.hpp"
 
 using namespace wstest;
 
@@ -218,20 +218,15 @@ namespace
      * key is lost or duplicated regardless of how the commits interleaved */
     REQUIRE (wset_History.map.size () == (size_t) distinct);
 
-    /* a fresh writer probing an existing key must see a valid published commit
-     * LSA, never null and never garbage. In the disjoint scenario each key was
-     * written by exactly one thread, so the writer is that thread and the value
-     * is exact. In the row-conflict scenario every thread wrote the key with no
-     * row lock ordering them, so write_seq settles on one of their commit LSAs;
-     * the deterministic invariant is that it is one of them. */
+    /* A fresh writer probing an existing key must see the newest published
+     * commit LSA. This remains deterministic even when publishers race. */
     log_tdes *probe_tx = make_tdes (999999);
     add_write_int (probe_tx, &cls, 0);
     LOG_LSA dep = probe (probe_tx);
     if (conflict)
       {
-	REQUIRE (!LSA_ISNULL (&dep));
-	REQUIRE (dep.pageid >= 1000);
-	REQUIRE (dep.pageid <= 1000 + nthreads - 1);
+	LOG_LSA expected = lsa_of (1000 + nthreads - 1, 0);
+	REQUIRE (LSA_EQ (&dep, &expected));
       }
     else
       {

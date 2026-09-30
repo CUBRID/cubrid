@@ -28,7 +28,7 @@
  * which is what replaces the earlier millions-of-keys capacity stress sweep.
  */
 
-#include "test_wset_common.hpp"
+#include "test_writeset_common.hpp"
 
 using namespace wstest;
 

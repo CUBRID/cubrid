@@ -17,7 +17,7 @@
  */
 
 /*
- * test_wset_common.hpp - shared fixtures and helpers for the writeset
+ * test_writeset_common.hpp - shared fixtures and helpers for the writeset
  *                                unit test translation units (behavior,
  *                                benchmark, stress, concurrency, config).
  *                                Helpers are inline in the wstest namespace so
@@ -35,6 +35,7 @@
 
 #include "dbtype.h"
 #include "log_impl.h"
+#include "object_primitive.h"
 #include "writeset.hpp"
 #include "object_domain.h"
 #include "oid.h"

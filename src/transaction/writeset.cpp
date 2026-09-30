@@ -86,7 +86,7 @@ static int wset_make_parent_midxkey (DB_VALUE *fk_value, TP_DOMAIN *parent_pk_do
 				     bool *has_reference);
 static int wset_push_hash (LOG_TDES *tdes, UINT64 hash, LOG_WSET_KIND kind);
 static void wset_advance_commit_baseline (const LOG_LSA *commit_lsa);
-static void wset_clear_history_with_lock (const LOG_LSA *commit_lsa, LOG_LSA *history_start_out);
+static void wset_clear_history_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out);
 static bool wset_history_has_capacity (size_t publish_count);
 static void wset_publish_keys (LOG_TDES *tdes, const LOG_LSA *commit_lsa);
 static void wset_clear_overflow_history (LOG_TDES *tdes, const LOG_LSA *commit_lsa);
@@ -825,10 +825,10 @@ wset_find_dependency_from_history (LOG_TDES *tdes, LOG_LSA *wset_parent_out)
 
   pthread_mutex_lock (&wset_History.seq_lock);
   LSA_COPY (&prev_commit_snapshot, &wset_History.prev_commit_lsa);
-  pthread_mutex_unlock (&wset_History.seq_lock);
 
   if (tdes->wset_overflow)
     {
+      pthread_mutex_unlock (&wset_History.seq_lock);
       LSA_COPY (wset_parent_out, &prev_commit_snapshot);
       WSET_TRACE (1, "DEPENDENCY trid=%d mode=COMMIT_ORDER dependency=%lld|%d\n",
 		  tdes->trid, (long long) wset_parent_out->pageid, (int) wset_parent_out->offset);
@@ -836,8 +836,9 @@ wset_find_dependency_from_history (LOG_TDES *tdes, LOG_LSA *wset_parent_out)
     }
 
   pthread_rwlock_rdlock (&wset_History.history_lock);
-
   LSA_COPY (&history_start_snapshot, &wset_History.history_start);
+  pthread_mutex_unlock (&wset_History.seq_lock);
+
   LSA_COPY (&wset_parent, &history_start_snapshot);
 
   for (const LOG_WSET_ENTRY &e : tdes->wset_hashes)
@@ -898,6 +899,12 @@ wset_find_dependency_from_history (LOG_TDES *tdes, LOG_LSA *wset_parent_out)
       LSA_COPY (wset_parent_out, &prev_commit_snapshot);
     }
 
+  if (!LSA_ISNULL (&history_start_snapshot)
+      && (LSA_ISNULL (wset_parent_out) || LSA_LT (wset_parent_out, &history_start_snapshot)))
+    {
+      LSA_COPY (wset_parent_out, &history_start_snapshot);
+    }
+
   WSET_TRACE (1,
 	      "DEPENDENCY trid=%d source=WRITE_BOUND history_start=%lld|%d prev_commit=%lld|%d dependency=%lld|%d\n",
 	      tdes->trid, (long long) history_start_snapshot.pageid,
@@ -948,17 +955,18 @@ wset_advance_commit_baseline (const LOG_LSA *commit_lsa)
 }
 
 static void
-wset_clear_history_with_lock (const LOG_LSA *commit_lsa, LOG_LSA *history_start_out)
+wset_clear_history_locked (const LOG_LSA *clear_floor, LOG_LSA *history_start_out)
 {
-  wset_History.map.clear ();
-  wset_Statistics.history_clear_count.fetch_add (1, std::memory_order_relaxed);
+  assert (clear_floor != NULL);
+  assert (!LSA_ISNULL (clear_floor));
 
-  /* Commit flushes may arrive out of LSA order; never move the history floor backward. */
-  if (LSA_ISNULL (&wset_History.history_start) || LSA_GT (commit_lsa, &wset_History.history_start))
+  if (LSA_ISNULL (&wset_History.history_start) || LSA_GT (clear_floor, &wset_History.history_start))
     {
-      LSA_COPY (&wset_History.history_start, commit_lsa);
+      LSA_COPY (&wset_History.history_start, clear_floor);
     }
 
+  wset_History.map.clear ();
+  wset_Statistics.history_clear_count.fetch_add (1, std::memory_order_relaxed);
   LSA_COPY (history_start_out, &wset_History.history_start);
 }
 
@@ -974,10 +982,12 @@ wset_clear_overflow_history (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
   LOG_LSA history_start;
   size_t old_size;
 
+  pthread_mutex_lock (&wset_History.seq_lock);
   pthread_rwlock_wrlock (&wset_History.history_lock);
   old_size = wset_History.map.size ();
-  wset_clear_history_with_lock (commit_lsa, &history_start);
+  wset_clear_history_locked (&wset_History.prev_commit_lsa, &history_start);
   pthread_rwlock_unlock (&wset_History.history_lock);
+  pthread_mutex_unlock (&wset_History.seq_lock);
 
   WSET_TRACE (1,
 	      "CLEAR trid=%d reason=COMMIT_ORDER_FALLBACK old_size=%zu new_size=0 commit_lsa=%lld|%d history_start=%lld|%d\n",
@@ -1003,19 +1013,21 @@ wset_publish_with_capacity (LOG_TDES *tdes, const LOG_LSA *commit_lsa)
     }
   pthread_rwlock_unlock (&wset_History.history_lock);
 
+  pthread_mutex_lock (&wset_History.seq_lock);
   pthread_rwlock_wrlock (&wset_History.history_lock);
 
   /* The map may change while replacing the shared lock with the exclusive lock. */
   if (!wset_history_has_capacity (publish_count))
     {
       old_size = wset_History.map.size ();
-      wset_clear_history_with_lock (commit_lsa, &history_start);
+      wset_clear_history_locked (&wset_History.prev_commit_lsa, &history_start);
       history_cleared = true;
     }
 
   wset_publish_keys (tdes, commit_lsa);
   new_size = wset_History.map.size ();
   pthread_rwlock_unlock (&wset_History.history_lock);
+  pthread_mutex_unlock (&wset_History.seq_lock);
 
   if (history_cleared)
     {
