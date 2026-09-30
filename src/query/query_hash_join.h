@@ -377,6 +377,12 @@ typedef struct hashjoin_context
   PRED_EXPR *after_join_pred;
   VAL_DESCR *val_descr;
 
+  /* The result columns this join builds when the node above it asked for a layout holding an
+   * expression; a copy of HASHJOIN_PROC_NODE::layout_regu_list, spawned per worker in parallel
+   * probe. NULL leaves merge_info in charge, which copies input columns and evaluates nothing. */
+  REGU_VARIABLE_LIST layout_regu_list;
+  int layout_regu_count;
+
   HASHJOIN_STATUS status;
 
   /* Pointer to a member of HASHJOIN_MANAGER. */
@@ -490,7 +496,7 @@ DB_LOGICAL hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe
 			    PRED_EXPR * pred, VAL_DESCR * val_descr);
 
 /* Merge QFILE_LIST_ID */
-int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
+int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
 				  QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
 				  QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
 

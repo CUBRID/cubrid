@@ -3664,6 +3664,15 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
       return NULL;
     }
 
+  /* layout_regu_list: empty when merge_info is the one describing the result columns */
+  offset = xts_save_regu_variable_list (node_p->layout_regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+  ptr = or_pack_int (ptr, node_p->layout_regu_count);
+
   return ptr;
 }
 
@@ -6474,6 +6483,10 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
       return ER_FAILED;
     }
   size += tmp_size;
+
+  /* layout_regu_list */
+  size += (PTR_SIZE		/* Offset of layout_regu_list */
+	   + OR_INT_SIZE);	/* layout_regu_count */
 
   return size;
 }

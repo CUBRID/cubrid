@@ -154,6 +154,8 @@ extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node, UNBOX unbox);
 extern REGU_VARIABLE_LIST pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 							     VAL_LIST * value_list, int *attr_offsets);
+extern OUTPTR_LIST *pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr,
+				   UNBOX unbox);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp);
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
@@ -184,6 +186,8 @@ extern XASL_NODE *ptqo_to_scan_proc (PARSER_CONTEXT * parser, QO_PLAN * plan, XA
 				     PT_NODE * where_hash_part);
 extern XASL_NODE *ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE type,
 					  XASL_NODE * listfile, PT_NODE * namelist, PT_NODE * pred, int *poslist);
+extern XASL_NODE *ptqo_to_list_scan_proc_pass_through (PARSER_CONTEXT * parser, XASL_NODE * xasl,
+						       XASL_NODE * listfile, PT_NODE * namelist);
 extern SORT_LIST *ptqo_single_orderby (PARSER_CONTEXT * parser);
 extern XASL_NODE *ptqo_to_merge_list_proc (PARSER_CONTEXT * parser, XASL_NODE * left, XASL_NODE * right,
 					   JOIN_TYPE join_type);

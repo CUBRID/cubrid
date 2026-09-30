@@ -3291,6 +3291,23 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
     }
   assert (node_p->merge_info.single_fetch == QPROC_NO_SINGLE_INNER);	/* Unused */
 
+  /* layout_regu_list: empty when merge_info is the one describing the result columns */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      node_p->layout_regu_list = NULL;
+    }
+  else
+    {
+      node_p->layout_regu_list = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (node_p->layout_regu_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &node_p->layout_regu_count);
+
   /* domain_info */
   domain_cnt = node_p->merge_info.ls_column_cnt;
   if (domain_cnt == 0)

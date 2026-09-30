@@ -35,6 +35,7 @@
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager */
 #include "query_list.h"		/* JOIN_TYPE */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
+#include "query_opfunc.h"	/* qdata_copy_valptr_list_to_tuple */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
@@ -550,8 +551,8 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
       /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
       error =
-	hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record, manager->merge_info,
-				      &overflow_record);
+	hjoin_merge_tuple_to_list_id (thread_p, context, list_id, outer->fill_record, inner->fill_record,
+				      manager->merge_info, &overflow_record);
       if (error != NO_ERROR)
 	{
 	  break;
@@ -729,8 +730,10 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (xasl->spec_list == NULL);
 
   merge_info = &proc->merge_info;
-  assert (merge_info->ls_pos_cnt > 0);
-  assert (merge_info->ls_pos_list != NULL);
+  /* Exactly one of the two describes the result columns: merge_info copies them from the inputs,
+   * layout_regu_list evaluates them. qo_init_merge_info () leaves ls_pos_cnt at 0 for the second. */
+  assert ((merge_info->ls_pos_cnt > 0 && merge_info->ls_pos_list != NULL && proc->layout_regu_count == 0)
+	  || (merge_info->ls_pos_cnt == 0 && proc->layout_regu_count > 0 && proc->layout_regu_list != NULL));
   manager->merge_info = merge_info;
 
   manager->outer = &proc->outer;
@@ -798,6 +801,14 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   context->after_join_pred = manager->after_join_pred;
   context->val_descr = manager->val_descr;
 
+  context->layout_regu_list = proc->layout_regu_list;
+  context->layout_regu_count = proc->layout_regu_count;
+
+  /* An outer join emits a row whose null-supplying side has no tuple to bind an expression's
+   * columns from, so hashjoin_result_layout_for_node () hands out such a layout for an inner join
+   * only. */
+  assert (context->layout_regu_list == NULL || manager->join_type == JOIN_INNER);
+
   assert (context->status == HASHJOIN_STATUS_NONE);
 
   /* contexts */
@@ -809,7 +820,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (type_list->domp == NULL);
   assert (type_list->type_cnt == 0);
 
-  type_cnt = merge_info->ls_pos_cnt;
+  type_cnt = (proc->layout_regu_count > 0) ? proc->layout_regu_count : merge_info->ls_pos_cnt;
 
   type_list->domp = (TP_DOMAIN **) db_private_alloc (thread_p, type_cnt * sizeof (TP_DOMAIN *));
   if (type_list->domp == NULL)
@@ -820,15 +831,36 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   type_list->type_cnt = type_cnt;
 
-  for (type_index = 0; type_index < type_cnt; type_index++)
+  if (proc->layout_regu_count > 0)
     {
-      if (merge_info->ls_outer_inner_list[type_index] == QFILE_OUTER_LIST)
+      /* the probe loop evaluates each result column, so each column's domain is its regu's */
+      REGU_VARIABLE_LIST regu_var_p = proc->layout_regu_list;
+
+      for (type_index = 0; type_index < type_cnt; type_index++, regu_var_p = regu_var_p->next)
 	{
-	  type_list->domp[type_index] = outer_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	  assert (regu_var_p != NULL);
+	  type_list->domp[type_index] = regu_var_p->value.domain;
 	}
-      else
+
+      assert (regu_var_p == NULL);
+    }
+  else
+    {
+      for (type_index = 0; type_index < type_cnt; type_index++)
 	{
-	  type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	  if (merge_info->ls_pos_list[type_index] == QFILE_MERGE_HASH_KEY_COLUMN)
+	    {
+	      /* the placeholder column an enclosing hash join overwrites with its hash key */
+	      type_list->domp[type_index] = tp_domain_resolve_default (DB_TYPE_INTEGER);
+	    }
+	  else if (merge_info->ls_outer_inner_list[type_index] == QFILE_OUTER_LIST)
+	    {
+	      type_list->domp[type_index] = outer_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	    }
+	  else
+	    {
+	      type_list->domp[type_index] = inner_list_id->type_list.domp[merge_info->ls_pos_list[type_index]];
+	    }
 	}
     }
 
@@ -1466,6 +1498,9 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       current_context->during_join_pred = single_context->during_join_pred;
       current_context->after_join_pred = single_context->after_join_pred;
       current_context->val_descr = single_context->val_descr;
+
+      current_context->layout_regu_list = single_context->layout_regu_list;
+      current_context->layout_regu_count = single_context->layout_regu_count;
     }
 
   manager->contexts = contexts;
@@ -3596,7 +3631,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
-	    hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
+	    hjoin_merge_tuple_to_list_id (thread_p, context, list_id, &outer->tuple_record, &inner->tuple_record,
 					  manager->merge_info, &overflow_record);
 	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
@@ -3776,7 +3811,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
 	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	      error =
-		hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
+		hjoin_merge_tuple_to_list_id (thread_p, context, list_id, outer->fill_record, inner->fill_record,
 					      manager->merge_info, &overflow_record);
 	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
@@ -3931,7 +3966,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
-	    hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
+	    hjoin_merge_tuple_to_list_id (thread_p, context, list_id, &outer->tuple_record, &inner->tuple_record,
 					  manager->merge_info, &overflow_record);
 	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
@@ -3985,7 +4020,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  /* no match — emit fill_record (null on null-supplying side) */
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
-	    hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
+	    hjoin_merge_tuple_to_list_id (thread_p, context, list_id, outer->fill_record, inner->fill_record,
 					  manager->merge_info, &overflow_record);
 	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
@@ -4176,14 +4211,25 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
  *   pred(in): Predicate to evaluate.
  *   val_descr(in): Value descriptor for query evaluation.
  */
-DB_LOGICAL
-hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build, PRED_EXPR * pred,
-		 VAL_DESCR * val_descr)
+/*
+ * hjoin_fetch_inputs() - put both inputs' current column values where an expression can read them
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   probe(in/out): Probe-side fetch info; is_ready memoizes its fetch.
+ *   build(in/out): Build-side fetch info; is_ready memoizes its fetch.
+ *   val_descr(in): Value descriptor for query evaluation.
+ *
+ * regu_list_pred reads the columns out of the current tuple into the DB_VALUE buffers a predicate
+ * and a layout expression both reference. The caller clears is_ready when it moves to another
+ * tuple, so a second reader of the same tuple reuses what the first one fetched.
+ */
+static int
+hjoin_fetch_inputs (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
+		    VAL_DESCR * val_descr)
 {
   assert (thread_p != NULL);
   assert (probe != NULL);
   assert (build != NULL);
-  assert (pred != NULL);
   assert (val_descr != NULL);
 
   if (!probe->is_ready)
@@ -4191,7 +4237,8 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
       if (fetch_val_list (thread_p, probe->regu_list_pred, val_descr, NULL, NULL, &probe->tuple_record, PEEK)
 	  != NO_ERROR)
 	{
-	  return V_ERROR;
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
 	}
       probe->is_ready = true;
     }
@@ -4201,9 +4248,24 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
       if (fetch_val_list (thread_p, build->regu_list_pred, val_descr, NULL, NULL, &build->tuple_record, PEEK)
 	  != NO_ERROR)
 	{
-	  return V_ERROR;
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
 	}
       build->is_ready = true;
+    }
+
+  return NO_ERROR;
+}
+
+DB_LOGICAL
+hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build, PRED_EXPR * pred,
+		 VAL_DESCR * val_descr)
+{
+  assert (pred != NULL);
+
+  if (hjoin_fetch_inputs (thread_p, probe, build, val_descr) != NO_ERROR)
+    {
+      return V_ERROR;
     }
 
   return eval_pred (thread_p, pred, val_descr, NULL);
@@ -4219,8 +4281,60 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
  *   merge_info(in): Information used to merge the joined result.
  *   overflow_record(in/out): Space used for merging tuples too large to fit on a single page.
  */
+/*
+ * hjoin_build_tuple_to_list_id() - evaluate the result columns and write the tuple
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   context(in): Hash join context holding the layout regu list, both inputs and the val descriptor.
+ *   list_id(in/out): List identifier the tuple is written to.
+ *   tuple_record(in/out): Staging space for the tuple, grown as a wider tuple needs it.
+ *
+ * The node above this join asked it for a layout holding an expression, so the result column is not
+ * a copy of an input column and qfile_merge_tuple_add_list () cannot produce it. Evaluating it here
+ * gives one evaluation per result row, in result order, which is what that node would have done.
+ */
+static int
+hjoin_build_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
+			      QFILE_TUPLE_RECORD * tuple_record)
+{
+  OUTPTR_LIST layout_outptr;
+  int error = NO_ERROR;
+
+  assert (context->probe != NULL && context->build != NULL);
+  assert (context->layout_regu_list != NULL && context->layout_regu_count > 0);
+
+  error = hjoin_fetch_inputs (thread_p, context->probe, context->build, context->val_descr);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  layout_outptr.valptrp = context->layout_regu_list;
+  layout_outptr.valptr_cnt = context->layout_regu_count;
+
+  error =
+    qdata_copy_valptr_list_to_tuple (thread_p, &layout_outptr, context->val_descr, &list_id->type_list, tuple_record);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = qfile_add_tuple_to_list (thread_p, list_id, tuple_record->tpl);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+
+error_exit:
+  assert_release_error (er_errid () != NO_ERROR);
+  return er_errid ();
+}
+
 int
-hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
+hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, QFILE_LIST_ID * list_id,
 			      QFILE_TUPLE_RECORD * outer_record,
 			      QFILE_TUPLE_RECORD * inner_record, QFILE_LIST_MERGE_INFO * merge_info,
 			      QFILE_TUPLE_RECORD * overflow_record)
@@ -4228,10 +4342,18 @@ hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
+  assert (context != NULL);
   assert (list_id != NULL);
-  assert (outer_record != NULL || inner_record != NULL);
   assert (merge_info != NULL);
   assert (overflow_record != NULL);
+
+  if (context->layout_regu_list != NULL)
+    {
+      /* the result columns are evaluated, not copied; overflow_record stages the tuple either way */
+      return hjoin_build_tuple_to_list_id (thread_p, context, list_id, overflow_record);
+    }
+
+  assert (outer_record != NULL || inner_record != NULL);
 
   /* merge path: one deform per input, exact size, page or private buffer */
   error = qfile_merge_tuple_add_list (thread_p, list_id, outer_record, inner_record, merge_info, overflow_record);
