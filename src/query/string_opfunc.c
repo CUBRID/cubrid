@@ -2611,7 +2611,7 @@ db_string_sha_two (DB_VALUE const *src, DB_VALUE const *hash_len, DB_VALUE * res
   if (QSTR_IS_ANY_CHAR (src_type))
     {
       error_status =
-	crypt_sha_two (NULL, db_get_string (src), db_get_string_length (src), len, &result_strp, &result_len);
+	crypt_sha_two (NULL, db_get_string (src), db_get_string_length (src), len, &result_strp, &result_len, true);
       if (error_status != NO_ERROR)
 	{
 	  goto error;

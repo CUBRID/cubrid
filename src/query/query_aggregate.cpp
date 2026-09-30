@@ -21,6 +21,7 @@
 //
 
 #include "query_aggregate.hpp"
+#include "qfile_tuple_layout.h"
 
 #include "arithmetic.h"
 #include "btree.h"                          // btree_find_min_or_max_key, btree_get_unique_statistics_for_count
@@ -47,17 +48,28 @@
 
 using namespace cubquery;
 
+/* Maximum number of operands an aggregate carries in qdata_evaluate_aggregate_list ().
+ * JSON_OBJECTAGG is the only one with two; every other aggregate has one.
+ * GROUP_CONCAT looks like two in the parse tree, but pt_to_aggregate_node () moves
+ * the separator into accumulator.value2 and cuts arg_list, so its operand list is
+ * one. CUME_DIST and PERCENT_RANK never reach the operand loop - they return above.
+ * Two is also all that function can consume: it reads stack_values[0] and, for
+ * JSON_OBJECTAGG, stack_values[1], and qdata_aggregate_multiple_values_to_accumulator ()
+ * rejects any other shape. A larger array would only copy operands nobody reads. */
+#define AGG_MAX_OPERANDS 2
+
 //
 // static functions declarations
 //
 static int qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
     tp_domain *func_domain, db_value *value, bool is_acc_to_acc);
+static void qdata_clear_value_array (DB_VALUE *values, int count);
 static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p,
     cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain,
     FUNC_CODE func_type, tp_domain *func_domain,
-    std::vector<DB_VALUE> &db_values);
+    DB_VALUE *db_values, int n_values);
 static int qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     QUERY_ID query_id);
 static int qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
@@ -717,18 +729,18 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 static int
 qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *domain, FUNC_CODE func_type,
-    tp_domain *func_domain, std::vector<DB_VALUE> &db_values)
+    tp_domain *func_domain, DB_VALUE *db_values, int n_values)
 {
   // we have only one argument so aggregate only the first db_value
-  if (db_values.size () == 1)
+  if (n_values == 1)
     {
       return qdata_aggregate_value_to_accumulator (thread_p, acc, domain, func_type, func_domain, &db_values[0], false);
     }
 
   // maybe this condition will be changed in the future based on the future arguments conditions
-  for (DB_VALUE &db_value : db_values)
+  for (int idx = 0; idx < n_values; idx++)
     {
-      if (DB_IS_NULL (&db_value))
+      if (DB_IS_NULL (&db_values[idx]))
 	{
 	  return NO_ERROR;
 	}
@@ -899,6 +911,21 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
 }
 
 /*
+ * qdata_clear_value_array () - clear an array of db_values
+ *   return: void
+ *   values(in/out): array of values
+ *   count(in): number of leading values to clear
+ */
+static void
+qdata_clear_value_array (DB_VALUE *values, int count)
+{
+  for (int idx = 0; idx < count; idx++)
+    {
+      pr_clear_value (&values[idx]);
+    }
+}
+
+/*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in): aggregate expression node list
@@ -919,16 +946,14 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   DB_VALUE *percentile_val = NULL;
   const PR_TYPE *pr_type_p;
   DB_TYPE dbval_type;
-  OR_BUF buf;
-  char *disk_repr_p = NULL;
-  int dbval_size, i, error;
+  int i, error;
   cubxasl::aggregate_percentile_info *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
+  DB_VALUE stack_values[AGG_MAX_OPERANDS];
+  int n_values = 0;
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
-      std::vector<DB_VALUE> db_values;
-
       /* determine accumulator */
       accumulator = (alt_acc_list != NULL ? &alt_acc_list[i] : &agg_p->accumulator);
 
@@ -1047,16 +1072,26 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
       /* fetch operands value. aggregate regulator variable should only contain constants */
       REGU_VARIABLE_LIST operand = NULL;
+      n_values = 0;
       for (operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
+	  if (n_values >= AGG_MAX_OPERANDS)
+	    {
+	      assert (false);
+	      qdata_clear_value_array (stack_values, n_values);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	      return ER_FAILED;
+	    }
+
 	  // create an empty value
-	  db_values.emplace_back ();
+	  db_make_null (&stack_values[n_values]);
+	  n_values++;
 
 	  // fetch it
 	  if (fetch_copy_dbval (thread_p, &operand->value, val_desc_p, NULL, NULL, NULL,
-				&db_values.back ()) != NO_ERROR)
+				&stack_values[n_values - 1]) != NO_ERROR)
 	    {
-	      pr_clear_value_vector (db_values);
+	      qdata_clear_value_array (stack_values, n_values);
 	      return ER_FAILED;
 	    }
 	}
@@ -1068,12 +1103,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    case PT_MIN:
 	      if (use_desc_index == agg_p->flag.part_key_descending)
 		{
-		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&db_values[0]);
+		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&stack_values[0]);
 		  pr_clear_value (accumulator->value);
 
 		  if (TP_DOMAIN_TYPE (agg_p->domain) != type)
 		    {
-		      int coerce_error = db_value_coerce (&db_values[0], accumulator->value, agg_p->domain);
+		      int coerce_error = db_value_coerce (&stack_values[0], accumulator->value, agg_p->domain);
 		      if (coerce_error != NO_ERROR)
 			{
 			  /* set error here */
@@ -1082,10 +1117,10 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		    }
 		  else
 		    {
-		      pr_clone_value (&db_values[0], accumulator->value);
+		      pr_clone_value (&stack_values[0], accumulator->value);
 		    }
 		  agg_p->is_ended = true;
-		  pr_clear_value_vector (db_values);
+		  qdata_clear_value_array (stack_values, n_values);
 		  continue;
 		}
 
@@ -1094,12 +1129,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    case PT_MAX:
 	      if (use_desc_index != agg_p->flag.part_key_descending)
 		{
-		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&db_values[0]);
+		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&stack_values[0]);
 		  pr_clear_value (accumulator->value);
 
 		  if (TP_DOMAIN_TYPE (agg_p->domain) != type)
 		    {
-		      int coerce_error = db_value_coerce (&db_values[0], accumulator->value, agg_p->domain);
+		      int coerce_error = db_value_coerce (&stack_values[0], accumulator->value, agg_p->domain);
 		      if (coerce_error != NO_ERROR)
 			{
 			  /* set error here */
@@ -1108,10 +1143,10 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		    }
 		  else
 		    {
-		      pr_clone_value (&db_values[0], accumulator->value);
+		      pr_clone_value (&stack_values[0], accumulator->value);
 		    }
 		  agg_p->is_ended = true;
-		  pr_clear_value_vector (db_values);
+		  qdata_clear_value_array (stack_values, n_values);
 		  continue;
 		}
 	      break;
@@ -1126,7 +1161,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
        * eliminate null values
        * consider only the first argument, because for the rest will depend on the function
        */
-      db_value_p = &db_values[0];
+      db_value_p = &stack_values[0];
       if (DB_IS_NULL (db_value_p))
 	{
 	  /*
@@ -1145,13 +1180,13 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	   */
 	  else if (agg_p->function == PT_JSON_OBJECTAGG)
 	    {
-	      pr_clear_value_vector (db_values);
+	      qdata_clear_value_array (stack_values, n_values);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_JSON_OBJECT_NAME_IS_NULL, 0);
 	      return ER_JSON_OBJECT_NAME_IS_NULL;
 	    }
 	  else
 	    {
-	      pr_clear_value_vector (db_values);
+	      qdata_clear_value_array (stack_values, n_values);
 	      continue;
 	    }
 	}
@@ -1161,9 +1196,9 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
        */
       if (agg_p->function == PT_JSON_OBJECTAGG)
 	{
-	  if (DB_IS_NULL (&db_values[1]))
+	  if (DB_IS_NULL (&stack_values[1]))
 	    {
-	      db_make_json (&db_values[1], db_json_allocate_doc (), true);
+	      db_make_json (&stack_values[1], db_json_allocate_doc (), true);
 	    }
 	}
 
@@ -1183,7 +1218,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      error = qdata_update_agg_interpolation_func_value_and_domain (agg_p, db_value_p);
 	      if (error != NO_ERROR)
 		{
-		  pr_clear_value_vector (db_values);
+		  qdata_clear_value_array (stack_values, n_values);
 		  return ER_FAILED;
 		}
 	    }
@@ -1193,38 +1228,19 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  if (pr_type_p == NULL)
 	    {
-	      pr_clear_value_vector (db_values);
+	      qdata_clear_value_array (stack_values, n_values);
 	      return ER_FAILED;
 	    }
 
-	  dbval_size = pr_data_writeval_disk_size (db_value_p);
-	  if (dbval_size > 0 && (disk_repr_p = (char *) db_private_alloc (thread_p, dbval_size)) != NULL)
+	  /* the list assembler encodes the value for the list's column layout (a raw disk image would not match a
+	   * VAR/DIRECT column) */
+	  if (qfile_add_values_tuple_to_list (thread_p, agg_p->list_id, &db_value_p, 1) != NO_ERROR)
 	    {
-	      or_init (&buf, disk_repr_p, dbval_size);
-	      error = pr_type_p->data_writeval (&buf, db_value_p);
-	      if (error != NO_ERROR)
-		{
-		  assert_release (buf.ptr <= buf.endptr);
-		  db_private_free_and_init (thread_p, disk_repr_p);
-		  pr_clear_value_vector (db_values);
-		  return ER_FAILED;
-		}
-	    }
-	  else
-	    {
-	      pr_clear_value_vector (db_values);
+	      qdata_clear_value_array (stack_values, n_values);
 	      return ER_FAILED;
 	    }
 
-	  if (qfile_add_item_to_list (thread_p, disk_repr_p, dbval_size, agg_p->list_id) != NO_ERROR)
-	    {
-	      db_private_free_and_init (thread_p, disk_repr_p);
-	      pr_clear_value_vector (db_values);
-	      return ER_FAILED;
-	    }
-
-	  db_private_free_and_init (thread_p, disk_repr_p);
-	  pr_clear_value_vector (db_values);
+	  qdata_clear_value_array (stack_values, n_values);
 
 	  /* for PERCENTILE funcs, we have to check percentile value */
 	  if (agg_p->function != PT_PERCENTILE_CONT && agg_p->function != PT_PERCENTILE_DISC)
@@ -1324,7 +1340,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
 				  fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME, TIME");
 
-			  pr_clear_value_vector (db_values);
+			  qdata_clear_value_array (stack_values, n_values);
 			  return error;
 			}
 
@@ -1342,14 +1358,14 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		  error = pr_clone_value (db_value_p, agg_p->accumulator.value);
 		  if (error != NO_ERROR)
 		    {
-		      pr_clear_value_vector (db_values);
+		      qdata_clear_value_array (stack_values, n_values);
 		      return error;
 		    }
 		}
 	    }
 
 	  /* clear value */
-	  pr_clear_value_vector (db_values);
+	  qdata_clear_value_array (stack_values, n_values);
 
 	  /* percentile value check */
 	  if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
@@ -1380,7 +1396,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  agg_p->accumulator.curr_cnt++;
 
 	  /* clear value */
-	  pr_clear_value_vector (db_values);
+	  qdata_clear_value_array (stack_values, n_values);
 
 	  /* check error */
 	  if (error != NO_ERROR)
@@ -1392,13 +1408,13 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  /* aggregate value */
 	  error = qdata_aggregate_multiple_values_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-		  agg_p->function, agg_p->domain, db_values);
+		  agg_p->function, agg_p->domain, stack_values, n_values);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
 
 	  /* clear values */
-	  pr_clear_value_vector (db_values);
+	  qdata_clear_value_array (stack_values, n_values);
 
 	  /* handle error */
 	  if (error != NO_ERROR)
@@ -1737,10 +1753,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   QFILE_LIST_ID *list_id_p;
   QFILE_LIST_SCAN_ID scan_id;
   SCAN_CODE scan_code;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
-  char *tuple_p;
-  const PR_TYPE *pr_type_p;
-  OR_BUF buf;
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   double dbl;
 
   error = qdata_propagate_shared_accumulators (agg_list_p);
@@ -1877,8 +1890,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		}
 	      else
 		{
-		  pr_type_p = list_id_p->type_list.domp[0]->type;
-
 		  /* scan list file, accumulating total for sum/avg */
 		  error = qfile_open_list_scan (list_id_p, &scan_id);
 		  if (error != NO_ERROR)
@@ -1923,18 +1934,17 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			      break;
 			    }
 
-			  tuple_p = ((char *) tuple_record.tpl + QFILE_TUPLE_LENGTH_SIZE);
-			  if (QFILE_GET_TUPLE_VALUE_FLAG (tuple_p) == V_UNBOUND)
-			    {
-			      continue;
-			    }
+			  {
+			    bool is_null;
 
-			  or_init (&buf, (char *) tuple_p + QFILE_TUPLE_VALUE_HEADER_SIZE,
-				   QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p));
-
-			  (void) pr_clear_value (&dbval);
-			  error = pr_type_p->data_readval (&buf, &dbval, list_id_p->type_list.domp[0], -1, true, NULL,
-							   0);
+			    (void) pr_clear_value (&dbval);
+			    error = qfile_slot_read_column_value (&tuple_record, 0, list_id_p->type_list.domp[0], &dbval, true,
+								  &is_null);
+			    if (error == NO_ERROR && is_null)
+			      {
+				continue;
+			      }
+			  }
 			  if (error != NO_ERROR)
 			    {
 			      ASSERT_ERROR ();
@@ -2615,8 +2625,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
   value->tuple_count = 0;
 
   /* initialize tuple */
-  value->first_tuple.size = 0;
-  value->first_tuple.tpl = NULL;
+  value->first_tuple = QFILE_TUPLE_RECORD_INITIALIZER;
 
   return value;
 }
@@ -2963,16 +2972,15 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
 			       DB_VALUE *temp_dbval_array, qfile_list_id *list_id)
 {
   DB_VALUE tuple_count;
-  int tuple_size = QFILE_TUPLE_LENGTH_SIZE;
+  int tuple_size;
   int col = 0, i;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   int error = NO_ERROR;
 
   /* build tuple descriptor */
   for (i = 0; i < key->val_count; i++)
     {
       list_id->tpl_descr.f_valp[col++] = key->values[i];
-      tuple_size += qdata_get_tuple_value_size_from_dbval (key->values[i]);
     }
 
   /* Propagate shared sums before flattening, exactly like
@@ -3015,17 +3023,20 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
 
       db_make_int (&temp_dbval_array[i], value->accumulators[i].curr_cnt);
       list_id->tpl_descr.f_valp[col++] = &temp_dbval_array[i];
-
-      tuple_size += qdata_get_tuple_value_size_from_dbval (value->accumulators[i].value);
-      tuple_size += qdata_get_tuple_value_size_from_dbval (value->accumulators[i].value2);
-      tuple_size += qdata_get_tuple_value_size_from_dbval (&temp_dbval_array[i]);
     }
 
   db_make_int (&tuple_count, value->tuple_count);
   list_id->tpl_descr.f_valp[col++] = &tuple_count;
-  tuple_size += qdata_get_tuple_value_size_from_dbval (&tuple_count);
+  list_id->tpl_descr.f_cnt = col;
 
+  tuple_size = qfile_tuple_size_from_values (&list_id->type_list, list_id->tpl_descr.f_valp, list_id->tpl_descr.f_len,
+	       col, &list_id->tpl_descr.has_null);
+  if (tuple_size < 0)
+    {
+      return ER_FAILED;
+    }
   list_id->tpl_descr.tpl_size = tuple_size;
+
   /* add to list file */
   if (tuple_size <= QFILE_MAX_TUPLE_SIZE_IN_PAGE)
     {
@@ -3033,7 +3044,7 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
     }
   else
     {
-      error = qfile_copy_tuple_descr_to_tuple (thread_p, &list_id->tpl_descr, &tplrec);
+      error = qfile_copy_tuple_descr_to_tuple (thread_p, &list_id->type_list, &list_id->tpl_descr, &tplrec);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
@@ -3067,39 +3078,29 @@ cleanup:
  *   acc_dom(in): accumulator domains
  */
 int
-qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, aggregate_hash_key *key,
+qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, aggregate_hash_key *key,
 				  aggregate_hash_value *value, tp_domain **key_dom,
 				  cubxasl::aggregate_accumulator_domain **acc_dom)
 {
-  QFILE_TUPLE_VALUE_FLAG flag;
   DB_VALUE int_val;
-  OR_BUF iterator, buf;
-  int i, rc;
+  QFILE_TUPLE_WALK walk;
+  bool is_null;
+  int i, rc = NO_ERROR;
 
-  /* initialize buffer */
+  /* domain-driven walk: key columns, then value/value2/count per function, then the tuple count */
   db_make_int (&int_val, 0);
-  or_init (&iterator, tuple, QFILE_GET_TUPLE_LENGTH (tuple));
-  rc = or_advance (&iterator, QFILE_TUPLE_LENGTH_SIZE);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
+  qfile_tuple_walk_init (&walk, tuple, hdr_size, key->val_count + 3 * value->func_count + 1);
 
   /* read key */
   for (i = 0; i < key->val_count; i++)
     {
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      (void) pr_clear_value (key->values[i]);
+      rc = qfile_tuple_walk_read_value (&walk, key_dom[i], key->values[i], true, &is_null);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  goto end;
 	}
-
-      (void) pr_clear_value (key->values[i]);
-      if (flag == V_BOUND)
-	{
-	  key_dom[i]->type->data_readval (&buf, key->values[i], key_dom[i], -1, true, NULL, 0);
-	}
-      else
+      if (is_null)
 	{
 	  db_make_null (key->values[i]);
 	}
@@ -3109,80 +3110,60 @@ qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple,
   for (i = 0; i < value->func_count; i++)
     {
       /* read value */
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      (void) pr_clear_value (value->accumulators[i].value);
+      rc = qfile_tuple_walk_read_value (&walk, acc_dom[i]->value_dom, value->accumulators[i].value, true, &is_null);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  goto end;
 	}
-
-      (void) pr_clear_value (value->accumulators[i].value);
-      if (flag == V_BOUND)
-	{
-	  acc_dom[i]->value_dom->type->data_readval (&buf, value->accumulators[i].value, acc_dom[i]->value_dom, -1,
-	      true, NULL, 0);
-	}
-      else
+      if (is_null)
 	{
 	  db_make_null (value->accumulators[i].value);
 	}
 
       /* read value2 */
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      (void) pr_clear_value (value->accumulators[i].value2);
+      rc = qfile_tuple_walk_read_value (&walk, acc_dom[i]->value2_dom, value->accumulators[i].value2, true, &is_null);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  goto end;
 	}
-
-      (void) pr_clear_value (value->accumulators[i].value2);
-      if (flag == V_BOUND)
-	{
-	  acc_dom[i]->value2_dom->type->data_readval (&buf, value->accumulators[i].value2, acc_dom[i]->value2_dom, -1,
-	      true, NULL, 0);
-	}
-      else
+      if (is_null)
 	{
 	  db_make_null (value->accumulators[i].value2);
 	}
 
       /* read tuple count */
-      rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+      rc = qfile_tuple_walk_read_value (&walk, &tp_Integer_domain, &int_val, true, &is_null);
       if (rc != NO_ERROR)
 	{
-	  return rc;
+	  goto end;
 	}
-
-      if (flag == V_BOUND)
-	{
-	  tp_Integer_domain.type->data_readval (&buf, &int_val, &tp_Integer_domain, -1, true, NULL, 0);
-	  value->accumulators[i].curr_cnt = int_val.data.i;
-	}
-      else
+      if (is_null)
 	{
 	  /* should not happen */
-	  return ER_FAILED;
+	  rc = ER_FAILED;
+	  goto end;
 	}
+      value->accumulators[i].curr_cnt = int_val.data.i;
     }
 
   /* read tuple count */
-  rc = qfile_locate_tuple_next_value (&iterator, &buf, &flag);
+  rc = qfile_tuple_walk_read_value (&walk, &tp_Integer_domain, &int_val, true, &is_null);
   if (rc != NO_ERROR)
     {
-      return rc;
+      goto end;
     }
-
-  if (flag == V_BOUND)
-    {
-      tp_Integer_domain.type->data_readval (&buf, &int_val, &tp_Integer_domain, -1, true, NULL, 0);
-      value->tuple_count = int_val.data.i;
-    }
-  else
+  if (is_null)
     {
       /* should not happen */
-      return ER_FAILED;
+      rc = ER_FAILED;
+      goto end;
     }
+  value->tuple_count = int_val.data.i;
 
-  /* all ok */
-  return NO_ERROR;
+end:
+  return rc;
 }
 
 /*
@@ -3206,7 +3187,8 @@ qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id 
   sc = qfile_scan_list_next (thread_p, list_scan_id, &tuple_rec, PEEK);
   if (sc == S_SUCCESS)
     {
-      if (qdata_load_agg_hentry_from_tuple (thread_p, tuple_rec.tpl, key, value, key_dom, acc_dom) != NO_ERROR)
+      if (qdata_load_agg_hentry_from_tuple (thread_p, tuple_rec.tpl, list_scan_id->list_id.type_list.hdr_size, key,
+					    value, key_dom, acc_dom) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -3342,6 +3324,7 @@ qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_no
   if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != TP_DOMAIN_TYPE (agg_p->domain))
     {
       agg_p->list_id->type_list.domp[0] = agg_p->domain;
+      qfile_set_layout (&agg_p->list_id->type_list);
       agg_p->sort_list->pos_descr.dom = agg_p->domain;
     }
 
