@@ -5028,13 +5028,6 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 {
   int parallel_num = 1;
 
-  if (parallel_query::is_under_system_operation (thread_p))
-    {
-      /* workers share the transaction and would deadlock on its system operation mutex while creating temporary
-       * files (CBRD-27492: MERGE runs its sub-SELECTs inside a system operation). Sort serially. */
-      return 1;
-    }
-
   if (sort_param->px_type == SORT_ORDER_BY || sort_param->px_type == SORT_ORDER_WITH_LIMIT)
     {
       SORT_INFO *sort_info_p;

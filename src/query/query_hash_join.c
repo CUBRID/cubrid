@@ -1999,16 +1999,6 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   /* immutable */
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
-  if (parallel_query::is_under_system_operation (thread_p))
-    {
-      /* workers share the transaction and would deadlock on its system operation mutex while spilling list files
-       * (CBRD-27492: a SELECT nested in MERGE runs inside a system operation and bypasses the planner-level MERGE
-       * exclusion of CBRD-26311). Single-thread hash join. */
-      manager->num_parallel_threads = 0;
-      assert (manager->px_worker_manager == NULL);
-      return HASHJOIN_STATUS_PARTITION;
-    }
-
   /* check if pages are enough for parallel-thread hash join */
   max_page_cnt =
     (outer_list_id->page_cnt > inner_list_id->page_cnt) ? outer_list_id->page_cnt : inner_list_id->page_cnt;
@@ -2122,14 +2112,6 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
 
   /* immutable */
   static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
-
-  if (parallel_query::is_under_system_operation (thread_p))
-    {
-      /* same reason as hjoin_try_parallel (CBRD-27492) */
-      manager->num_parallel_threads = 0;
-      assert (manager->px_worker_manager == NULL);
-      return HASHJOIN_STATUS_SINGLE;
-    }
 
   UINT32 degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::HASH_JOIN,
 							   single_context->probe->list_id->page_cnt,

@@ -23,7 +23,6 @@
 #pragma once
 
 #include "system.h"
-#include "thread_compat.hpp"	/* THREAD_ENTRY */
 
 namespace parallel_query
 {
@@ -37,8 +36,4 @@ namespace parallel_query
 
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,
 				  int hint_degree = -1 /* auto-compute */ ) noexcept;
-
-  /* true when the calling transaction is inside a system operation; parallel workers that share the transaction
-   * must not be spawned then (see the definition for the reason) */
-  bool is_under_system_operation (THREAD_ENTRY *thread_p) noexcept;
 }				/* namespace parallel_query */
