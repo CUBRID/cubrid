@@ -2783,7 +2783,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
       on_node = QO_ENV_NODE (env, location);
       QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
 
-      if (QO_NODE_IS_OUTER_JOIN (on_node) || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+      if (QO_NODE_IS_OUTER_JOIN (on_node) || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	{
 	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
 	    {

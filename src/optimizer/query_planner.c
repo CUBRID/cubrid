@@ -8396,7 +8396,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     {
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       double fk_floor_product;
-      double ndv_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
+      double ndv_sel, ndv_pair_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
+      double fk_outer_nonnull, fk_inner_nonnull;	/* semi/anti only */
       BITSET eqclasses;
       BITSET fk_excluded_terms;
       BITSET fk_col_terms;
@@ -8413,9 +8414,12 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       tail_hit_prob = 1.0;
 
       ndv_sel = 1.0;
+      ndv_pair_sel = 1.0;
       on_sel = 1.0;
       during_sel = 1.0;
       filter_sel = 1.0;
+      fk_outer_nonnull = 1.0;
+      fk_inner_nonnull = 1.0;
 
       if (join_type == JOIN_RIGHT)
 	{
@@ -8554,6 +8558,34 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		       * by their implied join terms. */
 		      bitset_union (&fk_excluded_terms, &fk_col_terms);
 		      fk_floor_product *= fkinfo->floor_selectivity;
+
+		      if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+			{
+			  /* an FK row with a NULL column matches no PK row: semi/anti scales its
+			   * match probability (FK on the outer side) or its candidates (FK on the inner side)
+			   * by the share of FK rows without NULL
+			   */
+			  double nonnull = 1.0;
+
+			  for (col = 0; col < fkinfo->n_cols; col++)
+			    {
+			      PT_NODE *name = QO_SEG_PT_NODE (fkinfo->fk_col_segs[col]);
+
+			      if (PT_IS_NAME_NODE (name) && name->info.name.null_frequency >= 0.0)
+				{
+				  nonnull *= 1.0 - name->info.name.null_frequency;
+				}
+			    }
+
+			  if (fk_in_head)
+			    {
+			      fk_outer_nonnull *= nonnull;
+			    }
+			  else
+			    {
+			      fk_inner_nonnull *= nonnull;
+			    }
+			}
 		    }
 		}
 	    }
@@ -8604,9 +8636,30 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			  else if (has_ndv && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 			    {
 			      /* semi/anti equi-join term with known NDVs,
-			       * decided by whether the outer key is among the inner keys
+			       * decided by whether the outer key is among the inner keys;
+			       * an outer row whose key is NULL matches no inner row
 			       */
-			      ndv_sel *= head_factor;
+			      double outer_null_freq = 0.0;
+			      int seg_idx;
+
+			      for (seg_idx = bitset_iterate (&(QO_TERM_SEGS (term)), &bj); seg_idx != -1;
+				   seg_idx = bitset_next_member (&bj))
+				{
+				  QO_SEGMENT *seg = QO_ENV_SEG (planner->env, seg_idx);
+				  PT_NODE *name = QO_SEG_PT_NODE (seg);
+
+				  if (BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (QO_SEG_HEAD (seg))))
+				    {
+				      if (PT_IS_NAME_NODE (name) && name->info.name.null_frequency >= 0.0)
+					{
+					  outer_null_freq = name->info.name.null_frequency;
+					}
+				      break;
+				    }
+				}
+
+			      ndv_sel *= head_factor * (1.0 - outer_null_freq);
+			      ndv_pair_sel *= QO_TERM_SELECTIVITY (term);
 			    }
 			  else
 			    {
@@ -8645,22 +8698,30 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	    {
 	      double match_prob;
 
-	      on_sel *= fk_floor_product;
-	      match_prob = during_sel * ndv_sel * MIN (1.0, on_sel * tail_info->cardinality);
+	      on_sel *= fk_floor_product * fk_inner_nonnull;
+	      if (ndv_sel > 0.0)
+		{
+		  /* the other ON-clause terms are tried only on the inner rows that share the outer key */
+		  on_sel *= ndv_pair_sel / ndv_sel;
+		}
+	      match_prob = during_sel * ndv_sel * fk_outer_nonnull * MIN (1.0, on_sel * tail_info->cardinality);
 
 	      /* semi/anti returns at most one row per outer row,
 	       * so the estimate uses the probability that an outer row finds a matching inner row, as below
 	       *
-	       *   match_prob = during_sel * ndv_sel * MIN (1, on_sel * N)
-	       *   antijoin   = outer * (1 - match_prob) * filter_sel
-	       *   semijoin   = outer * match_prob * filter_sel
+	       *   match_prob       = during_sel * ndv_sel * fk_outer_nonnull * MIN (1, on_sel * N)
+	       *   antijoin         = outer * (1 - match_prob) * filter_sel
+	       *   semijoin         = outer * match_prob * filter_sel
 	       *
-	       *   ndv_sel    = MIN (1, NDV (inner key) / NDV (outer key)) of the equi-join terms with known NDVs
-	       *   on_sel     = selectivity of one pair for the other ON-clause terms that read the inner,
-	       *                with the FK floor (fk_floor_product) in place of the PK-FK column terms
-	       *   during_sel = selectivity of the during-join terms that do not read the inner
-	       *   filter_sel = selectivity of the WHERE-clause terms
-	       *   N          = inner rows (tail_info->cardinality)
+	       *   ndv_sel          = MIN (1, NDV (inner key) / NDV (outer key)) of the equi-join terms with known NDVs
+	       *   on_sel           = selectivity of one pair for the other ON-clause terms that read the inner,
+	       *                      with the FK floor (fk_floor_product) and the share of inner FK rows
+	       *                      without NULL (fk_inner_nonnull) in place of the PK-FK column terms,
+	       *                      over the inner rows that share the outer key (ndv_pair_sel / ndv_sel)
+	       *   fk_outer_nonnull = share of outer FK rows without NULL
+	       *   during_sel       = selectivity of the during-join terms that do not read the inner
+	       *   filter_sel       = selectivity of the WHERE-clause terms
+	       *   N                = inner rows (tail_info->cardinality)
 	       */
 	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_ANTI)
 		{
@@ -8671,8 +8732,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		  cardinality = head_info->cardinality * match_prob * filter_sel;
 		}
 
+	      /* the outer rows that produce a row, for the LIMIT estimate */
+	      head_hit_prob = MIN (1.0, cardinality / MAX (1.0, head_info->cardinality));
+
 	      cardinality = MAX (1.0, cardinality);
-	      total_rows = cardinality;
+
+	      /* the result is a subset of the outer rows */
+	      total_rows = MAX (1.0, head_info->total_rows);
 	    }
 	  else
 	    {
