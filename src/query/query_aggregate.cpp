@@ -39,6 +39,7 @@
 #include "query_opfunc.h"
 #include "regu_var.hpp"
 #include "string_opfunc.h"
+#include "system_parameter.h"
 #include "xasl.h"		// QPROC_IS_INTERPOLATION_FUNC
 #include "xasl_aggregate.hpp"
 #include "statistics.h"
@@ -1046,6 +1047,7 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
   REGU_VARIABLE *roots[128];
   int *idx = NULL;
   int n = 0, k;
+  int depth_budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
   EXPR_PROG *prog;
 
   agg_list_p->operand_prog_state = 2;	/* disabled unless everything below succeeds */
@@ -1084,11 +1086,27 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
       agg_p->operand_prog_base = n;
       for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
 	{
+	  bool word_operand;
+
 	  if (n >= (int) DIM (roots))
 	    {
 	      return;
 	    }
-	  roots[n++] = &operand->value;
+	  /* A plain SUM/AVG over a NUMERIC {+,-,*} tree of plain leaves is the shape the accumulate
+	   * loop below already evaluates in CBRD-27178's word domain and adds to SUM_ACC without a
+	   * DB_VALUE (qdata_agg_expr_eval_numeric () -> numeric_sum_acc_add_expr_val ()); develop
+	   * applies the same test when it marks REGU_VARIABLE_AGG_OPERAND.  Compiling it instead
+	   * would pack a DB_VALUE per arithmetic step, coerce it to the result domain per row and
+	   * unpack it again at the accumulator, which made exactly this aggregate slower than
+	   * develop (review 2026-09-23); a word root inside the program was measured slower than
+	   * the loop's own branch as well (the program's dispatch on top of the same walk).  So the
+	   * operand stays out of the program (root -1) and the loop's word branch takes it.  The
+	   * other operands of the list keep the program, its leaf sharing and the filter values. */
+	  word_operand = ((agg_p->function == PT_SUM || agg_p->function == PT_AVG) && agg_p->option != Q_DISTINCT
+			  && operand->next == NULL && operand->value.type == TYPE_INARITH
+			  && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_NUMERIC
+			  && fetch_is_agg_expr_shape (&operand->value, depth_budget));
+	  roots[n++] = word_operand ? NULL : &operand->value;
 	}
     }
 
