@@ -293,7 +293,7 @@ cas_log_open (char *br_name)
 
 	  if (as_info->cur_sql_log_mode != SQL_LOG_MODE_ALL)
 	    {
-	      int scratch_fd = open (scratch_filepath, O_RDWR | O_CREAT | O_TRUNC, 0600);
+	      int scratch_fd = open (scratch_filepath, O_RDWR | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
 
 	      if (scratch_fd >= 0)
 		{
