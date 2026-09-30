@@ -155,7 +155,7 @@ encrypt_get_salt_offset (const char *name, unsigned int max_length)
   x = 0;
   for (i = 0; name[i] != '\0'; i++)
     {
-      x += (unsigned int)name[i];
+      x += (unsigned char)name[i];
     }
   x = x % (ENCRYPT_SHA2_512_HEX_SIZE + 1);
 
@@ -281,7 +281,7 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
     }
   else if (IS_ENCODED_SHA2_512 (pass) && strlen (pass + 1) == ENCRYPT_SHA2_512_HEX_SIZE)
     {
-      strcpy (sha512, Au_user_password_sha2_512);
+      strcpy (sha512, pass);
     }
   else
     {
@@ -299,7 +299,7 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
   x = 0;
   for (int i = 0; i < ENCRYPT_SALT_SIZE_HEX; i++)
     {
-      x ^= (unsigned int)salt[i];
+      x ^= (unsigned char)salt[i];
     }
 
   switch (x % 6)
@@ -360,6 +360,7 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
 /*
  * match_password -  This compares two passwords to see if they match.
  *   return: non-zero if the passwords match
+ *   name(in): user name(uppercase only)
  *   user(in): user supplied password
  *   database(in): stored database password
  *
@@ -432,9 +433,12 @@ match_password (const char *name, const char *user, const char *database)
 
       strcpy (buf2, database);
 
-      encrypt_salt_extract (name, database, salt);
-      assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
+      if (encrypt_salt_extract (name, database, salt) == NULL)
+	{
+	  return false;
+	}
 
+      assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
       encrypt_password_sha2_512_salt (name, salt, user, buf1);
     }
   else

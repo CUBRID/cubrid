@@ -185,11 +185,10 @@ authenticate_context::start (void)
       else
 	{
 	  /*
-	     * If you try to start the authorization system and
-	     * there is no user logged in, you will automatically be logged in
-	     * as "PUBLIC".  Optionally, we could get a name from the
-	     * cubrid.conf file or use the name of the current Unix user.
-	     */
+	   * If you try to start the authorization system and there is no user logged in,
+	   * you will automatically be logged in as "PUBLIC".
+	   * Optionally, we could get a name from the cubrid.conf file or use the name of the current Unix user.
+	   */
 	  if (strlen (user_name) == 0)
 	    {
 	      strcpy (user_name, AU_PUBLIC_USER_NAME);
