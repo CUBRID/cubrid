@@ -74,7 +74,7 @@ struct domain_plan_item
   unsigned short flags;
   unsigned char operand_class;
   unsigned char fail;		/* DOMAIN_FAIL_POLICY of the reference: a node's operands are references of their own */
-  int node_domain_index;	/* 1 + the index of the node's execution domain (resolved_domain.node_domains): the
+  int node_domain_index;	/* 1 + the index of the node's execution domain (domain_execution.node_domains): the
 				 * domain the execution gives the node, which the node itself never holds; 0: none */
   RESOLVED_DOMAIN fixed;
   union
@@ -83,9 +83,9 @@ struct domain_plan_item
      * [0] the left operand (FIELD: the third against the left), [1] FIELD's third against the right; NULL otherwise.
      * The node carries only its item, so ARITH_TYPE keeps develop's size. */
     const DOMAIN_COMPARE_PLAN **compares;
-    /* T_ADD, T_SUB, T_MUL, T_DIV, and a SUM or AVG ([1]: the value it adds): 1 + the resolved_domain.temporaries index
-     * of an operand fixed for a scope - a constant for the execution, a correlated value for its block's scan - whose
-     * operand coercion the execution converts once per scope; 0 none */
+    /* T_ADD, T_SUB, T_MUL, T_DIV, and a SUM or AVG ([1]: the value it adds): 1 + the domain_execution.temporaries
+     * index of an operand fixed for a scope - a constant for the execution, a correlated value for its block's scan -
+     * whose operand coercion the execution converts once per scope; 0 none */
     int temporaries[2];
   };
 };
@@ -157,7 +157,7 @@ struct DOMAIN_COMPARE_PLAN
   int constant_branch;		/* a term's: the innermost constant branch around it (DOMAIN_PLAN_CONSTANT_BRANCH); -1
 				 * none */
   int temporaries[2];		/* a term's side that is a correlated value, fixed while its block's scan runs: 1 + the
-				 * resolved_domain.temporaries index of its conversion, made once per scope; 0 none */
+				 * domain_execution.temporaries index of its conversion, made once per scope; 0 none */
 };
 
 /*
@@ -433,49 +433,56 @@ enum DOMAIN_VALUE_STATE
 				 * resolve_domains' error once it knows a row reaches it, never read otherwise */
 };
 
-/* What resolve_domains failed at below a constant branch: it raises the failure at its end if a row reaches it. */
-enum DOMAIN_DEFERRED_ERROR_KIND
-{
-  DOMAIN_DEFERRED_ERROR_CONSTANT,	/* a constant expression's computation: index = plan->constant_expressions
-					 * index */
-  DOMAIN_DEFERRED_ERROR_COMPARE,	/* a term's constant conversion: compare, failed; arg 1 for a key range term */
-  DOMAIN_DEFERRED_ERROR_KEY,	/* a key constant no index key holds: arg, arg2 = the two types of develop's -181 in its
-				 * order */
-  DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE	/* a MEDIAN / PERCENTILE value without an argument type: arg = function */
-};
-
-struct DOMAIN_DEFERRED_ERROR
-{
-  const DOMAIN_COMPARE *compare;	/* COMPARE: the resolution whose constant sides do not convert */
-  int constant_branch;
-  int index;
-  int arg;
-  int arg2;
-  unsigned char kind;		/* DOMAIN_DEFERRED_ERROR_KIND */
-  unsigned char failed;		/* COMPARE: bit i, constant side i does not convert */
-};
-
+/*
+ * RESOLVED_DOMAIN_TABLE - what resolve_domains (qexec_resolve_domains) resolved for one execution before its first row:
+ *   the values the execution reads, and the domains, comparisons, ALL/SOME terms and index keys its plan left to the
+ *   execution. XASL_STATE.resolved_domain. The rows read it and change none of it; what they change is
+ *   XASL_STATE.domain_execution.
+ *
+ * The owner allocates vals and every array of the table and of domain_execution's node state as one block, whose
+ * address is vals (qexec_alloc_resolved_domains): only vals is freed. An ALL/SOME term's and an index scan's own
+ * blocks are theirs to free; the domains are cached domains, never freed here. A PX worker's copy has blocks and values
+ * of its own (qexec_copy_resolved_domains).
+ */
 struct RESOLVED_DOMAIN_TABLE
 {
-  const DB_VALUE *in;
-  DB_VALUE *vals;
-  RESOLVED_DOMAIN *domains;
+  const DB_VALUE *in;		/* the execution's own values, qmgr's copies of the client's (an SA client's own):
+				 * borrowed and never written; the result cache and DBLINK read the input here */
+  DB_VALUE *vals;		/* [n_vals] what the execution reads (vd.dbval_ptr): each bind reference's value, then
+				 * the constant expressions' and the converted constants' (DOMAIN_PLAN_ITEM.ref); the
+				 * block's address */
+  RESOLVED_DOMAIN *domains;	/* [n_resolved] the resolution of each item resolve_domains resolves (resolved_index) */
   int n_vals, n_resolved, n_compare_indexes, n_elements;
-  THREAD_ENTRY *owner;
-  const DOMAIN_PLAN *plan;
-  bool frozen;
+  THREAD_ENTRY *owner;		/* the thread that allocated the state and alone writes it: the execution's, a PX
+				 * worker's in its copy */
+  const DOMAIN_PLAN *plan;	/* the plan the load derived; a PX copy keeps the leader's */
+  bool frozen;			/* the values and resolutions may be read (RESOLVED, REGU_RESOLVED_VALUE,
+				 * qexec_owns_resolved_index): set before the constant expression step, whose
+				 * computations fetch through them. resolve_domains goes on resolving what a constant,
+				 * a session variable or an index key decides until it returns; the rows start after
+				 * that */
   bool copied_from_leader;	/* a PX worker's copy (qexec_deep_copy_xasl_state): the worker's own load of the same
 				 * stream numbers its items and resolved indexes as the plan does */
-  DOMAIN_COMPARE *compares;	/* [plan->n_compare_indexes] this execution's comparison resolutions */
-  DOMAIN_ELEMENTS *elements;	/* [plan->n_element_comparisons] this execution's ALL/SOME resolutions; their arrays are
-				 * the owner's */
-  unsigned char *value_states;	/* [n_vals] DOMAIN_VALUE_STATE of a constant expression's value */
-  RESOLVED_INDEX_KEYS *indexes;	/* [n_indexes] this execution's key resolutions by index key plan; their blocks are
-				 * the owner's */
+  DOMAIN_COMPARE *compares;	/* [n_compare_indexes] this execution's comparison resolutions (compare_index) */
+  DOMAIN_ELEMENTS *elements;	/* [n_elements] this execution's ALL/SOME resolutions (resolved_elements_index); their
+				 * arrays are the owner's */
+  unsigned char *value_states;	/* [n_vals] DOMAIN_VALUE_STATE of a constant expression's value: the row reads it */
+  RESOLVED_INDEX_KEYS *indexes;	/* [n_indexes] this execution's key resolutions by index key plan
+				 * (resolved_keys_index); their blocks are the owner's */
   int n_indexes;
+};
+
+/*
+ * DOMAIN_EXECUTION_STATE - what an execution's rows change of its domain state: the domain, list domain and operand
+ *   type each node took, and the values converted once per scope. XASL_STATE.domain_execution. Only the owner
+ *   (resolved_domain.owner) writes it. A PX worker's copy (qexec_copy_resolved_domains) takes the node state of the
+ *   leader's nodes it runs, or starts it anew over its own load, and starts with no value converted.
+ */
+struct DOMAIN_EXECUTION_STATE
+{
   /* [n_node_domains] the domain each node with an execution domain took in this execution, where develop wrote it into
    * the plan node and the XASL clear restored it: a resolved domain read at the node's first computation or at its
-   * consumer's setup; NULL until taken. Only the owner writes them. */
+   * consumer's setup; NULL until taken. The three node arrays are part of resolved_domain.vals' block. */
   const TP_DOMAIN **node_domains;
   const TP_DOMAIN **interpolation_list_domains;	/* [n_interpolation_list_domains] the domain a MEDIAN / PERCENTILE list
 						 * holds and its key sorts (qexec_setup_interpolation_list); NULL */
@@ -485,12 +492,8 @@ struct RESOLVED_DOMAIN_TABLE
   int n_operand_types;		/* the load numbers the aggregates and analytic functions' execution domains first,
 				 * MEDIAN / PERCENTILE aggregates first among them (DOMAIN_PLAN.n_operand_types) */
   int n_interpolation_list_domains;
-  /* during resolve_domains only: the failures below constant branches it raises at its end if a row reaches them */
-  DOMAIN_DEFERRED_ERROR *deferred_errors;
-  int n_deferred_errors;
-  int max_deferred_errors;
-  /* the values converted once per scope and each scope's generation; a PX copy starts with none converted and only the
-   * execution's scope entered. The owner's. */
+  /* the values converted once per scope and each scope's generation, allocations of their own: the execution's scope
+   * is entered from the start, a block's when its scan starts (qexec_enter_temporary_scope) */
   DOMAIN_EXECUTION_TEMPORARY *temporaries;	/* [n_temporaries] */
   unsigned long long *scope_generations;	/* [n_scopes] */
   int n_temporaries;

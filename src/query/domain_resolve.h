@@ -45,7 +45,7 @@ struct val_list_node;
  * build. */
 inline bool qexec_owns_resolved_index (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
   __attribute__ ((ALWAYS_INLINE));
-inline bool qexec_owns_node_domain (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
+inline bool qexec_owns_node_domain (const XASL_STATE & xasl_state, const DOMAIN_PLAN_ITEM * item)
   __attribute__ ((ALWAYS_INLINE));
 inline const RESOLVED_DOMAIN *qexec_late_bind_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
   __attribute__ ((ALWAYS_INLINE));
@@ -93,10 +93,12 @@ qexec_owns_resolved_index (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_
  * worker's copy from the leader copy, an item of the worker's own load of the same stream, which numbers its execution
  * domains alike. */
 inline bool
-qexec_owns_node_domain (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
+qexec_owns_node_domain (const XASL_STATE & xasl_state, const DOMAIN_PLAN_ITEM * item)
 {
+  const RESOLVED_DOMAIN_TABLE & resolved = xasl_state.resolved_domain;
   const DOMAIN_PLAN *plan = resolved.plan;
-  return plan != NULL && item->node_domain_index > 0 && item->node_domain_index <= resolved.n_node_domains
+  return plan != NULL && item->node_domain_index > 0
+    && item->node_domain_index <= xasl_state.domain_execution.n_node_domains
     && (resolved.copied_from_leader || (item >= plan->items && item < plan->items + plan->n_items));
 }
 
@@ -131,7 +133,7 @@ qexec_node_domain_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     {
       return -1;
     }
-  assert (vd->xasl_state != NULL && qexec_owns_node_domain (vd->xasl_state->resolved_domain, item));
+  assert (vd->xasl_state != NULL && qexec_owns_node_domain (*vd->xasl_state, item));
   return item->node_domain_index - 1;
 }
 
@@ -149,7 +151,7 @@ qexec_get_node_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_
     {
       return compiled;
     }
-  const TP_DOMAIN *node_domain = vd->xasl_state->resolved_domain.node_domains[node_domain_index];
+  const TP_DOMAIN *node_domain = vd->xasl_state->domain_execution.node_domains[node_domain_index];
   return node_domain != NULL ? (TP_DOMAIN *) node_domain : compiled;
 }
 
@@ -159,7 +161,7 @@ inline bool
 qexec_node_domain_is_set (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
   const int node_domain_index = qexec_node_domain_index (vd, item);
-  return node_domain_index >= 0 && vd->xasl_state->resolved_domain.node_domains[node_domain_index] != NULL;
+  return node_domain_index >= 0 && vd->xasl_state->domain_execution.node_domains[node_domain_index] != NULL;
 }
 
 /*
@@ -203,7 +205,7 @@ qexec_set_node_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, cons
       assert (domain == NULL || domain == compiled);
       return;
     }
-  vd->xasl_state->resolved_domain.node_domains[node_domain_index] = domain == compiled ? NULL : domain;
+  vd->xasl_state->domain_execution.node_domains[node_domain_index] = domain == compiled ? NULL : domain;
 }
 
 /* The domain a MEDIAN / PERCENTILE list holds and its sort key sorts in this execution
@@ -214,22 +216,22 @@ inline TP_DOMAIN *
 qexec_interpolation_list_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
 {
   const int node_domain_index = qexec_node_domain_index (vd, item);
-  assert (node_domain_index < 0 || node_domain_index < vd->xasl_state->resolved_domain.n_interpolation_list_domains);
-  if (node_domain_index < 0 || vd->xasl_state->resolved_domain.interpolation_list_domains[node_domain_index] == NULL)
+  assert (node_domain_index < 0 || node_domain_index < vd->xasl_state->domain_execution.n_interpolation_list_domains);
+  if (node_domain_index < 0 || vd->xasl_state->domain_execution.interpolation_list_domains[node_domain_index] == NULL)
     {
       return compiled;
     }
-  return (TP_DOMAIN *) vd->xasl_state->resolved_domain.interpolation_list_domains[node_domain_index];
+  return (TP_DOMAIN *) vd->xasl_state->domain_execution.interpolation_list_domains[node_domain_index];
 }
 
 inline void
 qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * domain)
 {
   const int node_domain_index = qexec_node_domain_index (vd, item);
-  assert (node_domain_index >= 0 && node_domain_index < vd->xasl_state->resolved_domain.n_interpolation_list_domains);
+  assert (node_domain_index >= 0 && node_domain_index < vd->xasl_state->domain_execution.n_interpolation_list_domains);
   if (node_domain_index >= 0)
     {
-      vd->xasl_state->resolved_domain.interpolation_list_domains[node_domain_index] = domain;
+      vd->xasl_state->domain_execution.interpolation_list_domains[node_domain_index] = domain;
     }
 }
 
@@ -240,12 +242,12 @@ inline DB_TYPE
 qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, const DOMAIN_PLAN_ITEM * item)
 {
   const int node_domain_index = qexec_node_domain_index (vd, item);
-  assert (node_domain_index < 0 || node_domain_index < vd->xasl_state->resolved_domain.n_operand_types);
-  if (node_domain_index < 0 || vd->xasl_state->resolved_domain.operand_types[node_domain_index] < 0)
+  assert (node_domain_index < 0 || node_domain_index < vd->xasl_state->domain_execution.n_operand_types);
+  if (node_domain_index < 0 || vd->xasl_state->domain_execution.operand_types[node_domain_index] < 0)
     {
       return compiled;
     }
-  return (DB_TYPE) vd->xasl_state->resolved_domain.operand_types[node_domain_index];
+  return (DB_TYPE) vd->xasl_state->domain_execution.operand_types[node_domain_index];
 }
 
 inline void
@@ -257,8 +259,8 @@ qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB
       assert (type == compiled);
       return;
     }
-  assert (node_domain_index < vd->xasl_state->resolved_domain.n_operand_types);
-  vd->xasl_state->resolved_domain.operand_types[node_domain_index] = type == compiled ? -1 : (int) type;
+  assert (node_domain_index < vd->xasl_state->domain_execution.n_operand_types);
+  vd->xasl_state->domain_execution.operand_types[node_domain_index] = type == compiled ? -1 : (int) type;
 }
 
 extern const TP_DOMAIN *qexec_resolved_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind);
@@ -279,7 +281,7 @@ qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 
 extern const TP_DOMAIN *qexec_value_domain (const VAL_DESCR * vd, const regu_variable_node * regu);
 extern void qexec_enter_temporary_scope (const VAL_DESCR * vd, const val_list_node * val_list);
-extern const DB_VALUE *qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+extern const DB_VALUE *qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 							  DOMAIN_EXECUTION_TEMPORARY * entry, TP_VALUE_CONVERTER conv,
 							  const TP_DOMAIN * target, const DB_VALUE * value);
 
@@ -289,7 +291,7 @@ extern const DB_VALUE *qexec_convert_execution_temporary (THREAD_ENTRY * thread_
  *   correlated value (its block's scope)
  *   return: the converted value; NULL when the row converts it - the scope was not entered, or the conversion failed
  *	     (develop's outcome follows from the row's own)
- *   temporary(in): 1 + its resolved_domain.temporaries index (a plan item's, a resolved comparison's or an accumulator
+ *   temporary(in): 1 + its domain_execution.temporaries index (a plan item's, a resolved comparison's or an accumulator
  *	     domain's), not 0
  *   conv(in), target(in): the converter the row would run, and its target: the execution's, the same at every read
  *   value(in): the value, not NULL
@@ -303,15 +305,15 @@ qexec_execution_temporary (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int te
 			   const TP_DOMAIN * target, const DB_VALUE * value)
 {
   assert (vd != NULL && vd->xasl_state != NULL && temporary > 0);
-  RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
-  assert (temporary <= resolved.n_temporaries && resolved.owner == thread_p);
-  DOMAIN_EXECUTION_TEMPORARY *entry = &resolved.temporaries[temporary - 1];
-  if (entry->generation == resolved.scope_generations[entry->scope])
+  DOMAIN_EXECUTION_STATE & execution = vd->xasl_state->domain_execution;
+  assert (temporary <= execution.n_temporaries && vd->xasl_state->resolved_domain.owner == thread_p);
+  DOMAIN_EXECUTION_TEMPORARY *entry = &execution.temporaries[temporary - 1];
+  if (entry->generation == execution.scope_generations[entry->scope])
     {
       assert (entry->generation == 0 || (entry->conv == conv && entry->target == target));
       return entry->converted;
     }
-  return qexec_convert_execution_temporary (thread_p, resolved, entry, conv, target, value);
+  return qexec_convert_execution_temporary (thread_p, vd->xasl_state, entry, conv, target, value);
 }
 
 extern int qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other);

@@ -92,7 +92,9 @@ struct xasl_state
   VAL_DESCR vd;			/* Value Descriptor */
   QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
-  RESOLVED_DOMAIN_TABLE resolved_domain;
+  RESOLVED_DOMAIN_TABLE resolved_domain;	/* what resolve_domains resolved before the first row */
+  DOMAIN_EXECUTION_STATE domain_execution;	/* what the rows change: the nodes' execution domains, the values
+						 * converted once per scope */
 };
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,

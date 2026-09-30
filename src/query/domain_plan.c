@@ -78,9 +78,9 @@ struct DOMAIN_LOAD_ENTRY
 				 * through it to the producer, a bind's value included) */
   bool needs_node_domain;	/* the node gets an execution domain (domain_give_node_domain) */
   bool needs_operand_type;	/* an aggregate or analytic function: its execution also records the operand type it
-				 * evaluates with (resolved_domain.operand_types) */
+				 * evaluates with (domain_execution.operand_types) */
   bool needs_list_domain;	/* a MEDIAN / PERCENTILE aggregate: and the domain its list holds
-				 * (resolved_domain.interpolation_list_domains) */
+				 * (domain_execution.interpolation_list_domains) */
   bool variable;		/* its compiled domain is variable: DOMAIN_PLAN_VARIABLE once published */
   bool variable_position;	/* a list position whose pos_descr.dom is variable: DOMAIN_PLAN_VARIABLE_POSITION */
   bool row_invariant;		/* no row changes its value: a constant, or a branch or collection node over such
@@ -3413,8 +3413,8 @@ domain_block_scope (DOMAIN_PLAN * plan, XASL_NODE * block)
 /*
  * domain_add_temporary () - a value the execution converts once per scope: a constant's scope is the execution's, a
  *   correlated value's its block's
- *   return: 1 + its resolved_domain.temporaries index; 0 when there is none (the block's scans do not start a scope; no
- *	     memory: ctx->failed)
+ *   return: 1 + its domain_execution.temporaries index; 0 when there is none (the block's scans do not start a scope;
+ *	     no memory: ctx->failed)
  */
 static int
 domain_add_temporary (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, XASL_NODE * block)

@@ -3574,7 +3574,8 @@ qexec_get_xasl_list_id (xasl_node * xasl)
  *
  * Every reference value (secondary references included) is cloned, resolve_domains
  * table is copied by value (its domains are borrowed from the cache/arena), and
- * the const input, plan and seal are carried over. The copy never resolves again
+ * the const input, plan and seal are carried over; the execution domain state
+ * (domain_execution) is the worker's own. The copy never resolves again
  * and only thread_p may free it with qexec_free_xasl_state.
  *
  * own_load(in): the worker runs its own load of the stream (an XASL clone or its own unpack), whose nodes start with
@@ -17438,6 +17439,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
   memset (&xasl_state.resolved_domain, 0, sizeof (xasl_state.resolved_domain));
+  memset (&xasl_state.domain_execution, 0, sizeof (xasl_state.domain_execution));
 
   /* save the query_id into the XASL state struct */
   xasl_state.query_id = query_id;

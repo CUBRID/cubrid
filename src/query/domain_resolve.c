@@ -135,13 +135,16 @@ qexec_copy_elements (THREAD_ENTRY * thread_p, const DOMAIN_ELEMENTS * src, DOMAI
 static void qexec_clear_index_keys (THREAD_ENTRY * thread_p, RESOLVED_INDEX_KEYS * out);
 static int qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_KEYS * src, RESOLVED_INDEX_KEYS * dest);
 
-/* Allocate values and the sparse domain table as one owner-local block.
- * Every value starts as NULL so the common error exit can clear a partial fill. */
+/* Allocate the values, the resolved domain table's arrays and the node state's arrays (domain_execution) as one
+ * owner-local block, whose address is resolved_domain.vals. Every value starts as NULL so the common error exit can
+ * clear a partial fill. */
 static int
 qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolved, int n_compares, int n_elements,
 			      int n_indexes, int n_node_domains, int n_operand_types, int n_interpolation_list_domains,
-			      RESOLVED_DOMAIN_TABLE & resolved)
+			      XASL_STATE * xasl_state)
 {
+  RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
+  DOMAIN_EXECUTION_STATE & execution = xasl_state->domain_execution;
   assert (resolved.vals == NULL && n_vals >= 0 && n_resolved >= 0 && n_compares >= 0 && n_elements >= 0
 	  && n_indexes >= 0 && n_node_domains >= 0);
   /* the load numbers the nodes that keep a list domain or an operand type first (DOMAIN_PLAN.n_operand_types) */
@@ -188,9 +191,9 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   resolved.n_compare_indexes = n_compares;
   resolved.n_elements = n_elements;
   resolved.n_indexes = n_indexes;
-  resolved.n_node_domains = n_node_domains;
-  resolved.n_operand_types = n_operand_types;
-  resolved.n_interpolation_list_domains = n_interpolation_list_domains;
+  execution.n_node_domains = n_node_domains;
+  execution.n_operand_types = n_operand_types;
+  execution.n_interpolation_list_domains = n_interpolation_list_domains;
   char *next = (char *) (resolved.vals + n_vals);
   if (n_resolved != 0)
     {
@@ -219,22 +222,22 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   /* nothing taken yet: every node has its compiled domain, list domain and operand type */
   if (n_node_domains != 0)
     {
-      resolved.node_domains = (const TP_DOMAIN **) next;
-      memset (resolved.node_domains, 0, sizeof (*resolved.node_domains) * n_node_domains);
-      next += sizeof (*resolved.node_domains) * n_node_domains;
+      execution.node_domains = (const TP_DOMAIN **) next;
+      memset (execution.node_domains, 0, sizeof (*execution.node_domains) * n_node_domains);
+      next += sizeof (*execution.node_domains) * n_node_domains;
     }
   if (n_interpolation_list_domains != 0)
     {
-      resolved.interpolation_list_domains = (const TP_DOMAIN **) next;
-      memset (resolved.interpolation_list_domains, 0,
-	      sizeof (*resolved.interpolation_list_domains) * n_interpolation_list_domains);
-      next += sizeof (*resolved.interpolation_list_domains) * n_interpolation_list_domains;
+      execution.interpolation_list_domains = (const TP_DOMAIN **) next;
+      memset (execution.interpolation_list_domains, 0,
+	      sizeof (*execution.interpolation_list_domains) * n_interpolation_list_domains);
+      next += sizeof (*execution.interpolation_list_domains) * n_interpolation_list_domains;
     }
   if (n_operand_types != 0)
     {
-      resolved.operand_types = (int *) next;
-      memset (resolved.operand_types, 0xff, sizeof (*resolved.operand_types) * n_operand_types);
-      next += sizeof (*resolved.operand_types) * n_operand_types;
+      execution.operand_types = (int *) next;
+      memset (execution.operand_types, 0xff, sizeof (*execution.operand_types) * n_operand_types);
+      next += sizeof (*execution.operand_types) * n_operand_types;
     }
   if (n_vals != 0)
     {
@@ -249,55 +252,58 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
  * which the value keeps for its reads. */
 static int
 qexec_alloc_execution_temporaries (THREAD_ENTRY * thread_p, int n_temporaries, const int *temporary_scope, int n_scopes,
-				   RESOLVED_DOMAIN_TABLE & resolved)
+				   DOMAIN_EXECUTION_STATE & execution)
 {
-  assert (resolved.temporaries == NULL && resolved.scope_generations == NULL);
+  assert (execution.temporaries == NULL && execution.scope_generations == NULL);
   if (n_temporaries <= 0 || n_scopes <= 0)
     {
       return NO_ERROR;
     }
   assert (temporary_scope != NULL);
-  resolved.temporaries =
-    (DOMAIN_EXECUTION_TEMPORARY *) db_private_alloc (thread_p, sizeof (*resolved.temporaries) * (size_t) n_temporaries);
-  resolved.scope_generations =
-    (unsigned long long *) db_private_alloc (thread_p, sizeof (*resolved.scope_generations) * (size_t) n_scopes);
-  if (resolved.temporaries == NULL || resolved.scope_generations == NULL)
+  execution.temporaries =
+    (DOMAIN_EXECUTION_TEMPORARY *) db_private_alloc (thread_p,
+						     sizeof (*execution.temporaries) * (size_t) n_temporaries);
+  execution.scope_generations =
+    (unsigned long long *) db_private_alloc (thread_p, sizeof (*execution.scope_generations) * (size_t) n_scopes);
+  if (execution.temporaries == NULL || execution.scope_generations == NULL)
     {
-      if (resolved.temporaries != NULL)
+      if (execution.temporaries != NULL)
 	{
-	  db_private_free_and_init (thread_p, resolved.temporaries);
+	  db_private_free_and_init (thread_p, execution.temporaries);
 	}
-      if (resolved.scope_generations != NULL)
+      if (execution.scope_generations != NULL)
 	{
-	  db_private_free_and_init (thread_p, resolved.scope_generations);
+	  db_private_free_and_init (thread_p, execution.scope_generations);
 	}
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (*resolved.temporaries) * (size_t) n_temporaries);
+	      sizeof (*execution.temporaries) * (size_t) n_temporaries);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   for (int h = 0; h < n_temporaries; h++)
     {
       assert (temporary_scope[h] >= 0 && temporary_scope[h] < n_scopes);
-      resolved.temporaries[h].generation = 0;
-      resolved.temporaries[h].converted = NULL;
-      resolved.temporaries[h].scope = temporary_scope[h];
-      db_make_null (&resolved.temporaries[h].value);
+      execution.temporaries[h].generation = 0;
+      execution.temporaries[h].converted = NULL;
+      execution.temporaries[h].scope = temporary_scope[h];
+      db_make_null (&execution.temporaries[h].value);
 #if !defined (NDEBUG)
-      resolved.temporaries[h].conv = NULL;
-      resolved.temporaries[h].target = NULL;
+      execution.temporaries[h].conv = NULL;
+      execution.temporaries[h].target = NULL;
 #endif
     }
-  memset (resolved.scope_generations, 0, sizeof (*resolved.scope_generations) * (size_t) n_scopes);
-  resolved.scope_generations[DOMAIN_SCOPE_EXECUTION] = 1;
-  resolved.n_temporaries = n_temporaries;
-  resolved.n_scopes = n_scopes;
+  memset (execution.scope_generations, 0, sizeof (*execution.scope_generations) * (size_t) n_scopes);
+  execution.scope_generations[DOMAIN_SCOPE_EXECUTION] = 1;
+  execution.n_temporaries = n_temporaries;
+  execution.n_scopes = n_scopes;
   return NO_ERROR;
 }
 
 /*
- * qexec_copy_resolved_domains () - the resolved domain table of a PX worker's copy of an execution state, the part of
- *   qexec_deep_copy_xasl_state that copies what the leader's execution resolved
- *   return: NO_ERROR or ER_FAILED; on ER_FAILED the copy's table holds nothing to free
+ * qexec_copy_resolved_domains () - the resolved domain table and the execution domain state of a PX worker's copy of an
+ *   execution state, the part of qexec_deep_copy_xasl_state that copies what the leader's execution resolved: the
+ *   resolutions and the values as the worker's own, the node state of the leader's nodes the worker runs (none over
+ *   its own load), no value converted once per scope yet
+ *   return: NO_ERROR or ER_FAILED; on ER_FAILED the copy holds nothing to free
  *   from(in): the leader's execution state, its domains resolved
  *   to(out): the copy whose table this fills
  *   own_load(in): as qexec_deep_copy_xasl_state's
@@ -306,19 +312,23 @@ int
 qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, XASL_STATE * to, bool own_load)
 {
   const RESOLVED_DOMAIN_TABLE & src = from->resolved_domain;
+  const DOMAIN_EXECUTION_STATE & src_execution = from->domain_execution;
   RESOLVED_DOMAIN_TABLE & resolved = to->resolved_domain;
+  DOMAIN_EXECUTION_STATE & execution = to->domain_execution;
   memset (&resolved, 0, sizeof (resolved));
+  memset (&execution, 0, sizeof (execution));
   if (qexec_alloc_resolved_domains
-      (thread_p, src.n_vals, src.n_resolved, src.n_compare_indexes, src.n_elements, src.n_indexes, src.n_node_domains,
-       src.n_operand_types, src.n_interpolation_list_domains, resolved) != NO_ERROR)
+      (thread_p, src.n_vals, src.n_resolved, src.n_compare_indexes, src.n_elements, src.n_indexes,
+       src_execution.n_node_domains, src_execution.n_operand_types, src_execution.n_interpolation_list_domains,
+       to) != NO_ERROR)
     {
       return ER_FAILED;
     }
   resolved.owner = thread_p;
   /* the worker converts its own values once per scope, and enters a block's scope when its own scan starts */
   if (qexec_alloc_execution_temporaries
-      (thread_p, src.n_temporaries, src.n_temporaries > 0 ? src.plan->temporary_scope : NULL, src.n_scopes,
-       resolved) != NO_ERROR)
+      (thread_p, src_execution.n_temporaries, src_execution.n_temporaries > 0 ? src.plan->temporary_scope : NULL,
+       src_execution.n_scopes, execution) != NO_ERROR)
     {
       qexec_clear_resolved_domains (thread_p, to);
       return ER_FAILED;
@@ -361,17 +371,19 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
     {
       memcpy (resolved.value_states, src.value_states, (size_t) src.n_vals);
     }
-  if (src.n_node_domains != 0 && !own_load)
+  if (src_execution.n_node_domains != 0 && !own_load)
     {
-      memcpy (resolved.node_domains, src.node_domains, sizeof (*resolved.node_domains) * src.n_node_domains);
-      if (src.n_interpolation_list_domains != 0)
+      memcpy (execution.node_domains, src_execution.node_domains,
+	      sizeof (*execution.node_domains) * src_execution.n_node_domains);
+      if (src_execution.n_interpolation_list_domains != 0)
 	{
-	  memcpy (resolved.interpolation_list_domains, src.interpolation_list_domains,
-		  sizeof (*resolved.interpolation_list_domains) * src.n_interpolation_list_domains);
+	  memcpy (execution.interpolation_list_domains, src_execution.interpolation_list_domains,
+		  sizeof (*execution.interpolation_list_domains) * src_execution.n_interpolation_list_domains);
 	}
-      if (src.n_operand_types != 0)
+      if (src_execution.n_operand_types != 0)
 	{
-	  memcpy (resolved.operand_types, src.operand_types, sizeof (*resolved.operand_types) * src.n_operand_types);
+	  memcpy (execution.operand_types, src_execution.operand_types,
+		  sizeof (*execution.operand_types) * src_execution.n_operand_types);
 	}
     }
   resolved.in = src.in;
@@ -406,16 +418,48 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_list_domains = plan == NULL ? 0 : plan->n_interpolation_list_domains;
   const int error =
     qexec_alloc_resolved_domains (thread_p, n_vals, n_resolved, n_compares, n_elements, n_indexes, n_node_domains,
-				  n_operand_types, n_list_domains, resolved);
+				  n_operand_types, n_list_domains, xasl_state);
   if (error != NO_ERROR || plan == NULL)
     {
       return error;
     }
   return qexec_alloc_execution_temporaries (thread_p, plan->n_temporaries, plan->temporary_scope, plan->n_scopes,
-					    resolved);
+					    xasl_state->domain_execution);
 }
 
-static int qexec_defer_constant_error (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+/* What resolve_domains failed at below a constant branch: it raises the failure at its end if a row reaches it. */
+enum DOMAIN_DEFERRED_ERROR_KIND
+{
+  DOMAIN_DEFERRED_ERROR_CONSTANT,	/* a constant expression's computation: index = plan->constant_expressions
+					 * index */
+  DOMAIN_DEFERRED_ERROR_COMPARE,	/* a term's constant conversion: compare, failed; arg 1 for a key range term */
+  DOMAIN_DEFERRED_ERROR_KEY,	/* a key constant no index key holds: arg, arg2 = the two types of develop's -181 in its
+				 * order */
+  DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE	/* a MEDIAN / PERCENTILE value without an argument type: arg = function */
+};
+
+struct DOMAIN_DEFERRED_ERROR
+{
+  const DOMAIN_COMPARE *compare;	/* COMPARE: the resolution whose constant sides do not convert */
+  int constant_branch;
+  int index;
+  int arg;
+  int arg2;
+  unsigned char kind;		/* DOMAIN_DEFERRED_ERROR_KIND */
+  unsigned char failed;		/* COMPARE: bit i, constant side i does not convert */
+};
+
+/* The failures below constant branches one qexec_resolve_domains call deferred (qexec_defer_constant_error): raised at
+ * its end if a row reaches them (qexec_raise_deferred_errors) and freed however it returns. A local of that call: no
+ * row and no PX copy reads it. */
+struct DOMAIN_DEFERRED_ERRORS
+{
+  DOMAIN_DEFERRED_ERROR *errors;
+  int n_errors;
+  int max_errors;
+};
+
+static int qexec_defer_constant_error (THREAD_ENTRY * thread_p, DOMAIN_DEFERRED_ERRORS & deferred,
 				       const DOMAIN_DEFERRED_ERROR & deferred_error);
 
 /* Whether the resolver takes this operand's type from its value (a value-dependent argument type): an interpolation
@@ -620,7 +664,8 @@ qexec_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, RES
  */
 static int
 qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan, int index,
-				   RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_OPERAND * operands)
+				   RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_DEFERRED_ERRORS & deferred,
+				   DOMAIN_OPERAND * operands)
 {
   const DOMAIN_PLAN_ITEM *node = plan->late_bind_nodes[index];
   const DOMAIN_PLAN_ITEM_COLD *cold = &plan->items_cold[node - plan->items];
@@ -776,7 +821,7 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
 	  /* below a constant branch: resolve_domains' error only if a row reaches the function */
 	  const DOMAIN_DEFERRED_ERROR deferred_error =
 	    { NULL, cold->constant_branch, -1, cold->opcode, 0, DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE, 0 };
-	  return qexec_defer_constant_error (thread_p, resolved, deferred_error);
+	  return qexec_defer_constant_error (thread_p, deferred, deferred_error);
 	}
       return NO_ERROR;
     }
@@ -786,7 +831,7 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
  * operand its rule reads, so room for more than a few is allocated */
 static int
 qexec_resolve_late_bind_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan, int index,
-			      RESOLVED_DOMAIN_TABLE & resolved)
+			      RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_DEFERRED_ERRORS & deferred)
 {
   const int n_operands = plan->late_bind_links[index].n_operands;
   DOMAIN_OPERAND inline_operands[8];
@@ -800,7 +845,7 @@ qexec_resolve_late_bind_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
-  const int error = qexec_resolve_late_bind_node_over (thread_p, xasl, plan, index, resolved, operands);
+  const int error = qexec_resolve_late_bind_node_over (thread_p, xasl, plan, index, resolved, deferred, operands);
   if (operands != inline_operands)
     {
       db_private_free (thread_p, operands);
@@ -825,7 +870,8 @@ qexec_rests_on_session_read (const DOMAIN_PLAN * plan, const DOMAIN_PLAN_ITEM * 
  */
 static int
 qexec_resolve_late_bind_node_after_constants (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan,
-					      int index, RESOLVED_DOMAIN_TABLE & resolved)
+					      int index, RESOLVED_DOMAIN_TABLE & resolved,
+					      DOMAIN_DEFERRED_ERRORS & deferred)
 {
   if (!plan->late_bind_links[index].after_constants
       || resolved.domains[plan->late_bind_nodes[index]->resolved_index].domain != NULL
@@ -833,7 +879,7 @@ qexec_resolve_late_bind_node_after_constants (THREAD_ENTRY * thread_p, const xas
     {
       return NO_ERROR;
     }
-  return qexec_resolve_late_bind_node (thread_p, xasl, plan, index, resolved);
+  return qexec_resolve_late_bind_node (thread_p, xasl, plan, index, resolved, deferred);
 }
 
 /* The domain a session variable's value has when the execution starts; NULL for none: an undefined variable, whose
@@ -1166,24 +1212,23 @@ qexec_compare_constant_failed (const DOMAIN_COMPARE * compare, unsigned char fai
 /* Records a failure of resolve_domains' own work on a constant below a constant branch: resolve_domains raises it at
  * its end if the constant conditions around it let a row reach it. */
 static int
-qexec_defer_constant_error (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+qexec_defer_constant_error (THREAD_ENTRY * thread_p, DOMAIN_DEFERRED_ERRORS & deferred,
 			    const DOMAIN_DEFERRED_ERROR & deferred_error)
 {
-  if (resolved.n_deferred_errors == resolved.max_deferred_errors)
+  if (deferred.n_errors == deferred.max_errors)
     {
-      const int max = resolved.max_deferred_errors == 0 ? 4 : 2 * resolved.max_deferred_errors;
-      DOMAIN_DEFERRED_ERROR *deferred_errors =
-	(DOMAIN_DEFERRED_ERROR *) db_private_realloc (thread_p, resolved.deferred_errors,
-						      max * sizeof (*deferred_errors));
-      if (deferred_errors == NULL)
+      const int max = deferred.max_errors == 0 ? 4 : 2 * deferred.max_errors;
+      DOMAIN_DEFERRED_ERROR *errors =
+	(DOMAIN_DEFERRED_ERROR *) db_private_realloc (thread_p, deferred.errors, max * sizeof (*errors));
+      if (errors == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max * sizeof (*deferred_errors));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, max * sizeof (*errors));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      resolved.deferred_errors = deferred_errors;
-      resolved.max_deferred_errors = max;
+      deferred.errors = errors;
+      deferred.max_errors = max;
     }
-  resolved.deferred_errors[resolved.n_deferred_errors++] = deferred_error;
+  deferred.errors[deferred.n_errors++] = deferred_error;
   return NO_ERROR;
 }
 
@@ -1233,7 +1278,7 @@ qexec_compare_reads_failed (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN
  * resolve_domains raises before any row; a resolved comparison outside a term answers by rank there, as develop's does.
  */
 static int
-qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_DEFERRED_ERRORS & deferred,
 		       const DOMAIN_COMPARE_PLAN * comparison)
 {
   DOMAIN_COMPARE *compare = &resolved.compares[comparison->fixed.compare_index];
@@ -1325,7 +1370,7 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
       const DOMAIN_DEFERRED_ERROR deferred_error = { compare, comparison->constant_branch, -1, comparison->key_range, 0,
 	DOMAIN_DEFERRED_ERROR_COMPARE, compare->failed
       };
-      const int noted = qexec_defer_constant_error (thread_p, resolved, deferred_error);
+      const int noted = qexec_defer_constant_error (thread_p, deferred, deferred_error);
       if (noted != NO_ERROR)
 	{
 	  return noted;
@@ -1368,7 +1413,7 @@ qexec_constant_element (const DB_VALUE * constant, int i, DB_VALUE * element)
  * side's .
  */
 static int
-qexec_resolve_positions (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_COMPARE_PLAN * pair,
+qexec_resolve_positions (THREAD_ENTRY * thread_p, DOMAIN_DEFERRED_ERRORS & deferred, const DOMAIN_COMPARE_PLAN * pair,
 			 const DOMAIN_COMPARE_KEY * item, const DB_VALUE * constant, DOMAIN_ELEMENTS * out)
 {
   const bool collection = TP_IS_SET_TYPE (DB_VALUE_TYPE (constant));
@@ -1494,7 +1539,7 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolv
 		{
 		  const DOMAIN_DEFERRED_ERROR deferred_error =
 		    { compare, pair->constant_branch, -1, pair->key_range, 0, DOMAIN_DEFERRED_ERROR_COMPARE, 2 };
-		  error = qexec_defer_constant_error (thread_p, resolved, deferred_error);
+		  error = qexec_defer_constant_error (thread_p, deferred, deferred_error);
 		}
 	    }
 	}
@@ -1537,7 +1582,7 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolv
  * row of the type pair comparison table; a right side resolve_domains typed that is no collection gets one resolution.
  */
 static int
-qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_DEFERRED_ERRORS & deferred,
 			const DOMAIN_ELEMENT_COMPARE_PLAN * comparison)
 {
   DOMAIN_ELEMENTS *out = &resolved.elements[comparison->resolved_elements_index];
@@ -1570,7 +1615,7 @@ qexec_resolve_elements (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolve
 	  out->read = DOMAIN_READ_NONE;
 	  return NO_ERROR;
 	}
-      return qexec_resolve_positions (thread_p, resolved, pair, &key[0], constant[1], out);
+      return qexec_resolve_positions (thread_p, deferred, pair, &key[0], constant[1], out);
     }
   if (!qexec_compare_side_key (resolved, pair, 1, constant[1], &key[1]))
     {
@@ -1625,7 +1670,8 @@ qexec_compare_constants_evaluated (const RESOLVED_DOMAIN_TABLE & resolved, const
  */
 static int
 qexec_resolve_comparisons_before_constant (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
-					   const DOMAIN_PLAN * plan, unsigned char *comparison_resolved, int i)
+					   DOMAIN_DEFERRED_ERRORS & deferred, const DOMAIN_PLAN * plan,
+					   unsigned char *comparison_resolved, int i)
 {
   if (plan->constant_comparisons_first == NULL)
     {
@@ -1646,7 +1692,7 @@ qexec_resolve_comparisons_before_constant (THREAD_ENTRY * thread_p, RESOLVED_DOM
 	      continue;
 	    }
 	  comparison_resolved[s] = 1;
-	  error = qexec_resolve_compare (thread_p, resolved, plan->compares[s]);
+	  error = qexec_resolve_compare (thread_p, resolved, deferred, plan->compares[s]);
 	}
       else
 	{
@@ -1656,7 +1702,7 @@ qexec_resolve_comparisons_before_constant (THREAD_ENTRY * thread_p, RESOLVED_DOM
 	      continue;
 	    }
 	  comparison_resolved[s] = 1;
-	  error = qexec_resolve_elements (thread_p, resolved, comparison);
+	  error = qexec_resolve_elements (thread_p, resolved, deferred, comparison);
 	}
       if (error != NO_ERROR)
 	{
@@ -1676,7 +1722,8 @@ qexec_resolve_comparisons_before_constant (THREAD_ENTRY * thread_p, RESOLVED_DOM
  */
 static int
 qexec_resolve_comparisons_after_constants (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
-					   const DOMAIN_PLAN * plan, unsigned char *comparison_resolved)
+					   DOMAIN_DEFERRED_ERRORS & deferred, const DOMAIN_PLAN * plan,
+					   unsigned char *comparison_resolved)
 {
   for (int k = 0; k < plan->n_compare_indexes; k++)
     {
@@ -1698,7 +1745,7 @@ qexec_resolve_comparisons_after_constants (THREAD_ENTRY * thread_p, RESOLVED_DOM
 	  return qexec_compare_side_unresolved (comparison);
 	}
       comparison_resolved[k] = 1;
-      const int error = qexec_resolve_compare (thread_p, resolved, comparison);
+      const int error = qexec_resolve_compare (thread_p, resolved, deferred, comparison);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1724,7 +1771,7 @@ qexec_resolve_comparisons_after_constants (THREAD_ENTRY * thread_p, RESOLVED_DOM
 	  return qexec_compare_side_unresolved (&comparison->pair);
 	}
       *element_resolved = 1;
-      const int error = qexec_resolve_elements (thread_p, resolved, comparison);
+      const int error = qexec_resolve_elements (thread_p, resolved, deferred, comparison);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1883,8 +1930,9 @@ qexec_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const 
  * fetch, and only a multi-column key is written from the resolution's value.
  */
 static int
-qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bool midxkey, int constant_branch,
-			    const domain_plan_key_elem * elem, RESOLVED_KEY_ELEMENT * resolved_domain)
+qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DOMAIN_DEFERRED_ERRORS & deferred,
+			    bool midxkey, int constant_branch, const domain_plan_key_elem * elem,
+			    RESOLVED_KEY_ELEMENT * resolved_domain)
 {
   const TP_DOMAIN *column = elem->index_elem;
   const DB_VALUE *value = qexec_key_constant_value (xasl_state, elem->regu);
@@ -1921,7 +1969,7 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, bo
       /* below a constant branch: resolve_domains' error only if a row opens the scan */
       const DOMAIN_DEFERRED_ERROR deferred_error =
 	{ NULL, constant_branch, -1, first, second, DOMAIN_DEFERRED_ERROR_KEY, 0 };
-      const int noted = qexec_defer_constant_error (thread_p, xasl_state->resolved_domain, deferred_error);
+      const int noted = qexec_defer_constant_error (thread_p, deferred, deferred_error);
       return noted != NO_ERROR ? noted : pr_clone_value (value, &resolved_domain->value);
     }
   const TP_DOMAIN *value_domain = domain_value_domain (value);
@@ -2068,7 +2116,8 @@ error:
  * keys.
  */
 static int
-qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const domain_plan_index * index)
+qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DOMAIN_DEFERRED_ERRORS & deferred,
+			  const domain_plan_index * index)
 {
   assert (index->n_resolved_elements > 0);
   RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
@@ -2112,8 +2161,8 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, cons
 	      if (!elem->shared)
 		{
 		  error =
-		    qexec_resolve_key_constant (thread_p, xasl_state, bound->midxkey, index->constant_branch, elem,
-						resolved_domain);
+		    qexec_resolve_key_constant (thread_p, xasl_state, deferred, bound->midxkey, index->constant_branch,
+						elem, resolved_domain);
 		}
 	      /* a shared element's resolution is key1's, made above */
 	      domain = resolved_domain->domain;
@@ -2232,7 +2281,7 @@ qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_KEYS * src,
  */
 static int
 qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan,
-				 RESOLVED_DOMAIN_TABLE & resolved)
+				 RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_DEFERRED_ERRORS & deferred)
 {
   const int n_variables = plan->n_session_variables;
   if (n_variables == 0)
@@ -2273,7 +2322,7 @@ qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl
 	  if (qexec_rests_on_session_read (plan, plan->late_bind_nodes[g])
 	      && plan->items_cold[plan->late_bind_nodes[g] - plan->items].opcode != T_EVALUATE_VARIABLE)
 	    {
-	      error = qexec_resolve_late_bind_node (thread_p, xasl, plan, g, resolved);
+	      error = qexec_resolve_late_bind_node (thread_p, xasl, plan, g, resolved, deferred);
 	    }
 	}
       changed = false;
@@ -2296,13 +2345,13 @@ qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl
 	  qexec_compare_unreached (&resolved.compares[plan->compares[k]->fixed.compare_index]);
 	  continue;
 	}
-      error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
+      error = qexec_resolve_compare (thread_p, resolved, deferred, plan->compares[k]);
     }
   for (int k = 0; error == NO_ERROR && k < plan->n_element_comparisons; k++)
     {
       if (plan->element_comparisons[k]->session_dependent)
 	{
-	  error = qexec_resolve_elements (thread_p, resolved, plan->element_comparisons[k]);
+	  error = qexec_resolve_elements (thread_p, resolved, deferred, plan->element_comparisons[k]);
 	}
     }
   return error;
@@ -2479,11 +2528,10 @@ qexec_constant_branch_reached (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
  *   raised them
  */
 static int
-qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
+qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const DOMAIN_DEFERRED_ERRORS & deferred)
 {
-  RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
-  const DOMAIN_PLAN *plan = resolved.plan;
-  if (resolved.n_deferred_errors == 0)
+  const DOMAIN_PLAN *plan = xasl_state->resolved_domain.plan;
+  if (deferred.n_errors == 0)
     {
       return NO_ERROR;
     }
@@ -2496,9 +2544,9 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
     }
   memset (state, 0, plan->n_constant_branches);
   int error = NO_ERROR;
-  for (int f = 0; f < resolved.n_deferred_errors && error == NO_ERROR; f++)
+  for (int f = 0; f < deferred.n_errors && error == NO_ERROR; f++)
     {
-      const DOMAIN_DEFERRED_ERROR *deferred_error = &resolved.deferred_errors[f];
+      const DOMAIN_DEFERRED_ERROR *deferred_error = &deferred.errors[f];
       const int reached =
 	qexec_constant_branch_reached (thread_p, xasl_state, plan, deferred_error->constant_branch, state);
       if (reached != 1)
@@ -2537,11 +2585,11 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 }
 
 /*
- * qexec_resolve_domains () - resolve_domains resolve_domains, once per execution before
- *   the main block.
+ * qexec_resolve_domains_internal () - resolve_domains, once per execution before the main block (qexec_resolve_domains)
  *   return: NO_ERROR, or ER_code (a failure is a pre-execution error)
  *   xasl(in): root of the XASL tree carrying the load-derived DOMAIN_PLAN
  *   xasl_state(in/out): after return vd.dbval_ptr points to resolve_domains' values (a bind's shares qmgr's value)
+ *   deferred(in/out): the failures below constant branches the steps defer; the caller frees the list
  *
  * The plan stays immutable, the input stays const, and each
  * reference (val_pos, domain, failure policy) has its own value. The
@@ -2558,14 +2606,15 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
  *   4 the late-binding nodes, producers first; a node over a constant expression waits for the constant expression
  *       step, a node over a session variable read for 7b
  *   5   the comparisons to resolve and ALL/SOME terms over binds, literals and resolutions
- *   6   the resolutions are frozen
+ *   6   the values and resolutions so far become readable (frozen): the constant expression step fetches through them
  *   7   each constant expression evaluated once; the comparisons and nodes over it just before the next one
  *   7b  each session variable's type for the statement, then the resolutions over its reads
  *   8   the index scans' key elements and key comparison tables
  *   end the failures below constant branches, raised if a row reaches them
  */
-int
-qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state)
+static int
+qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state,
+				DOMAIN_DEFERRED_ERRORS & deferred)
 {
   /* a PX worker inherits the resolutions through qexec_deep_copy_xasl_state and never makes one. */
   assert (thread_p == NULL || thread_p->m_px_orig_thread_entry == NULL || thread_p->m_px_orig_thread_entry == thread_p);
@@ -2686,7 +2735,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	{
 	  continue;
 	}
-      error = qexec_resolve_late_bind_node (thread_p, xasl, plan, i, resolved);
+      error = qexec_resolve_late_bind_node (thread_p, xasl, plan, i, resolved, deferred);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2703,7 +2752,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	{
 	  continue;
 	}
-      error = qexec_resolve_compare (thread_p, resolved, plan->compares[k]);
+      error = qexec_resolve_compare (thread_p, resolved, deferred, plan->compares[k]);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2716,16 +2765,19 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	{
 	  continue;
 	}
-      error = qexec_resolve_elements (thread_p, resolved, plan->element_comparisons[k]);
+      error = qexec_resolve_elements (thread_p, resolved, deferred, plan->element_comparisons[k]);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
     }
 
+  /* the constant expression step's computations fetch through the values and resolutions made so far (RESOLVED,
+   * REGU_RESOLVED_VALUE): they are readable from here on; the steps below go on resolving what a constant, a session
+   * variable or an index key decides */
   resolved.frozen = true;
 
-  /* the constant expression step (qexec_evaluate_constant_expression): the resolutions are frozen; each constant
+  /* the constant expression step (qexec_evaluate_constant_expression): each constant
    * expression is evaluated once into its own value, and a comparison to resolve over one is resolved from that value.
    * An evaluation error is the execution's, before any row, whatever the rows would have reached (develop raised it at
    * the first row that computed the node). A comparison is resolved as soon as its subtrees have their values, before
@@ -2753,11 +2805,12 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	  error =
 	    qexec_resolve_late_bind_node_after_constants (thread_p, xasl, plan,
 							  plan->resolved_late_bind_node[node->resolved_index],
-							  resolved);
+							  resolved, deferred);
 	}
       if (error == NO_ERROR)
 	{
-	  error = qexec_resolve_comparisons_before_constant (thread_p, resolved, plan, comparison_resolved, i);
+	  error =
+	    qexec_resolve_comparisons_before_constant (thread_p, resolved, deferred, plan, comparison_resolved, i);
 	}
       if (error == NO_ERROR)
 	{
@@ -2772,20 +2825,20 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 		{ NULL, plan->items_cold[node - plan->items].constant_branch, i, 0,
 		0, DOMAIN_DEFERRED_ERROR_CONSTANT, 0
 	      };
-	      error = qexec_defer_constant_error (thread_p, resolved, deferred_error);
+	      error = qexec_defer_constant_error (thread_p, deferred, deferred_error);
 	    }
 	}
     }
   /* the late-binding nodes over constant expressions left, which read a row, in producer order */
   for (int i = 0; plan != NULL && i < plan->n_late_bind_nodes && error == NO_ERROR; i++)
     {
-      error = qexec_resolve_late_bind_node_after_constants (thread_p, xasl, plan, i, resolved);
+      error = qexec_resolve_late_bind_node_after_constants (thread_p, xasl, plan, i, resolved, deferred);
     }
   if (error == NO_ERROR && plan != NULL)
     {
       /* the comparisons left: over the last constants and the late-binding nodes over constant expressions that read a
        * row */
-      error = qexec_resolve_comparisons_after_constants (thread_p, resolved, plan, comparison_resolved);
+      error = qexec_resolve_comparisons_after_constants (thread_p, resolved, deferred, plan, comparison_resolved);
     }
   if (comparison_resolved != NULL)
     {
@@ -2795,7 +2848,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
    * over its reads */
   if (error == NO_ERROR && plan != NULL)
     {
-      error = qexec_resolve_session_variables (thread_p, xasl, plan, resolved);
+      error = qexec_resolve_session_variables (thread_p, xasl, plan, resolved, deferred);
     }
   if (error != NO_ERROR)
     {
@@ -2812,7 +2865,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 	{
 	  continue;
 	}
-      error = qexec_resolve_index_keys (thread_p, xasl_state, &plan->indexes[j]);
+      error = qexec_resolve_index_keys (thread_p, xasl_state, deferred, &plan->indexes[j]);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2821,11 +2874,23 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 
   /* the failures below constant branches are resolve_domains' errors if the constant conditions around them let
    * a row reach them; where no data does, develop never raised them */
-  error = qexec_raise_deferred_errors (thread_p, xasl_state);
-  if (resolved.deferred_errors != NULL)
+  return qexec_raise_deferred_errors (thread_p, xasl_state, deferred);
+}
+
+/*
+ * qexec_resolve_domains () - resolve_domains, once per execution before the main block: the steps of
+ *   qexec_resolve_domains_internal, then the release of the failures they deferred below constant branches, however
+ *   the steps returned
+ *   return: NO_ERROR, or ER_code (a failure is a pre-execution error)
+ */
+int
+qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state)
+{
+  DOMAIN_DEFERRED_ERRORS deferred = { NULL, 0, 0 };
+  const int error = qexec_resolve_domains_internal (thread_p, xasl, xasl_state, deferred);
+  if (deferred.errors != NULL)
     {
-      db_private_free_and_init (thread_p, resolved.deferred_errors);
-      resolved.n_deferred_errors = resolved.max_deferred_errors = 0;
+      db_private_free (thread_p, deferred.errors);
     }
   return error;
 }
@@ -2957,18 +3022,13 @@ qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, co
 }
 
 /* The connection owns resolve_domains block and all cloned payloads, including
- * secondary references. The input may alias an SA client's host variables. */
+ * secondary references, and the execution domain state. The input may alias an SA client's host variables. */
 void
 qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
   RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
+  DOMAIN_EXECUTION_STATE & execution = xasl_state->domain_execution;
   assert (resolved.owner == thread_p || resolved.vals == NULL);
-  if (resolved.deferred_errors != NULL)
-    {
-      /* resolve_domains ended with an error before it raised its failures below constant branches */
-      db_private_free_and_init (thread_p, resolved.deferred_errors);
-      resolved.n_deferred_errors = resolved.max_deferred_errors = 0;
-    }
   for (int k = 0; k < resolved.n_elements; k++)
     {
       qexec_clear_elements (thread_p, &resolved.elements[k]);
@@ -2983,22 +3043,24 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
     }
   if (resolved.vals != NULL)
     {
+      /* the block holds the node state's arrays too */
       db_private_free (thread_p, resolved.vals);
       xasl_state->vd.dbval_ptr = const_cast < DB_VALUE * >(resolved.in);
     }
-  if (resolved.temporaries != NULL)
+  if (execution.temporaries != NULL)
     {
-      for (int h = 0; h < resolved.n_temporaries; h++)
+      for (int h = 0; h < execution.n_temporaries; h++)
 	{
-	  pr_clear_value (&resolved.temporaries[h].value);
+	  pr_clear_value (&execution.temporaries[h].value);
 	}
-      db_private_free (thread_p, resolved.temporaries);
+      db_private_free (thread_p, execution.temporaries);
     }
-  if (resolved.scope_generations != NULL)
+  if (execution.scope_generations != NULL)
     {
-      db_private_free (thread_p, resolved.scope_generations);
+      db_private_free (thread_p, execution.scope_generations);
     }
   memset (&resolved, 0, sizeof (resolved));
+  memset (&execution, 0, sizeof (execution));
 }
 
 /*
@@ -3019,10 +3081,10 @@ qexec_enter_temporary_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
     {
       return;
     }
-  RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
-  if (val_list->domain_scope < resolved.n_scopes)
+  DOMAIN_EXECUTION_STATE & execution = vd->xasl_state->domain_execution;
+  if (val_list->domain_scope < execution.n_scopes)
     {
-      resolved.scope_generations[val_list->domain_scope]++;
+      execution.scope_generations[val_list->domain_scope]++;
     }
 }
 
@@ -3036,12 +3098,12 @@ qexec_enter_temporary_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
  *   value(in): the value, not NULL
  */
 const DB_VALUE *
-qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved,
+qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 				   DOMAIN_EXECUTION_TEMPORARY * entry, TP_VALUE_CONVERTER conv,
 				   const TP_DOMAIN * target, const DB_VALUE * value)
 {
-  const unsigned long long generation = resolved.scope_generations[entry->scope];
-  if (generation == 0 || resolved.owner != thread_p)
+  const unsigned long long generation = xasl_state->domain_execution.scope_generations[entry->scope];
+  if (generation == 0 || xasl_state->resolved_domain.owner != thread_p)
     {
       return NULL;
     }
