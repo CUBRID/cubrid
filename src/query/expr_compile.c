@@ -231,12 +231,18 @@ struct expr_build_ctx
   int scan_side_seq;		/* distinct guard key per compiled scan-filter operand side */
 
   /* every arithmetic node compiled so far and the cell it publishes; a scan-filter build
-   * marks the ranges a qualifying row is guaranteed to have evaluated (shareable) */
+   * marks the ranges a qualifying row is guaranteed to have evaluated (shareable).  guard
+   * and in_branch record the condition the node was compiled under: a node inside a lazy
+   * right-hand region (guard != the enclosing one) or a CASE branch runs only on the rows
+   * that take that path, so a row the filter accepts may not have computed it -- such a
+   * node is never offered for sharing (review 2026-09-22, NVL/CASE operand shared stale). */
   struct
   {
     const REGU_VARIABLE *regu;
     int cell;
     bool shareable;
+    int guard;			/* bctx->cur_guard when the node was registered */
+    bool in_branch;		/* registered while compiling a CASE branch */
   } node_cells[EXPR_MAX_STEPS];
   int n_node_cells;
 
@@ -1996,10 +2002,11 @@ expr_rhs_begin (EXPR_BUILD_CTX * bctx, int lhs_cell, int kind, int *saved)
 }
 
 /* Leave the right-hand side's guard.  A right-hand side that stays eager (no fallible step,
- * so no region) publishes its cells on every row after all: its entries are re-tagged with
- * the enclosing guard so any later reader may share them. */
+ * so no region) publishes its cells on every row after all: its CSE entries and its
+ * registered nodes (node_cells, from node_start) are re-tagged with the enclosing guard so
+ * any later reader may share them; a lazy one keeps its own guard on both. */
 static void
-expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, bool lazy)
+expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, int node_start, bool lazy)
 {
   int i;
 
@@ -2011,6 +2018,13 @@ expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, bool l
 	  if (bctx->cse[i].guard == guard)
 	    {
 	      bctx->cse[i].guard = saved;
+	    }
+	}
+      for (i = node_start; i < bctx->n_node_cells; i++)
+	{
+	  if (bctx->node_cells[i].guard == guard)
+	    {
+	      bctx->node_cells[i].guard = saved;
 	    }
 	}
     }
@@ -2379,12 +2393,20 @@ expr_scan_side_compile (EXPR_BUILD_CTX * bctx, EXPR_PRED * pred, REGU_VARIABLE *
       return;
     }
   expr_build_row_range (bctx, start, &region_start, &region_n);
-  expr_rhs_end (bctx, saved_guard, guard, cse_mark, true);
-  /* a leaf every qualifying row is guaranteed to have evaluated publishes its nodes'
-   * values for the scan's other consumers (expr_scan_pred_share_build ()) */
+  expr_rhs_end (bctx, saved_guard, guard, cse_mark, node_mark, true);
+  /* A leaf every qualifying row is guaranteed to have evaluated publishes its nodes' values
+   * for the scan's other consumers (expr_scan_pred_share_build ()) -- but only the nodes the
+   * leaf computes on EVERY row it evaluates: a node under a nested lazy guard (the right side
+   * of NVL/IFNULL/COALESCE or of an arithmetic whose left side may be NULL) or inside a CASE
+   * branch runs on the rows that take that path only, so an accepted row may have skipped it
+   * and its slot still holds the previous row's value.  The side's root and its eager
+   * sub-nodes carry this side's guard (an eager right side is re-tagged by expr_rhs_end ()). */
   for (i = node_mark; shareable && i < bctx->n_node_cells; i++)
     {
-      bctx->node_cells[i].shareable = true;
+      if (bctx->node_cells[i].guard == guard && !bctx->node_cells[i].in_branch)
+	{
+	  bctx->node_cells[i].shareable = true;
+	}
     }
   if (is_rhs)
     {
@@ -2402,11 +2424,14 @@ expr_scan_side_compile (EXPR_BUILD_CTX * bctx, EXPR_PRED * pred, REGU_VARIABLE *
     }
 }
 
-/* shareable: every ancestor of this term is an AND or a NOT, so a row the whole filter
- * accepts has evaluated this term to a definite TRUE/FALSE -- both operand sides of a
- * comparison leaf have then run for that row and their compiled values are current when
- * the node's projection or aggregates look at the row.  Under an OR the term may have been
- * skipped for an accepted row, so nothing below it is offered for sharing. */
+/* shareable: every ancestor of this term is an AND, so a row the whole filter accepts has
+ * evaluated this term to a definite TRUE -- both operand sides of a comparison leaf have then
+ * run for that row and their compiled values are current when the node's projection or
+ * aggregates look at the row.  Under an OR the term may have been skipped for an accepted
+ * row, so nothing below it is offered for sharing.  The same holds under a NOT: an AND chain
+ * below it short-circuits at its first FALSE, and that FALSE is exactly what makes the row
+ * pass, so the later terms have not run (NOT BETWEEN compiles to NOT (a >= lo AND a <= hi) and
+ * shared the upper bound's arithmetic stale -- review 2026-09-22). */
 static EXPR_PRED *expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, int depth_limit,
 					bool shareable);
 
@@ -2498,7 +2523,8 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
       return expr_scan_pred_build_chain (bctx, pr, depth, depth_limit, shareable);
 
     case T_NOT_TERM:
-      lhs = expr_scan_pred_build (bctx, pr->pe.m_not_term, depth + 1, depth_limit, shareable);
+      /* nothing below a NOT is shared: see the note on shareable above */
+      lhs = expr_scan_pred_build (bctx, pr->pe.m_not_term, depth + 1, depth_limit, false);
       if (lhs == NULL)
 	{
 	  return NULL;
@@ -3390,6 +3416,8 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
       bctx->node_cells[bctx->n_node_cells].regu = regu;
       bctx->node_cells[bctx->n_node_cells].cell = cell;
       bctx->node_cells[bctx->n_node_cells].shareable = false;
+      bctx->node_cells[bctx->n_node_cells].guard = bctx->cur_guard;
+      bctx->node_cells[bctx->n_node_cells].in_branch = (bctx->in_branch > 0);
       bctx->n_node_cells++;
     }
   return cell;
@@ -3697,7 +3725,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  {
 	    /* T_NVL / T_IFNULL / T_COALESCE share one interpreted block */
 	    DB_TYPE t1, t2;
-	    int r_start, r_cse, r_n, guard, saved_guard;
+	    int r_start, r_cse, r_nodes, r_n, guard, saved_guard;
 	    bool lazy;
 
 	    /* the pointer-select is only transparent when both branches already carry
@@ -3721,6 +3749,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	     * its steps can fail they become a region the lazy kernel runs on that condition */
 	    r_start = bctx->n_steps;
 	    r_cse = bctx->n_cse;
+	    r_nodes = bctx->n_node_cells;
 	    guard = expr_rhs_begin (bctx, c1, EXPR_GUARD_LHS_NULL, &saved_guard);
 	    if (guard < 0)
 	      {
@@ -3728,7 +3757,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      }
 	    c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
 	    lazy = expr_steps_fallible (bctx, r_start);
-	    expr_rhs_end (bctx, saved_guard, guard, r_cse, lazy);
+	    expr_rhs_end (bctx, saved_guard, guard, r_cse, r_nodes, lazy);
 	    if (c2 < 0)
 	      {
 		return -1;
@@ -3836,7 +3865,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	     * interpreted domain-infer arm and cross-type coercion stay interpreted */
 	    DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	    DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
-	    int r_start, r_cse, r_n, guard, saved_guard;
+	    int r_start, r_cse, r_nodes, r_n, guard, saved_guard;
 	    bool lazy;
 
 	    if (regu->domain == NULL || t1 != t2 || t1 == DB_TYPE_UNKNOWN
@@ -3854,6 +3883,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	     * for a non-NULL left one (lazy region when its steps can fail) */
 	    r_start = bctx->n_steps;
 	    r_cse = bctx->n_cse;
+	    r_nodes = bctx->n_node_cells;
 	    guard = expr_rhs_begin (bctx, c1, EXPR_GUARD_LHS_NOT_NULL, &saved_guard);
 	    if (guard < 0)
 	      {
@@ -3861,7 +3891,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      }
 	    c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
 	    lazy = expr_steps_fallible (bctx, r_start);
-	    expr_rhs_end (bctx, saved_guard, guard, r_cse, lazy);
+	    expr_rhs_end (bctx, saved_guard, guard, r_cse, r_nodes, lazy);
 	    if (c2 < 0)
 	      {
 		return -1;
@@ -3956,7 +3986,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	  DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
 	  bool numeric_pure = false, lazy;
-	  int r_start, r_cse, r_n, guard, saved_guard;
+	  int r_start, r_cse, r_nodes, r_n, guard, saved_guard;
 
 	  if (rtype == DB_TYPE_NUMERIC)
 	    {
@@ -4000,6 +4030,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	   * that condition; a right side that cannot fail stays in the main loop */
 	  r_start = bctx->n_steps;
 	  r_cse = bctx->n_cse;
+	  r_nodes = bctx->n_node_cells;
 	  guard = expr_rhs_begin (bctx, c1, EXPR_GUARD_LHS_NOT_NULL, &saved_guard);
 	  if (guard < 0)
 	    {
@@ -4023,7 +4054,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		}
 	    }
 	  lazy = expr_steps_fallible (bctx, r_start);
-	  expr_rhs_end (bctx, saved_guard, guard, r_cse, lazy);
+	  expr_rhs_end (bctx, saved_guard, guard, r_cse, r_nodes, lazy);
 	  if (c2 < 0)
 	    {
 	      return -1;

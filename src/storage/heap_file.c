@@ -721,13 +721,13 @@ static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info
 static size_t heap_attrinfo_determine_disksize (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr);
 
-static void heap_attrvalue_point_fixed (const struct heap_rec_layout *layout, OR_ATTRIBUTE * attrepr,
+static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRIBUTE * attrepr,
 					RECDES * raw, int disk_size);
-static void heap_attrvalue_point_variable (const struct heap_rec_layout *layout, HEAP_CACHE_ATTRINFO * attr_info,
+static void heap_attrvalue_point_variable (const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
 					   OR_ATTRIBUTE * attrepr, RECDES * raw);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-				const struct heap_rec_layout *layout);
+				const HEAP_REC_LAYOUT * layout);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
@@ -10819,7 +10819,12 @@ STATIC_INLINE void
 heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEAP_CACHE_ATTRINFO * attr_info)
 {
   char *obj = (char *) recdes->data;
-  int nvars = attr_info->read_classrepr->n_variable;
+  int nvars;
+
+  /* the caller has recached the record's representation; NULL_REPRID (a record too short for
+   * its header) leaves none and must be handled before laying the record out */
+  assert (attr_info->read_classrepr != NULL);
+  nvars = attr_info->read_classrepr->n_variable;
 
   layout->offset_size = OR_GET_OFFSET_SIZE (obj);
   layout->var_table = obj + OR_HEADER_SIZE (obj);
@@ -11028,6 +11033,10 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
 static int
 heap_attr_readval_int (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
 {
+  /* a record's fixed column is exactly the domain width (rd_disk_size); a catalog default is
+   * or_put_value ()'s 4-byte-aligned packing of a value already cast to the column domain
+   * (schema_template.c), hence >= and not == */
+  assert (size >= OR_INT_SIZE);
   out->domain.general_info.type = DB_TYPE_INTEGER;
   out->data.i = OR_GET_INT (disk);
   out->domain.general_info.is_null = 0;
@@ -11038,6 +11047,10 @@ heap_attr_readval_int (DB_VALUE * out, const char *disk, int size, const OR_ATTR
 static int
 heap_attr_readval_bigint (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
 {
+  /* a record's fixed column is exactly the domain width (rd_disk_size); a catalog default is
+   * or_put_value ()'s 4-byte-aligned packing of a value already cast to the column domain
+   * (schema_template.c), hence >= and not == */
+  assert (size >= OR_BIGINT_SIZE);
   out->domain.general_info.type = DB_TYPE_BIGINT;
   OR_GET_BIGINT (disk, &out->data.bigint);
   out->domain.general_info.is_null = 0;
@@ -11048,6 +11061,10 @@ heap_attr_readval_bigint (DB_VALUE * out, const char *disk, int size, const OR_A
 static int
 heap_attr_readval_short (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
 {
+  /* a record's fixed column is exactly the domain width (rd_disk_size); a catalog default is
+   * or_put_value ()'s 4-byte-aligned packing of a value already cast to the column domain
+   * (schema_template.c), hence >= and not == */
+  assert (size >= OR_SHORT_SIZE);
   out->domain.general_info.type = DB_TYPE_SHORT;
   out->data.sh = (short) OR_GET_SHORT (disk);
   out->domain.general_info.is_null = 0;
@@ -11058,6 +11075,10 @@ heap_attr_readval_short (DB_VALUE * out, const char *disk, int size, const OR_AT
 static int
 heap_attr_readval_float (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
 {
+  /* a record's fixed column is exactly the domain width (rd_disk_size); a catalog default is
+   * or_put_value ()'s 4-byte-aligned packing of a value already cast to the column domain
+   * (schema_template.c), hence >= and not == */
+  assert (size >= OR_FLOAT_SIZE);
   out->domain.general_info.type = DB_TYPE_FLOAT;
   OR_GET_FLOAT (disk, &out->data.f);
   out->domain.general_info.is_null = 0;
@@ -11068,6 +11089,10 @@ heap_attr_readval_float (DB_VALUE * out, const char *disk, int size, const OR_AT
 static int
 heap_attr_readval_double (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
 {
+  /* a record's fixed column is exactly the domain width (rd_disk_size); a catalog default is
+   * or_put_value ()'s 4-byte-aligned packing of a value already cast to the column domain
+   * (schema_template.c), hence >= and not == */
+  assert (size >= OR_DOUBLE_SIZE);
   out->domain.general_info.type = DB_TYPE_DOUBLE;
   OR_GET_DOUBLE (disk, &out->data.d);
   out->domain.general_info.is_null = 0;
@@ -11078,6 +11103,10 @@ heap_attr_readval_double (DB_VALUE * out, const char *disk, int size, const OR_A
 static int
 heap_attr_readval_date (DB_VALUE * out, const char *disk, int size, const OR_ATTRIBUTE * attrepr)
 {
+  /* a record's fixed column is exactly the domain width (rd_disk_size); a catalog default is
+   * or_put_value ()'s 4-byte-aligned packing of a value already cast to the column domain
+   * (schema_template.c), hence >= and not == */
+  assert (size >= OR_DATE_SIZE);
   out->domain.general_info.type = DB_TYPE_DATE;
   OR_GET_DATE (disk, &out->data.date);
   out->domain.general_info.is_null = 0;
@@ -11209,7 +11238,11 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       /* Is it a fixed size attribute ? */
       if (layout == NULL)
 	{
-	  /* a caller decoding a single attribute pays the same derivation it always did */
+	  /* Every loop over a record's attributes builds the layout once and passes it
+	   * (heap_attrinfo_read_dbvalues (), _without_oid (), _read_dbvalues_lazy () and
+	   * heap_attrvalue_peek_lazy () through lazy_layout, heap_attrinfo_set_uninitialized (),
+	   * heap_attrinfo_delete_lob ()); a caller reading one attribute on its own derives it
+	   * here, as every read did before the layout existed. */
 	  heap_rec_layout_init (&own_layout, recdes, attr_info);
 	  layout = &own_layout;
 	}
@@ -11473,6 +11506,15 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
 	}
     }
 
+  if (unlikely (attr_info->read_classrepr == NULL))
+    {
+      /* or_rep_id () gave NULL_REPRID (the record is shorter than its header) and
+       * heap_attrinfo_recache () returned success with no representation; the record cannot
+       * be laid out, so read everything through the eager path, which takes the no-record
+       * branches for every value (as heap_attrinfo_read_dbvalues () guards it) */
+      return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
+    }
+
   /* The record layout serves both the eager reads below (once per row instead of once per
    * eager column) and, kept in attr_info, every deferred read of this record
    * (heap_attrvalue_peek_lazy ()).  It stays meaningful exactly as long as lazy_recdes
@@ -11611,6 +11653,8 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 {
   int i;
   HEAP_ATTRVALUE *value;
+  HEAP_REC_LAYOUT layout;
+  const HEAP_REC_LAYOUT *layoutp = NULL;
   int ret = NO_ERROR;
 
   assert (attr_info != NULL);
@@ -11635,6 +11679,13 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	}
     }
 
+  /* one layout for every LOB column read back from this record (see heap_attrvalue_read ()) */
+  if (recdes != NULL && recdes->data != NULL && attr_info->read_classrepr != NULL)
+    {
+      heap_rec_layout_init (&layout, recdes, attr_info);
+      layoutp = &layout;
+    }
+
   /*
    * Go over each attribute and delete the data if it's lob type
    */
@@ -11646,7 +11697,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	{
 	  if (value->state == HEAP_UNINIT_ATTRVALUE && recdes != NULL)
 	    {
-	      ret = heap_attrvalue_read (recdes, value, attr_info, NULL);
+	      ret = heap_attrvalue_read (recdes, value, attr_info, layoutp);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -12414,6 +12465,8 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
   int i;
   REPR_ID reprid;		/* Representation of object */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
+  HEAP_REC_LAYOUT layout;
+  const HEAP_REC_LAYOUT *layoutp = NULL;
   int ret = NO_ERROR;
 
   ret = heap_attrinfo_check (inst_oid, attr_info);
@@ -12445,6 +12498,15 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	}
     }
 
+  /* Every value read below comes from the same old record, so its layout is derived once
+   * here and not once per column (this loop runs for every UPDATE row, reading back the
+   * columns the statement did not assign -- heap_attrinfo_transform_to_disk_internal ()). */
+  if (recdes != NULL && recdes->data != NULL && attr_info->read_classrepr != NULL)
+    {
+      heap_rec_layout_init (&layout, recdes, attr_info);
+      layoutp = &layout;
+    }
+
   /*
    * Go over the attribute values and set the ones that have not been
    * initialized
@@ -12454,7 +12516,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
-	  ret = heap_attrvalue_read (recdes, value, attr_info, NULL);
+	  ret = heap_attrvalue_read (recdes, value, attr_info, layoutp);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -12468,7 +12530,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	  pr_clear_value (&value->dbvalue);
 
 	  /* read and delete old value */
-	  ret = heap_attrvalue_read (recdes, value, attr_info, NULL);
+	  ret = heap_attrvalue_read (recdes, value, attr_info, layoutp);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;

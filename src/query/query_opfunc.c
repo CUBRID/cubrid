@@ -453,15 +453,23 @@ qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_li
   valptr_list_p->eval_prog_idx = idx;
   valptr_list_p->eval_prog_state = 1;
 
-  /* does any covered column carry a domain the plan could not type?  Such a domain is
-   * resolved per execution and restored at every execution end, so the program has to
-   * resolve it from its own result (qdata_valptr_prog_resolve_domains ()). */
+  /* does any covered column carry a domain the plan could not settle?  Either the plan could
+   * not type it (DB_TYPE_VARIABLE, resolved per execution and restored at every execution
+   * end) or it typed it as a string whose collation is left to the value (a collation flag,
+   * e.g. IF (c, ?, ?) with both branches bound).  The interpreted path resolves both from the
+   * node's first non-NULL result; a column served by the program has to do the same from its
+   * own result (qdata_valptr_prog_resolve_domains ()). */
   valptr_list_p->eval_prog_dom_any = false;
   valptr_list_p->eval_prog_dom_stamp = 0;
   for (k = 0, reg_var_p = valptr_list_p->valptrp; reg_var_p != NULL; reg_var_p = reg_var_p->next, k++)
     {
-      if (idx[k] >= 0 && reg_var_p->value.original_domain != NULL
-	  && TP_DOMAIN_TYPE (reg_var_p->value.original_domain) == DB_TYPE_VARIABLE)
+      if (idx[k] < 0)
+	{
+	  continue;
+	}
+      if ((reg_var_p->value.original_domain != NULL
+	   && TP_DOMAIN_TYPE (reg_var_p->value.original_domain) == DB_TYPE_VARIABLE)
+	  || (reg_var_p->value.domain != NULL && reg_var_p->value.domain->collation_flag != TP_DOMAIN_COLL_NORMAL))
 	{
 	  valptr_list_p->eval_prog_dom_any = true;
 	  break;
@@ -470,17 +478,31 @@ qdata_valptr_prog_compile (THREAD_ENTRY * thread_p, valptr_list_node * valptr_li
 }
 
 /*
- * qdata_valptr_prog_resolve_domains () - give the columns the plan could not type the
+ * qdata_valptr_prog_resolve_domains () - give the columns the plan could not settle the
  *					  domain the interpreted path would have resolved
  *
- * The optimizer cannot type an expression over a host variable, so the node's domain stays
- * DB_TYPE_VARIABLE in the plan.  fetch_peek_arith () resolves it from the node's first
- * non-NULL result and qexec_clear_regu_var () restores DB_TYPE_VARIABLE when the execution
- * ends, so the resolution is redone once per execution.  A column served by the program
- * never reaches fetch_peek_arith (), so the same resolution happens here, from the value
- * the program just produced, before the consumer copies it into the tuple.  A row whose
- * value is NULL resolves nothing and leaves the column for the next row, exactly as the
- * interpreted path does.
+ * Two kinds of column arrive with a domain the plan left open, and fetch_peek_arith ()
+ * settles both from the node's first non-NULL result (its trailing post-processing):
+ *
+ *   1. The optimizer cannot type an expression over a host variable, so the node's domain
+ *	stays DB_TYPE_VARIABLE in the plan.  The interpreter resolves it and
+ *	qexec_clear_regu_var () restores DB_TYPE_VARIABLE when the execution ends, so the
+ *	resolution is redone once per execution; both regu_var->domain and arithptr->domain
+ *	receive it.
+ *   2. The parser typed the node as a string but could not fix its collation (IF (c, ?, ?)
+ *	with both branches bound): the domain carries a collation flag
+ *	(collation_flag != TP_DOMAIN_COLL_NORMAL) and the list's type list is built with that
+ *	flagged domain.  The interpreter replaces regu_var->domain with the domain of the
+ *	value (TP_DOMAIN_COLL_NORMAL), and qfile_update_domains_on_type_list () then rewrites
+ *	the type list from it -- without that the client reads the string tuple against the
+ *	flagged domain and asserts (review 2026-09-22).
+ *
+ * A column served by the program never reaches fetch_peek_arith (), so the same resolution
+ * happens here, from the value the program just produced, before the consumer copies it
+ * into the tuple and before the type list is updated (the collection pass precedes
+ * qfile_update_domains_on_type_list () in qdata_generate_tuple_desc_unresolved ()).  A row
+ * whose value is NULL resolves nothing and leaves the column for the next row, exactly as
+ * the interpreted path does.
  */
 static void
 qdata_valptr_prog_resolve_domains (valptr_list_node * valptr_list_p, EXPR_PROG * prog, unsigned long long exec_stamp)
@@ -494,10 +516,16 @@ qdata_valptr_prog_resolve_domains (valptr_list_node * valptr_list_p, EXPR_PROG *
       REGU_VARIABLE *regu = &reg_var_p->value;
       TP_DOMAIN *resolved;
       DB_VALUE *val;
+      bool variable, flagged;
 
-      if (valptr_list_p->eval_prog_idx[k] < 0 || regu->original_domain == NULL
-	  || TP_DOMAIN_TYPE (regu->original_domain) != DB_TYPE_VARIABLE
-	  || TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_VARIABLE)
+      if (valptr_list_p->eval_prog_idx[k] < 0 || regu->domain == NULL)
+	{
+	  continue;
+	}
+      variable = (regu->original_domain != NULL && TP_DOMAIN_TYPE (regu->original_domain) == DB_TYPE_VARIABLE
+		  && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE);
+      flagged = (regu->domain->collation_flag != TP_DOMAIN_COLL_NORMAL);
+      if (!variable && !flagged)
 	{
 	  continue;
 	}
@@ -508,8 +536,12 @@ qdata_valptr_prog_resolve_domains (valptr_list_node * valptr_list_p, EXPR_PROG *
 	  pending = true;
 	  continue;
 	}
+      if (flagged)
+	{
+	  assert (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (regu->domain)));
+	}
       regu->domain = resolved;
-      if ((regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL)
+      if (variable && (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL)
 	{
 	  regu->value.arithptr->domain = resolved;
 	}
