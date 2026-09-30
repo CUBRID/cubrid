@@ -2383,6 +2383,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   int error_code = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  MVCC_SNAPSHOT mvcc_snapshot_committed;
   SCAN_OPERATION_TYPE operation_type;
   OID *p_oid = oid;
   bool object_locked = false;
@@ -2400,8 +2401,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       skip_fetch_version_type_check = true;
     }
 
-  if (LC_FETCH_IS_MVCC_VERSION_NEEDED (initial_fetch_version_type))
+  if (LC_FETCH_IS_MVCC_VERSION_NEEDED (initial_fetch_version_type)
+      || initial_fetch_version_type == LC_FETCH_COMMITTED_VERSION)
     {
+      /* a version-consistent read needs no lock on the object */
       skip_fetch_version_type_check = true;
     }
 
@@ -2419,6 +2422,12 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
     case LC_FETCH_DIRTY_VERSION:
       mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
       mvcc_snapshot = &mvcc_snapshot_dirty;
+      break;
+
+    case LC_FETCH_COMMITTED_VERSION:
+      /* latest committed version, without materializing the transaction snapshot (CBRD-27369) */
+      mvcc_snapshot_committed.snapshot_fnc = mvcc_satisfies_committed;
+      mvcc_snapshot = &mvcc_snapshot_committed;
       break;
 
     case LC_FETCH_CURRENT_VERSION:
