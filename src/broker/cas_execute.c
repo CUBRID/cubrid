@@ -5511,6 +5511,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   char class_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];	/* unique_name = owner.class fits an identifier (DB_MAX_CLASS_LENGTH) */
   char attr_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   DB_OBJECT *class_obj;
+  SM_CLASS *class_;
   DB_ATTRIBUTE *db_attr;
   const char *attr_name;
   const char *class_name, *p;
@@ -5592,18 +5593,19 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
       attr_name = attr_name_buf;
-      if (srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE)
+
+      /* the db_attribute view has already checked the authorization for this row */
+      err_code = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+      if (err_code != NO_ERROR)
 	{
-	  db_attr = db_get_class_attribute (class_obj, attr_name);
-	}
-      else
-	{
-	  db_attr = db_get_attribute (class_obj, attr_name);
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
+      db_attr = classobj_find_attribute (class_, attr_name, srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE);
       if (db_attr == NULL)
 	{
-	  return ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ATTRIBUTE, 1, attr_name);
+	  return ERROR_INFO_SET (ER_OBJ_INVALID_ATTRIBUTE, DBMS_ERROR_INDICATOR);
 	}
 
       memset (&attr_info, 0, sizeof (attr_info));
