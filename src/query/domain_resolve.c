@@ -268,8 +268,10 @@ qexec_alloc_execution_temporaries (THREAD_ENTRY * thread_p, int n_temporaries, c
       resolved.temporaries[h].converted = NULL;
       resolved.temporaries[h].scope = temporary_scope[h];
       db_make_null (&resolved.temporaries[h].value);
+#if !defined (NDEBUG)
       resolved.temporaries[h].conv = NULL;
       resolved.temporaries[h].target = NULL;
+#endif
     }
   memset (resolved.scope_generations, 0, sizeof (*resolved.scope_generations) * (size_t) n_scopes);
   resolved.scope_generations[DOMAIN_SCOPE_EXECUTION] = 1;
@@ -774,7 +776,7 @@ qexec_resolve_late_bind_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
 static bool
 qexec_rests_on_session_read (const DOMAIN_PLAN * plan, const DOMAIN_PLAN_ITEM * node)
 {
-  return node->resolved_index >= 0 && plan->resolved_session_reads[node->resolved_index] != 0;
+  return node->resolved_index >= 0 && plan->resolved_session_dependent[node->resolved_index];
 }
 
 /*
@@ -1213,7 +1215,6 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
       return error;
     }
-  compare->session_reads = comparison->fixed.session_reads;
   if (compare->method != DOMAIN_COMPARE_DIRECT && compare->method != DOMAIN_COMPARE_CONVERT)
     {
       domain_compare_set_operator_functions (compare);
@@ -1670,7 +1671,7 @@ qexec_resolve_comparisons_after_constants (THREAD_ENTRY * thread_p, RESOLVED_DOM
     {
       const DOMAIN_ELEMENT_COMPARE_PLAN *comparison = plan->element_comparisons[k];
       unsigned char *element_resolved = &comparison_resolved[plan->n_compare_indexes + k];
-      if (!comparison->pair.after_constants || *element_resolved || comparison->session_reads != 0)
+      if (!comparison->pair.after_constants || *element_resolved || comparison->session_dependent)
 	{
 	  continue;
 	}
@@ -2262,7 +2263,7 @@ qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl
     }
   for (int k = 0; error == NO_ERROR && k < plan->n_element_comparisons; k++)
     {
-      if (plan->element_comparisons[k]->session_reads != 0)
+      if (plan->element_comparisons[k]->session_dependent)
 	{
 	  error = qexec_resolve_elements (thread_p, resolved, plan->element_comparisons[k]);
 	}
@@ -2674,7 +2675,7 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
   /* likewise every ALL/SOME term resolve_domains resolves: a constant right side element by element */
   for (int k = 0; plan != NULL && k < plan->n_element_comparisons; k++)
     {
-      if (plan->element_comparisons[k]->pair.after_constants || plan->element_comparisons[k]->session_reads != 0)
+      if (plan->element_comparisons[k]->pair.after_constants || plan->element_comparisons[k]->session_dependent)
 	{
 	  continue;
 	}
@@ -3010,8 +3011,10 @@ qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABL
   pr_clear_value (&entry->value);
   entry->generation = generation;
   entry->converted = NULL;
+#if !defined (NDEBUG)
   entry->conv = conv;
   entry->target = target;
+#endif
   /* a failure is the row's to report, in develop's order: this attempt leaves no error */
   er_stack_push ();
   const bool failed = tp_value_convert (conv, target, value, &entry->value) != DOMAIN_COMPATIBLE;

@@ -202,9 +202,8 @@ struct DOMAIN_COMPARE
   signed char rank;		/* comparison method RANK: DB_LT or DB_GT */
   signed char codeset_side;	/* an ENUM against a string of another codeset: the side brought into the ENUM's
 				 * codeset at the row (develop's tmp_char_conv); -1 none */
-  unsigned long long session_reads;	/* LATE_BIND_SESSION: the session variable reads the resolution depends on */
 };
-static_assert (sizeof (DOMAIN_COMPARE) == 80, "resolved comparison layout");
+static_assert (sizeof (DOMAIN_COMPARE) == 72, "resolved comparison layout");
 static_assert (offsetof (DOMAIN_COMPARE, coercion) < 64, "a comparison's row fields in its first 64 bytes");
 
 /* The operator functions a resolved comparison names: comparison method DIRECT's, one for each of R_EQ, R_NE, R_LT,

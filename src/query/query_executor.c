@@ -22150,7 +22150,7 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
       subkey->cmp_dom = resolved_domain != NULL ? tp_domain_resolve_default (TP_DOMAIN_TYPE (resolved_domain)) : NULL;
       subkey->cmp_dom_session_read = item != NULL && item->resolved_index >= 0 && vd->xasl_state != NULL
 	&& qexec_owns_resolved_index (vd->xasl_state->resolved_domain, item)
-	&& vd->xasl_state->resolved_domain.plan->resolved_session_reads[item->resolved_index] != 0;
+	&& vd->xasl_state->resolved_domain.plan->resolved_session_dependent[item->resolved_index];
       return;
     }
 }

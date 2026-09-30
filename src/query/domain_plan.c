@@ -1583,15 +1583,6 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
       ARITH_TYPE *arith = regu->value.arithptr;
-      if ((arith->opcode == T_CAST || arith->opcode == T_CAST_WRAP)
-	  && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_STRICT_TYPE_CAST))
-	{
-	  REGU_VARIABLE *operand = arith->rightptr != NULL ? arith->rightptr : arith->leftptr;
-	  if (operand != NULL && operand->type != TYPE_POS_VALUE && operand->domain_plan != NULL)
-	    {
-	      operand->domain_plan->flags |= DOMAIN_PLAN_TRUNCATE_OK;
-	    }
-	}
       if (arith->domain_plan != NULL)
 	{
 	  /* the wrapper carries its node's answer once the resolution pass has it */
@@ -3091,7 +3082,7 @@ enum DOMAIN_COMPARE_SIDE
 static DOMAIN_COMPARE_SIDE
 domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_ENTRY * const *load_entries, int constant_base,
 		     REGU_VARIABLE * regu, DOMAIN_COMPARE_PLAN * comparison, int side, DOMAIN_COMPARE_KEY * key,
-		     unsigned long long *session_reads)
+		     bool * session_dependent)
 {
   const DOMAIN_PLAN_ITEM *item = regu->domain_plan;
   comparison->operand[side] = item;
@@ -3147,7 +3138,7 @@ domain_compare_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_ENTRY * const *load_e
     {
       if (plan->resolved_non_cacheable[item->resolved_index])
 	{
-	  *session_reads |= plan->resolved_session_reads[item->resolved_index];
+	  *session_dependent = *session_dependent || plan->resolved_session_dependent[item->resolved_index];
 	}
       /* a node resolve_domains resolves in the constant expression step: the comparison waits for its resolution */
       comparison->after_constants = comparison->after_constants
@@ -3179,7 +3170,7 @@ domain_compare_constant_side (const DOMAIN_COMPARE_PLAN * comparison, int side)
  */
 static bool
 domain_plan_add_comparison (DOMAIN_PLAN * plan, DOMAIN_COMPARE_PLAN * comparison, DOMAIN_COMPARE_SIDE lhs,
-			    DOMAIN_COMPARE_SIDE rhs, const DOMAIN_COMPARE_KEY * key, unsigned long long session_reads,
+			    DOMAIN_COMPARE_SIDE rhs, const DOMAIN_COMPARE_KEY * key, bool session_dependent,
 			    DOMAIN_COMPARE_PLAN ** late_bind_comparisons, int *n_late_bind_comparisons)
 {
   bool late_bind = false;
@@ -3212,8 +3203,7 @@ domain_plan_add_comparison (DOMAIN_PLAN * plan, DOMAIN_COMPARE_PLAN * comparison
       comparison->fixed = DOMAIN_COMPARE
       {
       };
-      comparison->fixed.method = session_reads != 0 ? DOMAIN_COMPARE_LATE_BIND_SESSION : DOMAIN_COMPARE_LATE_BIND;
-      comparison->fixed.session_reads = session_reads;
+      comparison->fixed.method = session_dependent ? DOMAIN_COMPARE_LATE_BIND_SESSION : DOMAIN_COMPARE_LATE_BIND;
       comparison->fixed.compare_index = *n_late_bind_comparisons;
       comparison->fixed.value[0] = comparison->fixed.value[1] = comparison->fixed.codeset_side = -1;
       for (int side = 0; side < 2; side++)
@@ -3233,7 +3223,7 @@ domain_plan_add_comparison (DOMAIN_PLAN * plan, DOMAIN_COMPARE_PLAN * comparison
 static DOMAIN_COMPARE_SIDE
 domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_ENTRY * const *load_entries,
 			    const DOMAIN_PLAN_ITEM * column, DOMAIN_COMPARE_PLAN * comparison, int side,
-			    DOMAIN_COMPARE_KEY * key, unsigned long long *session_reads)
+			    DOMAIN_COMPARE_KEY * key, bool * session_dependent)
 {
   comparison->operand[side] = column;
   comparison->domain[side] = NULL;
@@ -3253,7 +3243,7 @@ domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_ENTRY * const 
     {
       if (plan->resolved_non_cacheable[column->resolved_index])
 	{
-	  *session_reads |= plan->resolved_session_reads[column->resolved_index];
+	  *session_dependent = *session_dependent || plan->resolved_session_dependent[column->resolved_index];
 	}
       comparison->after_constants = comparison->after_constants
 	|| domain_resolved_after_constant_expressions (plan, column->resolved_index);
@@ -3273,12 +3263,12 @@ domain_compare_column_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_ENTRY * const 
 static DOMAIN_COMPARE_SIDE
 domain_compare_pair_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_ENTRY * const *load_entries, int constant_base,
 			  const DOMAIN_LOAD_COMPARE_PAIR * pair, DOMAIN_COMPARE_PLAN * comparison, int side,
-			  DOMAIN_COMPARE_KEY * key, unsigned long long *session_reads)
+			  DOMAIN_COMPARE_KEY * key, bool * session_dependent)
 {
   if (pair->regu[side] != NULL)
     {
       return domain_compare_side (plan, load_entries, constant_base, pair->regu[side], comparison, side, key,
-				  session_reads);
+				  session_dependent);
     }
   if (pair->literal[side] != NULL)
     {
@@ -3290,7 +3280,7 @@ domain_compare_pair_side (const DOMAIN_PLAN * plan, DOMAIN_LOAD_ENTRY * const *l
       domain_compare_key_of (DB_IS_NULL (literal) ? &tp_Null_domain : tp_domain_resolve_value (literal, NULL), key);
       return DOMAIN_SIDE_KNOWN;
     }
-  return domain_compare_column_side (plan, load_entries, pair->column[side], comparison, side, key, session_reads);
+  return domain_compare_column_side (plan, load_entries, pair->column[side], comparison, side, key, session_dependent);
 }
 
 /*
@@ -3323,18 +3313,19 @@ domain_plan_add_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LO
   pair->key_range = entry->key_range;
   pair->constant_branch = entry->constant_branch;
   DOMAIN_COMPARE_KEY key[2];
-  unsigned long long session_reads = 0;
+  bool session_dependent = false;
   const DOMAIN_COMPARE_SIDE item = domain_compare_side (plan, load_entries, constant_base, term->elem, pair, 0, &key[0],
-							&session_reads);
+							&session_dependent);
   DOMAIN_COMPARE_SIDE right;
   comparison->kind = DOMAIN_ELEMENTS_PAIR;
   if (term->elemset->type == TYPE_LIST_ID)
     {
-      right = domain_compare_column_side (plan, load_entries, entry->list_column, pair, 1, &key[1], &session_reads);
+      right = domain_compare_column_side (plan, load_entries, entry->list_column, pair, 1, &key[1], &session_dependent);
     }
   else
     {
-      right = domain_compare_side (plan, load_entries, constant_base, term->elemset, pair, 1, &key[1], &session_reads);
+      right =
+	domain_compare_side (plan, load_entries, constant_base, term->elemset, pair, 1, &key[1], &session_dependent);
       if (domain_compare_constant_side (pair, 1))
 	{
 	  /* a literal, a bind or a constant expression: resolve_domains resolves its elements by position */
@@ -3358,7 +3349,7 @@ domain_plan_add_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LO
     {
     case DOMAIN_ELEMENTS_PAIR:
       if (!domain_plan_add_comparison
-	  (plan, pair, item, right, key, session_reads, late_bind_comparisons, n_late_bind_comparisons))
+	  (plan, pair, item, right, key, session_dependent, late_bind_comparisons, n_late_bind_comparisons))
 	{
 	  return false;
 	}
@@ -3368,7 +3359,7 @@ domain_plan_add_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LO
       break;
     default:
       comparison->resolved_elements_index = *n_late_bind_element_comparisons;
-      comparison->session_reads = session_reads;
+      comparison->session_dependent = session_dependent;
       element_comparisons[(*n_late_bind_element_comparisons)++] = comparison;
       break;
     }
@@ -3563,15 +3554,15 @@ domain_plan_add_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
       comparison->key_range = ctx->compare_term_ranges[t];
       comparison->constant_branch = ctx->compare_term_constant_branches[t];
       DOMAIN_COMPARE_KEY key[2];
-      unsigned long long session_reads = 0;
+      bool session_dependent = false;
       const DOMAIN_COMPARE_SIDE lhs =
 	domain_compare_side (plan, load_entries, constant_base, term->lhs, comparison, 0, &key[0],
-			     &session_reads);
+			     &session_dependent);
       const DOMAIN_COMPARE_SIDE rhs =
 	domain_compare_side (plan, load_entries, constant_base, term->rhs, comparison, 1, &key[1],
-			     &session_reads);
+			     &session_dependent);
       ok =
-	domain_plan_add_comparison (plan, comparison, lhs, rhs, key, session_reads, late_bind_comparisons,
+	domain_plan_add_comparison (plan, comparison, lhs, rhs, key, session_dependent, late_bind_comparisons,
 				    &n_late_bind_comparisons);
       /* a fixed resolution's operator functions; a late-bind comparison's come with the resolved domains */
       domain_compare_set_operator_functions (&comparison->fixed);
@@ -3619,15 +3610,15 @@ domain_plan_add_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
       memset (comparison, 0, sizeof (*comparison));
       comparison->constant_branch = -1;
       DOMAIN_COMPARE_KEY key[2];
-      unsigned long long session_reads = 0;
+      bool session_dependent = false;
       const DOMAIN_COMPARE_SIDE lhs =
 	domain_compare_pair_side (plan, load_entries, constant_base, pair, comparison, 0, &key[0],
-				  &session_reads);
+				  &session_dependent);
       const DOMAIN_COMPARE_SIDE rhs =
 	domain_compare_pair_side (plan, load_entries, constant_base, pair, comparison, 1, &key[1],
-				  &session_reads);
+				  &session_dependent);
       ok =
-	domain_plan_add_comparison (plan, comparison, lhs, rhs, key, session_reads, late_bind_comparisons,
+	domain_plan_add_comparison (plan, comparison, lhs, rhs, key, session_dependent, late_bind_comparisons,
 				    &n_late_bind_comparisons);
       *pair->owner = comparison;
     }
@@ -3781,7 +3772,7 @@ domain_plan_add_constant_comparisons (THREAD_ENTRY * thread_p, DOMAIN_PLAN * pla
       /* a comparison over a session variable read waits for the session variable step; one that waits for no constant
        * is resolved in the comparison step */
       const bool session_comparison = is_compare ? comparison->fixed.method == DOMAIN_COMPARE_LATE_BIND_SESSION
-	: plan->element_comparisons[s - plan->n_compare_indexes]->session_reads != 0;
+	: plan->element_comparisons[s - plan->n_compare_indexes]->session_dependent;
       at[s] = comparison->after_constants
 	&& !session_comparison ? domain_comparison_resolvable_at (plan, comparison,
 								  constant_base) : plan->n_constant_expressions;
@@ -4630,8 +4621,7 @@ domain_match_value_pointers (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
     }
 }
 
-/* Each bind's reference and the constant and non-cacheable counts (one of stx_build_domain_plan's
- * steps) */
+/* Each bind's reference and the constant count (one of stx_build_domain_plan's steps) */
 static void
 domain_assign_references (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
 {
@@ -4687,10 +4677,6 @@ domain_assign_references (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
       if (r->item.operand_class == OPERAND_CONST)
 	{
 	  plan->n_const_refs++;
-	}
-      if (r->item.operand_class == OPERAND_NON_CACHEABLE)
-	{
-	  plan->n_non_cacheable++;
 	}
     }
   if (ref_first != NULL)
@@ -4785,21 +4771,19 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   plan->late_bind_links =
     (DOMAIN_LATE_BIND_LINK *) domain_plan_alloc (thread_p, plan->n_late_bind_nodes, sizeof (*plan->late_bind_links));
   plan->const_refs = (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_const_refs, sizeof (*plan->const_refs));
-  plan->non_cacheable_refs =
-    (DOMAIN_PLAN_ITEM **) domain_plan_alloc (thread_p, plan->n_non_cacheable, sizeof (*plan->non_cacheable_refs));
   plan->resolved_late_bind_node =
     (int *) domain_plan_alloc (thread_p, plan->n_resolved, sizeof (*plan->resolved_late_bind_node));
   plan->resolved_non_cacheable =
     (bool *) domain_plan_alloc (thread_p, plan->n_resolved, sizeof (*plan->resolved_non_cacheable));
-  plan->resolved_session_reads =
-    (unsigned long long *) domain_plan_alloc (thread_p, plan->n_resolved, sizeof (*plan->resolved_session_reads));
+  plan->resolved_session_dependent =
+    (bool *) domain_plan_alloc (thread_p, plan->n_resolved, sizeof (*plan->resolved_session_dependent));
   ctx.failed = ctx.failed || (plan->n_items && (!plan->items || !plan->items_cold)) || (plan->n_late_bind_nodes
 											&& (!plan->late_bind_nodes
 											    || !plan->late_bind_links))
-    || (plan->n_const_refs && !plan->const_refs) || (plan->n_non_cacheable && !plan->non_cacheable_refs)
+    || (plan->n_const_refs && !plan->const_refs)
     || (plan->n_resolved
-	&& (!plan->resolved_late_bind_node || !plan->resolved_non_cacheable || !plan->resolved_session_reads));
-  int constant = 0, vol = 0;
+	&& (!plan->resolved_late_bind_node || !plan->resolved_non_cacheable || !plan->resolved_session_dependent));
+  int constant = 0;
   for (DOMAIN_LOAD_ENTRY * r = ctx.head; r != NULL; r = r->next)
     {
       if (!ctx.failed)
@@ -4815,10 +4799,6 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	      if (item->operand_class == OPERAND_CONST)
 		{
 		  plan->const_refs[constant++] = item;
-		}
-	      if (item->operand_class == OPERAND_NON_CACHEABLE)
-		{
-		  plan->non_cacheable_refs[vol++] = item;
 		}
 	    }
 	}
@@ -4839,9 +4819,8 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	{
 	  plan->resolved_late_bind_node[i] = -1;
 	  plan->resolved_non_cacheable[i] = false;
-	  plan->resolved_session_reads[i] = 0;
+	  plan->resolved_session_dependent[i] = false;
 	}
-      int n_reads = 0;
       for (int g = 0; g < ctx.n_late_bind_order; g++)
 	{
 	  /* every operand is a load entry's item; its published copy sits at that entry's index */
@@ -4863,14 +4842,9 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  link->argument = r->argument;
 	  /* a node's resolution inherits its sources' limits (producers come first, so theirs are set) */
 	  bool is_non_cacheable = r->item.operand_class == OPERAND_NON_CACHEABLE;
-	  unsigned long long reads = 0;
-	  if (r->cold.opcode == T_EVALUATE_VARIABLE)
-	    {
-	      /* a session variable read is its own source: the resolutions above it wait for
-	       * qexec_resolve_session_variables, where the variable gets its type for the statement */
-	      reads = n_reads < 63 ? 1ULL << n_reads : 1ULL << 63;
-	      n_reads++;
-	    }
+	  /* a session variable read is its own source: the resolutions above it wait for
+	   * qexec_resolve_session_variables, where the variable gets its type for the statement */
+	  bool session_dependent = r->cold.opcode == T_EVALUATE_VARIABLE;
 	  for (int i = 0; i < r->n_link; i++)
 	    {
 	      const DOMAIN_LOAD_ENTRY *source = domain_owner_load_entry (domain_load_entry_of (r->link[i]));
@@ -4879,13 +4853,14 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	      if (source->item.resolved_index >= 0)
 		{
 		  is_non_cacheable = is_non_cacheable || plan->resolved_non_cacheable[source->item.resolved_index];
-		  reads |= plan->resolved_session_reads[source->item.resolved_index];
+		  session_dependent = session_dependent
+		    || plan->resolved_session_dependent[source->item.resolved_index];
 		}
 	    }
 	  plan->late_bind_nodes[g] = &plan->items[r->index];
 	  plan->resolved_late_bind_node[r->item.resolved_index] = g;
 	  plan->resolved_non_cacheable[r->item.resolved_index] = is_non_cacheable;
-	  plan->resolved_session_reads[r->item.resolved_index] = reads;
+	  plan->resolved_session_dependent[r->item.resolved_index] = session_dependent;
 	}
     }
   if (!ctx.failed)

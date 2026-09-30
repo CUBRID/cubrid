@@ -41,11 +41,9 @@ enum DOMAIN_OPERAND_CLASS
 };
 enum DOMAIN_PLAN_FLAGS
 {
-  DOMAIN_PLAN_LATE_BIND = 0x01, DOMAIN_PLAN_KEY1 = 0x02, DOMAIN_PLAN_KEY2 = 0x04,
-  DOMAIN_PLAN_ISS = 0x08, DOMAIN_PLAN_ALIAS = 0x10, DOMAIN_PLAN_KEEP_LAZY = 0x20,
+  DOMAIN_PLAN_LATE_BIND = 0x01, DOMAIN_PLAN_ALIAS = 0x10,
   DOMAIN_PLAN_ACCUMULATOR = 0x40,	/* a compiled aggregate: fixed.operand_domain[0] is its accumulator domain,
 					 * derived at load from the operand's */
-  DOMAIN_PLAN_TRUNCATE_OK = 0x80,
   DOMAIN_PLAN_LATE_BIND_COLLATION = 0x100,	/* the type is compiled, the collation is the values': a variable POS
 						 * records the bound value's domain; a node is resolved by
 						 * resolve_domains from its operands' resolved domains */
@@ -102,10 +100,9 @@ struct DOMAIN_PLAN_ITEM_COLD
   int opcode;
   int constant_branch;		/* the innermost constant branch around the item (DOMAIN_PLAN_CONSTANT_BRANCH); -1
 				 * none */
-  const DOMAIN_PLAN_ITEM *pair;
   const char *name;
 };
-static_assert (sizeof (DOMAIN_PLAN_ITEM_COLD) == 32, "cold domain plan item layout");
+static_assert (sizeof (DOMAIN_PLAN_ITEM_COLD) == 24, "cold domain plan item layout");
 
 /* What resolve_domains reads to resolve one late-binding node: its operand items in operand order, the value of
  * a literal operand, and the compiled domain AGG/ANALYTIC resolve against (the node's own domain otherwise). A
@@ -220,7 +217,8 @@ struct DOMAIN_ELEMENT_COMPARE_PLAN
   int row;			/* ROW: the item's row (domain_compare_key_row); -1: the item's key has none, and each
 				 * element compares by the two values' keys */
   int resolved_elements_index;	/* LATE_BIND: resolved_domain.elements index; -1 */
-  unsigned long long session_reads;	/* LATE_BIND: the session variable reads the resolved domains depend on */
+  bool session_dependent;	/* LATE_BIND: a side rests on a session variable read: qexec_resolve_session_variables
+				 * resolves the term */
   unsigned char kind;		/* DOMAIN_ELEMENTS_KIND */
 };
 
@@ -358,17 +356,14 @@ struct domain_plan
   int *resolved_late_bind_node;	/* [n_resolved] the late_bind_nodes index resolving the entry; -1 for a bind */
   bool *resolved_non_cacheable;	/* [n_resolved] a resolution's sources include one develop's fetch never caches, a
 				 * session variable read among them: a resolution over a read waits for
-				 * qexec_resolve_session_variables (resolved_session_reads) */
-  unsigned long long *resolved_session_reads;	/* [n_resolved] the session variable reads a resolution depends on: bit
-						 * i is the i-th read, the last bit every read past it;
-						 * qexec_resolve_session_variables resolves a resolution with any */
+				 * qexec_resolve_session_variables (resolved_session_dependent) */
+  bool *resolved_session_dependent;	/* [n_resolved] a resolution rests on a session variable read, a read itself
+					 * included: qexec_resolve_session_variables resolves it */
   int n_const_refs;
   DOMAIN_PLAN_ITEM **const_refs;
   int *const_ref_pos;		/* [n_const_refs] each constant reference's bind position (its val_pos), -1 for a
 				 * constant subtree: the bind step (qexec_share_value) reads it without the item's cold
 				 * part */
-  int n_non_cacheable;
-  DOMAIN_PLAN_ITEM **non_cacheable_refs;
   int n_indexes;
   domain_plan_index *indexes;	/* the index scans' key plans, in walk order */
   int n_resolved_index_keys;	/* the key plans resolve_domains resolves something for (their comparison) */
@@ -418,8 +413,11 @@ struct DOMAIN_EXECUTION_TEMPORARY
 				 * conversion failed: the row converts, as develop's did */
   int scope;			/* its scope: plan->temporary_scope's */
   DB_VALUE value;		/* the converted value, the owner's */
-  TP_VALUE_CONVERTER conv;	/* what converted it, and to what: the execution's, every read passes the same */
+#if !defined (NDEBUG)
+  TP_VALUE_CONVERTER conv;	/* what converted it, and to what: every read passes the same, which a debug build
+				 * checks (qexec_execution_temporary) */
   const TP_DOMAIN *target;
+#endif
 };
 
 /* What resolved_domain.value_states says of a value resolve_domains keeps in vals. */
