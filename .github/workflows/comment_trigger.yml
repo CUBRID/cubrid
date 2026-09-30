@@ -16,9 +16,15 @@ jobs:
       && startsWith(github.event.comment.body, '/run')
       && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) }}
     runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read # the base branch of the commented PR
     steps:
-      - name: Validate Command
+      - name: Validate Command and Base Branch
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
         run: |
           COMMENT="${{ github.event.comment.body }}"
           echo "[debug] Comment: $COMMENT"
@@ -32,6 +38,18 @@ jobs:
             echo "[info] Ignored invalid command: $COMMENT"
             exit 0
           fi
+
+          # issue_comment carries no base ref and takes no branches: filter, so the
+          # base branch range is read here or nowhere. develop and feature/** moved
+          # to gha-ci.yml (CUBRIDQA-1501); release/11.x still runs on CircleCI.
+          BASE=$(gh api "repos/${REPO}/pulls/${PR}" --jq .base.ref) || {
+            echo "::error::could not read PR ${PR}"; exit 1; }
+          echo "[debug] Base branch: $BASE"
+          case "$BASE" in
+            develop|feature/*)
+              echo "[info] base branch runs on GitHub Actions, not triggering CircleCI: $BASE"
+              exit 0 ;;
+          esac
 
           echo "[debug] Valid command: $COMMENT"
           echo "VALID_RUN=true" >> $GITHUB_ENV

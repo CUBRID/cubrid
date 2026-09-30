@@ -1369,7 +1369,7 @@ jobs:
                 rd="$CI_ROOT/runs/$RERUN_FROM"
                 if [ ! -d "$rd" ]; then
                   echo "::error::run $RERUN_FROM has no run directory: $rd"
-                  echo "  Pruned 7 days after the run, or never a gha-ci run at all."
+                  echo "  Pruned 30 days after the run, or never a gha-ci run at all."
                 elif [ -d "$rd/$suite/results" ]; then
                   # Reachable only until the last run older than the relayout is pruned.
                   echo "::error::run $RERUN_FROM predates the run directory relayout"
@@ -1913,16 +1913,12 @@ jobs:
           . "$PLAN_DIR/split.meta"       # tc_sha, tc_branch -- what plan pinned
 
           rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          export BRANCH_TESTCASES="$tc_branch"
-          # Without this the checkout below moves the mounted seed back to develop, and
-          # a suite asked to run another CTP branch would run develop's in every shard.
-          export BRANCH_TESTTOOLS="$CTP_BRANCH"
+          # Commits, not branches: tc/pr-<N> and probe/* are deleted when the work that
+          # made them ends, and the checkout takes whatever it is given.
+          export BRANCH_TESTCASES="$tc_sha"
+          export BRANCH_TESTTOOLS="$WANT_CTP_SHA"
           /entrypoint.sh checkout "$SUITE"
 
-          # Pin CTP the way the testcases are pinned below: the checkout took the branch
-          # tip, which moves under a suite whose CTP branch is still being pushed to.
-          # The seed carries this commit already, so the fetch is only for the case where
-          # the tip moved and the object arrived from somewhere else.
           ctp="$WORKDIR/cubrid-testtools"
           git -C "$ctp" cat-file -e "${WANT_CTP_SHA}^{commit}" 2>/dev/null \
             || git -C "$ctp" fetch -q --depth 1 --no-tags origin "$WANT_CTP_SHA"
@@ -1933,15 +1929,9 @@ jobs:
           [ "$got_ctp" = "$WANT_CTP_SHA" ] || {
             echo "::error::could not align CTP to the SHA plan saw($WANT_CTP_SHA); at $got_ctp"; exit 1; }
 
-          # Pin to the commit plan saw. checkout aligns to the tip; undo that here.
           cd "$TC_DIR"
-          # The entrypoint drops its git credential on exit, so carry the token here.
-          # Through the environment, not `-c`: the seed is a partial clone, so `reset`
-          # to a commit the tip does not carry fetches the blobs from the promisor in a
-          # child process, which `-c` never reaches. Still not on disk.
-          #
-          # Only a private repo has a token. Setting the rewrite with an empty one
-          # turns an anonymous fetch into a failed authentication.
+          # The entrypoint drops its git credential on exit, so this carries its own.
+          # An empty one would turn an anonymous fetch into a failed authentication.
           if [ -n "$GHI_TOKEN" ]; then
             export GIT_CONFIG_COUNT=1
             export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
@@ -2071,7 +2061,7 @@ jobs:
           # Those files say a case failed, never why. The pod and its overlay are
           # gone seconds after this step, so the evidence has to leave now -- on failure
           # only, because a green 50-shard run would write 50 archives nobody reads.
-          # The baseline uploaded the same three things (config.yml 323-336).
+          # CircleCI's Collect Logs keeps the same things, ERROR_BACKUP included.
           #
           # "Failed" is not ctp's exit code. Measured in the fork, run 32834158935:
           # shard 00 reported `ctp exit: 0` with 8 of its 10 cases failed. ctp.sh
@@ -2103,18 +2093,21 @@ jobs:
             cp -f "$PLAN_DIR/shards/${IDX}.list" "$out/tc.list" \
               || echo "::warning::no share list for shard ${IDX}"
 
-            # 1 GiB per file (decision 36). A debug core runs several GiB and 50 shards
-            # share one GlusterFS volume, so an oversized core is recorded, not copied.
-            cores="$CUBRID_DIR/log/coredump"
-            if [ -d "$cores" ]; then
-              mkdir -p "$out/artifacts/coredump"
-              find "$cores" -maxdepth 1 -type f -print | while read -r c; do
-                sz=$(stat -c '%s' "$c")
-                if [ "$sz" -le 1073741824 ]; then
-                  cp -f "$c" "$out/artifacts/coredump/"
+            # Not $CUBRID_DIR/log/coredump: core_pattern is `core`, and CTP packs each core
+            # with the build and the case into one archive here, deleting the original.
+            # The shards share one GlusterFS volume, hence the per-file cap, and a failed
+            # copy must not cost this shard its shard.done.
+            backup="$WORKDIR/ERROR_BACKUP"
+            if [ -d "$backup" ]; then
+              find "$backup" -maxdepth 1 -type f -print | while IFS= read -r f; do
+                mkdir -p "$out/artifacts/ERROR_BACKUP" || :
+                sz=$(stat -c '%s' "$f") || { echo "::warning::could not stat $f"; continue; }
+                if [ "$sz" -le 10737418240 ]; then
+                  cp -f "$f" "$out/artifacts/ERROR_BACKUP/" \
+                    || echo "::warning::could not copy $(basename "$f")"
                 else
-                  echo "::warning::core $(basename "$c") is $((sz / 1048576)) MB, over the 1 GiB cap: not copied"
-                  printf '%s\t%s\n' "$(basename "$c")" "$sz" >> "$out/artifacts/coredump/oversized.tsv"
+                  echo "::warning::$(basename "$f") is $((sz / 1048576)) MB, over the 10 GiB cap: not copied"
+                  printf '%s\t%s\n' "$(basename "$f")" "$sz" >> "$out/artifacts/ERROR_BACKUP/oversized.tsv" || :
                 fi
               done
             fi
@@ -2797,7 +2790,7 @@ jobs:
           {
             echo "$line"
             echo
-            echo "Internal network only. The run directory is pruned 7 days after the run."
+            echo "Internal network only. The run directory is pruned 30 days after the run."
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit $rc
