@@ -13224,9 +13224,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   error = flatten_template (template_, NULL, &flat, auto_res);
   if (error != NO_ERROR)
     {
-      /* If we aborted the operation (error == ER_LK_UNILATERALLY_ABORTED) then the class may no longer be in the
-       * workspace.  So make sure that the class exists before using it.  */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      /* If we aborted the operation (error == ER_LK_UNILATERALLY_ABORTED or ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+       * then the class may no longer be in the workspace.  So make sure that the class exists before using it.  */
+      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	{
 	  class_->new_ = NULL;
 	}
@@ -13247,7 +13247,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	{
 	  classobj_free_template (flat);
 	  /* don't touch this class if we aborted ! */
-	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	    {
 	      class_->new_ = NULL;
 	    }
@@ -13270,7 +13270,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       classobj_free_template (flat);
 
       /* don't touch this class if we aborted ! */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	{
 	  class_->new_ = NULL;
 	}
@@ -13413,7 +13413,7 @@ error_return:
   classobj_free_template (flat);
 
   /* don't touch this class if we aborted ! */
-  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
       class_->new_ = NULL;
     }
