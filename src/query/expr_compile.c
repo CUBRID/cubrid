@@ -4632,7 +4632,7 @@ expr_prog_prepare (EXPR_PROG * prog, EXPR_EVAL_CTX * ctx)
 }
 
 int
-expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl)
+expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tpl)
 {
   EXPR_EVAL_CTX ctx;
   int error;

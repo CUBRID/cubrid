@@ -32,6 +32,7 @@
 #include "heap_file.h"
 #include "fetch.h"
 #include "list_file.h"
+#include "qfile_tuple_layout.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "regu_var.hpp"
@@ -551,13 +552,11 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
 {
   DB_LOGICAL res, t_res;
   QFILE_LIST_SCAN_ID s_id;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
   const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
-  char *ptr;
+  bool is_null;
 
   /* assert */
   if (list_id->type_list.domp == NULL)
@@ -587,19 +586,17 @@ eval_some_list_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * l
   res = V_FALSE;
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
-      if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &s_id);
+	  return V_ERROR;
+	}
+      if (is_null)
 	{
 	  res = V_UNKNOWN;
 	}
       else
 	{
-	  or_init (&buf, ptr, length);
-
-	  if (pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
-	    {
-	      qfile_close_scan (thread_p, &s_id);
-	      return V_ERROR;
-	    }
 
 	  t_res = eval_value_rel_cmp (thread_p, item, &list_val, rel_operator, NULL);
 	  if (t_res == V_TRUE || t_res == V_ERROR)
@@ -696,15 +693,13 @@ static int
 eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_ID * list_id)
 {
   QFILE_LIST_SCAN_ID s_id;
-  QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   DB_VALUE list_val;
   SCAN_CODE qp_scan;
   const PR_TYPE *pr_type;
-  OR_BUF buf;
   DB_LOGICAL rc;
-  int length;
   int card;
-  char *ptr;
+  bool is_null;
 
   /* assert */
   if (list_id->type_list.domp == NULL)
@@ -729,15 +724,16 @@ eval_item_card_sort_list (THREAD_ENTRY * thread_p, DB_VALUE * item, QFILE_LIST_I
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &s_id, &tplrec, PEEK)) == S_SUCCESS)
     {
-      if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+	{
+	  qfile_close_scan (thread_p, &s_id);
+	  return ER_FAILED;
+	}
+      if (is_null)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return UNKNOWN_CARD;
 	}
-
-      or_init (&buf, ptr, length);
-
-      pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
 
       rc = eval_value_rel_cmp (thread_p, item, &list_val, R_LT, NULL);
       if (rc == V_ERROR)
@@ -911,14 +907,10 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   DB_VALUE list_val, list_val2;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
-  char *p_tplp;
   SCAN_CODE qp_scan;
-  const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
   bool list_on;
   int tpl_len;
-  char *ptr;
+  bool is_null;
 
   /* assert */
   if (list_id->type_list.domp == NULL)
@@ -940,10 +932,8 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     }
 
   res = V_TRUE;
-  pr_type = list_id->type_list.domp[0]->type;
 
-  tplrec.size = 0;
-  tplrec.tpl = NULL;
+  tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   p_tplrec.size = DB_PAGESIZE;
   p_tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
   if (p_tplrec.tpl == NULL)
@@ -958,23 +948,27 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     {
       pr_clear_value (&list_val);
 
-      if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+	{
+	  res = V_ERROR;
+	  goto end;
+	}
+      if (is_null)
 	{
 	  res = V_UNKNOWN;
 	  goto end;
 	}
 
-      or_init (&buf, ptr, length);
-
-      pr_type->data_readval (&buf, &list_val, list_id->type_list.domp[0], -1, true, NULL, 0);
-
       if (list_on == true)
 	{
-	  p_tplp = (char *) p_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;
-
-	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
-
-	  pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
+	  /* private copy of the previous tuple: bind + reset the slot before reading it */
+	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, tplrec.type_list);
+	  if (qfile_slot_read_column_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) !=
+	      NO_ERROR || is_null)
+	    {
+	      res = V_ERROR;
+	      goto end;
+	    }
 
 	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL);
 	  if (rc == V_ERROR)
@@ -1030,11 +1024,14 @@ eval_sub_sort_list_to_multi_set (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (list_on == true)
     {
-      p_tplp = (char *) p_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;	/* no unbound value */
-
-      or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
-
-      pr_type->data_readval (&buf, &list_val2, list_id->type_list.domp[0], -1, true, NULL, 0);
+      /* private copy of the last tuple (no unbound value): bind + reset the slot before reading it */
+      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, &s_id.list_id.type_list);
+      if (qfile_slot_read_column_value (&p_tplrec, 0, list_id->type_list.domp[0], &list_val2, true, &is_null) !=
+	  NO_ERROR || is_null)
+	{
+	  res = V_ERROR;
+	  goto end;
+	}
 
       card2 = eval_item_card_set (thread_p, &list_val2, set, R_EQ);
       if (card2 == ER_FAILED)
@@ -1087,14 +1084,10 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
   DB_VALUE list_val, list_val2;
   QFILE_LIST_SCAN_ID s_id;
   QFILE_TUPLE_RECORD tplrec, p_tplrec;
-  char *p_tplp;
   SCAN_CODE qp_scan;
-  const PR_TYPE *pr_type;
-  OR_BUF buf;
-  int length;
   bool list_on;
   int tpl_len;
-  char *ptr;
+  bool is_null;
 
   /* assert */
   if (list_id1->type_list.domp == NULL)
@@ -1116,10 +1109,8 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     }
 
   res = V_TRUE;
-  pr_type = list_id1->type_list.domp[0]->type;
 
-  tplrec.size = 0;
-  tplrec.tpl = NULL;
+  tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   p_tplrec.size = DB_PAGESIZE;
   p_tplrec.tpl = (QFILE_TUPLE) db_private_alloc (thread_p, DB_PAGESIZE);
   if (p_tplrec.tpl == NULL)
@@ -1134,23 +1125,27 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
     {
       pr_clear_value (&list_val);
 
-      if (qfile_locate_tuple_value (tplrec.tpl, 0, &ptr, &length) == V_UNBOUND)
+      if (qfile_slot_read_column_value (&tplrec, 0, list_id1->type_list.domp[0], &list_val, true, &is_null) != NO_ERROR)
+	{
+	  res = V_ERROR;
+	  goto end;
+	}
+      if (is_null)
 	{
 	  res = V_UNKNOWN;
 	  goto end;
 	}
 
-      or_init (&buf, ptr, length);
-
-      pr_type->data_readval (&buf, &list_val, list_id1->type_list.domp[0], -1, true, NULL, 0);
-
       if (list_on == true)
 	{
-	  p_tplp = (char *) p_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;
-
-	  or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
-
-	  pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0);
+	  /* private copy of the previous tuple: bind + reset the slot before reading it */
+	  qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, tplrec.type_list);
+	  if (qfile_slot_read_column_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) !=
+	      NO_ERROR || is_null)
+	    {
+	      res = V_ERROR;
+	      goto end;
+	    }
 
 	  rc = eval_value_rel_cmp (thread_p, &list_val, &list_val2, R_EQ, NULL);
 
@@ -1207,11 +1202,10 @@ eval_sub_sort_list_to_sort_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_i
 
   if (list_on == true)
     {
-      p_tplp = (char *) p_tplrec.tpl + QFILE_TUPLE_LENGTH_SIZE;	/* no unbound value */
-
-      or_init (&buf, p_tplp + QFILE_TUPLE_VALUE_HEADER_SIZE, QFILE_GET_TUPLE_VALUE_LENGTH (p_tplp));
-
-      if (pr_type->data_readval (&buf, &list_val2, list_id1->type_list.domp[0], -1, true, NULL, 0) != NO_ERROR)
+      /* private copy of the last tuple (no unbound value): bind + reset the slot before reading it */
+      qfile_slot_set_tuple_ptr_and_layout (&p_tplrec, p_tplrec.tpl, p_tplrec.size, &s_id.list_id.type_list);
+      if (qfile_slot_read_column_value (&p_tplrec, 0, list_id1->type_list.domp[0], &list_val2, true, &is_null) !=
+	  NO_ERROR || is_null)
 	{
 	  res = V_ERROR;
 	  goto end;

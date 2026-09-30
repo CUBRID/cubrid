@@ -71,7 +71,7 @@ struct expr_eval_ctx
   cubthread::entry * thread_p;
   val_descr *vd;
   OID *obj_oid;
-  QFILE_TUPLE tpl;
+  QFILE_TUPLE_RECORD *tpl;	/* the current list-file tuple record, or NULL (CBRD-27365 tuple format) */
   EXPR_PROG *prog;
   int jump;			/* the step the row continues at, set by a kernel that returned EXPR_JUMPED */
 };
@@ -272,7 +272,7 @@ expr_prog_signature_ok (EXPR_PROG * prog, const val_descr * vd, unsigned long lo
 /* evaluate all steps for the current row; after this the i-th list element's value is
  * available through expr_prog_value (prog, i) */
 extern int expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid,
-			   QFILE_TUPLE tpl);
+			   QFILE_TUPLE_RECORD * tpl);
 
 /* the published value of the i-th compiled list element (valid until the next eval).
  * Two dependent loads -- inline so a per-root, per-row read is not a cross-module call. */
