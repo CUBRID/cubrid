@@ -101,7 +101,7 @@
  * Figure out how many bytes a pkeys[] struct with n entries requires.
  */
 #define SIZEOF_ATTR_CUM_STATS_PKEYS(n) \
-    ((n) * sizeof(int))
+    ((n) * sizeof(INT64))
 
 #define NOMINAL_HEAP_SIZE(class)	200	/* pages */
 #define NOMINAL_OBJECT_SIZE(class)	 64	/* bytes */
@@ -941,6 +941,8 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
   switch (entity->info.spec.join_type)
     {
     case PT_JOIN_INNER:
+    case PT_JOIN_SEMI:		/* semi/anti are structurally inner joins (frozen NL inner) */
+    case PT_JOIN_ANTI:
       /* reserve dummy inner join term */
       env->nterms++;
       /* reserve additional always-false sarg */
@@ -1993,6 +1995,11 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
       break;
+    case PT_JOIN_SEMI:		/* semi/anti: structurally inner, but RHS frozen under the preceding (outer) side */
+    case PT_JOIN_ANTI:
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+      QO_ADD_OUTER_DEP_SET (on_node, p_node);
+      break;
     default:
       /* this should not happen */
       assert (false);
@@ -2666,7 +2673,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  /* The term might be a merge term (i.e., it uses '=' as the operator), but the expressions might not be
 	   * simple attribute references, and we mustn't try to establish equivalence classes in that case.
 	   */
-	  if (qo_is_equi_join_term (term))
+	  if (qo_is_equi_join_term (term)
+	      && !QO_NODE_IS_SEMI_ANTI_JOIN (head_node) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	    {
 	      qo_equivalence (head_seg, tail_seg);
 	      QO_TERM_NOMINAL_SEG (term) = head_seg;
@@ -2733,6 +2741,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
 		}
+	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+		{
+		  /* structurally inner, but freeze RHS under its outer antecedent; LHS stays reorderable */
+		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
+		}
 	    }
 	  else
 	    {
@@ -2743,6 +2757,31 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	      /* keep out from m-join edge */
 	      QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+	    }
+	}
+    }
+
+  /* a node an ON-clause predicate reads must be joined before the node that owns the ON clause, or the predicate
+   * cannot be evaluated there. Outside the class dispatch above so QO_TC_SARG and QO_TC_OTHER are covered too */
+  if (QO_ON_COND_TERM (term))
+    {
+      int location = QO_TERM_LOCATION (term);
+      QO_NODE *on_node;
+
+      QO_ASSERT (env, location < env->nnodes);
+
+      on_node = QO_ENV_NODE (env, location);
+      QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
+
+      if (QO_NODE_IS_OUTER_JOIN (on_node))
+	{
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
+	    {
+	      if (t != location)
+		{
+		  QO_ASSERT (env, t < location);
+		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
+		}
 	    }
 	}
     }
@@ -5217,7 +5256,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5534,7 +5573,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		{
 		  free_and_init (cum_statsp->pkeys);	/* free alloced */
 		}
-	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5573,7 +5612,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    {
 	      free_and_init (cum_statsp->pkeys);
 	    }
-	  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	  if (cum_statsp->pkeys == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5783,7 +5822,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5821,7 +5860,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		{
 		  free_and_init (cum_statsp->pkeys);
 		}
-	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5998,7 +6037,7 @@ qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
    */
 
   statblock->heap_num_pages = NOMINAL_HEAP_SIZE (class_mop);
-  statblock->heap_num_objects = (statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
+  statblock->heap_num_objects = ((INT64) statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
 
 }
 
@@ -6460,9 +6499,9 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      continue;		/* is inner join; no need to classify */
+	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
 	    }
 
 	  /* is explicit outer-joined ON cond */
@@ -8418,6 +8457,11 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
       s1 = QO_TERM_SEG (jterm);
       s2 = QO_TERM_OID_SEG (jterm);
       if (s1 == NULL || s2 == NULL)
+	{
+	  continue;
+	}
+
+      if (QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s1)) || QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s2)))
 	{
 	  continue;
 	}
