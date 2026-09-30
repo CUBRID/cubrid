@@ -399,9 +399,10 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
 
   status = hjoin_check_empty_inputs (manager, context);
 
-  /* In joins that NULL-fill the inner side,
+  /* In joins that NULL-fill one side,
    * tuples with NULL in any join column are placed in the last partition.
-   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
+   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+   */
   if (IS_NULL_FILL_JOIN_TYPE (manager->join_type) && context == &manager->contexts[manager->context_cnt - 1])
     {
       status = (status == HASHJOIN_STATUS_TRY) ? HASHJOIN_STATUS_FILL_NULL_VALUES : status;
@@ -476,6 +477,10 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       break;
 
     case JOIN_RIGHT:
+      context->build = outer;
+      context->probe = inner;
+      break;
+
     default:
       /* impossible case */
       assert_release_error (false);
@@ -1355,9 +1360,10 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
     {
       if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
 	{
-	  /* In joins that NULL-fill the inner side,
+	  /* In joins that NULL-fill one side,
 	   * tuples with NULL in any join column are placed in the last partition.
-	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
+	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+	   */
 	  part_cnt += 1;
 	}
 
@@ -1692,9 +1698,10 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  if (has_null_fill_side)
 	    {
-	      /* In joins that NULL-fill the inner side,
+	      /* In joins that NULL-fill one side,
 	       * tuples with NULL in any join column are placed in the last partition.
-	       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
+	       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+	       */
 	      part_id = part_cnt - 1;
 	    }
 	  else
@@ -2486,6 +2493,13 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       break;
 
     case JOIN_RIGHT:
+      outer->fill_record = NULL;
+      inner->fill_record = &inner->tuple_record;
+
+      context->build = outer;
+      context->probe = inner;
+      break;
+
     default:
       /* impossible case */
       assert_release_error (false);
@@ -2870,6 +2884,11 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
       break;
 
     case JOIN_RIGHT:
+      status =
+	(inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (outer_tuple_cnt ==
+							0) ? HASHJOIN_STATUS_FILL_NULL_VALUES : HASHJOIN_STATUS_TRY;
+      break;
+
     default:
       /* impossible case */
       assert_release_error (false);
@@ -3911,7 +3930,8 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      /* anti join: one match is enough to suppress this row, so stop scanning.
 	       * The unnested subquery condition becomes the ON clause,
-	       * so after_join_pred does not decide the match. */
+	       * so after_join_pred does not decide the match.
+	       */
 	      build->tuple_record.tpl = NULL;
 	      break;
 	    }

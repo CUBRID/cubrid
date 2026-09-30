@@ -51,7 +51,7 @@ typedef enum
   ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
 
 #define IS_NULL_FILL_JOIN_TYPE(t) \
-  ((t) == JOIN_LEFT || (t) == JOIN_ANTI)
+  (IS_OUTER_JOIN_TYPE (t) || (t) == JOIN_ANTI)
 
 /* PAGE CONSTANTS */
 

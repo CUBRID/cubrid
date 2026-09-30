@@ -309,6 +309,10 @@ error_exit:
 	  break;
 
 	case JOIN_RIGHT:
+	  context->outer.fill_record = nullptr;
+	  context->inner.fill_record = &context->inner.tuple_record;
+	  break;
+
 	default:
 	  /* impossible case */
 	  assert_release_error (false);

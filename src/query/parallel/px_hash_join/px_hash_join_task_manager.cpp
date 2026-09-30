@@ -331,9 +331,10 @@ namespace parallel_query
 
 		  if (has_null_fill_side)
 		    {
-		      /* In joins that NULL-fill the inner side,
+		      /* In joins that NULL-fill one side,
 		       * tuples with NULL in any join column are placed in the last partition.
-		       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
+		       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+		       */
 		      part_id = part_cnt - 1;
 		    }
 		  else
@@ -1507,7 +1508,8 @@ cleanup:
 		    {
 		      /* anti join: one match is enough to suppress this row, so stop scanning.
 		       * The unnested subquery condition becomes the ON clause,
-		       * so after_join_pred does not decide the match. */
+		       * so after_join_pred does not decide the match.
+		       */
 		      build->tuple_record.tpl = nullptr;
 		      break;
 		    }

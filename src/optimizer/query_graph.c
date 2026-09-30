@@ -246,6 +246,7 @@ static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs
 					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
+static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
 static void qo_seg_clear (QO_ENV *, int);
 static void qo_node_clear (QO_ENV *, int);
@@ -584,6 +585,9 @@ qo_optimize_helper (QO_ENV * env)
 
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
+
+  /* classify ON-clause terms for anti join */
+  qo_classify_antijoin_terms (env);
 
   bitset_delset (&nodeset);
 
@@ -2767,9 +2771,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
     }
 
   /* a node an ON-clause predicate reads must be joined before the node that owns the ON clause, or the predicate
-   * cannot be evaluated there. Outside the class dispatch above so QO_TC_SARG and QO_TC_OTHER are covered too.
-   * An ANTI join is covered as well: it emits an outer row only when the inner side has no match, so ordering it
-   * ahead of a node its ON clause reads loses rows just as an outer join does */
+   * cannot be evaluated there. Outside the class dispatch above so QO_TC_SARG and QO_TC_OTHER are covered too */
   if (QO_ON_COND_TERM (term))
     {
       int location = QO_TERM_LOCATION (term);
@@ -6465,8 +6467,6 @@ qo_discover_edges (QO_ENV * env)
  * O2|ON   |TC_join              |term_tail=|=on_node       |TC_join(ow O3)
  * O3|ON   |TC_other(n>0,on_conn)|-         |!Outer(ex R_on)|TC_dj
  * O4|ON   |TC_other(n==0)       |-         |-              |TC_dj
- * O5|ON   |TC_sarg(anti)        |!on_node  |-              |TC_dj
- * O6|ON   |TC_other(n>0,anti)   |-         |-              |TC_dj
  * W1|WHERE|TC_sarg              |!Left     |!Right         |TC_sarg(ow TC_aj)
  * W2|WHERE|TC_join              |!Outer    |!Right         |TC_join(ow TC_aj)
  * W3|WHERE|TC_other(n>0)        |!Outer    |!Right         |TC_other(ow TC_aj)
@@ -6493,19 +6493,11 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	{
 	  break;
 	}
-
-      /* An anti join is structurally JOIN_INNER, and its ON-clause term can be QO_TC_OTHER,
-       * so QO_OUTER_JOIN_TERM () never matches it; check the ON clause's node for now. */
-      if (QO_ON_COND_TERM (term) && QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, QO_TERM_LOCATION (term))) == PT_JOIN_ANTI)
-	{
-	  break;
-	}
     }
 
   if (i >= env->nterms)
     {
-      /* not found outer join term nor anti-join on-clause term; do nothing */
-      return;
+      return;			/* not found outer join term; do nothing */
     }
 
   bitset_init (&dep_set, env);
@@ -6528,19 +6520,13 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI)
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      continue;		/* inner / semi: structurally inner, no outer-join classification */
+	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
 	    }
-	  else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
-	    {
-	      /* anti: outer-only ON-clause term still needs promotion in STEP 1, so do not skip. */
-	    }
-	  else
-	    {
-	      /* is explicit outer-joined ON cond */
-	      QO_ASSERT (env, QO_NODE_IS_OUTER_JOIN (on_node));
-	    }
+
+	  /* is explicit outer-joined ON cond */
+	  QO_ASSERT (env, QO_NODE_IS_OUTER_JOIN (on_node));
 	}
       else
 	{
@@ -6575,11 +6561,6 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	    {
 	      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_RIGHT_OUTER
 		  || QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_FULL_OUTER)
-		{
-		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
-		}
-	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI
-		       && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (on_node)))
 		{
 		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
 		}
@@ -6633,10 +6614,6 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 		    {
 		      QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
 		    }
-		}
-	      else if (QO_ON_COND_TERM (term) && QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
-		{
-		  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
 		}
 	    }
 	  else
@@ -6757,6 +6734,53 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
   bitset_delset (&prev_dep_set);
   bitset_delset (&dep_set);
+}
+
+/*
+ * qo_classify_antijoin_terms () - classify the ON-clause terms of anti joins
+ *   return:
+ *   env(in):
+ *
+ * Note: qo_classify_outerjoin_terms () skips the ON-clause terms of semi/anti joins.
+ *   An anti join emits an outer row only when no inner row satisfies its whole ON clause,
+ *   so an ON-clause term that does not read the anti node must not become a sarg of an outer node.
+ *
+ * Term Classify Matrix (same notation as qo_classify_outerjoin_terms ())
+ * --+-----+---------------------+----------+---------------+------------------
+ * NO|Major|Minor                |nidx_self |dep_set        | Classify
+ * --+-----+---------------------+----------+---------------+------------------
+ * A1|ON   |TC_sarg(anti on)     |on_node   |-              |TC_sarg(ow TC_dj)
+ * A2|ON   |TC_other(anti on)    |-         |-              |TC_dj
+ * --+-----+---------------------+----------+---------------+------------------
+ */
+static void
+qo_classify_antijoin_terms (QO_ENV * env)
+{
+  QO_TERM *term;
+  QO_NODE *node;
+  int i;
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+
+      if (!QO_ON_COND_TERM (term))
+	{
+	  continue;
+	}
+
+      node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
+      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_ANTI)
+	{
+	  continue;
+	}
+
+      if ((QO_TERM_CLASS (term) == QO_TC_SARG && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node)))
+	  || QO_TERM_CLASS (term) == QO_TC_OTHER)
+	{
+	  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+	}
+    }
 }
 
 /*
