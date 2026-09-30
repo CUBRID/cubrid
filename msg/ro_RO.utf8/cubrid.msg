@@ -1109,7 +1109,7 @@ $ LOADDB
 1039 log writer: pornit. Mod: %1$d.
 1040 Eroare generică de HA: %1$s. 
 1041 Un şir de caractere a fost trunchiat în contextul "%1$s".
-1042 Tentativă de a crea un şir de caractere care ocupă %1$d bytes de memorie, când maximul permis este %2$d bytes.
+1042 Tentativă de a crea un şir de caractere care ocupă %1$zu bytes de memorie, când maximul permis este %2$d bytes.
 1043 Nu se poate modifica atributul "%1$s". CUBRID nu poate modifica proprietăţile atributului solicitat dacă clasa are subclase.
 1044 Nu se poate modifica atributul "%1$s". CUBRID nu poate modifica atributele care sunt chei de partiţionare.
 1045 Nu se poate modifica atributul "%1$s". CUBRID nu poate modifica atributele utilizate în chei externe (fie referinţe, fie referenţiate).
