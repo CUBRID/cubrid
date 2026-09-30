@@ -1734,6 +1734,7 @@ int
 estimatedb_data (UTIL_FUNCTION_ARG * arg)
 {
   /* todo: remove me */
+  return -1;
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
