@@ -2380,32 +2380,33 @@ qdata_operand_coercion_type_holds (DB_TYPE value, DB_TYPE resolved)
  *   each other (their converters read any string)
  */
 static void
-qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * operand_coercion,
-					const DB_VALUE * dbval1_p, const DB_VALUE * dbval2_p)
+qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
+					const TP_DOMAIN * const *operand_domain, const DB_VALUE * dbval1_p,
+					const DB_VALUE * dbval2_p)
 {
   const DB_VALUE *values[2] = { dbval1_p, dbval2_p };
   const DOMAIN_OPERAND operands[2] = {
     {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, -1, false}
   };
-  RESOLVED_DOMAIN develop;
+  DOMAIN_OPERAND_COERCION develop;
   domain_resolve_operand_coercion (opcode, operands, &develop);
   for (int i = 0; i < 2; i++)
     {
-      if (operand_coercion->conv[i] == NULL && develop.conv[i] == NULL)
+      if (conv[i] == NULL && develop.conv[i] == NULL)
 	{
 	  /* neither converts the value: its type is the operator's to take */
 	  continue;
 	}
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (values[i]);
-      const TP_DOMAIN *resolved = operand_coercion->operand_domain[i];
+      const TP_DOMAIN *resolved = operand_domain[i];
       bool same = resolved != NULL
 	&& qdata_operand_coercion_type_holds (TP_DOMAIN_TYPE (develop.operand_domain[i]), TP_DOMAIN_TYPE (resolved));
-      if (same && operand_coercion->conv[i] != develop.conv[i])
+      if (same && conv[i] != develop.conv[i])
 	{
 	  const DB_TYPE sibling =
 	    type == DB_TYPE_CHAR ? DB_TYPE_VARCHAR : type == DB_TYPE_VARCHAR ? DB_TYPE_CHAR : type;
-	  same = sibling != type && operand_coercion->conv[i] != NULL && develop.conv[i] != NULL
-	    && operand_coercion->conv[i] == tp_value_find_converter (sibling, resolved, DOMAIN_CONVERT_ASSIGN);
+	  same = sibling != type && conv[i] != NULL && develop.conv[i] != NULL
+	    && conv[i] == tp_value_find_converter (sibling, resolved, DOMAIN_CONVERT_ASSIGN);
 	}
       if (!same)
 	{
@@ -2429,7 +2430,7 @@ qdata_assert_operands_coerced (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, 
   const DOMAIN_OPERAND operands[2] = {
     {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, -1, false}
   };
-  RESOLVED_DOMAIN operand_coercion;
+  DOMAIN_OPERAND_COERCION operand_coercion;
   domain_resolve_operand_coercion (opcode, operands, &operand_coercion);
   if (operand_coercion.conv[0] != NULL || operand_coercion.conv[1] != NULL)
     {
@@ -2445,7 +2446,9 @@ qdata_assert_operands_coerced (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, 
  *   coercion, resolved before any row, then the typed operator, which casts nothing
  *   return: NO_ERROR or ER_code
  *   opcode(in): T_ADD, T_SUB, T_MUL or T_DIV
- *   operand_coercion(in): operand_domain[0..1] and conv[0..1] of domain_resolve_operand_coercion; NULL converts nothing
+ *   conv(in), operand_domain(in): conv[0..1] and operand_domain[0..1] of the operand coercion - a node's
+ *	       RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION (domain_resolve_operand_coercion); conv NULL
+ *	       converts nothing
  *   temporaries(in): [2] an operand its scope converted once already: the operator takes it in place
  *	       of the conversion; NULL none
  *
@@ -2455,20 +2458,19 @@ qdata_assert_operands_coerced (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, 
  * returned before their operand coercion.
  */
 int
-qdata_coerce_arith_operands (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, const RESOLVED_DOMAIN * operand_coercion,
-			     DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
-			     const DB_VALUE * const *temporaries)
+qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
+			     const TP_DOMAIN * const *operand_domain, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
+			     DB_VALUE * result_p, TP_DOMAIN * domain_p, const DB_VALUE * const *temporaries)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   int (*arith_operator) (DB_VALUE *, DB_VALUE *, DB_VALUE *, TP_DOMAIN *) = opcode == T_ADD ? qdata_add_dbval
     : opcode == T_SUB ? qdata_subtract_dbval : opcode == T_MUL ? qdata_multiply_dbval : qdata_divide_dbval;
-  if (operand_coercion == NULL || dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p)
-      || DB_IS_NULL (dbval2_p))
+  if (conv == NULL || dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
       return arith_operator (dbval1_p, dbval2_p, result_p, domain_p);
     }
 #if !defined (NDEBUG)
-  qdata_assert_operand_coercion_resolved (opcode, operand_coercion, dbval1_p, dbval2_p);
+  qdata_assert_operand_coercion_resolved (opcode, conv, operand_domain, dbval1_p, dbval2_p);
 #endif
   DB_VALUE *operand[2] = { dbval1_p, dbval2_p };
   DB_VALUE converted[2];
@@ -2477,7 +2479,7 @@ qdata_coerce_arith_operands (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, cons
   for (int k = 0; k < 2 && error == NO_ERROR; k++)
     {
       const int i = opcode == T_SUB ? k : 1 - k;
-      if (operand_coercion->conv[i] == NULL)
+      if (conv[i] == NULL)
 	{
 	  continue;
 	}
@@ -2490,14 +2492,12 @@ qdata_coerce_arith_operands (THREAD_ENTRY * thread_p, OPERATOR_TYPE opcode, cons
 	  continue;
 	}
       used |= 1 << i;
-      const TP_DOMAIN_STATUS status =
-	tp_value_convert (operand_coercion->conv[i], operand_coercion->operand_domain[i], operand[i],
-			  &converted[i]);
+      const TP_DOMAIN_STATUS status = tp_value_convert (conv[i], operand_domain[i], operand[i], &converted[i]);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	    {
-	      error = qdata_operand_coercion_error (status, operand[i], operand_coercion->operand_domain[i]);
+	      error = qdata_operand_coercion_error (status, operand[i], operand_domain[i]);
 	      break;
 	    }
 	  pr_clear_value (&converted[i]);

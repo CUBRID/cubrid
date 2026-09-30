@@ -628,8 +628,9 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
 	  /* unsupported types keep the per-row add into acc->value, after the operand coercion the setup resolved for a
 	   * value; another accumulator comes in the accumulator's type */
 	  const DB_VALUE *const temporaries[2] = { NULL, temporary };
-	  const RESOLVED_DOMAIN *coercion = is_acc_to_acc ? NULL : &domain->operand_coercion;
-	  if (qdata_coerce_arith_operands (thread_p, T_ADD, coercion, acc->value, value, acc->value, domain->value_dom,
+	  const DOMAIN_OPERAND_COERCION *coercion = &domain->operand_coercion;
+	  if (qdata_coerce_arith_operands (T_ADD, is_acc_to_acc ? NULL : coercion->conv,
+					   coercion->operand_domain, acc->value, value, acc->value, domain->value_dom,
 					   temporaries) != NO_ERROR)
 	    {
 	      return ER_FAILED;
@@ -1075,7 +1076,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  /* a value a scope fixes is converted once per scope for the operand coercion of the add;
 	   * the first value is the accumulator's as it is. The setup fixed whether it is one. */
 	  const cubxasl::aggregate_accumulator_domain *acc_dom = &agg_p->accumulator_domain;
-	  const RESOLVED_DOMAIN *coercion = &acc_dom->operand_coercion;
+	  const DOMAIN_OPERAND_COERCION *coercion = &acc_dom->operand_coercion;
 	  const DB_VALUE *temporary = acc_dom->temporary != 0 && accumulator->curr_cnt >= 1
 				      ? qexec_execution_temporary (thread_p, val_desc_p, acc_dom->temporary,
 					  coercion->conv[1], coercion->operand_domain[1], peek_val) : NULL;
@@ -1968,7 +1969,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      const TP_DOMAIN *column = list_id_p->type_list.domp[0];
 		      const TP_DOMAIN *sum_domain = agg_p->function == PT_AVG && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
 						    ? column : agg_p->accumulator_domain.value_dom;
-		      RESOLVED_DOMAIN coerce_second = {}, coerce_later = {};
+		      DOMAIN_OPERAND_COERCION coerce_second = {}, coerce_later = {};
 		      if (sum_or_avg && sum_domain != NULL)
 			{
 			  const DOMAIN_OPERAND second[2] =
@@ -2158,9 +2159,10 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				      domain_ptr = NULL;
 				    }
 
-				  const RESOLVED_DOMAIN *coercion =
-					  !sum_or_avg ? NULL : added ? &coerce_later : &coerce_second;
-				  error = qdata_coerce_arith_operands (thread_p, T_ADD, coercion,
+				  const DOMAIN_OPERAND_COERCION *coercion = added ? &coerce_later : &coerce_second;
+				  error = qdata_coerce_arith_operands (T_ADD,
+								       sum_or_avg ? coercion->conv : NULL,
+								       coercion->operand_domain,
 								       agg_p->accumulator.value, &dbval,
 								       agg_p->accumulator.value, domain_ptr);
 				  added = true;
@@ -2209,7 +2211,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	  const TP_DOMAIN *sum_domain = raw_domain != NULL ? raw_domain : agg_p->accumulator_domain.value_dom;
-	  RESOLVED_DOMAIN operand_coercion = {};
+	  DOMAIN_OPERAND_COERCION operand_coercion = {};
 	  if (sum_domain != NULL)
 	    {
 	      const DOMAIN_OPERAND operands[2] =
@@ -2218,8 +2220,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      };
 	      domain_resolve_operand_coercion (T_DIV, operands, &operand_coercion);
 	    }
-	  error = qdata_coerce_arith_operands (thread_p, T_DIV, &operand_coercion, agg_p->accumulator.value, &dbval,
-					       &xavgval, double_domain_ptr);
+	  error = qdata_coerce_arith_operands (T_DIV, operand_coercion.conv, operand_coercion.operand_domain,
+					       agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

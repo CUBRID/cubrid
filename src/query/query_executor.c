@@ -27476,10 +27476,11 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  const DOMAIN_OPERAND operands[2] = {
 	    {NULL, DB_VALUE_DOMAIN_TYPE (val), -1, -1, false}, {NULL, DB_TYPE_INTEGER, -1, -1, false}
 	  };
-	  RESOLVED_DOMAIN operand_coercion;
+	  DOMAIN_OPERAND_COERCION operand_coercion;
 	  domain_resolve_operand_coercion (T_SUB, operands, &operand_coercion);
-	  error = qdata_coerce_arith_operands (thread_p, T_SUB, &operand_coercion, val, &one_val, ubound,
-					       qexec_get_node_domain (vd, rhs->domain, rhs->domain_plan));
+	  error =
+	    qdata_coerce_arith_operands (T_SUB, operand_coercion.conv, operand_coercion.operand_domain, val,
+					 &one_val, ubound, qexec_get_node_domain (vd, rhs->domain, rhs->domain_plan));
 	}
       else
 	{

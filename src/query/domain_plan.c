@@ -77,6 +77,10 @@ struct DOMAIN_LOAD_ENTRY
   bool follows_producer;	/* after resolution: this entry carries its producer's answer (a link source goes
 				 * through it to the producer, a bind's value included) */
   bool needs_node_domain;	/* the node gets an execution domain (domain_give_node_domain) */
+  bool needs_operand_type;	/* an aggregate or analytic function: its execution also records the operand type it
+				 * evaluates with (resolved_domain.operand_types) */
+  bool needs_list_domain;	/* a MEDIAN / PERCENTILE aggregate: and the domain its list holds
+				 * (resolved_domain.interpolation_list_domains) */
   bool variable;		/* its compiled domain is variable: DOMAIN_PLAN_VARIABLE once published */
   bool variable_position;	/* a list position whose pos_descr.dom is variable: DOMAIN_PLAN_VARIABLE_POSITION */
   bool row_invariant;		/* no row changes its value: a constant, or a branch or collection node over such
@@ -816,7 +820,7 @@ domain_plan_operand_coercion (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, con
   const DOMAIN_OPERAND operands[2] = {
     {left, TP_DOMAIN_TYPE (left), -1, -1, false}, {right, TP_DOMAIN_TYPE (right), -1, -1, false}
   };
-  RESOLVED_DOMAIN operand_coercion;
+  DOMAIN_OPERAND_COERCION operand_coercion;
   domain_resolve_operand_coercion (opcode, operands, &operand_coercion);
   for (int i = 0; i < 2; i++)
     {
@@ -1801,6 +1805,8 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
       if (item != NULL)
 	{
 	  DOMAIN_LOAD_ENTRY *load_entry = domain_load_entry_of (item);
+	  load_entry->needs_operand_type = true;
+	  load_entry->needs_list_domain = QPROC_IS_INTERPOLATION_FUNC (agg);
 	  load_entry->output[0] = agg->accumulator.value;
 	  if (has_operand && agg->operands != NULL)
 	    {
@@ -1871,6 +1877,7 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	  if (item != NULL)
 	    {
 	      DOMAIN_LOAD_ENTRY *load_entry = domain_load_entry_of (item);
+	      load_entry->needs_operand_type = true;
 	      REGU_VARIABLE *operand = &analytic->operand;
 	      load_entry->output[0] = analytic->value;
 	      load_entry->output[1] = analytic->out_value;
@@ -4745,9 +4752,26 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	{
 	  r->index = r->alias->index;
 	}
-      else if (r->needs_node_domain)
+    }
+  /* the execution domains: MEDIAN / PERCENTILE aggregates first, then the other aggregates and analytic functions,
+   * then every other node, so that the list domains and the operand types, which only those keep, are the first
+   * entries' alone (n_interpolation_list_domains, n_operand_types) */
+  for (int group = 0; group < 3; group++)
+    {
+      for (DOMAIN_LOAD_ENTRY * r = ctx.head; r != NULL; r = r->next)
 	{
-	  r->item.node_domain_index = ++plan->n_node_domains;
+	  if (r->needs_node_domain && group == (r->needs_list_domain ? 0 : r->needs_operand_type ? 1 : 2))
+	    {
+	      r->item.node_domain_index = ++plan->n_node_domains;
+	    }
+	}
+      if (group == 0)
+	{
+	  plan->n_interpolation_list_domains = plan->n_node_domains;
+	}
+      else if (group == 1)
+	{
+	  plan->n_operand_types = plan->n_node_domains;
 	}
     }
   /* A nested parser_generate_xasl () restarts parser->dbval_cnt, so root->dbval_cnt can

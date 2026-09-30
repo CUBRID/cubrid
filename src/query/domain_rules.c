@@ -569,17 +569,20 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
  *   collations, so the operand coercion stands whatever the result.
  */
 void
-domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result)
+domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   DB_TYPE left_target, right_target, result_type;
-  *result = RESOLVED_DOMAIN
-  {
-  };
+  RESOLVED_DOMAIN resolved = RESOLVED_DOMAIN ();
   /* the targets are set before the typed dispatch answers whether it takes the pair */
   (void) domain_arith_binary (opcode, domain_operand_type (&operands[0]), domain_operand_type (&operands[1]),
 			      &left_target, &right_target, &result_type);
-  domain_set_arith_operands (opcode, operands, left_target, right_target, result);
+  domain_set_arith_operands (opcode, operands, left_target, right_target, &resolved);
+  for (int i = 0; i < 2; i++)
+    {
+      result->conv[i] = resolved.conv[i];
+      result->operand_domain[i] = resolved.operand_domain[i];
+    }
 }
 
 /* The cached domain tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id) gives a string (the collation's

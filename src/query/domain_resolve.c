@@ -139,10 +139,14 @@ static int qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_
  * Every value starts as NULL so the common error exit can clear a partial fill. */
 static int
 qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolved, int n_compares, int n_elements,
-			      int n_indexes, int n_node_domains, RESOLVED_DOMAIN_TABLE & resolved)
+			      int n_indexes, int n_node_domains, int n_operand_types, int n_interpolation_list_domains,
+			      RESOLVED_DOMAIN_TABLE & resolved)
 {
   assert (resolved.vals == NULL && n_vals >= 0 && n_resolved >= 0 && n_compares >= 0 && n_elements >= 0
 	  && n_indexes >= 0 && n_node_domains >= 0);
+  /* the load numbers the nodes that keep a list domain or an operand type first (DOMAIN_PLAN.n_operand_types) */
+  assert (0 <= n_interpolation_list_domains && n_interpolation_list_domains <= n_operand_types
+	  && n_operand_types <= n_node_domains);
   static_assert (sizeof (DB_VALUE) % alignof (RESOLVED_DOMAIN) == 0, "gate table alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
   static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
@@ -159,11 +163,12 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (DB_VALUE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   /* values, resolved domain table, comparison resolutions, ALL/SOME resolutions, key resolutions, the nodes' execution
-   * domains and operand types, then the constant flags */
+   * domains, list domains and operand types, then the constant flags */
   const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_resolved
     + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + sizeof (DOMAIN_ELEMENTS) * (size_t) n_elements
     + sizeof (RESOLVED_INDEX_KEYS) * (size_t) n_indexes
-    + (2 * sizeof (const TP_DOMAIN *) + sizeof (int)) * (size_t) n_node_domains + (size_t) n_vals;
+    + sizeof (const TP_DOMAIN *) * ((size_t) n_node_domains + (size_t) n_interpolation_list_domains)
+    + sizeof (int) * (size_t) n_operand_types + (size_t) n_vals;
   if (bytes == 0)
     {
       return NO_ERROR;
@@ -184,6 +189,8 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   resolved.n_elements = n_elements;
   resolved.n_indexes = n_indexes;
   resolved.n_node_domains = n_node_domains;
+  resolved.n_operand_types = n_operand_types;
+  resolved.n_interpolation_list_domains = n_interpolation_list_domains;
   char *next = (char *) (resolved.vals + n_vals);
   if (n_resolved != 0)
     {
@@ -209,18 +216,25 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
       memset (resolved.indexes, 0, sizeof (*resolved.indexes) * n_indexes);
       next += sizeof (*resolved.indexes) * n_indexes;
     }
+  /* nothing taken yet: every node has its compiled domain, list domain and operand type */
   if (n_node_domains != 0)
     {
-      /* nothing taken yet: every node has its compiled domain and operand type */
       resolved.node_domains = (const TP_DOMAIN **) next;
       memset (resolved.node_domains, 0, sizeof (*resolved.node_domains) * n_node_domains);
       next += sizeof (*resolved.node_domains) * n_node_domains;
+    }
+  if (n_interpolation_list_domains != 0)
+    {
       resolved.interpolation_list_domains = (const TP_DOMAIN **) next;
-      memset (resolved.interpolation_list_domains, 0, sizeof (*resolved.interpolation_list_domains) * n_node_domains);
-      next += sizeof (*resolved.interpolation_list_domains) * n_node_domains;
+      memset (resolved.interpolation_list_domains, 0,
+	      sizeof (*resolved.interpolation_list_domains) * n_interpolation_list_domains);
+      next += sizeof (*resolved.interpolation_list_domains) * n_interpolation_list_domains;
+    }
+  if (n_operand_types != 0)
+    {
       resolved.operand_types = (int *) next;
-      memset (resolved.operand_types, 0xff, sizeof (*resolved.operand_types) * n_node_domains);
-      next += sizeof (*resolved.operand_types) * n_node_domains;
+      memset (resolved.operand_types, 0xff, sizeof (*resolved.operand_types) * n_operand_types);
+      next += sizeof (*resolved.operand_types) * n_operand_types;
     }
   if (n_vals != 0)
     {
@@ -296,7 +310,7 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
   memset (&resolved, 0, sizeof (resolved));
   if (qexec_alloc_resolved_domains
       (thread_p, src.n_vals, src.n_resolved, src.n_compare_indexes, src.n_elements, src.n_indexes, src.n_node_domains,
-       resolved) != NO_ERROR)
+       src.n_operand_types, src.n_interpolation_list_domains, resolved) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -350,9 +364,15 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
   if (src.n_node_domains != 0 && !own_load)
     {
       memcpy (resolved.node_domains, src.node_domains, sizeof (*resolved.node_domains) * src.n_node_domains);
-      memcpy (resolved.interpolation_list_domains, src.interpolation_list_domains,
-	      sizeof (*resolved.interpolation_list_domains) * src.n_node_domains);
-      memcpy (resolved.operand_types, src.operand_types, sizeof (*resolved.operand_types) * src.n_node_domains);
+      if (src.n_interpolation_list_domains != 0)
+	{
+	  memcpy (resolved.interpolation_list_domains, src.interpolation_list_domains,
+		  sizeof (*resolved.interpolation_list_domains) * src.n_interpolation_list_domains);
+	}
+      if (src.n_operand_types != 0)
+	{
+	  memcpy (resolved.operand_types, src.operand_types, sizeof (*resolved.operand_types) * src.n_operand_types);
+	}
     }
   resolved.in = src.in;
   resolved.plan = src.plan;
@@ -382,9 +402,11 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_elements = plan == NULL ? 0 : plan->n_element_comparisons;
   const int n_indexes = plan == NULL ? 0 : plan->n_resolved_index_keys;
   const int n_node_domains = plan == NULL ? 0 : plan->n_node_domains;
+  const int n_operand_types = plan == NULL ? 0 : plan->n_operand_types;
+  const int n_list_domains = plan == NULL ? 0 : plan->n_interpolation_list_domains;
   const int error =
     qexec_alloc_resolved_domains (thread_p, n_vals, n_resolved, n_compares, n_elements, n_indexes, n_node_domains,
-				  resolved);
+				  n_operand_types, n_list_domains, resolved);
   if (error != NO_ERROR || plan == NULL)
     {
       return error;
@@ -570,6 +592,21 @@ qexec_resolve_elt_branch (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE 
   return branch > 0 && branch < link->n_operands ? (int) branch : 0;
 }
 
+/* A late-binding node's resolution that starts from its operands' operand coercion alone: conv[0..1] and
+ * operand_domain[0..1], no domain yet. */
+static void
+qexec_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * entry)
+{
+  DOMAIN_OPERAND_COERCION coercion;
+  domain_resolve_operand_coercion (opcode, operands, &coercion);
+  *entry = RESOLVED_DOMAIN ();
+  for (int i = 0; i < 2; i++)
+    {
+      entry->conv[i] = coercion.conv[i];
+      entry->operand_domain[i] = coercion.operand_domain[i];
+    }
+}
+
 /*
  * qexec_resolve_late_bind_node_over () - the late-binding node step for one late-binding node: the type rules' answer
  *   for this execution's operand types goes into the node's resolved domain table entry once
@@ -610,7 +647,7 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
       /* an arithmetic node the compiler typed over an operand it did not keeps its compiled domain;
        * its operands' operand coercion is the type rules' over their resolved domains */
       assert (link->n_operands == 2);
-      domain_resolve_operand_coercion (cold->opcode, operands, entry);
+      qexec_resolve_operand_coercion (cold->opcode, operands, entry);
       entry->domain = link->consumer;
       return NO_ERROR;
     }
@@ -704,7 +741,7 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
       };
       if (context == DOMAIN_CTX_ARITH && cold->opcode == T_ADD)
 	{
-	  domain_resolve_operand_coercion (T_ADD, operands, entry);
+	  qexec_resolve_operand_coercion (T_ADD, operands, entry);
 	}
       entry->domain = &tp_Null_domain;
       return NO_ERROR;

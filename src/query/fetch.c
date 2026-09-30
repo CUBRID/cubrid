@@ -919,10 +919,11 @@ fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * 
 					   operands[i]);
 	    }
 	}
-      return qdata_coerce_arith_operands (thread_p, arithptr->opcode, plan, left, right, arithptr->value, domain,
-					  temporaries);
+      return qdata_coerce_arith_operands (arithptr->opcode, plan->conv, plan->operand_domain, left, right,
+					  arithptr->value, domain, temporaries);
     }
-  return qdata_coerce_arith_operands (thread_p, arithptr->opcode, plan, left, right, arithptr->value, domain);
+  return qdata_coerce_arith_operands (arithptr->opcode, plan != NULL ? plan->conv : NULL,
+				      plan != NULL ? plan->operand_domain : NULL, left, right, arithptr->value, domain);
 }
 
 /*

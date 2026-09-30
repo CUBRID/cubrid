@@ -69,9 +69,18 @@ DOMAIN_CONVERT_MODE domain_convert_mode (DOMAIN_CTX context);
 int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 		    const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_late_bind);
 
+/* The operand coercion of T_ADD, T_SUB, T_MUL or T_DIV: conv[i] converts operand i into operand_domain[i], NULL
+ * converts nothing. SUM and AVG keep one for the values they add; an arithmetic node's RESOLVED_DOMAIN holds the same
+ * two pairs in its conv[] and operand_domain[], and qdata_coerce_arith_operands reads either through those arrays. */
+struct DOMAIN_OPERAND_COERCION
+{
+  TP_VALUE_CONVERTER conv[2];
+  const TP_DOMAIN *operand_domain[2];
+};
+
 /* The operands' operand coercion of T_ADD, T_SUB, T_MUL or T_DIV alone: operand_domain[0..1] and conv[0..1] of the
- * ARITH rule over operands of these types, whatever its result; domain stays NULL. */
-void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result);
+ * ARITH rule over operands of these types, whatever its result. */
+void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result);
 
 /* val_type of a value-dependent argument (MEDIAN/PERCENTILE argument, STR_TO_DATE format, ADDTIME left).
  * resolve_domains only, once, before domain_resolve. DB_TYPE_NULL when the value cannot be typed: the function's own

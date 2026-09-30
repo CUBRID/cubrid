@@ -31,7 +31,7 @@ struct domain_plan_item;
 #include "regu_var.hpp"             // regu_variable_node
 #include "storage_common.h"         // QUERY_OPTIONS
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "domain_rules.h"           // RESOLVED_DOMAIN
+#include "domain_rules.h"           // DOMAIN_OPERAND_COERCION
 #endif
 
 // forward definitions
@@ -61,11 +61,22 @@ namespace cubxasl
                                                  * cur_gourp_percentile, an error is raised. */
   };
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  struct analytic_sum_avg_function_info
+  {
+    DOMAIN_OPERAND_COERCION operand_coercion;	/* the operand coercion of value + a value, set per partition
+						 * (qdata_initialize_analytic_func) */
+  };
+#endif
+
   union analytic_function_info
   {
     analytic_ntile_function_info ntile;
     analytic_percentile_function_info percentile;
     analytic_cume_percent_function_info cume_percent;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+    analytic_sum_avg_function_info sum_avg;	/* SUM and AVG; the stream writes none of it */
+#endif
   };
 
   struct analytic_list_node
@@ -103,10 +114,6 @@ namespace cubxasl
     db_value *out_value;		/* DB_VALUE used for output */
     db_value part_value;		/* partition temporary accumulator */
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
-#if defined (SERVER_MODE) || defined (SA_MODE)
-    RESOLVED_DOMAIN operand_coercion;		/* SUM / AVG: the operand coercion of value + a value, set per
-						 * partition */
-#endif
     INT64 curr_cnt;			/* current number of items */
     bool is_first_exec_time;	        /* the fist time to be executed */
 

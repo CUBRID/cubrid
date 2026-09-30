@@ -384,6 +384,10 @@ struct domain_plan
   DOMAIN_ELEMENT_COMPARE_PLAN **element_comparisons;	/* the ALL/SOME terms resolve_domains resolves, in
 							 * resolved_domain.elements order */
   int n_node_domains;		/* the items with an execution domain */
+  int n_operand_types;		/* the first of them, node_domain_index 1..n: the aggregates and analytic functions,
+				 * whose executions also record an operand type */
+  int n_interpolation_list_domains;	/* the first of those: the MEDIAN / PERCENTILE aggregates, whose executions
+					 * also record the domain their list holds */
   int n_session_variables;
   DOMAIN_SESSION_VARIABLE *session_variables;	/* the session variables the statement reads */
   int n_constant_branches;
@@ -473,11 +477,14 @@ struct RESOLVED_DOMAIN_TABLE
    * the plan node and the XASL clear restored it: a resolved domain read at the node's first computation or at its
    * consumer's setup; NULL until taken. Only the owner writes them. */
   const TP_DOMAIN **node_domains;
-  const TP_DOMAIN **interpolation_list_domains;	/* [n_node_domains] the domain a MEDIAN / PERCENTILE list holds and its
-						 * key sorts (qexec_setup_interpolation_list); NULL */
-  int *operand_types;		/* [n_node_domains] an aggregate's or analytic function's operand type (opr_dbtype);
+  const TP_DOMAIN **interpolation_list_domains;	/* [n_interpolation_list_domains] the domain a MEDIAN / PERCENTILE list
+						 * holds and its key sorts (qexec_setup_interpolation_list); NULL */
+  int *operand_types;		/* [n_operand_types] an aggregate's or analytic function's operand type (opr_dbtype);
 				 * -1 */
   int n_node_domains;
+  int n_operand_types;		/* the load numbers the aggregates and analytic functions' execution domains first,
+				 * MEDIAN / PERCENTILE aggregates first among them (DOMAIN_PLAN.n_operand_types) */
+  int n_interpolation_list_domains;
   /* during resolve_domains only: the failures below constant branches it raises at its end if a row reaches them */
   DOMAIN_DEFERRED_ERROR *deferred_errors;
   int n_deferred_errors;

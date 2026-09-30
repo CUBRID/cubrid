@@ -208,11 +208,13 @@ qexec_set_node_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, cons
 
 /* The domain a MEDIAN / PERCENTILE list holds and its sort key sorts in this execution
  * (qexec_setup_interpolation_list): the key's compiled domain until the setup gives the function its type. The key
- * shares the function's item, so the list domain has execution domains of its own. */
+ * shares the function's item, so the list domain has execution domains of its own. Only a MEDIAN / PERCENTILE
+ * aggregate has one: the load numbers those first. */
 inline TP_DOMAIN *
 qexec_interpolation_list_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
 {
   const int node_domain_index = qexec_node_domain_index (vd, item);
+  assert (node_domain_index < 0 || node_domain_index < vd->xasl_state->resolved_domain.n_interpolation_list_domains);
   if (node_domain_index < 0 || vd->xasl_state->resolved_domain.interpolation_list_domains[node_domain_index] == NULL)
     {
       return compiled;
@@ -224,7 +226,7 @@ inline void
 qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * domain)
 {
   const int node_domain_index = qexec_node_domain_index (vd, item);
-  assert (node_domain_index >= 0);
+  assert (node_domain_index >= 0 && node_domain_index < vd->xasl_state->resolved_domain.n_interpolation_list_domains);
   if (node_domain_index >= 0)
     {
       vd->xasl_state->resolved_domain.interpolation_list_domains[node_domain_index] = domain;
@@ -232,11 +234,13 @@ qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_IT
 }
 
 /* An aggregate's or an analytic function's operand type now in this execution: the one it took, or
- * its compiled opr_dbtype. */
+ * its compiled opr_dbtype. The load numbers the functions' execution domains first, so theirs are the operand types'
+ * indexes. */
 inline DB_TYPE
 qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, const DOMAIN_PLAN_ITEM * item)
 {
   const int node_domain_index = qexec_node_domain_index (vd, item);
+  assert (node_domain_index < 0 || node_domain_index < vd->xasl_state->resolved_domain.n_operand_types);
   if (node_domain_index < 0 || vd->xasl_state->resolved_domain.operand_types[node_domain_index] < 0)
     {
       return compiled;
@@ -253,6 +257,7 @@ qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB
       assert (type == compiled);
       return;
     }
+  assert (node_domain_index < vd->xasl_state->resolved_domain.n_operand_types);
   vd->xasl_state->resolved_domain.operand_types[node_domain_index] = type == compiled ? -1 : (int) type;
 }
 

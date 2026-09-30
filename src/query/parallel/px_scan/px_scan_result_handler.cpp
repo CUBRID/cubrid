@@ -1838,14 +1838,15 @@ namespace parallel_scan
 	    /* after the operand coercion the setup resolved for a value; a value a scope fixes is converted once
 	     * per scope, in the worker's own state. The setup fixed whether it is one, and the caller passes
 	     * no NULL. */
-	    const RESOLVED_DOMAIN *operand_coercion = &acc_dom->operand_coercion;
+	    const DOMAIN_OPERAND_COERCION *operand_coercion = &acc_dom->operand_coercion;
 	    const DB_VALUE *const temporaries[2] =
 	    {
 	      NULL, acc_dom->temporary != 0 ? qexec_execution_temporary (thread_p, tl_vd, acc_dom->temporary,
 		  operand_coercion->conv[1], operand_coercion->operand_domain[1], db_value_p) : NULL
 	    };
-	    if (qdata_coerce_arith_operands (thread_p, T_ADD, operand_coercion, acc->value, db_value_p, acc->value,
-					     acc_dom->value_dom, temporaries) != NO_ERROR)
+	    if (qdata_coerce_arith_operands (T_ADD, operand_coercion->conv, operand_coercion->operand_domain,
+					     acc->value, db_value_p, acc->value, acc_dom->value_dom,
+					     temporaries) != NO_ERROR)
 	      {
 		return false;
 	      }
