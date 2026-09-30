@@ -299,11 +299,12 @@ namespace parallel_scan
 			  }
 		      }
 
-		    /* a partitioned following join is not advanced partition by partition by the main thread's scan
-		     * block iteration (it stops above the first semi / anti inner); qexec_execute_scan walks every
-		     * partition per outer row itself, so the clone needs the pruned partition list, or it probes
-		     * only the one captured partition (CBRD-27493) */
-		    if ((thread_ref.on_trace || XASL_IS_FLAGED (xptr, XASL_NL_FOLLOWING_JOIN))
+		    /* a partitioned SEMI / ANTI inner, or a following join after one (CBRD-27493), is not advanced
+		     * partition by partition by the main thread's scan-block iteration
+		     * (qexec_next_scan_block_iterations skips it); qexec_execute_scan walks every partition per outer
+		     * row itself, so the clone needs the pruned partition list the main thread got in qexec_open_scan,
+		     * or it probes only the one captured partition (CBRD-27485) */
+		    if ((thread_ref.on_trace || XASL_IS_PER_OUTER_ROW (xptr))
 			&& HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
 		      {
 			err_code = partition_prune_spec (&thread_ref, m_vd, xptr->curr_spec);
@@ -393,31 +394,12 @@ namespace parallel_scan
 		    return err_code;
 		  }
 
-		/* skip memoize if any scan on the scan_ptr chain from here down is a SEMI / ANTI single-fetch
-		 * inner, as the serial path does (qexec_execute_mainblock_internal): a memo hit replays the
-		 * cached subtree result without probing, and for an ANTI inner a cached "no match" comes back
-		 * as S_END, which the parent takes as "no combination" and drops an outer row it must keep */
-		{
-		  bool sa_in_chain = false;
-
-		  for (xasl_node *dxp = xptr; dxp != NULL; dxp = dxp->scan_ptr)
-		    {
-		      if (XASL_IS_NL_SEMI_OR_ANTI (dxp))
-			{
-			  sa_in_chain = true;
-			  break;
-			}
-		    }
-
-		  if (!sa_in_chain)
-		    {
-		      err_code = new_memoize_storage (&thread_ref, xptr);
-		      if (err_code != NO_ERROR)
-			{
-			  return err_code;
-			}
-		    }
-		}
+		/* a SEMI / ANTI inner memoizes only whether the key matched (match-only), as the serial path does */
+		err_code = new_memoize_storage (&thread_ref, xptr, XASL_IS_NL_SEMI_OR_ANTI (xptr));
+		if (err_code != NO_ERROR)
+		  {
+		    return err_code;
+		  }
 
 		if (thread_ref.on_trace && partition_pruned)
 		  {
@@ -528,8 +510,9 @@ namespace parallel_scan
       {
 	for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	  {
-	    /* a partitioned following join that went through its last partition is left with curr_spec NULL;
-	     * point it back at its spec so the record below and qexec_clear_xasl () close its scan (CBRD-27493) */
+	    /* a partitioned SEMI / ANTI inner, or a following join after one (CBRD-27493), that went through its
+	     * last partition is left with curr_spec NULL; point it back at its spec so the record below and
+	     * qexec_clear_xasl () close its scan */
 	    if (xptr->curr_spec == NULL)
 	      {
 		xptr->curr_spec = xptr->spec_list;
@@ -759,7 +742,9 @@ namespace parallel_scan
 
 		/* handle the scan procedure */
 		m_xasl->scan_ptr->next_scan_on = false;
-		if (scan_reset_scan_block (&thread_ref, &m_xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+		/* as qexec_intprt_fnc: rewind a partitioned SEMI / ANTI inner to its first partition (its
+		 * curr_spec is NULL once the previous probe went through every partition) */
+		if (qexec_reset_sa_inner_scan_block (&thread_ref, m_xasl->scan_ptr) == S_ERROR)
 		  {
 		    m_err_messages->move_top_error_message_to_this();
 		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
