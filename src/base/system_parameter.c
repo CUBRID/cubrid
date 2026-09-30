@@ -827,7 +827,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
 
-// #endregion 
+// #endregion
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
