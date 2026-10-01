@@ -5315,20 +5315,28 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
  *       Both no-wait values are lifted although they have different owners - LK_ZERO_WAIT carries the user's
  *       lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. A finite or an already infinite
  *       waiting time is kept, because pgbuf_timed_sleep () classifies a watchdog expiry by this very value and
- *       would otherwise report ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED.
+ *       would otherwise report ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED; the thread is then left
+ *       untouched, so the transaction's waiting time stays visible to it.
  */
 int
 pgbuf_force_latch_wait (THREAD_ENTRY * thread_p)
 {
   int wait_msecs;
 
-  wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
-  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
+  if (thread_p == NULL)
     {
-      wait_msecs = LK_INFINITE_WAIT;
+      thread_p = thread_get_thread_entry_info ();
     }
 
-  return logtb_set_thread_wait_msecs (thread_p, wait_msecs);
+  wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
+  if (wait_msecs != LK_ZERO_WAIT && wait_msecs != LK_FORCE_ZERO_WAIT)
+    {
+      /* nothing to lift; an override of the thread's own (the page validation's LK_INFINITE_WAIT reaches the
+       * volume header fix) must stay in place */
+      return thread_p->wait_msecs_override;
+    }
+
+  return logtb_set_thread_wait_msecs (thread_p, LK_INFINITE_WAIT);
 }
 
 /*
@@ -16900,6 +16908,9 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
  *       else the waiting time of its transaction. Every check fed by this function - the demotion in
  *       pgbuf_fix_internal (), the refusal in pgbuf_latch_bcb_upon_fix (), the sleep budget in
  *       pgbuf_timed_sleep () and the early give-up in pgbuf_ordered_fix () - reads the same value.
+ *       Same rule as logtb_find_current_wait_msecs (), which the lock manager reads; change both together. This
+ *       copy stays inline because every unconditional pgbuf_fix () reads it, and a thread without a transaction
+ *       descriptor reads LK_ZERO_WAIT here where logtb_find_wait_msecs () asserts.
  */
 STATIC_INLINE int
 pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)

@@ -9129,7 +9129,7 @@ lock_initialize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * com
 
   lockcomp = &(comp_lock->lockcomp);
   lockcomp->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  lockcomp->wait_msecs = logtb_find_current_wait_msecs (thread_p);
+  lockcomp->wait_msecs = logtb_find_wait_msecs (lockcomp->tran_index);
   lockcomp->class_list = NULL;
   lockcomp->root_class_ptr = NULL;
   return NO_ERROR;

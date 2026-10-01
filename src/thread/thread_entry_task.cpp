@@ -93,6 +93,9 @@ namespace cubthread
     context.end_resource_tracks ();
     std::memset (&context.event_stats, 0, sizeof (context.event_stats));  // clear even stats
     context.tran_index = NULL_TRAN_INDEX;    // clear transaction ID
+    // a task restores the waiting time override it set (see logtb_set_thread_wait_msecs); never pass one on
+    assert (context.wait_msecs_override == LK_WAIT_NOT_OVERRIDDEN);
+    context.wait_msecs_override = LK_WAIT_NOT_OVERRIDDEN;
     context.private_lru_index = -1;
 #if defined (SERVER_MODE)
     context.resume_status = THREAD_RESUME_NONE;
