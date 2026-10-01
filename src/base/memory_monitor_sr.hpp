@@ -27,6 +27,7 @@
 #if !defined(WINDOWS)
 #include <cstdio>
 #include <atomic>
+#include <new>
 
 #include "concurrent_unordered_map.h"
 #include "memory_monitor_common.hpp"
@@ -179,16 +180,6 @@ namespace cubmem
 
     MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, size);
 
-    metainfo->allocated_size = (uint64_t) size;
-    m_total_mem_usage += metainfo->allocated_size;
-#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
-    // check total allocated memory peak
-    if (m_total_mem_usage.load () > m_total_memory_peak)
-      {
-	m_total_memory_peak = m_total_mem_usage.load ();
-      }
-#endif
-
     make_stat_name (stat_name, file, line);
 
 retry:
@@ -209,6 +200,17 @@ retry:
 	    goto retry;
 	  }
       }
+
+    // nothing is counted before the lookup above, which can throw std::bad_alloc (see mmon_add_stat ())
+    metainfo->allocated_size = (uint64_t) size;
+    m_total_mem_usage += metainfo->allocated_size;
+#if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
+    // check total allocated memory peak
+    if (m_total_mem_usage.load () > m_total_memory_peak)
+      {
+	m_total_memory_peak = m_total_mem_usage.load ();
+      }
+#endif
     m_stat_map[metainfo->stat_id] += metainfo->allocated_size;
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
     // check stat allocated memory peak
@@ -276,7 +278,14 @@ inline void mmon_add_stat (char *ptr, const size_t size, const char *file, const
 {
   // add_stat () builds std::string keys, which come back into the global operator new
   mmon_in_add_stat = true;
-  cubmem::mmon_Gl->add_stat (ptr, size, file, line);
+  try
+    {
+      cubmem::mmon_Gl->add_stat (ptr, size, file, line);
+    }
+  catch (const std::bad_alloc &)
+    {
+      // no memory for the stat name: the block is left untracked, and the allocation still succeeds
+    }
   mmon_in_add_stat = false;
 }
 
