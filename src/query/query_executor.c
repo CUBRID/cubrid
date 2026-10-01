@@ -592,8 +592,11 @@ static int qexec_iterate_connect_by_results (THREAD_ENTRY * thread_p, XASL_NODE 
 					     QFILE_TUPLE_RECORD * tplrec);
 static int qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
 					    QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int *are_equal);
-static bool qexec_regu_has_prior (const REGU_VARIABLE * regu);
-static bool qexec_pred_has_prior (const PRED_EXPR * pred);
+typedef bool (*QEXEC_OPCODE_MATCH) (OPERATOR_TYPE opcode);
+static bool qexec_opcode_is_prior (OPERATOR_TYPE opcode);
+static bool qexec_opcode_is_prior_or_volatile (OPERATOR_TYPE opcode);
+static bool qexec_regu_has_opcode (const REGU_VARIABLE * regu, QEXEC_OPCODE_MATCH match);
+static bool qexec_pred_has_opcode (const PRED_EXPR * pred, QEXEC_OPCODE_MATCH match);
 static bool qexec_connect_by_is_generator_candidate (XASL_NODE * xasl);
 static int qexec_execute_connect_by_generator (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					       QFILE_LIST_ID * start_with_list,
@@ -18602,15 +18605,49 @@ exit_on_error:
 }
 
 /*
- * qexec_regu_has_prior () - walk a regu variable tree for a T_PRIOR operator
- *  return: true if a PRIOR reference is present
+ * qexec_opcode_is_prior () - QEXEC_OPCODE_MATCH for PRIOR
+ *  return: true for T_PRIOR
+ *  opcode(in):
+ */
+static bool
+qexec_opcode_is_prior (OPERATOR_TYPE opcode)
+{
+  return opcode == T_PRIOR;
+}
+
+/*
+ * qexec_opcode_is_prior_or_volatile () - QEXEC_OPCODE_MATCH for PRIOR and non-deterministic operators
+ *  return: true for T_PRIOR or an operator that yields a new value on every evaluation
+ *  opcode(in):
+ */
+static bool
+qexec_opcode_is_prior_or_volatile (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_PRIOR:
+    case T_RAND:
+    case T_DRAND:
+    case T_RANDOM:
+    case T_DRANDOM:
+    case T_SYS_GUID:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * qexec_regu_has_opcode () - walk a regu variable tree for an operator accepted by match
+ *  return: true if such an operator is present
  *  regu(in):
+ *  match(in):
  *
  *  Note: mirrors qexec_replace_prior_regu_vars so detection covers exactly the
  *  places the general path would substitute PRIOR pointers.
  */
 static bool
-qexec_regu_has_prior (const REGU_VARIABLE * regu)
+qexec_regu_has_opcode (const REGU_VARIABLE * regu, QEXEC_OPCODE_MATCH match)
 {
   if (regu == NULL)
     {
@@ -18621,18 +18658,18 @@ qexec_regu_has_prior (const REGU_VARIABLE * regu)
     {
     case TYPE_INARITH:
     case TYPE_OUTARITH:
-      if (regu->value.arithptr->opcode == T_PRIOR)
+      if (match (regu->value.arithptr->opcode))
 	{
 	  return true;
 	}
-      return (qexec_regu_has_prior (regu->value.arithptr->leftptr)
-	      || qexec_regu_has_prior (regu->value.arithptr->rightptr)
-	      || qexec_regu_has_prior (regu->value.arithptr->thirdptr));
+      return (qexec_regu_has_opcode (regu->value.arithptr->leftptr, match)
+	      || qexec_regu_has_opcode (regu->value.arithptr->rightptr, match)
+	      || qexec_regu_has_opcode (regu->value.arithptr->thirdptr, match));
 
     case TYPE_SP:
       for (REGU_VARIABLE_LIST r = regu->value.sp_ptr->args; r != NULL; r = r->next)
 	{
-	  if (qexec_regu_has_prior (&r->value))
+	  if (qexec_regu_has_opcode (&r->value, match))
 	    {
 	      return true;
 	    }
@@ -18642,7 +18679,7 @@ qexec_regu_has_prior (const REGU_VARIABLE * regu)
     case TYPE_FUNC:
       for (REGU_VARIABLE_LIST r = regu->value.funcp->operand; r != NULL; r = r->next)
 	{
-	  if (qexec_regu_has_prior (&r->value))
+	  if (qexec_regu_has_opcode (&r->value, match))
 	    {
 	      return true;
 	    }
@@ -18655,15 +18692,16 @@ qexec_regu_has_prior (const REGU_VARIABLE * regu)
 }
 
 /*
- * qexec_pred_has_prior () - walk a predicate for a T_PRIOR operator
- *  return: true if a PRIOR reference is present
+ * qexec_pred_has_opcode () - walk a predicate for an operator accepted by match
+ *  return: true if such an operator is present
  *  pred(in):
+ *  match(in):
  *
  *  Note: mirrors qexec_replace_prior_regu_vars_pred; the esc_char/case_sensitive
  *  operands are checked too so detection is at least as broad as substitution.
  */
 static bool
-qexec_pred_has_prior (const PRED_EXPR * pred)
+qexec_pred_has_opcode (const PRED_EXPR * pred, QEXEC_OPCODE_MATCH match)
 {
   if (pred == NULL)
     {
@@ -18673,33 +18711,33 @@ qexec_pred_has_prior (const PRED_EXPR * pred)
   switch (pred->type)
     {
     case T_PRED:
-      return (qexec_pred_has_prior (pred->pe.m_pred.lhs) || qexec_pred_has_prior (pred->pe.m_pred.rhs));
+      return (qexec_pred_has_opcode (pred->pe.m_pred.lhs, match) || qexec_pred_has_opcode (pred->pe.m_pred.rhs, match));
 
     case T_EVAL_TERM:
       switch (pred->pe.m_eval_term.et_type)
 	{
 	case T_COMP_EVAL_TERM:
-	  return (qexec_regu_has_prior (pred->pe.m_eval_term.et.et_comp.lhs)
-		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_comp.rhs));
+	  return (qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_comp.lhs, match)
+		  || qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_comp.rhs, match));
 
 	case T_ALSM_EVAL_TERM:
-	  return (qexec_regu_has_prior (pred->pe.m_eval_term.et.et_alsm.elem)
-		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_alsm.elemset));
+	  return (qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_alsm.elem, match)
+		  || qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_alsm.elemset, match));
 
 	case T_LIKE_EVAL_TERM:
-	  return (qexec_regu_has_prior (pred->pe.m_eval_term.et.et_like.src)
-		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_like.pattern)
-		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_like.esc_char));
+	  return (qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_like.src, match)
+		  || qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_like.pattern, match)
+		  || qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_like.esc_char, match));
 
 	case T_RLIKE_EVAL_TERM:
-	  return (qexec_regu_has_prior (pred->pe.m_eval_term.et.et_rlike.src)
-		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_rlike.pattern)
-		  || qexec_regu_has_prior (pred->pe.m_eval_term.et.et_rlike.case_sensitive));
+	  return (qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_rlike.src, match)
+		  || qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_rlike.pattern, match)
+		  || qexec_regu_has_opcode (pred->pe.m_eval_term.et.et_rlike.case_sensitive, match));
 	}
       return false;
 
     case T_NOT_TERM:
-      return qexec_pred_has_prior (pred->pe.m_not_term);
+      return qexec_pred_has_opcode (pred->pe.m_not_term, match);
 
     default:
       return false;
@@ -18708,7 +18746,7 @@ qexec_pred_has_prior (const PRED_EXPR * pred)
 
 /*
  * qexec_connect_by_is_generator_candidate () - static test for the LEVEL
- *    generator fast-path: no PRIOR reference and LEVEL used in CONNECT BY
+ *    generator fast-path: no PRIOR reference, LEVEL used in CONNECT BY and a deterministic child scan
  *  return: true if the query may take the fast-path (|F| == 1 still checked at run time)
  *  xasl(in):
  */
@@ -18725,15 +18763,17 @@ qexec_connect_by_is_generator_candidate (XASL_NODE * xasl)
 
   /* no PRIOR anywhere the general path substitutes prior pointers (if_pred is evaluated outside the scan;
    * where_pred/where_key/index key ranges/probe list carry PRIOR down to the child scan in single-table mode) */
-  if (qexec_pred_has_prior (xasl->if_pred))
+  if (qexec_pred_has_opcode (xasl->if_pred, qexec_opcode_is_prior))
     {
       return false;
     }
 
   for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
     {
-      if (qexec_pred_has_prior (spec->where_pred) || qexec_pred_has_prior (spec->where_key)
-	  || qexec_pred_has_prior (spec->where_range))
+      /* the child scan runs once for all levels, so it must not hold a non-deterministic term either */
+      if (qexec_pred_has_opcode (spec->where_pred, qexec_opcode_is_prior_or_volatile)
+	  || qexec_pred_has_opcode (spec->where_key, qexec_opcode_is_prior_or_volatile)
+	  || qexec_pred_has_opcode (spec->where_range, qexec_opcode_is_prior_or_volatile))
 	{
 	  return false;
 	}
@@ -18742,7 +18782,7 @@ qexec_connect_by_is_generator_candidate (XASL_NODE * xasl)
 	{
 	  for (REGU_VARIABLE_LIST r = spec->s.list_node.list_regu_list_probe; r != NULL; r = r->next)
 	    {
-	      if (qexec_regu_has_prior (&r->value))
+	      if (qexec_regu_has_opcode (&r->value, qexec_opcode_is_prior_or_volatile))
 		{
 		  return false;
 		}
@@ -18755,8 +18795,8 @@ qexec_connect_by_is_generator_candidate (XASL_NODE * xasl)
 
 	  for (int j = 0; j < key_info_p->key_cnt; j++)
 	    {
-	      if (qexec_regu_has_prior (key_info_p->key_ranges[j].key1)
-		  || qexec_regu_has_prior (key_info_p->key_ranges[j].key2))
+	      if (qexec_regu_has_opcode (key_info_p->key_ranges[j].key1, qexec_opcode_is_prior_or_volatile)
+		  || qexec_regu_has_opcode (key_info_p->key_ranges[j].key2, qexec_opcode_is_prior_or_volatile))
 		{
 		  return false;
 		}
