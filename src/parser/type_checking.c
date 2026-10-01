@@ -228,6 +228,7 @@ static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_query_has_limit_or_orderby_for (PT_NODE * node);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -8168,6 +8169,33 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 }
 
 /*
+ * pt_query_has_limit_or_orderby_for () - check if the query or any of its set operands has LIMIT or FOR ORDERBY_NUM()
+ *   return: true if found
+ *   node(in): query
+ */
+static bool
+pt_query_has_limit_or_orderby_for (PT_NODE * node)
+{
+  if (!pt_is_query (node))
+    {
+      return false;
+    }
+
+  if (node->info.query.limit != NULL || node->info.query.orderby_for != NULL)
+    {
+      return true;
+    }
+
+  if (node->node_type != PT_SELECT)
+    {
+      return (pt_query_has_limit_or_orderby_for (node->info.query.q.union_.arg1)
+	      || pt_query_has_limit_or_orderby_for (node->info.query.q.union_.arg2));
+    }
+
+  return false;
+}
+
+/*
  * pt_chop_to_one_select_item () -
  *   return: none
  *   parser(in):
@@ -8178,6 +8206,13 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   if (pt_is_query (node))
     {
+      if (pt_query_has_limit_or_orderby_for (node))
+	{
+	  /* ORDER BY with LIMIT (FOR ORDERBY_NUM()) decides which rows are returned, so it can not be removed. Also
+	   * the select list must be kept since ORDER BY may refer to its items by position. */
+	  return;
+	}
+
       if (node->node_type == PT_SELECT)
 	{
 	  /* chop to one select item */

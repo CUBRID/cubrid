@@ -3629,6 +3629,52 @@ pt_has_having_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_has_orderby_for_with_predicate ()
+ *          - check if tree has a FOR ORDERBY_NUM() predicate other than an upper bound
+ *   return: true if tree has such a predicate (e.g. LIMIT with offset)
+ *   parser(in):
+ *   node(in):
+ */
+
+bool
+pt_has_orderby_for_with_predicate (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool has_orderby_for = false;
+  PT_NODE *orderby_for;
+
+  switch (node->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      orderby_for = node->info.query.orderby_for;
+      if (orderby_for != NULL)
+	{
+	  /* there is only 'orderby_num <= ' */
+	  if (orderby_for->next != NULL || !pt_is_expr_node (orderby_for)
+	      || !PT_IS_ORDERBYNUM (orderby_for->info.expr.arg1)
+	      || (orderby_for->info.expr.op != PT_LE && orderby_for->info.expr.op != PT_LT))
+	    {
+	      return true;
+	    }
+	}
+
+      if (node->node_type != PT_SELECT)
+	{
+	  has_orderby_for |= pt_has_orderby_for_with_predicate (parser, node->info.query.q.union_.arg1);
+	  has_orderby_for |= pt_has_orderby_for_with_predicate (parser, node->info.query.q.union_.arg2);
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return has_orderby_for;
+}
+
+/*
  * pt_has_inst_or_orderby_num_in_where ()
  *          - check if tree has an INST_NUM or ORDERBY_NUM or GROUPBY_NUM node in where
  *   return: true if tree has INST_NUM/ORDERBY_NUM
