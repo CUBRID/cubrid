@@ -372,6 +372,10 @@ set(TRANSACTION_SOURCES
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
   ${TRANSACTION_DIR}/flashback_cl.h
+  ${TRANSACTION_DIR}/log_applier_task.hpp
+  ${TRANSACTION_DIR}/log_applier_queue.hpp
+  ${TRANSACTION_DIR}/log_applier_dispatch_order.hpp
+  ${TRANSACTION_DIR}/log_applier_worker.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
@@ -472,6 +476,10 @@ if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_sql_log.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier.c)
+  list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_coordinator.cpp)
+  list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_queue.cpp)
+  list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_dispatch_order.cpp)
+  list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_worker.cpp)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
   SET_SOURCE_FILES_PROPERTIES(
     ${EXECUTABLES_DIR}/checksumdb.c
