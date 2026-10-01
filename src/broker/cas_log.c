@@ -1813,20 +1813,23 @@ cas_fseek (CAS_LOG_FD * lfd, INT64 offset, int whence)
 {
   INT64 new_len;
 
+  assert (whence == SEEK_SET || whence == SEEK_CUR || whence == SEEK_END);
+
   if (lfd->fd < 0)
     {
       return -1;
     }
-  if (whence == SEEK_END)
+
+  if (whence == SEEK_CUR || whence == SEEK_END)
     {
-      /* The logical end is already file_buf_base + buf_used.  Offset 0 would truncate the whole file. */
-      return 0;
+      /* the current position and the end are both the logical end of this log */
+      offset += cas_ftell (lfd);
     }
-  assert (whence == SEEK_SET);
-  if (whence != SEEK_SET)
+  else if (whence != SEEK_SET)
     {
       return -1;
     }
+
   if (offset < lfd->file_open_pos)
     {
       /* Never truncate below the file size at open.  Reachable at runtime, so no assert. */
@@ -2005,17 +2008,35 @@ cas_fprintf (void *stream, const char *format, ...)
     }
   else
     {
-      /* other formats go through an 8 KB buffer and are cut there; no sql / slow log caller uses one today */
+      /* a result longer than the local buffer is formatted again into an allocated one */
       char tmp[CAS_LOG_BUFFER_SIZE];
-      int n = vsnprintf (tmp, sizeof (tmp), format, ap);
+      char *buf = tmp;
+      va_list ap_copy;
+      int n;
 
+      va_copy (ap_copy, ap);
+      n = vsnprintf (tmp, sizeof (tmp), format, ap);
       if (n >= (int) sizeof (tmp))
 	{
-	  n = (int) sizeof (tmp) - 1;
+	  buf = (char *) MALLOC ((size_t) n + 1);
+	  if (buf != NULL)
+	    {
+	      n = vsnprintf (buf, (size_t) n + 1, format, ap_copy);
+	    }
+	  else
+	    {
+	      buf = tmp;
+	      n = (int) sizeof (tmp) - 1;
+	    }
 	}
+      va_end (ap_copy);
       if (n > 0)
 	{
-	  cas_fwrite (tmp, 1, (size_t) n, lfd);
+	  cas_fwrite (buf, 1, (size_t) n, lfd);
+	}
+      if (buf != tmp)
+	{
+	  FREE_MEM (buf);
 	}
       result = n;
     }
