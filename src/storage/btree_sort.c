@@ -24,7 +24,7 @@
  * and feeds them to btree_construct_leafs (), either serially or through the parallel index-leaf
  * pipeline (per-worker sector scans -> per-worker runs -> key-range shards -> parallel leaf build).
  *
- * The engine phases (private slotted page, natural merge run generation (btree_sort_merge.cpp),
+ * The engine phases (private slotted page, run generation (btsort_inphase_sort),
  * k-way merge, temp file I/O, merge work queue) are kept structurally aligned with external_sort.c on
  * purpose: the convergence checkpoint of CBRD-27235 diffs the two engines function by function.  Everything
  * the query processor needs but the index build does not (SORT_ELIM_DUP merge, top-N limit,
@@ -49,6 +49,7 @@
 #include "memory_alloc.h"
 #include "btree.h"
 #include "btree_sort.h"
+#include "btree_sort_radix.hpp"
 #include "btree_load.h"
 #include "object_domain.h"
 #include "object_primitive.h"
@@ -685,10 +686,32 @@ btsort_compare_records (const void *first, const void *second, void *arg)
  * btsort_run_pick_sorter () - Picks the in-memory run sorter of this index build
  *   return: the sorter, never NULL
  *   sort_args(in):
+ *
+ * Note: index_sort_method = compare keeps the merge sorter, and auto or radix takes the radix sorter when the key
+ *       domain has a radix key.
  */
 static const BTSORT_RUN_SORTER *
 btsort_run_pick_sorter (const SORT_ARGS * sort_args)
 {
+  int method = prm_get_integer_value (PRM_ID_INDEX_SORT_METHOD);
+  const TP_DOMAIN *key_domain = sort_args->key_type;
+
+  if (method == INDEX_SORT_METHOD_COMPARE)
+    {
+      return &btsort_merge_sorter;
+    }
+
+  if (radix_sort_supports_key (key_domain))
+    {
+      return &btsort_radix_sorter;
+    }
+
+  if (method == INDEX_SORT_METHOD_RADIX)
+    {
+      er_log_debug (ARG_FILE_LINE, "index_sort_method=radix: no radix key for the key domain (type %d), "
+		    "compare sorting", key_domain != NULL ? (int) TP_DOMAIN_TYPE (key_domain) : -1);
+    }
+
   return &btsort_merge_sorter;
 }
 
@@ -1207,13 +1230,16 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
   assert (output_buffer > sort_param->internal_memory);
 
   *total_numrecs = 0;
-  BTSORT_RUN_INIT (&run, sorter, sort_param->internal_memory, output_buffer, sort_param->cmp_fn, sort_param->cmp_arg);
+  BTSORT_RUN_INIT (&run, sort_param->internal_memory, output_buffer, sort_param->cmp_fn, sort_param->cmp_arg);
+
   rec_ptr = NULL;
   temp_recdes.area_size = BTSORT_MAXREC_LENGTH;
   temp_recdes.length = 0;
 
   long_recdes.area_size = 0;
   long_recdes.data = NULL;
+
+  sorter->init (&run, ((SORT_ARGS *) get_arg)->key_type);
 
   for (;;)
     {

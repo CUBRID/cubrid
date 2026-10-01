@@ -75,6 +75,7 @@ static BTSORT_RUN_SLOT *btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *
 /* per-record cost above the records: one slot in each array */
 #define BTSORT_MERGE_REC_COST  (2 * (int) sizeof (BTSORT_RUN_SLOT))
 
+static void btsort_merge_sorter_init (BTSORT_RUN *run, const struct tp_domain *key_domain);
 static void btsort_merge_sorter_reset (BTSORT_RUN *run);
 static char *btsort_merge_sorter_reserve (BTSORT_RUN *run, int maxlen, int *room);
 static void btsort_merge_sorter_accept (BTSORT_RUN *run, int length);
@@ -84,6 +85,7 @@ static const char *btsort_merge_sorter_next (BTSORT_RUN *run);
 const BTSORT_RUN_SORTER btsort_merge_sorter =
 {
   "merge",
+  btsort_merge_sorter_init,
   btsort_merge_sorter_reset,
   btsort_merge_sorter_reserve,
   btsort_merge_sorter_accept,
@@ -420,6 +422,18 @@ btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, long limit, BTSOR
   db_private_free_and_init (NULL, st_p->srun);
 
   return result;
+}
+
+/*
+ * btsort_merge_sorter_init () - Starts the first run
+ *   return: void
+ *   run(in/out):
+ *   key_domain(in): unused, as records are compared by cmp_fn
+ */
+static void
+btsort_merge_sorter_init (BTSORT_RUN *run, const struct tp_domain *key_domain)
+{
+  btsort_merge_sorter_reset (run);
 }
 
 /*

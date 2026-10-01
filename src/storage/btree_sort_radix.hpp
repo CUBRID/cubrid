@@ -1,0 +1,65 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+/*
+ * btree_sort_radix.hpp - MSD radix sorter of the in-memory run
+ *
+ * The sorter and the key domains it takes, for btree_sort.c. The key encoding and the engine, for the unit test.
+ */
+
+#ifndef _BTREE_SORT_RADIX_HPP_
+#define _BTREE_SORT_RADIX_HPP_
+
+#if !defined (SERVER_MODE) && !defined (SA_MODE)
+#error Belongs to server module
+#endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
+
+#include "btree_sort.h"
+#include "object_domain.h"
+
+/* what the stored key is, which says how its radix word is written to order as unsigned bytes */
+typedef enum
+{
+  RADIX_KEY_UNSIGNED = 0,	/* unsigned integer, temporal of one field: as it is */
+  RADIX_KEY_DATETIME,		/* the date, then the time, each an unsigned integer: as they are */
+  RADIX_KEY_SIGNED,		/* signed integer: the sign bit flipped */
+  RADIX_KEY_IEEE,		/* IEEE 754: the sign bit flipped, or every bit of a negative value */
+  RADIX_KEY_OID,		/* OID: volume, page and slot in that order */
+  RADIX_KEY_MONETARY		/* currency then an IEEE 754 amount: the amount's word, in IEEE order */
+} RADIX_KEY_FORMAT;
+
+/* key encoding of an index, worked out of its key domain */
+typedef struct radix_key_encoding RADIX_KEY_ENCODING;
+struct radix_key_encoding
+{
+  int word_width;			/* bytes of one radix word: 2, 4 or 8; 0 until resolved */
+  RADIX_KEY_FORMAT format;
+  bool is_desc;			/* a descending key: the word is the ascending word's complement */
+};
+
+/* MSD radix sorter (btree_sort_radix.cpp), for a key domain radix_sort_supports_key () takes */
+extern const BTSORT_RUN_SORTER btsort_radix_sorter;
+
+extern bool radix_sort_supports_key (const TP_DOMAIN *key_domain);
+extern bool radix_sort_resolve_key (RADIX_KEY_ENCODING *encoding, const TP_DOMAIN *key_domain);
+extern size_t radix_sort_stack_bytes (const RADIX_KEY_ENCODING *encoding, int max_records);
+extern void radix_sort_run (const RADIX_KEY_ENCODING *encoding, const char *rec_base, BTSORT_RUN_SLOT *slots,
+			    BTSORT_RUN_SLOT *slots_spare, int record_count, char *words_area, size_t words_bytes,
+			    char *stack_area, size_t stack_bytes);
+
+#endif /* _BTREE_SORT_RADIX_HPP_ */

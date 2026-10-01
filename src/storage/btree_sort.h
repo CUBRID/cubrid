@@ -77,8 +77,9 @@ extern int btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_A
 /*
  * In-memory run sorters (btree_sort_<name>.cpp)
  *
- * btsort_inphase_sort () fills a run with reserve ()/accept (), orders it with sort () and reads it
- * back with next (). The sorter owns the buffer layout, and the driver reads only numrecs.
+ * btsort_inphase_sort () starts a run with init () once, fills it with reserve ()/accept (), orders it
+ * with sort (), reads it back with next () and starts the next one with reset (). The sorter owns the
+ * buffer layout, and the driver reads only numrecs.
  */
 
 /* record comparison (btsort_compare_records) */
@@ -96,6 +97,7 @@ struct btsort_run
   long numrecs;			/* records collected */
 
   /* sorter-private, kept here so a run needs no allocation */
+  void *sorter_ctx;		/* what init () set aside, or NULL when the sorter keeps none */
   char *item_ptr;		/* next record position */
   char *slot_low;		/* lowest byte claimed above the records */
   char *slot_ptr;		/* next free slot, growing downward */
@@ -107,7 +109,7 @@ struct btsort_run
 };
 
 /* parameters end in '_' so that they do not replace the field names */
-#define BTSORT_RUN_INIT(run, sorter_, base_, top_, cmp_fn_, cmp_arg_) \
+#define BTSORT_RUN_INIT(run, base_, top_, cmp_fn_, cmp_arg_) \
   do \
     { \
       memset ((run), 0, sizeof (*(run))); \
@@ -115,7 +117,6 @@ struct btsort_run
       (run)->top = (top_); \
       (run)->cmp_fn = (cmp_fn_); \
       (run)->cmp_arg = (cmp_arg_); \
-      (sorter_)->reset (run); \
     } \
   while (0)
 
@@ -128,6 +129,10 @@ typedef UINT32 BTSORT_RUN_SLOT;
 struct btsort_run_sorter
 {
   const char *name;
+
+  /* once, after BTSORT_RUN_INIT (), to set the sorter's context up, if any, and start the first run as reset ()
+   * does */
+  void (*init) (BTSORT_RUN * run, const struct tp_domain * key_domain);
 
   /* starts a new run, and the last sorted run stays readable until accept () */
   void (*reset) (BTSORT_RUN * run);
