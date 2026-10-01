@@ -604,7 +604,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	  if (is_loginable_user (user) == false)
 	    {
 	      error = ER_AU_LOGIN_DISABLED;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
 	      return error;
 	    }
 
