@@ -132,6 +132,10 @@ struct t_srv_handle
   int replace_rule_idx;		/* query replace rule index, -1 = no replace */
   int num_orig_markers;		/* driver-facing marker count (original query) = K_orig,
 				 * valid only when replace_rule_idx >= 0 */
+  char *qr_app_sql;		/* the statement text the client sent, kept while
+				 * replace_rule_idx >= 0.  a demote restores THIS, not the rule's
+				 * normalized ORIG, because the handle recompiles sql_stmt at the
+				 * next execute */
   char replace_fallback;	/* 1 = handle was self-healed to the original query after a
 				 * replacement-query execute failure; the next successful recompile
 				 * adopts the compiled statement as prepared (is_prepared -> TRUE) */
