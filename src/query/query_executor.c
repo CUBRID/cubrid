@@ -6343,6 +6343,265 @@ qexec_merge_group_backward (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp, Q
   return NO_ERROR;
 }
 
+/*
+ * qexec_merge_inner_loop () - run the inner merge state machine over two positioned merge sides
+ *   return: NO_ERROR when either side ends, ER_FAILED on error or when hooks->should_stop asks to stop
+ *   list_idp(in)       : output list file
+ *   merge_infop(in)    : list file merge information
+ *   tplrec(in)         : work area for the merged tuple
+ *   outer(in/out)      : outer merge side, positioned on its first tuple
+ *   inner(in/out)      : inner merge side, positioned on its first tuple
+ *   hooks(in)          : optional caller hooks, NULL for the plain serial merge
+ *
+ * Note: hooks->after_advance runs only when a side lands on a new key outside a group walk: the outer advance on
+ *       DB_LT, the inner advance on DB_GT, and the outer advance after each forward or backward group walk. It does
+ *       not run inside the group walks, after the inner steps back, nor after the inner returns to the bottom of a
+ *       group, since those tuples were already checked. The loop does not set an error.
+ */
+int
+qexec_merge_inner_loop (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
+			QFILE_TUPLE_RECORD * tplrec, QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner,
+			const QEXEC_MERGE_HOOKS * hooks)
+{
+  int cnt, group_cnt, already_compared;
+  SCAN_DIRECTION direction;
+  QFILE_TUPLE_POSITION inner_tplpos;
+  DB_VALUE_COMPARE_RESULT val_cmp;
+  SCAN_CODE scan;
+
+  direction = S_FORWARD;
+  group_cnt = 0;
+  already_compared = false;
+  val_cmp = DB_UNK;
+
+  while (1)
+    {
+      if (hooks != NULL && hooks->should_stop != NULL && hooks->should_stop (thread_p, hooks->arg))
+	{
+	  return ER_FAILED;
+	}
+
+      /* compare two tuple values, if they have not been compared yet */
+      if (!already_compared)
+	{
+	  val_cmp = qexec_merge_side_cmp (outer, inner);
+	  if (val_cmp == DB_UNK)
+	    {			/* is error */
+	      return ER_FAILED;
+	    }
+	}
+      already_compared = false;	/* re-init */
+
+      /* value of the outer is less than value of the inner */
+      if (val_cmp == DB_LT)
+	{
+	  scan = qexec_merge_side_next (thread_p, outer);
+	  if (scan == S_SUCCESS && hooks != NULL && hooks->after_advance != NULL)
+	    {
+	      scan = hooks->after_advance (thread_p, outer, hooks->arg);
+	    }
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  direction = S_FORWARD;
+	  group_cnt = 0;
+
+	  continue;
+	}
+
+      /* value of the outer is greater than value of the inner */
+      if (val_cmp == DB_GT)
+	{
+	  scan = qexec_merge_side_next (thread_p, inner);
+	  if (scan == S_SUCCESS && hooks != NULL && hooks->after_advance != NULL)
+	    {
+	      scan = hooks->after_advance (thread_p, inner, hooks->arg);
+	    }
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  direction = S_FORWARD;
+	  group_cnt = 0;
+
+	  continue;
+	}
+
+      if (val_cmp != DB_EQ)
+	{			/* error ? */
+	  return ER_FAILED;
+	}
+
+      /* values of the outer and inner are equal, do a scan group processing */
+      if (direction == S_FORWARD)
+	{
+	  scan = qexec_merge_group_forward (thread_p, list_idp, merge_infop, tplrec, outer, inner, group_cnt, &cnt,
+					    &val_cmp);
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  scan = qexec_merge_side_next (thread_p, outer);
+	  if (scan == S_SUCCESS && hooks != NULL && hooks->after_advance != NULL)
+	    {
+	      scan = hooks->after_advance (thread_p, outer, hooks->arg);
+	    }
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* if the group is formed for the first time */
+	  if (group_cnt == 0)
+	    {
+	      /* save the position of inner scan; it is the bottom of the group */
+	      qfile_save_current_scan_tuple_position (&inner->sid, &inner_tplpos);
+
+	      if (inner->scan == S_END)
+		{
+		  /* move the inner to the previous tuple and position tuple values */
+		  if (qexec_merge_side_prev (thread_p, inner) == S_ERROR)
+		    {
+		      return ER_FAILED;
+		    }
+
+		  /* set group count and direction */
+		  group_cnt = cnt;
+		  direction = S_BACKWARD;
+		}
+	      else
+		{
+		  val_cmp = qexec_merge_side_cmp (outer, inner);
+		  if (val_cmp == DB_UNK)
+		    {		/* is error */
+		      return ER_FAILED;
+		    }
+
+		  if (val_cmp == DB_LT)
+		    {
+		      /* move the inner to the previous tuple and position tuple values */
+		      if (qexec_merge_side_prev (thread_p, inner) == S_ERROR)
+			{
+			  return ER_FAILED;
+			}
+
+		      val_cmp = qexec_merge_side_cmp (outer, inner);
+		      if (val_cmp == DB_UNK)
+			{	/* is error */
+			  return ER_FAILED;
+			}
+
+		      if (val_cmp == DB_EQ)
+			{
+			  /* next value is the same, so prepare for further group scan operations */
+
+			  /* set group count and direction */
+			  group_cnt = cnt;
+			  direction = S_BACKWARD;
+			}
+		      else
+			{
+			  /* move the inner to the current tuple and position tuple values */
+			  scan = qexec_merge_side_next (thread_p, inner);
+			  if (scan == S_END)
+			    {
+			      return NO_ERROR;
+			    }
+			  if (scan == S_ERROR)
+			    {
+			      return ER_FAILED;
+			    }
+
+			  val_cmp = DB_LT;	/* restore comparison */
+			}
+		    }
+
+		  /* comparison has already been done */
+		  already_compared = true;
+		}
+	    }
+	  else
+	    {
+	      /* set further scan direction */
+	      direction = S_BACKWARD;
+	    }
+	}
+      else
+	{			/* (direction == S_BACKWARD) */
+	  if (qexec_merge_group_backward (thread_p, list_idp, merge_infop, tplrec, outer, inner, group_cnt) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  scan = qexec_merge_side_next (thread_p, outer);
+	  if (scan == S_SUCCESS && hooks != NULL && hooks->after_advance != NULL)
+	    {
+	      scan = hooks->after_advance (thread_p, outer, hooks->arg);
+	    }
+	  if (scan == S_END)
+	    {
+	      return NO_ERROR;
+	    }
+	  if (scan == S_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  val_cmp = qexec_merge_side_cmp (outer, inner);
+	  if (val_cmp == DB_UNK)
+	    {			/* is error */
+	      return ER_FAILED;
+	    }
+
+	  if (val_cmp != DB_EQ)
+	    {
+	      /* jump to the previously set scan position */
+	      scan = qexec_merge_side_jump (thread_p, inner, &inner_tplpos);
+	      /* is saved position the end of scan? */
+	      if (scan == S_END)
+		{
+		  return NO_ERROR;
+		}
+	      if (scan == S_ERROR)
+		{
+		  return ER_FAILED;
+		}
+
+	      /* reset group count */
+	      group_cnt = 0;
+	    }
+	  else
+	    {
+	      /* comparison has already been done */
+	      already_compared = true;
+	    }
+
+	  /* set further scan direction */
+	  direction = S_FORWARD;
+
+	}			/* (direction == S_BACKWARD) */
+
+    }
+}
+
 /* pre-defined vars:    list_idp,
  *                      merge_infop,
  *                      nvals
@@ -6434,10 +6693,7 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
   QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
   QEXEC_MERGE_SIDE outer, inner;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
-  int k, cnt, group_cnt, already_compared;
-  SCAN_DIRECTION direction;
-  QFILE_TUPLE_POSITION inner_tplpos;
-  DB_VALUE_COMPARE_RESULT val_cmp;
+  int k;
   SCAN_CODE scan;
 
   nvals = merge_infop->ls_column_cnt;
@@ -6505,217 +6761,10 @@ qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE
       goto exit_on_error;
     }
 
-  direction = S_FORWARD;
-  group_cnt = 0;
-  already_compared = false;
-  val_cmp = DB_UNK;
-
-  while (1)
+  if (qexec_merge_inner_loop (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, NULL) != NO_ERROR)
     {
-      /* compare two tuple values, if they have not been compared yet */
-      if (!already_compared)
-	{
-	  val_cmp = qexec_merge_side_cmp (&outer, &inner);
-	  if (val_cmp == DB_UNK)
-	    {			/* is error */
-	      goto exit_on_error;
-	    }
-	}
-      already_compared = false;	/* re-init */
-
-      /* value of the outer is less than value of the inner */
-      if (val_cmp == DB_LT)
-	{
-	  scan = qexec_merge_side_next (thread_p, &outer);
-	  if (scan == S_END)
-	    {
-	      goto exit_on_end;
-	    }
-	  if (scan == S_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	  direction = S_FORWARD;
-	  group_cnt = 0;
-
-	  continue;
-	}
-
-      /* value of the outer is greater than value of the inner */
-      if (val_cmp == DB_GT)
-	{
-	  scan = qexec_merge_side_next (thread_p, &inner);
-	  if (scan == S_END)
-	    {
-	      goto exit_on_end;
-	    }
-	  if (scan == S_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-	  direction = S_FORWARD;
-	  group_cnt = 0;
-
-	  continue;
-	}
-
-      if (val_cmp != DB_EQ)
-	{			/* error ? */
-	  goto exit_on_error;
-	}
-
-      /* values of the outer and inner are equal, do a scan group processing */
-      if (direction == S_FORWARD)
-	{
-	  scan = qexec_merge_group_forward (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, group_cnt, &cnt,
-					    &val_cmp);
-	  if (scan == S_END)
-	    {
-	      goto exit_on_end;
-	    }
-	  if (scan == S_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  scan = qexec_merge_side_next (thread_p, &outer);
-	  if (scan == S_END)
-	    {
-	      goto exit_on_end;
-	    }
-	  if (scan == S_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  /* if the group is formed for the first time */
-	  if (group_cnt == 0)
-	    {
-	      /* save the position of inner scan; it is the bottom of the group */
-	      qfile_save_current_scan_tuple_position (&inner.sid, &inner_tplpos);
-
-	      if (inner.scan == S_END)
-		{
-		  /* move the inner to the previous tuple and position tuple values */
-		  if (qexec_merge_side_prev (thread_p, &inner) == S_ERROR)
-		    {
-		      goto exit_on_error;
-		    }
-
-		  /* set group count and direction */
-		  group_cnt = cnt;
-		  direction = S_BACKWARD;
-		}
-	      else
-		{
-		  val_cmp = qexec_merge_side_cmp (&outer, &inner);
-		  if (val_cmp == DB_UNK)
-		    {		/* is error */
-		      goto exit_on_error;
-		    }
-
-		  if (val_cmp == DB_LT)
-		    {
-		      /* move the inner to the previous tuple and position tuple values */
-		      if (qexec_merge_side_prev (thread_p, &inner) == S_ERROR)
-			{
-			  goto exit_on_error;
-			}
-
-		      val_cmp = qexec_merge_side_cmp (&outer, &inner);
-		      if (val_cmp == DB_UNK)
-			{	/* is error */
-			  goto exit_on_error;
-			}
-
-		      if (val_cmp == DB_EQ)
-			{
-			  /* next value is the same, so prepare for further group scan operations */
-
-			  /* set group count and direction */
-			  group_cnt = cnt;
-			  direction = S_BACKWARD;
-			}
-		      else
-			{
-			  /* move the inner to the current tuple and position tuple values */
-			  scan = qexec_merge_side_next (thread_p, &inner);
-			  if (scan == S_END)
-			    {
-			      goto exit_on_end;
-			    }
-			  if (scan == S_ERROR)
-			    {
-			      goto exit_on_error;
-			    }
-
-			  val_cmp = DB_LT;	/* restore comparison */
-			}
-		    }
-
-		  /* comparison has already been done */
-		  already_compared = true;
-		}
-	    }
-	  else
-	    {
-	      /* set further scan direction */
-	      direction = S_BACKWARD;
-	    }
-	}
-      else
-	{			/* (direction == S_BACKWARD) */
-	  if (qexec_merge_group_backward (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, group_cnt) !=
-	      NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  scan = qexec_merge_side_next (thread_p, &outer);
-	  if (scan == S_END)
-	    {
-	      goto exit_on_end;
-	    }
-	  if (scan == S_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  val_cmp = qexec_merge_side_cmp (&outer, &inner);
-	  if (val_cmp == DB_UNK)
-	    {			/* is error */
-	      goto exit_on_error;
-	    }
-
-	  if (val_cmp != DB_EQ)
-	    {
-	      /* jump to the previously set scan position */
-	      scan = qexec_merge_side_jump (thread_p, &inner, &inner_tplpos);
-	      /* is saved position the end of scan? */
-	      if (scan == S_END)
-		{
-		  goto exit_on_end;
-		}
-	      if (scan == S_ERROR)
-		{
-		  goto exit_on_error;
-		}
-
-	      /* reset group count */
-	      group_cnt = 0;
-	    }
-	  else
-	    {
-	      /* comparison has already been done */
-	      already_compared = true;
-	    }
-
-	  /* set further scan direction */
-	  direction = S_FORWARD;
-
-	}			/* (direction == S_BACKWARD) */
-
-    }				/* while (1) */
+      goto exit_on_error;
+    }
 
 exit_on_end:
   free_and_init (type_list.domp);

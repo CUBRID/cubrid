@@ -148,6 +148,22 @@ extern SCAN_CODE qexec_merge_group_forward (THREAD_ENTRY * thread_p, QFILE_LIST_
 extern int qexec_merge_group_backward (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp,
 				       QFILE_LIST_MERGE_INFO * merge_infop, QFILE_TUPLE_RECORD * tplrec,
 				       QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner, int group_cnt);
+
+/* optional caller hooks of qexec_merge_inner_loop; NULL hooks == the plain serial merge */
+typedef struct qexec_merge_hooks QEXEC_MERGE_HOOKS;
+struct qexec_merge_hooks
+{
+  /* called right after a side moved to a new tuple outside a key-group walk; S_END ends the merge normally,
+   * S_ERROR aborts it */
+  SCAN_CODE (*after_advance) (THREAD_ENTRY * thread_p, QEXEC_MERGE_SIDE * side, void *arg);
+  /* polled at the top of every loop iteration; true aborts the merge */
+  bool (*should_stop) (THREAD_ENTRY * thread_p, void *arg);
+  void *arg;
+};
+
+extern int qexec_merge_inner_loop (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_idp,
+				   QFILE_LIST_MERGE_INFO * merge_infop, QFILE_TUPLE_RECORD * tplrec,
+				   QEXEC_MERGE_SIDE * outer, QEXEC_MERGE_SIDE * inner, const QEXEC_MERGE_HOOKS * hooks);
 extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 extern void qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 #if defined(CUBRID_DEBUG)

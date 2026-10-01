@@ -72,8 +72,42 @@ namespace parallel_query
 	return S_SUCCESS;
       }
 
+      struct range_merge_context
+      {
+	const QEXEC_MERGE_SIDE *outer;
+	const key_spec *outer_key_spec;
+	const key_spec *inner_key_spec;
+	const partition_key *upper;
+	DB_VALUE *bound_vals;
+	task_manager *task_mgr;
+	UINT64 poll_counter;
+	bool stopped;
+      };
+
+      SCAN_CODE
+      range_merge_after_advance (THREAD_ENTRY *, QEXEC_MERGE_SIDE *side, void *arg)
+      {
+	range_merge_context *ctx = (range_merge_context *) arg;
+	const key_spec *spec = (side == ctx->outer) ? ctx->outer_key_spec : ctx->inner_key_spec;
+
+	return check_upper (side, spec, ctx->upper, ctx->bound_vals);
+      }
+
+      bool
+      range_merge_should_stop (THREAD_ENTRY *thread_p, void *arg)
+      {
+	range_merge_context *ctx = (range_merge_context *) arg;
+
+	if (ctx->task_mgr->has_error ()
+	    || ((++ctx->poll_counter & 0x3FF) == 0 && ctx->task_mgr->check_interrupt (*thread_p)))
+	  {
+	    ctx->stopped = true;
+	  }
+	return ctx->stopped;
+      }
+
       /* deviations from qexec_merge_list: the output list comes from the coordinator; each side starts at its
-       * range start; key > the upper boundary ends the merge (check_upper); peer errors and interrupts are polled */
+       * range start; the merge loop gets the upper boundary check and the peer error/interrupt poll as hooks */
       int
       execute_range_merge (cubthread::entry &thread_ref, task_manager &task_mgr, merge_manager *m, int range_index,
 			   QFILE_LIST_ID *list_idp)
@@ -94,12 +128,9 @@ namespace parallel_query
 	QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 	QEXEC_MERGE_SIDE outer, inner;
 	DB_VALUE *bound_vals = NULL;
-	int cnt, group_cnt, already_compared;
-	SCAN_DIRECTION direction;
-	QFILE_TUPLE_POSITION inner_tplpos;
-	DB_VALUE_COMPARE_RESULT val_cmp;
+	range_merge_context ctx;
+	QEXEC_MERGE_HOOKS hooks;
 	SCAN_CODE scan;
-	UINT64 poll_counter = 0;
 	int error = NO_ERROR;
 
 	nvals = merge_infop->ls_column_cnt;
@@ -207,211 +238,26 @@ namespace parallel_query
 	    goto exit_on_error;
 	  }
 
-	direction = S_FORWARD;
-	group_cnt = 0;
-	already_compared = false;
-	val_cmp = DB_UNK;
+	ctx.outer = &outer;
+	ctx.outer_key_spec = outer_key_spec;
+	ctx.inner_key_spec = inner_key_spec;
+	ctx.upper = upper;
+	ctx.bound_vals = bound_vals;
+	ctx.task_mgr = &task_mgr;
+	ctx.poll_counter = 0;
+	ctx.stopped = false;
 
-	while (1)
+	hooks.after_advance = range_merge_after_advance;
+	hooks.should_stop = range_merge_should_stop;
+	hooks.arg = &ctx;
+
+	if (qexec_merge_inner_loop (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, &hooks) != NO_ERROR)
 	  {
-	    if (task_mgr.has_error ()
-		|| ((++poll_counter & 0x3FF) == 0 && task_mgr.check_interrupt (thread_ref)))
+	    if (ctx.stopped)
 	      {
 		goto exit_on_stop;
 	      }
-
-	    if (!already_compared)
-	      {
-		val_cmp = qexec_merge_side_cmp (&outer, &inner);
-		if (val_cmp == DB_UNK)
-		  {
-		    goto exit_on_error;
-		  }
-	      }
-	    already_compared = false;
-
-	    if (val_cmp == DB_LT)
-	      {
-		scan = qexec_merge_side_next (thread_p, &outer);
-		if (scan == S_SUCCESS)
-		  {
-		    scan = check_upper (&outer, outer_key_spec, upper, bound_vals);
-		  }
-		if (scan == S_END)
-		  {
-		    goto exit_on_end;
-		  }
-		if (scan == S_ERROR)
-		  {
-		    goto exit_on_error;
-		  }
-		direction = S_FORWARD;
-		group_cnt = 0;
-		continue;
-	      }
-
-	    if (val_cmp == DB_GT)
-	      {
-		scan = qexec_merge_side_next (thread_p, &inner);
-		if (scan == S_SUCCESS)
-		  {
-		    scan = check_upper (&inner, inner_key_spec, upper, bound_vals);
-		  }
-		if (scan == S_END)
-		  {
-		    goto exit_on_end;
-		  }
-		if (scan == S_ERROR)
-		  {
-		    goto exit_on_error;
-		  }
-		direction = S_FORWARD;
-		group_cnt = 0;
-		continue;
-	      }
-
-	    if (val_cmp != DB_EQ)
-	      {
-		goto exit_on_error;
-	      }
-
-	    if (direction == S_FORWARD)
-	      {
-		scan = qexec_merge_group_forward (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, group_cnt,
-						  &cnt, &val_cmp);
-		if (scan == S_END)
-		  {
-		    goto exit_on_end;
-		  }
-		if (scan == S_ERROR)
-		  {
-		    goto exit_on_error;
-		  }
-
-		scan = qexec_merge_side_next (thread_p, &outer);
-		if (scan == S_SUCCESS)
-		  {
-		    scan = check_upper (&outer, outer_key_spec, upper, bound_vals);
-		  }
-		if (scan == S_END)
-		  {
-		    goto exit_on_end;
-		  }
-		if (scan == S_ERROR)
-		  {
-		    goto exit_on_error;
-		  }
-
-		if (group_cnt == 0)
-		  {
-		    qfile_save_current_scan_tuple_position (&inner.sid, &inner_tplpos);
-
-		    if (inner.scan == S_END)
-		      {
-			if (qexec_merge_side_prev (thread_p, &inner) == S_ERROR)
-			  {
-			    goto exit_on_error;
-			  }
-			group_cnt = cnt;
-			direction = S_BACKWARD;
-		      }
-		    else
-		      {
-			val_cmp = qexec_merge_side_cmp (&outer, &inner);
-			if (val_cmp == DB_UNK)
-			  {
-			    goto exit_on_error;
-			  }
-
-			if (val_cmp == DB_LT)
-			  {
-			    if (qexec_merge_side_prev (thread_p, &inner) == S_ERROR)
-			      {
-				goto exit_on_error;
-			      }
-
-			    val_cmp = qexec_merge_side_cmp (&outer, &inner);
-			    if (val_cmp == DB_UNK)
-			      {
-				goto exit_on_error;
-			      }
-
-			    if (val_cmp == DB_EQ)
-			      {
-				group_cnt = cnt;
-				direction = S_BACKWARD;
-			      }
-			    else
-			      {
-				scan = qexec_merge_side_next (thread_p, &inner);
-				if (scan == S_END)
-				  {
-				    goto exit_on_end;
-				  }
-				if (scan == S_ERROR)
-				  {
-				    goto exit_on_error;
-				  }
-				val_cmp = DB_LT;
-			      }
-			  }
-
-			already_compared = true;
-		      }
-		  }
-		else
-		  {
-		    direction = S_BACKWARD;
-		  }
-	      }
-	    else
-	      {
-		if (qexec_merge_group_backward (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, group_cnt)
-		    != NO_ERROR)
-		  {
-		    goto exit_on_error;
-		  }
-
-		scan = qexec_merge_side_next (thread_p, &outer);
-		if (scan == S_SUCCESS)
-		  {
-		    scan = check_upper (&outer, outer_key_spec, upper, bound_vals);
-		  }
-		if (scan == S_END)
-		  {
-		    goto exit_on_end;
-		  }
-		if (scan == S_ERROR)
-		  {
-		    goto exit_on_error;
-		  }
-
-		val_cmp = qexec_merge_side_cmp (&outer, &inner);
-		if (val_cmp == DB_UNK)
-		  {
-		    goto exit_on_error;
-		  }
-
-		if (val_cmp != DB_EQ)
-		  {
-		    scan = qexec_merge_side_jump (thread_p, &inner, &inner_tplpos);
-		    if (scan == S_END)
-		      {
-			goto exit_on_end;
-		      }
-		    if (scan == S_ERROR)
-		      {
-			goto exit_on_error;
-		      }
-		    group_cnt = 0;
-		  }
-		else
-		  {
-		    already_compared = true;
-		  }
-
-		direction = S_FORWARD;
-	      }
+	    goto exit_on_error;
 	  }
 
 exit_on_end:
