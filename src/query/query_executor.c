@@ -643,6 +643,11 @@ struct connect_by_dfs_spill
 };
 
 #define CONNECT_BY_SPILL_CHUNK_MAX_NODES 65536
+#define CONNECT_BY_SPILL_CHUNK_DIR_INIT_CAPACITY 16
+/* spilling stops at half the limit, so at least two chunks must fit; one reload re-admits at most a quarter */
+#define CONNECT_BY_SPILL_CHUNKS_PER_LIMIT 4
+#define CONNECT_BY_NODE_ARRAY_INIT_CAPACITY 32
+#define CONNECT_BY_HASH_MULTIPLIER 31u
 
 static void qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out);
 static int qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
@@ -18702,7 +18707,7 @@ qexec_pred_has_prior (const PRED_EXPR * pred)
 
 /*
  * qexec_connect_by_is_generator_candidate () - static test for the LEVEL
- *    generator fast-path: no PRIOR reference (C1) and LEVEL used in CONNECT BY (C3)
+ *    generator fast-path: no PRIOR reference and LEVEL used in CONNECT BY
  *  return: true if the query may take the fast-path (|F| == 1 still checked at run time)
  *  xasl(in):
  */
@@ -18711,13 +18716,13 @@ qexec_connect_by_is_generator_candidate (XASL_NODE * xasl)
 {
   ACCESS_SPEC_TYPE *spec;
 
-  /* C3: LEVEL appears in the CONNECT BY clause */
+  /* LEVEL appears in the CONNECT BY clause */
   if (xasl->level_val == NULL)
     {
       return false;
     }
 
-  /* C1: no PRIOR anywhere the general path substitutes prior pointers (if_pred is evaluated outside the scan;
+  /* no PRIOR anywhere the general path substitutes prior pointers (if_pred is evaluated outside the scan;
    * where_pred/where_key/index key ranges/probe list carry PRIOR down to the child scan in single-table mode) */
   if (qexec_pred_has_prior (xasl->if_pred))
     {
@@ -18763,7 +18768,7 @@ qexec_connect_by_is_generator_candidate (XASL_NODE * xasl)
 
 /*
  * qexec_execute_connect_by_generator () - fast-path for a no-PRIOR LEVEL
- *    generator over a single-row source (C2: |F| == 1)
+ *    generator over a single-row source (|F| == 1)
  *  return: NO_ERROR / ER_FAILED
  *  handled(out): true when the fast-path produced the whole result; false when
  *    the source is not single-row and the caller must run the general DFS
@@ -18796,8 +18801,8 @@ qexec_execute_connect_by_generator (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   lfscan_id.status = S_CLOSED;
   memset (&unknown_parent_pos, 0, sizeof (unknown_parent_pos));
 
-  /* the reload lists (§8-5): if the source has user columns but the positional regu lists were dropped, we cannot
-   * refill val_list/prior_val_list from a private tuple; let the general path handle it */
+  /* if the source has user columns but the positional regu lists were dropped, we cannot refill
+   * val_list/prior_val_list from a private tuple; let the general path handle it */
   if (xasl->val_list != NULL && xasl->val_list->val_cnt > 0
       && ((connect_by->regu_list_pred == NULL && connect_by->regu_list_rest == NULL)
 	  || (connect_by->prior_regu_list_pred == NULL && connect_by->prior_regu_list_rest == NULL)))
@@ -18805,7 +18810,7 @@ qexec_execute_connect_by_generator (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
       return NO_ERROR;
     }
 
-  /* C2 pre-scan: count the child candidates, keep a private copy of the first, stop at the second */
+  /* pre-scan: count the child candidates, keep a private copy of the first, stop at the second */
   xasl->next_scan_block_on = false;
   qp = qexec_next_scan_block_iterations (thread_p, xasl);
   while (qp == S_SUCCESS)
@@ -19707,7 +19712,7 @@ qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash
 	    {
 	      col_hash = mht_get_hash_number (UINT_MAX, dbvalp);
 	    }
-	  h = h * 31u + col_hash;
+	  h = h * CONNECT_BY_HASH_MULTIPLIER + col_hash;
 	}
 
       regulist = regulist->next;
@@ -19776,7 +19781,7 @@ qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QF
 		  pr_clear_value (&dbval);
 		}
 	    }
-	  h = h * 31u + col_hash;
+	  h = h * CONNECT_BY_HASH_MULTIPLIER + col_hash;
 	}
 
       tuple += QFILE_TUPLE_VALUE_HEADER_SIZE + QFILE_GET_TUPLE_VALUE_LENGTH (tuple);
@@ -19806,7 +19811,7 @@ qexec_connect_by_node_array_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NOD
       return NO_ERROR;
     }
 
-  new_capacity = (*capacity > 0) ? *capacity : 32;
+  new_capacity = (*capacity > 0) ? *capacity : CONNECT_BY_NODE_ARRAY_INIT_CAPACITY;
   while (new_capacity < need)
     {
       new_capacity *= 2;
@@ -19869,7 +19874,7 @@ qexec_connect_by_spill_init (CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE_VALUE_TYP
   memset (spill, 0, sizeof (*spill));
   /* 0 spills every node */
   spill->limit = (UINT64) prm_get_bigint_value (PRM_ID_MAX_CONNECT_BY_DFS_SIZE);
-  spill->chunk_bytes = MAX (spill->limit / 4, 1);
+  spill->chunk_bytes = MAX (spill->limit / CONNECT_BY_SPILL_CHUNKS_PER_LIMIT, 1);
   spill->type_list = type_list;
   spill->query_id = query_id;
 }
@@ -19892,7 +19897,7 @@ qexec_connect_by_spill_chunk_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_SPILL_
       return NO_ERROR;
     }
 
-  new_capacity = (*capacity > 0) ? *capacity * 2 : 16;
+  new_capacity = (*capacity > 0) ? *capacity * 2 : CONNECT_BY_SPILL_CHUNK_DIR_INIT_CAPACITY;
   if (*dir == NULL)
     {
       new_dir = (CONNECT_BY_SPILL_CHUNK *) db_private_alloc (thread_p, new_capacity * sizeof (CONNECT_BY_SPILL_CHUNK));

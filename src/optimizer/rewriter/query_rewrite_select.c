@@ -4134,7 +4134,7 @@ qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
   if (qo_hq_prefer_hash_over_single_table (parser, node, spec))
     {
       /* no index can serve the child lookups: the generic path finds children
-       * by hash instead of rescanning the table per parent row (CBRD-27329) */
+       * by hash instead of rescanning the table per parent row */
       return false;
     }
 
