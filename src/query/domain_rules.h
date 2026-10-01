@@ -131,8 +131,9 @@ enum DOMAIN_COMPARE_METHOD
 				 * resolved_domain.compares[compare_index] */
   DOMAIN_COMPARE_LATE_BIND_SESSION,	/* likewise, over a session variable read: resolve_domains resolves it once the
 					 * variable has its type for the statement (qexec_resolve_session_variables) */
-  DOMAIN_COMPARE_VALUES,	/* develop's value comparison, for the resolved comparison's reason
-				 * (DOMAIN_COMPARE_REASON) */
+  DOMAIN_COMPARE_VALUES,	/* develop's value comparison: a NULL side, a side the plan leaves variable, a
+				 * comparison no resolution holds. The unresolved-domain check (execution) holds for
+				 * each: develop may not resolve anything from the values there */
   DOMAIN_COMPARE_DIRECT,	/* comparable as they are: cmpval under the resolved collation */
   DOMAIN_COMPARE_CONVERT,	/* the resolved converters in develop's order, then cmpval */
   DOMAIN_COMPARE_COLLATIONS,	/* strings whose collations do not merge: develop's -1150 at every row */
@@ -142,20 +143,6 @@ enum DOMAIN_COMPARE_METHOD
 				 * gives (rank), develop's tp_value_compare without coercion */
   DOMAIN_COMPARE_KEYS		/* values whose keys only the data knows (a collection's elements): the key pair
 				 * table's entry for the two values' keys (domain_compare_by_type_pair) */
-};
-
-/*
- * Why a comparison keeps develop's comparison of the values (comparison method DOMAIN_COMPARE_VALUES). The execution
- * unresolved-domain check (execution) holds for every reason: develop may not resolve anything from the values there
- * (no exception is left). resolve_domains leaves no side unresolved, and a predicate stream's load plans its
- * comparisons too.
- */
-enum DOMAIN_COMPARE_REASON
-{
-  DOMAIN_REASON_NULL,		/* a side whose values are NULL: develop answers before it resolves anything */
-  DOMAIN_REASON_VARIABLE,	/* a side the plan leaves variable */
-  DOMAIN_REASON_UNRESOLVED	/* a comparison the load did not resolve, a resolved domain read without
-				 * resolve_domains' state, an element whose key the plan does not hold */
 };
 
 struct DOMAIN_COMPARE;
@@ -206,7 +193,6 @@ struct DOMAIN_COMPARE
   unsigned char failed;		/* bit i: resolve_domains could not convert constant side i - a resolved comparison
 				 * outside a term, which answers by develop's rank at every row (a term's is
 				 * resolve_domains' error) */
-  unsigned char reason;		/* comparison method VALUES: DOMAIN_COMPARE_REASON */
   signed char rank;		/* comparison method RANK: DB_LT or DB_GT */
   signed char codeset_side;	/* an ENUM against a string of another codeset: the side brought into the ENUM's
 				 * codeset at the row (develop's tmp_char_conv); -1 none */
@@ -224,6 +210,15 @@ void domain_compare_set_operator_functions (DOMAIN_COMPARE * compare);
 /* Whether a domain fixes the type and collation of its values: not VARIABLE, and a string or an ENUM whose collation
  * flag is NORMAL. */
 bool domain_fixes_values (const TP_DOMAIN * domain);
+
+/* Whether a domain leaves the type or the collation of its values to the execution: VARIABLE, or a collation flag
+ * other than NORMAL (LEAVE, ENFORCE), whatever the type. A NULL domain does not: TP_DOMAIN_TYPE and
+ * TP_DOMAIN_COLLATION_FLAG read it as NULL and NORMAL. */
+inline bool
+domain_is_variable (const TP_DOMAIN * domain)
+{
+  return TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL;
+}
 
 /* The key a domain gives its values. */
 void domain_compare_key_of (const TP_DOMAIN * domain, DOMAIN_COMPARE_KEY * key);
@@ -259,11 +254,9 @@ const DOMAIN_COMPARE *domain_compare_row_entry (int row, const DB_VALUE * elemen
  *   return: the result; *can_compare false, with develop's error, where a conversion fails or collations do not merge
  *   can_compare(out): NULL for tp_value_compare's contract: a failed conversion or a rank answers without an error
  *		       (collations that do not merge still set -1150, as develop does)
- *   converted(in): bit i: value i is side i converted already, once for its scope
  */
 DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
-					       const DB_VALUE * value2, int total_order, bool * can_compare,
-					       unsigned char converted = 0);
+					       const DB_VALUE * value2, int total_order, bool * can_compare);
 
 /* Kernel CONVERT alone (domain_compare_values' case), for a caller that has switched on the comparison method
  * already. */
@@ -303,6 +296,23 @@ int domain_unresolved_error (const char *alias, int index, DB_TYPE type);
 
 /* The key of a value: its type and, for a string or an ENUM, its codeset and collation. */
 void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key);
+
+/* Whether two values differ in type, or in collation as strings: a comparison of them resolves a coercion or a
+ * collation merge from them. A NULL compares with any value as it is. */
+inline bool
+domain_value_domains_differ (const DB_VALUE * value1, const DB_VALUE * value2)
+{
+  if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
+    {
+      return false;
+    }
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
+  if (type != DB_VALUE_DOMAIN_TYPE (value2))
+    {
+      return true;
+    }
+  return TP_IS_CHAR_TYPE (type) && db_get_string_collation (value1) != db_get_string_collation (value2);
+}
 
 /* The cached domain tp_domain_resolve_value (value, NULL) gives a value, found without the transient domain that
  * function makes and frees: a type without parameters has its built-in domain, a string, a bit string or a
@@ -355,30 +365,35 @@ DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * co
 				 TP_VALUE_CONVERTER * strict_conv);
 
 /* Whether values of this domain have a key other than an index column's own (a NULL domain or key has none): an index
- * scan whose key column takes such values compares them by the type pair comparison table (DOMAIN_SEARCH_KEYS). */
+ * scan whose key column takes such values compares them by the type pair comparison table
+ * (DOMAIN_SEARCH_KEYS_OTHER). */
 bool domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column);
 
-/*
- * DOMAIN_SEARCH_KEYS - what an index scan's comparisons of its search key values read. A B-tree search outside a query
- *   plan has none.
- */
-struct DOMAIN_SEARCH_KEYS
+/* What an index scan's comparisons of its search key values read (BTID_INT.search_keys). */
+// *INDENT-OFF*
+enum DOMAIN_SEARCH_KEYS : unsigned char
 {
-  bool other_keys;		/* a key column takes values of a key other than its own (domain_key_differs): their
-				 * comparisons are the type pair comparison table's cells; false: every value compares
-				 * with the index as it is */
+  DOMAIN_SEARCH_KEYS_NONE,	/* a B-tree search outside a query plan, whose keys are the index's own: a value that
+				 * does not compare as it is compares by value */
+  DOMAIN_SEARCH_KEYS_OWN,	/* every value has its key column's key and compares with the index as it is */
+  DOMAIN_SEARCH_KEYS_OTHER	/* a key column takes values of a key other than its own (domain_key_differs): their
+				 * comparisons are the type pair comparison table's cells */
 };
+// *INDENT-ON*
 
 /* A search key comparison of two values of a key column whose keys differ: the type pair comparison table's cell for
- * the two keys; the unresolved-domain check (execution) for a scan whose values all have their columns' keys, and for
- * a key the table has no row for - every key column's rule is resolved before any row, a constant's included. */
-DB_VALUE_COMPARE_RESULT domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1,
+ * the two keys (DOMAIN_SEARCH_KEYS_OTHER); the unresolved-domain check (execution) for a scan whose values all have
+ * their columns' keys (DOMAIN_SEARCH_KEYS_OWN), and for a key the table has no row for - every key column's rule is
+ * resolved before any row, a constant's included. */
+DB_VALUE_COMPARE_RESULT domain_search_key_compare (DOMAIN_SEARCH_KEYS keys, int column, DB_VALUE * value1,
 						   DB_VALUE * value2, int do_coercion, int total_order,
 						   bool * can_compare);
 
-/* domain_search_key_compare for pr_midxkey_compare_resolved: arg is the scan's DOMAIN_SEARCH_KEYS. */
-DB_VALUE_COMPARE_RESULT domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value1,
-							   DB_VALUE * value2, int do_coercion, int total_order,
-							   bool * can_compare);
+/* domain_search_key_compare of DOMAIN_SEARCH_KEYS_OWN and of DOMAIN_SEARCH_KEYS_OTHER: pr_midxkey_compare_resolved's
+ * element comparisons */
+DB_VALUE_COMPARE_RESULT domain_search_key_compare_own (int column, DB_VALUE * value1, DB_VALUE * value2,
+						       int do_coercion, int total_order, bool * can_compare);
+DB_VALUE_COMPARE_RESULT domain_search_key_compare_other (int column, DB_VALUE * value1, DB_VALUE * value2,
+							 int do_coercion, int total_order, bool * can_compare);
 
 #endif /* _DOMAIN_RULES_H_ */

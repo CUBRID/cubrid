@@ -1553,8 +1553,7 @@ extern "C"
     }
 
     /* Free scan-specific resources (bt_attr_ids, oid_list, copy_buf, etc.). The key plan storage stays with the scan:
-     * the key ranges init_on_main built and the workers' comparisons read it (BTID_INT.search_keys), and the
-     * parallel scan's close releases it after its workers. */
+     * the key ranges init_on_main built read it, and the parallel scan's close releases it after its workers. */
     const domain_plan_index *key_plan = scan_id->s.isid.key_plan;
     const RESOLVED_INDEX_KEYS *resolved_keys = scan_id->s.isid.resolved_keys;
     scan_key_state *key_state = scan_id->s.isid.key_state;

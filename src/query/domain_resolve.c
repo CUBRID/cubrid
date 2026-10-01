@@ -1241,7 +1241,6 @@ qexec_compare_unreached (DOMAIN_COMPARE * compare)
   {
   };
   compare->method = DOMAIN_COMPARE_VALUES;
-  compare->reason = DOMAIN_REASON_UNRESOLVED;
   compare->value[0] = compare->value[1] = -1;
   compare->codeset_side = -1;
   compare->compare_index = -1;
@@ -1895,7 +1894,7 @@ qexec_key_element_domain (const XASL_STATE * xasl_state, const DOMAIN_PLAN_ITEM 
       return NULL;
     }
   const TP_DOMAIN *domain =
-    item->resolved_index < 0 ? item->fixed.domain : qexec_resolved_domain (&xasl_state->vd, item, false);
+    item->resolved_index < 0 ? item->fixed.domain : qexec_resolved_domain (&xasl_state->vd, item);
   return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL
     && domain_fixes_values (domain) ? domain_key_value_domain (domain) : NULL;
 }
@@ -2698,7 +2697,7 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
 		}
 #if !defined (NDEBUG)
 	      if (!(item->flags & DOMAIN_PLAN_LATE_BIND) && item->fixed.domain != NULL && !DB_IS_NULL (source)
-		  && item->fail == DOMAIN_FAIL_NULL)
+		  && !(item->flags & DOMAIN_PLAN_CONSUMER_CONVERTS))
 		{
 		  /* "value type == plan domain" for every bind the compiler typed: the client cast
 		   * the value into the plan domain; CHAR vs VARCHAR is the kept original value. A statement
@@ -2896,21 +2895,14 @@ qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * x
 }
 
 /*
- * qexec_resolved_domain () - resolve_domains' domain for a derived consumer of this execution's tree, read in place of
- *   a row-time resolve
- *   return: the domain, or NULL where resolve_domains resolved no value for it
+ * qexec_resolution () - resolve_domains' resolution at an item's resolved index in this execution
+ *   return: the domain, a NULL value's NULL domain too; NULL where the item has no resolved index of this execution
+ *	     or resolve_domains resolved no domain for it
  *   vd(in): the execution's value descriptor
- *   item(in): the consumer's plan item: a variable POS, a late-binding node, or an alias of one
- *   null_bind(in): also answer the NULL domain of a NULL bind (a list column holding only that NULL)
- *
- * The resolution is the domain develop's first value gives the consumer; a resolution over a session variable read
- * holds too, since the variable keeps the type resolve_domains gave it for the statement. MySQL compatibility mode
- * reads the resolutions too: its date helpers type a result by the result buffer, which holds the resolved type from
- * the first row on. A node without resolved-domain state has no resolution here; resolve_domains leaves no node
- * unresolved. A PX worker reads the resolutions it copied from the leader with its own load's items.
+ *   item(in): the plan item
  */
-const TP_DOMAIN *
-qexec_resolved_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind)
+static const TP_DOMAIN *
+qexec_resolution (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
   if (vd == NULL || vd->xasl_state == NULL || item == NULL || item->resolved_index < 0)
     {
@@ -2921,17 +2913,45 @@ qexec_resolved_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool
     {
       return NULL;
     }
-  const DOMAIN_PLAN *plan = resolved.plan;
   const TP_DOMAIN *domain = resolved.domains[item->resolved_index].domain;
-  if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE ? domain : NULL;
+}
+
+/*
+ * qexec_resolved_domain () - resolve_domains' domain for a derived consumer of this execution's tree, read in place of
+ *   a row-time resolve
+ *   return: the domain, or NULL where resolve_domains resolved no value for it
+ *   vd(in): the execution's value descriptor
+ *   item(in): the consumer's plan item: a variable POS, a late-binding node, or an alias of one
+ *
+ * The resolution is the domain develop's first value gives the consumer; a resolution over a session variable read
+ * holds too, since the variable keeps the type resolve_domains gave it for the statement. MySQL compatibility mode
+ * reads the resolutions too: its date helpers type a result by the result buffer, which holds the resolved type from
+ * the first row on. A node without resolved-domain state has no resolution here; resolve_domains leaves no node
+ * unresolved. A PX worker reads the resolutions it copied from the leader with its own load's items.
+ */
+const TP_DOMAIN *
+qexec_resolved_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  const TP_DOMAIN *domain = qexec_resolution (vd, item);
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL ? domain : NULL;
+}
+
+/*
+ * qexec_null_bind_domain () - the NULL domain a NULL bind resolved to, for a list column holding only that NULL
+ *   return: the NULL domain; NULL where the item's resolution is not a bind's NULL
+ *   vd(in): the execution's value descriptor
+ *   item(in): the consumer's plan item
+ */
+const TP_DOMAIN *
+qexec_null_bind_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  const TP_DOMAIN *domain = qexec_resolution (vd, item);
+  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
     {
       return NULL;
     }
-  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
-    {
-      return null_bind && plan->resolved_late_bind_node[item->resolved_index] < 0 ? domain : NULL;
-    }
-  return domain;
+  return vd->xasl_state->resolved_domain.plan->resolved_late_bind_node[item->resolved_index] < 0 ? domain : NULL;
 }
 
 /*
@@ -2944,7 +2964,7 @@ qexec_resolved_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool
  * value.
  */
 const TP_DOMAIN *
-qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool null_bind)
+qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
   if (item == NULL)
     {
@@ -2952,13 +2972,12 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
     }
   if (item->resolved_index >= 0)
     {
-      return qexec_resolved_domain (vd, item, null_bind);
+      return qexec_resolved_domain (vd, item);
     }
   /* a collation flag other than NORMAL (LEAVE, ENFORCE) does not fix the value's domain: the load gives
    * such an item a resolved index or its producer's, so a fixed domain here is NORMAL */
   const TP_DOMAIN *domain = item->fixed.domain;
-  domain = domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
-    && TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL ? domain : NULL;
+  domain = domain != NULL && !domain_is_variable (domain) ? domain : NULL;
   return domain;
 }
 
@@ -2982,8 +3001,7 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, bool nul
 const TP_DOMAIN *
 qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
 {
-  if (compiled != NULL && TP_DOMAIN_TYPE (compiled) != DB_TYPE_VARIABLE
-      && TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_NORMAL)
+  if (compiled != NULL && !domain_is_variable (compiled))
     {
       return compiled;
     }
@@ -2993,14 +3011,10 @@ qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const D
     }
   if (item->resolved_index < 0)
     {
-      return qexec_plan_domain (vd, item, false);
+      return qexec_plan_domain (vd, item);
     }
-  if (vd == NULL || vd->xasl_state == NULL || !qexec_owns_resolved_index (vd->xasl_state->resolved_domain, item))
-    {
-      return NULL;
-    }
-  const TP_DOMAIN *domain = vd->xasl_state->resolved_domain.domains[item->resolved_index].domain;
-  if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+  const TP_DOMAIN *domain = qexec_resolution (vd, item);
+  if (domain == NULL)
     {
       /* no resolution: the unresolved-domain check (execution) at the caller - resolve_domains leaves no entry
        * unresolved */
@@ -3285,8 +3299,7 @@ qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * build
       group_regu = buildlist->g_hk_sort_regu_list;
       for (i = 0; i < buildlist->g_hkey_size && group_regu != NULL; i++, group_regu = group_regu->next)
 	{
-	  if (TP_DOMAIN_TYPE (context->key_domains[i]) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (context->key_domains[i]) != TP_DOMAIN_COLL_NORMAL)
+	  if (domain_is_variable (context->key_domains[i]))
 	    {
 	      context->key_domains[i] =
 		qexec_get_node_domain (vd, group_regu->value.domain, group_regu->value.domain_plan);
@@ -3328,8 +3341,7 @@ qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * bu
       const TP_DOMAIN *domain = qexec_consumer_domain (vd, compiled, key->value.domain_plan);
       for (int l = 0; l < 2; l++)
 	{
-	  if (domain != NULL && (TP_DOMAIN_TYPE (lists[l]->domp[i]) == DB_TYPE_VARIABLE
-				 || TP_DOMAIN_COLLATION_FLAG (lists[l]->domp[i]) != TP_DOMAIN_COLL_NORMAL))
+	  if (domain != NULL && domain_is_variable (lists[l]->domp[i]))
 	    {
 	      lists[l]->domp[i] = (TP_DOMAIN *) domain;
 	      changed = true;
@@ -3378,7 +3390,7 @@ static const TP_DOMAIN *
 qexec_apply_aggregate_resolved_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
 {
   const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, agg_p->domain_plan);
-  const TP_DOMAIN *resolved = qexec_resolved_domain (vd, agg_p->domain_plan, false);
+  const TP_DOMAIN *resolved = qexec_resolved_domain (vd, agg_p->domain_plan);
   if (late_bind_node == NULL || resolved == NULL)
     {
       return NULL;
@@ -3390,7 +3402,7 @@ qexec_apply_aggregate_resolved_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * ag
     {
       if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	{
-	  const TP_DOMAIN *argument = qexec_plan_domain (vd, agg_p->operands->value.domain_plan, false);
+	  const TP_DOMAIN *argument = qexec_plan_domain (vd, agg_p->operands->value.domain_plan);
 	  if (argument == NULL)
 	    {
 	      return NULL;
@@ -3705,9 +3717,8 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
 	}
       else if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan) != DB_TYPE_VARIABLE
 	       && qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan) != NULL
-	       && TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan)) != DB_TYPE_VARIABLE
-	       && TP_DOMAIN_COLLATION_FLAG (qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan))
-	       == TP_DOMAIN_COLL_NORMAL && agg_p->domain_plan != NULL
+	       && !domain_is_variable (qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan))
+	       && agg_p->domain_plan != NULL
 	       && ((agg_p->domain_plan->flags & DOMAIN_PLAN_ACCUMULATOR) || interpolation))
 	{
 	  accumulator = agg_p->domain_plan->fixed.operand_domain[0];
@@ -3877,8 +3888,7 @@ qexec_type_accumulator_outputs (const VAL_DESCR * vd, XASL_NODE * xasl)
 	{
 	  const TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
 	  if (out->value.value.dbvalptr == agg_p->accumulator.value
-	      && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL
-	      && TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL)
+	      && !domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
 	    {
 	      qexec_set_node_domain (vd, out->value.domain_plan, out->value.domain, domain);
 	      break;

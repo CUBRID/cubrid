@@ -97,7 +97,7 @@ struct iss_range_details
   int part_key_desc;		/* last partial key domain is descending */
 };
 
-typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys);
+typedef int QPROC_KEY_VAL_FU (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys);
 typedef SCAN_CODE (*QP_SCAN_FUNC) (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 
 typedef enum
@@ -160,12 +160,12 @@ static void scan_free_iscan_oid_buf_list (BTREE_ISCAN_OID_LIST * oid_list);
 static void rop_to_range (RANGE * range, ROP_TYPE left, ROP_TYPE right);
 static void range_to_rop (ROP_TYPE * left, ROP_TYPE * rightk, RANGE range);
 static ROP_TYPE compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term,
-				const DOMAIN_SEARCH_KEYS * search_keys);
-static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys);
-static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys);
-static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys);
+				DOMAIN_SEARCH_KEYS search_keys);
+static int eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys);
+static int merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys);
+static int reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys);
 static int check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * chk_fn,
-			   const DOMAIN_SEARCH_KEYS * search_keys);
+			   DOMAIN_SEARCH_KEYS search_keys);
 static int scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * indexal,
 				   TP_DOMAIN * btree_domainp, int num_term, REGU_VARIABLE * func, VAL_DESCR * vd,
 				   int key_minmax, bool is_iss, INDX_SCAN_ID * isidp, int bound_index);
@@ -218,8 +218,7 @@ static int scan_restore_range_details (ISS_RANGE_DETAILS * rdp_src, INDX_SCAN_ID
 static SCAN_CODE scan_get_next_iss_value (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp);
 static SCAN_CODE call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SCAN_ID * isidp,
 					     bool should_go_to_next_value);
-static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term,
-			     const DOMAIN_SEARCH_KEYS * search_keys);
+static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, DOMAIN_SEARCH_KEYS search_keys);
 
 /* for hash list scan */
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -357,19 +356,17 @@ enum SCAN_KEY_CHOICE
   SCAN_KEY_RESOLVED		/* the plan's other domain for the column: the element's own, or the resolved domain */
 };
 
-/* The search keys of an index scan whose plan keeps nothing for them: its values compare with the index as they are. */
-static const DOMAIN_SEARCH_KEYS scan_No_search_keys = { false };
-
-/* What the B-tree's comparisons of an index scan's search key values read; NULL for a B-tree search outside a
- * query plan (an index scan identifier without a key plan). */
-const DOMAIN_SEARCH_KEYS *
+/* What the B-tree's comparisons of an index scan's search key values read; NONE for a B-tree search outside a query
+ * plan (an index scan identifier without a key plan). */
+DOMAIN_SEARCH_KEYS
 scan_index_search_keys (const INDX_SCAN_ID * isidp)
 {
   if (isidp == NULL || isidp->key_plan == NULL)
     {
-      return NULL;
+      return DOMAIN_SEARCH_KEYS_NONE;
     }
-  return isidp->key_state != NULL ? &isidp->key_state->search_keys : &scan_No_search_keys;
+  /* a scan without storage has a single-column key whose values all have the column's key */
+  return isidp->key_state != NULL ? isidp->key_state->search_keys : DOMAIN_SEARCH_KEYS_OWN;
 }
 
 /* How the B-tree compares an index scan's search key values: the scan's choice at open
@@ -487,7 +484,7 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   scan_key_state *state = (scan_key_state *) block;
-  state->search_keys.other_keys = other_keys;
+  state->search_keys = other_keys ? DOMAIN_SEARCH_KEYS_OTHER : DOMAIN_SEARCH_KEYS_OWN;
   /* without a column whose values take a key other than its own (domain_key_differs), every value compares with the
    * index as it is */
   state->search_compare = other_keys ? BTREE_SEARCH_COMPARE_RESOLVED
@@ -1706,19 +1703,6 @@ range_to_rop (ROP_TYPE * left, ROP_TYPE * right, RANGE range)
     }
 }
 
-/* Whether develop's comparison of two search key values would resolve something: a coercion between their types, or a
- * merge of their string collations. */
-static bool
-scan_key_values_decide (const DB_VALUE * val1, const DB_VALUE * val2)
-{
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val1);
-  if (type != DB_VALUE_DOMAIN_TYPE (val2))
-    {
-      return true;
-    }
-  return TP_IS_CHAR_TYPE (type) && db_get_string_collation (val1) != db_get_string_collation (val2);
-}
-
 /*
  * scan_key_compare ()
  *   val1(in):
@@ -1727,7 +1711,7 @@ scan_key_values_decide (const DB_VALUE * val1, const DB_VALUE * val2)
  *   return:
  */
 static int
-scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DOMAIN_SEARCH_KEYS * search_keys)
+scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, DOMAIN_SEARCH_KEYS search_keys)
 {
   int rc = DB_UNK;
   DB_TYPE key_type;
@@ -1757,7 +1741,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DO
     {
       /* search keys without other keys: every value has its column's type and collation, and compares as it is
        * (scan_open_index_key_plan) */
-      const DOMAIN_SEARCH_KEYS *resolved = search_keys != NULL && search_keys->other_keys ? search_keys : NULL;
+      const bool other_keys = search_keys == DOMAIN_SEARCH_KEYS_OTHER;
       key_type = DB_VALUE_DOMAIN_TYPE (val1);
       if (key_type == DB_TYPE_MIDXKEY)
 	{
@@ -1766,13 +1750,13 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DO
 	  rc =
 	    pr_midxkey_compare_resolved (db_get_midxkey (val1), db_get_midxkey (val2), 1, 1, num_index_term, NULL,
 					 &dummy_diff_column, NULL, NULL,
-					 resolved != NULL ? domain_search_key_compare_element : NULL, resolved);
+					 other_keys ? domain_search_key_compare_other : NULL);
 	}
-      else if (resolved != NULL && scan_key_values_decide (val1, val2))
+      else if (other_keys && domain_value_domains_differ (val1, val2))
 	{
 	  /* search key values of other types or collations compare as the scan's key plan resolved */
 	  bool can_compare = true;
-	  rc = domain_search_key_compare (resolved, 0, val1, val2, 1, 1, &can_compare);
+	  rc = domain_search_key_compare_other (0, val1, val2, 1, 1, &can_compare);
 	  if (!can_compare && rc != DB_UNK)
 	    {
 	      /* a conversion failed: develop's tp_value_compare answers by the types' rank, without an error */
@@ -1781,7 +1765,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DO
 	}
       else
 	{
-	  assert (search_keys == NULL || resolved != NULL || !scan_key_values_decide (val1, val2));
+	  assert (search_keys == DOMAIN_SEARCH_KEYS_NONE || other_keys || !domain_value_domains_differ (val1, val2));
 	  rc = tp_value_compare (val1, val2, 1, 1);
 	}
     }
@@ -1800,7 +1784,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, const DO
  */
 static ROP_TYPE
 compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, int num_index_term,
-		const DOMAIN_SEARCH_KEYS * search_keys)
+		DOMAIN_SEARCH_KEYS search_keys)
 {
   int rc;
 
@@ -1877,7 +1861,7 @@ compare_val_op (DB_VALUE * val1, ROP_TYPE op1, DB_VALUE * val2, ROP_TYPE op2, in
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys)
+eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys)
 {
   int n;
   KEY_VAL_RANGE *curp, *nextp;
@@ -1913,7 +1897,7 @@ eliminate_duplicated_keys (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_S
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys)
+merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys)
 {
   int cur_n, next_n;
   KEY_VAL_RANGE *curp, *nextp;
@@ -2033,8 +2017,7 @@ merge_key_ranges (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEY
  *   chk_fn (in): check function for key_vals
  */
 static int
-check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_val_fn,
-		const DOMAIN_SEARCH_KEYS * search_keys)
+check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_val_fn, DOMAIN_SEARCH_KEYS search_keys)
 {
   if (key_cnt <= 1)
     {
@@ -2059,7 +2042,7 @@ check_key_vals (KEY_VAL_RANGE * key_vals, int key_cnt, QPROC_KEY_VAL_FU * key_va
 /* shared with parallel index scan: same dedup/merge serial path runs in scan_open_index_scan. */
 int
 scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt,
-				const DOMAIN_SEARCH_KEYS * search_keys)
+				DOMAIN_SEARCH_KEYS search_keys)
 {
   if (range_type == R_KEYLIST)
     {
@@ -8421,7 +8404,7 @@ scan_finalize (void)
  *   key_cnt (in): number of keys; size of key_vals
  */
 static int
-reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, const DOMAIN_SEARCH_KEYS * search_keys)
+reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS search_keys)
 {
   int i, j;
   KEY_VAL_RANGE temp;

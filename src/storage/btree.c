@@ -1394,7 +1394,7 @@ static void btree_write_default_split_info (BTREE_NODE_SPLIT_INFO * info);
 static int btree_set_vpid_previous_vpid (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_p, VPID * prev);
 static int btree_compare_individual_key_value (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain);
 STATIC_INLINE DB_VALUE_COMPARE_RESULT btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
-							      const DOMAIN_SEARCH_KEYS * search_keys, int do_coercion,
+							      DOMAIN_SEARCH_KEYS search_keys, int do_coercion,
 							      int total_order, int *start_colp)
   __attribute__ ((ALWAYS_INLINE));
 static int btree_get_next_page_vpid (THREAD_ENTRY * thread_p, PAGE_PTR leaf_page, VPID * next_vpid);
@@ -6094,7 +6094,7 @@ btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_
   btid->copy_buf = NULL;
   btid->copy_buf_len = 0;
   btid->search_compare = BTREE_SEARCH_COMPARE_RESOLVED;
-  btid->search_keys = NULL;
+  btid->search_keys = DOMAIN_SEARCH_KEYS_NONE;
 
   if (is_key_type)
     {
@@ -23131,7 +23131,7 @@ DB_VALUE_COMPARE_RESULT
 btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int do_coercion, int total_order,
 		   int *start_colp)
 {
-  return btree_compare_key_with (key1, key2, key_domain, NULL, do_coercion, total_order, start_colp);
+  return btree_compare_key_with (key1, key2, key_domain, DOMAIN_SEARCH_KEYS_NONE, do_coercion, total_order, start_colp);
 }
 
 /*
@@ -23180,7 +23180,7 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
       int dummy_diff_column;
       c =
 	pr_midxkey_compare_resolved (db_get_midxkey (key1), db_get_midxkey (key2), 1, 1, -1, start_colp,
-				     &dummy_diff_column, dom_is_desc, NULL, NULL, NULL);
+				     &dummy_diff_column, dom_is_desc, NULL, NULL);
       is_desc = dom_is_desc[0];
     }
   if (is_desc)
@@ -23201,15 +23201,15 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
 /*
  * btree_compare_key_with () - btree_compare_key, with an index scan's search keys
  *
- * search_keys NULL is a B-tree search outside a query plan, whose keys are the index's own: a column whose values do
- * not compare as they are compares by value. An index scan's search keys compare such columns as its key plan says;
- * one the plan has no comparison for fails the unresolved-domain check (execution). Inlined into btree_compare_key and
- * btree_compare_search_key: a key comparison is one call, as develop's btree_compare_key is, and a single-column key
- * reads search_keys only for values that do not compare as they are.
+ * DOMAIN_SEARCH_KEYS_NONE is a B-tree search outside a query plan, whose keys are the index's own: a column whose
+ * values do not compare as they are compares by value. An index scan's search keys compare such columns as its key
+ * plan says; one the plan has no comparison for fails the unresolved-domain check (execution). Inlined into
+ * btree_compare_key and btree_compare_search_key: a key comparison is one call, as develop's btree_compare_key is,
+ * and a single-column key reads search_keys only for values that do not compare as they are.
  */
 STATIC_INLINE DB_VALUE_COMPARE_RESULT
 btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
-			const DOMAIN_SEARCH_KEYS * search_keys, int do_coercion, int total_order, int *start_colp)
+			DOMAIN_SEARCH_KEYS search_keys, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_TYPE key1_type, key2_type;
@@ -23267,7 +23267,8 @@ btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain
       c =
 	pr_midxkey_compare_resolved (db_get_midxkey (key1), db_get_midxkey (key2), do_coercion, total_order, -1,
 				     start_colp, &dummy_diff_column, dom_is_desc, NULL,
-				     search_keys != NULL ? domain_search_key_compare_element : NULL, search_keys);
+				     search_keys == DOMAIN_SEARCH_KEYS_OTHER ? domain_search_key_compare_other
+				     : search_keys == DOMAIN_SEARCH_KEYS_OWN ? domain_search_key_compare_own : NULL);
       assert_release (c == DB_UNK || (DB_LT <= c && c <= DB_GT));
 
       if (dom_is_desc[0])
@@ -23316,7 +23317,7 @@ btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain
 	}
       else
 	{
-	  if (search_keys != NULL)
+	  if (search_keys != DOMAIN_SEARCH_KEYS_NONE)
 	    {
 	      /* a search key value of a type the index does not compare as it is */
 	      c = domain_search_key_compare (search_keys, 0, key1, key2, do_coercion, total_order, &comparable);

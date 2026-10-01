@@ -69,7 +69,7 @@ qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p, const VAL_DESCR *v
        * first non-NULL value still takes the general path (curr_cnt < 1, sum_acc inactive), which applies that
        * resolution before the accumulator is activated (a resolution over a session variable read too); a
        * resolution without a value leaves only NULLs. */
-      return qexec_resolved_domain (val_desc_p, func_p->domain_plan, false) != NULL;
+      return qexec_resolved_domain (val_desc_p, func_p->domain_plan) != NULL;
     }
   return true;
 }
@@ -102,7 +102,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
        * argument's in this execution. It is the function's union member: another function's info stays as it is. */
       func_p->info.sum_avg.operand_coercion = DOMAIN_OPERAND_COERCION ();
       const TP_DOMAIN *argument = qexec_value_domain (vd, &func_p->operand);
-      const TP_DOMAIN *function = qexec_resolved_domain (vd, func_p->domain_plan, false);
+      const TP_DOMAIN *function = qexec_resolved_domain (vd, func_p->domain_plan);
       if (function == NULL)
 	{
 	  function = qexec_get_node_domain (vd, func_p->domain, func_p->domain_plan);
@@ -235,7 +235,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			|| TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL) && !DB_IS_NULL (&dbval);
   if (first_binding)
     {
-      resolved_domain = qexec_resolved_domain (val_desc_p, func_p->domain_plan, false);
+      resolved_domain = qexec_resolved_domain (val_desc_p, func_p->domain_plan);
       if (resolved_domain == NULL && !QPROC_IS_INTERPOLATION_FUNC (func_p))
 	{
 	  /* resolve_domains resolves every variable function: the unresolved-domain check (execution) */
@@ -696,7 +696,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	      func_p->is_first_exec_time = false;
 	      /* a variable function resolve_domains resolved takes that type; the value is coerced to it below */
 	      const TP_DOMAIN *resolved = TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-					  ? qexec_resolved_domain (val_desc_p, func_p->domain_plan, false) : NULL;
+					  ? qexec_resolved_domain (val_desc_p, func_p->domain_plan) : NULL;
 	      if (resolved != NULL)
 		{
 		  domain = (TP_DOMAIN *) resolved;

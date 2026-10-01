@@ -5755,8 +5755,7 @@ static void
 stx_set_fast_peek (REGU_VARIABLE * regu_var)
 {
   if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION) || regu_var->domain == NULL
-      || TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE
-      || TP_DOMAIN_COLLATION_FLAG (regu_var->domain) != TP_DOMAIN_COLL_NORMAL)
+      || domain_is_variable (regu_var->domain))
     {
       return;
     }

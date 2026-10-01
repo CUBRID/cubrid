@@ -22145,7 +22145,7 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
       const DOMAIN_PLAN_ITEM *item = func_p->domain_plan;
       const TP_DOMAIN *fixed = item != NULL ? item->fixed.domain : NULL;
       const TP_DOMAIN *resolved_domain = fixed != NULL && TP_DOMAIN_TYPE (fixed) != DB_TYPE_VARIABLE
-	? fixed : qexec_resolved_domain (vd, item, false);
+	? fixed : qexec_resolved_domain (vd, item);
       assert (resolved_domain == NULL || TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (resolved_domain))
 	      || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (resolved_domain)));
       subkey->use_cmp_dom = true;
@@ -26715,9 +26715,13 @@ qexec_topn_sort_domains (const VAL_DESCR * vd, SORT_LIST * sort_items, const TP_
   for (SORT_LIST * key = sort_items; key != NULL; key = key->next, i++)
     {
       const TP_DOMAIN *domain = key->pos_descr.dom;
-      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+      if (domain_is_variable (domain))
 	{
-	  domain = qexec_plan_domain (vd, key->pos_descr.domain_plan, true);
+	  domain = qexec_plan_domain (vd, key->pos_descr.domain_plan);
+	  if (domain == NULL)
+	    {
+	      domain = qexec_null_bind_domain (vd, key->pos_descr.domain_plan);
+	    }
 	}
       domains[i] = domain;
     }

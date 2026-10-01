@@ -31,17 +31,19 @@ namespace cubxasl
   struct pred_expr;
 }
 
-enum DOMAIN_FAIL_POLICY
-{
-  DOMAIN_FAIL_ERROR, DOMAIN_FAIL_NULL, DOMAIN_FAIL_KEEP
-};
 enum DOMAIN_OPERAND_CLASS
 {
   OPERAND_CONST = 1, OPERAND_ROW, OPERAND_CORRELATED, OPERAND_NON_CACHEABLE
 };
 enum DOMAIN_PLAN_FLAGS
 {
-  DOMAIN_PLAN_LATE_BIND = 0x01, DOMAIN_PLAN_ALIAS = 0x10,
+  DOMAIN_PLAN_LATE_BIND = 0x01,
+  DOMAIN_PLAN_CONSUMER_CONVERTS = 0x02,	/* a comparison, an index key, an assignment or a CAST reads the value: it
+					 * resolves or converts the value from the type the value has, so a bind's value
+					 * need not have the plan's type. Such a reference shares no value slot and no
+					 * producer with one that reads its value in the plan's type: resolve_domains casts
+					 * a DOMAIN_PLAN_LIST_BIND reference's value in place */
+  DOMAIN_PLAN_ALIAS = 0x10,
   DOMAIN_PLAN_ACCUMULATOR = 0x40,	/* a compiled aggregate: fixed.operand_domain[0] is its accumulator domain,
 					 * derived at load from the operand's */
   DOMAIN_PLAN_LATE_BIND_COLLATION = 0x100,	/* the type is compiled, the collation is the values': a variable POS
@@ -73,7 +75,6 @@ struct domain_plan_item
   int ref;
   unsigned short flags;
   unsigned char operand_class;
-  unsigned char fail;		/* DOMAIN_FAIL_POLICY of the reference: a node's operands are references of their own */
   int node_domain_index;	/* 1 + the index of the node's execution domain (domain_execution.node_domains): the
 				 * domain the execution gives the node, which the node itself never holds; 0: none */
   RESOLVED_DOMAIN fixed;
@@ -97,12 +98,13 @@ struct DOMAIN_PLAN_ITEM_COLD
 {
   int val_pos;
   short ctx;
+  bool synthetic;		/* a set-operation or CTE list column no XASL node points at: the unresolved-domain
+				 * check (load) checks its readers, not it */
   int opcode;
   int constant_branch;		/* the innermost constant branch around the item (DOMAIN_PLAN_CONSTANT_BRANCH); -1
 				 * none */
-  const char *name;
 };
-static_assert (sizeof (DOMAIN_PLAN_ITEM_COLD) == 24, "cold domain plan item layout");
+static_assert (sizeof (DOMAIN_PLAN_ITEM_COLD) == 16, "cold domain plan item layout");
 
 /* What resolve_domains reads to resolve one late-binding node: its operand items in operand order, the value of
  * a literal operand, and the compiled domain AGG/ANALYTIC resolve against (the node's own domain otherwise). A

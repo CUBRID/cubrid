@@ -204,13 +204,6 @@ static DOMAIN_PLAN_ITEM *domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NOD
 static void domain_add_define (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * define);
 static XASL_NODE *domain_outer_scope (const DOMAIN_LOAD_CONTEXT * ctx, const REGU_VARIABLE * regu);
 
-static bool
-domain_is_fixed (const TP_DOMAIN * domain)
-{
-  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
-    && domain->collation_flag != TP_DOMAIN_COLL_LEAVE;
-}
-
 /* The type axis only: the collation of a character result is merged at resolve_domains. */
 static bool
 domain_type_is_fixed (const TP_DOMAIN * domain)
@@ -225,16 +218,6 @@ domain_character_is_variable (const TP_DOMAIN * domain)
 {
   return domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain))
     && TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL;
-}
-
-/* A domain the execution used to complete in the plan node itself: a VARIABLE type, or a collation the values give
- * (LEAVE, ENFORCE). The pair condition of 26 execution comparisons (VARIABLE || collation flag != NORMAL) asked this of
- * the node's domain at every row; the load asks it once. */
-static bool
-domain_is_variable (const TP_DOMAIN * domain)
-{
-  return domain != NULL && (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-			    || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL);
 }
 
 /* The load entry an item lives in: every item is an entry's embedded item until the plan is published. */
@@ -362,7 +345,7 @@ domain_mark_late_bind_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_
 
 static DOMAIN_PLAN_ITEM *
 domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_DOMAIN * domain,
-		 DOMAIN_OPERAND_CLASS operand_class, DOMAIN_CTX context, int opcode, const char *name)
+		 DOMAIN_OPERAND_CLASS operand_class, DOMAIN_CTX context, int opcode)
 {
   if (ctx->failed || *owner != NULL)
     {
@@ -384,13 +367,14 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
   load_entry->item.operand_class = operand_class;
   load_entry->row_invariant = operand_class == OPERAND_CONST;
   load_entry->item.fixed.domain = domain;
-  load_entry->item.fail = context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_FAIL_KEEP
-    : context == DOMAIN_CTX_ASSIGN ? DOMAIN_FAIL_ERROR : DOMAIN_FAIL_NULL;
+  if (context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM || context == DOMAIN_CTX_ASSIGN)
+    {
+      load_entry->item.flags |= DOMAIN_PLAN_CONSUMER_CONVERTS;
+    }
   load_entry->cold.val_pos = -1;
   load_entry->cold.ctx = context;
   load_entry->cold.opcode = opcode;
   load_entry->cold.constant_branch = ctx->constant_branch;
-  load_entry->cold.name = name;
   if (ctx->tail == NULL)
     {
       ctx->head = load_entry;
@@ -780,7 +764,9 @@ domain_fixed_operand (DOMAIN_PLAN_ITEM * item, int i, const TP_DOMAIN * source,
       return;
     }
   item->fixed.operand_domain[i] = target;
-  if (domain_is_fixed (source) && domain_is_fixed (target))
+  /* both types known, and neither collation left to the values (LEAVE) */
+  if (domain_type_is_fixed (source) && source->collation_flag != TP_DOMAIN_COLL_LEAVE
+      && domain_type_is_fixed (target) && target->collation_flag != TP_DOMAIN_COLL_LEAVE)
     {
       item->fixed.conv[i] = tp_value_find_converter (TP_DOMAIN_TYPE (source), target, domain_convert_mode (mode));
     }
@@ -798,8 +784,7 @@ domain_operand_coercion_operator (OPERATOR_TYPE opcode)
  * domain_plan_operand_coercion () - the operand converters of an addition, subtraction, multiplication or division over
  *   its operands' compiled domains: fetch converts the operands with them and qdata_*_dbval casts nothing. A node
  *   resolve_domains resolves the type of reads resolve_domains' instead; an operand whose domain is variable plans
- *   nothing here (the item keeps no converter: the ASSIGN converters domain_fixed_operand looked up are not an operand
- *   coercion).
+ *   no converter here: the operands keep their compiled domains as their targets.
  */
 static void
 domain_plan_operand_coercion (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, const TP_DOMAIN * left,
@@ -812,6 +797,8 @@ domain_plan_operand_coercion (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, con
   item->fixed.conv[0] = item->fixed.conv[1] = NULL;
   if (!domain_type_is_fixed (left) || !domain_type_is_fixed (right))
     {
+      item->fixed.operand_domain[0] = left;
+      item->fixed.operand_domain[1] = right;
       return;
     }
   const DOMAIN_OPERAND operands[2] = {
@@ -877,22 +864,18 @@ domain_column_item (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE_LIST columns, int p
   return NULL;
 }
 
-/* The name of a synthetic list-column item: unresolved-domain check (load) checks its readers, not the item (it has no
- * XASL node). */
-static const char domain_list_column_name[] = "list column";
-
 /* A synthetic load entry owning an item no XASL node points at: a set-operation or CTE list column. */
 static DOMAIN_LOAD_ENTRY *
-domain_add_synthetic (DOMAIN_LOAD_CONTEXT * ctx, const char *name)
+domain_add_synthetic (DOMAIN_LOAD_CONTEXT * ctx)
 {
   DOMAIN_PLAN_ITEM *owner = NULL;
-  DOMAIN_PLAN_ITEM *item =
-    domain_add_item (ctx, &owner, &tp_Variable_domain, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0, name);
+  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &owner, &tp_Variable_domain, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0);
   if (item == NULL)
     {
       return NULL;
     }
   DOMAIN_LOAD_ENTRY *load_entry = domain_load_entry_of (item);
+  load_entry->cold.synthetic = true;
   /* the entry keeps its own owner pointer: publishing writes the published item there */
   load_entry->self_owner = item;
   load_entry->owner = &load_entry->self_owner;
@@ -940,7 +923,7 @@ domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos)
 	}
     }
   DOMAIN_LOAD_LIST_COLUMN *entry = (DOMAIN_LOAD_LIST_COLUMN *) db_private_alloc (ctx->thread_p, sizeof (*entry));
-  DOMAIN_LOAD_ENTRY *load_entry = entry == NULL ? NULL : domain_add_synthetic (ctx, domain_list_column_name);
+  DOMAIN_LOAD_ENTRY *load_entry = entry == NULL ? NULL : domain_add_synthetic (ctx);
   if (load_entry == NULL)
     {
       if (entry != NULL)
@@ -1136,7 +1119,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
       row_invariant = operands[i] == NULL || domain_regu_is_row_invariant (operands[i]);
     }
   DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &arith->domain_plan, arith->domain, cls,
-					    is_cast ? DOMAIN_CTX_ASSIGN : DOMAIN_CTX_ARITH, arith->opcode, "arith");
+					    is_cast ? DOMAIN_CTX_ASSIGN : DOMAIN_CTX_ARITH, arith->opcode);
   if (item != NULL)
     {
       domain_load_entry_of (item)->row_invariant = row_invariant;
@@ -1193,7 +1176,11 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
 	    }
 	}
     }
-  for (int i = 0; i < 3; i++)
+  /* the operand coercion of a node the compiler typed - its collation may still be resolve_domains' - is the
+   * resolver's over its operands' compiled domains */
+  const bool operand_coercion = domain_operand_coercion_operator (arith->opcode) && !late_bound && operands[0] != NULL
+    && operands[1] != NULL;
+  for (int i = operand_coercion ? 2 : 0; i < 3; i++)
     {
       if (operands[i] != NULL)
 	{
@@ -1208,9 +1195,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
 				DOMAIN_CTX_ASSIGN);
 	}
     }
-  /* the operand coercion of a node the compiler typed - its collation may still be resolve_domains' - is the
-   * resolver's over its operands' compiled domains */
-  if (domain_operand_coercion_operator (arith->opcode) && !late_bound && operands[0] != NULL && operands[1] != NULL)
+  if (operand_coercion)
     {
       domain_plan_operand_coercion (item, arith->opcode, operands[0]->domain, operands[1]->domain);
     }
@@ -1494,7 +1479,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     {
       cls = cls == OPERAND_NON_CACHEABLE ? cls : OPERAND_CORRELATED;
     }
-  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &regu->domain_plan, regu->domain, cls, context, regu->type, "regu");
+  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &regu->domain_plan, regu->domain, cls, context, regu->type);
   if (item == NULL)
     {
       return;
@@ -1770,7 +1755,7 @@ domain_walk_sort (DOMAIN_LOAD_CONTEXT * ctx, SORT_LIST * list, REGU_VARIABLE_LIS
 	}
       else
 	{
-	  (void) domain_add_item (ctx, &pos->domain_plan, pos->dom, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0, "position");
+	  (void) domain_add_item (ctx, &pos->domain_plan, pos->dom, OPERAND_ROW, DOMAIN_CTX_LIST_COLUMN, 0);
 	}
     }
 }
@@ -1797,7 +1782,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	  domain_walk_regu (ctx, agg->info.percentile.percentile_reguvar);
 	}
       DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &agg->domain_plan, agg->domain, OPERAND_ROW,
-						DOMAIN_CTX_AGG, agg->function, "aggregate");
+						DOMAIN_CTX_AGG, agg->function);
       domain_give_node_domain (item, domain_is_variable (agg->domain));
       if (item != NULL)
 	{
@@ -1869,7 +1854,7 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
 	      domain_walk_regu (ctx, analytic->info.percentile.percentile_reguvar);
 	    }
 	  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &analytic->domain_plan, analytic->domain, OPERAND_ROW,
-						    DOMAIN_CTX_ANALYTIC, analytic->function, "analytic");
+						    DOMAIN_CTX_ANALYTIC, analytic->function);
 	  domain_give_node_domain (item, domain_is_variable (analytic->domain));
 	  if (item != NULL)
 	    {
@@ -2733,8 +2718,7 @@ domain_plan_validate (const DOMAIN_PLAN * plan)
   for (int i = 0; i < plan->n_items; i++)
     {
       const DOMAIN_PLAN_ITEM *item = &plan->items[i];
-      if ((item->flags & (DOMAIN_PLAN_LATE_BIND | DOMAIN_PLAN_ALIAS))
-	  || plan->items_cold[i].name == domain_list_column_name)
+      if ((item->flags & (DOMAIN_PLAN_LATE_BIND | DOMAIN_PLAN_ALIAS)) || plan->items_cold[i].synthetic)
 	{
 	  /* a synthetic list column no reader could use leaves its readers variable, and they answer for it */
 	  continue;
@@ -3184,7 +3168,6 @@ domain_plan_add_comparison (DOMAIN_PLAN * plan, DOMAIN_COMPARE_PLAN * comparison
       {
       };
       comparison->fixed.method = DOMAIN_COMPARE_VALUES;
-      comparison->fixed.reason = DOMAIN_REASON_VARIABLE;
       comparison->fixed.compare_index = -1;
       comparison->fixed.value[0] = comparison->fixed.value[1] = comparison->fixed.codeset_side = -1;
     }
@@ -4421,12 +4404,12 @@ domain_first_output (const DOMAIN_LOAD_OUTPUT * outputs, int n, const DB_VALUE *
   return lo;
 }
 
-/* A (domain, failure policy) a bind position's references were given, and its reference: the positions'
- * lists replace a scan of the load entries before each bind. */
+/* A (domain, DOMAIN_PLAN_CONSUMER_CONVERTS) a bind position's references were given, and its reference: the
+ * positions' lists replace a scan of the load entries before each bind. */
 struct DOMAIN_LOAD_REF
 {
   const TP_DOMAIN *domain;
-  int fail;
+  bool consumer_converts;
   int ref;
   int next;			/* the position's next entry; -1 */
 };
@@ -4591,8 +4574,7 @@ domain_match_value_pointers (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
 	    }
 	  if (p->item.fixed.domain == r->item.fixed.domain
 	      && p->item.operand_class == r->item.operand_class
-	      && p->item.flags == r->item.flags && p->item.fail == r->item.fail
-	      && !domain_reads_group_concat_value (r, p))
+	      && p->item.flags == r->item.flags && !domain_reads_group_concat_value (r, p))
 	    {
 	      r->alias = p;
 	      break;
@@ -4662,7 +4644,8 @@ domain_assign_references (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
 	  const bool first = ref_first[pos] < 0;
 	  for (int e = ref_first[pos]; e >= 0; e = refs[e].next)
 	    {
-	      if (refs[e].domain == r->item.fixed.domain && refs[e].fail == r->item.fail)
+	      if (refs[e].domain == r->item.fixed.domain
+		  && refs[e].consumer_converts == ((r->item.flags & DOMAIN_PLAN_CONSUMER_CONVERTS) != 0))
 		{
 		  r->item.ref = refs[e].ref;
 		  break;
@@ -4672,7 +4655,7 @@ domain_assign_references (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
 	    {
 	      r->item.ref = first ? pos : plan->n_refs++;
 	      refs[n_ref_entries].domain = r->item.fixed.domain;
-	      refs[n_ref_entries].fail = r->item.fail;
+	      refs[n_ref_entries].consumer_converts = (r->item.flags & DOMAIN_PLAN_CONSUMER_CONVERTS) != 0;
 	      refs[n_ref_entries].ref = r->item.ref;
 	      refs[n_ref_entries].next = ref_first[pos];
 	      ref_first[pos] = n_ref_entries++;

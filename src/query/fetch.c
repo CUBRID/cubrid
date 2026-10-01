@@ -4790,7 +4790,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     {
       assert (TP_TYPE_HAS_COLLATION (arith_domain->type->id));
 
-      const TP_DOMAIN *resolved_domain = qexec_resolved_domain (vd, arithptr->domain_plan, false);
+      const TP_DOMAIN *resolved_domain = qexec_resolved_domain (vd, arithptr->domain_plan);
       if (resolved_domain != NULL)
 	{
 	  /* resolve_domains resolved this string's domain once for the execution from its operands' resolved domains;
@@ -4887,7 +4887,7 @@ fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE
   /* a regu fetched without a descriptor with resolved-domain state has no resolution to read: the unresolved-domain
    * check */
   const DOMAIN_PLAN_ITEM *item = vd != NULL && vd->xasl_state != NULL ? regu_var->domain_plan : NULL;
-  const TP_DOMAIN *resolved = qexec_plan_domain (vd, item, false);
+  const TP_DOMAIN *resolved = qexec_plan_domain (vd, item);
   if (resolved != NULL)
     {
 #if !defined (NDEBUG)
@@ -4903,8 +4903,7 @@ fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE
       assert (regu_var->type != TYPE_POSITION
 	      || qexec_get_node_domain (vd, regu_var->value.pos_descr.dom,
 					regu_var->value.pos_descr.domain_plan) == resolved
-	      || TP_DOMAIN_TYPE (regu_var->value.pos_descr.dom) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_COLLATION_FLAG (regu_var->value.pos_descr.dom) != TP_DOMAIN_COLL_NORMAL);
+	      || domain_is_variable (regu_var->value.pos_descr.dom));
       qexec_set_node_domain (vd, regu_var->domain_plan, regu_var->domain, resolved);
       return NO_ERROR;
     }

@@ -1402,7 +1402,7 @@ end:
 
 DB_VALUE_COMPARE_RESULT
 domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
-		       int total_order, bool * can_compare, unsigned char converted)
+		       int total_order, bool * can_compare)
 {
   switch (compare->method)
     {
@@ -1410,7 +1410,7 @@ domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, 
       return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, total_order, NULL,
 				   compare->collation);
     case DOMAIN_COMPARE_CONVERT:
-      return domain_compare_converted (compare, value1, value2, total_order, can_compare, converted);
+      return domain_compare_converted (compare, value1, value2, total_order, can_compare, 0);
     case DOMAIN_COMPARE_RANK:
       /* types that do not compare as they are, without coercion: develop answers by their rank */
       if (can_compare != NULL)
@@ -1691,6 +1691,28 @@ domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column)
   return key[0].type != DB_TYPE_NULL && !domain_compare_key_equal (&key[0], &key[1]);
 }
 
+/* The collation a comparison of two keys compares the strings of type in: theirs when they share it, the common
+ * collation of their codeset (LANG_RT_COMMON_COLL), or -1 for keys of two codesets; 0 when type is no string. */
+static int
+domain_compare_collation (DB_TYPE type, const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs)
+{
+  if (!TP_IS_CHAR_TYPE (type))
+    {
+      return 0;
+    }
+  if (lhs->collation == rhs->collation)
+    {
+      return lhs->collation;
+    }
+  if (lhs->codeset != rhs->codeset)
+    {
+      return -1;
+    }
+  int common;
+  LANG_RT_COMMON_COLL (lhs->collation, rhs->collation, common);
+  return common;
+}
+
 /*
  * domain_compute_comparison () - the comparison develop's tp_value_compare_with_error makes between a value of each
  *   key, resolved before any row: the type pair comparison table's cells, and a comparison of keys the table has no row
@@ -1795,29 +1817,17 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
 
   /* the tail on the converted values: the first side's cmpval under the comparison's collation */
   result->cmp = pr_type_from_id (after[0]);
-  if (!TP_IS_CHAR_TYPE (after[0]))
+  if (enum_side >= 0 && key[0]->collation != key[1]->collation)
     {
-      result->collation = 0;
-    }
-  else if (key[0]->collation == key[1]->collation)
-    {
-      result->collation = key[0]->collation;
-    }
-  else if (enum_side >= 0)
-    {
+      /* both sides compare as strings of the ENUM's collation */
+      assert (TP_IS_CHAR_TYPE (after[0]));
       const int codeset = lang_get_collation (key[enum_side]->collation)->codeset;
       result->collation = key[enum_side]->collation;
       result->codeset_side = key[0]->codeset != codeset ? 0 : key[1]->codeset != codeset ? 1 : -1;
     }
-  else if (key[0]->codeset == key[1]->codeset)
-    {
-      int common;
-      LANG_RT_COMMON_COLL (key[0]->collation, key[1]->collation, common);
-      result->collation = common;
-    }
   else
     {
-      result->collation = -1;
+      result->collation = domain_compare_collation (after[0], key[0], key[1]);
     }
 
   /* develop checks the collations of the coerced values: a conversion implicit coercion refuses fails before that,
@@ -1932,24 +1942,7 @@ domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAI
   /* the first value's cmpval under the collation of the tail, as with coercion when nothing is converted */
   result->method = DOMAIN_COMPARE_DIRECT;
   result->cmp = pr_type_from_id (lhs->type);
-  if (!TP_IS_CHAR_TYPE (lhs->type))
-    {
-      result->collation = 0;
-    }
-  else if (lhs->collation == rhs->collation)
-    {
-      result->collation = lhs->collation;
-    }
-  else if (lhs->codeset == rhs->codeset)
-    {
-      int common;
-      LANG_RT_COMMON_COLL (lhs->collation, rhs->collation, common);
-      result->collation = common;
-    }
-  else
-    {
-      result->collation = -1;
-    }
+  result->collation = domain_compare_collation (lhs->type, lhs, rhs);
   if (result->collation == -1)
     {
       result->method = DOMAIN_COMPARE_COLLATIONS;
@@ -1985,7 +1978,7 @@ domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b)
 {
   return a->method == b->method && a->first == b->first && a->source[0] == b->source[0]
     && a->source[1] == b->source[1] && a->converted_first == b->converted_first && a->failed == b->failed
-    && a->reason == b->reason && a->coercion == b->coercion && a->rank == b->rank && a->collation == b->collation
+    && a->coercion == b->coercion && a->rank == b->rank && a->collation == b->collation
     && a->value[0] == b->value[0] && a->value[1] == b->value[1] && a->codeset_side == b->codeset_side
     && a->compare_index == b->compare_index && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
     && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->operator_functions == b->operator_functions;
@@ -2291,7 +2284,7 @@ domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, i
 }
 
 DB_VALUE_COMPARE_RESULT
-domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE * value1, DB_VALUE * value2,
+domain_search_key_compare (DOMAIN_SEARCH_KEYS keys, int column, DB_VALUE * value1, DB_VALUE * value2,
 			   int do_coercion, int total_order, bool * can_compare)
 {
   DOMAIN_COMPARE_KEY key[2];
@@ -2303,7 +2296,7 @@ domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE
        * parameters, whose precision or length alone differs) */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
-  const DOMAIN_TYPE_PAIR_TABLE *pairs = keys != NULL && keys->other_keys ? domain_key_pairs () : NULL;
+  const DOMAIN_TYPE_PAIR_TABLE *pairs = keys == DOMAIN_SEARCH_KEYS_OTHER ? domain_key_pairs () : NULL;
   const int index[2] = {
     pairs != NULL ? domain_key_pair_index (pairs, &key[0]) : -1,
     pairs != NULL ? domain_key_pair_index (pairs, &key[1]) : -1
@@ -2330,11 +2323,19 @@ domain_search_key_compare (const DOMAIN_SEARCH_KEYS * keys, int column, DB_VALUE
 }
 
 DB_VALUE_COMPARE_RESULT
-domain_search_key_compare_element (const void *arg, int column, DB_VALUE * value1, DB_VALUE * value2, int do_coercion,
-				   int total_order, bool * can_compare)
+domain_search_key_compare_own (int column, DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+			       bool * can_compare)
 {
-  return domain_search_key_compare ((const DOMAIN_SEARCH_KEYS *) arg, column, value1, value2, do_coercion,
-				    total_order, can_compare);
+  return domain_search_key_compare (DOMAIN_SEARCH_KEYS_OWN, column, value1, value2, do_coercion, total_order,
+				    can_compare);
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_search_key_compare_other (int column, DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total_order,
+				 bool * can_compare)
+{
+  return domain_search_key_compare (DOMAIN_SEARCH_KEYS_OTHER, column, value1, value2, do_coercion, total_order,
+				    can_compare);
 }
 
 int

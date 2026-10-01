@@ -60,10 +60,10 @@ typedef struct val_descr VAL_DESCR;
 struct valptr_list_node;
 struct domain_plan_index;
 struct RESOLVED_INDEX_KEYS;
-struct DOMAIN_SEARCH_KEYS;
 struct scan_key_state;
 
 // *INDENT-OFF*
+enum DOMAIN_SEARCH_KEYS : unsigned char;
 namespace cubxasl
 {
   struct pred_expr;
@@ -601,8 +601,8 @@ extern int scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_
 				       INDX_SCAN_ID * iscan_id, TP_DOMAIN * btree_domainp, VAL_DESCR * vd,
 				       int key_range_idx);
 extern int scan_dedup_or_merge_key_ranges (RANGE_TYPE range_type, KEY_VAL_RANGE * key_vals, int key_cnt,
-					   const DOMAIN_SEARCH_KEYS * search_keys);
-extern const DOMAIN_SEARCH_KEYS *scan_index_search_keys (const INDX_SCAN_ID * isidp);
+					   DOMAIN_SEARCH_KEYS search_keys);
+extern DOMAIN_SEARCH_KEYS scan_index_search_keys (const INDX_SCAN_ID * isidp);
 extern BTREE_SEARCH_COMPARE scan_index_search_compare (const INDX_SCAN_ID * isidp);
 extern void scan_close_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp);
 

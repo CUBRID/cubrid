@@ -67,20 +67,12 @@ namespace parallel_scan
     for (int i = 0; i < type_list.type_cnt; i++)
       {
 	const TP_DOMAIN *domain = type_list.domp[i];
-	if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-	    || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+	if (domain == NULL || domain_is_variable (domain))
 	  {
 	    (void) domain_unresolved_error ("", i, domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL);
 	    return true;
 	  }
       }
-    return false;
-  }
-
-  static bool accumulator_domain_unresolved (const AGGREGATE_TYPE *agg_node)
-  {
-    (void) domain_unresolved_error ("", -1,
-				    agg_node->domain != NULL ? TP_DOMAIN_TYPE (agg_node->domain) : DB_TYPE_NULL);
     return false;
   }
 
@@ -1698,24 +1690,26 @@ namespace parallel_scan
     AGGREGATE_ACCUMULATOR *acc = &agg_node->accumulator;
     AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = &agg_node->accumulator_domain;
 
+    /* the setup gives every function that sees a value its accumulator domain before the first row
+     * (qexec_setup_parallel_aggregates); a function without one sees only NULLs. MEDIAN, PERCENTILE_CONT/DISC and
+     * a GROUP_CONCAT with ORDER BY add their values to a list instead */
+    if constexpr (F != PT_MEDIAN && F != PT_PERCENTILE_CONT && F != PT_PERCENTILE_DISC)
+      {
+	if ((F != PT_GROUP_CONCAT || agg_node->sort_list == NULL)
+	    && (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain))
+	  {
+	    (void) domain_unresolved_error ("", -1,
+					    agg_node->domain != NULL ? TP_DOMAIN_TYPE (agg_node->domain) : DB_TYPE_NULL);
+	    return false;
+	  }
+      }
+
     if constexpr (F == PT_COUNT)
       {
-	/* the setup gives every function that sees a value its accumulator domain before the
-	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	  {
-	    return accumulator_domain_unresolved (agg_node);
-	  }
 	acc->curr_cnt++;
       }
     else if constexpr (F == PT_MIN)
       {
-	/* the setup gives every function that sees a value its accumulator domain before the
-	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	  {
-	    return accumulator_domain_unresolved (agg_node);
-	  }
 	int coll_id = acc_dom->value_dom->collation_id;
 	if (acc->curr_cnt < 1
 	    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) > 0)
@@ -1741,12 +1735,6 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_MAX)
       {
-	/* the setup gives every function that sees a value its accumulator domain before the
-	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	  {
-	    return accumulator_domain_unresolved (agg_node);
-	  }
 	int coll_id = acc_dom->value_dom->collation_id;
 	if (acc->curr_cnt < 1
 	    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) < 0)
@@ -1772,12 +1760,6 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_SUM || F == PT_AVG)
       {
-	/* the setup gives every function that sees a value its accumulator domain before the
-	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	  {
-	    return accumulator_domain_unresolved (agg_node);
-	  }
 	/* Supported types use the word accumulator, as on the serial path.
 	 * Each worker owns its accumulator; finalize_node () merges it through
 	 * qdata_aggregate_accumulator_to_accumulator (). acc->value retains the
@@ -1856,12 +1838,6 @@ namespace parallel_scan
     else if constexpr (F == PT_STDDEV || F == PT_STDDEV_POP || F == PT_STDDEV_SAMP
 		       || F == PT_VARIANCE || F == PT_VAR_POP || F == PT_VAR_SAMP)
       {
-	/* the setup gives every function that sees a value its accumulator domain before the
-	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	  {
-	    return accumulator_domain_unresolved (agg_node);
-	  }
 	DB_VALUE coerced, squared;
 	db_make_null (&coerced);
 	db_make_null (&squared);
@@ -1907,12 +1883,6 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_AGG_BIT_AND || F == PT_AGG_BIT_OR || F == PT_AGG_BIT_XOR)
       {
-	/* the setup gives every function that sees a value its accumulator domain before the
-	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	  {
-	    return accumulator_domain_unresolved (agg_node);
-	  }
 	DB_VALUE tmp_val;
 	db_make_bigint (&tmp_val, (DB_BIGINT) 0);
 	if (acc->curr_cnt < 1 || DB_IS_NULL (acc->value))
@@ -1958,12 +1928,6 @@ namespace parallel_scan
 	else
 	  {
 	    /* sort_list == NULL case; ORDER BY case is handled above */
-	    /* the setup gives every function that sees a value its accumulator domain before the
-	     * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	    if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	      {
-		return accumulator_domain_unresolved (agg_node);
-	      }
 	    int gc_err;
 	    if (acc->curr_cnt < 1)
 	      {
@@ -1982,12 +1946,6 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_JSON_ARRAYAGG)
       {
-	/* the setup gives every function that sees a value its accumulator domain before the
-	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	  {
-	    return accumulator_domain_unresolved (agg_node);
-	  }
 	if (db_accumulate_json_arrayagg (db_value_p, acc->value) != NO_ERROR)
 	  {
 	    return false;
@@ -1996,12 +1954,6 @@ namespace parallel_scan
       }
     else if constexpr (F == PT_JSON_OBJECTAGG)
       {
-	/* the setup gives every function that sees a value its accumulator domain before the
-	 * first row (qexec_setup_parallel_aggregates); a function without one sees only NULLs */
-	if (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain)
-	  {
-	    return accumulator_domain_unresolved (agg_node);
-	  }
 	REGU_VARIABLE_LIST second_operand = agg_node->operands->next;
 	if (second_operand == nullptr)
 	  {

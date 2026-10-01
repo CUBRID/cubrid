@@ -1872,8 +1872,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		  TP_DOMAIN *key_domain = QPROC_IS_INTERPOLATION_FUNC (agg_p)
 					  ? qexec_interpolation_list_domain (vd, sort_list->pos_descr.dom, agg_p->domain_plan)
 					  : sort_list->pos_descr.dom;
-		  if (TP_DOMAIN_TYPE (key_domain) == DB_TYPE_VARIABLE
-		      || TP_DOMAIN_COLLATION_FLAG (key_domain) != TP_DOMAIN_COLL_NORMAL)
+		  if (domain_is_variable (key_domain))
 		    {
 		      assert (sort_list->pos_descr.pos_no < agg_p->list_id->type_list.type_cnt);
 		      key_domain = agg_p->list_id->type_list.domp[sort_list->pos_descr.pos_no];

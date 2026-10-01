@@ -5518,7 +5518,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
   DB_DATA_STATUS data_stat;
   DB_VALUE temp, *target;
 
-  /* Preserve the original first-conversion parameter snapshot. */
+  /* the first cast of the process takes the IGNORE_TRAILING_SPACE snapshot the casts and the converters keep
+   * (tp_conversion_ignore_trailing_space), whether or not it reads it */
   (void) tp_conversion_ignore_trailing_space ();
 
   DB_VALUE src_replacement;
@@ -5838,10 +5839,12 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       const DOMAIN_CONVERT_MODE mode = coercion_mode == TP_IMPLICIT_COERCION
 	? DOMAIN_CONVERT_IMPLICIT : DOMAIN_CONVERT_ASSIGN;
       TP_VALUE_CONVERTER converter;
-      if (found != NULL && found->src_type == original_type && found->domain == desired_domain
-	  && mode == DOMAIN_CONVERT_ASSIGN)
+      /* the plan found a converter before any row for the type of the caller's operand and the caller's domain
+       * (tp_value_cast_with_converter, an explicit cast): a value of another type, or a domain this function
+       * selected from a domain list or made for an ENFORCE collation above, looks its converter up */
+      assert (found == NULL || mode == DOMAIN_CONVERT_ASSIGN);
+      if (found != NULL && found->src_type == original_type && found->domain == desired_domain)
 	{
-	  /* the plan found this pair's converter before any row (tp_value_cast_with_converter) */
 	  converter = found->converter;
 	  assert (converter == tp_value_find_converter (original_type, desired_domain, mode));
 	}
