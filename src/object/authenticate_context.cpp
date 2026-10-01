@@ -596,7 +596,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
 	      error = ER_AU_REJECT_LOGIN;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 	}
       else
@@ -604,7 +604,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	  if (is_loginable_user (user) == false)
 	    {
 	      error = ER_AU_LOGIN_DISABLED;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	      return error;
 	    }
 
@@ -652,7 +652,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		      if ((dbpassword == NULL) || (strlen (dbpassword) == 0)
 			  || !match_password (dbpassword, db_get_string (&value)))
 			{
-			  error = ER_AU_REJECT_LOGIN;
+			  error = (dbpassword && *dbpassword) ? ER_AU_REJECT_LOGIN : ER_AU_INVALID_PASSWORD;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
