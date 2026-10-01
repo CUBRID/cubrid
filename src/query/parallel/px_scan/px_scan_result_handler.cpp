@@ -1531,7 +1531,7 @@ namespace parallel_scan
 		    return false;
 		  }
 		type_list.domp[0] = qexec_get_node_domain (tl_vd, agg_node->operands->value.domain,
-				    agg_node->operands->value.domain_plan);
+				    agg_node->operands->value.plan_item);
 		agg_node->list_id = qfile_open_list (thread_p, &type_list, NULL, m_query_id, ls_flag, agg_node->list_id);
 		db_private_free_and_init (thread_p, type_list.domp);
 		if (agg_node->list_id == nullptr)
@@ -2539,7 +2539,7 @@ namespace parallel_scan
 	 * set its clone up from the resolutions it copied from the leader, as the leader did */
 	int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
 		  &orig_agg_p->accumulator_domain, orig_agg_p->function,
-		  qexec_get_node_domain (tl_vd, orig_agg_p->domain, orig_agg_p->domain_plan), &cur_agg_p->accumulator);
+		  qexec_get_node_domain (tl_vd, orig_agg_p->domain, orig_agg_p->plan_item), &cur_agg_p->accumulator);
 	db_change_private_heap (thread_p, prev_heap_id);
 	if (err != NO_ERROR)
 	  {
@@ -2597,8 +2597,8 @@ namespace parallel_scan
 
 	  /* the leader set its aggregates up before its scan from the resolutions its workers copied from it
 	   * (qexec_setup_aggregate_domains, qexec_setup_parallel_aggregates), so a worker has no domain to hand back */
-	  assert (! (qexec_node_operand_type (tl_vd, orig_agg_p->opr_dbtype, orig_agg_p->domain_plan) == DB_TYPE_VARIABLE
-		     && qexec_node_operand_type (tl_vd, cur_agg_p->opr_dbtype, cur_agg_p->domain_plan)
+	  assert (! (qexec_node_operand_type (tl_vd, orig_agg_p->opr_dbtype, orig_agg_p->plan_item) == DB_TYPE_VARIABLE
+		     && qexec_node_operand_type (tl_vd, cur_agg_p->opr_dbtype, cur_agg_p->plan_item)
 		     != DB_TYPE_VARIABLE));
 
 	  switch (orig_agg_p->function)

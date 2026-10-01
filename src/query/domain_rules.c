@@ -758,9 +758,8 @@ domain_interpolation_final (int function, const TP_DOMAIN * domain, DB_TYPE argu
   return NULL;
 }
 
-/* Whether develop's row-time resolve (qexec_resolve_domains_for_aggregation, the analytic functions') applies: the
- * operand was VARIABLE when compiled (opr_dbtype, not the function's domain) or the function domain leaves
- * collation. */
+/* Whether an aggregate's or an analytic function's domain is late-bound, typed by its argument's value: the operand
+ * was VARIABLE when compiled (opr_dbtype, not the function's domain) or the function domain leaves collation. */
 static bool
 domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand)
 {
@@ -768,7 +767,7 @@ domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND 
 }
 
 /*
- * domain_resolve_aggregate - domains of qexec_resolve_domains_for_aggregation
+ * domain_resolve_aggregate - an aggregate's function and accumulator domains, as its argument's value types them
  *   compiled(in): consumer = the aggregate's compiled domain (agg_p->domain, set by xasl_generation.c)
  *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain when resolve_domains
  *		  resolves it (is_variable_pos: opr_dbtype is VARIABLE); val_type = value type, typed by its value at
@@ -862,7 +861,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
 	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operand->domain)))
 	{
 	  /* a string value none of DOUBLE, DATETIME, TIME takes (resolve_domains could not type it): no domain;
-	   * develop's first value raised the error, resolve_domains raises it */
+	   * the first value would raise the error; resolve_domains raises it */
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
       if (!domain_is_interpolation_type (operand_type))
@@ -885,7 +884,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
       else if (function_domain == NULL || TP_DOMAIN_TYPE (function_domain) == DB_TYPE_VARIABLE)
 	{
 	  /* the compiler leaves the function's domain variable for a number or date argument (func_type.cpp) and
-	   * develop's first value gives it the default domain of its type */
+	   * the first value gives it the default domain of its type */
 	  function_domain = tp_domain_resolve_default (operand_type);
 	}
       /* then the value takes the function's final type: resolve_domains records that domain */
@@ -969,7 +968,7 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
     }
   if (function == PT_MEDIAN || function == PT_PERCENTILE_CONT || function == PT_PERCENTILE_DISC)
     {
-      /* develop's first execution types an interpolation function: a function the compiler left variable takes
+      /* an interpolation function is typed as its first execution types it: a function the compiler left variable takes
        * its operand's domain, then a number becomes DOUBLE (PERCENTILE_DISC keeps it) and a string the type
        * resolve_domains gave its value, or DOUBLE when it has no value */
       const TP_DOMAIN *start_domain = argument == NULL || TP_DOMAIN_TYPE (argument) == DB_TYPE_VARIABLE
@@ -980,7 +979,7 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 	      && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_NULL && operand->val_type == DB_TYPE_NULL)
 	    {
 	      /* a value none of DOUBLE, DATETIME, TIME takes (resolve_domains types a string, a BIT, a LOB, a
-	       * collection): develop's first execution raised the error, resolve_domains raises it */
+	       * collection): the first execution would raise the error; resolve_domains raises it */
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
 	  const TP_DOMAIN *final_domain = domain_interpolation_final (function, start_domain, val_type);
@@ -1193,7 +1192,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
     case T_CAST_WRAP:
       /* the value is cast into the compiled target (fetch_peek_arith, tp_value_cast_internal): a target the compiler
        * left VARIABLE (the set operation's CAST(x AS uncertain) wrapper) casts no value - a NULL stays NULL and
-       * any other argument fails as develop's does (-181) - so the node holds no value */
+       * any other argument fails (-181) - so the node holds no value */
       result->domain = consumer_domain != NULL && TP_DOMAIN_TYPE (consumer_domain) != DB_TYPE_VARIABLE
 	? consumer_domain : &tp_Null_domain;
       goto copy_operands;
@@ -1223,9 +1222,9 @@ copy_operands:
  *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES when the branches differ
  *
  * A branch without a value (a NULL bind) takes the other's domain; one domain, or one variable string type, keeps
- * the first branch's. Two different domains are rejected before execution: develop's
- * qfile_unify_types raised the error only when both branch lists held rows and took the other branch's domain when
- * one was empty, which no resolution before the rows can follow.
+ * the first branch's. Two different domains are rejected before execution: qfile_unify_types alone raises the error
+ * only when both branch lists hold rows and takes the other branch's domain when one is empty, which no resolution
+ * before the rows can follow.
  */
 static int
 domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
@@ -1254,8 +1253,8 @@ domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RES
   return NO_ERROR;
 }
 
-/* develop compares through tp_value_coerce, which refuses these pairs before it converts
- * (TP_IMPLICIT_COERCION_NOT_ALLOWED): a comparison's converter fails there as develop's coercion does, where the ASSIGN
+/* tp_value_compare_with_error compares through tp_value_coerce, which refuses these pairs before it converts
+ * (TP_IMPLICIT_COERCION_NOT_ALLOWED): a comparison's converter fails there as that coercion does, where the ASSIGN
  * converter would convert */
 static bool
 domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
@@ -1311,8 +1310,8 @@ domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate)
     }
 }
 
-/* develop's outcome of a conversion that failed: the rank of the two sides' types at that point, and -181 where the
- * caller asks whether the values compare (tp_value_compare asks nothing and gets no error) */
+/* tp_value_compare_with_error's outcome of a conversion that failed: the rank of the two sides' types at that point,
+ * and -181 where the caller asks whether the values compare (tp_value_compare asks nothing and gets no error) */
 static DB_VALUE_COMPARE_RESULT
 domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_converted, bool * can_compare)
 {
@@ -1330,11 +1329,12 @@ domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_con
 }
 
 /*
- * domain_compare_converted () - comparison method CONVERT: develop's coercion with its converters resolved - the first
- *				 side, then the other, then an ENUM's codeset for the string it meets - and cmpval
+ * domain_compare_converted () - comparison method CONVERT: tp_value_compare_with_error's coercion with its converters
+ *				 resolved - the first side, then the other, then an ENUM's codeset for the string it
+ *				 meets - and cmpval
  *
- * A constant side resolve_domains converted comes in converted; one whose conversion failed gives develop's outcome at
- * its turn. A correlated side its scope converted comes in converted too (preconverted).
+ * A constant side resolve_domains converted comes in converted; one whose conversion failed gives the failure's
+ * outcome at its turn. A correlated side its scope converted comes in converted too (preconverted).
  */
 DB_VALUE_COMPARE_RESULT
 domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
@@ -1367,7 +1367,7 @@ domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value
     }
   if (compare->codeset_side >= 0)
     {
-      /* an ENUM compared as a string of another codeset: develop brings the other string into the ENUM's */
+      /* an ENUM compared as a string of another codeset: the other string is brought into the ENUM's */
       const DB_VALUE *text = side[compare->codeset_side];
       DB_DATA_STATUS data_status;
       used |= 4;
@@ -1412,7 +1412,7 @@ domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, 
     case DOMAIN_COMPARE_CONVERT:
       return domain_compare_converted (compare, value1, value2, total_order, can_compare, 0);
     case DOMAIN_COMPARE_RANK:
-      /* types that do not compare as they are, without coercion: develop answers by their rank */
+      /* types that do not compare as they are, without coercion: the answer is their rank */
       if (can_compare != NULL)
 	{
 	  *can_compare = false;
@@ -1421,7 +1421,7 @@ domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, 
 	}
       return (DB_VALUE_COMPARE_RESULT) compare->rank;
     default:
-      /* strings whose collations do not merge: develop's outcome at every row */
+      /* strings whose collations do not merge: -1150 at every row */
 #if !defined (NDEBUG)
       if (compare->method != DOMAIN_COMPARE_COLLATIONS)
 	{
@@ -1714,7 +1714,7 @@ domain_compare_collation (DB_TYPE type, const DOMAIN_COMPARE_KEY * lhs, const DO
 }
 
 /*
- * domain_compute_comparison () - the comparison develop's tp_value_compare_with_error makes between a value of each
+ * domain_compute_comparison () - the comparison tp_value_compare_with_error makes between a value of each
  *   key, resolved before any row: the type pair comparison table's cells, and a comparison of keys the table has no row
  *   for (domain_resolve_comparison)
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY when a target domain cannot be cached
@@ -1723,7 +1723,8 @@ domain_compare_collation (DB_TYPE type, const DOMAIN_COMPARE_KEY * lhs, const DO
  * converts the string first and the other side only after it), the target a string or an ENUM keeps its codeset and
  * collation in, the collation rule of its tail (equal collations, the ENUM's, LANG_RT_COMMON_COLL on one codeset,
  * otherwise -1), and the type whose cmpval compares. A NULL key (a side whose values are NULL) and an OBJECT key keep
- * develop's comparison: NULL answers before any coercion, and the server holds an object as its OID.
+ * tp_value_compare_with_error on the values: NULL answers before any coercion, and the server holds an object as its
+ * OID.
  */
 static int
 domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result)
@@ -1745,7 +1746,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
 
   if (lhs->type == DB_TYPE_NULL || rhs->type == DB_TYPE_NULL)
     {
-      /* its value is NULL, and develop's comparison answers NULL before it counts or coerces */
+      /* its value is NULL, and the comparison answers NULL before it counts or coerces */
       result->method = DOMAIN_COMPARE_VALUES;
       return NO_ERROR;
     }
@@ -1830,7 +1831,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
       result->collation = domain_compare_collation (after[0], key[0], key[1]);
     }
 
-  /* develop checks the collations of the coerced values: a conversion implicit coercion refuses fails before that,
+  /* the collations are checked on the coerced values: a conversion implicit coercion refuses fails before that,
    * into a string type too (its outcome, not -1150) */
   bool refused = false;
   for (int side = 0; side < 2; side++)
@@ -1922,7 +1923,7 @@ domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAI
 
   if (lhs->type == DB_TYPE_NULL || rhs->type == DB_TYPE_NULL)
     {
-      /* its value is NULL, and develop's comparison answers NULL first */
+      /* its value is NULL, and the comparison answers NULL first */
       result->method = DOMAIN_COMPARE_VALUES;
       return;
     }
@@ -2216,8 +2217,8 @@ domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, i
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
   if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))
     {
-      /* one type without a collation, a homogeneous collection's elements: develop compares them as they are, and
-       * resolves nothing */
+      /* one type without a collation, a homogeneous collection's elements: tp_value_compare_with_error compares them
+       * as they are, and resolves nothing */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
   if (can_compare != NULL)
@@ -2237,7 +2238,7 @@ domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, i
   domain_compare_key_of_value (value2, &key[1]);
   if (key[0].type == key[1].type && key[0].collation == key[1].collation)
     {
-      /* one type and one collation: develop compares them as they are, and resolves nothing */
+      /* one type and one collation: tp_value_compare_with_error compares them as they are, and resolves nothing */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
   const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();
@@ -2246,38 +2247,38 @@ domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, i
   if (row < 0 || column < 0)
     {
       /* every value of an element type has a key the table covers: the table is missing only when it could not be
-       * made (no memory), and develop's comparison answers */
+       * made (no memory), and tp_value_compare_with_error answers */
       assert (pairs == NULL);
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
   const DOMAIN_COMPARE *compare = &pairs->pool[pairs->entry[do_coercion ? 1 : 0][row * pairs->n_keys + column]];
   if (compare->method == DOMAIN_COMPARE_OBJECT)
     {
-      /* an object side: develop's comparison, which meets OIDs on the server */
+      /* an object side: tp_value_compare_with_error, which meets OIDs on the server */
       return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
     }
   const DB_VALUE_COMPARE_RESULT result = domain_compare_values (compare, value1, value2, total_order, can_compare);
 #if !defined (NDEBUG)
   {
-    /* debug cross-check (optdebug): develop's comparison of the same values gives the table's result, comparability and
-     * error */
+    /* debug cross-check (optdebug): tp_value_compare_with_error on the same values gives the table's result,
+     * comparability and error */
     const bool comparable = can_compare != NULL ? *can_compare : true;
     const int error = comparable ? NO_ERROR : er_errid ();
-    bool develop_comparable = true;
-    bool *const develop_comparable_p = can_compare != NULL ? &develop_comparable : NULL;
+    bool expected_comparable = true;
+    bool *const expected_comparable_p = can_compare != NULL ? &expected_comparable : NULL;
     er_stack_push ();
-    const DB_VALUE_COMPARE_RESULT develop =
-      tp_value_compare_with_error (value1, value2, do_coercion, total_order, develop_comparable_p);
-    const int develop_error = develop_comparable ? NO_ERROR : er_errid ();
+    const DB_VALUE_COMPARE_RESULT expected =
+      tp_value_compare_with_error (value1, value2, do_coercion, total_order, expected_comparable_p);
+    const int expected_error = expected_comparable ? NO_ERROR : er_errid ();
     er_stack_pop ();
-    if (develop != result || develop_comparable != comparable || develop_error != error)
+    if (expected != result || expected_comparable != comparable || expected_error != error)
       {
 	fprintf (stderr, "key pair comparison: types %d/%d collations %d/%d coercion=%d kernel=%d result=%d/%d "
 		 "comparable=%d/%d error=%d/%d\n", (int) key[0].type, (int) key[1].type, key[0].collation,
-		 key[1].collation, do_coercion, (int) compare->method, (int) result, (int) develop, (int) comparable,
-		 (int) develop_comparable, error, develop_error);
+		 key[1].collation, do_coercion, (int) compare->method, (int) result, (int) expected, (int) comparable,
+		 (int) expected_comparable, error, expected_error);
       }
-    assert (develop == result && develop_comparable == comparable && develop_error == error);
+    assert (expected == result && expected_comparable == comparable && expected_error == error);
   }
 #endif
   return result;
@@ -2309,7 +2310,7 @@ domain_search_key_compare (DOMAIN_SEARCH_KEYS keys, int column, DB_VALUE * value
       const DOMAIN_COMPARE *compare = &pairs->pool[pairs->entry[1][index[0] * pairs->n_keys + index[1]]];
       if (compare->method == DOMAIN_COMPARE_OBJECT)
 	{
-	  /* an object side: develop's comparison, which meets OIDs on the server */
+	  /* an object side: tp_value_compare_with_error, which meets OIDs on the server */
 	  return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
 	}
       return domain_compare_values (compare, value1, value2, total_order, can_compare);

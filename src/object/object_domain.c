@@ -5472,8 +5472,8 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
    */
   db_value_domain_init (target, desired_type, desired_domain->precision, desired_domain->scale);
 
-  /* develop's strict coercion converts no ENUM or JSON value; a comparison's converters do, as develop's
-   * tp_value_compare did */
+  /* a strict coercion converts no ENUM or JSON value; a comparison's converters do, as tp_value_compare's coercion
+   * does */
   if (original_type == DB_TYPE_ENUMERATION || original_type == DB_TYPE_JSON)
     {
       err = ER_FAILED;
@@ -5482,7 +5482,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
     {
       TP_VALUE_CONVERTER converter = tp_value_find_converter (original_type, desired_domain, DOMAIN_CONVERT_COMPARE);
 
-      /* the same type with nothing to convert reaches here for src == dest, which develop refused too */
+      /* the same type with nothing to convert reaches here for src == dest, and is refused */
       if (converter == NULL || converter (src, target, desired_domain, &conversion_error) != DOMAIN_COMPATIBLE)
 	{
 	  err = ER_FAILED;
@@ -5819,8 +5819,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 
   if ((original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR) && desired_type == DB_TYPE_NUMERIC)
     {
-      /* The cast parses the string itself: a parse overflow sets its error and is DOMAIN_ERROR, as develop's cast was
-       * (the converter returns DOMAIN_OVERFLOW). The NUMERIC it parsed fits the target through the converter. */
+      /* The cast parses the string itself, so that a parse overflow sets its error and is DOMAIN_ERROR (the converter
+       * returns DOMAIN_OVERFLOW). The NUMERIC it parsed fits the target through the converter. */
       DB_VALUE number;
 
       if (tp_atonumeric (src, &number) != NO_ERROR)
@@ -5884,7 +5884,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  && original_type != DB_TYPE_VARCHAR && original_type != DB_TYPE_ENUMERATION && original_type != DB_TYPE_BIT
 	  && original_type != DB_TYPE_VARBIT && original_type != DB_TYPE_BLOB)
 	{
-	  /* develop's cast coerced any other source as a bit string, which sets its error */
+	  /* any other source is coerced as a bit string for the error that coercion sets */
 	  (void) db_bit_string_coerce (src, target, &data_stat);
 	  status = DOMAIN_INCOMPATIBLE;
 	}

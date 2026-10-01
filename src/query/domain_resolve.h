@@ -291,7 +291,7 @@ extern const DB_VALUE *qexec_convert_execution_temporary (THREAD_ENTRY * thread_
  *   side, an arithmetic operand or the value a SUM or AVG adds that is a constant (the execution's scope) or a
  *   correlated value (its block's scope)
  *   return: the converted value; NULL when the row converts it - the scope was not entered, or the conversion failed
- *	     (develop's outcome follows from the row's own)
+ *	     (the outcome follows from the row's own conversion)
  *   temporary(in): 1 + its domain_execution.temporaries index (a plan item's, a resolved comparison's or an accumulator
  *	     domain's), not 0
  *   conv(in), target(in): the converter the row would run, and its target: the execution's, the same at every read
@@ -329,9 +329,9 @@ inline const DB_VALUE *
 REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
 {
   assert (vd->xasl_state->resolved_domain.frozen);
-  assert (regu->domain_plan != NULL && regu->domain_plan->ref >= 0);
-  assert (regu->domain_plan->ref < vd->xasl_state->resolved_domain.n_vals);
-  return vd->dbval_ptr + regu->domain_plan->ref;
+  assert (regu->plan_item != NULL && regu->plan_item->ref >= 0);
+  assert (regu->plan_item->ref < vd->xasl_state->resolved_domain.n_vals);
+  return vd->dbval_ptr + regu->plan_item->ref;
 }
 
 extern int qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state);

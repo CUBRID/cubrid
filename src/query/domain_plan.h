@@ -51,7 +51,7 @@ enum DOMAIN_PLAN_FLAGS
 						 * resolve_domains from its operands' resolved domains */
   DOMAIN_PLAN_VALUE_ARGUMENT = 0x200,	/* a MEDIAN / PERCENTILE whose argument carries a value (a literal, a bind, a
 					 * session variable read) through value pointers and list positions: its first
-					 * value gives its value-dependent argument type as develop's does */
+					 * value gives its value-dependent argument type */
   DOMAIN_PLAN_VARIABLE = 0x400,	/* the node's compiled domain is variable - a VARIABLE type or a collation its values
 				 * give: the domain an execution gives it is its execution domain, not the node's field;
 				 * a list position's regu */
@@ -62,8 +62,8 @@ enum DOMAIN_PLAN_FLAGS
 						 * compiled one, the resolve_domains resolves its operands' operand
 						 * coercion from their resolved domains */
   DOMAIN_PLAN_LIST_BIND = 0x2000	/* a bind the compiler typed that an output list writes: resolve_domains
-					 * converts a value of another type into the column's domain, as develop's tuple
-					 * write did */
+					 * converts a value of another type into the column's domain, as the tuple
+					 * write would */
 };
 
 struct DOMAIN_COMPARE_PLAN;
@@ -82,7 +82,7 @@ struct domain_plan_item
   {
     /* FIELD, NULLIF, LEAST, GREATEST: the comparisons the node makes, as the load or resolve_domains resolved them -
      * [0] the left operand (FIELD: the third against the left), [1] FIELD's third against the right; NULL otherwise.
-     * The node carries only its item, so ARITH_TYPE keeps develop's size. */
+     * The node carries only its item, so ARITH_TYPE keeps its size. */
     const DOMAIN_COMPARE_PLAN **compares;
     /* T_ADD, T_SUB, T_MUL, T_DIV, and a SUM or AVG ([1]: the value it adds): 1 + the domain_execution.temporaries
      * index of an operand fixed for a scope - a constant for the execution, a correlated value for its block's scan -
@@ -121,7 +121,7 @@ struct DOMAIN_LATE_BIND_LINK
 				 * other operands are the branches in order */
   bool after_constants;		/* resolve_domains resolves the node in the constant expression step, once the constant
 				 * expressions it reads were evaluated: a common value folds a constant operand's value
-				 * domain as develop does, and a node above one reads its resolution */
+				 * domain, and a node above one reads its resolution */
   const TP_DOMAIN *elt_index_cast;	/* ELT: the domain the compiler casts that index to (BIGINT for an index of
 					 * another type, func_type.cpp); NULL: the index as it is */
 };
@@ -145,14 +145,13 @@ struct DOMAIN_COMPARE_PLAN
   bool after_constants;		/* a side is a constant expression: resolve_domains resolves the comparison once it
 				 * evaluated the subtree, from the subtree's value (a compiled domain need not describe
 				 * it) */
-  bool predicate;		/* a comparison term's or an ALL/SOME term's resolved comparison: develop's coercion of
-				 * a constant side that fails is its error at every row the term compares, which
-				 * resolve_domains raises before any row; a resolved comparison outside a term answers
-				 * by rank there, as develop's */
-  bool key_range;		/* a term of an index scan's key range (where_range): develop meets the constant that
-				 * fails in the B-tree search, which compares the search key with the index key - its
-				 * -181 names the constant's type first. resolve_domains raises that error before any
-				 * row and keeps the order, so the message stays develop's
+  bool predicate;		/* a comparison term's or an ALL/SOME term's resolved comparison: a constant side whose
+				 * coercion fails fails every row the term compares, so resolve_domains raises the
+				 * error before any row; a resolved comparison outside a term answers by rank there */
+  bool key_range;		/* a term of an index scan's key range (where_range): a constant that fails is met in
+				 * the B-tree search, which compares the search key with the index key - its -181
+				 * names the constant's type first. resolve_domains raises that error before any row
+				 * and keeps the order, so the message names the types as the search does
 				 * (qexec_compare_constant_failed) */
   bool bind[2];			/* constant side i is a bind: its value is the client's (vals[ref]), not a constant
 				 * expression the constant expression step evaluates */
@@ -163,15 +162,15 @@ struct DOMAIN_COMPARE_PLAN
 };
 
 /*
- * A branch develop's evaluation takes by a condition that is a constant. A failure of resolve_domains' own
+ * A branch the row evaluation takes by a condition that is a constant. A failure of resolve_domains' own
  * work on a constant - its computation, a term's conversion of it, a key constant, a MEDIAN value - is resolve_domains'
- * error only when the constant conditions around it let some row reach it: where no data reaches it, develop never
- * raised it, and the answer stays develop's. A branch whose condition a row gives
+ * error only when the constant conditions around it let some row reach it: where no data reaches it, no row raises
+ * it, and the answer stays the rows' answer. A branch whose condition a row gives
  * is no constant branch: any row may take it.
  *
- * Why: resolve_domains works on every constant before any row, while develop worked on one only when a row's
- * evaluation reached it (an arm whose constant condition is false, a term no row reaches). Raising at once would add
- * errors develop never gives, so the failure is kept as a deferred
+ * Why: resolve_domains works on every constant before any row, while the rows work on one only when a row's
+ * evaluation reaches it (an arm whose constant condition is false, a term no row reaches). Raising at once would add
+ * errors no row raises, so the failure is kept as a deferred
  * constant error (DOMAIN_DEFERRED_ERROR) and raised at the end of resolve_domains only when the branches around it
  * let a row reach it (qexec_raise_deferred_errors).
  */
@@ -356,7 +355,7 @@ struct domain_plan
   DOMAIN_PLAN_ITEM **late_bind_nodes;	/* producers first: every operand entry is resolved before its consumer */
   DOMAIN_LATE_BIND_LINK *late_bind_links;	/* parallel to late_bind_nodes */
   int *resolved_late_bind_node;	/* [n_resolved] the late_bind_nodes index resolving the entry; -1 for a bind */
-  bool *resolved_non_cacheable;	/* [n_resolved] a resolution's sources include one develop's fetch never caches, a
+  bool *resolved_non_cacheable;	/* [n_resolved] a resolution's sources include one a fetch never caches, a
 				 * session variable read among them: a resolution over a read waits for
 				 * qexec_resolve_session_variables (resolved_session_dependent) */
   bool *resolved_session_dependent;	/* [n_resolved] a resolution rests on a session variable read, a read itself
@@ -408,7 +407,7 @@ const int DOMAIN_SCOPE_EXECUTION = 0;
 
 /*
  * A value converted once for a scope: the row converts it only when the scope has not been
- * entered or the conversion failed, and develop's outcome follows from the row's own conversion. A scope's generation
+ * entered or the conversion failed, and the outcome follows from the row's own conversion. A scope's generation
  * grows at each entry, so a value converted in an earlier one is not read. The first read in an generation converts it,
  * every other read takes converted after one comparison of generations (qexec_execution_temporary).
  */
@@ -416,7 +415,7 @@ struct DOMAIN_EXECUTION_TEMPORARY
 {
   unsigned long long generation;	/* the scope's generation it was converted in; 0: never */
   const DB_VALUE *converted;	/* what the rows of that generation read: value, or NULL - never converted, or the
-				 * conversion failed: the row converts, as develop's did */
+				 * conversion failed: the row converts */
   int scope;			/* its scope: plan->temporary_scope's */
   DB_VALUE value;		/* the converted value, the owner's */
 #if !defined (NDEBUG)
@@ -482,9 +481,9 @@ struct RESOLVED_DOMAIN_TABLE
  */
 struct DOMAIN_EXECUTION_STATE
 {
-  /* [n_node_domains] the domain each node with an execution domain took in this execution, where develop wrote it into
-   * the plan node and the XASL clear restored it: a resolved domain read at the node's first computation or at its
-   * consumer's setup; NULL until taken. The three node arrays are part of resolved_domain.vals' block. */
+  /* [n_node_domains] the domain each node with an execution domain took in this execution, kept here and not in the
+   * plan node (which the XASL clear would have to restore): a resolved domain read at the node's first computation or
+   * at its consumer's setup; NULL until taken. The three node arrays are part of resolved_domain.vals' block. */
   const TP_DOMAIN **node_domains;
   const TP_DOMAIN **interpolation_list_domains;	/* [n_interpolation_list_domains] the domain a MEDIAN / PERCENTILE list
 						 * holds and its key sorts (qexec_setup_interpolation_list); NULL */

@@ -23140,8 +23140,8 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
  *
  * The scan chose the comparison when it opened (BTID_INT.search_compare): a search whose values all have their
  * index columns' types and collations compares a single-column key by the column's cmpval and a multi-column key
- * column by column, without develop's type and collation checks at each comparison; optdebug still makes them and
- * checks the answer.
+ * column by column, without btree_compare_key_with's type and collation checks at each comparison; optdebug still
+ * makes them and checks the answer.
  */
 DB_VALUE_COMPARE_RESULT
 btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key2, int *start_colp)
@@ -23189,7 +23189,7 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
     }
 
 #if !defined (NDEBUG)
-  /* develop's checks with the scan's search keys give the same answer: else the scan chose wrongly */
+  /* btree_compare_key_with's checks with the scan's search keys give the same answer: else the scan chose wrongly */
   assert (c == btree_compare_key_with (key1, key2, btid->key_type, btid->search_keys, 1, 1,
 				       start_colp != NULL ? &check_col : NULL));
   assert (start_colp == NULL || check_col == *start_colp);
@@ -23204,8 +23204,8 @@ btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key
  * DOMAIN_SEARCH_KEYS_NONE is a B-tree search outside a query plan, whose keys are the index's own: a column whose
  * values do not compare as they are compares by value. An index scan's search keys compare such columns as its key
  * plan says; one the plan has no comparison for fails the unresolved-domain check (execution). Inlined into
- * btree_compare_key and btree_compare_search_key: a key comparison is one call, as develop's btree_compare_key is,
- * and a single-column key reads search_keys only for values that do not compare as they are.
+ * btree_compare_key and btree_compare_search_key: a key comparison stays one call, and a single-column key reads
+ * search_keys only for values that do not compare as they are.
  */
 STATIC_INLINE DB_VALUE_COMPARE_RESULT
 btree_compare_key_with (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,

@@ -1081,7 +1081,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				      ? qexec_execution_temporary (thread_p, val_desc_p, acc_dom->temporary,
 					  coercion->conv[1], coercion->operand_domain[1], peek_val) : NULL;
 	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-		  agg_p->function, qexec_get_node_domain (val_desc_p, agg_p->domain, agg_p->domain_plan),
+		  agg_p->function, qexec_get_node_domain (val_desc_p, agg_p->domain, agg_p->plan_item),
 		  peek_val, false, temporary);
 	  if (error != NO_ERROR)
 	    {
@@ -1094,8 +1094,8 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
       /* the function's domain and operand type in this execution: its setup's, or what its interpolation took at an
        * earlier group's end. The rows never change them, so only the paths that use them read them. */
-      TP_DOMAIN *agg_domain = qexec_get_node_domain (val_desc_p, agg_p->domain, agg_p->domain_plan);
-      const DB_TYPE agg_operand_type = qexec_node_operand_type (val_desc_p, agg_p->opr_dbtype, agg_p->domain_plan);
+      TP_DOMAIN *agg_domain = qexec_get_node_domain (val_desc_p, agg_p->domain, agg_p->plan_item);
+      const DB_TYPE agg_operand_type = qexec_node_operand_type (val_desc_p, agg_p->opr_dbtype, agg_p->plan_item);
 
       /* fetch operands value. aggregate regulator variable should only contain constants */
       REGU_VARIABLE_LIST operand = NULL;
@@ -1348,7 +1348,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			  && TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_TIME)
 			{
 			  qdata_clear_value_array (stack_values, n_values);
-			  return qexec_domain_unresolved (val_desc_p, agg_p->domain_plan, agg_domain);
+			  return qexec_domain_unresolved (val_desc_p, agg_p->plan_item, agg_domain);
 			}
 		      tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (agg_domain));
 		      status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
@@ -1594,7 +1594,7 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 	case PT_COUNT:
 	  /* add current value to result */
 	  error = qdata_add_dbval (agg_p->accumulator.value, &result, &result,
-				   qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan));
+				   qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item));
 	  pr_clear_value (agg_p->accumulator.value);
 	  break;
 	case PT_COUNT_STAR:
@@ -1785,7 +1785,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
     {
       TP_DOMAIN *tmp_domain_ptr = NULL;
       /* the function's domain in this execution */
-      TP_DOMAIN *agg_domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+      TP_DOMAIN *agg_domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
       /* a SUM / AVG over distinct values holds the first one as it is until it adds another */
       const TP_DOMAIN *raw_domain = NULL;
 
@@ -1870,7 +1870,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      if (sort_list != NULL)
 		{
 		  TP_DOMAIN *key_domain = QPROC_IS_INTERPOLATION_FUNC (agg_p)
-					  ? qexec_interpolation_list_domain (vd, sort_list->pos_descr.dom, agg_p->domain_plan)
+					  ? qexec_interpolation_list_domain (vd, sort_list->pos_descr.dom, agg_p->plan_item)
 					  : sort_list->pos_descr.dom;
 		  if (domain_is_variable (key_domain))
 		    {
@@ -1961,9 +1961,9 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		    }
 		  else
 		    {
-		      /* develop took the first distinct value as it is, added the second to it and every later one to
-		       * the sum's domain, each with the operand coercion its qdata_add_dbval took by the values' types;
-		       * a SUM or an AVG plans both from the list's column domain */
+		      /* the first distinct value is taken as it is, the second added to it and every later one to the
+		       * sum's domain, each with the operand coercion of the values' types: a SUM or an AVG plans both
+		       * from the list's column domain */
 		      const bool sum_or_avg = agg_p->function == PT_SUM || agg_p->function == PT_AVG;
 		      const TP_DOMAIN *column = list_id_p->type_list.domp[0];
 		      const TP_DOMAIN *sum_domain = agg_p->function == PT_AVG && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
@@ -2205,8 +2205,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-	  /* compute AVG(X) = SUM(X)/COUNT(X), after the operand coercion develop's qdata_divide_dbval took by the sum's
-	   * type - a distinct string held as it is - resolved from the sum's domain */
+	  /* compute AVG(X) = SUM(X)/COUNT(X), with the division's operand coercion for the sum's type - a distinct string
+	   * held as it is - resolved from the sum's domain */
 	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
 	  const TP_DOMAIN *sum_domain = raw_domain != NULL ? raw_domain : agg_p->accumulator_domain.value_dom;
@@ -2432,7 +2432,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
 	    }
 
 	  /* Note: we must cast the const value to the same domain as the compared field in the order by clause */
-	  dom = qexec_get_node_domain (val_desc_p, regu_tmp_node->value.domain, regu_tmp_node->value.domain_plan);
+	  dom = qexec_get_node_domain (val_desc_p, regu_tmp_node->value.domain, regu_tmp_node->value.plan_item);
 
 	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_node->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 	    {
@@ -2516,7 +2516,7 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
 	  pr_type_p = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
 	  cmp = pr_type_p->cmpval (val_node, info_p->const_array[i], 1, 0, NULL,
 				   qexec_get_node_domain (val_desc_p, regu_var_node->value.domain,
-				       regu_var_node->value.domain_plan)->collation_id);
+				       regu_var_node->value.plan_item)->collation_id);
 
 	  assert (cmp != DB_UNK);
 	}
@@ -3377,8 +3377,8 @@ qdata_aggregate_list_domain (const VAL_DESCR *vd, const cubxasl::aggregate_list_
 {
   /* the domains in this execution: the setup's, in the execution domains */
   return QPROC_IS_INTERPOLATION_FUNC (agg_p) && agg_p->sort_list != NULL
-	 ? qexec_interpolation_list_domain (vd, agg_p->sort_list->pos_descr.dom, agg_p->domain_plan)
-	 : qexec_get_node_domain (vd, agg_p->operands->value.domain, agg_p->operands->value.domain_plan);
+	 ? qexec_interpolation_list_domain (vd, agg_p->sort_list->pos_descr.dom, agg_p->plan_item)
+	 : qexec_get_node_domain (vd, agg_p->operands->value.domain, agg_p->operands->value.plan_item);
 }
 
 /*
@@ -3406,19 +3406,19 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
     }
 
   /* the function's domain in this execution */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
 
   const DB_TYPE domain_type = TP_DOMAIN_TYPE (domain);
   if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL
       || ! (TP_IS_DATE_OR_TIME_TYPE (domain_type)
 	    || (agg_p->function == PT_PERCENTILE_DISC ? TP_IS_NUMERIC_TYPE (domain_type) : domain_type == DB_TYPE_DOUBLE)))
     {
-      return qexec_domain_unresolved (vd, agg_p->domain_plan, domain);
+      return qexec_domain_unresolved (vd, agg_p->plan_item, domain);
     }
 
   if (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) != domain_type)
     {
-      return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->list_id->type_list.domp[0]);
+      return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->list_id->type_list.domp[0]);
     }
 
   if (DB_VALUE_DOMAIN_TYPE (dbval) != domain_type)
@@ -3443,7 +3443,7 @@ int
 qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue)
 {
   /* the function's domain in this execution */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
   int max_allowed_size;
@@ -3513,7 +3513,7 @@ int
 qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue)
 {
   /* the function's domain in this execution */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
   TP_DOMAIN *result_domain;
   DB_TYPE agg_type;
   int max_allowed_size;
@@ -3630,7 +3630,7 @@ qdata_aggregate_interpolation (cubthread::entry *thread_p, const VAL_DESCR *vd, 
 
   /* the function takes the domain the interpolation gives, and its type as the operand type, as its execution
    * domains */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
   error =
 	  qdata_get_interpolation_function_result (thread_p, scan_id, scan_id->list_id.type_list.domp[0], 0, row_num_d,
 	      f_row_num_d, c_row_num_d, agg_p->accumulator.value, &domain,
@@ -3638,8 +3638,8 @@ qdata_aggregate_interpolation (cubthread::entry *thread_p, const VAL_DESCR *vd, 
 
   if (error == NO_ERROR)
     {
-      qexec_set_node_domain (vd, agg_p->domain_plan, agg_p->domain, domain);
-      qexec_take_operand_type (vd, agg_p->domain_plan, agg_p->opr_dbtype, TP_DOMAIN_TYPE (domain));
+      qexec_set_node_domain (vd, agg_p->plan_item, agg_p->domain, domain);
+      qexec_take_operand_type (vd, agg_p->plan_item, agg_p->opr_dbtype, TP_DOMAIN_TYPE (domain));
     }
 
   return error;

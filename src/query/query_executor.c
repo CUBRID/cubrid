@@ -5034,7 +5034,7 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 							    &agg_list->accumulator_domain, agg_list->function,
 							    qexec_get_node_domain (&state->xasl_state->vd,
 										   agg_list->domain,
-										   agg_list->domain_plan),
+										   agg_list->plan_item),
 							    &context->temp_part_value->accumulators[i]);
 	      if (rc != NO_ERROR)
 		{
@@ -5322,7 +5322,7 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 			  while (ru_agg_list)
 			    {
 			      TP_DOMAIN *ru_domain = qexec_get_node_domain (&info->xasl_state->vd, ru_agg_list->domain,
-									    ru_agg_list->domain_plan);
+									    ru_agg_list->plan_item);
 			      if (qdata_aggregate_accumulator_to_accumulator (thread_p, &ru_agg_list->accumulator,
 									      &ru_agg_list->accumulator_domain,
 									      ru_agg_list->function, ru_domain,
@@ -21160,7 +21160,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 
 	  if (qexec_get_tuple_column_value (&tuple_rec, i, &val,
 					    qexec_get_node_domain (&xasl_state->vd, regu_list->value.domain,
-								   regu_list->value.domain_plan)) != NO_ERROR)
+								   regu_list->value.plan_item)) != NO_ERROR)
 	    {
 	      gbstate.state = ER_FAILED;
 	      goto exit_on_error;
@@ -21969,8 +21969,8 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 static TP_DOMAIN *
 qexec_analytic_value_domain (const VAL_DESCR * vd, const ANALYTIC_TYPE * func_p)
 {
-  TP_DOMAIN *compiled = qexec_get_node_domain (vd, func_p->domain, func_p->domain_plan);
-  const TP_DOMAIN *domain = qexec_consumer_domain (vd, compiled, func_p->domain_plan);
+  TP_DOMAIN *compiled = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
+  const TP_DOMAIN *domain = qexec_consumer_domain (vd, compiled, func_p->plan_item);
   return domain != NULL ? (TP_DOMAIN *) domain : compiled;
 }
 
@@ -22115,12 +22115,12 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
  * MEDIAN and PERCENTILE sort their operand after their PARTITION BY keys, one key the interpolation functions of a
  * state share (pt_metadomains_compatible). A string operand sorts in the function's type, the type its values
  * interpolate in: the compiled function domain (a string column or expression is DOUBLE), or the resolved domain - the
- * type it gave a value argument, DOUBLE for a late-binding string. develop took the type from the first pair of values
- * the sort compared (qfile_compare_with_interpolation_domain). A value argument resolve_domains could not type has no
- * type, and the sort rejects its values as develop's first value was rejected. A type over a session variable read is
- * the one the variable's value gave when the execution started, for the whole statement: a value of another type
- * converts to it or fails. Any other key of the state - another function's ORDER BY that shares the sort - compares in
- * its own domain: develop gave it the first value's type.
+ * type it gave a value argument, DOUBLE for a late-binding string - known before the first pair of values the sort
+ * compares (qfile_compare_with_interpolation_domain). A value argument resolve_domains could not type has no type,
+ * and the sort rejects its values as the typing of the first value does. A type over a session variable read is the
+ * one the variable's value gave when the execution started, for the whole statement: a value of another type converts
+ * to it or fails. Any other key of the state - another function's ORDER BY that shares the sort - compares in its own
+ * domain, the type its first value gives.
  */
 static void
 qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list, const VAL_DESCR * vd)
@@ -22134,7 +22134,7 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
 	}
       if (func_p->sort_prefix_size >= analytic_state->key_info.nkeys)
 	{
-	  /* no sort keys to set up (develop's loop stopped at nkeys) */
+	  /* no sort keys to set up at or past nkeys */
 	  return;
 	}
       SUBKEY_INFO *subkey = &analytic_state->key_info.key[func_p->sort_prefix_size];
@@ -22142,7 +22142,7 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
 	{
 	  return;
 	}
-      const DOMAIN_PLAN_ITEM *item = func_p->domain_plan;
+      const DOMAIN_PLAN_ITEM *item = func_p->plan_item;
       const TP_DOMAIN *fixed = item != NULL ? item->fixed.domain : NULL;
       const TP_DOMAIN *resolved_domain = fixed != NULL && TP_DOMAIN_TYPE (fixed) != DB_TYPE_VARIABLE
 	? fixed : qexec_resolved_domain (vd, item);
@@ -22291,18 +22291,18 @@ resolve_domain:
 	{
 	  continue;
 	}
-      if (!qexec_position_domain_is_variable (&xasl_state->vd, pos_descr->domain_plan))
+      if (!qexec_position_domain_is_variable (&xasl_state->vd, pos_descr->plan_item))
 	{
 	  continue;
 	}
-      const TP_DOMAIN *resolved = qexec_consumer_domain (&xasl_state->vd, NULL, regu_list->value.domain_plan);
+      const TP_DOMAIN *resolved = qexec_consumer_domain (&xasl_state->vd, NULL, regu_list->value.plan_item);
       if (resolved == NULL)
 	{
-	  (void) qexec_domain_unresolved (&xasl_state->vd, regu_list->value.domain_plan, pos_descr->dom);
+	  (void) qexec_domain_unresolved (&xasl_state->vd, regu_list->value.plan_item, pos_descr->dom);
 	  return NULL;
 	}
       /* the position's value descriptor shares the regu's item and execution domain: one domain for both */
-      qexec_set_node_domain (&xasl_state->vd, regu_list->value.domain_plan, NULL, resolved);
+      qexec_set_node_domain (&xasl_state->vd, regu_list->value.plan_item, NULL, resolved);
     }
 
   return analytic_state;
@@ -23179,7 +23179,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
   if (put_default)
     {
       /* coerce value to default domain */
-      TP_DOMAIN *domain = qexec_get_node_domain (func_state->vd, func_p->domain, func_p->domain_plan);
+      TP_DOMAIN *domain = qexec_get_node_domain (func_state->vd, func_p->domain, func_p->plan_item);
       dom_status = tp_value_coerce (default_val_p, &default_val, domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -23333,13 +23333,13 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 	}
 
       /* coerce accordingly: the function takes the domain the coercion gives as its execution domain */
-      TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->domain_plan);
+      TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
       error = qdata_apply_interpolation_function_coercion (func_p->value, &domain, func_p->value, func_p->function);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      qexec_set_node_domain (vd, func_p->domain_plan, func_p->domain, domain);
+      qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, domain);
     }
   else
     {
@@ -23366,7 +23366,7 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 	}
 
       pr_clear_value (func_p->value);
-      TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->domain_plan);
+      TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
       error =
 	qdata_interpolation_function_values (&f_value, &c_value, row_num_d, f_row_num_d, c_row_num_d, &domain,
 					     func_p->value, func_p->function);
@@ -23374,7 +23374,7 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 	{
 	  return error;
 	}
-      qexec_set_node_domain (vd, func_p->domain_plan, func_p->domain, domain);
+      qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, domain);
     }
 
   /* all ok */
@@ -23454,7 +23454,7 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
 
   /* deserialize value: the function's domain in this execution, which its first binding took */
   TP_DOMAIN *domain = qexec_get_node_domain (func_state->vd, func_state->func_p->domain,
-					     func_state->func_p->domain_plan);
+					     func_state->func_p->plan_item);
   rc = qfile_slot_read_column_value (&func_state->value_tplrec, 1, domain, func_state->func_p->value, false, &is_null);
   if (rc != NO_ERROR)
     {
@@ -26717,10 +26717,10 @@ qexec_topn_sort_domains (const VAL_DESCR * vd, SORT_LIST * sort_items, const TP_
       const TP_DOMAIN *domain = key->pos_descr.dom;
       if (domain_is_variable (domain))
 	{
-	  domain = qexec_plan_domain (vd, key->pos_descr.domain_plan);
+	  domain = qexec_plan_domain (vd, key->pos_descr.plan_item);
 	  if (domain == NULL)
 	    {
-	      domain = qexec_null_bind_domain (vd, key->pos_descr.domain_plan);
+	      domain = qexec_null_bind_domain (vd, key->pos_descr.plan_item);
 	    }
 	}
       domains[i] = domain;
@@ -26813,7 +26813,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
   var_list = xasl->outptr_list->valptrp;
   while (var_list)
     {
-      const TP_DOMAIN *var_domain = qexec_get_node_domain (vd, var_list->value.domain, var_list->value.domain_plan);
+      const TP_DOMAIN *var_domain = qexec_get_node_domain (vd, var_list->value.domain, var_list->value.plan_item);
       if (var_domain == NULL)
 	{
 	  /* probably an error but just abandon top-n */
@@ -27475,8 +27475,8 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
       if (op == R_LT)
 	{
-	  /* add 1 so we can use R_LE, after the operand coercion develop's qdata_subtract_dbval took by the bound's
-	   * type - a string as DOUBLE - resolved once for this execution's bound */
+	  /* add 1 so we can use R_LE, after the subtraction's operand coercion for the bound's type - a string as
+	   * DOUBLE - resolved once for this execution's bound */
 	  DB_VALUE one_val;
 	  db_make_int (&one_val, 1);
 	  const DOMAIN_OPERAND operands[2] = {
@@ -27486,7 +27486,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  domain_resolve_operand_coercion (T_SUB, operands, &operand_coercion);
 	  error =
 	    qdata_coerce_arith_operands (T_SUB, operand_coercion.conv, operand_coercion.operand_domain, val,
-					 &one_val, ubound, qexec_get_node_domain (vd, rhs->domain, rhs->domain_plan));
+					 &one_val, ubound, qexec_get_node_domain (vd, rhs->domain, rhs->plan_item));
 	}
       else
 	{
@@ -27740,7 +27740,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
     {
       assert (regu_list);
       proc->agg_hash_context->key_domains[i] =
-	qexec_get_node_domain (&xasl_state->vd, regu_list->value.domain, regu_list->value.domain_plan);
+	qexec_get_node_domain (&xasl_state->vd, regu_list->value.domain, regu_list->value.plan_item);
     }
 
   /*
@@ -27786,7 +27786,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   while (regu_list)
     {
       type_list.domp[value_count++] =
-	qexec_get_node_domain (&xasl_state->vd, regu_list->value.domain, regu_list->value.domain_plan);
+	qexec_get_node_domain (&xasl_state->vd, regu_list->value.domain, regu_list->value.plan_item);
       regu_list = regu_list->next;
     }
 

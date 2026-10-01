@@ -282,7 +282,7 @@ namespace cubxasl
     dest->flags = src->flags;
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
     /* the leader's plan item: immutable and alive until the leader retires its clone, after every worker */
-    dest->domain_plan = src->domain_plan;
+    dest->plan_item = src->plan_item;
     dest->vfetch_to = spawn (src->vfetch_to);
 
     /* TODO: unsupported */
@@ -404,7 +404,7 @@ namespace cubxasl
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
     /* the plan item carries the node's resolved comparisons, as a term's */
-    dest->domain_plan = src->domain_plan;
+    dest->plan_item = src->plan_item;
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
     dest->rightptr = spawn (src->rightptr);
@@ -570,7 +570,7 @@ namespace cubxasl
       }
 
     dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
-    dest->domain_plan = src->domain_plan;
+    dest->plan_item = src->plan_item;
     dest->pos_no = src->pos_no;
 
     return er_errid ();

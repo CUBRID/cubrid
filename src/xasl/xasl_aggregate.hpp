@@ -95,7 +95,7 @@ namespace cubxasl
   {
     aggregate_list_node *next;		/* next aggregate node */
     tp_domain *domain;		/* domain of the result */
-    domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
+    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     FUNC_CODE function;		/* aggregate function name */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     DB_TYPE opr_dbtype;		/* Operand values data type */

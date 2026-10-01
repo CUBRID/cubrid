@@ -122,9 +122,9 @@ enum DOMAIN_SEARCH_KEYS : unsigned char;
  * plan, made before any row (scan_index_search_compare). */
 enum BTREE_SEARCH_COMPARE
 {
-  BTREE_SEARCH_COMPARE_RESOLVED = 0,	/* develop's type and collation checks, then the key plan's comparison of a
-					 * value that does not compare as it is; a search outside a query plan:
-					 * develop's */
+  BTREE_SEARCH_COMPARE_RESOLVED = 0,	/* btree_compare_key_with's type and collation checks, then the key plan's
+					 * comparison of a value that does not compare as it is (by value outside a
+					 * query plan) */
   BTREE_SEARCH_COMPARE_DIRECT,	/* a single-column key whose values all have the index column's type and collation:
 				 * the column's cmpval */
   BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN	/* a multi-column key whose values all have their columns' types and

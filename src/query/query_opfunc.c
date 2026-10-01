@@ -2347,8 +2347,8 @@ qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domai
   return error;
 }
 
-/* develop's operand coercion failure of an operand (tp_value_auto_cast in qdata_*_dbval): the error names the value the
- * cast took - for an ENUM added to a string, its name, which develop cast to VARCHAR first */
+/* The error of an operand coercion that fails, as tp_value_auto_cast sets it: it names the value the cast took - for an
+ * ENUM added to a string, its name, which is cast to VARCHAR first */
 static int
 qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target)
 {
@@ -2375,9 +2375,8 @@ qdata_operand_coercion_type_holds (DB_TYPE value, DB_TYPE resolved)
 
 /*
  * qdata_assert_operand_coercion_resolved () - debug cross-check: the operand coercion a caller resolved for two values
- *   that are not NULL is the resolver's type rules over the values' own types - develop's, which qdata_*_dbval took by
- *   the values' types: the same target types, and the converter of the value's own type, CHAR and VARCHAR standing for
- *   each other (their converters read any string)
+ *   that are not NULL is the resolver's type rules over the values' own types: the same target types, and the
+ *   converter of the value's own type, CHAR and VARCHAR standing for each other (their converters read any string)
  */
 static void
 qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
@@ -2388,11 +2387,11 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
   const DOMAIN_OPERAND operands[2] = {
     {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, false}
   };
-  DOMAIN_OPERAND_COERCION develop;
-  domain_resolve_operand_coercion (opcode, operands, &develop);
+  DOMAIN_OPERAND_COERCION expected;
+  domain_resolve_operand_coercion (opcode, operands, &expected);
   for (int i = 0; i < 2; i++)
     {
-      if (conv[i] == NULL && develop.conv[i] == NULL)
+      if (conv[i] == NULL && expected.conv[i] == NULL)
 	{
 	  /* neither converts the value: its type is the operator's to take */
 	  continue;
@@ -2400,20 +2399,20 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (values[i]);
       const TP_DOMAIN *resolved = operand_domain[i];
       bool same = resolved != NULL
-	&& qdata_operand_coercion_type_holds (TP_DOMAIN_TYPE (develop.operand_domain[i]), TP_DOMAIN_TYPE (resolved));
-      if (same && conv[i] != develop.conv[i])
+	&& qdata_operand_coercion_type_holds (TP_DOMAIN_TYPE (expected.operand_domain[i]), TP_DOMAIN_TYPE (resolved));
+      if (same && conv[i] != expected.conv[i])
 	{
 	  const DB_TYPE sibling =
 	    type == DB_TYPE_CHAR ? DB_TYPE_VARCHAR : type == DB_TYPE_VARCHAR ? DB_TYPE_CHAR : type;
-	  same = sibling != type && conv[i] != NULL && develop.conv[i] != NULL
+	  same = sibling != type && conv[i] != NULL && expected.conv[i] != NULL
 	    && conv[i] == tp_value_find_converter (sibling, resolved, DOMAIN_CONVERT_ASSIGN);
 	}
       if (!same)
 	{
-	  fprintf (stderr, "planned pre-cast: opcode=%d operand=%d value=%d/%d planned=%d develop=%d\n",
+	  fprintf (stderr, "planned pre-cast: opcode=%d operand=%d value=%d/%d planned=%d expected=%d\n",
 		   (int) opcode, i, (int) DB_VALUE_DOMAIN_TYPE (values[0]), (int) DB_VALUE_DOMAIN_TYPE (values[1]),
 		   resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
-		   develop.operand_domain[i] != NULL ? (int) TP_DOMAIN_TYPE (develop.operand_domain[i]) : -1);
+		   expected.operand_domain[i] != NULL ? (int) TP_DOMAIN_TYPE (expected.operand_domain[i]) : -1);
 	}
       assert (same);
     }
@@ -2452,10 +2451,10 @@ qdata_assert_operands_coerced (OPERATOR_TYPE opcode, const DB_VALUE * dbval1_p, 
  *   temporaries(in): [2] an operand its scope converted once already: the operator takes it in place
  *	       of the conversion; NULL none
  *
- * Over two values that are not NULL, each operand the plan converts gets a value of its own, in develop's order - the
- * second operand first but for a subtraction - and a conversion that fails is develop's tp_value_auto_cast outcome:
- * NULL under return_null_on_function_errors, the error otherwise. A NULL operand converts nothing: develop's operators
- * returned before their operand coercion.
+ * Over two values that are not NULL, each operand the plan converts gets a value of its own, in this order - the
+ * second operand first but for a subtraction - and a conversion that fails has tp_value_auto_cast's outcome: NULL
+ * under return_null_on_function_errors, the error otherwise. A NULL operand converts nothing: an operator answers a
+ * NULL operand before any operand coercion.
  */
 int
 qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
@@ -6531,12 +6530,12 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
       if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
 	  /* the column regu's domain now: its execution domain once this execution gave it one */
-	  TP_DOMAIN *now = qexec_get_node_domain (vd, reg_var_p->value.domain, reg_var_p->value.domain_plan);
-	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, now, reg_var_p->value.domain_plan);
+	  TP_DOMAIN *now = qexec_get_node_domain (vd, reg_var_p->value.domain, reg_var_p->value.plan_item);
+	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, now, reg_var_p->value.plan_item);
 	  if (domain == NULL)
 	    {
 	      db_private_free_and_init (thread_p, type_list_p->domp);
-	      return qexec_domain_unresolved (vd, reg_var_p->value.domain_plan, reg_var_p->value.domain);
+	      return qexec_domain_unresolved (vd, reg_var_p->value.plan_item, reg_var_p->value.domain);
 	    }
 	  type_list_p->domp[i++] = (TP_DOMAIN *) domain;
 	}
@@ -6625,7 +6624,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
       assert (val_type != DB_TYPE_NULL);
 
       /* the column's domain in this execution: the one its fetch took, or its compiled one */
-      TP_DOMAIN *domain = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->domain_plan);
+      TP_DOMAIN *domain = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
       dom_type = TP_DOMAIN_TYPE (domain);
       if (dom_type != DB_TYPE_NULL)
 	{
@@ -6698,7 +6697,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
 
   result_p = regu_func_p->value.funcp->value;
   operand = regu_func_p->value.funcp->operand;
-  domain_p = qexec_get_node_domain (val_desc_p, regu_func_p->domain, regu_func_p->domain_plan);
+  domain_p = qexec_get_node_domain (val_desc_p, regu_func_p->domain, regu_func_p->plan_item);
   db_make_null (&dbval);
 
   if (stype == DB_TYPE_SET)
@@ -7081,7 +7080,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
       return ER_FAILED;
     }
 
-  domain_p = qexec_get_node_domain (val_desc_p, function_p->domain, function_p->domain_plan);
+  domain_p = qexec_get_node_domain (val_desc_p, function_p->domain, function_p->plan_item);
   list_id_p = operand->value.value.srlist_id->list_id;
   db_make_null (&dbval);
 
@@ -7282,7 +7281,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
   if (i < xptr->val_list->val_cnt)
     {
       if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p,
-					qexec_get_node_domain (vd, regu_p->domain, regu_p->domain_plan)) != NO_ERROR)
+					qexec_get_node_domain (vd, regu_p->domain, regu_p->plan_item)) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -7603,7 +7602,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	    {
 	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p,
 						qexec_get_node_domain (vd, regu_p->domain,
-								       regu_p->domain_plan)) != NO_ERROR)
+								       regu_p->plan_item)) != NO_ERROR)
 		{
 		  goto error;
 		}

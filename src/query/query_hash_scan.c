@@ -503,9 +503,9 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 
 /*
  * How one build key enters the hash table. Where a key pair's types differ (need_coerce_type), a build value is
- * hashed in its probe key's domain, so that the values the join finds equal hash alike. develop chose between copying
- * the value and coercing it at every row, from the value's type; the scan chooses once per open, before its first build
- * row, from the domain the plan gives the key's values, and the row copies or runs the converter it chose.
+ * hashed in its probe key's domain, so that the values the join finds equal hash alike. The scan chooses between
+ * copying the value and converting it once per open, before its first build row, from the domain the plan gives the
+ * key's values (not at every row from the value's type), and the row copies or runs the converter it chose.
  */
 enum hash_scan_key_rule
 {
@@ -515,7 +515,7 @@ enum hash_scan_key_rule
 				 * its scalar converts, or a string domain whose collation is the values' (LEAVE,
 				 * ENFORCE) */
   HASH_SCAN_KEY_FAIL		/* the probe key's domain is variable (a node not computed yet in this execution):
-				 * develop's coercion into it refuses every value (ER_TP_CANT_COERCE) */
+				 * a coercion into it refuses every value (ER_TP_CANT_COERCE) */
 };
 
 typedef struct hash_scan_key_entry HASH_SCAN_KEY_ENTRY;
@@ -553,11 +553,11 @@ qdata_hscan_key_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key, R
 	  if (producer->value.type == TYPE_POSITION && producer->value.vfetch_to == key->value.dbvalptr)
 	    {
 	      return qexec_get_node_domain (vd, producer->value.value.pos_descr.dom,
-					    producer->value.value.pos_descr.domain_plan);
+					    producer->value.value.pos_descr.plan_item);
 	    }
 	}
     }
-  return qexec_consumer_domain (vd, qexec_get_node_domain (vd, key->domain, key->domain_plan), key->domain_plan);
+  return qexec_consumer_domain (vd, qexec_get_node_domain (vd, key->domain, key->plan_item), key->plan_item);
 }
 
 /*
@@ -568,10 +568,10 @@ qdata_hscan_key_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key, R
  *   hlsid(in/out): a hash list scan whose key pairs' types differ (need_coerce_type); key_plan receives the plan
  *   producers(in): the scan's predicate regus (qdata_hscan_key_value_domain)
  *
- * develop copied a build value, or coerced it into the probe key's domain where its type was not the probe key's
- * (tp_value_coerce, ER_TP_CANT_COERCE when that fails). The probe key's domain is the one the scan reads, as develop
- * read it: the compiled domain, or the resolved domain once the node was computed in this execution;
- * check_hash_list_scan reads the same. The values' type is the plan's, so each key's choice is made here, once.
+ * A build value is copied, or coerced into the probe key's domain where its type is not the probe key's
+ * (tp_value_coerce, ER_TP_CANT_COERCE when that fails). The probe key's domain is the one the scan reads: the
+ * compiled domain, or the resolved domain once the node was computed in this execution; check_hash_list_scan reads
+ * the same. The values' type is the plan's, so each key's choice is made here, once.
  */
 int
 qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_SCAN * hlsid,
@@ -600,8 +600,8 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
     {
       HASH_SCAN_KEY_ENTRY *key = &plan->key[i];
       key->conv = NULL;
-      /* the probe key's domain now: the one it took if this execution computed it before, as develop read the node */
-      key->target = qexec_get_node_domain (vd, probe->value.domain, probe->value.domain_plan);
+      /* the probe key's domain now: the one it took if this execution computed it before */
+      key->target = qexec_get_node_domain (vd, probe->value.domain, probe->value.plan_item);
       key->source = DB_TYPE_NULL;
       const DB_TYPE target = TP_DOMAIN_TYPE (key->target);
       if (key->target == NULL || target == DB_TYPE_VARIABLE)
@@ -612,7 +612,7 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
       const TP_DOMAIN *values = qdata_hscan_key_value_domain (vd, &build->value, producers);
       if (values == NULL)
 	{
-	  return qexec_domain_unresolved (vd, build->value.domain_plan, build->value.domain);
+	  return qexec_domain_unresolved (vd, build->value.plan_item, build->value.domain);
 	}
       key->source = TP_DOMAIN_TYPE (values);
       if (key->source == DB_TYPE_NULL || key->source == target)
@@ -643,29 +643,29 @@ qdata_free_hscan_key_plan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid)
 }
 
 #if !defined (NDEBUG)
-/* The debug cross-check of a resolved build key conversion: develop's tp_value_coerce gives the same outcome and, where
- * it converts, a value of the same type that hashes alike. */
+/* The debug cross-check of a resolved build key conversion: tp_value_coerce gives the same outcome and, where it
+ * converts, a value of the same type that hashes alike. */
 static void
 qdata_check_hscan_key_convert (const DB_VALUE * value, const TP_DOMAIN * target, TP_DOMAIN_STATUS status,
 			       const DB_VALUE * converted)
 {
-  DB_VALUE develop;
-  db_make_null (&develop);
-  const TP_DOMAIN_STATUS develop_status = tp_value_coerce (value, &develop, target);
-  assert ((develop_status == DOMAIN_COMPATIBLE) == (status == DOMAIN_COMPATIBLE));
-  if (develop_status == DOMAIN_COMPATIBLE && status == DOMAIN_COMPATIBLE)
+  DB_VALUE expected;
+  db_make_null (&expected);
+  const TP_DOMAIN_STATUS expected_status = tp_value_coerce (value, &expected, target);
+  assert ((expected_status == DOMAIN_COMPATIBLE) == (status == DOMAIN_COMPATIBLE));
+  if (expected_status == DOMAIN_COMPATIBLE && status == DOMAIN_COMPATIBLE)
     {
-      assert (DB_VALUE_DOMAIN_TYPE (&develop) == DB_VALUE_DOMAIN_TYPE (converted));
-      assert (mht_get_hash_number (UINT_MAX, &develop) == mht_get_hash_number (UINT_MAX, converted));
+      assert (DB_VALUE_DOMAIN_TYPE (&expected) == DB_VALUE_DOMAIN_TYPE (converted));
+      assert (mht_get_hash_number (UINT_MAX, &expected) == mht_get_hash_number (UINT_MAX, converted));
     }
-  pr_clear_value (&develop);
+  pr_clear_value (&expected);
 }
 #endif
 
 /*
  * qdata_copy_hscan_key_without_alloc () - the key a build row stores: each value copied, or brought into its probe
  *   key's domain as the scan resolved it before its first build row
- *   returns: new_key, or NULL on error (ER_TP_CANT_COERCE where the conversion fails, as develop's)
+ *   returns: new_key, or NULL on error (ER_TP_CANT_COERCE where the conversion fails)
  *   thread_p(in): thread
  *   key(in): the build row's key
  *   plan(in): the scan's key plan (qdata_plan_hscan_keys)

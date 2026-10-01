@@ -370,7 +370,8 @@ scan_index_search_keys (const INDX_SCAN_ID * isidp)
 }
 
 /* How the B-tree compares an index scan's search key values: the scan's choice at open
- * (scan_open_index_key_plan); RESOLVED without a key plan - develop's checks, as btree_compare_key_with makes them. */
+ * (scan_open_index_key_plan); RESOLVED without a key plan - the type and collation checks btree_compare_key_with
+ * makes. */
 BTREE_SEARCH_COMPARE
 scan_index_search_compare (const INDX_SCAN_ID * isidp)
 {
@@ -423,7 +424,7 @@ scan_open_index_key_plan (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, const I
 {
   /* a scan identifier is zeroed at load and released at close; one reopened without a close lets its storage go */
   scan_close_index_key_plan (thread_p, isidp);
-  const domain_plan_index *plan = indx_info->domain_plan;
+  const domain_plan_index *plan = indx_info->key_plan;
   if (plan == NULL || !tp_domain_match (plan->key_type, key_type, TP_EXACT_MATCH))
     {
       return scan_key_plan_unresolved (key_type);
@@ -1068,7 +1069,7 @@ scan_check_user_given_keylimit_overflow (THREAD_ENTRY * thread_p, REGU_VARIABLE 
   DB_VALUE *dbvalp = NULL;
 
   assert (numeric_operand != NULL);
-  assert (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, numeric_operand->domain, numeric_operand->domain_plan))
+  assert (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, numeric_operand->domain, numeric_operand->plan_item))
 	  == DB_TYPE_NUMERIC);
 
   if (fetch_peek_dbval (thread_p, numeric_operand, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR || dbvalp == NULL)
@@ -1180,7 +1181,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
   assert (left && right);
 
   left_is_inarith = (left->type == TYPE_INARITH || left->type == TYPE_OUTARITH);
-  left_is_numeric = (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, left->domain, left->domain_plan)) == DB_TYPE_NUMERIC);
+  left_is_numeric = (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, left->domain, left->plan_item)) == DB_TYPE_NUMERIC);
 
   if (left_is_inarith)
     {
@@ -1759,7 +1760,7 @@ scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, DOMAIN_S
 	  rc = domain_search_key_compare_other (0, val1, val2, 1, 1, &can_compare);
 	  if (!can_compare && rc != DB_UNK)
 	    {
-	      /* a conversion failed: develop's tp_value_compare answers by the types' rank, without an error */
+	      /* a conversion failed: tp_value_compare answers by the types' rank, without an error */
 	      er_clear ();
 	    }
 	}
@@ -2075,17 +2076,17 @@ scan_key_value_holds (const DB_VALUE * value, const TP_DOMAIN * domain)
 }
 
 #if !defined (NDEBUG)
-/* The debug cross-check of a resolved strict key conversion: develop's tp_value_coerce_strict gives the same outcome,
- * and a kept value leaves no error behind. */
+/* The debug cross-check of a resolved strict key conversion: tp_value_coerce_strict gives the same outcome, and a
+ * kept value leaves no error behind. */
 static void
 scan_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const DB_VALUE * converted)
 {
-  DB_VALUE develop;
-  db_make_null (&develop);
-  const bool develop_converts = tp_value_coerce_strict (value, &develop, column) == NO_ERROR;
-  assert (develop_converts == (converted != NULL));
-  assert (converted == NULL || tp_value_compare (&develop, (DB_VALUE *) converted, 0, 1) == DB_EQ);
-  pr_clear_value (&develop);
+  DB_VALUE expected;
+  db_make_null (&expected);
+  const bool expected_converts = tp_value_coerce_strict (value, &expected, column) == NO_ERROR;
+  assert (expected_converts == (converted != NULL));
+  assert (converted == NULL || tp_value_compare (&expected, (DB_VALUE *) converted, 0, 1) == DB_EQ);
+  pr_clear_value (&expected);
   assert (converted != NULL || er_errid () == NO_ERROR);
 }
 #endif /* !NDEBUG */
@@ -2237,7 +2238,7 @@ scan_key_mixed_domain (scan_key_state * state, const domain_plan_key * bound, co
  *   isidp (in): the scan, with its key plan
  *   bound_index (in): the bound in the key plan
  *
- * develop's key: a column of another type converted strictly into the index column's domain or else kept, a NUMERIC,
+ * The key: a column of another type converted strictly into the index column's domain or else kept, a NUMERIC,
  * CHAR or BIT of the column's type with other parameters kept, every column under its value's domain once one is kept.
  * The plan and resolve_domains resolved each column's rule before any row; the range runs the resolved converters,
  * picks between the two domains the plan holds, and writes the key under the index's domain or a mixed one from its
@@ -2282,8 +2283,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   midxkey.buf = NULL;
   midxkey.min_max_val.position = -1;
 
-  /* each column's value and the domain a mixed key writes it with, in develop's order: a NULL ends the key (an index
-   * skip scan's first column may be NULL), then the index key type, then a maximum string */
+  /* each column's value and the domain a mixed key writes it with, checked in this order: a NULL ends the key (an
+   * index skip scan's first column may be NULL), then the index key type, then a maximum string */
   written = 0;
   for (operand = func->value.funcp->operand, i = 0; operand != NULL && i < idx_ncols && i < bound->n_elems;
        operand = operand->next, i++)
@@ -2300,7 +2301,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       else
 	{
 	  /* a row's value - or a constant whose computation failed below a constant branch, which no row reaches: one
-	   * that does computes it and raises its error, as develop's */
+	   * that does computes it and raises its error */
 	  ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
 	  if (ret != NO_ERROR)
 	    {
@@ -2351,8 +2352,8 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       mixed = mixed || kept;
     }
 
-  /* the domain the key is written with: the index's, or develop's mix of its columns' own domains - resolve_domains'
-   * for a bound of constants, else the scan's mixed key domain cache */
+  /* the domain the key is written with: the index's, or the mix of its columns' own domains - resolve_domains' for a
+   * bound of constants, else the scan's mixed key domain cache */
   key_domain = btree_domainp;
   if (mixed && bound->constant)
     {
@@ -8442,18 +8443,18 @@ scan_plan_list_scan_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
 	    }
 	  /* the position and its value descriptor share one item: variable until an open of this execution resolved
 	   * it */
-	  if (!qexec_node_domain_is_variable (vd, scan_regu->value.domain_plan)
-	      && !qexec_position_domain_is_variable (vd, scan_regu->value.domain_plan))
+	  if (!qexec_node_domain_is_variable (vd, scan_regu->value.plan_item)
+	      && !qexec_position_domain_is_variable (vd, scan_regu->value.plan_item))
 	    {
 	      continue;
 	    }
-	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, scan_regu->value.domain_plan);
+	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, scan_regu->value.plan_item);
 	  if (resolved == NULL)
 	    {
-	      return qexec_domain_unresolved (vd, scan_regu->value.domain_plan, pos_descr->dom);
+	      return qexec_domain_unresolved (vd, scan_regu->value.plan_item, pos_descr->dom);
 	    }
 	  /* the position and its value descriptor share one item and one execution domain */
-	  qexec_set_node_domain (vd, scan_regu->value.domain_plan, NULL, resolved);
+	  qexec_set_node_domain (vd, scan_regu->value.plan_item, NULL, resolved);
 	}
     }
   if (llsidp->scan_pred.pred_expr != NULL && llsidp->scan_pred.pred_expr->type == T_EVAL_TERM
@@ -8468,15 +8469,15 @@ scan_plan_list_scan_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
 	    {
 	      continue;
 	    }
-	  if (operand->domain != NULL && !qexec_node_domain_is_variable (vd, operand->domain_plan))
+	  if (operand->domain != NULL && !qexec_node_domain_is_variable (vd, operand->plan_item))
 	    {
 	      /* a fixed domain is its own plan */
 	      continue;
 	    }
-	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, operand->domain_plan);
+	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, operand->plan_item);
 	  if (resolved != NULL)
 	    {
-	      qexec_set_node_domain (vd, operand->domain_plan, operand->type == TYPE_POSITION ? NULL : operand->domain,
+	      qexec_set_node_domain (vd, operand->plan_item, operand->type == TYPE_POSITION ? NULL : operand->domain,
 				     resolved);
 	    }
 	}
@@ -9361,10 +9362,10 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       /* type of regu var is not oid && vobj */
       /* This is the case when type coercion is impossible. so use list scan */
       /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
-      /* the keys' domains now, as develop read them from the nodes: a node computed earlier in this execution holds
-       * the domain it took there (its execution domain), any other its compiled one */
-      vtype1 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, probe->value.domain, probe->value.domain_plan));
-      vtype2 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, build->value.domain, build->value.domain_plan));
+      /* the keys' domains now, read from the nodes: a node computed earlier in this execution holds the domain it
+       * took there (its execution domain), any other its compiled one */
+      vtype1 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, probe->value.domain, probe->value.plan_item));
+      vtype2 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, build->value.domain, build->value.plan_item));
 
       if ((vtype1 == DB_TYPE_OBJECT && vtype2 == DB_TYPE_OID) || (vtype2 == DB_TYPE_OBJECT && vtype1 == DB_TYPE_OID)
 	  || (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ))

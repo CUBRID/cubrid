@@ -875,7 +875,7 @@ qfile_compare_tuple_values (QFILE_TUPLE_RECORD * lhs, QFILE_TUPLE_RECORD * rhs, 
  *       This should probably set an error for non-null mismatches.
  *
  * A list opens with the plan's domains: an empty side contributes no values, so its domain does not
- * constrain the other side's, as its columns did not when no first tuple typed them (develop's DB_TYPE_VARIABLE).
+ * constrain the other side's, as a column no tuple typed (DB_TYPE_VARIABLE) did not.
  */
 int
 qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p, bool list1_empty)
@@ -7108,20 +7108,20 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
 #if !defined (NDEBUG)
 /*
  * qfile_check_interpolation_type () - debug cross-check (optdebug): the type the analytic setup gave the key before
- *   the sort is the one develop's first value gave it, unless that type rejects the value (a string column or
- *   expression is DOUBLE, the function's evaluation rejects the value too); a key without a type holds values
- *   develop could not type either
+ *   the sort is the one the first value gives it (qdata_update_interpolation_func_value_and_domain), unless that
+ *   type rejects the value (a string column or expression is DOUBLE, the function's evaluation rejects the value
+ *   too); a key without a type holds values that function cannot type either
  */
 static void
 qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
 {
   DB_VALUE converted;
-  TP_DOMAIN *develop = NULL;
+  TP_DOMAIN *expected = NULL;
   bool resolved_rejects = true;
 
   db_make_null (&converted);
   er_stack_push ();
-  const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &develop);
+  const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &expected);
   pr_clear_value (&converted);
   if (resolved != NULL)
     {
@@ -7131,12 +7131,12 @@ qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
   er_stack_pop ();
 
   const bool same = resolved == NULL ? error != NO_ERROR
-    : resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (develop) == TP_DOMAIN_TYPE (resolved));
+    : resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (expected) == TP_DOMAIN_TYPE (resolved));
   if (!same)
     {
-      fprintf (stderr, "interpolation sort key class: value type %d planned %d develop %d error %d\n",
+      fprintf (stderr, "interpolation sort key class: value type %d planned %d expected %d error %d\n",
 	       (int) DB_VALUE_DOMAIN_TYPE (value), resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
-	       develop != NULL ? (int) TP_DOMAIN_TYPE (develop) : -1, error);
+	       expected != NULL ? (int) TP_DOMAIN_TYPE (expected) : -1, error);
     }
   assert (same);
 }
@@ -7184,7 +7184,7 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
 	}
 
       /* a value argument resolve_domains could not type: every value is that one, whose typing
-       * failed for develop's first value too; a session variable read keeps that for the statement */
+       * fails for the first value too; a session variable read keeps that for the statement */
 #if !defined (NDEBUG)
       if (!subkey->cmp_dom_session_read)
 	{

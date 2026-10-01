@@ -61,7 +61,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 {
   if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FAST_PEEK)
       && (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_VARIABLE_DOMAIN)
-	  || qexec_node_domain_is_set (vd, regu_var->domain_plan)))
+	  || qexec_node_domain_is_set (vd, regu_var->plan_item)))
     {
       switch (regu_var->type)
 	{

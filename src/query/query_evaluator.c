@@ -160,14 +160,14 @@ eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2)
 /*
  * Planned comparisons
  *
- * A comparison term's resolved comparison holds the comparison develop's tp_value_compare_with_error makes between its
- * sides' values, resolved by the load or, once per execution, by resolve_domains: the converters in develop's order,
- * the type whose cmpval compares, the collation, and develop's outcome when a conversion fails. The row runs them; it
- * resolves nothing.
+ * A comparison term's resolved comparison holds the comparison tp_value_compare_with_error makes between its sides'
+ * values, resolved by the load or, once per execution, by resolve_domains: the converters in the order that function
+ * runs them, the type whose cmpval compares, the collation, and its outcome when a conversion fails. The row runs
+ * them; it resolves nothing.
  */
 
-/* develop's comparison of the values (comparison method VALUES): a NULL element, a side the plan leaves variable, a
- * comparison no resolution holds; constant-initialized */
+/* tp_value_compare_with_error on the values (comparison method VALUES): a NULL element, a side the plan leaves
+ * variable, a comparison no resolution holds; constant-initialized */
 static constexpr DOMAIN_COMPARE
 eval_values_comparison ()
 {
@@ -257,8 +257,8 @@ eval_element_row (int row, EVAL_ELEMENTS * elements)
  * eval_resolved_elements () - what an ALL/SOME term compares its item with in this execution
  *
  * The load's resolved comparison or table, or the resolved domains: the row reads them and resolves nothing. Where
- * neither holds, the comparisons keep develop's with the reason (the unresolved-domain check (execution) for an
- * unresolved one).
+ * neither holds, the comparisons are tp_value_compare_with_error on the values (comparison method VALUES), and the
+ * unresolved-domain check (execution) stops one whose values would resolve a domain.
  */
 static inline void
 eval_resolved_elements (const ALSM_EVAL_TERM * et_alsm, const val_descr * vd, EVAL_ELEMENTS * elements)
@@ -330,9 +330,9 @@ eval_compare_side (const DOMAIN_COMPARE * compare, const val_descr * vd, int sid
 }
 
 /*
- * eval_compare_resolved () - a comparison resolved before any row: develop's NULL rule, then the comparison method the
- *			     resolved comparison names, on the row's values and resolve_domains' own values of the
- *			     constant sides
+ * eval_compare_resolved () - a comparison resolved before any row: tp_value_compare_with_error's NULL rule, then the
+ *			     comparison method the resolved comparison names, on the row's values and
+ *			     resolve_domains' own values of the constant sides
  *   comparison(in): the resolved comparison; a side it names fixed for a scope comes in converted once per scope
  */
 static DB_VALUE_COMPARE_RESULT
@@ -394,7 +394,7 @@ static void
 eval_report_resolved_side (const char *name, const REGU_VARIABLE * regu, const DOMAIN_PLAN_ITEM * item,
 			   const val_descr * vd)
 {
-  const TP_DOMAIN *domain = regu != NULL ? qexec_get_node_domain (vd, regu->domain, regu->domain_plan) : NULL;
+  const TP_DOMAIN *domain = regu != NULL ? qexec_get_node_domain (vd, regu->domain, regu->plan_item) : NULL;
   const TP_DOMAIN *resolved_domain = NULL;
   if (item != NULL && item->resolved_index >= 0 && vd != NULL && vd->xasl_state != NULL
       && item->resolved_index < vd->xasl_state->resolved_domain.n_resolved)
@@ -477,8 +477,8 @@ eval_assert_resolved_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbv
 }
 
 /*
- * eval_assert_resolved_compare () - debug cross-check after the comparison method: develop's comparison of the same
- *				    values gives the resolved comparison's result, comparability and error
+ * eval_assert_resolved_compare () - debug cross-check after the comparison method: tp_value_compare_with_error on the
+ *				    same values gives the resolved comparison's result, comparability and error
  *   asks_comparable(in): the caller asks whether the values compare (tp_value_compare_with_error's contract); false
  *			  for tp_value_compare's, which asks nothing
  */
@@ -488,19 +488,19 @@ eval_assert_resolved_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * d
 			      const COMP_EVAL_TERM * et_comp, const val_descr * vd, bool asks_comparable)
 {
   const int error = comparable ? NO_ERROR : er_errid ();
-  bool develop_comparable = true;
+  bool expected_comparable = true;
   er_stack_push ();
-  const DB_VALUE_COMPARE_RESULT develop =
-    tp_value_compare_with_error (dbval1, dbval2, 1, total_order, asks_comparable ? &develop_comparable : NULL);
-  const int develop_error = develop_comparable ? NO_ERROR : er_errid ();
+  const DB_VALUE_COMPARE_RESULT expected =
+    tp_value_compare_with_error (dbval1, dbval2, 1, total_order, asks_comparable ? &expected_comparable : NULL);
+  const int expected_error = expected_comparable ? NO_ERROR : er_errid ();
   er_stack_pop ();
-  const bool same = develop == result && develop_comparable == comparable && develop_error == error;
+  const bool same = expected == result && expected_comparable == comparable && expected_error == error;
   if (!same)
     {
       eval_report_resolved_compare ("result", compare, dbval1, dbval2, et_comp, vd);
-      fprintf (stderr, "planned comparison result: planned=%d comparable=%d error=%d develop=%d comparable=%d "
+      fprintf (stderr, "planned comparison result: planned=%d comparable=%d error=%d expected=%d comparable=%d "
 	       "error=%d\n",
-	       (int) result, (int) comparable, error, (int) develop, (int) develop_comparable, develop_error);
+	       (int) result, (int) comparable, error, (int) expected, (int) expected_comparable, expected_error);
     }
   assert (same);
 }
@@ -508,10 +508,10 @@ eval_assert_resolved_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * d
 
 /*
  * eval_compare_values_resolved () - a comparison of two values resolved before any row outside a predicate term: the
- *				    comparison's resolution in this execution, develop's NULL rule and the comparison
- *				    method it names
- *   return: the result; *can_compare false with develop's error where the values do not compare, and at the execution
- *	     unresolved-domain check (execution) (ER_QPROC_DOMAIN_UNRESOLVED)
+ *				    comparison's resolution in this execution, tp_value_compare_with_error's NULL rule
+ *				    and the comparison method it names
+ *   return: the result; *can_compare false with tp_value_compare_with_error's error where the values do not compare,
+ *	     and at the unresolved-domain check (execution) (ER_QPROC_DOMAIN_UNRESOLVED)
  *   comparison(in): the resolved comparison; NULL is the load's omission
  *   vd(in): value descriptor of the execution (the resolved domains and converted constants)
  *   can_compare(out): NULL for tp_value_compare's contract, which asks nothing: values that do not compare answer by
@@ -541,8 +541,8 @@ eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN
     }
   if (domain_value_domains_differ (value1, value2))
     {
-      /* the unresolved-domain check (execution): no plan holds this comparison, and develop would resolve it from the
-       * values */
+      /* the unresolved-domain check (execution): no plan holds this comparison, and the values differ in type or
+       * collation, which only a plan resolves */
 #if !defined (NDEBUG)
       eval_report_resolved_compare ("boundary", compare, value1, value2, NULL, vd);
 #endif
@@ -627,8 +627,8 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 	  }
 	else if (domain_value_domains_differ (dbval1, dbval2))
 	  {
-	    /* the unresolved-domain check (execution): no plan holds this comparison, and develop would resolve it from
-	     * the values */
+	    /* the unresolved-domain check (execution): no plan holds this comparison, and the values differ in type or
+	     * collation, which only a plan resolves */
 #if !defined (NDEBUG)
 	    eval_report_resolved_compare ("boundary", compare, dbval1, dbval2, et_comp, vd);
 #endif
@@ -733,8 +733,8 @@ eval_rel_result (REL_OP rel_operator, int result, const DB_VALUE * dbval1, const
 
 /*
  * eval_operator_function_direct () - a comparison term's row over a resolution of comparison method DIRECT, for one
- *			 relational operator: the sides the resolved comparison names, develop's NULL rule (as
- *			 eval_compare_resolved's), cmpval under the resolved collation, and the operator's reading of
+ *			 relational operator: the sides the resolved comparison names, eval_compare_resolved's NULL
+ *			 rule, cmpval under the resolved collation, and the operator's reading of
  *			 the result (eval_rel_result)
  *   return: DB_LOGICAL (V_TRUE, V_FALSE or V_UNKNOWN)
  *   dbval1(in), dbval2(in): the values the term fetched

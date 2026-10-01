@@ -4892,7 +4892,7 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   /* the B-tree's key domain; the key plan is derived from it once the tree is loaded */
   ptr = or_unpack_domain (ptr, &indx_info->key_type, NULL);
-  indx_info->domain_plan = NULL;
+  indx_info->key_plan = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5692,7 +5692,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
-  regu_var->domain_plan = NULL;
+  regu_var->plan_item = NULL;
 
   ptr = or_unpack_int (ptr, &tmp);
   regu_var->type = (REGU_DATATYPE) tmp;
@@ -5978,7 +5978,7 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 {
   ptr = or_unpack_int (ptr, &position_descr->pos_no);
   ptr = or_unpack_domain (ptr, &position_descr->dom, NULL);
-  position_descr->domain_plan = NULL;
+  position_descr->plan_item = NULL;
 
   return ptr;
 }
@@ -5990,7 +5990,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
-  arith_type->domain_plan = NULL;
+  arith_type->plan_item = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6098,7 +6098,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
-  aggregate->domain_plan = NULL;
+  aggregate->plan_item = NULL;
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
@@ -6374,7 +6374,7 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 
   /* domain */
   ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
-  analytic->domain_plan = NULL;
+  analytic->plan_item = NULL;
 
   /* value */
   ptr = or_unpack_int (ptr, &offset);
@@ -7021,7 +7021,7 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
 {
   assert (regu);
 
-  regu->domain_plan = NULL;
+  regu->plan_item = NULL;
   regu->type = TYPE_POS_VALUE;
   regu->flags = 0;
   regu->value.val_pos = 0;

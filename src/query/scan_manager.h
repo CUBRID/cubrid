@@ -291,7 +291,7 @@ struct indx_scan_id
   bool check_not_vacuumed;	/* if true then during index scan, the entries will be checked if they should've been
 				 * vacuumed. Used in checkdb. */
   DISK_ISVALID not_vacuumed_res;	/* The result of not vacuumed checking operation */
-  const domain_plan_index *key_plan;	/* the key plan the load derived, INDX_INFO.domain_plan */
+  const domain_plan_index *key_plan;	/* the key plan the load derived, INDX_INFO.key_plan */
   const RESOLVED_INDEX_KEYS *resolved_keys;	/* this execution's resolutions for it; NULL: the plan's alone */
   scan_key_state *key_state;	/* the scan's key plan storage (mixed key domain caches, the search keys the B-tree
 				 * reads); NULL when the plan needs none */

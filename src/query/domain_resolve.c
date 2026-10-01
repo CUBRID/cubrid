@@ -433,8 +433,8 @@ enum DOMAIN_DEFERRED_ERROR_KIND
   DOMAIN_DEFERRED_ERROR_CONSTANT,	/* a constant expression's computation: index = plan->constant_expressions
 					 * index */
   DOMAIN_DEFERRED_ERROR_COMPARE,	/* a term's constant conversion: compare, failed; arg 1 for a key range term */
-  DOMAIN_DEFERRED_ERROR_KEY,	/* a key constant no index key holds: arg, arg2 = the two types of develop's -181 in its
-				 * order */
+  DOMAIN_DEFERRED_ERROR_KEY,	/* a key constant no index key holds: arg, arg2 = the two types of the key search's
+				 * -181 in its order */
   DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE	/* a MEDIAN / PERCENTILE value without an argument type: arg = function */
 };
 
@@ -464,7 +464,7 @@ static int qexec_defer_constant_error (THREAD_ENTRY * thread_p, DOMAIN_DEFERRED_
 
 /* Whether the resolver takes this operand's type from its value (a value-dependent argument type): an interpolation
  * argument, the ADDTIME left string, the STR_TO_DATE format. An interpolation argument of a type that is neither a
- * number nor a date (a string, a BIT, a LOB, a collection) is typed as develop's first value was, by the cascade to
+ * number nor a date (a string, a BIT, a LOB, a collection) is typed as its first value would be, by the cascade to
  * DOUBLE, DATETIME and TIME, the aggregate's and the analytic's alike (no row types it; a value that takes none is the
  * resolve_domains' error). */
 static bool
@@ -488,8 +488,8 @@ qexec_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int arg_in
  * operand before it looks at the types, so a NULL resolve_domains can see is DB_TYPE_NULL there. A value the resolver
  * types by its value (an interpolation argument, the ADDTIME left string, the STR_TO_DATE format) gives its type - a
  * session variable read's value included, which resolve_domains reads as its read node does; a string without a value
- * keeps its string type and the resolver types it statically. A common value folds its operands' value domains as
- * develop does: a constant expression resolve_domains evaluated in the constant expression step gives its value's type
+ * keeps its string type and the resolver types it statically. A common value folds its operands' value domains:
+ * a constant expression resolve_domains evaluated in the constant expression step gives its value's type
  * there, so a NULL without a type drops out of the fold; the node waits for that value, which every constant has once
  * the constant expression step evaluated it.
  */
@@ -659,7 +659,7 @@ qexec_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, RES
  *	     collations do not merge
  *   operands(in): room for the node's operands
  *
- * The other contexts raise their errors when they evaluate, as develop does; the entry then holds "no value". An
+ * The other contexts raise their errors when they evaluate; the entry then holds "no value". An
  * operator the type rules do not know is an error, not a guess. Every node gets a resolution: none is left to the row.
  */
 static int
@@ -730,8 +730,8 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
 	  return error;
 
 	case ER_QSTR_INCOMPATIBLE_COLLATIONS:
-	  /* operands whose collations do not merge: the row raises the error where it computes the node, as develop
-	   * does, so the node gives no value before it */
+	  /* operands whose collations do not merge: the row raises the error where it computes the node, so the node
+	   * gives no value before it */
 	  *entry = RESOLVED_DOMAIN
 	  {
 	  };
@@ -745,10 +745,10 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
     }
   if ((context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC) && link->argument != NULL)
     {
-      /* develop resolved an aggregate or analytic from its argument's value only when the argument is variable
-       * (opr_dbtype VARIABLE). Over a compiled argument - a value pointer typed by the compiler, whatever its producer
-       * holds - the function keeps its compiled domain and the argument's compiled type keys it; the value's type still
-       * counts where develop reads the value (SUM / AVG accumulator, MEDIAN argument type). A compiled string whose
+      /* an aggregate or analytic resolves from its argument's value only when the argument is variable (opr_dbtype
+       * VARIABLE). Over a compiled argument - a value pointer typed by the compiler, whatever its producer holds - the
+       * function keeps its compiled domain and the argument's compiled type keys it; the value's type still counts
+       * where the function reads the value (SUM / AVG accumulator, MEDIAN argument type). A compiled string whose
        * collation its values give keeps the resolved domain there: a function compiled with LEAVE takes it. */
       if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (link->argument))
 	  || TP_DOMAIN_COLLATION_FLAG (link->argument) == TP_DOMAIN_COLL_NORMAL)
@@ -779,8 +779,8 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
       return error;
 
     case ER_QSTR_INCOMPATIBLE_COLLATIONS:
-      /* plus as concatenation over collations that do not merge: the row raises it as develop does, giving no value
-       * before it - after the operands' operand coercion, an ENUM's name */
+      /* plus as concatenation over collations that do not merge: the row raises it, giving no value before it -
+       * after the operands' operand coercion, an ENUM's name */
       *entry = RESOLVED_DOMAIN
       {
       };
@@ -799,7 +799,7 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
       if (context == DOMAIN_CTX_ARITH || context == DOMAIN_CTX_LIST_COLUMN)
 	{
 	  /* a set-operation or CTE column whose branches resolve_domains cannot unify is rejected before any row, where
-	   * develop's unification of the branch lists rejected it only when both held rows */
+	   * the unification of the branch lists (qfile_unify_types) rejects it only when both hold rows */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  return error;
 	}
@@ -809,8 +809,8 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
 	{
 	  /* a MEDIAN / PERCENTILE value - a literal, a bind, a session variable's value when the execution began - that
 	   * none of DOUBLE, DATETIME, TIME takes (resolve_domains' typing of a value that is not NULL failed):
-	   * develop's first value raised this, so no row and only NULLs raised none; resolve_domains raises it before
-	   * any row. A NULL value, or a variable without a type yet (the session variable step's first pass), takes no
+	   * at the rows the first value would raise this, and no row or only NULLs none; resolve_domains raises it
+	   * before any row. A NULL value, or a variable without a type yet (the session variable step's first pass), takes no
 	   * type and raises nothing. */
 	  if (cold->constant_branch < 0)
 	    {
@@ -883,7 +883,7 @@ qexec_resolve_late_bind_node_after_constants (THREAD_ENTRY * thread_p, const xas
 }
 
 /* The domain a session variable's value has when the execution starts; NULL for none: an undefined variable, whose
- * read raises develop's error at the row, or a NULL. */
+ * read raises its error at the row, or a NULL. */
 static const TP_DOMAIN *
 qexec_session_start_type (THREAD_ENTRY * thread_p, const DB_VALUE * name)
 {
@@ -1025,10 +1025,9 @@ qexec_share_value (const DB_VALUE * source, DB_VALUE * copy)
  * qexec_convert_list_bind () - an output list's bind in its column's compiled domain
  *
  * The compiler typed the bind from the statement that compiled the plan: an auto-parameterized literal from its own
- * type. A statement sharing the plan can bind a literal of another type, and develop's tuple write casts it into the
+ * type. A statement sharing the plan can bind a literal of another type, which the tuple write would cast into the
  * column's domain (qdata_get_dbval_from_constant_regu_variable - in place, so at the first row only); resolve_domains
- * casts it once, before any row. A value the cast refuses stays as it is: the tuple write fails on it at the row, as
- * develop's did.
+ * casts it once, before any row. A value the cast refuses stays as it is: the tuple write fails on it at the row.
  */
 static void
 qexec_convert_list_bind (DB_VALUE * value, const TP_DOMAIN * domain)
@@ -1181,11 +1180,11 @@ qexec_compare_side_unresolved (const DOMAIN_COMPARE_PLAN * comparison)
 }
 
 /*
- * qexec_compare_constant_failed () - develop's error where a term compares a value with a constant whose coercion
- *   fails: -181 naming the two sides' types at the first coercion that fails in develop's order
+ * qexec_compare_constant_failed () - the error where a term compares a value with a constant whose coercion fails:
+ *   -181 naming the two sides' types at the first coercion that fails, in the comparison's order
  *   (domain_compare_converted: the first side, then the other)
  *   failed(in): bit i: constant side i does not convert
- *   key_range(in): the term is an index scan's key range term: develop meets the constant in the B-tree search, whose
+ *   key_range(in): the term is an index scan's key range term: the constant is met in the B-tree search, whose
  *		    comparison takes the search key first and converts no index key before the constant fails - the
  *		    constant's type, then the column's
  */
@@ -1233,7 +1232,7 @@ qexec_defer_constant_error (THREAD_ENTRY * thread_p, DOMAIN_DEFERRED_ERRORS & de
 }
 
 /* The resolution of a comparison whose constant sides failed below a constant branch: no row reaches it, and one that
- * did would meet develop's comparison with the reason DOMAIN_REASON_UNRESOLVED. */
+ * did would meet tp_value_compare_with_error on the values (comparison method VALUES). */
 static void
 qexec_compare_unreached (DOMAIN_COMPARE * compare)
 {
@@ -1273,8 +1272,8 @@ qexec_compare_reads_failed (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN
  * reader that changes the bind's value in place - an in-place cast of a constant column, qdata_set_valptr_list_unbound
  * - leaves as it is; a literal or a constant expression is compared as the row fetches it, the value resolve_domains
  * read here. Under a COLLATE modifier either has the codeset and collation the fetch gives it, a literal or a subtree
- * in a copy of its own. A constant whose conversion fails is develop's -181 at every row a term compares, which
- * resolve_domains raises before any row; a resolved comparison outside a term answers by rank there, as develop's does.
+ * in a copy of its own. A constant whose conversion fails raises -181 at every row a term compares, so
+ * resolve_domains raises it before any row; a resolved comparison outside a term answers by rank there.
  */
 static int
 qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_DEFERRED_ERRORS & deferred,
@@ -1350,7 +1349,7 @@ qexec_resolve_compare (THREAD_ENTRY * thread_p, RESOLVED_DOMAIN_TABLE & resolved
 	}
       else
 	{
-	  /* develop's coercion of this constant fails at every row */
+	  /* the coercion of this constant fails at every row */
 	  pr_clear_value (converted);
 	  compare->failed |= (unsigned char) (1 << side);
 	  if (er_errid () != saved_error)
@@ -1408,8 +1407,8 @@ qexec_constant_element (const DB_VALUE * constant, int i, DB_VALUE * element)
  *
  * Each element gets its resolution - resolve_domains resolves each element key once - and a value of its own, converted
  * when its resolution converts it: the row reads both by position and resolves nothing. An element whose conversion
- * fails is develop's -181 at every row the term compares with it, raised here before any row as a constant comparison
- * side's .
+ * fails raises -181 at every row the term compares with it, raised here before any row as a constant comparison
+ * side's.
  */
 static int
 qexec_resolve_positions (THREAD_ENTRY * thread_p, DOMAIN_DEFERRED_ERRORS & deferred, const DOMAIN_COMPARE_PLAN * pair,
@@ -1523,7 +1522,7 @@ qexec_resolve_positions (THREAD_ENTRY * thread_p, DOMAIN_DEFERRED_ERRORS & defer
 	    }
 	  else
 	    {
-	      /* develop's coercion of this element fails at every row the term compares with it; below a constant
+	      /* the coercion of this element fails at every row the term compares with it; below a constant
 	       * branch, only if a row reaches the term */
 	      pr_clear_value (&converted);
 	      if (er_errid () != saved_error)
@@ -1826,9 +1825,9 @@ qexec_constant_value_moves (const REGU_VARIABLE * regu, const DB_VALUE * value)
  *   return: NO_ERROR, or the error of its computation: the execution's, before any row
  *
  * The fetch computes it as the first row would; its value goes to resolve_domains' array - the node's own string moves
- * there, any other value is copied - and every fetch after this reads it. develop raised a computation's error
- * at the first row that computed the node, so 0 rows, a branch never taken or a short-circuited predicate raised none;
- * resolve_domains raises it whatever the rows.
+ * there, any other value is copied - and every fetch after this reads it. At the rows, a computation's error would
+ * come at the first row that computes the node, so 0 rows, a branch never taken or a short-circuited predicate would
+ * raise none; resolve_domains raises it whatever the rows.
  */
 static int
 qexec_evaluate_constant_expression (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -1877,7 +1876,7 @@ qexec_key_constant_value (const XASL_STATE * xasl_state, const REGU_VARIABLE * r
     default:
       {
 	const DOMAIN_PLAN_ITEM *item = (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
-	  ? regu->value.arithptr->domain_plan : regu->domain_plan;
+	  ? regu->value.arithptr->plan_item : regu->plan_item;
 	return item != NULL && item->ref >= 0 && item->ref < resolved.n_vals
 	  && resolved.value_states[item->ref] == DOMAIN_VALUE_EVALUATED ? &resolved.vals[item->ref] : NULL;
       }
@@ -1900,17 +1899,17 @@ qexec_key_element_domain (const XASL_STATE * xasl_state, const DOMAIN_PLAN_ITEM 
 }
 
 #if !defined (NDEBUG)
-/* The debug cross-check of a strict key conversion: the resolved converter gives develop's tp_value_coerce_strict
- * outcome, and a kept value leaves no error behind. */
+/* The debug cross-check of a strict key conversion: the resolved converter gives tp_value_coerce_strict's outcome,
+ * and a kept value leaves no error behind. */
 static void
 qexec_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const DB_VALUE * converted)
 {
-  DB_VALUE develop;
-  db_make_null (&develop);
-  const bool develop_converts = tp_value_coerce_strict (value, &develop, column) == NO_ERROR;
-  assert (develop_converts == (converted != NULL));
-  assert (converted == NULL || tp_value_compare (&develop, (DB_VALUE *) converted, 0, 1) == DB_EQ);
-  pr_clear_value (&develop);
+  DB_VALUE expected;
+  db_make_null (&expected);
+  const bool expected_converts = tp_value_coerce_strict (value, &expected, column) == NO_ERROR;
+  assert (expected_converts == (converted != NULL));
+  assert (converted == NULL || tp_value_compare (&expected, (DB_VALUE *) converted, 0, 1) == DB_EQ);
+  pr_clear_value (&expected);
   assert (converted != NULL || er_errid () == NO_ERROR);
 }
 #endif /* !NDEBUG */
@@ -1918,10 +1917,10 @@ qexec_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const 
 /*
  * qexec_resolve_key_constant () - a constant key element's value for this execution
  *
- * develop's scan_dbvals_to_midxkey on the value, once: another type is converted strictly into the index column's
+ * scan_dbvals_to_midxkey's rule on the value, once: another type is converted strictly into the index column's
  * domain or else kept, a NUMERIC, CHAR or BIT of the column's type with other parameters is kept. A single-column key
- * takes the value as it is. A NULL is the range's to answer. A value no index key can hold is develop's error at the
- * range, raised here before any row, whatever a NULL column before it.
+ * takes the value as it is. A NULL is the range's to answer. A value no index key can hold is the range's error,
+ * raised here before any row, whatever a NULL column before it.
  *
  * A value the key takes as it is is shared, not copied: it is the execution's own - a bind's, a literal of the plan, a
  * constant expression's - and outlives the resolution, which qexec_clear_resolved_domains clears first. A converted
@@ -1938,7 +1937,7 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DO
   if (value == NULL)
     {
       const DOMAIN_PLAN_ITEM *item = (elem->regu->type == TYPE_INARITH || elem->regu->type == TYPE_OUTARITH)
-	? elem->regu->value.arithptr->domain_plan : elem->regu->domain_plan;
+	? elem->regu->value.arithptr->plan_item : elem->regu->plan_item;
       if (item != NULL && item->ref >= 0 && item->ref < xasl_state->resolved_domain.n_vals
 	  && xasl_state->resolved_domain.value_states[item->ref] == DOMAIN_VALUE_FAILED)
 	{
@@ -1956,7 +1955,7 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DO
     }
   if (!tp_valid_indextype (DB_VALUE_DOMAIN_TYPE (value)))
     {
-      /* develop's -181 names the column first where scan_dbvals_to_midxkey refuses a multi-column key's element, the
+      /* the -181 names the column first where scan_dbvals_to_midxkey refuses a multi-column key's element, the
        * value first where the B-tree search compares a single-column search key with the index key */
       const DB_TYPE first = midxkey ? TP_DOMAIN_TYPE (column) : DB_VALUE_DOMAIN_TYPE (value);
       const DB_TYPE second = midxkey ? DB_VALUE_DOMAIN_TYPE (value) : TP_DOMAIN_TYPE (column);
@@ -2011,7 +2010,7 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DO
 
 /*
  * qexec_key_constant_domain () - a constant multi-column bound's domain for this execution
- *   return: the index's when no column is kept; else develop's mix - each column under its value's domain up to a
+ *   return: the index's when no column is kept; else the mix - each column under its value's domain up to a
  *	     maximum string, the index's columns from there - cached; NULL on error
  */
 static const TP_DOMAIN *
@@ -2104,7 +2103,8 @@ error:
  * qexec_resolve_index_keys () - the index key step (qexec_resolve_index_keys) for one index scan's key plan
  *   return: NO_ERROR, or ER_code
  *
- * Each constant key element is converted or kept once, by develop's rule on its value; an element whose domain the
+ * Each constant key element is converted or kept once, by scan_dbvals_to_midxkey's rule on its value; an element
+ * whose domain the
  * resolve_domains resolved takes its rule from that domain; a constant multi-column bound gets its domain; and the scan
  * learns whether a key column takes values of a key other than its own, which compare by the type pair comparison
  * table. A constant no index key can hold is an error here, before any row; every other outcome of a value is the
@@ -2169,7 +2169,7 @@ qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DOMA
 	  else if (elem->rule == DOMAIN_KEY_LATE_BIND)
 	    {
 	      RESOLVED_KEY_ELEMENT *resolved_domain = &out->elements[elem->resolved_element];
-	      domain = qexec_key_element_domain (xasl_state, elem->regu != NULL ? elem->regu->domain_plan : NULL);
+	      domain = qexec_key_element_domain (xasl_state, elem->regu != NULL ? elem->regu->plan_item : NULL);
 	      if (domain != NULL)
 		{
 		  resolved_domain->rule =
@@ -2442,8 +2442,9 @@ qexec_release_selector_pred (PRED_EXPR * pred)
 
 /*
  * qexec_constant_branch_reached () - whether a row reaches what lies below a constant branch: the constant branches
- *   around it first, then its own constant selector, taken as develop's evaluation takes it
- *   return: 1 reached, 0 not, or the error of a selector's evaluation (a failure there raised first, as develop's)
+ *   around it first, then its own constant selector, taken as the row evaluation takes it
+ *   return: 1 reached, 0 not, or the error of a selector's evaluation (a failure there raised first, as the row
+ *	     evaluation raises it)
  *   state(in/out): [plan->n_constant_branches] 0 not known yet, 1 reached, 2 not reached
  */
 static int
@@ -2523,8 +2524,8 @@ qexec_constant_branch_reached (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 
 /*
  * qexec_raise_deferred_errors () - resolve_domains' end: the first failure below constant branches a row reaches is
- *   the execution's error, raised again as it happened; the others lie where no data reaches, as develop never
- *   raised them
+ *   the execution's error, raised again as it happened; the others lie where no data reaches, and no row raises
+ *   them
  */
 static int
 qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, const DOMAIN_DEFERRED_ERRORS & deferred)
@@ -2591,8 +2592,8 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
  *   deferred(in/out): the failures below constant branches the steps defer; the caller frees the list
  *
  * The plan stays immutable, the input stays const, and each
- * reference (val_pos, domain, failure policy) has its own value. The
- * client has already cast the bind values where develop did, so each reference
+ * reference (val_pos, domain, DOMAIN_PLAN_CONSUMER_CONVERTS) has its own value. The
+ * client has already cast the bind values, so each reference
  * takes its value as given and a variable POS takes the value's domain into resolve_domains
  * table. Every late-binding node then takes the type rules' answer for this
  * execution's operand types.
@@ -2691,7 +2692,7 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
 		}
 	      else if (item->flags & DOMAIN_PLAN_LIST_BIND)
 		{
-		  /* the tuple write reads the value in its column's type, or casts it as develop did */
+		  /* the tuple write reads the value in its column's type: it is cast here once */
 		  qexec_convert_list_bind (&resolved.vals[ref], item->fixed.domain);
 		  continue;
 		}
@@ -2778,11 +2779,12 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
 
   /* the constant expression step (qexec_evaluate_constant_expression): each constant
    * expression is evaluated once into its own value, and a comparison to resolve over one is resolved from that value.
-   * An evaluation error is the execution's, before any row, whatever the rows would have reached (develop raised it at
-   * the first row that computed the node). A comparison is resolved as soon as its subtrees have their values, before
-   * the next constant is evaluated: that constant may be the comparison's own node (GREATEST (GREATEST (?, ?), ?)). A
-   * late-binding node that waits for its constant expressions is resolved just before its own evaluation, or after the
-   * last constant when it reads a row; a comparison over its resolution waits for it. */
+   * An evaluation error is the execution's, before any row, whatever the rows would have reached (at the rows it would
+   * come at the first row that computes the node). A comparison is resolved as soon as its subtrees have their
+   * values, before the next constant is evaluated: that constant may be the comparison's own node
+   * (GREATEST (GREATEST (?, ?), ?)). A late-binding node that waits for its constant expressions is resolved just
+   * before its own evaluation, or after the last constant when it reads a row; a comparison over its resolution waits
+   * for it. */
   const int n_comparisons = plan == NULL ? 0 : plan->n_compare_indexes + plan->n_element_comparisons;
   unsigned char *comparison_resolved = NULL;
   if (n_comparisons > 0)
@@ -2872,7 +2874,7 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
     }
 
   /* the failures below constant branches are resolve_domains' errors if the constant conditions around them let
-   * a row reach them; where no data does, develop never raised them */
+   * a row reach them; where no data does, no row raises them */
   return qexec_raise_deferred_errors (thread_p, xasl_state, deferred);
 }
 
@@ -2924,7 +2926,7 @@ qexec_resolution (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
  *   vd(in): the execution's value descriptor
  *   item(in): the consumer's plan item: a variable POS, a late-binding node, or an alias of one
  *
- * The resolution is the domain develop's first value gives the consumer; a resolution over a session variable read
+ * The resolution is the domain the first value would give the consumer; a resolution over a session variable read
  * holds too, since the variable keeps the type resolve_domains gave it for the statement. MySQL compatibility mode
  * reads the resolutions too: its date helpers type a result by the result buffer, which holds the resolved type from
  * the first row on. A node without resolved-domain state has no resolution here; resolve_domains leaves no node
@@ -2960,8 +2962,7 @@ qexec_null_bind_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
  *	     NULL when the entry has no value
  *
  * A value pointer, a list position, a sort key or an aggregate argument reads its producer: the producer's resolved
- * index (ALIAS) or a compiled producer's domain. This is the domain develop's row-time resolve took from the first
- * value.
+ * index (ALIAS) or a compiled producer's domain. This is the domain the first value would give it.
  */
 const TP_DOMAIN *
 qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
@@ -2994,7 +2995,7 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
  * has no value holds only NULLs - a NULL bind, a node over one (a value there fails the fetch's unresolved-domain
  * check) - so its consumers take the NULL domain, as a NULL bind's list column does - a LEAD / LAG over a NULL operand
  * too: a row past its window's end converts the default to the function's NULL or variable domain, which rejects a
- * value as develop's did (ER_TP_CANT_COERCE). A resolution over a session variable read holds before any row too: the
+ * value (ER_TP_CANT_COERCE). A resolution over a session variable read holds before any row too: the
  * variable keeps the type resolve_domains gave it for the statement. A set-operation column whose branches
  * resolve_domains cannot unify never gets here: resolve_domains rejects it.
  */
@@ -3106,7 +3107,7 @@ qexec_enter_temporary_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
  * qexec_convert_execution_temporary () - the first read of an execution temporary in its scope's generation
  *   (qexec_execution_temporary): the value converted for every read of the generation
  *   return: the converted value; NULL when the row converts it - the scope was not entered, the conversion failed
- *	     (develop's outcome follows from the row's own), or the value is not the execution's own
+ *	     (the outcome follows from the row's own conversion), or the value is not the execution's own
  *   entry(in/out): the execution temporary, which a PX worker's own load numbers with its scope as the plan does
  *   conv(in), target(in): the converter the row would run, and its target
  *   value(in): the value, not NULL
@@ -3128,7 +3129,7 @@ qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, XASL_STATE * xasl_st
   entry->conv = conv;
   entry->target = target;
 #endif
-  /* a failure is the row's to report, in develop's order: this attempt leaves no error */
+  /* a failure is the row's to report, in its order: this attempt leaves no error */
   er_stack_push ();
   const bool failed = tp_value_convert (conv, target, value, &entry->value) != DOMAIN_COMPATIBLE;
   er_stack_pop ();
@@ -3164,14 +3165,14 @@ qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SOR
   SORT_LIST *copy_key = NULL;
   for (SORT_LIST * key = order_list; key != NULL; key = key->next, copy_key = copy_key != NULL ? copy_key->next : NULL)
     {
-      const TP_DOMAIN *resolved = qexec_consumer_domain (vd, key->pos_descr.dom, key->pos_descr.domain_plan);
+      const TP_DOMAIN *resolved = qexec_consumer_domain (vd, key->pos_descr.dom, key->pos_descr.plan_item);
       if (resolved == NULL)
 	{
 	  if (copy != NULL)
 	    {
 	      qfile_free_sort_list (thread_p, copy);
 	    }
-	  return qexec_domain_unresolved (vd, key->pos_descr.domain_plan, key->pos_descr.dom);
+	  return qexec_domain_unresolved (vd, key->pos_descr.plan_item, key->pos_descr.dom);
 	}
       if (resolved != key->pos_descr.dom && copy == NULL)
 	{
@@ -3238,11 +3239,11 @@ qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUIL
     {
       for (REGU_VARIABLE_LIST regu = lists[i]; regu != NULL; regu = regu->next)
 	{
-	  if (regu->value.domain == NULL || !qexec_node_domain_is_variable (vd, regu->value.domain_plan))
+	  if (regu->value.domain == NULL || !qexec_node_domain_is_variable (vd, regu->value.plan_item))
 	    {
 	      continue;
 	    }
-	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, regu->value.domain_plan);
+	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, regu->value.plan_item);
 	  if (resolved == NULL)
 	    {
 	      if (i == 0 && regu->value.type == TYPE_POSITION)
@@ -3252,13 +3253,13 @@ qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUIL
 		      qfile_free_sort_list (thread_p, *resolved_groupby);
 		      *resolved_groupby = NULL;
 		    }
-		  return qexec_domain_unresolved (vd, regu->value.domain_plan, regu->value.domain);
+		  return qexec_domain_unresolved (vd, regu->value.plan_item, regu->value.domain);
 		}
 	      /* no value resolved the column yet, or the value gives it when it is fetched */
 	      continue;
 	    }
 	  /* a position's value descriptor shares the regu's item and execution domain: one domain for both */
-	  qexec_set_node_domain (vd, regu->value.domain_plan,
+	  qexec_set_node_domain (vd, regu->value.plan_item,
 				 regu->value.type == TYPE_POSITION ? NULL : regu->value.domain, resolved);
 	}
     }
@@ -3302,7 +3303,7 @@ qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * build
 	  if (domain_is_variable (context->key_domains[i]))
 	    {
 	      context->key_domains[i] =
-		qexec_get_node_domain (vd, group_regu->value.domain, group_regu->value.domain_plan);
+		qexec_get_node_domain (vd, group_regu->value.domain, group_regu->value.plan_item);
 	    }
 	}
 
@@ -3337,8 +3338,8 @@ qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * bu
   REGU_VARIABLE_LIST key = buildlist->g_hk_scan_regu_list;
   for (int i = 0; i < buildlist->g_hkey_size && key != NULL; i++, key = key->next)
     {
-      TP_DOMAIN *compiled = qexec_get_node_domain (vd, key->value.domain, key->value.domain_plan);
-      const TP_DOMAIN *domain = qexec_consumer_domain (vd, compiled, key->value.domain_plan);
+      TP_DOMAIN *compiled = qexec_get_node_domain (vd, key->value.domain, key->value.plan_item);
+      const TP_DOMAIN *domain = qexec_consumer_domain (vd, compiled, key->value.plan_item);
       for (int l = 0; l < 2; l++)
 	{
 	  if (domain != NULL && domain_is_variable (lists[l]->domp[i]))
@@ -3376,12 +3377,12 @@ qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * bu
 
 /*
  * qexec_apply_aggregate_resolved_domain () - the resolved domain for an aggregate resolve_domains resolves, applied
- *   where develop's row-time resolve applied the first value's domain
+ *   where the first value's domain would be applied at the row
  *   return: the accumulator domain the resolver derived, or NULL when the resolution has no value
  *
- * The function domain is the resolved domain: the compiled domain where develop keeps it (a compiled argument), the
- * first value's where develop resolved it at the row (qexec_resolve_late_bind_node here). opr_dbtype changes where
- * develop changes it (an operand compiled VARIABLE or a function domain that leaves collation): to the resolution's
+ * The function domain is the resolved domain: the compiled domain for a compiled argument, the first value's for a
+ * late-bound one (qexec_resolve_late_bind_node here). opr_dbtype changes for a late-bound function (an operand
+ * compiled VARIABLE or a function domain that leaves collation): to the resolution's
  * type, except for MEDIAN / PERCENTILE, whose operand keeps its own type there: a string's values convert to the
  * function's type as they are accumulated (qdata_update_agg_interpolation_func_value_and_domain). resolve_domains types
  * a session variable's string from the value it holds when the execution starts, for the whole statement.
@@ -3389,32 +3390,32 @@ qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * bu
 static const TP_DOMAIN *
 qexec_apply_aggregate_resolved_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
 {
-  const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, agg_p->domain_plan);
-  const TP_DOMAIN *resolved = qexec_resolved_domain (vd, agg_p->domain_plan);
+  const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, agg_p->plan_item);
+  const TP_DOMAIN *resolved = qexec_resolved_domain (vd, agg_p->plan_item);
   if (late_bind_node == NULL || resolved == NULL)
     {
       return NULL;
     }
   /* the domains the aggregate has now: an earlier setup of this execution may have given them */
-  const TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
-  if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan) == DB_TYPE_VARIABLE || domain == NULL
+  const TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
+  if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item) == DB_TYPE_VARIABLE || domain == NULL
       || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
     {
       if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
 	{
-	  const TP_DOMAIN *argument = qexec_plan_domain (vd, agg_p->operands->value.domain_plan);
+	  const TP_DOMAIN *argument = qexec_plan_domain (vd, agg_p->operands->value.plan_item);
 	  if (argument == NULL)
 	    {
 	      return NULL;
 	    }
-	  qexec_take_operand_type (vd, agg_p->domain_plan, agg_p->opr_dbtype, TP_DOMAIN_TYPE (argument));
+	  qexec_take_operand_type (vd, agg_p->plan_item, agg_p->opr_dbtype, TP_DOMAIN_TYPE (argument));
 	}
       else
 	{
-	  qexec_take_operand_type (vd, agg_p->domain_plan, agg_p->opr_dbtype, TP_DOMAIN_TYPE (resolved));
+	  qexec_take_operand_type (vd, agg_p->plan_item, agg_p->opr_dbtype, TP_DOMAIN_TYPE (resolved));
 	}
     }
-  qexec_set_node_domain (vd, agg_p->domain_plan, agg_p->domain, resolved);
+  qexec_set_node_domain (vd, agg_p->plan_item, agg_p->domain, resolved);
   return late_bind_node->operand_domain[0] != NULL ? late_bind_node->operand_domain[0] : resolved;
 }
 
@@ -3423,7 +3424,7 @@ qexec_apply_aggregate_resolved_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * ag
 static bool
 qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
 {
-  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, agg_p->operands->value.domain_plan);
+  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, agg_p->operands->value.plan_item);
   return domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL;
 }
 
@@ -3433,7 +3434,7 @@ qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg
 static bool
 qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
 {
-  const DB_TYPE operand_type = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan);
+  const DB_TYPE operand_type = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item);
   return agg_p->accumulator_domain.value_dom == NULL && !TP_IS_NUMERIC_TYPE (operand_type)
     && !TP_IS_DATE_OR_TIME_TYPE (operand_type) && !qexec_interpolation_sees_nulls (vd, agg_p);
 }
@@ -3443,7 +3444,7 @@ qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
  *   return: error code or NO_ERROR
  *   accumulator(in): the accumulator domain derived from the argument's (SUM, AVG)
  *
- * They are the ones develop's first non-NULL value gave: the accumulator follows the function (or, for SUM and AVG, the
+ * They are the ones the first non-NULL value would give: the accumulator follows the function (or, for SUM and AVG, the
  * argument). A MEDIAN / PERCENTILE over a number or a date leaves them unset, as the first value did; over
  * a string, the type resolve_domains gave a value sets them, and anything else waits for the first value
  * (qexec_interpolation_waits). SUM and AVG also get the operand coercion of a value added after the first and
@@ -3454,7 +3455,7 @@ qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
  *   fixes them, the plan's otherwise - the resolved domain for a bind, a session variable read or a node over them,
  *   or the producer's that an alias reads (a hash GROUP BY argument over a bind), as qexec_consumer_domain gives it.
  *   An aggregate's or an analytic function's operand type is not it: it holds the function's domain (DOUBLE for a
- *   SUM over strings), as develop's row-time resolve set it.
+ *   SUM over strings).
  */
 const TP_DOMAIN *
 qexec_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
@@ -3465,13 +3466,13 @@ qexec_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
     }
   const bool arith = (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL;
   return qexec_consumer_domain (vd, arith ? regu->value.arithptr->domain : regu->domain,
-				arith ? regu->value.arithptr->domain_plan : regu->domain_plan);
+				arith ? regu->value.arithptr->plan_item : regu->plan_item);
 }
 
 static int
 qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const TP_DOMAIN * accumulator)
 {
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
   memset (&agg_p->accumulator_domain.operand_coercion, 0, sizeof (agg_p->accumulator_domain.operand_coercion));
   agg_p->accumulator_domain.temporary = 0;
   switch (agg_p->function)
@@ -3496,13 +3497,13 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
       if (accumulator == NULL || TP_DOMAIN_TYPE (accumulator) == DB_TYPE_VARIABLE
 	  || TP_DOMAIN_TYPE (accumulator) == DB_TYPE_NULL)
 	{
-	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
+	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
 	}
       agg_p->accumulator_domain.value_dom = (TP_DOMAIN *) accumulator;
       agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
       {
-	/* a value added after the first takes the operand coercion develop's qdata_add_dbval took by its type -
-	 * a string into the DOUBLE accumulator - resolved here from the argument's domain in this execution */
+	/* a value added after the first takes the addition's operand coercion for its type - a string into the
+	 * DOUBLE accumulator - resolved here from the argument's domain in this execution */
 	const TP_DOMAIN *argument = qexec_value_domain (vd, agg_p->operands != NULL ? &agg_p->operands->value : NULL);
 	if (argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
 	    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL)
@@ -3515,7 +3516,7 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 	  }
 	/* a value a scope fixes, which that operand coercion converts, is converted once per scope
 	 * (qexec_execution_temporary): the rows read the index set here, not the plan item and the operand coercion */
-	const DOMAIN_PLAN_ITEM *item = agg_p->domain_plan;
+	const DOMAIN_PLAN_ITEM *item = agg_p->plan_item;
 	if (item != NULL && item->temporaries[1] != 0 && agg_p->accumulator_domain.operand_coercion.conv[1] != NULL)
 	  {
 	    agg_p->accumulator_domain.temporary = item->temporaries[1];
@@ -3536,8 +3537,8 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      if (qexec_interpolation_waits (vd, agg_p) && agg_p->domain_plan != NULL
-	  && (agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT) && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
+      if (qexec_interpolation_waits (vd, agg_p) && agg_p->plan_item != NULL
+	  && (agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT) && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
 	{
 	  agg_p->accumulator_domain.value_dom = domain;
 	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
@@ -3586,14 +3587,14 @@ qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const
   REGU_VARIABLE *argument = &agg_p->operands->value;
   if (column == NULL)
     {
-      column = qexec_consumer_domain (vd, qexec_get_node_domain (vd, argument->domain, argument->domain_plan),
-				      argument->domain_plan);
+      column = qexec_consumer_domain (vd, qexec_get_node_domain (vd, argument->domain, argument->plan_item),
+				      argument->plan_item);
       if (column == NULL)
 	{
-	  return qexec_domain_unresolved (vd, argument->domain_plan, argument->domain);
+	  return qexec_domain_unresolved (vd, argument->plan_item, argument->domain);
 	}
     }
-  qexec_set_node_domain (vd, argument->domain_plan, argument->type == TYPE_POSITION ? NULL : argument->domain, column);
+  qexec_set_node_domain (vd, argument->plan_item, argument->type == TYPE_POSITION ? NULL : argument->domain, column);
   /* the keys sort the list's one column: the list opens with the argument's domain (qdata_aggregate_list_domain), and
    * the finalization sorts it with that type (qdata_finalize_aggregate_list); the plan's keys keep theirs */
   for (SORT_LIST * key = agg_p->sort_list; key != NULL; key = key->next)
@@ -3612,7 +3613,7 @@ qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const
  * The values convert to the function's domain before they go into the list
  * (qdata_update_agg_interpolation_func_value_and_domain), so the list holds that type: the argument's domain where it
  * is of that type - a NUMERIC column keeps its precision and scale - and the function's otherwise. This is
- * the domain develop's list took from its first value. A function without a domain (resolve_domains could not type its
+ * the domain the list would take from its first value. A function without a domain (resolve_domains could not type its
  * value, which its first value rejects) keeps the argument's. A function over
  * a constant or a host variable has no sort list and no list: its one value is kept (qdata_evaluate_aggregate_list).
  */
@@ -3625,15 +3626,15 @@ qexec_setup_interpolation_list (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
       return;
     }
   assert (agg_p->sort_list->pos_descr.pos_no == 0);
-  const TP_DOMAIN *list = qexec_get_node_domain (vd, agg_p->operands->value.domain, agg_p->operands->value.domain_plan);
-  const TP_DOMAIN *function = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  const TP_DOMAIN *list = qexec_get_node_domain (vd, agg_p->operands->value.domain, agg_p->operands->value.plan_item);
+  const TP_DOMAIN *function = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
   if (TP_DOMAIN_TYPE (function) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (function) != DB_TYPE_NULL
       && (list == NULL || TP_DOMAIN_TYPE (list) != TP_DOMAIN_TYPE (function)))
     {
       list = function;
     }
   /* the key shares the function's item: the list domain has its own execution domains */
-  qexec_take_interpolation_list_domain (vd, agg_p->domain_plan, list);
+  qexec_take_interpolation_list_domain (vd, agg_p->plan_item, list);
 }
 
 /*
@@ -3645,10 +3646,10 @@ qexec_setup_interpolation_list (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
  *   vd(in): the execution's value descriptor
  *   resolved(out): 0 while an aggregate waits for its first value (qexec_aggregate_first_values)
  *
- * The domains are the ones the first non-NULL value gave in develop: the resolved domain for a function resolve_domains
+ * The domains are the ones the first non-NULL value would give: the resolved domain for a function resolve_domains
  * resolves (its accumulator is the resolver's), the compiled function and the accumulator the load derived from the
  * argument for a compiled one. A function whose resolution has no value (a NULL bind, a node over one) sees only NULLs:
- * its accumulators stay unset, as develop's never resolved. A MEDIAN / PERCENTILE list takes its domain here too
+ * its accumulators stay unset, as no value resolves them. A MEDIAN / PERCENTILE list takes its domain here too
  * (qexec_setup_interpolation_list). What waits for a first value: a MEDIAN / PERCENTILE string, whose first value is
  * checked (qexec_interpolation_waits). No row resolves an aggregate's domain.
  */
@@ -3694,12 +3695,12 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
 
       const bool interpolation = QPROC_IS_INTERPOLATION_FUNC (agg_p);
       const TP_DOMAIN *accumulator = NULL;
-      const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, agg_p->domain_plan);
+      const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, agg_p->plan_item);
       if (late_bind_node != NULL && !interpolation && TP_DOMAIN_TYPE (late_bind_node->domain) == DB_TYPE_VARIABLE)
 	{
 	  /* resolve_domains types every aggregate, and no row resolves one; a MEDIAN / PERCENTILE without a type
 	   * takes its type below */
-	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
+	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
 	}
       if (late_bind_node != NULL)
 	{
@@ -3715,27 +3716,26 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
 	      continue;
 	    }
 	}
-      else if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->domain_plan) != DB_TYPE_VARIABLE
-	       && qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan) != NULL
-	       && !domain_is_variable (qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan))
-	       && agg_p->domain_plan != NULL
-	       && ((agg_p->domain_plan->flags & DOMAIN_PLAN_ACCUMULATOR) || interpolation))
+      else if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item) != DB_TYPE_VARIABLE
+	       && qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item) != NULL
+	       && !domain_is_variable (qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item))
+	       && agg_p->plan_item != NULL && ((agg_p->plan_item->flags & DOMAIN_PLAN_ACCUMULATOR) || interpolation))
 	{
-	  accumulator = agg_p->domain_plan->fixed.operand_domain[0];
+	  accumulator = agg_p->plan_item->fixed.operand_domain[0];
 	}
-      else if (!interpolation || agg_p->domain_plan == NULL || !(agg_p->domain_plan->flags & DOMAIN_PLAN_LATE_BIND))
+      else if (!interpolation || agg_p->plan_item == NULL || !(agg_p->plan_item->flags & DOMAIN_PLAN_LATE_BIND))
 	{
-	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
+	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
 	}
       /* a MEDIAN / PERCENTILE resolve_domains gave no type: it sees only NULLs (no value), or its first value is
        * rejected (a value resolve_domains could not type). A string column or expression without a type is a number all
        * the same: its values are cast to DOUBLE, the first one checked (qexec_interpolation_first_value). */
-      if (interpolation && accumulator == NULL && !(agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
-	  && (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan)) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan)) == DB_TYPE_NULL)
+      if (interpolation && accumulator == NULL && !(agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
+	  && (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item)) == DB_TYPE_VARIABLE
+	      || TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item)) == DB_TYPE_NULL)
 	  && !qexec_interpolation_sees_nulls (vd, agg_p))
 	{
-	  qexec_set_node_domain (vd, agg_p->domain_plan, agg_p->domain, tp_domain_resolve_default (DB_TYPE_DOUBLE));
+	  qexec_set_node_domain (vd, agg_p->plan_item, agg_p->domain, tp_domain_resolve_default (DB_TYPE_DOUBLE));
 	}
 
       error = qexec_setup_aggregate_accumulators (vd, agg_p, accumulator);
@@ -3766,22 +3766,22 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
  * The function's domain and its list's were set before the first row (qexec_setup_aggregate_domains): the first value
  * checks them. A string column or expression is cast to its DOUBLE: a first value that does not convert
  * reports ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN (-1118) here, while a later one fails as the row's conversion
- * does (-181), as develop's did. A literal, a bind or a session variable read resolve_domains could not type is the
+ * does (-181). A literal, a bind or a session variable read resolve_domains could not type is the
  * resolve_domains' -1118 before any row, and one it typed was set up before the first row. The cast goes
  * into a value of its own: the operand may be a shared bind or a cached column value.
  */
 static int
 qexec_interpolation_first_value (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const DB_VALUE * dbval)
 {
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
   const bool argument_type_resolved = TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
     && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL;
-  if (agg_p->domain_plan == NULL || !(agg_p->domain_plan->flags & DOMAIN_PLAN_VALUE_ARGUMENT))
+  if (agg_p->plan_item == NULL || !(agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT))
     {
       /* the compiled DOUBLE, resolve_domains' for a late-binding string, or the setup's for a string without a type */
       if (!argument_type_resolved)
 	{
-	  return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
+	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
 	}
       DB_VALUE cast_value;
       db_make_null (&cast_value);
@@ -3799,7 +3799,7 @@ qexec_interpolation_first_value (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, c
     {
       /* a value argument: resolve_domains typed it, setting it up before the first row
        * (qexec_setup_aggregate_accumulators), or raised -1118 */
-      return qexec_domain_unresolved (vd, agg_p->domain_plan, agg_p->domain);
+      return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
     }
   /* clear errors from failed casts once one succeeds */
   if (er_errid () != NO_ERROR)
@@ -3869,7 +3869,7 @@ qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list
  *   xasl(in/out): the BUILDVALUE block
  *
  * The value converts to that domain when the column is fetched (qdata_get_dbval_from_constant_regu_variable), as
- * develop's copy after each row made it: a GROUP_CONCAT of a CHAR bind builds a VARCHAR. The setup gives a column the
+ * the copy after each row would make it: a GROUP_CONCAT of a CHAR bind builds a VARCHAR. The setup gives a column the
  * plan's resolution before the first row. A column the compiler typed keeps its domain.
  */
 void
@@ -3879,18 +3879,18 @@ qexec_type_accumulator_outputs (const VAL_DESCR * vd, XASL_NODE * xasl)
        out = out->next)
     {
       /* a column the compiler typed keeps its domain; the others take one as their execution domain */
-      if (out->value.type != TYPE_CONSTANT || out->value.domain_plan == NULL
-	  || !(out->value.domain_plan->flags & DOMAIN_PLAN_VARIABLE))
+      if (out->value.type != TYPE_CONSTANT || out->value.plan_item == NULL
+	  || !(out->value.plan_item->flags & DOMAIN_PLAN_VARIABLE))
 	{
 	  continue;
 	}
       for (AGGREGATE_TYPE * agg_p = xasl->proc.buildvalue.agg_list; agg_p != NULL; agg_p = agg_p->next)
 	{
-	  const TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->domain_plan);
+	  const TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
 	  if (out->value.value.dbvalptr == agg_p->accumulator.value
 	      && !domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
 	    {
-	      qexec_set_node_domain (vd, out->value.domain_plan, out->value.domain, domain);
+	      qexec_set_node_domain (vd, out->value.plan_item, out->value.domain, domain);
 	      break;
 	    }
 	}

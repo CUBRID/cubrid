@@ -127,8 +127,8 @@ struct SUBKEY_INFO
   bool use_cmp_dom;		/* when true, use cmp_dom to make comparing */
 
   bool cmp_dom_session_read;	/* cmp_dom rests on a session variable read: the type holds for the statement, a value
-				 * of another type converts to it or fails; the optdebug debug cross-check, which
-				 * compares with develop's type of each value, skips it */
+				 * of another type converts to it or fails; the optdebug cross-check, which compares
+				 * with the type each value gives, skips it */
 };
 
 struct SORTKEY_INFO

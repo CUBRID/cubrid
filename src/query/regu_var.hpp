@@ -131,7 +131,7 @@ typedef struct arith_list_node ARITH_TYPE;
 struct arith_list_node
 {
   TP_DOMAIN *domain;		/* resultant domain */
-  domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
+  domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
@@ -187,7 +187,7 @@ class regu_variable_node
 
     int flags;			/* flags */
     TP_DOMAIN *domain;		/* domain of the value in this regu variable */
-    domain_plan_item *domain_plan = nullptr; /* load-derived, not serialized */
+    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */
     union regu_data_value

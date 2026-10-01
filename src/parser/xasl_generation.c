@@ -6552,7 +6552,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 		   || (TP_TYPE_HAS_COLLATION (typ) && TP_TYPE_HAS_COLLATION (exptyp)
 		       && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain)))))
 	{
-	  /* a value given before compilation is still cast where develop cast it -- an
+	  /* a value given before compilation is cast here -- an
 	   * auto-parameter, or a host variable with its own data type; any other host variable's
 	   * value is cast by the client to its expected domain. */
 	  if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)

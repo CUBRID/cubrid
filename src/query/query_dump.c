@@ -1250,9 +1250,9 @@ qdump_print_value (REGU_VARIABLE * value_p)
     }
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-  if (value_p->domain_plan != NULL)
+  if (value_p->plan_item != NULL)
     {
-      const DOMAIN_PLAN_ITEM *item = value_p->domain_plan;
+      const DOMAIN_PLAN_ITEM *item = value_p->plan_item;
       const char *classes[] = { "?", "CONST", "ROW", "CORR", "VOLATILE" };
       fprintf (foutput, "{plan class=%s slot=%d ref=%d flags=0x%03x}", classes[item->operand_class],
 	       item->resolved_index, item->ref, item->flags);

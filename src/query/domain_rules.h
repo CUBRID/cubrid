@@ -54,11 +54,11 @@ struct DOMAIN_OPERAND
 DOMAIN_CONVERT_MODE domain_convert_mode (DOMAIN_CTX context);
 
 /*
- * The single home of the server type rules: the value-type rules that execution applies in
- * qdata_{add,subtract,multiply,divide}_dbval, tp_value_compare_with_error, tp_infer_common_domain,
- * qexec_resolve_domains_for_aggregation, the analytic functions' row-time resolve, ADDTIME and STR_TO_DATE, kept answer
- * for answer. Result domains are cache domains (no caller-owned allocation, no er_set). An operand with val_type ==
- * DB_TYPE_NULL whose domain is not fixed sets *needs_late_bind and leaves result untouched. opcode is OPERATOR_TYPE for
+ * The single home of the server type rules: the value-type rules execution applied at the row in
+ * qdata_{add,subtract,multiply,divide}_dbval, tp_value_compare_with_error, tp_infer_common_domain, the row-time
+ * resolve of an aggregate and of an analytic function, ADDTIME and STR_TO_DATE, kept answer for answer. Result
+ * domains are cache domains (no caller-owned allocation, no er_set). An operand with val_type == DB_TYPE_NULL whose
+ * domain is not fixed sets *needs_late_bind and leaves result untouched. opcode is OPERATOR_TYPE for
  * ARITH/COMPARE/COMMON_VALUE/FUNC_ARG and FUNC_CODE for AGG/ANALYTIC. AGG/ANALYTIC: consumer_domain = the function's
  * compiled domain; operands[0] = the argument (is_variable_pos = resolve_domains resolves it, opr_dbtype VARIABLE);
  * result domain = the function domain, operand_domain[0] = accumulator domain. result: domain = result (COMPARE:
@@ -92,8 +92,8 @@ DB_TYPE domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, co
  * type, collation and codeset its operator gives the value. A variable string's precision is floating.
  * opcode is OPERATOR_TYPE for an arithmetic node and FUNC_CODE for a function node; compiled is the
  * node's compiled domain.
- * return: NO_ERROR, ER_QSTR_INCOMPATIBLE_COLLATIONS when the operands' collations do not merge (the row raises it, as
- *	   develop does), or ER_QPROC_DOMAIN_UNRESOLVED when the branch a row picks resolves the value's domain (a
+ * return: NO_ERROR, ER_QSTR_INCOMPATIBLE_COLLATIONS when the operands' collations do not merge (the row raises
+ *	   it), or ER_QPROC_DOMAIN_UNRESOLVED when the branch a row picks resolves the value's domain (a
  *	   branch chosen per row whose domains differ): resolve_domains then resolves the branch
  *	   (domain_resolve_branch_pick, domain_resolve_branch_merge).
  */
@@ -131,16 +131,17 @@ enum DOMAIN_COMPARE_METHOD
 				 * resolved_domain.compares[compare_index] */
   DOMAIN_COMPARE_LATE_BIND_SESSION,	/* likewise, over a session variable read: resolve_domains resolves it once the
 					 * variable has its type for the statement (qexec_resolve_session_variables) */
-  DOMAIN_COMPARE_VALUES,	/* develop's value comparison: a NULL side, a side the plan leaves variable, a
-				 * comparison no resolution holds. The unresolved-domain check (execution) holds for
-				 * each: develop may not resolve anything from the values there */
+  DOMAIN_COMPARE_VALUES,	/* tp_value_compare_with_error on the values: a NULL side, a side the plan leaves
+				 * variable, a comparison no resolution holds. The unresolved-domain check (execution)
+				 * holds for each: the values may not decide a coercion or a collation there */
   DOMAIN_COMPARE_DIRECT,	/* comparable as they are: cmpval under the resolved collation */
-  DOMAIN_COMPARE_CONVERT,	/* the resolved converters in develop's order, then cmpval */
-  DOMAIN_COMPARE_COLLATIONS,	/* strings whose collations do not merge: develop's -1150 at every row */
-  DOMAIN_COMPARE_OBJECT,	/* an OBJECT side: develop's comparison (an OID on the server, OBJECT/OID on the
-				 * client) */
+  DOMAIN_COMPARE_CONVERT,	/* the resolved converters in tp_value_compare_with_error's order, then cmpval */
+  DOMAIN_COMPARE_COLLATIONS,	/* strings whose collations do not merge: -1150 (ER_QSTR_INCOMPATIBLE_COLLATIONS)
+				 * at every row */
+  DOMAIN_COMPARE_OBJECT,	/* an OBJECT side: tp_value_compare_with_error on the values (an OID on the server,
+				 * OBJECT/OID on the client) */
   DOMAIN_COMPARE_RANK,		/* no coercion between types that do not compare as they are: the result their rank
-				 * gives (rank), develop's tp_value_compare without coercion */
+				 * gives (rank), as tp_value_compare without coercion answers */
   DOMAIN_COMPARE_KEYS		/* values whose keys only the data knows (a collection's elements): the key pair
 				 * table's entry for the two values' keys (domain_compare_by_type_pair) */
 };
@@ -154,9 +155,9 @@ typedef DB_LOGICAL (*DOMAIN_COMPARE_OPERATOR_FUNCTION) (const DOMAIN_COMPARE * c
 							DB_VALUE * dbval1, DB_VALUE * dbval2);
 
 /*
- * DOMAIN_COMPARE - develop's tp_value_compare_with_error with its coercion resolved before any row: which
+ * DOMAIN_COMPARE - tp_value_compare_with_error with its coercion resolved before any row: which
  *   side becomes what (tp_value_compare_common_domain and the implicit coercion rules), the type whose cmpval compares,
- *   the collation, and the outcome develop gives when a conversion fails. The row runs the resolved converters and
+ *   the collation, and the outcome it gives when a conversion fails. The row runs the resolved converters and
  *   cmpval; it resolves nothing. A comparison term's resolved comparison names the operator functions its row runs.
  */
 struct DOMAIN_COMPARE
@@ -168,7 +169,8 @@ struct DOMAIN_COMPARE
 								 * (domain_compare_set_operator_functions); NULL:
 								 * eval_value_rel_cmp */
   const struct pr_type *cmp;	/* cmpval of the compared values */
-  TP_VALUE_CONVERTER conv[2];	/* side i's converter at the row, NULL none; develop's order: first, then the other */
+  TP_VALUE_CONVERTER conv[2];	/* side i's converter at the row, NULL none; tp_value_compare_with_error's order:
+				 * first, then the other */
   const TP_DOMAIN *target[2];	/* the domain side i is converted into */
   int value[2];			/* resolved_domain.vals index of a constant side resolve_domains converted once; -1: the
 				 * row's value; -2: resolve_domains' own value of a constant's element, the row's
@@ -176,26 +178,26 @@ struct DOMAIN_COMPARE
   short collation;		/* the collation cmpval compares under (an id below LANG_MAX_COLLATIONS); 0 for a
 				 * non-string */
   unsigned char method;		/* DOMAIN_COMPARE_METHOD */
-  unsigned char coercion;	/* the do_coercion develop's comparison passes cmpval: 1, or 0 for a comparison without
-				 * coercion (a collection's order) */
-  /* what resolve_domains, the other comparison methods and develop's outcome of a failed conversion read. Why the
-   * outcome fields: a comparison resolved before any row must give every answer develop gives, errors and ranks
-   * included, and develop makes those at the row from the conversions it made so far. first, source and converted_first
-   * rebuild the two type names develop's -181 (ER_TP_CANT_COERCE) prints and the rank tp_more_general_type answers
-   * after a failed conversion; failed keeps a constant resolve_domains could not convert failing where develop fails
-   * it; rank is develop's answer for two types that compare without coercion; codeset_side repeats the codeset
-   * conversion develop makes when an ENUM meets a string of another codeset. Dropping one changes an error or a result
-   * of develop's. */
+  unsigned char coercion;	/* the do_coercion tp_value_compare_with_error passes cmpval: 1, or 0 for a comparison
+				 * without coercion (a collection's order) */
+  /* what resolve_domains, the other comparison methods and the outcome of a failed conversion read. Why the outcome
+   * fields: a comparison resolved before any row must give every answer tp_value_compare_with_error gives, errors and
+   * ranks included, and that function makes those at the row from the conversions it made so far. first, source and
+   * converted_first rebuild the two type names its -181 (ER_TP_CANT_COERCE) prints and the rank tp_more_general_type
+   * answers after a failed conversion; failed keeps a constant resolve_domains could not convert failing where the
+   * function fails it; rank is its answer for two types that compare without coercion; codeset_side repeats the
+   * codeset conversion it makes when an ENUM meets a string of another codeset. Dropping one changes an error or a
+   * result of the comparison. */
   int compare_index;		/* LATE_BIND*: resolved_domain.compares index of this execution's resolution; -1 */
-  unsigned char first;		/* the side develop converts first */
-  unsigned char source[2];	/* DB_TYPE of each side before conversion: develop's failure outcome names these */
+  unsigned char first;		/* the side tp_value_compare_with_error converts first */
+  unsigned char source[2];	/* DB_TYPE of each side before conversion: the failure outcome names these */
   unsigned char converted_first;	/* DB_TYPE the first side has once converted (the second conversion failing) */
   unsigned char failed;		/* bit i: resolve_domains could not convert constant side i - a resolved comparison
-				 * outside a term, which answers by develop's rank at every row (a term's is
+				 * outside a term, which answers by rank at every row (a term's is
 				 * resolve_domains' error) */
   signed char rank;		/* comparison method RANK: DB_LT or DB_GT */
   signed char codeset_side;	/* an ENUM against a string of another codeset: the side brought into the ENUM's
-				 * codeset at the row (develop's tmp_char_conv); -1 none */
+				 * codeset at the row (tp_value_compare_with_error's tmp_char_conv); -1 none */
 };
 static_assert (sizeof (DOMAIN_COMPARE) == 72, "resolved comparison layout");
 static_assert (offsetof (DOMAIN_COMPARE, coercion) < 64, "a comparison's row fields in its first 64 bytes");
@@ -226,7 +228,7 @@ void domain_compare_key_of (const TP_DOMAIN * domain, DOMAIN_COMPARE_KEY * key);
 /* A key whose values the fetch gives another codeset and collation (a COLLATE modifier): the key takes them. */
 void domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate);
 
-/* The comparison develop's tp_value_compare_with_error makes between a value of each key: the type pair comparison
+/* The comparison tp_value_compare_with_error makes between a value of each key: the type pair comparison
  * table's cell for the two keys, copied. A key the table has no row for - a NULL key, or a string or ENUM key whose
  * codeset is not its collation's - gets the comparison computed for it. */
 int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result);
@@ -251,9 +253,10 @@ const DOMAIN_COMPARE *domain_compare_row_entry (int row, const DB_VALUE * elemen
  * domain_compare_values () - a comparison resolved before any row, on the two values it compares (the
  *   index keys; the key pair table): comparison method DIRECT, CONVERT, COLLATIONS or RANK. The NULL rule and the
  *   other compare_methods are the caller's.
- *   return: the result; *can_compare false, with develop's error, where a conversion fails or collations do not merge
+ *   return: the result; *can_compare false, with tp_value_compare_with_error's error, where a conversion fails or
+ *	     collations do not merge
  *   can_compare(out): NULL for tp_value_compare's contract: a failed conversion or a rank answers without an error
- *		       (collations that do not merge still set -1150, as develop does)
+ *		       (collations that do not merge still set -1150, as tp_value_compare does)
  */
 DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
 					       const DB_VALUE * value2, int total_order, bool * can_compare);
@@ -265,7 +268,7 @@ DB_VALUE_COMPARE_RESULT domain_compare_converted (const DOMAIN_COMPARE * compare
 						  unsigned char preconverted);
 
 /*
- * domain_compare_by_type_pair () - develop's tp_value_compare_with_error on two values whose keys only the data knows -
+ * domain_compare_by_type_pair () - tp_value_compare_with_error on two values whose keys only the data knows -
  *   a collection's elements, JSON scalars, partition bounds, hash group keys - resolved before any row: the key pair
  *   table holds the comparison of every pair of keys a value can have, and the row reads the entry of its two values'
  *   keys. It resolves nothing.
@@ -321,7 +324,7 @@ domain_value_domains_differ (const DB_VALUE * value1, const DB_VALUE * value2)
 const TP_DOMAIN *domain_value_domain (const DB_VALUE * value);
 
 /*
- * How a column of a search key takes its value. A multi-column key follows develop's
+ * How a column of a search key takes its value. A multi-column key follows
  * scan_dbvals_to_midxkey: a value of another type is converted strictly into the index column's domain or else kept
  * under its own domain, a NUMERIC, CHAR or BIT value of the column's type with other parameters is kept, any
  * other value is written under the column's domain; once a column is kept, every column is written under its value's
@@ -345,7 +348,7 @@ const TP_DOMAIN *domain_key_value_domain (const TP_DOMAIN * domain);
 /* Column i of a B-tree key domain: a multi-column key's i-th element, the domain itself for a single column. */
 const TP_DOMAIN *domain_key_column (const TP_DOMAIN * key_type, int column);
 
-/* A value's domain in an index column's direction, as develop writes a kept column (is_desc the column's): cached. */
+/* A value's domain in an index column's direction, as a kept column is written (is_desc the column's): cached. */
 const TP_DOMAIN *domain_in_key_direction (const TP_DOMAIN * domain, const TP_DOMAIN * column);
 
 /* A key domain with every column ascending, a multi-range optimization's sort domains: cached. */
@@ -355,7 +358,7 @@ const TP_DOMAIN *domain_ascending_key_type (const TP_DOMAIN * key_type);
  * frees it. */
 TP_DOMAIN *domain_copy_one (const TP_DOMAIN * domain);
 
-/* The converter develop's tp_value_coerce_strict runs to bring a value of a type into an index column's domain; NULL
+/* The converter tp_value_coerce_strict runs to bring a value of a type into an index column's domain; NULL
  * where it refuses the column's type (only a number or a date and time is a strict target). */
 TP_VALUE_CONVERTER domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column);
 
