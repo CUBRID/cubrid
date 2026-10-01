@@ -1012,6 +1012,13 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
+  /* for Static SQLs of PL/CSQL SP skip the remaining steps */
+  if (parser->flag.is_parsing_static_sql)
+    {
+      session->statements[stmt_ndx] = statement;
+      goto target_for_static_sql;
+    }
+
   /*
      the remote-DML of dblink must not execute mq_translate
      because the query of remote-DML should be executed at remote server side
@@ -1077,8 +1084,7 @@ db_compile_statement_local (DB_SESSION * session)
    * is disabled, old interface of do_statement() will be used instead. do_statement() makes a XASL everytime rather
    * than using XASL cache. Also, it can be executed in the server without touching the XASL cache by calling
    * prepare_and_execute_query(). */
-  if (!parser->flag.is_parsing_static_sql && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0
-      && statement->flag.cannot_prepare == 0)
+  if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
     {
       if (session->is_subsession_for_prepared)
 	{
@@ -1119,6 +1125,8 @@ db_compile_statement_local (DB_SESSION * session)
 	  return err;
 	}
     }
+
+target_for_static_sql:
 
   /* so now, the statement is prepared */
   session->stage[stmt_ndx] = StatementPreparedStage;
