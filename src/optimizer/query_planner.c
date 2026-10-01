@@ -324,10 +324,9 @@ static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *);
 static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, QO_SCANMETHOD, BITSET *, BITSET *);
 static int qo_has_is_not_null_term (QO_NODE * node);
 
-static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp);
+static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx);
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
-static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
-static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
@@ -1207,7 +1206,7 @@ qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg)
 
 /*
  * qo_validate_indexes_for_orderby () - wrapper function for
- *					qo_validate_index_for_orderby
+ *					qo_validate_index_for_sort
  *                                      used with qo_walk_plan_tree.
  * return: NO_ERROR or ER_FAILED if the wrapped function returns false
  * plan(in):
@@ -1218,7 +1217,7 @@ qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg)
 {
   if (qo_is_iscan_from_orderby (plan))
     {
-      if (!qo_validate_index_for_orderby (plan->info->env, plan->plan_un.scan.index))
+      if (!qo_validate_index_for_sort (plan->info->env, plan->plan_un.scan.index, SORT_ORDERBY))
 	{
 	  return ER_FAILED;
 	}
@@ -1338,7 +1337,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	      /* if the plan is index_groupby, we validate the plan */
 	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
 		{
-		  if (!qo_validate_index_for_groupby (plan->info->env, plan->plan_un.scan.index))
+		  if (!qo_validate_index_for_sort (plan->info->env, plan->plan_un.scan.index, SORT_GROUPBY))
 		    {
 		      /* drop the plan if it wasn't validated */
 		      qo_worst_cost (plan);
@@ -8384,12 +8383,18 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     {
 
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
+      double fk_floor_product;
       BITSET eqclasses;
+      BITSET fk_excluded_terms;
+      BITSET fk_col_terms;
 
       bitset_init (&eqclasses, planner->env);
+      bitset_init (&fk_excluded_terms, planner->env);
+      bitset_init (&fk_col_terms, planner->env);
 
 
       selectivity = 1.0;	/* init */
+      fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
 
       cardinality = head_info->cardinality * tail_info->cardinality;
       total_rows = head_info->total_rows * tail_info->total_rows;
@@ -8411,6 +8416,124 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       if (cardinality != 0)
 	{			/* not empty */
 	  cardinality = MAX (1.0, cardinality);
+
+	  /* Identify composite PK-FK relationships that this step connects for the first time (fk_node
+	   * and pk_node were not already both in head_info or both in tail_info), and find which sarged
+	   * terms currently stand for each of their key columns' equivalence classes. qo_check_skip_term()
+	   * may judge the literal fk_node-pk_node edge for a column redundant and leave an eqclass-
+	   * equivalent term on some other node pair standing in for it (e.g. supplier-lineitem instead of
+	   * partsupp-lineitem); matching by eqclass rather than a fixed term set finds it either way. A
+	   * relationship is applied only when every one of its columns has a standing term in this step's
+	   * sarged_terms - otherwise it is left to the ordinary per-term product below, never worse than
+	   * the pre-fix independent-product estimate. */
+	  if (planner->env->n_fk_join_info > 0)
+	    {
+	      int ei;
+
+	      for (ei = 0; ei < planner->env->n_fk_join_info; ei++)
+		{
+		  QO_FK_JOIN_INFO *fkinfo = &planner->env->fk_join_info[ei];
+		  bool fk_in_head, pk_in_head, fk_in_tail, pk_in_tail, all_cols_found;
+		  int col;
+
+		  fk_in_head = BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (fkinfo->fk_node));
+		  pk_in_head = BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (fkinfo->pk_node));
+		  fk_in_tail = BITSET_MEMBER (tail_info->nodes, QO_NODE_IDX (fkinfo->fk_node));
+		  pk_in_tail = BITSET_MEMBER (tail_info->nodes, QO_NODE_IDX (fkinfo->pk_node));
+
+		  if ((fk_in_head && pk_in_head) || (fk_in_tail && pk_in_tail))
+		    {
+		      continue;	/* already connected before this step */
+		    }
+		  if (!((fk_in_head || fk_in_tail) && (pk_in_head || pk_in_tail)))
+		    {
+		      continue;	/* fk_node, pk_node not both present after this step either */
+		    }
+
+		  BITSET_CLEAR (fk_col_terms);
+		  all_cols_found = true;
+
+		  for (col = 0; col < fkinfo->n_cols; col++)
+		    {
+		      bool found = false;
+
+		      for (i = bitset_iterate (&sarged_terms, &bi); i != -1; i = bitset_next_member (&bi))
+			{
+			  term = &planner->term[i];
+
+			  /*
+			   * Do not reuse terms already claimed by another FK entry in this join step.
+			   */
+			  if (BITSET_MEMBER (fk_excluded_terms, i))
+			    {
+			      continue;
+			    }
+
+			  if (QO_TERM_CLASS (term) != QO_TC_JOIN
+			      || QO_TERM_EQCLASS (term) != fkinfo->col_eqclasses[col])
+			    {
+			      continue;
+			    }
+
+			  if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (fkinfo->fk_node)))
+			    {
+			      /* The term touches fk_node itself, so require it to be built on this
+			       * constraint's own column, not just any column that happens to share the
+			       * (possibly merged) equivalence class - two different FK constraints on
+			       * fk_node referencing the same parent PK can have their columns merged into
+			       * one eqclass by qo_assign_eq_classes(), and each constraint's terms must
+			       * stay attributed to its own QO_FK_JOIN_INFO entry.
+			       *
+			       * This relies on qo_discover_indexes() retaining FK-column segments in
+			       * index_seg[], since FK columns have indexes and are not filtered out.
+			       * If that behavior changes, this lookup may silently fail and the FK join
+			       * selectivity floor will not be applied. */
+			      if (QO_TERM_INDEX_SEG (term, 0) != fkinfo->fk_col_segs[col]
+				  && QO_TERM_INDEX_SEG (term, 1) != fkinfo->fk_col_segs[col])
+				{
+				  continue;
+				}
+			    }
+			  else if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (fkinfo->pk_node)))
+			    {
+			      continue;
+			    }
+			  /* else: the term touches only pk_node, not fk_node - e.g. if part+lineitem are
+			   * already head and partsupp is the new tail, the term connecting the partkey
+			   * eqclass into the group is part-partsupp, not lineitem-partsupp, so it never
+			   * touches fk_node at all. Exact-segment identity isn't meaningful here, so eqclass
+			   * membership alone is accepted. */
+
+			  bitset_add (&fk_col_terms, i);
+			  found = true;
+			}
+
+		      /* a column whose eqclass carries a constant (fk.a = 5 AND pk.a = 5) has no join term at all,
+		       * so it is never found here and the floor is skipped for this constraint -- conservative
+		       * (falls back to the per-term product). PostgreSQL counts such columns (nconst_ec) and
+		       * keeps applying the floor; left as a follow-up. */
+		      if (!found)
+			{
+			  all_cols_found = false;
+			  break;
+			}
+		    }
+
+		  if (all_cols_found)
+		    {
+		      /* A later FK entry's terms may already be claimed by an earlier entry at
+		       * this same step (see the fk_excluded_terms check above); which entry claims
+		       * first depends on FK registration order (node index order). Entries
+		       * referencing the same parent all use the same floor_selectivity
+		       * (1 / parent cardinality), so it does not matter which one applies it.
+		       * Relationships among child nodes already joined in the head are represented
+		       * by their implied join terms. */
+		      bitset_union (&fk_excluded_terms, &fk_col_terms);
+		      fk_floor_product *= fkinfo->floor_selectivity;
+		    }
+		}
+	    }
+
 	  for (i = bitset_iterate (&sarged_terms, &bi); i != -1; i = bitset_next_member (&bi))
 	    {
 	      term = &planner->term[i];
@@ -8433,8 +8556,16 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		    {
 		      double head_factor, tail_factor;
 
-		      selectivity *= QO_TERM_SELECTIVITY (term);
-		      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+		      if (!BITSET_MEMBER (fk_excluded_terms, i))
+			{
+			  /* Terms identified above as standing for a composite PK-FK relationship's
+			   * columns are excluded here: their independent product ignores the
+			   * correlation the constraint guarantees and underestimates the join. Their
+			   * combined effect is folded in once below as a floor instead (cf.
+			   * PostgreSQL's get_foreign_key_join_selectivity()). */
+			  selectivity *= QO_TERM_SELECTIVITY (term);
+			  selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+			}
 
 		      qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
 		      head_hit_prob *= head_factor;
@@ -8442,6 +8573,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		    }
 		}
 	    }
+
+	  if (fk_floor_product < 1.0)
+	    {
+	      selectivity *= fk_floor_product;
+	      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+	    }
+
 	  cardinality *= selectivity;
 	  cardinality = MAX (1.0, cardinality);
 	  total_rows *= selectivity;
@@ -8483,6 +8621,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);
 
       bitset_delset (&eqclasses);
+      bitset_delset (&fk_excluded_terms);
+      bitset_delset (&fk_col_terms);
     }
 
   /* STEP 5: do EXAMINE follow, join */
@@ -9747,7 +9887,7 @@ qo_search_planner (QO_PLANNER * planner)
 		   * better. DO NOT generate if there is no group/order by!
 		   */
 		  if (!n && !index_entry->groupby_skip && tree->info.query.q.select.group_by
-		      && qo_validate_index_for_groupby (info->env, ni_entry))
+		      && qo_validate_index_for_sort (info->env, ni_entry, SORT_GROUPBY))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
@@ -9756,7 +9896,7 @@ qo_search_planner (QO_PLANNER * planner)
 		    }
 
 		  if (!n && !index_entry->orderby_skip && !tree->info.query.q.select.group_by
-		      && tree->info.query.order_by && qo_validate_index_for_orderby (info->env, ni_entry))
+		      && tree->info.query.order_by && qo_validate_index_for_sort (info->env, ni_entry, SORT_ORDERBY))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
@@ -12321,10 +12461,13 @@ qo_is_iscan_from_orderby (QO_PLAN * plan)
 
 /*
  * qo_validate_index_term_notnull ()
+ *  env(in): pointer to the optimizer environment
+ *  index_entryp(in): pointer to QO_INDEX_ENTRY (index entry)
+ *  seg_idx(in): index (into env's segment array) of the index key segment to check
  *   return: true/false
  */
 static bool
-qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
+qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx)
 {
   bool term_notnull = false;	/* init */
   PT_NODE *node;
@@ -12341,9 +12484,9 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
 
   index_class = index_entryp->class_;
 
-  /* do a check on the first column - it should be present in the where clause check if exists a simple expression
-   * with PT_IS_NOT_NULL on the first key this should not contain OR operator and the PT_IS_NOT_NULL should contain the
-   * column directly as parameter (PT_NAME)
+  /* do a check on the given key segment - it should be present in the where clause check if exists a simple
+   * expression with PT_IS_NOT_NULL on that key this should not contain OR operator and the PT_IS_NOT_NULL should
+   * contain the column directly as parameter (PT_NAME)
    */
   for (t = 0; t < env->nterms && !term_notnull; t++)
     {
@@ -12369,10 +12512,10 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
       if (node->node_type == PT_EXPR && node->info.expr.op == PT_IS_NOT_NULL
 	  && node->info.expr.arg1->node_type == PT_NAME)
 	{
-	  iseg = index_entryp->seg_idxs[0];
+	  iseg = seg_idx;
 	  if (iseg != -1 && BITSET_MEMBER (QO_TERM_SEGS (termp), iseg))
 	    {
-	      /* check it's the same column as the first in the index */
+	      /* check it's the same column as the given key segment */
 	      node_name = pt_get_name (node->info.expr.arg1);
 	      segp = QO_ENV_SEG (env, iseg);
 	      assert (segp != NULL);
@@ -12553,84 +12696,86 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 }
 
 /*
- * qo_validate_index_for_orderby () - checks for isnull(key) or not null flag
+ * qo_validate_index_for_sort () - checks whether an index can be used to
+ *                                  skip sorting for ORDER BY or GROUP BY.
  *  env(in): pointer to the optimizer environment
  *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
- *  return: 1 if the index can be used, 0 elseware
+ *  sort_type(in): SORT_GROUPBY for GROUP BY, SORT_ORDERBY for ORDER BY
+ *  return: 1 if the index can be used, 0 otherwise
  */
 static int
-qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type)
 {
-  bool key_notnull = false;	/* init */
   QO_INDEX_ENTRY *index_entryp;
-  QO_CLASS_INFO_ENTRY *index_class;
-
-  int pos;
-  PT_NODE *node = NULL;
+  int i, ncols;
+  bool is_func_leading;
+  SM_ATTRIBUTE *attr;
+  QO_SEGMENT *segp;
 
   assert (ni_entryp != NULL);
   assert (ni_entryp->head != NULL);
   assert (ni_entryp->head->class_ != NULL);
+  assert (sort_type == SORT_GROUPBY || sort_type == SORT_ORDERBY);
 
   index_entryp = ni_entryp->head;
-  index_class = index_entryp->class_;
 
-  if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
+  if (sort_type == SORT_GROUPBY)
     {
-      goto end;
-    }
-
-  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
-  if (key_notnull)
-    {
-      goto final_;
-    }
-
-  pos = QO_ENV_PT_TREE (env)->info.query.order_by->info.sort_spec.pos_descr.pos_no;
-  node = QO_ENV_PT_TREE (env)->info.query.q.select.list;
-
-  while (pos > 1 && node)
-    {
-      node = node->next;
-      pos--;
-    }
-  if (!node)
-    {
-      goto end;
-    }
-
-  if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
-    {
-      node = node->info.expr.arg1;
-      if (!node)
+      if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
 	{
-	  goto end;
+	  return 0;
+	}
+    }
+  else if (sort_type == SORT_ORDERBY)
+    {
+      if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
+	{
+	  return 0;
 	}
     }
 
-  node = pt_get_end_path_node (node);
+  assert (index_entryp->constraints != NULL);
 
-  assert (key_notnull == false);
+  /* Any non-null key column prevents an all-null composite key.
+   * Keep prefix, filter, and function indexes limited to the first key column.
+   *
+   * qo_is_filter_index() requires force > 0, so check the filter predicate directly. */
+  ncols = (qo_is_prefix_index (index_entryp) || index_entryp->constraints->filter_predicate != NULL
+	   || index_entryp->constraints->func_index_info != NULL) ? 1 : index_entryp->col_num;
 
-  key_notnull = qo_validate_index_attr_notnull (env, index_entryp, node);
-  if (key_notnull)
+  is_func_leading = (index_entryp->constraints->func_index_info != NULL
+		     && index_entryp->constraints->func_index_info->col_id == 0);
+
+  for (i = 0; i < ncols; i++)
     {
-      goto final_;
+      /* Schema NOT NULL can prove an unreferenced key column without a QO_SEGMENT.
+       * Skip it for a function-index key, since attributes[] refers to the function argument. */
+      if (!(i == 0 && is_func_leading))
+	{
+	  attr = index_entryp->constraints->attributes[i];
+	  if (attr != NULL && (attr->flags & SM_ATTFLAG_NON_NULL))
+	    {
+	      return 1;
+	    }
+	}
+
+      if (i >= index_entryp->nsegs || index_entryp->seg_idxs[i] == -1)
+	{
+	  continue;
+	}
+
+      if (qo_validate_index_term_notnull (env, index_entryp, index_entryp->seg_idxs[i]))
+	{
+	  return 1;
+	}
+
+      segp = QO_ENV_SEG (env, index_entryp->seg_idxs[i]);
+      if (segp != NULL && qo_validate_index_attr_notnull (env, index_entryp, QO_SEG_PT_NODE (segp)))
+	{
+	  return 1;
+	}
     }
 
-  /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
-   * expression with this key column involved and also if we have other terms with the key. We must decide if there can
-   * be NULLs in the results and if so, drop this index. 1. If the key cannot have null values, we have a winner. 2.
-   * Otherwise, if we found a term isnull/isnotnull(key) we drop it (because we cannot evaluate if this yields true or
-   * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
-   * have an OR following we have a winner again! (because we cannot have a null value).
-   */
-final_:
-  if (key_notnull)
-    {
-      return 1;
-    }
-end:
   return 0;
 }
 
@@ -12643,7 +12788,7 @@ end:
  *   continue_walk(in):
  *
  * Note: for env->bail_out values, check key_term_status in
- *	  qo_validate_index_for_groupby, qo_validate_index_for_orderby
+ *	  qo_validate_index_attr_notnull
  */
 static PT_NODE *
 qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -13106,6 +13251,12 @@ qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * 
 
       if (QO_TERM_EQCLASS (tmp_term) == QO_TERM_EQCLASS (term))
 	{
+	  /* an outer join's ON equality is false on the rows it NULL-pads, so it cannot connect the eqclass */
+	  if (QO_ON_COND_TERM (tmp_term) && QO_NODE_IS_OUTER_JOIN (QO_ENV_NODE (env, QO_TERM_LOCATION (tmp_term))))
+	    {
+	      continue;
+	    }
+
 	  bitset_add (&remaining_terms, i);
 	  bitset_union (&eq_visited_segs, &(QO_TERM_SEGS (tmp_term)));
 	}
@@ -13175,66 +13326,6 @@ qo_is_iscan_from_groupby (QO_PLAN * plan)
     }
 
   return false;
-}
-
-/*
- * qo_validate_index_for_groupby () - checks for isnull(key) or not null flag
- *  env(in): pointer to the optimizer environment
- *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
- *  return: 1 if the index can be used, 0 elseware
- */
-static int
-qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
-{
-  bool key_notnull = false;	/* init */
-  QO_INDEX_ENTRY *index_entryp;
-  QO_CLASS_INFO_ENTRY *index_class;
-
-  PT_NODE *groupby_expr = NULL;
-
-  assert (ni_entryp != NULL);
-  assert (ni_entryp->head != NULL);
-  assert (ni_entryp->head->class_ != NULL);
-
-  index_entryp = ni_entryp->head;
-  index_class = index_entryp->class_;
-
-  if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
-    {
-      goto end;
-    }
-
-  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
-  if (key_notnull)
-    {
-      goto final;
-    }
-
-  /* get the name of the first column in the group by list */
-  groupby_expr = QO_ENV_PT_TREE (env)->info.query.q.select.group_by->info.sort_spec.expr;
-
-  assert (key_notnull == false);
-
-  key_notnull = qo_validate_index_attr_notnull (env, index_entryp, groupby_expr);
-  if (key_notnull)
-    {
-      goto final;
-    }
-
-  /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
-   * expression with this key column involved and also if we have other terms with the key. We must decide if there can
-   * be NULLs in the results and if so, drop this index. 1. If the key cannot have null values, we have a winner. 2.
-   * Otherwise, if we found a term isnull/isnotnull(key) we drop it (because we cannot evaluate if this yields true or
-   * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
-   * have an OR following we have a winner again! (because we cannot have a null value).
-   */
-final:
-  if (key_notnull)
-    {
-      return 1;
-    }
-end:
-  return 0;
 }
 
 /*
