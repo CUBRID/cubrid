@@ -650,6 +650,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		      DB_VALUE nm_value;
 		      if (obj_get (user, "name", &nm_value) != NO_ERROR)
 			{
+			  db_value_clear (&value);
 			  return er_errid ();
 			}
 
