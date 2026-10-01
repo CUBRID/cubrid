@@ -597,7 +597,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       error = db_restart (arg->command_name, true, args.volume.c_str ());
       if (error != NO_ERROR)
 	{
-	  if (error == ER_AU_INVALID_PASSWORD)
+	  if (error == ER_AU_REJECT_LOGIN && use_console_password)
 	    {
 	      /* prompt for password and try again */
 	      passwd =
