@@ -55,7 +55,7 @@ public:
   int css_client_init (int sockid, const char *server_name, const char *host_name, int client_type);
 #if defined(MULTI_CONN_TO_A_SERVER)
   int css_client_sub_init (const char *server_name, const char *host_name, int client_type);
-  void css_client_sub_terminate (const char *host_name);
+  void css_client_sub_terminate (bool server_error);
 #endif
   unsigned int css_send_request_to_server_with_buffer (char *host, int request, char *arg_buffer,
 						       int arg_buffer_size, char *data_buffer, int data_buffer_size);

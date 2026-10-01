@@ -221,17 +221,30 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
   return error;
 }
 
+/*
+ * css_client_sub_terminate() - close the connections of the calling sub-client thread
+ *   server_error(in): true if the server is dead or changed
+ *
+ * Note: client_support is thread-local, so only the connections of the calling thread are closed.
+ *       Unlike css_terminate(), process-wide states (e.g., SIGPIPE handler) are not touched.
+ *       The host name is not used, because net_Server_host may be already cleared by set_server_error().
+ */
 void
-client_support::css_client_sub_terminate (const char *host_name)
+client_support::css_client_sub_terminate (bool server_error)
 {
   CSS_MAP_ENTRY *entry;
 
-  entry = m_conn_less.css_return_open_entry ((char *) host_name);
-  if (entry != NULL)
+  entry = m_conn_less.css_get_map_entry ();
+  while (entry)
     {
+      if (server_error && entry->conn)
+	{
+	  entry->conn->status = CONN_CLOSING;
+	}
       css_send_close_request (entry->conn);
       css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
+      entry = m_conn_less.css_get_map_entry ();
     }
 }
 #endif // defined(MULTI_CONN_TO_A_SERVER)

@@ -3704,7 +3704,7 @@ net_client_sub_init ()
       error = __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
       if (error == ER_CSS_ALLOC)
 	{
-	  __gv_cvar.css_client_sub_terminate (net_Server_host);
+	  __gv_cvar.css_client_sub_terminate (false);
 	}
     }
 
@@ -3712,9 +3712,9 @@ net_client_sub_init ()
 }
 
 void
-net_client_sub_final ()
+net_client_sub_final (bool server_error)
 {
-  __gv_cvar.css_client_sub_terminate (net_Server_host);
+  __gv_cvar.css_client_sub_terminate (server_error);
 }
 #endif
 

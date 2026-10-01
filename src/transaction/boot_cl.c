@@ -150,6 +150,10 @@ char boot_Ip_address[16] = { 0 };
 
 static char boot_Volume_label[PATH_MAX] = " ";
 static bool boot_Is_client_all_final = true;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/* true while the current thread holds a sub-client started by boot_restart_client_sub () */
+static CUB_THREAD_LOCAL bool boot_Is_sub_client = false;
+#endif
 static bool boot_Set_client_at_exit = false;
 static int boot_Process_id = -1;
 
@@ -1373,15 +1377,20 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
 
   assert (client_credential != NULL);
 
-  /* If the client is restarted, shutdown the client */
-  if (BOOT_IS_CLIENT_RESTARTED ())
+  /*
+   * The process-wide client modules are shared with the main client and the other sub-clients,
+   * so a sub-client must not call boot_shutdown_client () or boot_client_all_finalize () here.
+   * Clean up only the previous sub-client of this thread, if any (including one left by a server failure).
+   */
+  if (boot_Is_sub_client)
     {
-      (void) boot_shutdown_client (true);
+      boot_finalize_client_sub ();
     }
-
-  if (!boot_Is_client_all_final)
+  else if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      boot_client_all_finalize (ALL_FINALIZATION);
+      /* the main client thread cannot be restarted as a sub-client */
+      assert (false);
+      return ER_FAILED;
     }
 
   //lang_init();
@@ -1408,6 +1417,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
     {
       return error_code;
     }
+  boot_Is_sub_client = true;
 
   //if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
   //  {
@@ -1572,7 +1582,7 @@ error:
 void
 boot_finalize_client_sub ()
 {
-  net_client_sub_final ();
+  net_client_sub_final (false);
 
   //showstmt_metadata_final ();
   tran_free_savepoint_list ();
@@ -1594,7 +1604,8 @@ boot_finalize_client_sub ()
   //lang_final ();
   //tz_unload ();
   boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
-  //boot_Is_client_all_final = true;
+  /* boot_Is_client_all_final is for the process-wide modules, so it is not touched by a sub-client */
+  boot_Is_sub_client = false;
 
   sysprm_free_session_parameters (&cached_session_parameters);
 
@@ -1751,10 +1762,24 @@ boot_server_die_or_changed (void)
     {
       (void) tran_abort_only_client (true);
       boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (), TM_TRAN_ISOLATION ());
-      boot_Is_client_all_final = false;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      if (boot_Is_sub_client)
+	{
+	  /*
+	   * Close only the connection of this sub-client. The process-wide modules are still used by
+	   * the main client and the other sub-clients, so boot_Is_client_all_final must not be changed.
+	   * The remaining resources of this sub-client are released by boot_finalize_client_sub ().
+	   */
+	  net_client_sub_final (true);
+	}
+      else
+#endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
+	{
+	  boot_Is_client_all_final = false;
 #if defined(CS_MODE)
-      net_client_final (true);
-#endif /* !CS_MODE */
+	  net_client_final (true);
+#endif /* CS_MODE */
+	}
       if (prm_get_bool_value (PRM_ID_TEST_MODE))
 	{
 	  er_print_callstack (ARG_FILE_LINE, "boot_server_die_or_changed() terminated\n");
