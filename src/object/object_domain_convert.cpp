@@ -883,254 +883,57 @@ tp_value_convert_enumeration_to_numeric (const DB_VALUE *src, DB_VALUE *target, 
   return result == NO_ERROR ? DOMAIN_COMPATIBLE : DOMAIN_INCOMPATIBLE;
 }
 
+/* An ENUM into a number other than NUMERIC (DST): the ENUM's index */
+template <DB_TYPE DST>
 static TP_DOMAIN_STATUS
-tp_value_convert_enumeration_to_short (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *,
-				       date_conversion_error *)
-{
-  db_make_short (target, db_get_enum_short (src));
-
-  return DOMAIN_COMPATIBLE;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_enumeration_to_integer (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *,
-    date_conversion_error *)
-{
-  db_make_int (target, db_get_enum_short (src));
-
-  return DOMAIN_COMPATIBLE;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_enumeration_to_bigint (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *,
+tp_value_convert_enumeration_to_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *,
 					date_conversion_error *)
 {
-  db_make_bigint (target, db_get_enum_short (src));
+  tp_numeric_value<DST>::make (target, db_get_enum_short (src));
 
   return DOMAIN_COMPATIBLE;
 }
 
+/* A number into a TIMESTAMP, a TIMESTAMPLTZ or a TIMESTAMPTZ (DST): the number as an INTEGER (ASSIGN) is the seconds
+ * since the epoch, which may not be negative; a TIMESTAMPTZ takes the session's time zone */
+template <DB_TYPE SRC, DB_TYPE DST>
 static TP_DOMAIN_STATUS
-tp_value_convert_enumeration_to_float (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *,
-				       date_conversion_error *)
-{
-  db_make_float (target, (float) db_get_enum_short (src));
-
-  return DOMAIN_COMPATIBLE;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_enumeration_to_double (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *,
-					date_conversion_error *)
-{
-  db_make_double (target, (double) db_get_enum_short (src));
-
-  return DOMAIN_COMPATIBLE;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_enumeration_to_monetary (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *,
-    date_conversion_error *)
-{
-  db_make_monetary (target, DB_CURRENCY_DEFAULT, db_get_enum_short (src));
-
-  return DOMAIN_COMPATIBLE;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_short_to_timestamp (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				     date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestamp (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_integer_to_timestamp (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				       date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestamp (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_bigint_to_timestamp (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+tp_value_convert_number_to_timestamp (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *,
 				      date_conversion_error *error)
 {
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
+  TP_DOMAIN_STATUS status =
+	  tp_value_convert_number < SRC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (src, target, &tp_Integer_domain, error);
+  if (status != DOMAIN_COMPATIBLE)
     {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
+      return status;
+    }
+  int tmpint = db_get_int (target);
+  if (tmpint < 0)
+    {
+      return DOMAIN_INCOMPATIBLE;
+    }
+  if constexpr (DST == DB_TYPE_TIMESTAMP)
+    {
+      db_make_timestamp (target, (DB_UTIME) tmpint);
+    }
+  else if constexpr (DST == DB_TYPE_TIMESTAMPLTZ)
+    {
+      db_make_timestampltz (target, (DB_UTIME) tmpint);
+    }
+  else
+    {
+      static_assert (DST == DB_TYPE_TIMESTAMPTZ, "missing timestamp target");
+      DB_TIMESTAMPTZ v_timestamptz;
+      v_timestamptz.timestamp = (DB_UTIME) tmpint;
+      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
+	  NO_ERROR)
 	{
-	  db_make_timestamp (target, (DB_UTIME) tmpint);
+	  return DOMAIN_INCOMPATIBLE;
 	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
+      db_make_timestamptz (target, &v_timestamptz);
     }
 
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_float_to_timestamp (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				     date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestamp (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_double_to_timestamp (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				      date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestamp (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_monetary_to_timestamp (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-					date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestamp (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_numeric_to_timestamp (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				       date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestamp (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
+  return DOMAIN_COMPATIBLE;
 }
 
 static TP_DOMAIN_STATUS
@@ -1307,265 +1110,6 @@ tp_value_convert_enumeration_to_timestamp (const DB_VALUE *src, DB_VALUE *target
 }
 
 static TP_DOMAIN_STATUS
-tp_value_convert_short_to_timestamptz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				       date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-  DB_TIMESTAMPTZ v_timestamptz;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-
-      tmpint = db_get_int (target);
-      if (tmpint < 0)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-      v_timestamptz.timestamp = (DB_UTIME) tmpint;
-
-      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
-	  NO_ERROR)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-
-      db_make_timestamptz (target, &v_timestamptz);
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_integer_to_timestamptz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-    date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-  DB_TIMESTAMPTZ v_timestamptz;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-
-      tmpint = db_get_int (target);
-      if (tmpint < 0)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-      v_timestamptz.timestamp = (DB_UTIME) tmpint;
-
-      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
-	  NO_ERROR)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-
-      db_make_timestamptz (target, &v_timestamptz);
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_bigint_to_timestamptz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-					date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-  DB_TIMESTAMPTZ v_timestamptz;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-
-      tmpint = db_get_int (target);
-      if (tmpint < 0)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-      v_timestamptz.timestamp = (DB_UTIME) tmpint;
-
-      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
-	  NO_ERROR)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-
-      db_make_timestamptz (target, &v_timestamptz);
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_float_to_timestamptz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				       date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-  DB_TIMESTAMPTZ v_timestamptz;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-
-      tmpint = db_get_int (target);
-      if (tmpint < 0)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-      v_timestamptz.timestamp = (DB_UTIME) tmpint;
-
-      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
-	  NO_ERROR)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-
-      db_make_timestamptz (target, &v_timestamptz);
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_double_to_timestamptz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-					date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-  DB_TIMESTAMPTZ v_timestamptz;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-
-      tmpint = db_get_int (target);
-      if (tmpint < 0)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-      v_timestamptz.timestamp = (DB_UTIME) tmpint;
-
-      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
-	  NO_ERROR)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-
-      db_make_timestamptz (target, &v_timestamptz);
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_monetary_to_timestamptz (const DB_VALUE *src, DB_VALUE *target,
-    const TP_DOMAIN *desired_domain, date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-  DB_TIMESTAMPTZ v_timestamptz;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-
-      tmpint = db_get_int (target);
-      if (tmpint < 0)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-      v_timestamptz.timestamp = (DB_UTIME) tmpint;
-
-      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
-	  NO_ERROR)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-
-      db_make_timestamptz (target, &v_timestamptz);
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_numeric_to_timestamptz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-    date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-  DB_TIMESTAMPTZ v_timestamptz;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-
-      tmpint = db_get_int (target);
-      if (tmpint < 0)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-      v_timestamptz.timestamp = (DB_UTIME) tmpint;
-
-      if (tz_create_session_tzid_for_timestamp_core (&v_timestamptz.timestamp, &v_timestamptz.tz_id, error) !=
-	  NO_ERROR)
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	  return status;
-	}
-
-      db_make_timestamptz (target, &v_timestamptz);
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
 tp_value_convert_char_to_timestamptz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				      date_conversion_error *error)
 {
@@ -1737,202 +1281,6 @@ tp_value_convert_enumeration_to_timestamptz (const DB_VALUE *src, DB_VALUE *targ
     status = tp_value_convert_char_to_timestamptz (&varchar_val, target, desired_domain, error);
     return status;
   }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_short_to_timestampltz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-					date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_SHORT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestampltz (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_integer_to_timestampltz (const DB_VALUE *src, DB_VALUE *target,
-    const TP_DOMAIN *desired_domain, date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestampltz (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_bigint_to_timestampltz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-    date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestampltz (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_float_to_timestampltz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-					date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_FLOAT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestampltz (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_double_to_timestampltz (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-    date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestampltz (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_monetary_to_timestampltz (const DB_VALUE *src, DB_VALUE *target,
-    const TP_DOMAIN *desired_domain, date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_MONETARY, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestampltz (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
-
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_numeric_to_timestampltz (const DB_VALUE *src, DB_VALUE *target,
-    const TP_DOMAIN *desired_domain, date_conversion_error *error)
-{
-  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
-
-  status =
-	  tp_value_convert_number < DB_TYPE_NUMERIC, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		  src, target,
-		  &tp_Integer_domain, error)
-	  ;
-  if (status == DOMAIN_COMPATIBLE)
-    {
-      int tmpint;
-      tmpint = db_get_int (target);
-      if (tmpint >= 0)
-	{
-	  db_make_timestampltz (target, (DB_UTIME) tmpint);
-	}
-      else
-	{
-	  status = DOMAIN_INCOMPATIBLE;
-	}
-    }
 
   return status;
 }
@@ -7418,118 +6766,11 @@ tp_json_unwrap_scalar (const DB_VALUE *src, bool bool_as_string, DB_VALUE *scala
   return use_replacement;
 }
 
+/* A JSON scalar into a number (DST): the scalar's value converted in ASSIGN mode from its own type - a double,
+ * an integer, a bigint, a boolean as an INTEGER, a string as a VARCHAR */
+template <DB_TYPE DST>
 static TP_DOMAIN_STATUS
-tp_value_convert_json_scalar_to_short (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				       date_conversion_error *error)
-{
-  DB_VALUE scalar;
-  db_make_null (&scalar);
-  if (!tp_json_unwrap_scalar (src, false, &scalar))
-    {
-      return DOMAIN_INCOMPATIBLE;
-    }
-  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
-  switch (db_json_get_type (db_get_json_document (src)))
-    {
-    case DB_JSON_DOUBLE:
-      status =
-	      tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_INT:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BIGINT:
-      status =
-	      tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BOOL:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_STRING:
-      status =
-	      tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_SHORT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    default:
-      break;
-    }
-  pr_clear_value (&scalar);
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_json_scalar_to_integer (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-    date_conversion_error *error)
-{
-  DB_VALUE scalar;
-  db_make_null (&scalar);
-  if (!tp_json_unwrap_scalar (src, false, &scalar))
-    {
-      return DOMAIN_INCOMPATIBLE;
-    }
-  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
-  switch (db_json_get_type (db_get_json_document (src)))
-    {
-    case DB_JSON_DOUBLE:
-      status =
-	      tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_INT:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BIGINT:
-      status =
-	      tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BOOL:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_STRING:
-      status =
-	      tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_INTEGER, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    default:
-      break;
-    }
-  pr_clear_value (&scalar);
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_json_scalar_to_bigint (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+tp_value_convert_json_scalar_to_number (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 					date_conversion_error *error)
 {
   DB_VALUE scalar;
@@ -7543,255 +6784,35 @@ tp_value_convert_json_scalar_to_bigint (const DB_VALUE *src, DB_VALUE *target, c
     {
     case DB_JSON_DOUBLE:
       status =
-	      tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (
+	      tp_value_convert_number < DB_TYPE_DOUBLE, DST, DOMAIN_CONVERT_ASSIGN > (
 		      &scalar, target,
 		      desired_domain, error)
 	      ;
       break;
     case DB_JSON_INT:
       status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (
+	      tp_value_convert_number < DB_TYPE_INTEGER, DST, DOMAIN_CONVERT_ASSIGN > (
 		      &scalar, target,
 		      desired_domain, error)
 	      ;
       break;
     case DB_JSON_BIGINT:
       status =
-	      tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (
+	      tp_value_convert_number < DB_TYPE_BIGINT, DST, DOMAIN_CONVERT_ASSIGN > (
 		      &scalar, target,
 		      desired_domain, error)
 	      ;
       break;
     case DB_JSON_BOOL:
       status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (
+	      tp_value_convert_number < DB_TYPE_INTEGER, DST, DOMAIN_CONVERT_ASSIGN > (
 		      &scalar, target,
 		      desired_domain, error)
 	      ;
       break;
     case DB_JSON_STRING:
       status =
-	      tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_BIGINT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    default:
-      break;
-    }
-  pr_clear_value (&scalar);
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_json_scalar_to_float (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-				       date_conversion_error *error)
-{
-  DB_VALUE scalar;
-  db_make_null (&scalar);
-  if (!tp_json_unwrap_scalar (src, false, &scalar))
-    {
-      return DOMAIN_INCOMPATIBLE;
-    }
-  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
-  switch (db_json_get_type (db_get_json_document (src)))
-    {
-    case DB_JSON_DOUBLE:
-      status =
-	      tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_INT:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BIGINT:
-      status =
-	      tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BOOL:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_STRING:
-      status =
-	      tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_FLOAT, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    default:
-      break;
-    }
-  pr_clear_value (&scalar);
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_json_scalar_to_double (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-					date_conversion_error *error)
-{
-  DB_VALUE scalar;
-  db_make_null (&scalar);
-  if (!tp_json_unwrap_scalar (src, false, &scalar))
-    {
-      return DOMAIN_INCOMPATIBLE;
-    }
-  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
-  switch (db_json_get_type (db_get_json_document (src)))
-    {
-    case DB_JSON_DOUBLE:
-      status =
-	      tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_INT:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BIGINT:
-      status =
-	      tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BOOL:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_STRING:
-      status =
-	      tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    default:
-      break;
-    }
-  pr_clear_value (&scalar);
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_json_scalar_to_monetary (const DB_VALUE *src, DB_VALUE *target,
-    const TP_DOMAIN *desired_domain, date_conversion_error *error)
-{
-  DB_VALUE scalar;
-  db_make_null (&scalar);
-  if (!tp_json_unwrap_scalar (src, false, &scalar))
-    {
-      return DOMAIN_INCOMPATIBLE;
-    }
-  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
-  switch (db_json_get_type (db_get_json_document (src)))
-    {
-    case DB_JSON_DOUBLE:
-      status =
-	      tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_INT:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BIGINT:
-      status =
-	      tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BOOL:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_STRING:
-      status =
-	      tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_MONETARY, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    default:
-      break;
-    }
-  pr_clear_value (&scalar);
-  return status;
-}
-
-static TP_DOMAIN_STATUS
-tp_value_convert_json_scalar_to_numeric (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
-    date_conversion_error *error)
-{
-  DB_VALUE scalar;
-  db_make_null (&scalar);
-  if (!tp_json_unwrap_scalar (src, false, &scalar))
-    {
-      return DOMAIN_INCOMPATIBLE;
-    }
-  TP_DOMAIN_STATUS status = DOMAIN_INCOMPATIBLE;
-  switch (db_json_get_type (db_get_json_document (src)))
-    {
-    case DB_JSON_DOUBLE:
-      status =
-	      tp_value_convert_number < DB_TYPE_DOUBLE, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_INT:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BIGINT:
-      status =
-	      tp_value_convert_number < DB_TYPE_BIGINT, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_BOOL:
-      status =
-	      tp_value_convert_number < DB_TYPE_INTEGER, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (
-		      &scalar, target,
-		      desired_domain, error)
-	      ;
-      break;
-    case DB_JSON_STRING:
-      status =
-	      tp_value_convert_number < DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, DOMAIN_CONVERT_ASSIGN > (
+	      tp_value_convert_number < DB_TYPE_VARCHAR, DST, DOMAIN_CONVERT_ASSIGN > (
 		      &scalar, target,
 		      desired_domain, error)
 	      ;
@@ -7953,16 +6974,20 @@ tp_value_convert_json_scalar_to_timestamp (const DB_VALUE *src, DB_VALUE *target
   switch (db_json_get_type (db_get_json_document (src)))
     {
     case DB_JSON_DOUBLE:
-      status = tp_value_convert_double_to_timestamp (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_DOUBLE, DB_TYPE_TIMESTAMP> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_INT:
-      status = tp_value_convert_integer_to_timestamp (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMP> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_BIGINT:
-      status = tp_value_convert_bigint_to_timestamp (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_BIGINT, DB_TYPE_TIMESTAMP> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_BOOL:
-      status = tp_value_convert_integer_to_timestamp (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMP> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_STRING:
       status = tp_value_convert_char_to_timestamp (&scalar, target, desired_domain, error);
@@ -7988,16 +7013,20 @@ tp_value_convert_json_scalar_to_timestampltz (const DB_VALUE *src, DB_VALUE *tar
   switch (db_json_get_type (db_get_json_document (src)))
     {
     case DB_JSON_DOUBLE:
-      status = tp_value_convert_double_to_timestampltz (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_DOUBLE, DB_TYPE_TIMESTAMPLTZ> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_INT:
-      status = tp_value_convert_integer_to_timestampltz (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMPLTZ> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_BIGINT:
-      status = tp_value_convert_bigint_to_timestampltz (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_BIGINT, DB_TYPE_TIMESTAMPLTZ> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_BOOL:
-      status = tp_value_convert_integer_to_timestampltz (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMPLTZ> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_STRING:
       status = tp_value_convert_char_to_timestampltz (&scalar, target, desired_domain, error);
@@ -8023,16 +7052,20 @@ tp_value_convert_json_scalar_to_timestamptz (const DB_VALUE *src, DB_VALUE *targ
   switch (db_json_get_type (db_get_json_document (src)))
     {
     case DB_JSON_DOUBLE:
-      status = tp_value_convert_double_to_timestamptz (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_DOUBLE, DB_TYPE_TIMESTAMPTZ> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_INT:
-      status = tp_value_convert_integer_to_timestamptz (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMPTZ> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_BIGINT:
-      status = tp_value_convert_bigint_to_timestamptz (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_BIGINT, DB_TYPE_TIMESTAMPTZ> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_BOOL:
-      status = tp_value_convert_integer_to_timestamptz (&scalar, target, desired_domain, error);
+      status = tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMPTZ> (&scalar, target, desired_domain,
+	       error);
       break;
     case DB_JSON_STRING:
       status = tp_value_convert_char_to_timestamptz (&scalar, target, desired_domain, error);
@@ -8459,9 +7492,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
-	  return tp_value_convert_enumeration_to_short;
+	  return tp_value_convert_enumeration_to_number<DB_TYPE_SHORT>;
 	case DB_TYPE_JSON:
-	  return tp_value_convert_json_scalar_to_short;
+	  return tp_value_convert_json_scalar_to_number<DB_TYPE_SHORT>;
 	default:
 	  break;
 	}
@@ -8485,9 +7518,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
-	  return tp_value_convert_enumeration_to_integer;
+	  return tp_value_convert_enumeration_to_number<DB_TYPE_INTEGER>;
 	case DB_TYPE_JSON:
-	  return tp_value_convert_json_scalar_to_integer;
+	  return tp_value_convert_json_scalar_to_number<DB_TYPE_INTEGER>;
 	default:
 	  break;
 	}
@@ -8511,9 +7544,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
-	  return tp_value_convert_enumeration_to_bigint;
+	  return tp_value_convert_enumeration_to_number<DB_TYPE_BIGINT>;
 	case DB_TYPE_JSON:
-	  return tp_value_convert_json_scalar_to_bigint;
+	  return tp_value_convert_json_scalar_to_number<DB_TYPE_BIGINT>;
 	default:
 	  break;
 	}
@@ -8537,9 +7570,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
-	  return tp_value_convert_enumeration_to_float;
+	  return tp_value_convert_enumeration_to_number<DB_TYPE_FLOAT>;
 	case DB_TYPE_JSON:
-	  return tp_value_convert_json_scalar_to_float;
+	  return tp_value_convert_json_scalar_to_number<DB_TYPE_FLOAT>;
 	default:
 	  break;
 	}
@@ -8563,9 +7596,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
-	  return tp_value_convert_enumeration_to_double;
+	  return tp_value_convert_enumeration_to_number<DB_TYPE_DOUBLE>;
 	case DB_TYPE_JSON:
-	  return tp_value_convert_json_scalar_to_double;
+	  return tp_value_convert_json_scalar_to_number<DB_TYPE_DOUBLE>;
 	default:
 	  break;
 	}
@@ -8589,9 +7622,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
-	  return tp_value_convert_enumeration_to_monetary;
+	  return tp_value_convert_enumeration_to_number<DB_TYPE_MONETARY>;
 	case DB_TYPE_JSON:
-	  return tp_value_convert_json_scalar_to_monetary;
+	  return tp_value_convert_json_scalar_to_number<DB_TYPE_MONETARY>;
 	default:
 	  break;
 	}
@@ -8619,7 +7652,7 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_numeric;
 	case DB_TYPE_JSON:
-	  return tp_value_convert_json_scalar_to_numeric;
+	  return tp_value_convert_json_scalar_to_number<DB_TYPE_NUMERIC>;
 	default:
 	  break;
 	}
@@ -8848,19 +7881,22 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_short_to_timestamp;
+	  return strict ? tp_value_convert_incompatible : tp_value_convert_number_to_timestamp<DB_TYPE_SHORT, DB_TYPE_TIMESTAMP>;
 	case DB_TYPE_INTEGER:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_integer_to_timestamp;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMP>;
 	case DB_TYPE_BIGINT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_bigint_to_timestamp;
+	  return strict ? tp_value_convert_incompatible : tp_value_convert_number_to_timestamp<DB_TYPE_BIGINT, DB_TYPE_TIMESTAMP>;
 	case DB_TYPE_FLOAT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_float_to_timestamp;
+	  return strict ? tp_value_convert_incompatible : tp_value_convert_number_to_timestamp<DB_TYPE_FLOAT, DB_TYPE_TIMESTAMP>;
 	case DB_TYPE_DOUBLE:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_double_to_timestamp;
+	  return strict ? tp_value_convert_incompatible : tp_value_convert_number_to_timestamp<DB_TYPE_DOUBLE, DB_TYPE_TIMESTAMP>;
 	case DB_TYPE_MONETARY:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_monetary_to_timestamp;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_MONETARY, DB_TYPE_TIMESTAMP>;
 	case DB_TYPE_NUMERIC:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_numeric_to_timestamp;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_NUMERIC, DB_TYPE_TIMESTAMP>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_timestamp_strict : tp_value_convert_char_to_timestamp;
@@ -8888,19 +7924,26 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_short_to_timestampltz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_SHORT, DB_TYPE_TIMESTAMPLTZ>;
 	case DB_TYPE_INTEGER:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_integer_to_timestampltz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMPLTZ>;
 	case DB_TYPE_BIGINT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_bigint_to_timestampltz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_BIGINT, DB_TYPE_TIMESTAMPLTZ>;
 	case DB_TYPE_FLOAT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_float_to_timestampltz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_FLOAT, DB_TYPE_TIMESTAMPLTZ>;
 	case DB_TYPE_DOUBLE:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_double_to_timestampltz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_DOUBLE, DB_TYPE_TIMESTAMPLTZ>;
 	case DB_TYPE_MONETARY:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_monetary_to_timestampltz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_MONETARY, DB_TYPE_TIMESTAMPLTZ>;
 	case DB_TYPE_NUMERIC:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_numeric_to_timestampltz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_NUMERIC, DB_TYPE_TIMESTAMPLTZ>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_timestampltz_strict : tp_value_convert_char_to_timestampltz;
@@ -8928,19 +7971,26 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
       switch (src)
 	{
 	case DB_TYPE_SHORT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_short_to_timestamptz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_SHORT, DB_TYPE_TIMESTAMPTZ>;
 	case DB_TYPE_INTEGER:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_integer_to_timestamptz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_INTEGER, DB_TYPE_TIMESTAMPTZ>;
 	case DB_TYPE_BIGINT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_bigint_to_timestamptz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_BIGINT, DB_TYPE_TIMESTAMPTZ>;
 	case DB_TYPE_FLOAT:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_float_to_timestamptz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_FLOAT, DB_TYPE_TIMESTAMPTZ>;
 	case DB_TYPE_DOUBLE:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_double_to_timestamptz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_DOUBLE, DB_TYPE_TIMESTAMPTZ>;
 	case DB_TYPE_MONETARY:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_monetary_to_timestamptz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_MONETARY, DB_TYPE_TIMESTAMPTZ>;
 	case DB_TYPE_NUMERIC:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_numeric_to_timestamptz;
+	  return strict ? tp_value_convert_incompatible :
+		 tp_value_convert_number_to_timestamp<DB_TYPE_NUMERIC, DB_TYPE_TIMESTAMPTZ>;
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_timestamptz_strict : tp_value_convert_char_to_timestamptz;
