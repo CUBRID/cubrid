@@ -28,29 +28,41 @@
 
 /* memory_wrapper.hpp gives CUBRID source a new(__FILE__, __LINE__) form, but STL containers, headers
  * included before memory_wrapper.hpp and the standard library code linked into libcubrid allocate
- * with the global operator new. Both the global operator new and delete are replaced here, so that
- * every block in libcubrid is allocated by cub_alloc () or malloc () and released by cub_free ().
+ * with the global operator new. All forms of the global operator new and delete, including the
+ * aligned ones, are replaced here, so that every block in libcubrid is allocated through
+ * memory_cwrapper.h or the C library and released by cub_free ().
  *
  * The replacement functions must not be inline and must be defined only once, so they are defined
  * in this file instead of memory_wrapper.hpp. memory_wrapper.map keeps them local to libcubrid, and
  * libcubrid links its own copy of libstdc++ (cubrid/CMakeLists.txt), so the out-of-line members of
  * std::string and the other standard library code call them too. */
 
+/* alignment 0 is the default alignment of malloc () */
 static void *
-wrapped_operator_new (size_t size)
+wrapped_operator_new (size_t size, size_t alignment)
 {
+  void *p = NULL;
+
   /* the allocations of mmon_add_stat () itself are not tracked, so that it is not entered again */
   if (!mmon_is_memory_monitor_enabled () || mmon_in_add_stat)
     {
-      /* (malloc) is not expanded by the malloc () macro of memory_cwrapper.h */
-      return (malloc) (size);
+      if (alignment == 0)
+	{
+	  /* (malloc) is not expanded by the malloc () macro of memory_cwrapper.h */
+	  return (malloc) (size);
+	}
+      return posix_memalign (&p, alignment, size) == 0 ? p : NULL;
     }
 
-  return cub_alloc (size, __FILE__, __LINE__);
+  if (alignment == 0)
+    {
+      return cub_alloc (size, __FILE__, __LINE__);
+    }
+  return cub_aligned_alloc (alignment, size, __FILE__, __LINE__);
 }
 
-void *
-operator new (size_t size)
+static void *
+operator_new (size_t size, size_t alignment)
 {
   void *p = NULL;
 
@@ -60,7 +72,7 @@ operator new (size_t size)
       size = 1;
     }
 
-  while ((p = wrapped_operator_new (size)) == NULL)
+  while ((p = wrapped_operator_new (size, alignment)) == NULL)
     {
       std::new_handler handler = std::get_new_handler ();
 
@@ -72,6 +84,12 @@ operator new (size_t size)
     }
 
   return p;
+}
+
+void *
+operator new (size_t size)
+{
+  return operator_new (size, 0);
 }
 
 void *
@@ -99,6 +117,45 @@ operator new[] (size_t size, const std::nothrow_t &) noexcept
   try
     {
       return operator new[] (size);
+    }
+  catch (...)
+    {
+      return NULL;
+    }
+}
+
+void *
+operator new (size_t size, std::align_val_t alignment)
+{
+  /* posix_memalign () takes no alignment smaller than a pointer */
+  return operator_new (size, (size_t) alignment < sizeof (void *) ? sizeof (void *) : (size_t) alignment);
+}
+
+void *
+operator new[] (size_t size, std::align_val_t alignment)
+{
+  return operator new (size, alignment);
+}
+
+void *
+operator new (size_t size, std::align_val_t alignment, const std::nothrow_t &) noexcept
+{
+  try
+    {
+      return operator new (size, alignment);
+    }
+  catch (...)
+    {
+      return NULL;
+    }
+}
+
+void *
+operator new[] (size_t size, std::align_val_t alignment, const std::nothrow_t &) noexcept
+{
+  try
+    {
+      return operator new[] (size, alignment);
     }
   catch (...)
     {
@@ -142,6 +199,42 @@ operator delete (void *ptr, const std::nothrow_t &) noexcept
 
 void
 operator delete [] (void *ptr, const std::nothrow_t &) noexcept
+{
+  cub_free (ptr);
+}
+
+void
+operator delete (void *ptr, std::align_val_t) noexcept
+{
+  cub_free (ptr);
+}
+
+void
+operator delete (void *ptr, size_t sz, std::align_val_t) noexcept
+{
+  cub_free (ptr);
+}
+
+void
+operator delete [] (void *ptr, std::align_val_t) noexcept
+{
+  cub_free (ptr);
+}
+
+void
+operator delete [] (void *ptr, size_t sz, std::align_val_t) noexcept
+{
+  cub_free (ptr);
+}
+
+void
+operator delete (void *ptr, std::align_val_t, const std::nothrow_t &) noexcept
+{
+  cub_free (ptr);
+}
+
+void
+operator delete [] (void *ptr, std::align_val_t, const std::nothrow_t &) noexcept
 {
   cub_free (ptr);
 }
