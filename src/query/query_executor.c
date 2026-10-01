@@ -612,12 +612,63 @@ struct connect_by_dfs_node
   int level;
 };
 
+/* a run of DFS nodes whose tuples were written to one temp list, in array index order */
+typedef struct connect_by_spill_chunk CONNECT_BY_SPILL_CHUNK;
+struct connect_by_spill_chunk
+{
+  QFILE_LIST_ID *list;
+  int start;
+  int count;
+};
+
+/* bounds the resident DFS tuple bytes; hash and level of every node always stay resident */
+typedef struct connect_by_dfs_spill CONNECT_BY_DFS_SPILL;
+struct connect_by_dfs_spill
+{
+  UINT64 mem;			/* resident tuple bytes of stack, path and children */
+  UINT64 limit;
+  UINT64 chunk_bytes;
+  QFILE_TUPLE_VALUE_TYPE_LIST *type_list;
+  QUERY_ID query_id;
+
+  /* stack[0, stack_spilled_end) is spilled; the chunks cover it bottom-up, the last one is reloaded first */
+  CONNECT_BY_SPILL_CHUNK *stack_chunks;
+  int stack_chunk_count, stack_chunk_capacity;
+  int stack_spilled_end;
+
+  /* disjoint path index ranges, sorted by start */
+  CONNECT_BY_SPILL_CHUNK *path_chunks;
+  int path_chunk_count, path_chunk_capacity;
+  int path_scan_from;		/* no resident path tuple below this index */
+};
+
+#define CONNECT_BY_SPILL_CHUNK_MAX_NODES 65536
+
 static void qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out);
 static int qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
 					     QFILE_TUPLE_VALUE_TYPE_LIST * type_list, unsigned int *hash_out);
 static int qexec_connect_by_node_array_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE ** array, int *capacity,
 						int need);
-static void qexec_connect_by_node_array_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE * array, int *count);
+static void qexec_connect_by_node_array_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE * array, int *count,
+					       UINT64 * mem);
+static void qexec_connect_by_spill_init (CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+					 QUERY_ID query_id);
+static int qexec_connect_by_spill_chunk_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_SPILL_CHUNK ** dir,
+						 int *capacity, int need);
+static int qexec_connect_by_spill_write_chunk (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+					       CONNECT_BY_DFS_NODE * arr, int start, int end,
+					       CONNECT_BY_SPILL_CHUNK * chunk);
+static int qexec_connect_by_spill_read_chunk (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+					      CONNECT_BY_DFS_NODE * arr, CONNECT_BY_SPILL_CHUNK * chunk);
+static int qexec_connect_by_spill_if_needed (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+					     CONNECT_BY_DFS_NODE * stack, int stack_count, CONNECT_BY_DFS_NODE * path,
+					     int path_top);
+static int qexec_connect_by_spill_reload_stack_top (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+						    CONNECT_BY_DFS_NODE * stack);
+static int qexec_connect_by_spill_reload_path (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+					       CONNECT_BY_DFS_NODE * path, int index);
+static void qexec_connect_by_spill_trim_path (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, int from);
+static void qexec_connect_by_spill_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill);
 static int qexec_connect_by_cmp_siblings (const CONNECT_BY_DFS_NODE * left, const CONNECT_BY_DFS_NODE * right,
 					  SORTKEY_INFO * key_info_p);
 static int qexec_connect_by_sort_siblings (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE * children, int count,
@@ -17940,6 +17991,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   int path_count = 0, path_capacity = 0;
   int children_count = 0, children_capacity = 0;
   CONNECT_BY_DFS_NODE node = { NULL, 0, 0 };
+  CONNECT_BY_DFS_SPILL spill;
   int tpl_len;
   unsigned int child_hash = 0;
   SORTKEY_INFO sort_key_info;
@@ -17952,6 +18004,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   lfscan_id.status = S_CLOSED;
 
   memset (&unknown_parent_pos, 0, sizeof (unknown_parent_pos));
+  qexec_connect_by_spill_init (&spill, &type_list, xasl_state->query_id);
 
   if (qexec_set_pseudocolumns_val_pointers (xasl, &level_valp, &isleaf_valp, &iscycle_valp, &parent_pos_valp)
       != NO_ERROR)
@@ -18122,7 +18175,15 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       if (stack_count > 0)
 	{
+	  if (stack_count == spill.stack_spilled_end)
+	    {
+	      if (qexec_connect_by_spill_reload_stack_top (thread_p, &spill, stack) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
 	  node = stack[--stack_count];
+	  assert (node.tpl != NULL);
 	}
       else
 	{
@@ -18148,9 +18209,11 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    }
 	  memcpy (node.tpl, tuple_rec.tpl, tpl_len);
 	  node.level = 1;
+	  spill.mem += tpl_len;
 
 	  if (qexec_connect_by_hash_from_tuple (xasl->outptr_list, node.tpl, &type_list, &node.hash) != NO_ERROR)
 	    {
+	      spill.mem -= tpl_len;
 	      db_private_free_and_init (thread_p, node.tpl);
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -18159,6 +18222,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       /* place the node on the active path; deeper entries belong to already emitted subtrees */
       if (qexec_connect_by_node_array_reserve (thread_p, &path, &path_capacity, node.level) != NO_ERROR)
 	{
+	  spill.mem -= QFILE_GET_TUPLE_LENGTH (node.tpl);
 	  db_private_free_and_init (thread_p, node.tpl);
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -18166,11 +18230,18 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	{
 	  if (path[i].tpl != NULL)
 	    {
+	      spill.mem -= QFILE_GET_TUPLE_LENGTH (path[i].tpl);
 	      db_private_free_and_init (thread_p, path[i].tpl);
 	    }
 	}
+      qexec_connect_by_spill_trim_path (thread_p, &spill, node.level - 1);
       path[node.level - 1] = node;
       path_count = node.level;
+
+      if (qexec_connect_by_spill_if_needed (thread_p, &spill, stack, stack_count, path, node.level - 1) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
 
       /* fetch regu_variable values from the node's tuple; obs: prior_regu_list was split into pred and rest for
        * possible future optimizations. */
@@ -18257,6 +18328,18 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	    {
 	      for (i = node.level - 1; i >= 0; i--)
 		{
+		  if (path[i].tpl == NULL)
+		    {
+		      /* a hash mismatch already rules the ancestor out; reload only a possible match */
+		      if (path[i].hash != child_hash)
+			{
+			  continue;
+			}
+		      if (qexec_connect_by_spill_reload_path (thread_p, &spill, path, i) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
 		  if (qexec_compare_valptr_with_tuple (xasl->outptr_list, path[i].tpl, &type_list, &cycle) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -18298,6 +18381,13 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	      children[children_count].hash = child_hash;
 	      children[children_count].level = node.level + 1;
 	      children_count++;
+	      spill.mem += tpl_len;
+
+	      if (qexec_connect_by_spill_if_needed (thread_p, &spill, stack, stack_count, path, node.level - 1)
+		  != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 	    }
 	  else if (!XASL_IS_FLAGED (xasl, XASL_HAS_NOCYCLE))
 	    {
@@ -18378,6 +18468,11 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	      stack[stack_count++] = children[i];
 	    }
 	  children_count = 0;
+
+	  if (qexec_connect_by_spill_if_needed (thread_p, &spill, stack, stack_count, path, node.level - 1) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	}
     }
 
@@ -18388,7 +18483,9 @@ connect_by_emitted:
   qexec_end_scan (thread_p, xasl->spec_list);
   qexec_close_scan (thread_p, xasl->spec_list);
 
-  qexec_connect_by_node_array_clear (thread_p, path, &path_count);
+  qexec_connect_by_node_array_clear (thread_p, path, &path_count, &spill.mem);
+  qexec_connect_by_spill_clear (thread_p, &spill);
+  assert (spill.mem == 0);
   if (path != NULL)
     {
       db_private_free_and_init (thread_p, path);
@@ -18446,9 +18543,11 @@ connect_by_emitted:
 
 exit_on_error:
 
-  qexec_connect_by_node_array_clear (thread_p, path, &path_count);
-  qexec_connect_by_node_array_clear (thread_p, stack, &stack_count);
-  qexec_connect_by_node_array_clear (thread_p, children, &children_count);
+  qexec_connect_by_node_array_clear (thread_p, path, &path_count, &spill.mem);
+  qexec_connect_by_node_array_clear (thread_p, stack, &stack_count, &spill.mem);
+  qexec_connect_by_node_array_clear (thread_p, children, &children_count, &spill.mem);
+  qexec_connect_by_spill_clear (thread_p, &spill);
+  assert (spill.mem == 0);
   if (path != NULL)
     {
       db_private_free_and_init (thread_p, path);
@@ -19739,9 +19838,10 @@ qexec_connect_by_node_array_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NOD
  * qexec_connect_by_node_array_clear () - free the tuples of the first *count nodes
  *  array(in/out):
  *  count(in/out):
+ *  mem(in/out): resident tuple bytes, decreased by the freed tuples
  */
 static void
-qexec_connect_by_node_array_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE * array, int *count)
+qexec_connect_by_node_array_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE * array, int *count, UINT64 * mem)
 {
   int i;
 
@@ -19749,10 +19849,420 @@ qexec_connect_by_node_array_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE 
     {
       if (array[i].tpl != NULL)
 	{
+	  *mem -= QFILE_GET_TUPLE_LENGTH (array[i].tpl);
 	  db_private_free_and_init (thread_p, array[i].tpl);
 	}
     }
   *count = 0;
+}
+
+/*
+ * qexec_connect_by_spill_init () - start the DFS spill state of one CONNECT BY execution
+ *  return:
+ *  spill(out):
+ *  type_list(in): domains of the xasl->outptr_list tuples
+ *  query_id(in):
+ */
+static void
+qexec_connect_by_spill_init (CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QUERY_ID query_id)
+{
+  memset (spill, 0, sizeof (*spill));
+  /* 0 spills every node */
+  spill->limit = (UINT64) prm_get_bigint_value (PRM_ID_MAX_CONNECT_BY_DFS_SIZE);
+  spill->chunk_bytes = MAX (spill->limit / 4, 1);
+  spill->type_list = type_list;
+  spill->query_id = query_id;
+}
+
+/*
+ * qexec_connect_by_spill_chunk_reserve () - ensure capacity of a spill chunk directory
+ *  return: error code
+ *  dir(in/out):
+ *  capacity(in/out):
+ *  need(in): required chunk count
+ */
+static int
+qexec_connect_by_spill_chunk_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_SPILL_CHUNK ** dir, int *capacity, int need)
+{
+  CONNECT_BY_SPILL_CHUNK *new_dir;
+  int new_capacity;
+
+  if (need <= *capacity)
+    {
+      return NO_ERROR;
+    }
+
+  new_capacity = (*capacity > 0) ? *capacity * 2 : 16;
+  if (*dir == NULL)
+    {
+      new_dir = (CONNECT_BY_SPILL_CHUNK *) db_private_alloc (thread_p, new_capacity * sizeof (CONNECT_BY_SPILL_CHUNK));
+    }
+  else
+    {
+      new_dir = (CONNECT_BY_SPILL_CHUNK *) db_private_realloc (thread_p, *dir,
+							       new_capacity * sizeof (CONNECT_BY_SPILL_CHUNK));
+    }
+  if (new_dir == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      new_capacity * sizeof (CONNECT_BY_SPILL_CHUNK));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  *dir = new_dir;
+  *capacity = new_capacity;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_connect_by_spill_write_chunk () - move the resident tuples of arr[start, end) to one temp list,
+ *    up to the chunk size
+ *  return: error code
+ *  spill(in/out):
+ *  arr(in/out): stack or path; the written nodes keep hash and level, their tpl becomes NULL
+ *  start(in): first node, must be resident
+ *  end(in): the run stops here or at the first non-resident node
+ *  chunk(out):
+ */
+static int
+qexec_connect_by_spill_write_chunk (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, CONNECT_BY_DFS_NODE * arr,
+				    int start, int end, CONNECT_BY_SPILL_CHUNK * chunk)
+{
+  QFILE_LIST_ID *list;
+  UINT64 bytes = 0;
+  int k, count = 0;
+  int error = NO_ERROR;
+
+  assert (start < end && arr[start].tpl != NULL);
+
+  list = qfile_open_list (thread_p, spill->type_list, NULL, spill->query_id, 0, NULL);
+  if (list == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  for (k = start; k < end && arr[k].tpl != NULL; k++)
+    {
+      if (count >= CONNECT_BY_SPILL_CHUNK_MAX_NODES || (count > 0 && bytes >= spill->chunk_bytes))
+	{
+	  break;
+	}
+      error = qfile_add_tuple_to_list (thread_p, list, arr[k].tpl);
+      if (error != NO_ERROR)
+	{
+	  qfile_close_list (thread_p, list);
+	  qfile_destroy_list (thread_p, list);
+	  QFILE_FREE_AND_INIT_LIST_ID (list);
+	  return error;
+	}
+      bytes += QFILE_GET_TUPLE_LENGTH (arr[k].tpl);
+      count++;
+    }
+  qfile_close_list (thread_p, list);
+
+  /* free only once the whole chunk is written, so a failed write leaves every tuple resident */
+  for (k = start; k < start + count; k++)
+    {
+      db_private_free_and_init (thread_p, arr[k].tpl);
+    }
+  spill->mem -= bytes;
+
+  chunk->list = list;
+  chunk->start = start;
+  chunk->count = count;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_connect_by_spill_read_chunk () - restore the tuples of a chunk into arr and free its temp list
+ *  return: error code
+ *  spill(in/out):
+ *  arr(in/out): the array the chunk was written from
+ *  chunk(in/out): its list is destroyed on success
+ */
+static int
+qexec_connect_by_spill_read_chunk (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, CONNECT_BY_DFS_NODE * arr,
+				   CONNECT_BY_SPILL_CHUNK * chunk)
+{
+  QFILE_LIST_SCAN_ID scan_id;
+  QFILE_TUPLE_RECORD tuple_rec = { (QFILE_TUPLE) NULL, 0 };
+  SCAN_CODE scan_code;
+  int k, tpl_len;
+  int error = NO_ERROR;
+
+  if (qfile_open_list_scan (chunk->list, &scan_id) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  for (k = 0; k < chunk->count; k++)
+    {
+      assert (arr[chunk->start + k].tpl == NULL);
+
+      scan_code = qfile_scan_list_next (thread_p, &scan_id, &tuple_rec, PEEK);
+      if (scan_code != S_SUCCESS)
+	{
+	  error = (scan_code == S_ERROR) ? er_errid () : ER_FAILED;
+	  if (error == NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	    }
+	  break;
+	}
+
+      tpl_len = QFILE_GET_TUPLE_LENGTH (tuple_rec.tpl);
+      arr[chunk->start + k].tpl = (QFILE_TUPLE) db_private_alloc (thread_p, tpl_len);
+      if (arr[chunk->start + k].tpl == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  break;
+	}
+      memcpy (arr[chunk->start + k].tpl, tuple_rec.tpl, tpl_len);
+      spill->mem += tpl_len;
+    }
+  qfile_close_scan (thread_p, &scan_id);
+
+  if (error != NO_ERROR)
+    {
+      /* the chunk stays in its directory; the restored tuples are freed with the array */
+      return error;
+    }
+
+  qfile_destroy_list (thread_p, chunk->list);
+  QFILE_FREE_AND_INIT_LIST_ID (chunk->list);
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_connect_by_spill_if_needed () - over the limit, spill the coldest resident tuples down to half of it
+ *  return: error code
+ *  spill(in/out):
+ *  stack(in/out):
+ *  stack_count(in):
+ *  path(in/out):
+ *  path_top(in): index of the current node on the path; it and the pending children are never spilled
+ *
+ *  Note: waiting siblings at the stack bottom go first, then the shallowest ancestors on the path. The top of the
+ *  stack pops next, so it stays resident.
+ */
+static int
+qexec_connect_by_spill_if_needed (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, CONNECT_BY_DFS_NODE * stack,
+				  int stack_count, CONNECT_BY_DFS_NODE * path, int path_top)
+{
+  CONNECT_BY_SPILL_CHUNK chunk;
+  int pos, error;
+
+  if (spill->mem <= spill->limit)
+    {
+      return NO_ERROR;
+    }
+
+  while (spill->mem > spill->limit / 2)
+    {
+      if (spill->stack_spilled_end < stack_count - 1)
+	{
+	  error = qexec_connect_by_spill_chunk_reserve (thread_p, &spill->stack_chunks, &spill->stack_chunk_capacity,
+							spill->stack_chunk_count + 1);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  error = qexec_connect_by_spill_write_chunk (thread_p, spill, stack, spill->stack_spilled_end,
+						      stack_count - 1, &chunk);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  spill->stack_chunks[spill->stack_chunk_count++] = chunk;
+	  spill->stack_spilled_end = chunk.start + chunk.count;
+	  continue;
+	}
+
+      while (spill->path_scan_from < path_top && path[spill->path_scan_from].tpl == NULL)
+	{
+	  spill->path_scan_from++;
+	}
+      if (spill->path_scan_from >= path_top)
+	{
+	  break;
+	}
+
+      error = qexec_connect_by_spill_chunk_reserve (thread_p, &spill->path_chunks, &spill->path_chunk_capacity,
+						    spill->path_chunk_count + 1);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = qexec_connect_by_spill_write_chunk (thread_p, spill, path, spill->path_scan_from, path_top, &chunk);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      /* a range reloaded by a cycle check can be spilled again below existing chunks */
+      pos = spill->path_chunk_count;
+      while (pos > 0 && spill->path_chunks[pos - 1].start > chunk.start)
+	{
+	  pos--;
+	}
+      memmove (&spill->path_chunks[pos + 1], &spill->path_chunks[pos],
+	       (spill->path_chunk_count - pos) * sizeof (CONNECT_BY_SPILL_CHUNK));
+      spill->path_chunks[pos] = chunk;
+      spill->path_chunk_count++;
+      spill->path_scan_from = chunk.start + chunk.count;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_connect_by_spill_reload_stack_top () - reload the most recently spilled stack chunk, the next to pop
+ *  return: error code
+ *  spill(in/out):
+ *  stack(in/out):
+ */
+static int
+qexec_connect_by_spill_reload_stack_top (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+					 CONNECT_BY_DFS_NODE * stack)
+{
+  CONNECT_BY_SPILL_CHUNK *chunk;
+  int error;
+
+  assert (spill->stack_chunk_count > 0);
+  chunk = &spill->stack_chunks[spill->stack_chunk_count - 1];
+  assert (chunk->start + chunk->count == spill->stack_spilled_end);
+
+  error = qexec_connect_by_spill_read_chunk (thread_p, spill, stack, chunk);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  spill->stack_spilled_end = chunk->start;
+  spill->stack_chunk_count--;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_connect_by_spill_reload_path () - reload the path chunk that holds path[index]
+ *  return: error code
+ *  spill(in/out):
+ *  path(in/out):
+ *  index(in): a spilled path position
+ */
+static int
+qexec_connect_by_spill_reload_path (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, CONNECT_BY_DFS_NODE * path,
+				    int index)
+{
+  int pos, error;
+
+  for (pos = spill->path_chunk_count - 1; pos >= 0; pos--)
+    {
+      if (spill->path_chunks[pos].start <= index)
+	{
+	  break;
+	}
+    }
+  assert (pos >= 0 && index < spill->path_chunks[pos].start + spill->path_chunks[pos].count);
+  if (pos < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  error = qexec_connect_by_spill_read_chunk (thread_p, spill, path, &spill->path_chunks[pos]);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (spill->path_chunks[pos].start < spill->path_scan_from)
+    {
+      spill->path_scan_from = spill->path_chunks[pos].start;
+    }
+  memmove (&spill->path_chunks[pos], &spill->path_chunks[pos + 1],
+	   (spill->path_chunk_count - pos - 1) * sizeof (CONNECT_BY_SPILL_CHUNK));
+  spill->path_chunk_count--;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_connect_by_spill_trim_path () - forget the spilled tuples of path[from, ...), an emitted subtree
+ *  return:
+ *  spill(in/out):
+ *  from(in): first path position being replaced
+ *
+ *  Note: a chunk straddling from only shrinks; a later reload reads just its leading tuples.
+ */
+static void
+qexec_connect_by_spill_trim_path (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, int from)
+{
+  CONNECT_BY_SPILL_CHUNK *chunk;
+
+  while (spill->path_chunk_count > 0)
+    {
+      chunk = &spill->path_chunks[spill->path_chunk_count - 1];
+      if (chunk->start + chunk->count <= from)
+	{
+	  break;
+	}
+      if (chunk->start < from)
+	{
+	  chunk->count = from - chunk->start;
+	  break;
+	}
+      qfile_destroy_list (thread_p, chunk->list);
+      QFILE_FREE_AND_INIT_LIST_ID (chunk->list);
+      spill->path_chunk_count--;
+    }
+
+  if (from < spill->path_scan_from)
+    {
+      spill->path_scan_from = from;
+    }
+}
+
+/*
+ * qexec_connect_by_spill_clear () - destroy every remaining spill chunk and the chunk directories
+ *  return:
+ *  spill(in/out):
+ */
+static void
+qexec_connect_by_spill_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill)
+{
+  int i;
+
+  for (i = 0; i < spill->stack_chunk_count; i++)
+    {
+      qfile_destroy_list (thread_p, spill->stack_chunks[i].list);
+      QFILE_FREE_AND_INIT_LIST_ID (spill->stack_chunks[i].list);
+    }
+  spill->stack_chunk_count = 0;
+  spill->stack_spilled_end = 0;
+
+  for (i = 0; i < spill->path_chunk_count; i++)
+    {
+      qfile_destroy_list (thread_p, spill->path_chunks[i].list);
+      QFILE_FREE_AND_INIT_LIST_ID (spill->path_chunks[i].list);
+    }
+  spill->path_chunk_count = 0;
+  spill->path_scan_from = 0;
+
+  if (spill->stack_chunks != NULL)
+    {
+      db_private_free_and_init (thread_p, spill->stack_chunks);
+    }
+  if (spill->path_chunks != NULL)
+    {
+      db_private_free_and_init (thread_p, spill->path_chunks);
+    }
+  spill->stack_chunk_capacity = 0;
+  spill->path_chunk_capacity = 0;
 }
 
 /*
