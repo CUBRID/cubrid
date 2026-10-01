@@ -1780,7 +1780,8 @@
 #define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
 #define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
 
-#define ER_LAST_ERROR                               -1383
+#define ER_AU_REJECT_LOGIN                          -1383
+#define ER_LAST_ERROR                               -1384
 
 
 /*

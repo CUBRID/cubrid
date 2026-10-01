@@ -595,8 +595,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
-	      error = ER_AU_INVALID_USER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
+	      error = ER_AU_REJECT_LOGIN;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
 	    }
 	}
       else
@@ -652,7 +652,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		      if ((dbpassword == NULL) || (strlen (dbpassword) == 0)
 			  || !match_password (dbpassword, db_get_string (&value)))
 			{
-			  error = ER_AU_INVALID_PASSWORD;
+			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
@@ -668,7 +668,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		       */
 		      if (dbpassword != NULL && strlen (dbpassword))
 			{
-			  error = ER_AU_INVALID_PASSWORD;
+			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
