@@ -35,120 +35,45 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* pre-defined vars: thread_p, list_idp, merge_infop, nvals, tplrec, bound_vals, upper,
- *                   {outer,inner}_{sid,scan,tplrec,indp,valp,lenp,key_spec} */
-
-#define PXMJ_ADD_MERGETUPLE(t1, t2)                                          \
-  do                                                                         \
-    {                                                                        \
-      if (qfile_merge_tuple_add_list (thread_p, list_idp, (t1), (t2), merge_infop, &tplrec) != NO_ERROR) \
-	{                                                                    \
-	  goto exit_on_error;                                                \
-	}                                                                    \
-    }                                                                        \
-  while (0)
-
-#define PXMJ_PVALS(pre)                                                      \
-  do                                                                         \
-    {                                                                        \
-      int _v;                                                                \
-      bool _null;                                                            \
-      for (_v = 0; _v < nvals; _v++)                                         \
-	{                                                                    \
-	  (pre##_valp)[_v] = (char *) qfile_slot_get_column_data (&(pre##_tplrec), (pre##_indp)[_v], \
-				&(pre##_lenp)[_v], &_null);                  \
-	  if (_null)                                                         \
-	    {                                                                \
-	      (pre##_lenp)[_v] = 0;                                          \
-	    }                                                                \
-	}                                                                    \
-    }                                                                        \
-  while (0)
-
-#define PXMJ_NEXT_SCAN(pre, e)                                               \
-  do                                                                         \
-    {                                                                        \
-      pre##_scan = qfile_scan_list_next (thread_p, &(pre##_sid), &(pre##_tplrec), PEEK); \
-      if ((e) && pre##_scan == S_END)                                        \
-	{                                                                    \
-	  goto exit_on_end;                                                  \
-	}                                                                    \
-      if (pre##_scan == S_ERROR)                                             \
-	{                                                                    \
-	  goto exit_on_error;                                                \
-	}                                                                    \
-    }                                                                        \
-  while (0)
-
-#define PXMJ_PREV_SCAN(pre)                                                  \
-  do                                                                         \
-    {                                                                        \
-      pre##_scan = qfile_scan_list_prev (thread_p, &(pre##_sid), &(pre##_tplrec), PEEK); \
-      if (pre##_scan == S_ERROR)                                             \
-	{                                                                    \
-	  goto exit_on_error;                                                \
-	}                                                                    \
-    }                                                                        \
-  while (0)
-
-#define PXMJ_NEXT_SCAN_PVALS(pre, e)                                         \
-  do                                                                         \
-    {                                                                        \
-      PXMJ_NEXT_SCAN (pre, e);                                               \
-      if (pre##_scan == S_SUCCESS)                                           \
-	{                                                                    \
-	  PXMJ_PVALS (pre);                                                  \
-	}                                                                    \
-    }                                                                        \
-  while (0)
-
-#define PXMJ_REV_SCAN_PVALS(pre)                                             \
-  do                                                                         \
-    {                                                                        \
-      PXMJ_PREV_SCAN (pre);                                                  \
-      if (pre##_scan == S_SUCCESS)                                           \
-	{                                                                    \
-	  PXMJ_PVALS (pre);                                                  \
-	}                                                                    \
-    }                                                                        \
-  while (0)
-
-/* key > upper boundary: this range is complete (the next range owns the rest of the list) */
-#define PXMJ_CHECK_UPPER(pre)                                                \
-  do                                                                         \
-    {                                                                        \
-      if (upper != NULL)                                                     \
-	{                                                                    \
-	  DB_VALUE_COMPARE_RESULT _bc;                                       \
-	  if (read_key (&(pre##_tplrec), *pre##_key_spec, false, bound_vals) != NO_ERROR) \
-	    {                                                                \
-	      goto exit_on_error;                                            \
-	    }                                                                \
-	  _bc = cmp_keys (bound_vals, upper->m_vals.data (), nvals);         \
-	  clear_key (bound_vals, nvals);                                     \
-	  if (_bc == DB_GT)                                                  \
-	    {                                                                \
-	      goto exit_on_end;                                              \
-	    }                                                                \
-	  if (_bc == DB_UNK)                                                 \
-	    {                                                                \
-	      /* compute_partitions screened incomparable keys */            \
-	      assert (false);                                                \
-	      goto exit_on_error;                                            \
-	    }                                                                \
-	}                                                                    \
-    }                                                                        \
-  while (0)
-
 namespace parallel_query
 {
   namespace merge_join
   {
     namespace
     {
+      /* key > upper boundary: this range is complete (the next range owns the rest of the list) */
+      SCAN_CODE
+      check_upper (QEXEC_MERGE_SIDE *side, const key_spec *spec, const partition_key *upper, DB_VALUE *bound_vals)
+      {
+	DB_VALUE_COMPARE_RESULT cmp;
+
+	if (upper == NULL)
+	  {
+	    return S_SUCCESS;
+	  }
+
+	if (read_key (&side->tplrec, *spec, false, bound_vals) != NO_ERROR)
+	  {
+	    return S_ERROR;
+	  }
+	cmp = cmp_keys (bound_vals, upper->m_vals.data (), side->nvals);
+	clear_key (bound_vals, side->nvals);
+	if (cmp == DB_GT)
+	  {
+	    return S_END;
+	  }
+	if (cmp == DB_UNK)
+	  {
+	    /* compute_partitions screened incomparable keys */
+	    assert (false);
+	    return S_ERROR;
+	  }
+
+	return S_SUCCESS;
+      }
+
       /* deviations from qexec_merge_list: the output list comes from the coordinator; each side starts at its
-       * range start; key > the upper boundary ends the merge (PXMJ_CHECK_UPPER); peer errors and interrupts
-       * are polled */
+       * range start; key > the upper boundary ends the merge (check_upper); peer errors and interrupts are polled */
       int
       execute_range_merge (cubthread::entry &thread_ref, task_manager &task_mgr, merge_manager *m, int range_index,
 			   QFILE_LIST_ID *list_idp)
@@ -167,39 +92,39 @@ namespace parallel_query
 
 	int nvals;
 	QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
-	QFILE_TUPLE_RECORD outer_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
-	QFILE_TUPLE_RECORD inner_tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
-	int *outer_indp, *inner_indp;
-	char **outer_valp = NULL, **inner_valp = NULL;
-	int *outer_lenp = NULL, *inner_lenp = NULL;
-	SCAN_CODE outer_scan = S_END, inner_scan = S_END;
-	QFILE_LIST_SCAN_ID outer_sid, inner_sid;
-
-	TP_DOMAIN **outer_domp = NULL, **inner_domp = NULL;
+	QEXEC_MERGE_SIDE outer, inner;
 	DB_VALUE *bound_vals = NULL;
-	int k, cnt, group_cnt, already_compared;
+	int cnt, group_cnt, already_compared;
 	SCAN_DIRECTION direction;
 	QFILE_TUPLE_POSITION inner_tplpos;
 	DB_VALUE_COMPARE_RESULT val_cmp;
+	SCAN_CODE scan;
 	UINT64 poll_counter = 0;
 	int error = NO_ERROR;
 
 	nvals = merge_infop->ls_column_cnt;
-	outer_indp = merge_infop->ls_outer_column;
-	inner_indp = merge_infop->ls_inner_column;
 
-	outer_sid.status = S_CLOSED;
-	inner_sid.status = S_CLOSED;
-
-	if (qfile_open_list_scan (outer_list_idp, &outer_sid) != NO_ERROR
-	    || qfile_open_list_scan (inner_list_idp, &inner_sid) != NO_ERROR)
+	error = qexec_merge_side_init (thread_p, &outer, outer_list_idp, merge_infop->ls_outer_column, nvals);
+	if (error == NO_ERROR)
 	  {
-	    goto exit_on_error;
+	    error = qexec_merge_side_init (thread_p, &inner, inner_list_idp, merge_infop->ls_inner_column, nvals);
+	    if (error != NO_ERROR)
+	      {
+		qexec_merge_side_clear (thread_p, &outer);
+	      }
+	  }
+	if (error != NO_ERROR)
+	  {
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      }
+	    return ER_FAILED;
 	  }
 
 	/* the input lists are scanned concurrently by all workers */
-	outer_sid.is_read_only = true;
-	inner_sid.is_read_only = true;
+	outer.sid.is_read_only = true;
+	inner.sid.is_read_only = true;
 
 	if (outer_list_idp->tuple_cnt == 0 || inner_list_idp->tuple_cnt == 0
 	    || (outer_start != NULL && outer_start->m_exhausted) || (inner_start != NULL && inner_start->m_exhausted))
@@ -208,48 +133,6 @@ namespace parallel_query
 	  }
 
 	if (qfile_reallocate_tuple (&tplrec, DB_PAGESIZE) != NO_ERROR)
-	  {
-	    goto exit_on_error;
-	  }
-
-	outer_domp = (TP_DOMAIN **) db_private_alloc (thread_p, nvals * sizeof (TP_DOMAIN *));
-	if (outer_domp == NULL)
-	  {
-	    goto exit_on_error;
-	  }
-
-	inner_domp = (TP_DOMAIN **) db_private_alloc (thread_p, nvals * sizeof (TP_DOMAIN *));
-	if (inner_domp == NULL)
-	  {
-	    goto exit_on_error;
-	  }
-
-	for (k = 0; k < nvals; k++)
-	  {
-	    outer_domp[k] = outer_list_idp->type_list.domp[merge_infop->ls_outer_column[k]];
-	    inner_domp[k] = inner_list_idp->type_list.domp[merge_infop->ls_inner_column[k]];
-	  }
-
-	outer_valp = (char **) db_private_alloc (thread_p, nvals * sizeof (char *));
-	if (outer_valp == NULL)
-	  {
-	    goto exit_on_error;
-	  }
-
-	inner_valp = (char **) db_private_alloc (thread_p, nvals * sizeof (char *));
-	if (inner_valp == NULL)
-	  {
-	    goto exit_on_error;
-	  }
-
-	outer_lenp = (int *) db_private_alloc (thread_p, nvals * sizeof (int));
-	if (outer_lenp == NULL)
-	  {
-	    goto exit_on_error;
-	  }
-
-	inner_lenp = (int *) db_private_alloc (thread_p, nvals * sizeof (int));
-	if (inner_lenp == NULL)
 	  {
 	    goto exit_on_error;
 	  }
@@ -266,63 +149,63 @@ namespace parallel_query
 	if (outer_start != NULL)
 	  {
 	    QFILE_TUPLE_POSITION start_pos = outer_start->m_pos;
-	    outer_scan = qfile_jump_scan_tuple_position (thread_p, &outer_sid, &start_pos, &outer_tplrec, PEEK);
-	    if (outer_scan != S_SUCCESS)
+	    if (qexec_merge_side_jump (thread_p, &outer, &start_pos) != S_SUCCESS)
 	      {
 		goto exit_on_error;
 	      }
-	    PXMJ_PVALS (outer);
 	  }
 	else
 	  {
 	    /* range 0 starts at the list head: skip the unbound-key prefix as the serial merge does */
-	    while (1)
+	    scan = qexec_merge_side_skip_null_keys (thread_p, &outer);
+	    if (scan == S_END)
 	      {
-		PXMJ_NEXT_SCAN_PVALS (outer, true);
-		for (k = 0; k < nvals; k++)
-		  {
-		    if (outer_lenp[k] == 0)
-		      {
-			break;
-		      }
-		  }
-		if (k >= nvals)
-		  {
-		    break;
-		  }
+		goto exit_on_end;
+	      }
+	    if (scan == S_ERROR)
+	      {
+		goto exit_on_error;
 	      }
 	  }
-	PXMJ_CHECK_UPPER (outer);
+	scan = check_upper (&outer, outer_key_spec, upper, bound_vals);
+	if (scan == S_END)
+	  {
+	    goto exit_on_end;
+	  }
+	if (scan == S_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
 
 	if (inner_start != NULL)
 	  {
 	    QFILE_TUPLE_POSITION start_pos = inner_start->m_pos;
-	    inner_scan = qfile_jump_scan_tuple_position (thread_p, &inner_sid, &start_pos, &inner_tplrec, PEEK);
-	    if (inner_scan != S_SUCCESS)
+	    if (qexec_merge_side_jump (thread_p, &inner, &start_pos) != S_SUCCESS)
 	      {
 		goto exit_on_error;
 	      }
-	    PXMJ_PVALS (inner);
 	  }
 	else
 	  {
-	    while (1)
+	    scan = qexec_merge_side_skip_null_keys (thread_p, &inner);
+	    if (scan == S_END)
 	      {
-		PXMJ_NEXT_SCAN_PVALS (inner, true);
-		for (k = 0; k < nvals; k++)
-		  {
-		    if (inner_lenp[k] == 0)
-		      {
-			break;
-		      }
-		  }
-		if (k >= nvals)
-		  {
-		    break;
-		  }
+		goto exit_on_end;
+	      }
+	    if (scan == S_ERROR)
+	      {
+		goto exit_on_error;
 	      }
 	  }
-	PXMJ_CHECK_UPPER (inner);
+	scan = check_upper (&inner, inner_key_spec, upper, bound_vals);
+	if (scan == S_END)
+	  {
+	    goto exit_on_end;
+	  }
+	if (scan == S_ERROR)
+	  {
+	    goto exit_on_error;
+	  }
 
 	direction = S_FORWARD;
 	group_cnt = 0;
@@ -339,8 +222,7 @@ namespace parallel_query
 
 	    if (!already_compared)
 	      {
-		val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
-						    inner_indp, inner_domp, nvals);
+		val_cmp = qexec_merge_side_cmp (&outer, &inner);
 		if (val_cmp == DB_UNK)
 		  {
 		    goto exit_on_error;
@@ -350,8 +232,19 @@ namespace parallel_query
 
 	    if (val_cmp == DB_LT)
 	      {
-		PXMJ_NEXT_SCAN_PVALS (outer, true);
-		PXMJ_CHECK_UPPER (outer);
+		scan = qexec_merge_side_next (thread_p, &outer);
+		if (scan == S_SUCCESS)
+		  {
+		    scan = check_upper (&outer, outer_key_spec, upper, bound_vals);
+		  }
+		if (scan == S_END)
+		  {
+		    goto exit_on_end;
+		  }
+		if (scan == S_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
 		direction = S_FORWARD;
 		group_cnt = 0;
 		continue;
@@ -359,8 +252,19 @@ namespace parallel_query
 
 	    if (val_cmp == DB_GT)
 	      {
-		PXMJ_NEXT_SCAN_PVALS (inner, true);
-		PXMJ_CHECK_UPPER (inner);
+		scan = qexec_merge_side_next (thread_p, &inner);
+		if (scan == S_SUCCESS)
+		  {
+		    scan = check_upper (&inner, inner_key_spec, upper, bound_vals);
+		  }
+		if (scan == S_END)
+		  {
+		    goto exit_on_end;
+		  }
+		if (scan == S_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
 		direction = S_FORWARD;
 		group_cnt = 0;
 		continue;
@@ -373,58 +277,47 @@ namespace parallel_query
 
 	    if (direction == S_FORWARD)
 	      {
-		cnt = 0;
-		while (1)
+		scan = qexec_merge_group_forward (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, group_cnt,
+						  &cnt, &val_cmp);
+		if (scan == S_END)
 		  {
-		    PXMJ_ADD_MERGETUPLE (&outer_tplrec, &inner_tplrec);
-		    cnt++;
-
-		    if (group_cnt == 0)
-		      {
-			PXMJ_NEXT_SCAN_PVALS (inner, false /* do not exit */);
-			if (inner_scan == S_END)
-			  {
-			    break;
-			  }
-
-			val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
-							    inner_indp, inner_domp, nvals);
-			if (val_cmp != DB_EQ)
-			  {
-			    if (val_cmp == DB_UNK)
-			      {
-				goto exit_on_error;
-			      }
-			    break;
-			  }
-		      }
-		    else
-		      {
-			if (cnt >= group_cnt)
-			  {
-			    break;
-			  }
-			PXMJ_NEXT_SCAN (inner, true);
-		      }
+		    goto exit_on_end;
+		  }
+		if (scan == S_ERROR)
+		  {
+		    goto exit_on_error;
 		  }
 
-		PXMJ_NEXT_SCAN_PVALS (outer, true);
-		PXMJ_CHECK_UPPER (outer);
+		scan = qexec_merge_side_next (thread_p, &outer);
+		if (scan == S_SUCCESS)
+		  {
+		    scan = check_upper (&outer, outer_key_spec, upper, bound_vals);
+		  }
+		if (scan == S_END)
+		  {
+		    goto exit_on_end;
+		  }
+		if (scan == S_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
 
 		if (group_cnt == 0)
 		  {
-		    qfile_save_current_scan_tuple_position (&inner_sid, &inner_tplpos);
+		    qfile_save_current_scan_tuple_position (&inner.sid, &inner_tplpos);
 
-		    if (inner_scan == S_END)
+		    if (inner.scan == S_END)
 		      {
-			PXMJ_REV_SCAN_PVALS (inner);
+			if (qexec_merge_side_prev (thread_p, &inner) == S_ERROR)
+			  {
+			    goto exit_on_error;
+			  }
 			group_cnt = cnt;
 			direction = S_BACKWARD;
 		      }
 		    else
 		      {
-			val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
-							    inner_indp, inner_domp, nvals);
+			val_cmp = qexec_merge_side_cmp (&outer, &inner);
 			if (val_cmp == DB_UNK)
 			  {
 			    goto exit_on_error;
@@ -432,10 +325,12 @@ namespace parallel_query
 
 			if (val_cmp == DB_LT)
 			  {
-			    PXMJ_REV_SCAN_PVALS (inner);
+			    if (qexec_merge_side_prev (thread_p, &inner) == S_ERROR)
+			      {
+				goto exit_on_error;
+			      }
 
-			    val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
-								inner_indp, inner_domp, nvals);
+			    val_cmp = qexec_merge_side_cmp (&outer, &inner);
 			    if (val_cmp == DB_UNK)
 			      {
 				goto exit_on_error;
@@ -448,7 +343,15 @@ namespace parallel_query
 			      }
 			    else
 			      {
-				PXMJ_NEXT_SCAN_PVALS (inner, true);
+				scan = qexec_merge_side_next (thread_p, &inner);
+				if (scan == S_END)
+				  {
+				    goto exit_on_end;
+				  }
+				if (scan == S_ERROR)
+				  {
+				    goto exit_on_error;
+				  }
 				val_cmp = DB_LT;
 			      }
 			  }
@@ -463,25 +366,27 @@ namespace parallel_query
 	      }
 	    else
 	      {
-		cnt = group_cnt;
-		while (1)
+		if (qexec_merge_group_backward (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, group_cnt)
+		    != NO_ERROR)
 		  {
-		    PXMJ_ADD_MERGETUPLE (&outer_tplrec, &inner_tplrec);
-		    cnt--;
-		    if (cnt <= 0)
-		      {
-			break;
-		      }
-		    PXMJ_PREV_SCAN (inner);
+		    goto exit_on_error;
 		  }
 
-		PXMJ_PVALS (inner);
+		scan = qexec_merge_side_next (thread_p, &outer);
+		if (scan == S_SUCCESS)
+		  {
+		    scan = check_upper (&outer, outer_key_spec, upper, bound_vals);
+		  }
+		if (scan == S_END)
+		  {
+		    goto exit_on_end;
+		  }
+		if (scan == S_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
 
-		PXMJ_NEXT_SCAN_PVALS (outer, true);
-		PXMJ_CHECK_UPPER (outer);
-
-		val_cmp = qexec_cmp_tpl_vals_merge (&outer_tplrec, outer_indp, outer_domp, &inner_tplrec,
-						    inner_indp, inner_domp, nvals);
+		val_cmp = qexec_merge_side_cmp (&outer, &inner);
 		if (val_cmp == DB_UNK)
 		  {
 		    goto exit_on_error;
@@ -489,16 +394,15 @@ namespace parallel_query
 
 		if (val_cmp != DB_EQ)
 		  {
-		    inner_scan = qfile_jump_scan_tuple_position (thread_p, &inner_sid, &inner_tplpos, &inner_tplrec, PEEK);
-		    if (inner_scan == S_END)
+		    scan = qexec_merge_side_jump (thread_p, &inner, &inner_tplpos);
+		    if (scan == S_END)
 		      {
 			goto exit_on_end;
 		      }
-		    if (inner_scan == S_ERROR)
+		    if (scan == S_ERROR)
 		      {
 			goto exit_on_error;
 		      }
-		    PXMJ_PVALS (inner);
 		    group_cnt = 0;
 		  }
 		else
@@ -511,36 +415,12 @@ namespace parallel_query
 	  }
 
 exit_on_end:
-	qfile_close_scan (thread_p, &outer_sid);
-	qfile_close_scan (thread_p, &inner_sid);
+	qexec_merge_side_clear (thread_p, &outer);
+	qexec_merge_side_clear (thread_p, &inner);
 
 	if (tplrec.tpl)
 	  {
 	    db_private_free_and_init (thread_p, tplrec.tpl);
-	  }
-	if (outer_domp)
-	  {
-	    db_private_free_and_init (thread_p, outer_domp);
-	  }
-	if (inner_domp)
-	  {
-	    db_private_free_and_init (thread_p, inner_domp);
-	  }
-	if (outer_valp)
-	  {
-	    db_private_free_and_init (thread_p, outer_valp);
-	  }
-	if (inner_valp)
-	  {
-	    db_private_free_and_init (thread_p, inner_valp);
-	  }
-	if (outer_lenp)
-	  {
-	    db_private_free_and_init (thread_p, outer_lenp);
-	  }
-	if (inner_lenp)
-	  {
-	    db_private_free_and_init (thread_p, inner_lenp);
 	  }
 	if (bound_vals)
 	  {
