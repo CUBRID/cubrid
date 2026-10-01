@@ -42,6 +42,7 @@
 #include "storage_common.h"
 #include "object_domain.h"
 #include "query_list.h"
+#include "bind_variant.h"
 #include "query_monitoring.hpp"
 #include "statistics.h"
 #include "connection_defs.h"
@@ -283,6 +284,7 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream, int xas
 						      int query_timeout);
 extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_all_query_plans (void);
+extern int qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply);
 extern int qmgr_drop_query_plans_by_sha1 (char *sha1);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);

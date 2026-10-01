@@ -484,8 +484,8 @@ extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
 extern bool qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
 						    DB_VALUE * arg2_val, double *out_sel);
 
-/* total estimated cost of a plan (fixed + variable, CPU + IO), for callers outside the
- * optimizer that only need its magnitude. 0 for a NULL plan. */
-extern double qo_plan_get_total_cost (QO_PLAN * plan);
+/* fold the shape of a plan (types, join order and methods, scans and their indexes; no costs)
+ * into a running signature: equal for two compiles that chose the same plan */
+extern UINT64 qo_plan_signature (QO_PLAN * plan, UINT64 sig);
 
 #endif /* _QUERY_PLANNER_H_ */

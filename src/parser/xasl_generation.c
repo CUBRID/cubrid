@@ -18417,14 +18417,18 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
 
-  if (xasl != NULL && histogram_bind_watch_candidate (parser, select_node, qo_plan_get_total_cost (plan)))
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, select_node))
     {
-      /* target selection for the bind-value watch, decided once here where the plan's estimate
-       * is in hand. Unlike the flag above this one does not depend on the values being unbound:
-       * the verdict is a property of the statement and its plan, and the value-bound
-       * regeneration has to arrive at the same answer or the watch would stop after its first
-       * replan. */
+      /* target selection for the bind-value plan variants. Every condition is structural (joined
+       * nodes, most-common values on the column, no unique key pinning the node), so whatever
+       * values the plan was chosen under, every compile of the statement gives the same answer
+       * and the flag travels with every variant of it. */
       xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
+  if (xasl != NULL && plan != NULL)
+    {
+      /* the plan-variant directory tells two compiles of one query apart by their plans */
+      parser->bind_plan_sig = qo_plan_signature (plan, parser->bind_plan_sig);
     }
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);

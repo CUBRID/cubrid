@@ -969,6 +969,7 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
   if (PT_IS_QUERY (new_node))
     {
       new_node->info.query.bind_watch = NULL;
+      new_node->info.query.bind_variant_key = NULL;
     }
   else if (new_node->node_type == PT_UPDATE)
     {

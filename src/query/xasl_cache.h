@@ -30,6 +30,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "xasl.h"
+#include "bind_variant.h"
 
 // forward definitions
 struct compile_context;
@@ -127,6 +128,10 @@ struct xasl_cache_ent
   /* RT check */
   INT64 time_last_rt_check;
 
+  /* bind-value plan variants of this query (bind_variant.h); NULL until a client asks */
+  struct xcache_bind_dir *bind_dir;
+  pthread_mutex_t bind_dir_mutex;
+
   bool initialized;
 
   // *INDENT-OFF*
@@ -176,5 +181,7 @@ extern int xcache_get_entry_count (void);
 extern bool xcache_uses_clones (void);
 
 extern int xcache_invalidate_qcaches (THREAD_ENTRY * thread_p, const OID * oid);
+
+extern int xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply);
 
 #endif /* _XASL_CACHE_H_ */

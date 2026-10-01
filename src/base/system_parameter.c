@@ -5591,7 +5591,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 0}},
    {false, {.i = 0}},
-   {false, {.i = 1000}},
+   {false, {.i = 32}},		/* BIND_VARIANT_MAX_CHECKS */
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

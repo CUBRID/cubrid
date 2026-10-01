@@ -2954,10 +2954,12 @@ struct pt_query_info
     PT_SELECT_INFO select;
     PT_UNION_INFO union_;
   } q;
-  BIND_WATCH_STATE *bind_watch;	/* rows each host-variable predicate was expected to scan when the
-				 * current plan was chosen, plus how many early-window checks are
-				 * left. NULL until the first checked execution allocates it (parser
-				 * lifetime). See histogram_bind_watch_check (). */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value state of this prepared statement: the rows each
+				 * host-variable predicate was expected to scan under the current plan,
+				 * and the query's plan variants as last seen. NULL until the first
+				 * checked execution allocates it (parser lifetime). */
+  const char *bind_variant_key;	/* appended to the hash text to name a plan variant of this query
+				 * (bind_variant.h); NULL = the query's base entry */
 };
 
 /* Info for Set Optimization Level statement */
@@ -3927,6 +3929,8 @@ struct parser_context
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+  UINT64 bind_plan_sig;		/* signature of the plans chosen by this compile (bind_variant.h): two
+				 * compiles of one query got the same plan when these are equal */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */

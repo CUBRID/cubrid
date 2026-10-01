@@ -24,6 +24,8 @@
 
 #include "xasl_cache.h"
 
+#include "bind_variant.h"
+
 #include "binaryheap.h"
 #include "compile_context.h"
 #include "config.h"
@@ -65,6 +67,19 @@
 
 #define XCACHE_PTR_TO_KEY(ptr) ((XASL_ID *) ptr)
 #define XCACHE_PTR_TO_ENTRY(ptr) ((XASL_CACHE_ENTRY *) ptr)
+
+/* the plan variants of one query, kept on its base entry (see bind_variant.h) */
+struct xcache_bind_dir
+{
+  int checks;			/* checks the query has spent */
+  int plans;			/* registered variants: distinct plans */
+  int next_variant;		/* variants reserved so far */
+  int n_records;
+  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_CHECKS];
+  bool registered[BIND_VARIANT_MAX_CHECKS];	/* the variant is a plan of the query */
+  bool resolved[BIND_VARIANT_MAX_CHECKS];	/* its compile came back, as a new plan or a known one */
+  UINT64 plan_sig[BIND_VARIANT_MAX_CHECKS];
+};
 
 /* xcache statistics. */
 typedef struct xcache_stats XCACHE_STATS;
@@ -417,13 +432,20 @@ xcache_finalize (THREAD_ENTRY * thread_p)
 xasl_cache_ent::xasl_cache_ent ()
 {
   pthread_mutex_init (&cache_clones_mutex, NULL);
+  pthread_mutex_init (&bind_dir_mutex, NULL);
+  bind_dir = NULL;
   init_clone_cache ();
 }
 
 xasl_cache_ent::~xasl_cache_ent ()
 {
   assert (cache_clones == NULL || cache_clones == &one_clone);
+  if (bind_dir != NULL)
+    {
+      free_and_init (bind_dir);
+    }
   pthread_mutex_destroy (&cache_clones_mutex);
+  pthread_mutex_destroy (&bind_dir_mutex);
 }
 
 void
@@ -452,6 +474,8 @@ xcache_entry_alloc (void)
     }
   xcache_entry->init_clone_cache ();
   pthread_mutex_init (&xcache_entry->cache_clones_mutex, NULL);
+  pthread_mutex_init (&xcache_entry->bind_dir_mutex, NULL);
+  xcache_entry->bind_dir = NULL;
 
   xcache_entry->list_ht_no = -1;
 
@@ -475,7 +499,12 @@ xcache_entry_free (void *entry)
       assert (false);
       free (xcache_entry->cache_clones);
     }
+  if (xcache_entry->bind_dir != NULL)
+    {
+      free_and_init (xcache_entry->bind_dir);
+    }
   pthread_mutex_destroy (&xcache_entry->cache_clones_mutex);
+  pthread_mutex_destroy (&xcache_entry->bind_dir_mutex);
   free (entry);
   return NO_ERROR;
 }
@@ -505,6 +534,7 @@ xcache_entry_init (void *entry)
 
   xcache_entry->free_data_on_uninit = false;
   xcache_entry->mem_size = 0;
+  xcache_entry->bind_dir = NULL;
   xcache_entry->initialized = true;
 
   assert (xcache_entry->n_cache_clones == 0);
@@ -640,6 +670,11 @@ xcache_entry_uninit (void *entry)
       XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 
       assert (xcache_entry->n_cache_clones == 0);
+    }
+  if (xcache_entry->bind_dir != NULL)
+    {
+      /* the query's plan variants go with its base entry: the next execution starts over */
+      free_and_init (xcache_entry->bind_dir);
     }
   xcache_entry->initialized = false;
   return NO_ERROR;
@@ -2258,6 +2293,17 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 	{
 	  fprintf (fp, "  clone count = %d \n", xcache_entry->n_cache_clones);
 	}
+      if (xcache_entry->bind_dir != NULL)
+	{
+	  pthread_mutex_lock (&xcache_entry->bind_dir_mutex);
+	  if (xcache_entry->bind_dir != NULL)
+	    {
+	      fprintf (fp, "  bind variants: checks = %d, plans = %d, fingerprints = %d \n",
+		       xcache_entry->bind_dir->checks, xcache_entry->bind_dir->plans,
+		       xcache_entry->bind_dir->n_records);
+	    }
+	  pthread_mutex_unlock (&xcache_entry->bind_dir_mutex);
+	}
       fprintf (fp, "  sql info: \n");
 
       qmgr_get_sql_id (thread_p, &sql_id, xcache_entry->sql_info.sql_hash_text,
@@ -2779,4 +2825,177 @@ bool
 xcache_uses_clones (void)
 {
   return xcache_Max_clones > 0;
+}
+
+/*
+ * xcache_bind_variant () - spend a check of a query's plan-variant budget, or register the plan
+ *   a reserved variant compiled to (see bind_variant.h)
+ * return	: error code
+ * thread_p (in): thread entry
+ * req (in)	: the request; req->sha1 and req->time_stored name the query's base entry
+ * reply (out)	: the outcome, the budget and the whole directory, which the client keeps once
+ *		  the budget is spent
+ *
+ * A base entry of another generation (recompiled, or dropped and inserted again) is not the
+ * one the client's variants belong to: NOT_FOUND, and the client starts over.
+ */
+int
+xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply)
+{
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
+  struct xcache_bind_dir *dir;
+  int error_code = NO_ERROR;
+  int limit, i;
+
+  assert (req != NULL && reply != NULL);
+
+  reply->result = BIND_VARIANT_NOT_FOUND;
+  reply->variant = -1;
+  reply->state = BIND_VARIANT_STATE_WATCH;
+  reply->checks = 0;
+  reply->plans = 0;
+  reply->n_records = 0;
+
+  if (!xcache_Enabled)
+    {
+      return NO_ERROR;
+    }
+
+  error_code = xcache_find_sha1 (thread_p, &req->sha1, XASL_CACHE_SEARCH_GENERIC, &xcache_entry, NULL);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (xcache_entry == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (!CACHE_TIME_EQ (&xcache_entry->xasl_id.time_stored, &req->time_stored))
+    {
+      xcache_unfix (thread_p, xcache_entry);
+      return NO_ERROR;
+    }
+
+  limit = req->limit;
+  if (limit > BIND_VARIANT_MAX_CHECKS)
+    {
+      limit = BIND_VARIANT_MAX_CHECKS;
+    }
+  if (limit < 1)
+    {
+      limit = 1;
+    }
+
+  pthread_mutex_lock (&xcache_entry->bind_dir_mutex);
+
+  dir = xcache_entry->bind_dir;
+  if (dir == NULL)
+    {
+      dir = (struct xcache_bind_dir *) malloc (sizeof (struct xcache_bind_dir));
+      if (dir == NULL)
+	{
+	  pthread_mutex_unlock (&xcache_entry->bind_dir_mutex);
+	  xcache_unfix (thread_p, xcache_entry);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct xcache_bind_dir));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (dir, 0, sizeof (struct xcache_bind_dir));
+      xcache_entry->bind_dir = dir;
+    }
+
+  if (req->op == BIND_VARIANT_OP_CHECK)
+    {
+      if (dir->checks >= limit)
+	{
+	  reply->result = BIND_VARIANT_FROZEN;
+	}
+      else
+	{
+	  double dist = DBL_MAX;
+	  int nearest;
+
+	  dir->checks++;
+	  nearest = bind_variant_nearest (dir->records, dir->n_records, &req->fp, req->floor, &dist);
+	  if (nearest >= 0 && dist < req->band)
+	    {
+	      reply->result = BIND_VARIANT_MATCH;
+	      reply->variant = dir->records[nearest].variant;
+	    }
+	  else if (dir->next_variant < BIND_VARIANT_MAX_CHECKS)
+	    {
+	      reply->result = BIND_VARIANT_COMPILE;
+	      reply->variant = dir->next_variant++;
+	    }
+	  else
+	    {
+	      /* cannot happen while every check reserves at most one variant; stay safe */
+	      reply->result = (nearest >= 0) ? BIND_VARIANT_MATCH : BIND_VARIANT_FROZEN;
+	      reply->variant = (nearest >= 0) ? dir->records[nearest].variant : -1;
+	    }
+	}
+    }
+  else if (req->op == BIND_VARIANT_OP_REGISTER && req->variant >= 0 && req->variant < dir->next_variant)
+    {
+      int same = -1;
+
+      dir->resolved[req->variant] = true;
+
+      for (i = 0; i < dir->next_variant; i++)
+	{
+	  if (dir->registered[i] && dir->plan_sig[i] == req->plan_sig)
+	    {
+	      same = i;
+	      break;
+	    }
+	}
+      if (same >= 0)
+	{
+	  /* the compile found a plan the query already has: no new variant, only another
+	   * fingerprint that reaches it */
+	  reply->result = BIND_VARIANT_SAME_PLAN;
+	  reply->variant = same;
+	}
+      else
+	{
+	  dir->registered[req->variant] = true;
+	  dir->plan_sig[req->variant] = req->plan_sig;
+	  dir->plans++;
+	  reply->result = BIND_VARIANT_NEW;
+	  reply->variant = req->variant;
+	}
+      if (dir->n_records < BIND_VARIANT_MAX_CHECKS)
+	{
+	  dir->records[dir->n_records].variant = reply->variant;
+	  dir->records[dir->n_records].fp = req->fp;
+	  dir->n_records++;
+	}
+    }
+
+  reply->checks = dir->checks;
+  reply->plans = dir->plans;
+  reply->pending = 0;
+  for (i = 0; i < dir->next_variant; i++)
+    {
+      if (!dir->resolved[i])
+	{
+	  reply->pending++;
+	}
+    }
+  if (dir->checks >= limit && reply->pending == 0)
+    {
+      /* final only once every reserved variant came back: a client that settled while the last
+       * compile was in flight would never see that plan */
+      reply->state = (dir->plans <= 1) ? BIND_VARIANT_STATE_DONE : BIND_VARIANT_STATE_SELECT;
+    }
+  reply->n_records = dir->n_records;
+  for (i = 0; i < dir->n_records; i++)
+    {
+      reply->records[i] = dir->records[i];
+    }
+
+  pthread_mutex_unlock (&xcache_entry->bind_dir_mutex);
+  xcache_unfix (thread_p, xcache_entry);
+
+  return NO_ERROR;
 }

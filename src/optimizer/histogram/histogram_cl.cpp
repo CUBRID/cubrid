@@ -2810,18 +2810,11 @@ histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
 }
 
 /*===========================================================================*/
-/* bind-value plan watch: per-predicate fingerprint, target selection, early window */
+/* bind-value plans: per-predicate fingerprint, the hint check, target selection */
 
-/* Tuning constants of the watch. Deliberately not system parameters: the one thing a DBA
- * decides is whether to watch and for how many executions (plan_cache_bind_watch_checks);
- * nobody has a basis to pick a band or a floor per installation. The bands live in the header
- * (they are part of the contract); these two are internal. */
-/* a predicate expected to scan fewer rows than this on both sides is ignored: 1 row becoming 3
- * moves no plan. Applied at comparison time, never at recording time -- 10 rows today can be
- * 200,000 on the next value, and that move must be seen. */
-static constexpr double BIND_WATCH_ROW_FLOOR = 1000.0;
-/* a plan cheaper than this cannot get expensive enough for a replan to pay for itself */
-static constexpr double BIND_WATCH_COST_THRESHOLD = 100.0;
+/* The band and the floor are constants (histogram_cl.hpp), deliberately not system parameters:
+ * the one thing a DBA decides is how many checks a query may spend (plan_cache_bind_watch_checks);
+ * nobody has a basis to pick a band or a floor per installation. */
 
 /* the predicates of one fingerprint walk, in tree order */
 struct bind_term_ctx
@@ -3046,6 +3039,65 @@ bind_term_vector (PARSER_CONTEXT *parser, PT_NODE *statement, bind_term_ctx *ctx
   return ctx->count > 0;
 }
 
+bool
+histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_FINGERPRINT *fp,
+			    char (*names)[BIND_WATCH_NAME_LEN])
+{
+  bind_term_ctx cur;
+  int i;
+
+  assert (fp != NULL);
+  fp->terms = 0;
+  if (!bind_term_vector (parser, statement, &cur))
+    {
+      return false;
+    }
+  fp->terms = cur.count;
+  for (i = 0; i < cur.count; i++)
+    {
+      fp->rows[i] = cur.rows[i];
+      if (names != NULL)
+	{
+	  memcpy (names[i], cur.name[i], BIND_WATCH_NAME_LEN);
+	}
+    }
+  return true;
+}
+
+void
+histogram_bind_describe (char *buf, size_t size, const BIND_FINGERPRINT *now, char (*names)[BIND_WATCH_NAME_LEN],
+			 const BIND_FINGERPRINT *ref)
+{
+  size_t used = 0;
+  int i;
+
+  if (size == 0)
+    {
+      return;
+    }
+  buf[0] = '\0';
+  for (i = 0; i < now->terms && used < size; i++)
+    {
+      int n;
+
+      if (ref != NULL && ref->terms == now->terms)
+	{
+	  n = snprintf (buf + used, size - used, "%s%s %.0f->%.0f", (i > 0) ? ", " : "",
+			(names != NULL) ? names[i] : "?", ref->rows[i], now->rows[i]);
+	}
+      else
+	{
+	  n = snprintf (buf + used, size - used, "%s%s %.0f", (i > 0) ? ", " : "", (names != NULL) ? names[i] : "?",
+			now->rows[i]);
+	}
+      if (n < 0)
+	{
+	  break;
+	}
+      used += (size_t) n;
+    }
+}
+
 UINT64
 histogram_bind_value_hash (PARSER_CONTEXT *parser)
 {
@@ -3084,8 +3136,8 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
   bind_term_ctx cur;
   const double row_floor = BIND_WATCH_ROW_FLOOR;
   /* the per-check dump rides on the general debug-log switch (on by default in debug builds,
-   * where the phase-1 measurement runs); the replan reason below is logged unconditionally,
-   * since it is bounded by the window and is what a DBA asks for when a plan changed */
+   * where the phase-1 measurement runs); the replan reason below is what a DBA asks for when a
+   * plan changed */
   const bool trace = prm_get_bool_value (PRM_ID_ER_LOG_DEBUG);
   double worst_fold = 1.0;
   int worst_i = -1, compared = 0, i;
@@ -3367,7 +3419,7 @@ bind_target_spec_is_unique_pinned (PARSER_CONTEXT *parser, PT_NODE *statement, b
 }
 
 bool
-histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement, double plan_cost)
+histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
   bind_target_ctx ctx;
   int i;
@@ -3381,11 +3433,6 @@ histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement, doub
     {
       return false;
     }
-  if (plan_cost < BIND_WATCH_COST_THRESHOLD)
-    {
-      return false;
-    }
-
   ctx.parser = parser;
   ctx.specs = 0;
   ctx.terms = 0;
@@ -3404,8 +3451,10 @@ histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement, doub
   /* single-table queries are out of scope by contract: their worst case is a full scan, so the
    * table bounds the damage, while a join's error multiplies at every probe with no bound.
    * Use the hint when a single-table statement really needs watching. */
-  if (ctx.specs < 2 || ctx.terms == 0 || ctx.overflow)
+  if (ctx.specs < 2 || ctx.terms == 0)
     {
+      /* a statement with more columns than the term array is judged by the first ones, the
+       * same predicates its fingerprint keeps */
       return false;
     }
 
