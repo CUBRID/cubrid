@@ -649,6 +649,7 @@ struct connect_by_dfs_spill
 #define CONNECT_BY_NODE_ARRAY_INIT_CAPACITY 32
 #define CONNECT_BY_HASH_MULTIPLIER 31u
 
+static unsigned int qexec_connect_by_hash_column (const DB_VALUE * dbval);
 static void qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out);
 static int qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl,
 					     QFILE_TUPLE_VALUE_TYPE_LIST * type_list, unsigned int *hash_out);
@@ -19680,6 +19681,63 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
 }
 
 /*
+ * qexec_connect_by_hash_column () - hash one cycle-key column for the cycle pre-filter
+ *  return: hash value
+ *  dbval(in):
+ */
+static unsigned int
+qexec_connect_by_hash_column (const DB_VALUE * dbval)
+{
+  DB_VALUE zero;
+
+  if (DB_IS_NULL (dbval))
+    {
+      return 0;
+    }
+
+  /* mht_get_hash_number hashes the raw bits, so -0.0 and +0.0 must be folded first */
+  switch (DB_VALUE_DOMAIN_TYPE (dbval))
+    {
+    case DB_TYPE_FLOAT:
+      if (db_get_float (dbval) == 0.0f)
+	{
+	  db_make_float (&zero, 0.0f);
+	  return mht_get_hash_number (UINT_MAX, &zero);
+	}
+      break;
+
+    case DB_TYPE_DOUBLE:
+      if (db_get_double (dbval) == 0.0)
+	{
+	  db_make_double (&zero, 0.0);
+	  return mht_get_hash_number (UINT_MAX, &zero);
+	}
+      break;
+
+    case DB_TYPE_MONETARY:
+      if (db_get_monetary (dbval)->amount == 0.0)
+	{
+	  db_make_monetary (&zero, db_get_monetary (dbval)->type, 0.0);
+	  return mht_get_hash_number (UINT_MAX, &zero);
+	}
+      break;
+
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VOBJ:
+      /* the collection hash depends on whether the disk image is resident, which differs between a peeked
+       * scan value and a copied tuple value; leave these columns to the exact compare */
+      return 0;
+
+    default:
+      break;
+    }
+
+  return mht_get_hash_number (UINT_MAX, dbval);
+}
+
+/*
  * qexec_connect_by_hash_from_valptr () - hash the user columns of the current
  *    val_list values (same source as dbvalp2 in qexec_compare_valptr_with_tuple)
  *  outptr_list(in):
@@ -19704,14 +19762,7 @@ qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash
       if (regulist->value.type == TYPE_CONSTANT)
 	{
 	  dbvalp = regulist->value.value.dbvalptr;
-	  if (dbvalp->domain.general_info.is_null != 0)
-	    {
-	      col_hash = 0;
-	    }
-	  else
-	    {
-	      col_hash = mht_get_hash_number (UINT_MAX, dbvalp);
-	    }
+	  col_hash = qexec_connect_by_hash_column (dbvalp);
 	  h = h * CONNECT_BY_HASH_MULTIPLIER + col_hash;
 	}
 
@@ -19774,7 +19825,7 @@ qexec_connect_by_hash_from_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QF
 		  return ER_FAILED;
 		}
 
-	      col_hash = mht_get_hash_number (UINT_MAX, &dbval);
+	      col_hash = qexec_connect_by_hash_column (&dbval);
 
 	      if (copy || DB_NEED_CLEAR (&dbval))
 		{
