@@ -8208,7 +8208,8 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
  *  result: query with all lists updated
  *  parser(in):
  *  query(in):
- *  attrs(in): list of attributes to append to the query
+ *  attrs(in): list of attributes to append to the query; a set operation
+ *	       appends a separate copy to each of its arms
  */
 PT_NODE *
 pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE * attrs)
@@ -8230,9 +8231,21 @@ pt_append_query_select_list (PARSER_CONTEXT * parser, PT_NODE * query, PT_NODE *
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
     case PT_UNION:
-      query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
-      query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs);
-      break;
+      {
+	/* a node can be linked into only one select list, so the second arm gets its own copy */
+	PT_NODE *attrs_copy = parser_copy_tree_list (parser, attrs);
+
+	if (attrs_copy == NULL)
+	  {
+	    PT_INTERNAL_ERROR (parser, "allocate new node");
+	    break;
+	  }
+
+	query->info.query.q.union_.arg1 = pt_append_query_select_list (parser, query->info.query.q.union_.arg1, attrs);
+	query->info.query.q.union_.arg2 =
+	  pt_append_query_select_list (parser, query->info.query.q.union_.arg2, attrs_copy);
+	break;
+      }
     default:
       break;
     }
