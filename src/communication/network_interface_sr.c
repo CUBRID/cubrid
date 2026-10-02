@@ -10888,12 +10888,31 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 
   ptr = or_unpack_int (ptr, &num_extraction_class);
 
-  /* Bound the count against the remaining request length -- each class oid
-   * is packed as an int64. */
-  CDC_FLASHBACK_CHECK_REQ_COUNT (num_extraction_class, ptr, request, reqlen, OR_BIGINT_SIZE);
+  if (num_extraction_class < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, num_extraction_class);
+      error_code = ER_NET_DATASIZE_MISMATCH;
+      goto error;
+    }
 
   if (num_extraction_class > 0)
     {
+      /* Bound the count against the remaining request length -- each class oid
+       * is packed as an int64. or_unpack_int64() aligns the pointer up to
+       * MAX_ALIGNMENT before reading, and the first read also consumes that
+       * padding, so measure from the aligned position; counting from the
+       * unaligned pointer would let the loop read up to MAX_ALIGNMENT-1 bytes
+       * past the request. */
+      char *aligned_ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+      if ((INT64) num_extraction_class > (INT64) (reqlen - (int) (aligned_ptr - request)) / OR_BIGINT_SIZE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+		  (int) ((reqlen - (int) (aligned_ptr - request)) / OR_BIGINT_SIZE), num_extraction_class);
+	  error_code = ER_NET_DATASIZE_MISMATCH;
+	  goto error;
+	}
+
       extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
       if (extraction_classoids == NULL)
 	{
@@ -11207,6 +11226,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   int error_code = NO_ERROR;
   char *ptr;
+  char *aligned_ptr;
   char *start_ptr;
 
   char *num_ptr;		//pointer in which 'number of summary' is located
@@ -11274,11 +11294,15 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     }
   /* Unpacked unconditionally right after a variable-length string field --
    * a request crafted to exactly exhaust reqlen there would otherwise read
-   * these two int64s past the buffer. */
-  if (reqlen - (int) (ptr - request) < 2 * OR_INT64_SIZE)
+   * these two int64s past the buffer. or_unpack_int64() aligns the pointer up
+   * to MAX_ALIGNMENT before reading, so the reads can consume that padding on
+   * top of 2 * OR_INT64_SIZE; measure the remaining bytes from the aligned
+   * position to avoid reading past the request. */
+  aligned_ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+  if (reqlen - (int) (aligned_ptr - request) < 2 * OR_INT64_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (reqlen - (int) (ptr - request)), 2 * OR_INT64_SIZE);
+	      (reqlen - (int) (aligned_ptr - request)), 2 * OR_INT64_SIZE);
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
