@@ -41,9 +41,17 @@ struct background_process
   bool exec_failed = false;
   int output[2] = {-1, -1};
 };
+// Optional invocation-owned producer pipes. A shared service keeps one relay
+// through the caller's outer readiness boundary, independent of producer count.
+// The caller closes these two descriptors before finishing the relay. Even a
+// failed producer exec may leave a successfully prepared shared relay to finish.
+struct background_process_streams
+{
+  int output[2] = {-1, -1};
+};
 int background_process_start (const char *path, const char *const args[], const char *relay_path,
 			      const char *log_path, background_process &process, const char *const environment[] = nullptr,
-			      bool reset_sigchld = true);
+			      bool reset_sigchld = true, background_process_streams *streams = nullptr);
 // Optional bounded framing for multiple producers sharing the caller streams.
 // Short diagnostic lines stay intact; longer lines flush at the fixed bound.
 struct background_process_output

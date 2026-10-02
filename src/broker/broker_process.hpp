@@ -36,7 +36,9 @@ class broker_process_group
 
   private:
     struct entry;
+    struct producer;
     entry *m_first = nullptr;
+    producer *m_producers = nullptr;
     int m_error = 0;
 #else
 

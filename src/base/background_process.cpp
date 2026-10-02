@@ -295,9 +295,14 @@ background_process_spawn_stdio (const char *path, const char *const args[], int 
 
 int
 background_process_start (const char *path, const char *const args[], const char *relay_path,
-			  const char *log_path, background_process &process, const char *const environment[], bool reset_sigchld)
+			  const char *log_path, background_process &process, const char *const environment[], bool reset_sigchld,
+			  background_process_streams *streams)
 {
-  process.output_error = 0;
+  bool reuse = streams != nullptr && streams->output[0] >= 0;
+  if (!reuse)
+    {
+      process.output_error = 0;
+    }
   process.exec_failed = false;
   int fds[14];
   for (int &fd : fds)
@@ -346,6 +351,15 @@ background_process_start (const char *path, const char *const args[], const char
     {
       goto cleanup;
     }
+  if (reuse)
+    {
+      server_sources[0] = fds[0];
+      server_sources[1] = streams->output[0];
+      server_sources[2] = streams->output[1];
+      process.pid = spawn (path, args, server_sources, 3, reset_sigchld, environment, &process.exec_failed);
+      result = process.pid < 0 ? -1 : 0;
+      goto cleanup;
+    }
   for (int i = 2; i < 14; i += 2)
     {
       if (owned_pipe (&fds[i]) != 0)
@@ -370,9 +384,17 @@ background_process_start (const char *path, const char *const args[], const char
   server_sources[1] = fds[3];
   server_sources[2] = fds[5];
   process.pid = spawn (path, args, server_sources, 3, reset_sigchld, environment, &process.exec_failed);
-  if (process.pid < 0)
+  if (process.pid < 0 && streams == nullptr)
     {
       goto cleanup;
+    }
+  // Shared ownership survives a failed first producer. The caller must still
+  // pump and finish this relay, including its log/error acknowledgement.
+  if (streams != nullptr)
+    {
+      streams->output[0] = fds[3];
+      streams->output[1] = fds[5];
+      fds[3] = fds[5] = -1;
     }
   process.output[0] = fds[6];
   fds[6] = -1;
@@ -382,14 +404,14 @@ background_process_start (const char *path, const char *const args[], const char
   fds[11] = -1;
   process.acknowledgement = fds[12];
   fds[12] = -1;
-  result = 0;
+  result = process.pid < 0 ? -1 : 0;
 cleanup:
   saved = errno;
   for (int fd : fds) if (fd >= 0)
       {
 	close (fd);
       }
-  if (result != 0 && process.relay_pid > 0)
+  if (result != 0 && process.relay_pid > 0 && process.control < 0)
     {
       int status;
       while (waitpid (process.relay_pid, &status, 0) < 0 && errno == EINTR) {}

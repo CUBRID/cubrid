@@ -38,9 +38,17 @@ extern char **environ;
 
 struct broker_process_group::entry
 {
+  const char *service;
   background_process process;
+  background_process_streams streams;
   background_process_output output;
   entry *next = nullptr;
+};
+
+struct broker_process_group::producer
+{
+  int pid;
+  producer *next = nullptr;
 };
 
 // Build a private environment before fork. SOURCE_ENV retains its original
@@ -71,8 +79,13 @@ add_environment (std::vector<std::string> &values, const char *value)
 
 static int
 start_process (const char *path, const char *name, char **source_env, int env_count,
-	       const char *first, const char *second, const char *service, background_process *process, bool reset_sigchld)
+	       const char *first, const char *second, const char *service, background_process *process, bool reset_sigchld,
+	       background_process_streams *streams = nullptr)
 {
+  if (process != nullptr)
+    {
+      process->exec_failed = false;
+    }
   try
     {
       std::vector<std::string> values;
@@ -106,7 +119,7 @@ start_process (const char *path, const char *name, char **source_env, int env_co
       std::string relay = std::string (root) + "/bin/cub_console";
       std::string log = std::string (root) + "/log/" + service + "-console.log";
       if (background_process_start (path, args, relay.c_str (), log.c_str (), *process, environment.data (),
-				    reset_sigchld) != 0)
+				    reset_sigchld, streams) != 0)
 	{
 	  return -1;
 	}
@@ -127,18 +140,34 @@ broker_process_group::start (const char *path, const char *name, char **env, int
     {
       *exec_failed = false;
     }
-  entry *item;
+  // The service names are fixed callsite literals (broker, cas, proxy).
+  // Keep one bounded channel per destination through ALL outer readiness waits.
+  entry *item = m_first;
+  while (item != nullptr && strcmp (item->service, service) != 0)
+    {
+      item = item->next;
+    }
+  producer *child = nullptr;
   try
     {
-      item = new entry;
+      child = new producer;
+      if (item == nullptr)
+	{
+	  item = new entry;
+	  item->service = service;
+	  item->next = m_first;
+	  m_first = item;
+	}
     }
   catch (...)
     {
+      delete child;
       m_error = -1;
       errno = ENOMEM;
       return -1;
     }
-  int pid = start_process (path, name, env, env_count, first, second, service, &item->process, reset_sigchld);
+  int pid = start_process (path, name, env, env_count, first, second, service, &item->process, reset_sigchld,
+			   &item->streams);
   if (pid < 0)
     {
       if (exec_failed != nullptr)
@@ -150,12 +179,13 @@ broker_process_group::start (const char *path, const char *name, char **env, int
 	  m_error = -1;
 	}
       int saved = errno;
-      delete item;
+      delete child;
       errno = saved;
       return -1;
     }
-  item->next = m_first;
-  m_first = item;
+  child->pid = pid;
+  child->next = m_producers;
+  m_producers = child;
   return pid;
 }
 
@@ -201,6 +231,14 @@ broker_process_group::finish (int result)
   m_error = 0;
   for (entry *item = m_first; item != nullptr; item = item->next)
     {
+      for (int &fd : item->streams.output)
+	{
+	  if (fd >= 0)
+	    {
+	      close (fd);
+	      fd = -1;
+	    }
+	}
       if (item->process.control >= 0)
 	{
 	  close (item->process.control);
@@ -226,15 +264,25 @@ broker_process_group::finish (int result)
     {
       entry *item = m_first;
       m_first = item->next;
-      if (background_process_finish_start (item->process) != 0)
+      if (item->process.acknowledgement >= 0 && background_process_finish_start (item->process) != 0)
 	{
 	  perror ("broker console");
 	  result = -1;
 	}
       int status;
-      while (waitpid (item->process.pid, &status, WNOHANG) < 0 && errno == EINTR) {}
-      while (waitpid (item->process.relay_pid, &status, WNOHANG) < 0 && errno == EINTR) {}
+      if (item->process.relay_pid > 0)
+	{
+	  while (waitpid (item->process.relay_pid, &status, WNOHANG) < 0 && errno == EINTR) {}
+	}
       delete item;
+    }
+  while (m_producers != nullptr)
+    {
+      producer *child = m_producers;
+      m_producers = child->next;
+      int status;
+      while (waitpid (child->pid, &status, WNOHANG) < 0 && errno == EINTR) {}
+      delete child;
     }
   return result;
 }
