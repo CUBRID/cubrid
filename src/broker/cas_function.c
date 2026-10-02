@@ -777,12 +777,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	      INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &t_pwd_info);
 #else
-	      assert (srv_handle->session);
-	      assert (((DB_SESSION *) srv_handle->session)->parser);
-	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+	      /* the session is NULL when the server connection was lost before the deferred statement was reopened */
+	      PARSER_CONTEXT *psr = (srv_handle->session != NULL) ? ((DB_SESSION *) srv_handle->session)->parser : NULL;
+
+	      assert (srv_handle->session == NULL || psr != NULL);
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
-					       &psr->hide_pwd_info);
+					       (psr != NULL) ? &psr->hide_pwd_info : NULL);
 #endif
 	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
 			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
@@ -1848,12 +1849,12 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - 2) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      assert (srv_handle->session);
-	      assert (((DB_SESSION *) srv_handle->session)->parser);
-	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+	      PARSER_CONTEXT *psr = (srv_handle->session != NULL) ? ((DB_SESSION *) srv_handle->session)->parser : NULL;
+
+	      assert (srv_handle->session == NULL || psr != NULL);
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
-					       &psr->hide_pwd_info);
+					       (psr != NULL) ? &psr->hide_pwd_info : NULL);
 	      bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle),
 			      true);
 	    }
