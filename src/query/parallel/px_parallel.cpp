@@ -43,13 +43,14 @@ namespace parallel_query
    * operation of its own (e.g. creating a temporary file when the temp file cache is empty: file_create ->
    * disk_reserve_sectors -> log_sysop_start) blocks on that mutex forever while the leader waits for the worker.
    * MERGE opens its statement-level system operation before executing its sub-SELECTs (CBRD-27492); the same risk
-   * exists for any other context that would spawn workers while a system operation is open, so the check gates
-   * every parallel degree decision (compute_parallel_degree) rather than one executor site.
+   * exists for any other context that would spawn workers while a system operation is open. The check therefore
+   * gates compute_parallel_degree (sort, hash join, heap/list scan, subquery, statistics scans) rather than one
+   * executor site; the parallel index scan, whose degree comes from the optimizer, calls it directly.
    *
    * topops.last is read without synchronization: the caller is either the leader itself (exact) or a worker of a
    * leader that keeps its system operation open until all workers finish (stable while the worker runs).
    */
-  static bool is_under_system_operation ()
+  bool is_under_system_operation () noexcept
   {
     LOG_TDES *tdes = LOG_FIND_CURRENT_TDES ();
 
@@ -201,5 +202,4 @@ namespace parallel_query
     /* SCAN/HASH_JOIN/SORT use 0 for serial execution and require at least 2 for real parallelism. */
     return (degree < start_degree) ? 0 : degree;
   }
-
 }				/* namespace parallel_query */
