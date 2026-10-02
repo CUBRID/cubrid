@@ -107,6 +107,10 @@ namespace cubload
       constant_type m_constant_pool[CONSTANT_POOL_SIZE];
       std::forward_list<constant_type *> m_constant_list;
 
+      // A monetary value is the one constant whose payload does not fit in a string_type,
+      // so it is allocated on its own.
+      std::forward_list<monetary_type *> m_monetary_list;
+
       // quoted string buffer pool
       bool m_use_qstr_buf;
 
