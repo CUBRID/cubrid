@@ -651,6 +651,10 @@ struct connect_by_dfs_spill
   CONNECT_BY_SPILL_CHUNK *path_chunks;
   int path_chunk_count, path_chunk_capacity;
   int path_scan_from;		/* no resident path tuple below this index */
+
+  /* one parent whose fan-out alone overflows the limit keeps its children on disk, not in the children[] array */
+  QFILE_LIST_ID *children_list;	/* NULL while this parent's children still fit in memory */
+  int children_spilled;		/* tuples written to children_list */
 };
 
 #define CONNECT_BY_SPILL_CHUNK_MAX_NODES 65536
@@ -688,6 +692,14 @@ static int qexec_connect_by_spill_reload_path (THREAD_ENTRY * thread_p, CONNECT_
 					       CONNECT_BY_DFS_NODE * path, int index);
 static void qexec_connect_by_spill_trim_path (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, int from);
 static void qexec_connect_by_spill_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill);
+static int qexec_connect_by_children_list_add (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE tpl);
+static int qexec_connect_by_spill_children_order (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+						  SORT_LIST * orderby_list);
+static int qexec_connect_by_spill_children_to_stack (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+						     OUTPTR_LIST * outptr_list,
+						     QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+						     CONNECT_BY_DFS_NODE * stack, int base, int child_level,
+						     bool backward);
 static int qexec_connect_by_cmp_siblings (const CONNECT_BY_DFS_NODE * left, const CONNECT_BY_DFS_NODE * right,
 					  SORTKEY_INFO * key_info_p, const QFILE_TUPLE_VALUE_TYPE_LIST * tpl_layout);
 static int qexec_connect_by_sort_siblings (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE * children, int count,
@@ -18360,6 +18372,16 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  GOTO_EXIT_ON_ERROR;
 		}
 
+	      if (spill.children_list != NULL)
+		{
+		  /* this parent already overflowed on its own; keep the rest of its children on disk */
+		  if (qexec_connect_by_children_list_add (thread_p, &spill, temp_tuple_rec.tpl) != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		  continue;
+		}
+
 	      if (qexec_connect_by_node_array_reserve (thread_p, &children, &children_capacity,
 						       children_count + 1) != NO_ERROR)
 		{
@@ -18382,6 +18404,20 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
+		}
+
+	      /* stack and path are already fully spilled yet memory is still over the limit: this one parent's fan-out
+	       * is the cause, so move its gathered children to disk and keep gathering straight there */
+	      if (spill.mem > spill.limit && children_count > 1)
+		{
+		  for (i = 0; i < children_count; i++)
+		    {
+		      if (qexec_connect_by_children_list_add (thread_p, &spill, children[i].tpl) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		  qexec_connect_by_node_array_clear (thread_p, children, &children_count, &spill.mem);
 		}
 	    }
 	  else if (!XASL_IS_FLAGED (xasl, XASL_HAS_NOCYCLE))
@@ -18430,7 +18466,65 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      if (children_count > 0)
+      if (spill.children_list != NULL)
+	{
+	  int children_on_disk = spill.children_spilled;
+	  bool backward;
+
+	  if (has_order_siblings_by && children_on_disk > 1)
+	    {
+	      if (qexec_connect_by_spill_children_order (thread_p, &spill, xasl->orderby_list) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      backward = false;
+	    }
+	  else
+	    {
+	      /* a non-reverse access path kept input order, so it is restored by reading the list back to front */
+	      backward = !reverse_hash_children;
+	    }
+
+	  /* the children go on as spilled stack chunks; first spill the resident stack tail so they extend one
+	   * contiguous spilled prefix that the normal reload path can walk */
+	  while (spill.stack_spilled_end < stack_count)
+	    {
+	      CONNECT_BY_SPILL_CHUNK chunk;
+
+	      if (qexec_connect_by_spill_chunk_reserve (thread_p, &spill.stack_chunks, &spill.stack_chunk_capacity,
+							spill.stack_chunk_count + 1) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      if (qexec_connect_by_spill_write_chunk (thread_p, &spill, stack, spill.stack_spilled_end, stack_count,
+						      &chunk) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      spill.stack_chunks[spill.stack_chunk_count++] = chunk;
+	      spill.stack_spilled_end = chunk.start + chunk.count;
+	    }
+
+	  if (qexec_connect_by_node_array_reserve (thread_p, &stack, &stack_capacity, stack_count + children_on_disk)
+	      != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (qexec_connect_by_spill_children_to_stack (thread_p, &spill, xasl->outptr_list, &type_list, stack,
+							stack_count, node.level + 1, backward) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
+	    }
+	  stack_count += children_on_disk;
+	  spill.stack_spilled_end = stack_count;
+
+	  qfile_close_list (thread_p, spill.children_list);
+	  qfile_destroy_list (thread_p, spill.children_list);
+	  QFILE_FREE_AND_INIT_LIST_ID (spill.children_list);
+	  spill.children_spilled = 0;
+	}
+      else if (children_count > 0)
 	{
 	  if (reverse_hash_children && children_count > 1)
 	    {
@@ -20351,6 +20445,252 @@ qexec_connect_by_spill_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * sp
     }
   spill->stack_chunk_capacity = 0;
   spill->path_chunk_capacity = 0;
+
+  if (spill->children_list != NULL)
+    {
+      qfile_close_list (thread_p, spill->children_list);
+      qfile_destroy_list (thread_p, spill->children_list);
+      QFILE_FREE_AND_INIT_LIST_ID (spill->children_list);
+    }
+  spill->children_spilled = 0;
+}
+
+/*
+ * qexec_connect_by_children_list_add () - append one child tuple to the current parent's spilled children list
+ *  return: error code
+ *  spill(in/out): opens children_list on first use
+ *  tpl(in): a DFS-layout tuple (spill->type_list format)
+ *
+ *  Note: the list is backward capable so the non-reverse, no-ORDER-SIBLINGS-BY case can be read back in reverse without
+ *  a sort; tuples are header-converted on the way in.
+ */
+static int
+qexec_connect_by_children_list_add (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE tpl)
+{
+  int error;
+
+  if (spill->children_list == NULL)
+    {
+      spill->children_list =
+	qfile_open_list (thread_p, spill->type_list, NULL, spill->query_id, QFILE_FLAG_BACKWARD, NULL);
+      if (spill->children_list == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      spill->children_spilled = 0;
+    }
+
+  error = qfile_add_tuple_to_list_from (thread_p, spill->children_list, tpl, spill->type_list->hdr_size);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  spill->children_spilled++;
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_connect_by_spill_children_order () - sort the spilled children into the reverse of the ORDER SIBLINGS BY order
+ *  return: error code
+ *  spill(in/out): children_list is replaced by its sorted copy
+ *  orderby_list(in): the ORDER SIBLINGS BY keys
+ *
+ *  Note: a forward scan then feeds the stack bottom-first, so the siblings pop in ORDER SIBLINGS BY order; hence the
+ *  keys are flipped to sort descending here.
+ */
+static int
+qexec_connect_by_spill_children_order (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, SORT_LIST * orderby_list)
+{
+  SORT_LIST *rev = NULL, *tail = NULL, *s;
+  QFILE_LIST_ID *sorted;
+  int error = NO_ERROR;
+
+  for (s = orderby_list; s != NULL; s = s->next)
+    {
+      SORT_LIST *node = (SORT_LIST *) db_private_alloc (thread_p, sizeof (SORT_LIST));
+      if (node == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SORT_LIST));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  break;
+	}
+      node->next = NULL;
+      node->local_next = NULL;
+      node->del_id = 0;
+      node->pos_descr = s->pos_descr;
+      node->s_order = (s->s_order == S_ASC) ? S_DESC : S_ASC;
+      node->s_nulls = (s->s_nulls == S_NULLS_FIRST) ? S_NULLS_LAST : S_NULLS_FIRST;
+      if (tail == NULL)
+	{
+	  rev = tail = node;
+	}
+      else
+	{
+	  tail->next = node;
+	  tail = node;
+	}
+    }
+
+  if (error == NO_ERROR)
+    {
+      sorted = qfile_sort_list (thread_p, spill->children_list, rev, Q_ALL, false);
+      if (sorted == NULL)
+	{
+	  /* the file is already gone; just drop the now-stale list_id so the cleanup path does not touch it */
+	  ASSERT_ERROR_AND_SET (error);
+	  QFILE_FREE_AND_INIT_LIST_ID (spill->children_list);
+	}
+      else
+	{
+	  spill->children_list = sorted;
+	}
+    }
+
+  while (rev != NULL)
+    {
+      s = rev->next;
+      db_private_free_and_init (thread_p, rev);
+      rev = s;
+    }
+
+  return error;
+}
+
+/*
+ * qexec_connect_by_spill_children_to_stack () - stream the spilled children of one parent onto the stack as spilled
+ *    chunks, in their final sibling order
+ *  return: error code
+ *  spill(in/out):
+ *  outptr_list(in): to recompute each node's cycle-check hash from its tuple
+ *  type_list(in): decoding domains of the user columns
+ *  stack(in/out): hash and level of stack[base ...] are set, their tuples stay on disk
+ *  base(in): first stack index to fill; the caller must have spilled the stack below it and reserved the capacity
+ *  child_level(in): level of every child (parent level + 1)
+ *  backward(in): read children_list from the end, so the siblings pop in input order
+ *
+ *  Note: the chunk reload pops a chunk's tuples in reverse of how they were written, so writing in reverse sibling
+ *  order makes them pop in sibling order, exactly like the in-memory path's reverse push.
+ */
+static int
+qexec_connect_by_spill_children_to_stack (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
+					  OUTPTR_LIST * outptr_list, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
+					  CONNECT_BY_DFS_NODE * stack, int base, int child_level, bool backward)
+{
+  QFILE_LIST_SCAN_ID scan_id;
+  QFILE_TUPLE_RECORD tuple_rec = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_RECORD slot = QFILE_TUPLE_RECORD_INITIALIZER;
+  QFILE_TUPLE_VALUE_TYPE_LIST *src_layout = &spill->children_list->type_list;
+  QFILE_LIST_ID *chunk = NULL;
+  SCAN_CODE scan_code;
+  UINT64 chunk_bytes = 0;
+  int idx = base, chunk_start = base, chunk_count = 0, flag;
+  int error = NO_ERROR;
+
+  /* same chunk size as the stack/path spill: a tiny limit keeps chunks tiny, which stays linear instead of reloading
+   * a big batch only for the spill machinery to evict it again */
+  flag = (spill->type_list->hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD) ? QFILE_FLAG_BACKWARD : 0;
+
+  qfile_close_list (thread_p, spill->children_list);
+  if (qfile_open_list_scan (spill->children_list, &scan_id) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+  if (backward)
+    {
+      scan_id.position = S_AFTER;
+    }
+
+  while (1)
+    {
+      scan_code = (backward ? qfile_scan_list_prev : qfile_scan_list_next) (thread_p, &scan_id, &tuple_rec, PEEK);
+      if (scan_code == S_END)
+	{
+	  break;
+	}
+      if (scan_code != S_SUCCESS)
+	{
+	  error = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+	  break;
+	}
+
+      if (chunk == NULL)
+	{
+	  chunk = qfile_open_list (thread_p, spill->type_list, NULL, spill->query_id, flag, NULL);
+	  if (chunk == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      break;
+	    }
+	  chunk_start = idx;
+	  chunk_count = 0;
+	  chunk_bytes = 0;
+	}
+
+      error = qfile_add_tuple_to_list_from (thread_p, chunk, tuple_rec.tpl, src_layout->hdr_size);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+
+      qfile_slot_set_tuple_ptr_and_layout (&slot, tuple_rec.tpl, 0, src_layout);
+      error = qexec_connect_by_hash_from_tuple (outptr_list, &slot, type_list, &stack[idx].hash);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      stack[idx].tpl = NULL;
+      stack[idx].level = child_level;
+
+      chunk_bytes += QFILE_GET_TUPLE_LENGTH (tuple_rec.tpl);
+      chunk_count++;
+      idx++;
+
+      if (chunk_count >= CONNECT_BY_SPILL_CHUNK_MAX_NODES || chunk_bytes >= spill->chunk_bytes)
+	{
+	  qfile_close_list (thread_p, chunk);
+	  error = qexec_connect_by_spill_chunk_reserve (thread_p, &spill->stack_chunks, &spill->stack_chunk_capacity,
+							spill->stack_chunk_count + 1);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  spill->stack_chunks[spill->stack_chunk_count].list = chunk;
+	  spill->stack_chunks[spill->stack_chunk_count].start = chunk_start;
+	  spill->stack_chunks[spill->stack_chunk_count].count = chunk_count;
+	  spill->stack_chunk_count++;
+	  spill->stack_spilled_end = chunk_start + chunk_count;
+	  chunk = NULL;
+	}
+    }
+  qfile_close_scan (thread_p, &scan_id);
+
+  if (error == NO_ERROR && chunk != NULL)
+    {
+      qfile_close_list (thread_p, chunk);
+      error = qexec_connect_by_spill_chunk_reserve (thread_p, &spill->stack_chunks, &spill->stack_chunk_capacity,
+						    spill->stack_chunk_count + 1);
+      if (error == NO_ERROR)
+	{
+	  spill->stack_chunks[spill->stack_chunk_count].list = chunk;
+	  spill->stack_chunks[spill->stack_chunk_count].start = chunk_start;
+	  spill->stack_chunks[spill->stack_chunk_count].count = chunk_count;
+	  spill->stack_chunk_count++;
+	  spill->stack_spilled_end = chunk_start + chunk_count;
+	  chunk = NULL;
+	}
+    }
+
+  if (chunk != NULL)
+    {
+      qfile_close_list (thread_p, chunk);
+      qfile_destroy_list (thread_p, chunk);
+      QFILE_FREE_AND_INIT_LIST_ID (chunk);
+    }
+
+  return error;
 }
 
 /*
