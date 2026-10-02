@@ -35,6 +35,7 @@
 #endif /* WINDOWS */
 
 #include "cas_common.h"
+#include "cas_ssl.h"
 #include "broker_admin_pub.h"
 #include "broker_config.h"
 #include "broker_shm.h"
@@ -72,6 +73,37 @@ admin_log_write (const char *log_file, const char *msg)
       printf ("cannot open admin log file [%s]\n", log_file);
     }
 }
+
+#if !defined(WINDOWS)
+/*
+ * admin_check_ssl_key_permission () - warn if the SSL private key is readable by group or others
+ *   log_file(in): admin log file
+ *
+ * Called once at broker start when a broker with SSL=ON is in service, not in cas_init_ssl () which runs on
+ * every SSL connection.
+ * Only warns: the key has been installed with mode 644, so refusing it would break existing installations.
+ */
+static void
+admin_check_ssl_key_permission (const char *log_file)
+{
+  char key[BROKER_PATH_MAX];
+  char msg[BROKER_PATH_MAX + 128];
+  struct stat sbuf;
+
+  snprintf (key, sizeof (key), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_KEY_FILE);
+
+  /* a missing key is reported by the CAS on SSL connection */
+  if (stat (key, &sbuf) < 0 || (sbuf.st_mode & (S_IRGRP | S_IROTH)) == 0)
+    {
+      return;
+    }
+
+  snprintf (msg, sizeof (msg), "WARNING: SSL private key is readable by group or others (mode %04o): %s",
+	    (unsigned int) (sbuf.st_mode & 0777), key);
+  printf ("%s\n", msg);
+  admin_log_write (log_file, msg);
+}
+#endif /* !WINDOWS */
 
 int
 main (int argc, char **argv)
@@ -165,6 +197,17 @@ main (int argc, char **argv)
 	  else
 	    {
 	      admin_log_write (admin_log_file, "start");
+#if !defined(WINDOWS)
+	      for (int i = 0; i < num_broker; i++)
+		{
+		  if (br_info[i].service_flag == ON && br_info[i].use_SSL == ON)
+		    {
+		      /* all brokers share one key file, so check it once */
+		      admin_check_ssl_key_permission (admin_log_file);
+		      break;
+		    }
+		}
+#endif /* !WINDOWS */
 	    }
 	}
       else

@@ -62,8 +62,6 @@
 #include "cas_log.h"
 #include "cas_ssl.h"
 
-#define CERTF "cas_ssl_cert.crt"
-#define KEYF "cas_ssl_cert.key"
 #define CERT_FILENAME_LEN	512
 #define ER_SSL_GENERAL		-1
 #define ER_CERT_EXPIRED		-2
@@ -107,8 +105,8 @@ cas_init_ssl (int sd)
   fcntl (sd, F_SETFL, flags);
 
 #endif
-  snprintf (cert, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), CERTF);
-  snprintf (key, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), KEYF);
+  snprintf (cert, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_CERT_FILE);
+  snprintf (key, CERT_FILENAME_LEN, "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_KEY_FILE);
 
   cert_not_found = (stat (cert, &sbuf) < 0) ? true : false;
   pk_not_found = (stat (key, &sbuf) < 0) ? true : false;
