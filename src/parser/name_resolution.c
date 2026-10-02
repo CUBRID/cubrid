@@ -4658,12 +4658,12 @@ pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain)
 	  {
 	    db_enum = &DOM_GET_ENUM_ELEM (domain, idx);
 	    s = pt_make_string_value (parser, DB_GET_ENUM_ELEM_STRING (db_enum));
-	    DB_SET_ENUM_ELEM_CODESET (&(DB_GET_ENUMERATION (&(s->info.value.db_value))),
-				      DB_GET_ENUM_ELEM_CODESET (db_enum));
 	    if (s == NULL)
 	      {
 		return NULL;
 	      }
+	    DB_SET_ENUM_ELEM_CODESET (&(DB_GET_ENUMERATION (&(s->info.value.db_value))),
+				      DB_GET_ENUM_ELEM_CODESET (db_enum));
 	    result->info.data_type.enumeration = parser_append_node (s, result->info.data_type.enumeration);
 	  }
 

@@ -549,16 +549,31 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
 	}
     }
 
-  data_type = parser_new_node (parser, PT_DATA_TYPE);
-  if (data_type == NULL)
-    {
-      PT_INTERNAL_ERROR (parser, "allocate new node");
-      parser_free_tree (parser, result);
-      return NULL;
-    }
   result->type_enum = pt_db_to_type_enum (sm_attr->type->id);
-  data_type->type_enum = result->type_enum;
-  result->data_type = data_type;
+  if (result->data_type == NULL)
+    {
+      /* the value carries no domain (enumeration, default expression, empty collection): take the attribute's */
+      if (PT_IS_COLLECTION_TYPE (result->type_enum) && db_domain_set (sm_attr->domain) == NULL)
+	{
+	  /* a collection declared without element types has no domain to take */
+	  data_type = parser_new_node (parser, PT_DATA_TYPE);
+	  if (data_type != NULL)
+	    {
+	      data_type->type_enum = result->type_enum;
+	    }
+	}
+      else
+	{
+	  data_type = pt_domain_to_data_type (parser, sm_attr->domain);
+	}
+      if (data_type == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "allocate new node");
+	  parser_free_tree (parser, result);
+	  return NULL;
+	}
+      result->data_type = data_type;
+    }
 
   return result;
 }
