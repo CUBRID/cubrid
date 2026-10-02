@@ -654,8 +654,20 @@ vid_build_virtual_mop (MOP bmop, MOP vclass_mop)
     }
 
   vclass_updatable = mq_is_updatable (vclass_mop);
+  /* The result is deliberately unused: see the note on the ws_vmop () call below.
+   * The call itself is kept because it is not free of side effects. */
+  (void) vclass_updatable;
   db_make_object (&key, bmop);
-  vmop = ws_vmop (vclass_mop, VID_NEW | vclass_updatable ? VID_UPDATABLE : 0, &key);
+  /* NOTE: this used to read "VID_NEW | vclass_updatable ? VID_UPDATABLE : 0". Because |
+   * binds tighter than ?:, that parses as "(VID_NEW | vclass_updatable) ? VID_UPDATABLE : 0",
+   * and VID_NEW is 4, so the condition is always true and the argument has always been
+   * plain VID_UPDATABLE -- neither VID_NEW nor vclass_updatable ever reached ws_vmop().
+   * The constant is written out here so the call says what it has always done. Two separate
+   * questions are deliberately NOT answered by this change, because either answer would be a
+   * behaviour change that needs its own verification: whether VID_NEW was meant to be passed
+   * (it makes ws_vmop() skip the MOP table lookup and allocate a new virtual MOP per row),
+   * and whether a non-updatable vclass was meant to get 0 instead of VID_UPDATABLE. */
+  vmop = ws_vmop (vclass_mop, VID_UPDATABLE, &key);
   if (!vmop)
     {
       return NULL;

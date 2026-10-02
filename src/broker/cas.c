@@ -195,9 +195,9 @@ static void cas_post_db_connect (void *context, struct timeval *cas_start_time, 
 static void cas_cleanup_session (void);
 
 /* Protocol functions */
-static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
+static void cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info);
 static void cas_make_session_for_driver (char *out);
-static void cas_set_session_id (T_CAS_PROTOCOL protocol, char *session);
+static void cas_set_session_id (T_BROKER_VERSION protocol, char *session);
 
 #if defined(WINDOWS)
 int WINAPI
@@ -309,7 +309,7 @@ cas_make_session_for_driver (char *out)
 }
 
 static void
-cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
+cas_set_session_id (T_BROKER_VERSION protocol, char *session)
 {
   SESSION_ID id = DB_EMPTY_SESSION;
 
@@ -334,7 +334,7 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
 }
 
 static void
-cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
+cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info)
 {
   char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
   char *p = msgbuf;

@@ -307,7 +307,7 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 
       assert (idx_conn >= 0);
       conn_p = &(shm_conn_p->shard_conn[idx_conn]);
-      nargs = sscanf (line, "%d %s %[^\n]", &conn_p->shard_id, conn_p->db_name, conn_p->db_conn_info);
+      nargs = sscanf (line, "%d %63s %513[^\n]", &conn_p->shard_id, conn_p->db_name, conn_p->db_conn_info);
       if (nargs != 3)
 	{
 	  continue;
