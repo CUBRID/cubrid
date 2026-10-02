@@ -42,6 +42,7 @@
 typedef int (*ELIGIBILITY_FN) (QO_TERM *);
 
 static XASL_NODE *make_scan_proc (QO_ENV * env);
+static SORT_LIST *copy_merge_sort_list (PARSER_CONTEXT * parser, SORT_LIST * list);
 static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * left_list,
 				       BITSET * left_exprs, PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list,
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
@@ -168,6 +169,44 @@ make_fetch_proc (QO_ENV * env, QO_PLAN * plan)
 }
 
 /*
+ * copy_merge_sort_list () - copy a merge input orderby_list entry by entry
+ *   return: copied list, NULL on error
+ *   parser(in):
+ *   list(in): orderby_list of a merge join input
+ *
+ * Note: pt_to_sort_list () would set s_nulls, and the copy must match orderby_list exactly to be covered.
+ */
+static SORT_LIST *
+copy_merge_sort_list (PARSER_CONTEXT * parser, SORT_LIST * list)
+{
+  SORT_LIST *head = NULL, *tail = NULL, *copy;
+
+  for (; list != NULL; list = list->next)
+    {
+      copy = ptqo_single_orderby (parser);
+      if (copy == NULL)
+	{
+	  return NULL;
+	}
+
+      *copy = *list;
+      copy->next = NULL;
+
+      if (tail == NULL)
+	{
+	  head = copy;
+	}
+      else
+	{
+	  tail->next = copy;
+	}
+      tail = copy;
+    }
+
+  return head;
+}
+
+/*
  * make_mergelist_proc () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -198,7 +237,7 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
   PARSER_CONTEXT *parser = NULL;
   QFILE_LIST_MERGE_INFO *ls_merge;
   PT_NODE *outer_attr, *inner_attr;
-  int i, left_epos, rght_epos, cnt, seg_idx, ncols;
+  int i, k, left_epos, rght_epos, cnt, seg_idx, ncols;
   int left_nlen, left_elen, rght_nlen, rght_elen, nlen;
   SORT_LIST *order, *prev_order;
   QO_TERM *term;
@@ -258,8 +297,28 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
 
   cnt = 0;			/* init */
   left_epos = rght_epos = 0;	/* init */
-  for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
+  /* expression columns in the elists are consumed in bitset order, so a key-order permutation needs none */
+  assert (plan->plan_un.join.mj_term_cnt == 0 || (left_elist == NULL && rght_elist == NULL));
+
+  for (k = 0;; k++)
     {
+      if (plan->plan_un.join.mj_term_cnt > 0)
+	{
+	  if (k >= plan->plan_un.join.mj_term_cnt)
+	    {
+	      break;
+	    }
+	  i = plan->plan_un.join.mj_term_order[k];
+	}
+      else
+	{
+	  i = (k == 0) ? bitset_iterate (&(plan->plan_un.join.join_terms), &bi) : bitset_next_member (&bi);
+	  if (i == -1)
+	    {
+	      break;
+	    }
+	}
+
       term = QO_ENV_TERM (env, i);
 
       if (ls_merge->join_type == JOIN_INNER && QO_IS_PATH_TERM (term))
@@ -392,6 +451,24 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
       cnt++;
     }				/* for (i = ... ) */
   assert (cnt == ncols);
+
+  /* the input index scan already delivers this order; the list file records it and its sort is skipped */
+  if (plan->plan_un.join.outer_sorted)
+    {
+      left->after_iscan_list = copy_merge_sort_list (parser, left->orderby_list);
+      if (left->after_iscan_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
+  if (plan->plan_un.join.inner_sorted)
+    {
+      rght->after_iscan_list = copy_merge_sort_list (parser, rght->orderby_list);
+      if (rght->after_iscan_list == NULL)
+	{
+	  goto exit_on_error;
+	}
+    }
 
   left_elen = bitset_cardinality (left_exprs);
   left_nlen = pt_length_of_list (left_list) - left_elen;
@@ -3699,11 +3776,11 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   if (nterms <= 0 && nkfterms <= 0 && bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
       if (qo_is_filter_index (index_entryp) || qo_is_index_loose_scan (plan) || qo_is_iscan_from_groupby (plan)
-	  || qo_is_iscan_from_orderby (plan)
+	  || qo_is_iscan_from_orderby (plan) || plan->order != QO_UNORDERED
 	  || PT_SPEC_SPECIAL_INDEX_SCAN (QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)))
 	{
 	  /* Do not return if: 1. filtered index. 2. skip group by or skip order by 3. loose scan. 4. scan for b-tree
-	   * node info or key info. */
+	   * node info or key info. 5. full scan for the key order. */
 	  ;
 	}
       else
