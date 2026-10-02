@@ -23,6 +23,10 @@ set(CSQL_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   )
 
+if(UNIX)
+  list(APPEND CSQL_SOURCES ${BASE_DIR}/background_process.cpp)
+endif()
+
 SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_SOURCES}
   PROPERTIES LANGUAGE CXX
