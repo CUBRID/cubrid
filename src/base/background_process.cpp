@@ -439,7 +439,10 @@ background_process_finish_start (background_process &process)
 {
   // The relay snapshots producer queues once. Drain BOTH attempt pipes while
   // it completes that finite barrier, before reading its acknowledgement.
-  close (process.control);
+  if (process.control >= 0)
+    {
+      close (process.control);
+    }
   process.control = -1;
   while (process.output[0] >= 0 || process.output[1] >= 0)
     {
