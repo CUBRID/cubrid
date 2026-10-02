@@ -59,6 +59,7 @@
 #include "porting.h"
 #include "tcp.h"
 #include "cas_common.h"
+#include "cas_ssl.h"
 #include "broker_shm.h"
 #include "shard_metadata.h"
 #include "shard_shm.h"
@@ -157,11 +158,14 @@ static void proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_in
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int get_cubrid_version (void);
 #endif
+static void admin_check_ssl_key_permission (void);
 #endif /* !WINDOWS */
 
 static char shard_db_password_env_str[MAX_BROKER_NUM][128];
 
 char admin_err_msg[ADMIN_ERR_MSG_SIZE];
+/* set by a successful command that still needs the operator's attention */
+char admin_warn_msg[ADMIN_ERR_MSG_SIZE];
 
 #if !defined(WINDOWS) && !defined(LINUX)
 extern char **environ;
@@ -255,6 +259,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   T_SHM_BROKER *shm_br;
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
+
+  admin_warn_msg[0] = '\0';
 
   if (br_num <= 0)
     {
@@ -507,6 +513,21 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
       run_child (NAME_UC_SHM);
     }
 #endif /* WINDOWS */
+
+#if !defined(WINDOWS)
+  if (res == 0)
+    {
+      for (i = 0; i < br_num; i++)
+	{
+	  if (br_info[i].service_flag == ON && br_info[i].use_SSL == ON)
+	    {
+	      /* all brokers share one key file, so check it once */
+	      admin_check_ssl_key_permission ();
+	      break;
+	    }
+	}
+    }
+#endif /* !WINDOWS */
 
   return res;
 }
@@ -945,6 +966,8 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
   T_SHM_APPL_SERVER *shm_as_p = NULL;
   T_SHM_PROXY *shm_proxy_p = NULL;
 
+  admin_warn_msg[0] = '\0';
+
   shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_ADMIN);
   if (shm_br == NULL)
     {
@@ -1072,6 +1095,13 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 #endif
       res = -1;
     }
+
+#if !defined(WINDOWS)
+  if (res == 0 && shm_br->br_info[i].use_SSL == ON)
+    {
+      admin_check_ssl_key_permission ();
+    }
+#endif /* !WINDOWS */
 
   uw_shm_detach (shm_br);
   if (shm_as_p)
@@ -4288,3 +4318,30 @@ get_upper_str (char *upper_str, int size, const char *value)
 
   upper_str[i] = '\0';
 }
+
+#if !defined(WINDOWS)
+/*
+ * admin_check_ssl_key_permission () - set admin_warn_msg if the SSL private key is readable by group or others
+ *
+ * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
+ * Only warns: the key has been installed with mode 644, so refusing it would break existing installations.
+ */
+static void
+admin_check_ssl_key_permission (void)
+{
+  char key[BROKER_PATH_MAX];
+  struct stat sbuf;
+
+  snprintf (key, sizeof (key), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_KEY_FILE);
+
+  /* a missing key is reported by the CAS on SSL connection */
+  if (stat (key, &sbuf) < 0 || (sbuf.st_mode & (S_IRGRP | S_IROTH)) == 0)
+    {
+      return;
+    }
+
+  snprintf (admin_warn_msg, ADMIN_ERR_MSG_SIZE,
+	    "WARNING: SSL private key is readable by group or others (mode %04o): %s",
+	    (unsigned int) (sbuf.st_mode & 0777), key);
+}
+#endif /* !WINDOWS */
