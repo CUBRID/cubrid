@@ -538,6 +538,14 @@ util_get_command_option_mask (int command_type)
 int
 main (int argc, char *argv[])
 {
+#if !defined(WINDOWS)
+  /* Reserve closed standard descriptors before any logging opens a file. */
+  if (background_process_prepare_stdio () != 0)
+    {
+      return EXIT_FAILURE;
+    }
+#endif
+
   int util_type, command_type;
   int status;
   bool process_window_service = false;

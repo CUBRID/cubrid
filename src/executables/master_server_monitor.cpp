@@ -26,6 +26,8 @@
 #include <signal.h>
 
 #include "system_parameter.h"
+#include "background_process.hpp"
+#include "environment_variable.h"
 #include "master_server_monitor.hpp"
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
@@ -261,21 +263,22 @@ server_monitor::check_server_revived (const std::string &server_name)
 int
 server_monitor::try_revive_server (const std::string &exec_path, char *const *argv)
 {
-  pid_t pid;
-
-  pid = fork ();
-  if (pid < 0)
+  char relay[PATH_MAX], console[PATH_MAX];
+  envvar_bindir_file (relay, sizeof (relay), "cub_console");
+  envvar_logdir_file (console, sizeof (console), "server-console.log");
+  background_process process;
+  if (background_process_start (exec_path.c_str (), argv, relay, console, process) != 0)
     {
       return -1;
     }
-  else if (pid == 0)
+  // There is no CLI collector for automatic recovery. End the attempt channel
+  // now; registration is still checked by CONFIRM_REVIVE_SERVER, as before.
+  // All later output continues to the server console log through the relay.
+  if (background_process_finish_start (process) != 0)
     {
-      return execv (exec_path.c_str(), argv);
+      er_log_debug (ARG_FILE_LINE, "[Server Monitor] Failed to finish console startup capture.");
     }
-  else
-    {
-      return pid;
-    }
+  return process.pid;
 }
 void
 server_monitor::shutdown_server (const std::string &server_name)

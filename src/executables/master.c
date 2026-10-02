@@ -1265,6 +1265,14 @@ css_master_loop (void)
 int
 main (int argc, char **argv)
 {
+#if !defined(WINDOWS)
+  /* Reserve closed standard descriptors before any logging opens a file. */
+  if (background_process_prepare_stdio () != 0)
+    {
+      return EXIT_FAILURE;
+    }
+#endif
+
   int port_id;
   CSS_CONN_ENTRY *conn;
   static const char suffix[] = "_master.err";

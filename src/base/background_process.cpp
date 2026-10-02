@@ -30,6 +30,7 @@
 #include <sys/resource.h>
 #if defined(LINUX)
 #include <sys/syscall.h>
+#include <dirent.h>
 #endif
 #include <sys/stat.h>
 #include <ctime>
@@ -39,7 +40,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-// All preparation happens before fork. Sources are above every destination.
+// All preparation happens before fork. The private mappings use destinations
+// 0..2 (producer) or 0..9 (relay); owned sources are always at least 16.
 static int
 owned_fd (int fd)
 {
@@ -80,6 +82,49 @@ close_interval (unsigned first, unsigned last, unsigned limit)
       return;
     }
 #endif
+#if defined(LINUX) && defined(SYS_getdents64)
+  // Old kernels and seccomp may reject close_range. Enumerate in the child
+  // using raw syscalls and stack storage, not opendir/readdir (libc locks).
+  // A parent-side snapshot would miss descriptors opened by other threads.
+  int directory = open ("/proc/self/fd", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (directory >= 0)
+    {
+      alignas (struct dirent64) char entries[4096];
+      long length;
+      while ((length = syscall (SYS_getdents64, directory, entries, sizeof (entries))) > 0)
+	{
+	  for (long offset = 0; offset < length;)
+	    {
+	      auto *entry = reinterpret_cast<struct dirent64 *> (entries + offset);
+	      unsigned fd = 0;
+	      const char *digit = entry->d_name;
+	      bool numeric = *digit != '\0';
+	      for (; *digit; ++digit)
+		{
+		  if (*digit < '0' || *digit > '9')
+		    {
+		      numeric = false;
+		      break;
+		    }
+		  fd = fd * 10 + (*digit - '0');
+		}
+	      if (numeric && fd >= first && fd <= last && fd != static_cast<unsigned> (directory))
+		{
+		  close (fd);
+		}
+	      offset += entry->d_reclen;
+	    }
+	}
+      int saved = errno;
+      close (directory);
+      errno = saved;
+      if (length == 0)
+	{
+	  return;
+	}
+    }
+#endif
+  // Portable fallback: the hard limit, never the possibly lowered soft limit.
   for (unsigned fd = first; fd <= last && fd < limit; ++fd)
     {
       close (fd);
@@ -87,7 +132,7 @@ close_interval (unsigned first, unsigned last, unsigned limit)
 }
 
 static int
-spawn (const char *path, const char *const args[], const int *sources, int count)
+spawn (const char *path, const char *const args[], const int *sources, int count, bool reset_sigchld)
 {
   int errors[2] = {-1, -1};
   if (owned_pipe (errors) != 0)
@@ -106,13 +151,19 @@ spawn (const char *path, const char *const args[], const int *sources, int count
   unsigned maximum = INT_MAX;
   if (getrlimit (RLIMIT_NOFILE, &limit) == 0 && limit.rlim_max != RLIM_INFINITY)
     {
-      maximum = limit.rlim_max;
+      maximum = limit.rlim_max < static_cast<rlim_t> (INT_MAX) ? limit.rlim_max : INT_MAX;
     }
+  struct sigaction action = {};
+  action.sa_handler = SIG_DFL;
+  sigemptyset (&action.sa_mask);
   pid_t pid = fork ();
   if (pid == 0)
     {
-      signal (SIGCHLD, SIG_DFL);
       int error = 0;
+      if (reset_sigchld && sigaction (SIGCHLD, &action, nullptr) != 0)
+	{
+	  error = errno;
+	}
       for (int fd = 0; fd < count; ++fd)
 	{
 	  if (dup2 (sources[fd], fd) < 0)
@@ -155,6 +206,72 @@ spawn (const char *path, const char *const args[], const int *sources, int count
       errno = error != 0 ? error : EIO;
       return -1;
     }
+  return pid;
+}
+
+int
+background_process_prepare_stdio ()
+{
+  for (int fd = 0; fd < 3; ++fd)
+    {
+      if (fcntl (fd, F_GETFD) >= 0)
+	{
+	  continue;
+	}
+      if (errno != EBADF)
+	{
+	  return -1;
+	}
+      int source = open ("/dev/null", O_RDWR);
+      if (source < 0)
+	{
+	  return -1;
+	}
+      if (source != fd)
+	{
+	  int result = dup2 (source, fd);
+	  int saved = errno;
+	  close (source);
+	  errno = saved;
+	  if (result < 0)
+	    {
+	      return -1;
+	    }
+	}
+    }
+  return 0;
+}
+
+int
+background_process_spawn_stdio (const char *path, const char *const args[], int output, int error)
+{
+  // Duplicate in the parent above all three destinations to prevent remap
+  // collisions. EBADF means a deliberately closed output; reserve /dev/null.
+  int sources[3] = {owned_fd (open ("/dev/null", O_RDWR | O_CLOEXEC)), -1, -1};
+  int originals[2] = {output, error};
+  for (int i = 0; i < 2; ++i)
+    {
+      sources[i + 1] = fcntl (originals[i], F_DUPFD_CLOEXEC, 16);
+      if (sources[i + 1] < 0 && errno == EBADF)
+	{
+	  sources[i + 1] = owned_fd (open ("/dev/null", O_RDWR | O_CLOEXEC));
+	}
+    }
+  int pid = -1;
+  if (sources[0] >= 0 && sources[1] >= 0 && sources[2] >= 0)
+    {
+      // PL preserves its historical inherited SIGCHLD disposition.
+      pid = spawn (path, args, sources, 3, false);
+    }
+  int saved = errno;
+  for (int fd : sources)
+    {
+      if (fd >= 0)
+	{
+	  close (fd);
+	}
+    }
+  errno = saved;
   return pid;
 }
 
@@ -269,7 +386,7 @@ background_process_start (const char *path, const char *const args[], const char
   relay_sources[7] = fds[7];
   relay_sources[8] = fds[8];
   relay_sources[9] = fds[11];
-  process.relay_pid = spawn (relay_path, relay_args, relay_sources, 10);
+  process.relay_pid = spawn (relay_path, relay_args, relay_sources, 10, true);
   if (process.relay_pid < 0)
     {
       goto cleanup;
@@ -277,7 +394,7 @@ background_process_start (const char *path, const char *const args[], const char
   server_sources[0] = fds[0];
   server_sources[1] = fds[3];
   server_sources[2] = fds[5];
-  process.pid = spawn (path, args, server_sources, 3);
+  process.pid = spawn (path, args, server_sources, 3, true);
   if (process.pid < 0)
     {
       goto cleanup;
