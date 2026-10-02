@@ -30,6 +30,9 @@
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#if defined(LINUX)
+#include <sys/prctl.h>
+#endif
 
 #if defined(_AIX)
 #include <sys/select.h>
@@ -113,6 +116,7 @@ static void css_free_entry (SOCKET_QUEUE_ENTRY * entry_p);
 #if !defined(WINDOWS)
 static void css_daemon_start (bool already_forked);
 static int css_launch_daemon (int argc, char **argv, int port_id);
+static const char css_Daemon_child_marker[] = "--cubrid-master-daemon-child=";
 #endif
 
 struct timeval *css_Master_timeout = NULL;
@@ -1271,9 +1275,20 @@ main (int argc, char **argv)
   bool util_config_ret;
 #if !defined(WINDOWS)
   /* Private re-exec marker, removed before interpreting the original arguments. */
-  bool daemon_child = argc > 1 && strcmp (argv[argc - 1], "--cubrid-master-daemon-child") == 0;
+  bool daemon_child = argc > 1
+    && strncmp (argv[argc - 1], css_Daemon_child_marker, sizeof (css_Daemon_child_marker) - 1) == 0;
   if (daemon_child)
     {
+#if defined(LINUX)
+      /* /proc/self/exe otherwise names the child "exe". Keep the invoking
+       * process's actual name, including when its file was renamed or deleted. */
+      const char *name = argv[argc - 1] + sizeof (css_Daemon_child_marker) - 1;
+      if (prctl (PR_SET_NAME, name, 0, 0, 0) != 0)
+	{
+	  perror ("master process name");
+	  return EXIT_FAILURE;
+	}
+#endif
       argv[--argc] = NULL;
     }
 #endif
@@ -1737,6 +1752,15 @@ static int
 css_launch_daemon (int argc, char **argv, int port_id)
 {
   char executable[PATH_MAX], relay[PATH_MAX], console[PATH_MAX];
+  char daemon_marker[sizeof (css_Daemon_child_marker) + 16];
+  strcpy (daemon_marker, css_Daemon_child_marker);
+#if defined(LINUX)
+  if (prctl (PR_GET_NAME, daemon_marker + sizeof (css_Daemon_child_marker) - 1, 0, 0, 0) != 0)
+    {
+      perror ("master process name");
+      return EXIT_FAILURE;
+    }
+#endif
 #if defined(LINUX)
   /* After fork this still names the invoked master, even outside the install
    * tree or after its pathname was replaced. Do not switch to another build. */
@@ -1790,7 +1814,7 @@ css_launch_daemon (int argc, char **argv, int port_id)
     {
       args[i] = argv[i];
     }
-  args[argc] = "--cubrid-master-daemon-child";
+  args[argc] = daemon_marker;
   args[argc + 1] = NULL;
   background_process process;
   fflush (stdout);
