@@ -179,6 +179,9 @@ cas_init_ssl (int sd)
       return ER_SSL_GENERAL;
     }
 
+  /* ssl holds its own reference to ctx, so ctx is freed by SSL_free () on every path from here */
+  SSL_CTX_free (ctx);
+
   if (SSL_set_fd (ssl, sd) == 0)
     {
       cas_log_write_and_end (0, true, "SSL: Cannot associate with socket.");
