@@ -1158,6 +1158,7 @@ extern TRAN_ISOLATION logtb_find_current_isolation (THREAD_ENTRY * thread_p);
 extern bool logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool set);
 extern bool logtb_set_suppress_repl_on_transaction (THREAD_ENTRY * thread_p, int tran_index, int set);
 extern bool logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking);
+extern bool logtb_is_interruptible (THREAD_ENTRY * thread_p);
 extern bool logtb_is_interrupted_tran (THREAD_ENTRY * thread_p, bool clear, bool * continue_checking, int tran_index);
 extern bool logtb_is_active (THREAD_ENTRY * thread_p, TRANID trid);
 extern bool logtb_is_current_active (THREAD_ENTRY * thread_p);
