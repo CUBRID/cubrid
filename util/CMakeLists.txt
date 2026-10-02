@@ -51,6 +51,7 @@ set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master_util.c
   )
 if(UNIX)
+  list(APPEND CUB_MASTER_SOURCES ${BASE_DIR}/background_process.cpp)
   list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_heartbeat.c)
   list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_server_monitor.cpp)
   SET_SOURCE_FILES_PROPERTIES(

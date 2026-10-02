@@ -1003,6 +1003,15 @@ process_master (int command_type)
 	if (!__gv_cvar.css_does_master_exist (master_port))
 	  {
 	    const char *args[] = { UTIL_MASTER_NAME, NULL };
+#if !defined(WINDOWS)
+            /* *INDENT-OFF* */
+            background_process process;
+            char executable[PATH_MAX], relay[PATH_MAX], console[PATH_MAX];
+            envvar_bindir_file (executable, sizeof (executable), UTIL_MASTER_NAME);
+            envvar_bindir_file (relay, sizeof (relay), "cub_console");
+            envvar_logdir_file (console, sizeof (console), "master-console.log");
+            /* *INDENT-ON* */
+#endif
 
 	    status = ER_GENERIC_ERROR;
 	    while (status != NO_ERROR && waited_seconds < 180)
@@ -1015,9 +1024,28 @@ process_master (int command_type)
 		      }
 
 #if !defined(WINDOWS)
-		    envvar_set ("NO_DAEMON", "true");
-#endif
+                    /* *INDENT-OFF* */
+                    if (process.control >= 0 && background_process_finish_start (process) != 0)
+                      {
+                        perror ("master startup output");
+                        status = ER_GENERIC_ERROR;
+                        break;
+                      }
+                    envvar_set ("NO_DAEMON", "true");
+                    fflush (stdout);
+                    fflush (stderr);
+                    signal (SIGCHLD, SIG_IGN);
+                    status = background_process_start (executable, args, relay, console, process);
+                    pid = process.pid;
+                    if (status != NO_ERROR)
+                      {
+                        perror ("master background start");
+                        status = ER_GENERIC_ERROR;
+                      }
+                    /* *INDENT-ON* */
+#else
 		    status = proc_execute (UTIL_MASTER_NAME, args, false, false, false, &pid);
+#endif
 		    if (status != NO_ERROR)
 		      {
 			util_log_write_errstr ("Could not start master process.\n");
@@ -1032,6 +1060,15 @@ process_master (int command_type)
 		status = __gv_cvar.css_does_master_exist (master_port) ? NO_ERROR : ER_GENERIC_ERROR;
 	      }
 
+#if !defined(WINDOWS)
+            /* *INDENT-OFF* */
+            if (process.control >= 0 && background_process_finish_start (process) != 0)
+              {
+                perror ("master startup output");
+                status = ER_GENERIC_ERROR;
+              }
+            /* *INDENT-ON* */
+#endif
 	    if (status != NO_ERROR)
 	      {
 		/* The master process failed to start or could not connected within 3 minutes */
