@@ -2507,6 +2507,12 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		      mark_access_as_semi_anti_join (parser, scan, sa_type);
 		    }
 		}
+
+	      /* the outer columns of the terms the inner scan evaluates are its memoize key */
+	      if (qo_nl_inner_memoize_is_useless (outer, inner, &predset))
+		{
+		  XASL_SET_FLAG (scan, XASL_NO_MEMOIZE);
+		}
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);
 	  make_outer_instnum (env, outer, plan);

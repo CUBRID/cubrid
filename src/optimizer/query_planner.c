@@ -143,6 +143,10 @@
 #define RBO_CHECK_RATIO 1.2
 #define RBO_CHECK_LIMIT_RATIO 10
 
+/* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
+#define MEMOIZE_UNIQUE_KEY_RATIO 0.9	/* an outer key column with NDV >= 90% of its table rows is near-unique */
+#define MEMOIZE_MIN_HIT_RATIO 0.1	/* skip memoize when less than 10% of the inner calls are expected to hit */
+
 /* Cost tie detection for the plan comparison steps: exact floating-point equality
  * virtually never fires after any nontrivial cost arithmetic, so ties fell through
  * to an ordering decided by the argument order instead of the tie-break rules. */
@@ -236,6 +240,7 @@ static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
+static void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
 static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
 static INT64 qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
 static double qo_estimate_ndv (double N, double p, double n);
@@ -3506,6 +3511,144 @@ qo_plan_semi_anti_join_type (QO_PLAN * plan)
 	}
     }
   return PT_JOIN_NONE;
+}
+
+/*
+ * qo_collect_inner_scan_terms () - add the terms an NL inner plan evaluates by itself to terms
+ *   return: void
+ *   plan(in): the inner plan of an NL join
+ *   terms(in/out):
+ *
+ * An index join places the join term in the inner index scan instead of the join's terms. A sort
+ * (temp list) is built once, so only the terms of the list scan over it can see the outer row.
+ */
+static void
+qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms)
+{
+  while (plan != NULL)
+    {
+      bitset_union (terms, &(plan->sarged_terms));
+
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_SCAN:
+	  bitset_union (terms, &(plan->plan_un.scan.terms));
+	  bitset_union (terms, &(plan->plan_un.scan.kf_terms));
+	  return;
+	case QO_PLANTYPE_FOLLOW:
+	  bitset_add (terms, QO_TERM_IDX (plan->plan_un.follow.path));
+	  plan = plan->plan_un.follow.head;
+	  continue;
+	default:
+	  return;
+	}
+    }
+}
+
+/*
+ * qo_nl_inner_memoize_is_useless () - whether statistics show that memoizing the inner of an NL join
+ *      cannot pay off because the outer key hardly repeats.
+ *   return: true if the inner scan should not memoize
+ *   outer(in): the outer plan of the NL join
+ *   inner(in): the inner plan of the NL join
+ *   key_terms(in): the join terms pushed into the inner scan
+ *
+ * The executor memoizes every NL inner and gives up at run time when the hit ratio stays low. At run
+ * time a unique key looks the same as a key that repeats with a long period, so a unique key pays the
+ * storage cost until the run-time check gives up (CBRD-27543). Statistics tell them apart.
+ *
+ * The expected hit ratio is (calls - ndv) / calls, as in PostgreSQL cost_memoize_rescan () without its
+ * cache capacity factor, where calls is the outer cardinality and ndv the number of distinct keys in
+ * the outer rows. The decision is conservative and leaves the rest to the run-time check:
+ * - Only a single table outer is decided. In a join outer a near-unique column repeats through join
+ *   fan-out, and how many of its rows survive the join is not estimated.
+ * - Only an outer key column that is near-unique in its own table counts. Its NDV is a lower bound
+ *   of the NDV of the whole key, so the other key columns (and their statistics) cannot make it skip.
+ *   qo_estimate_ndv () reduces it by the outer's search conditions.
+ * - Without statistics (ndv 0) nothing is decided.
+ */
+bool
+qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms)
+{
+  QO_ENV *env;
+  BITSET scan_terms, key_segs;
+  BITSET_ITERATOR bi;
+  int i;
+  double calls, key_ndv = 0.0;
+
+  if (outer == NULL || inner == NULL || outer->info == NULL || inner->info == NULL || key_terms == NULL)
+    {
+      return false;
+    }
+
+  env = outer->info->env;
+  calls = outer->info->cardinality;
+  if (calls < 1.0 || bitset_cardinality (&(outer->info->nodes)) != 1)
+    {
+      return false;
+    }
+
+  /* the outer columns referenced by the terms the inner scan evaluates are its memoize key */
+  bitset_init (&scan_terms, env);
+  bitset_init (&key_segs, env);
+  bitset_assign (&scan_terms, key_terms);
+  qo_collect_inner_scan_terms (inner, &scan_terms);
+  for (i = bitset_iterate (&scan_terms, &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      bitset_union (&key_segs, &QO_TERM_SEGS (QO_ENV_TERM (env, i)));
+    }
+
+  for (i = bitset_iterate (&key_segs, &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      QO_SEGMENT *seg = QO_ENV_SEG (env, i);
+      QO_NODE *node = QO_SEG_HEAD (seg);
+      QO_ATTR_INFO *info = QO_SEG_INFO (seg);
+      double seg_ndv;
+
+      if (!BITSET_MEMBER (outer->info->nodes, QO_NODE_IDX (node))
+	  || BITSET_MEMBER (inner->info->nodes, QO_NODE_IDX (node)))
+	{
+	  /* not an outer column of this join */
+	  continue;
+	}
+
+      if (info == NULL || info->ndv <= 0 || QO_NODE_NCARD (node) <= 0)
+	{
+	  continue;
+	}
+
+      seg_ndv = (double) info->ndv;
+      if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys_size > 0
+	  && info->cum_stats.pkeys[0] > 0)
+	{
+	  seg_ndv = MIN (seg_ndv, (double) info->cum_stats.pkeys[0]);
+	}
+
+      if (seg_ndv < MEMOIZE_UNIQUE_KEY_RATIO * (double) QO_NODE_NCARD (node))
+	{
+	  continue;
+	}
+
+      /* distinct values left in the outer rows after the outer's search conditions */
+      if (calls < outer->info->total_rows)
+	{
+	  seg_ndv = qo_estimate_ndv (outer->info->total_rows, calls, seg_ndv);
+	}
+
+      key_ndv = MAX (key_ndv, seg_ndv);
+    }
+
+  bitset_delset (&scan_terms);
+  bitset_delset (&key_segs);
+
+  if (key_ndv <= 0.0)
+    {
+      return false;
+    }
+
+  key_ndv = MIN (key_ndv, calls);
+
+  return (calls - key_ndv) / calls < MEMOIZE_MIN_HIT_RATIO;
 }
 
 /*
