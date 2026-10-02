@@ -3281,8 +3281,8 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (outer->has_sort_limit || inner->has_sort_limit);
   /* SEMI/ANTI run by nested loops only */
-  assert (!IS_SEMI_ANTI_JOIN_TYPE (join_type) || join_method == QO_JOINMETHOD_NL_JOIN
-	  || join_method == QO_JOINMETHOD_IDX_JOIN);
+  assert (join_type != JOIN_INNER || qo_plan_semi_anti_join_type (inner) == PT_JOIN_NONE
+	  || join_method == QO_JOINMETHOD_NL_JOIN || join_method == QO_JOINMETHOD_IDX_JOIN);
 
   /* An nl/idx join (or cartesian product) emits rows in its outer's order,
    * so it inherits only the outer's final-sort requirement:
@@ -3538,6 +3538,44 @@ qo_join_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *child_
 }
 
 /*
+ * qo_plan_semi_anti_join_type () - recover SEMI/ANTI execution from an inner input.
+ *   A DISTINCT input implements an ordinary inner join; do not follow it to the
+ *   original SEMI scan. A join input has already consumed its own SEMI/ANTI.
+ */
+PT_JOIN_TYPE
+qo_plan_semi_anti_join_type (QO_PLAN * plan)
+{
+  while (plan != NULL)
+    {
+      if (plan->info != NULL && plan->info->is_distinct)
+	{
+	  return PT_JOIN_NONE;
+	}
+
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_SCAN:
+	  return QO_NODE_IS_SEMI_ANTI_JOIN (plan->plan_un.scan.node)
+	    ? QO_NODE_PT_JOIN_TYPE (plan->plan_un.scan.node) : PT_JOIN_NONE;
+	case QO_PLANTYPE_SORT:
+	  if (plan->plan_un.sort.sort_type == SORT_DISTINCT)
+	    {
+	      return PT_JOIN_NONE;
+	    }
+	  plan = plan->plan_un.sort.subplan;
+	  break;
+	case QO_PLANTYPE_FOLLOW:
+	  plan = plan->plan_un.follow.head;
+	  break;
+	default:
+	  return PT_JOIN_NONE;
+	}
+    }
+
+  return PT_JOIN_NONE;
+}
+
+/*
  * qo_join_fprint () -
  *   return:
  *   plan(in):
@@ -3549,13 +3587,20 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
 {
   switch (plan->plan_un.join.join_type)
     {
-    case JOIN_SEMI:
-      fputs (" (semi join)", f);
-      break;
-    case JOIN_ANTI:
-      fputs (" (anti join)", f);
-      break;
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE semi_anti = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (semi_anti == PT_JOIN_SEMI)
+	  {
+	    fputs (" (semi join)", f);
+	    break;
+	  }
+	if (semi_anti == PT_JOIN_ANTI)
+	  {
+	    fputs (" (anti join)", f);
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  fputs (" (inner join)", f);
@@ -3854,7 +3899,8 @@ qo_nljoin_cost (QO_PLAN * planp)
 
   inner_scan_card = guessed_result_cardinality;
 
-  if (IS_SEMI_ANTI_JOIN_TYPE (planp->plan_un.join.join_type) && inner->iscan_index_rows > 0.0)
+  if (planp->plan_un.join.join_type == JOIN_INNER && qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE
+      && inner->iscan_index_rows > 0.0)
     {
       /* the key range holds matching rows only, so the row the scan stops on is the first one it reads
        * whichever of the iscan_index_rows it is, and an outer row whose key is absent from the index reads
@@ -4215,13 +4261,20 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
 {
   switch (plan->plan_un.join.join_type)
     {
-    case JOIN_SEMI:
-      fputs (" (semi join)", f);
-      break;
-    case JOIN_ANTI:
-      fputs (" (anti join)", f);
-      break;
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE semi_anti = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (semi_anti == PT_JOIN_SEMI)
+	  {
+	    fputs (" (semi join)", f);
+	    break;
+	  }
+	if (semi_anti == PT_JOIN_ANTI)
+	  {
+	    fputs (" (anti join)", f);
+	    break;
+	  }
+      }
       fputs (" (inner join)", f);
       break;
 
@@ -8582,19 +8635,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     bitset_difference (remaining_subqueries, &pinned_subqueries);
   }
 
-  /* Resolve the candidate's SEMI/ANTI semantics from the node being added, independently of edge order.
-   * A raw SEMI/ANTI tail still requires first-match execution even when the prefix contains DISTINCT.
-   * Otherwise a SEMI/ANTI edge connects a DISTINCT input, possibly inside a multi-node prefix, and the
-   * candidate is an ordinary join. Only this local type changes; graph terms and shared plans keep theirs. */
-  if (!IS_OUTER_JOIN_TYPE (join_type) && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct)
-    {
-      join_type = QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI ? JOIN_SEMI : JOIN_ANTI;
-    }
-  else if (IS_SEMI_ANTI_JOIN_TYPE (join_type))
-    {
-      join_type = JOIN_INNER;
-    }
-
   /* STEP 4: set joined info */
 
   if (new_info == NULL)
@@ -8664,13 +8704,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  total_rows *= selectivity;
 	  total_rows = MAX (1.0, total_rows);
 
-	  if (IS_SEMI_ANTI_JOIN_TYPE (join_type))
+	  if (join_type == JOIN_INNER && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct)
 	    {
 	      /* a SEMI JOIN emits an outer row at most once and an ANTI JOIN only the outer rows the inner
 	       * does not match, so neither can emit more rows than the outer side holds.  The product above
 	       * counts one row per matching inner row instead, which the next join step would then carry.
 	       * head_hit_prob is the share of outer rows the inner matches (qo_get_term_hit_prob ()). */
-	      if (join_type == JOIN_SEMI)
+	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_SEMI)
 		{
 		  cardinality = head_info->cardinality * head_hit_prob;
 		}
@@ -8732,8 +8772,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	kept += qo_examine_follow (new_info, follow_term, head_info, &sarged_terms, &pinned_subqueries);
       }
 
-    if (follow_term && join_type != JOIN_INNER && !IS_SEMI_ANTI_JOIN_TYPE (join_type)
-	&& QO_NODE_IDX (QO_TERM_TAIL (follow_term)) != QO_NODE_IDX (tail_node))
+    if (follow_term && join_type != JOIN_INNER && QO_NODE_IDX (QO_TERM_TAIL (follow_term)) != QO_NODE_IDX (tail_node))
       {
 	/* if there is a path-term whose outer join order is not correct, we can not use idx-join, nl-join, m-join */
 	;
@@ -9253,7 +9292,7 @@ qo_generate_join_index_scan (QO_INFO * infop, JOIN_TYPE join_type, QO_PLAN * out
 	{
 	  return 0;
 	}
-      else if (join_type != JOIN_INNER && !IS_SEMI_ANTI_JOIN_TYPE (join_type))
+      else if (join_type != JOIN_INNER)
 	{
 	  return 0;
 	}
@@ -14291,13 +14330,20 @@ qo_plan_join_print_json (QO_PLAN * plan)
 
   switch (plan->plan_un.join.join_type)
     {
-    case JOIN_SEMI:
-      type = "semi join";
-      break;
-    case JOIN_ANTI:
-      type = "anti join";
-      break;
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE semi_anti = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (semi_anti == PT_JOIN_SEMI)
+	  {
+	    type = "semi join";
+	    break;
+	  }
+	if (semi_anti == PT_JOIN_ANTI)
+	  {
+	    type = "anti join";
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  type = "inner join";
@@ -14643,13 +14689,20 @@ qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
 
   switch (plan->plan_un.join.join_type)
     {
-    case JOIN_SEMI:
-      type = "semi join";
-      break;
-    case JOIN_ANTI:
-      type = "anti join";
-      break;
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE semi_anti = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (semi_anti == PT_JOIN_SEMI)
+	  {
+	    type = "semi join";
+	    break;
+	  }
+	if (semi_anti == PT_JOIN_ANTI)
+	  {
+	    type = "anti join";
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  type = "inner join";

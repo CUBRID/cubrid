@@ -1995,11 +1995,11 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
       break;
     case PT_JOIN_SEMI:
-      QO_TERM_JOIN_TYPE (term) = JOIN_SEMI;
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
       QO_ADD_SEMI_ANTI_DEP_SET (on_node, p_node);
       break;
     case PT_JOIN_ANTI:
-      QO_TERM_JOIN_TYPE (term) = JOIN_ANTI;
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
       QO_ADD_SEMI_ANTI_DEP_SET (on_node, p_node);
       break;
     default:
@@ -2745,7 +2745,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
 		{
-		  QO_TERM_JOIN_TYPE (term) = (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI) ? JOIN_SEMI : JOIN_ANTI;
+		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
 		  QO_ADD_SEMI_ANTI_DEP_SET (on_node, head_node);
 		}
 	    }
@@ -6354,9 +6354,7 @@ qo_discover_edges (QO_ENV * env)
       QO_ASSERT (env, QO_TERM_HEAD (edge) != NULL);
       QO_ASSERT (env, QO_TERM_TAIL (edge) != NULL);
 
-      /* SEMI/ANTI describes its own ON scope; do not copy it to other edges between the same nodes. */
-      if (QO_TERM_JOIN_TYPE (edge) != JOIN_INNER && !IS_SEMI_ANTI_JOIN_TYPE (QO_TERM_JOIN_TYPE (edge))
-	  && QO_TERM_CLASS (edge) != QO_TC_JOIN)
+      if (QO_TERM_JOIN_TYPE (edge) != JOIN_INNER && QO_TERM_CLASS (edge) != QO_TC_JOIN)
 	{
 	  for (j = 0; j < n; j++)
 	    {
@@ -9931,14 +9929,6 @@ qo_term_dump (QO_TERM * term, FILE * f)
 
     case JOIN_OUTER:		/* not used */
       fputs (" (outer-join)", f);
-      break;
-
-    case JOIN_SEMI:
-      fputs (" (semi-join)", f);
-      break;
-
-    case JOIN_ANTI:
-      fputs (" (anti-join)", f);
       break;
 
     default:
