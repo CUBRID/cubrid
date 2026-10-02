@@ -33,6 +33,8 @@
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 bool auto_Restart_server = false;
 
+static constexpr int SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS = 1;
+
 server_monitor::server_monitor ()
 {
 
@@ -188,6 +190,9 @@ server_monitor::revive_server (const std::string &server_name)
 	      er_log_debug (ARG_FILE_LINE,
 			    "[Server Monitor] [%s] Failed to fork server process. Server monitor try to revive server again.",
 			    entry->first.c_str());
+	      // Exec/setup failures are now reported synchronously. Pace them
+	      // like registration checks instead of spinning through relays.
+	      std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
 	      produce_job_internal (job_type::REVIVE_SERVER, -1, "", "", entry->first);
 	    }
 	  else
@@ -242,7 +247,6 @@ server_monitor::check_server_revived (const std::string &server_name)
       else if (entry->second.get_need_revive ())
 	{
 	  // Server revive confirm interval is set to be 1 second to avoid busy waiting.
-	  constexpr int SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS = 1;
 
 	  std::this_thread::sleep_for (std::chrono::seconds (SERVER_MONITOR_CONFIRM_REVIVE_INTERVAL_IN_SECS));
 
