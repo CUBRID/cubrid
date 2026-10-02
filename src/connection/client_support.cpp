@@ -192,11 +192,14 @@ client_support::css_client_init (int sockid, const char *server_name, const char
 
 #if defined(MULTI_CONN_TO_A_SERVER)
 int
-client_support::css_client_sub_init (const char *server_name, const char *host_name, int client_type)
+client_support::css_client_sub_init (int sockid, const char *server_name, const char *host_name, int client_type)
 {
   CSS_CONN_ENTRY *conn;
   CSS_MAP_ENTRY *map;
   int error = NO_ERROR;
+
+  /* client_support is thread-local, so the port of this sub-client thread must be set as css_client_init () does */
+  m_service_port_id = sockid;
 
   conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name, client_type);
   if (conn != NULL)

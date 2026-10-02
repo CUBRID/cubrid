@@ -3701,7 +3701,9 @@ net_client_sub_init ()
 
   if (error == NO_ERROR)
     {
-      error = __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
+      error =
+	__gv_cvar.css_client_sub_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), net_Server_name, net_Server_host,
+				       db_get_client_type ());
       if (error == ER_CSS_ALLOC)
 	{
 	  __gv_cvar.css_client_sub_terminate (false);
