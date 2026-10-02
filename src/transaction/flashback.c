@@ -70,6 +70,8 @@ static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
  * digits still formats instead of overflowing the buffer. */
 #define FLASHBACK_TIME_STR_SIZE 32
 
+static void flashback_reset (void);
+
 /*
  * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
  *
@@ -206,10 +208,13 @@ flashback_is_needed_to_keep_archive ()
 /*
  * flashback_reset - reset flashback global variables
  *
+ * NOTE: the caller must hold flashback_Conn_lock; the only callers are
+ *       flashback_initialize() and flashback_reset_if_owner(), both of which
+ *       already do. Kept file-local so no caller can reach it without the lock.
  */
 
-void
-flashback_reset ()
+static void
+flashback_reset (void)
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
