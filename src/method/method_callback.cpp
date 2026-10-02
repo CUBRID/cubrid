@@ -1215,23 +1215,38 @@ exit:
   //////////////////////////////////////////////////////////////////////////
   // Global method callback handler interface
   //////////////////////////////////////////////////////////////////////////
-  /* per-thread handler for multiple connections: the query handlers belong to the workspace of each thread */
-  static CUB_THREAD_LOCAL callback_handler handler (100);
+  /*
+   * per-thread handler for multiple connections: the query handlers belong to the workspace of each thread.
+   * It is allocated on first use and released by method_callback_final (). A thread_local object is not used,
+   * because its destructor runs before the atexit handlers in exit () (e.g., boot_shutdown_client_at_exit ()).
+   */
+  static CUB_THREAD_LOCAL callback_handler *handler = nullptr;
 
   callback_handler *
   get_callback_handler (void)
   {
-    return &handler;
+    if (handler == nullptr)
+      {
+	handler = new callback_handler (100);
+      }
+    return handler;
+  }
+
+  static void
+  destroy_callback_handler (void)
+  {
+    if (handler != nullptr)
+      {
+	handler->clear_all_query_handlers ();
+	delete handler;
+	handler = nullptr;
+      }
   }
 }
 
-/* called from boot_client_all_finalize() before ws_final() */
+/* called from boot_client_all_finalize() and boot_finalize_client_sub () before ws_final() */
 void
 method_callback_final (void)
 {
-  cubmethod::callback_handler *h = cubmethod::get_callback_handler ();
-  if (h != NULL)
-    {
-      h->clear_all_query_handlers ();
-    }
+  cubmethod::destroy_callback_handler ();
 }
