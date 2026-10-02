@@ -96,7 +96,9 @@ cas_init_ssl (int sd)
 
   if (ssl)
     {
+      /* a failure below returns before SSL_new (), which would leave ssl dangling for the next connection */
       SSL_free (ssl);
+      ssl = NULL;
     }
 
 #if defined(WINDOWS)
