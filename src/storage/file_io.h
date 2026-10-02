@@ -39,6 +39,9 @@
 
 #include <stdio.h>
 #include <time.h>
+#if !defined(WINDOWS)
+#include <aio.h>		/* struct aiocb for the parallel-write staging ring (file_io.c) */
+#endif /* !WINDOWS */
 #include <map>
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
@@ -134,13 +137,6 @@ typedef enum
   FILEIO_PROMPT_RANGE_WITH_SECONDARY_STRING_TYPE,
   FILEIO_PROMPT_DISPLAY_ONLY
 } FILEIO_REMOTE_PROMPT_TYPE;
-
-typedef enum
-{
-  FILEIO_ERROR_INTERRUPT,	/* error/interrupt */
-  FILEIO_READ,			/* access device for read */
-  FILEIO_WRITE			/* access device for write */
-} FILEIO_TYPE;
 
 typedef enum
 {
@@ -335,6 +331,20 @@ struct fileio_backup_buffer
   char *ptr;			/* Pointer to the first buffered byte when reading and pointer to the next byte to
 				 * buffer when writing */
   FILEIO_BACKUP_HEADER *bkuphdr;	/* pointer to header information */
+
+  /* parallel-write (PW): writer-private async double-buffer.
+   * Owned ONLY by the single inline writer thread. When async_enabled is true, the writer
+   * packs into buffer_ring[active_slot], issues aio_write of a full slot, flips to the other
+   * slot, and reaps the in-flight write before reusing a slot / at rollover / at teardown.
+   * When async_enabled is false (default), bkup.buffer simply aliases buffer_ring[active_slot]
+   * (== buffer_ring[0]) and the synchronous flush path runs, preserving current behavior. */
+  char *buffer_ring[2];		/* two iosize-sized staging slots; bkup.buffer aliases buffer_ring[active_slot] */
+  int active_slot;		/* slot currently being packed (0/1) */
+  bool slot_in_flight[2];	/* an aio_write was issued for this slot and not yet reaped */
+#if !defined(WINDOWS)
+  struct aiocb aiocb[2];	/* one control block per slot; reaped in submission order */
+#endif				/* !WINDOWS */
+  bool async_enabled;		/* GATE result: operator opt-in AND output not on same device as DB */
 };
 
 typedef struct fileio_backup_db_buffer FILEIO_BACKUP_DB_BUFFER;
@@ -371,22 +381,33 @@ struct file_zip_info
 typedef struct fileio_node FILEIO_NODE;
 struct fileio_node
 {
-  struct fileio_node *prev;
   struct fileio_node *next;
   int pageid;
-  bool writeable;
   ssize_t nread;
   FILEIO_BACKUP_PAGE *area;	/* Area to read/write the page */
   FILEIO_ZIP_INFO *zip_info;	/* Zip info containing area to compress/decompress the page */
+
+  bool tombstone;		/* Read from disk but not written to this backup (only_updated: unchanged since a
+				 * previous level). Still occupies a slot so the writer can advance past this pageid. */
 };
 
 typedef struct fileio_queue FILEIO_QUEUE;
 struct fileio_queue
 {
-  int size;
-  FILEIO_NODE *head;
-  FILEIO_NODE *tail;
-  FILEIO_NODE *free_list;
+  FILEIO_NODE *free_list;	/* recycled nodes; the queue itself is gone, only the pool is left */
+};
+
+/* parallel-read reorder queue.
+ * Single writer drains slots in monotonic pageid order; N readers fill them. */
+typedef struct fileio_reorder_queue FILEIO_REORDER_QUEUE;
+struct fileio_reorder_queue
+{
+  FILEIO_NODE **slots;		/* ring buffer, indexed by (pageid % capacity) */
+  int capacity;			/* number of slots (0 until allocated) */
+  int next_read_pageid;		/* next pageid a reader will claim (monotonic) */
+  int next_emit_pageid;		/* next pageid the writer must emit (monotonic) */
+  FILEIO_NODE *free_list;	/* recycled nodes for this queue */
+  int pool_total;		/* total nodes allocated (for leak assert in teardown) */
 };
 
 typedef struct fileio_thread_info FILEIO_THREAD_INFO;
@@ -404,10 +425,8 @@ struct fileio_thread_info
   int act_r_threads;		/* number of activated read threads */
   int end_r_threads;		/* number of ended read threads */
 
-  int pageid;
   int from_npages;
 
-  FILEIO_TYPE io_type;
   int errid;
 
   bool only_updated_pages;
@@ -417,6 +436,10 @@ struct fileio_thread_info
   int check_npages;
 
   FILEIO_QUEUE io_queue;
+
+  /* parallel-read state */
+  FILEIO_REORDER_QUEUE reorder_queue;	/* slots are allocated per volume in fileio_start_backup_thread () */
+  bool abort;			/* set on any reader/writer error to unblock peers */
 };
 
 typedef struct io_backup_session FILEIO_BACKUP_SESSION;
