@@ -134,7 +134,8 @@ close_interval (unsigned first, unsigned last, unsigned limit)
 }
 
 static int
-spawn (const char *path, const char *const args[], const int *sources, int count, bool reset_sigchld)
+spawn (const char *path, const char *const args[], const int *sources, int count, bool reset_sigchld,
+       const char *const environment[] = nullptr, bool *exec_failed = nullptr)
 {
   int errors[2] = {-1, -1};
   if (owned_pipe (errors) != 0)
@@ -162,6 +163,7 @@ spawn (const char *path, const char *const args[], const int *sources, int count
   if (pid == 0)
     {
       int error = 0;
+      bool attempted_exec = false;
       if (reset_sigchld && sigaction (SIGCHLD, &action, nullptr) != 0)
 	{
 	  error = errno;
@@ -178,11 +180,20 @@ spawn (const char *path, const char *const args[], const int *sources, int count
       close_interval (errors[1] + 1, UINT_MAX, maximum);
       if (error == 0)
 	{
-	  execv (path, const_cast<char *const *> (args));
+	  attempted_exec = true;
+	  if (environment != nullptr)
+	    {
+	      execve (path, const_cast<char *const *> (args), const_cast<char *const *> (environment));
+	    }
+	  else
+	    {
+	      execv (path, const_cast<char *const *> (args));
+	    }
 	  error = errno;
 	}
       // A failed child must never return to the launcher's control flow.
-      while (write (errors[1], &error, sizeof (error)) < 0 && errno == EINTR) {}
+      int failure[2] = {error, attempted_exec ? 1 : 0};
+      while (write (errors[1], failure, sizeof (failure)) < 0 && errno == EINTR) {}
       _exit (127);
     }
   int saved = errno;
@@ -193,19 +204,23 @@ spawn (const char *path, const char *const args[], const int *sources, int count
       errno = saved;
       return -1;
     }
-  int error = 0;
+  int failure[2] = {0, 0};
   ssize_t length;
   do
     {
-      length = read (errors[0], &error, sizeof (error));
+      length = read (errors[0], failure, sizeof (failure));
     }
   while (length < 0 && errno == EINTR);
   close (errors[0]);
   if (length != 0)
     {
+      if (exec_failed != nullptr)
+	{
+	  *exec_failed = length == sizeof (failure) && failure[1] != 0;
+	}
       int status;
       while (waitpid (pid, &status, 0) < 0 && errno == EINTR) {}
-      errno = error != 0 ? error : EIO;
+      errno = length == sizeof (failure) && failure[0] != 0 ? failure[0] : EIO;
       return -1;
     }
   return pid;
@@ -245,7 +260,8 @@ background_process_prepare_stdio ()
 }
 
 int
-background_process_spawn_stdio (const char *path, const char *const args[], int output, int error)
+background_process_spawn_stdio (const char *path, const char *const args[], int output, int error,
+				const char *const environment[], bool reset_sigchld)
 {
   // Duplicate in the parent above all three destinations to prevent remap
   // collisions. EBADF means a deliberately closed output; reserve /dev/null.
@@ -262,8 +278,8 @@ background_process_spawn_stdio (const char *path, const char *const args[], int 
   int pid = -1;
   if (sources[0] >= 0 && sources[1] >= 0 && sources[2] >= 0)
     {
-      // PL preserves its historical inherited SIGCHLD disposition.
-      pid = spawn (path, args, sources, 3, false);
+      // The default preserves PL's historical inherited SIGCHLD disposition.
+      pid = spawn (path, args, sources, 3, reset_sigchld, environment);
     }
   int saved = errno;
   for (int fd : sources)
@@ -279,9 +295,10 @@ background_process_spawn_stdio (const char *path, const char *const args[], int 
 
 int
 background_process_start (const char *path, const char *const args[], const char *relay_path,
-			  const char *log_path, background_process &process)
+			  const char *log_path, background_process &process, const char *const environment[], bool reset_sigchld)
 {
   process.output_error = 0;
+  process.exec_failed = false;
   int fds[14];
   for (int &fd : fds)
     {
@@ -352,7 +369,7 @@ background_process_start (const char *path, const char *const args[], const char
   server_sources[0] = fds[0];
   server_sources[1] = fds[3];
   server_sources[2] = fds[5];
-  process.pid = spawn (path, args, server_sources, 3, true);
+  process.pid = spawn (path, args, server_sources, 3, reset_sigchld, environment, &process.exec_failed);
   if (process.pid < 0)
     {
       goto cleanup;

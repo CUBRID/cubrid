@@ -25,8 +25,10 @@
 // Call at executable entry, before logging can reuse a closed standard FD.
 int background_process_prepare_stdio ();
 // Null stdin, explicit stdout/stderr, and no other inherited descriptors.
-// Preserves SIGCHLD; returns child PID or -1 with errno. Caller owns reaping.
-int background_process_spawn_stdio (const char *path, const char *const args[], int output, int error);
+// Preserves child SIGCHLD unless explicitly reset; caller owns reaping.
+// Environment storage remains valid through the synchronous exec handshake.
+int background_process_spawn_stdio (const char *path, const char *const args[], int output, int error,
+				    const char *const environment[] = nullptr, bool reset_sigchld = false);
 struct background_process
 {
   // The caller owns child reaping; this interface does not change SIGCHLD.
@@ -35,10 +37,13 @@ struct background_process
   int control = -1;
   int acknowledgement = -1;
   int output_error = 0;
+  // Distinguish producer exec failure from new relay/FD/log setup failures.
+  bool exec_failed = false;
   int output[2] = {-1, -1};
 };
 int background_process_start (const char *path, const char *const args[], const char *relay_path,
-			      const char *log_path, background_process &process);
+			      const char *log_path, background_process &process, const char *const environment[] = nullptr,
+			      bool reset_sigchld = true);
 // Optional bounded framing for multiple producers sharing the caller streams.
 // Short diagnostic lines stay intact; longer lines flush at the fixed bound.
 struct background_process_output
