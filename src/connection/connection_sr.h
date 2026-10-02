@@ -134,7 +134,6 @@ extern int css_Num_access_user;
 
 extern int css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd);
 extern void css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn);
-extern void css_detach_session_from_conn (CSS_CONN_ENTRY * conn);
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);
 extern int css_init_conn_list (void);
 extern void css_final_conn_list (void);
