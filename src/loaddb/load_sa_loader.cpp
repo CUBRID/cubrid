@@ -73,6 +73,10 @@
 #include "work_space.h"
 #include "schema_system_catalog_constants.h"
 
+#if !defined(SA_MODE)
+#error Does not belong to SA_MODE
+#endif
+
 using namespace cubload;
 
 const std::size_t LDR_MAX_ARGS = 32;

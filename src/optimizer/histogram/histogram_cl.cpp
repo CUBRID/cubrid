@@ -570,8 +570,8 @@ histogram_collect_clear (HISTOGRAM_COLLECT *hc)
 /* fingerprint-walk ambient context: lets the histogram probes reach the statement for
  * spec resolution without changing their public signatures (QO calls them too, where the
  * name-node annotation makes the statement unnecessary). Client-side single-threaded. */
-static PARSER_CONTEXT *bind_fp_active_parser = NULL;
-static PT_NODE *bind_fp_active_statement = NULL;
+static CUB_THREAD_LOCAL_PSR PARSER_CONTEXT *bind_fp_active_parser = NULL;
+static CUB_THREAD_LOCAL_PSR PT_NODE *bind_fp_active_statement = NULL;
 
 struct spec_class_name_ctx
 {

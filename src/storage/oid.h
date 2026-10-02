@@ -31,6 +31,7 @@
 #ifdef __cplusplus
 #include <functional>
 #endif
+#include "db_multi_threads_connections.h"
 
 #define ROOTCLASS_NAME "Rootclass"	/* Name of Rootclass */
 
@@ -212,7 +213,7 @@ extern OID *oid_Serial_class_oid;
 extern OID *oid_User_class_oid;
 extern OID *oid_Sp_code_class_oid;
 
-extern PAGEID oid_Next_tempid;
+extern CUB_THREAD_LOCAL PAGEID oid_Next_tempid;
 
 extern void oid_set_root (const OID * oid);
 extern bool oid_is_root (const OID * oid);

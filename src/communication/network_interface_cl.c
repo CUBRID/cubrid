@@ -99,8 +99,8 @@
 
 #if defined (CS_MODE)
 #define NET_DEFER_END_QUERIES_MAX 5
-static QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
-static int net_Deferred_end_queries_count = 0;
+static CUB_THREAD_LOCAL QUERY_ID net_Deferred_end_queries[NET_DEFER_END_QUERIES_MAX];
+static CUB_THREAD_LOCAL int net_Deferred_end_queries_count = 0;
 #endif /* CS_MODE */
 
 /*
@@ -4000,6 +4000,7 @@ boot_register_client (BOOT_CLIENT_CREDENTIAL * client_credential, int client_loc
 	  ptr = or_unpack_int (ptr, &temp_int);
 	  *tran_state = (TRAN_STATE) temp_int;
 
+	  assert (server_credential != NULL);
 	  ptr = or_unpack_string (ptr, &server_credential->db_full_name);
 	  ptr = or_unpack_string (ptr, &server_credential->host_name);
 	  ptr = or_unpack_string (ptr, &server_credential->lob_path);
@@ -4645,12 +4646,29 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	      free_and_init (request);
 	      return error;
 	    }
-	  sysprm_update_client_session_parameters (session_params);
+	}
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+      if (boot_is_sub_client ())
+	{
+	  /*
+	   * The parameter values on the client (prm_Def) are process-wide and shared with the main client and
+	   * the other sub-clients, so a sub-client must not rewrite them. The session of a sub-client is created
+	   * with cached_session_parameters loaded by the main client.
+	   */
 	}
       else
+#endif
 	{
-	  /* use the values stored in cached_session_parameters */
-	  sysprm_update_client_session_parameters (cached_session_parameters);
+	  if (update_parameter_values)
+	    {
+	      sysprm_update_client_session_parameters (session_params);
+	    }
+	  else
+	    {
+	      /* use the values stored in cached_session_parameters */
+	      sysprm_update_client_session_parameters (cached_session_parameters);
+	    }
 	}
       sysprm_free_session_parameters (&session_params);
     }
@@ -8343,7 +8361,7 @@ perfmon_server_copy_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);
@@ -8394,7 +8412,7 @@ perfmon_server_copy_global_stats (UINT64 * to_stats)
     }
   else
     {
-      perfmon_Iscollecting_stats = false;
+      disable_perfmon_start_stats ();
     }
 
   free_and_init (reply);

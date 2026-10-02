@@ -192,11 +192,14 @@ client_support::css_client_init (int sockid, const char *server_name, const char
 
 #if defined(MULTI_CONN_TO_A_SERVER)
 int
-client_support::css_client_sub_init (const char *server_name, const char *host_name, int client_type)
+client_support::css_client_sub_init (int sockid, const char *server_name, const char *host_name, int client_type)
 {
   CSS_CONN_ENTRY *conn;
   CSS_MAP_ENTRY *map;
   int error = NO_ERROR;
+
+  /* client_support is thread-local, so the port of this sub-client thread must be set as css_client_init () does */
+  m_service_port_id = sockid;
 
   conn = css_connect_to_cubrid_server ((char *) host_name, (char *) server_name, client_type);
   if (conn != NULL)
@@ -221,17 +224,30 @@ client_support::css_client_sub_init (const char *server_name, const char *host_n
   return error;
 }
 
+/*
+ * css_client_sub_terminate() - close the connections of the calling sub-client thread
+ *   server_error(in): true if the server is dead or changed
+ *
+ * Note: client_support is thread-local, so only the connections of the calling thread are closed.
+ *       Unlike css_terminate(), process-wide states (e.g., SIGPIPE handler) are not touched.
+ *       The host name is not used, because net_Server_host may be already cleared by set_server_error().
+ */
 void
-client_support::css_client_sub_terminate (const char *host_name)
+client_support::css_client_sub_terminate (bool server_error)
 {
   CSS_MAP_ENTRY *entry;
 
-  entry = m_conn_less.css_return_open_entry ((char *) host_name);
-  if (entry != NULL)
+  entry = m_conn_less.css_get_map_entry ();
+  while (entry)
     {
+      if (server_error && entry->conn)
+	{
+	  entry->conn->status = CONN_CLOSING;
+	}
       css_send_close_request (entry->conn);
       css_free_conn (entry->conn);
       m_conn_less.css_remove_queued_connection_by_entry (entry);
+      entry = m_conn_less.css_get_map_entry ();
     }
 }
 #endif // defined(MULTI_CONN_TO_A_SERVER)
@@ -793,9 +809,11 @@ css_ha_server_state (void)
 
 #if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
 pthread_t gv_main_tid;
+CUB_THREAD_LOCAL pthread_t gv_current_tid = (pthread_t) -1;
 
 __attribute__ ((constructor))
-static void get_main_thread_id ()
+static void
+get_main_thread_id ()
 {
   gv_main_tid = pthread_self ();
 }
@@ -805,5 +823,8 @@ pthread_t
 css_get_thread_id ()
 {
   static THREAD_LOCAL pthread_t tid = pthread_self ();
+#if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
+  gv_current_tid = tid;
+#endif
   return tid;
 }

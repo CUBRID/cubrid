@@ -116,7 +116,7 @@
 #define BOOT_NO_OPT_CAP                 0
 #define BOOT_CHECK_HA_DELAY_CAP         NET_CAP_HA_REPL_DELAY
 
-static BOOT_SERVER_CREDENTIAL boot_Server_credential = {
+static CUB_THREAD_LOCAL BOOT_SERVER_CREDENTIAL boot_Server_credential = {
   /* db_full_name */ NULL, /* host_name */ NULL, /* lob_path */ NULL,
   /* process_id */ -1,
   /* root_class_oid */ {NULL_PAGEID, NULL_SLOTID, NULL_VOLID},
@@ -150,12 +150,19 @@ char boot_Ip_address[16] = { 0 };
 
 static char boot_Volume_label[PATH_MAX] = " ";
 static bool boot_Is_client_all_final = true;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/* true while the current thread holds a sub-client started by boot_restart_client_sub () */
+static CUB_THREAD_LOCAL bool boot_Is_sub_client = false;
+#endif
 static bool boot_Set_client_at_exit = false;
 static int boot_Process_id = -1;
 
 static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation);
 static int install_system_metadata (void);
 static void boot_shutdown_client_at_exit (void);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+static void boot_finalize_client_sub (void);
+#endif
 #if defined(CS_MODE)
 static int boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap,
 				       bool discriminative, int connect_order, bool is_preferred_host);
@@ -476,6 +483,7 @@ boot_check_and_fill_connection_info (BOOT_CLIENT_CREDENTIAL * client_credential,
 		{
 		  intl_identifier_upper (user_name, upper_case_name);
 		  client_credential->db_user = upper_case_name;
+		  free_and_init (upper_case_name);
 		}
 	      free_and_init (user_name);
 	    }
@@ -647,6 +655,7 @@ boot_restart_failure_cleanup (DB_INFO * db,
     }
   else
     {
+#if !defined(SA_MODE)
       if (boot_Server_credential.db_full_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
@@ -655,14 +664,14 @@ boot_restart_failure_cleanup (DB_INFO * db,
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.host_name);
 	}
+#endif
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
-      set_final ();
       tr_final ();
       au_final ();
       sm_final ();
-      ws_final ();
+      ws_final (false);
       es_final ();
       tp_final ();
 
@@ -1056,7 +1065,7 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
   oid_set_root (&rootclass_oid);
   OID_INIT_TEMPID ();
 
-  error_code = ws_init ();
+  error_code = ws_init (false);
   if (error_code == NO_ERROR)
     {
       sm_create_root (&rootclass_oid, &rootclass_hfid);
@@ -1199,7 +1208,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 
-  error_code = ws_init ();
+  error_code = ws_init (false);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1274,7 +1283,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   oid_set_root (&boot_Server_credential.root_class_oid);
   OID_INIT_TEMPID ();
 
-  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid);
+  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, false);
   au_init ();			/* initialize authorization globals */
 
   /* start authorization and make sure the logged in user has access */
@@ -1354,6 +1363,343 @@ error:
 
   return error_code;
 }
+
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+int
+boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
+{
+  int error_code;
+
+  /* **************************************************************** */
+  int tran_index;
+  TRAN_ISOLATION tran_isolation;
+  int tran_lock_wait_msecs;
+  TRAN_STATE transtate;
+
+  assert (client_credential != NULL);
+
+  /*
+   * The process-wide client modules are shared with the main client and the other sub-clients,
+   * so a sub-client must not call boot_shutdown_client () or boot_client_all_finalize () here.
+   * Clean up only the previous sub-client of this thread, if any (including one left by a server failure).
+   */
+  if (boot_Is_sub_client)
+    {
+      (void) boot_shutdown_client_sub ();
+    }
+  else if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      /* the main client thread cannot be restarted as a sub-client */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  //lang_init();
+  //tz_load();
+  //msgcat_init();
+  //sysprm_load_and_init_client(NULL, NULL);
+  //er_init()
+  //area_init ();
+  //locator_initialize_areas ();
+  //perfmon_initialize (1);
+
+  er_clear ();
+
+  /* read only mode? */
+  if (prm_get_bool_value (PRM_ID_READ_ONLY_MODE) || BOOT_READ_ONLY_CLIENT_TYPE (client_credential->client_type))
+    {
+      db_disable_modification ();
+    }
+
+  //db_clear_host_status ();
+
+  error_code = net_client_sub_init ();
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+  boot_Is_sub_client = true;
+
+  //if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
+  //  {
+  //    db_set_host_status (boot_Host_connected, DB_HS_NON_PREFFERED_HOSTS);
+  //  }  
+
+  //sysprm_tune_client_parameters ();  
+  //error_code = tp_init ();
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+
+  // tp_init ();
+  // tsc_init ();  
+
+  error_code = ws_init (true);
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
+  tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+
+  er_log_debug (ARG_FILE_LINE,
+		"boot_restart_client: register client { type %d db %s user %s password **** "
+		"program %s login %s host %s pid %d }\n", client_credential->client_type,
+		client_credential->get_db_name (), client_credential->get_db_user (),
+		client_credential->get_program_name (),
+		client_credential->get_login_name (), client_credential->get_host_name (),
+		client_credential->process_id);
+
+  tran_index =
+    boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+#if 0
+  //============================================
+  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+  if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+  /* Reset the pagesize according to server.. */
+  if (db_set_page_size (boot_Server_credential.page_size, boot_Server_credential.log_page_size) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_code = er_errid ();
+      goto error;
+    }
+
+  /* Reset the disk_level according to server.. */
+  if (rel_disk_compatible () != boot_Server_credential.disk_compatibility)
+    {
+      rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
+    }
+  //============================================  
+
+  if (sysprm_init_intl_param () != NO_ERROR)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+#endif //
+
+  /* Initialize client modules for execution */
+  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+
+  //oid_set_root (&boot_Server_credential.root_class_oid);
+  OID_INIT_TEMPID ();
+
+  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, true);
+  au_init ();			/* initialize authorization globals */
+
+  /* start authorization and make sure the logged in user has access */
+  error_code = au_start ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+  //error_code = boot_client_find_and_cache_class_oids ();
+
+  /*
+   * The session is created with cached_session_parameters loaded by the main client. They are only read here,
+   * and the parameter values (prm_Def) are not rewritten for a sub-client (see csession_find_or_create_session ()).
+   */
+  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
+#if 0
+  //error_code = boot_check_locales (&client_credential);
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+
+  //error_code = boot_check_timezone_checksum (&client_credential);
+  //if (error_code != NO_ERROR)
+  //  {
+  //    goto error;
+  //  }
+#endif
+
+  tr_init ();			/* initialize trigger manager of this sub-client */
+
+  /* TODO: how about to call es_init() only for normal client? */
+  //if (boot_Server_credential.lob_path[0] != '\0')
+  //  {
+  //    error_code = es_init (boot_Server_credential.lob_path);
+  //    if (error_code != NO_ERROR)
+  //    {
+  //      goto error;
+  //    }
+  //    }
+  //  else
+  //    {
+  //      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+  //    }
+
+  /* Does not care if was committed/aborted .. */
+  (void) tran_commit (false);
+
+  error_code = reset_isolation_and_wait_times ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  //  error_code = showstmt_metadata_init ();
+  //  json_set_alloc_funcs (malloc, free);    
+
+  return NO_ERROR;
+
+error:
+  /* Protect against falsely returning NO_ERROR to caller */
+  if (error_code == NO_ERROR)
+    {
+      error_code = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+    }
+
+  (void) boot_shutdown_client_sub ();
+  return error_code;
+}
+
+/*
+ * boot_is_sub_client () - whether the current thread holds a sub-client
+ *
+ * return : true if the current thread holds a sub-client started by boot_restart_client_sub ()
+ */
+bool
+boot_is_sub_client (void)
+{
+  return boot_Is_sub_client;
+}
+
+/*
+ * boot_shutdown_client_sub () - shutdown the sub-client of the current thread
+ *
+ * returns : NO_ERROR
+ *
+ * Note: This is the counterpart of boot_shutdown_client () for a sub-client.
+ *       If the sub-client is registered to the server, the current transaction is
+ *       either committed or aborted according to the commit_on_shutdown system parameter,
+ *       and the client is unregistered from the server. Then the resources of the
+ *       sub-client are released by boot_finalize_client_sub ().
+ *       The process-wide client modules shared with the main client are not finalized.
+ */
+int
+boot_shutdown_client_sub (void)
+{
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      /* wait for other server request of this sub-client to finish. */
+      tran_wait_server_active_trans ();
+
+      /*
+       * Either Abort or commit the current transaction depending upon the value
+       * of the commit_on_shutdown system parameter.
+       */
+      if (tran_is_active_and_has_updated ())
+	{
+	  if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
+	    {
+	      (void) tran_commit (false);
+	    }
+	  else
+	    {
+	      (void) tran_abort ();
+	    }
+	}
+
+      /* Make sure that we are still up. For example, the server may die during commit or abort. */
+      if (BOOT_IS_CLIENT_RESTARTED ())
+	{
+	  (void) boot_unregister_client (tm_Tran_index);
+	}
+    }
+
+  /*
+   * Close the connection after unregistering the client, as boot_shutdown_client () does.
+   * The connection is closed even if the client is not registered (e.g., boot_restart_client_sub () failed
+   * before the registration). It does nothing if the connection is already closed by boot_server_die_or_changed ().
+   */
+  net_client_sub_final (false);
+
+  boot_finalize_client_sub ();
+
+  return NO_ERROR;
+}
+
+/*
+ * boot_finalize_client_sub () - release the resources of the sub-client of the current thread
+ *
+ * return : nothing
+ *
+ * Note: Only the client-side resources of the current thread are released. The connection must be closed
+ *       before calling this function. Use boot_shutdown_client_sub () to finish the transaction, to unregister
+ *       the client from the server and to close the connection.
+ */
+static void
+boot_finalize_client_sub (void)
+{
+  //showstmt_metadata_final ();
+  tran_free_savepoint_list ();
+
+  tr_final ();
+  au_final ();
+  sm_final ();
+  /* must run before ws_final (); query handlers of this thread refer to the workspace */
+  method_callback_final ();
+  ws_final (true);
+  //es_final ();
+  //tp_final ();
+
+  //locator_free_areas ();
+  //sysprm_final ();
+  //perfmon_finalize ();
+  //area_final ();
+  //msgcat_final ();
+  //er_final (ER_ALL_FINAL);
+
+  //lang_final ();
+  //tz_unload ();
+  boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
+  /* boot_Is_client_all_final is for the process-wide modules, so it is not touched by a sub-client */
+  boot_Is_sub_client = false;
+
+
+  if (boot_Server_credential.db_full_name)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
+    }
+  if (boot_Server_credential.host_name)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.host_name);
+    }
+  if (boot_Server_credential.lob_path)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.lob_path);
+    }
+  if (boot_Server_credential.db_lang)
+    {
+      db_private_free_and_init (NULL, boot_Server_credential.db_lang);
+    }
+}
+#endif // #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 
 /*
  * boot_shutdown_client () - shutdown client
@@ -1489,10 +1835,24 @@ boot_server_die_or_changed (void)
     {
       (void) tran_abort_only_client (true);
       boot_client (NULL_TRAN_INDEX, TM_TRAN_WAIT_MSECS (), TM_TRAN_ISOLATION ());
-      boot_Is_client_all_final = false;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      if (boot_Is_sub_client)
+	{
+	  /*
+	   * Close only the connection of this sub-client. The process-wide modules are still used by
+	   * the main client and the other sub-clients, so boot_Is_client_all_final must not be changed.
+	   * The remaining resources of this sub-client are released by boot_shutdown_client_sub ().
+	   */
+	  net_client_sub_final (true);
+	}
+      else
+#endif /* CS_MODE && MULTI_CONN_TO_A_SERVER */
+	{
+	  boot_Is_client_all_final = false;
 #if defined(CS_MODE)
-      net_client_final (true);
-#endif /* !CS_MODE */
+	  net_client_final (true);
+#endif /* CS_MODE */
+	}
       if (prm_get_bool_value (PRM_ID_TEST_MODE))
 	{
 	  er_print_callstack (ARG_FILE_LINE, "boot_server_die_or_changed() terminated\n");
@@ -1527,6 +1887,7 @@ boot_client_all_finalize (int final_level)
 
   if (BOOT_IS_CLIENT_RESTARTED () || boot_Is_client_all_final == false)
     {
+#if !defined(SA_MODE)
       if (boot_Server_credential.db_full_name)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_full_name);
@@ -1543,11 +1904,11 @@ boot_client_all_finalize (int final_level)
 	{
 	  db_private_free_and_init (NULL, boot_Server_credential.db_lang);
 	}
+#endif
 
       showstmt_metadata_final ();
       tran_free_savepoint_list ();
       sm_flush_static_methods ();
-      set_final ();
       parser_final ();
 
       if (final_level != OPTIONAL_FINALIZATION)
@@ -1556,7 +1917,7 @@ boot_client_all_finalize (int final_level)
 	  au_final ();
 	  sm_final ();
 	  method_callback_final ();
-	  ws_final ();
+	  ws_final (false);
 	  es_final ();
 	  tp_final ();
 	}

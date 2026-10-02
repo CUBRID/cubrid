@@ -51,10 +51,13 @@
 #endif
 #endif /* !defined (SERVER_MODE) */
 
-#if !defined(SERVER_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 #define CUB_THREAD_LOCAL THREAD_LOCAL
+// TODO: Pre-defined for use when making the parser thread-safe
+#define CUB_THREAD_LOCAL_PSR
 #else
 #define CUB_THREAD_LOCAL
+#define CUB_THREAD_LOCAL_PSR
 #endif
 
 #ifdef __cplusplus
@@ -73,6 +76,7 @@ extern "C"
   extern pthread_t css_get_thread_id ();
 
 #if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
+  extern CUB_THREAD_LOCAL pthread_t gv_current_tid;
   extern pthread_t gv_main_tid;
 #define  CHECK_MAIN_THREAD()   assert (pthread_equal (gv_main_tid, css_get_thread_id ()))
 #else
