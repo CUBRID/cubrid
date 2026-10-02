@@ -185,6 +185,11 @@ static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID 
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
+static MVCC_SATISFIES_SNAPSHOT_RESULT locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p,
+										MVCC_REC_HEADER * rec_header,
+										MVCC_SNAPSHOT * snapshot);
+static int locator_child_still_refers (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, BTID * fk_btid,
+				       OID * oid, RECDES * recdes, DB_VALUE * parent_key, bool * refers);
 #if defined(ENABLE_UNUSED_FUNCTION)
 static TP_DOMAIN *locator_make_midxkey_domain (OR_INDEX * index);
 #endif
@@ -4207,6 +4212,116 @@ error:
 }
 
 /*
+ * locator_satisfies_child_of_locked_parent () - snapshot function for the children of a parent row this
+ *						 transaction holds locked
+ *
+ * return: SNAPSHOT_SATISFIED for a child to act on
+ *
+ * Children are taken as they are now, not by the statement snapshot. An entry whose inserter is still active has not
+ * passed its foreign key check, which holds an S lock on the parent row: that check waits for this transaction and
+ * fails once the parent is gone, and waiting for the entry here would deadlock. Rows loaded without the check
+ * (loaddb) are not covered.
+ */
+static MVCC_SATISFIES_SNAPSHOT_RESULT
+locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
+					  MVCC_SNAPSHOT * snapshot)
+{
+  switch (mvcc_satisfies_delete (thread_p, rec_header))
+    {
+    case DELETE_RECORD_CAN_DELETE:
+    case DELETE_RECORD_DELETE_IN_PROGRESS:
+      return SNAPSHOT_SATISFIED;
+    case DELETE_RECORD_INSERT_IN_PROGRESS:
+      return TOO_NEW_FOR_SNAPSHOT;
+    default:
+      return TOO_OLD_FOR_SNAPSHOT;
+    }
+}
+
+/*
+ * locator_child_still_refers () - whether a locked child, read at its latest version, still refers to parent_key
+ *
+ * return: NO_ERROR or error code
+ *
+ *   parent_key(in): the key being deleted or updated; a midxkey carries the domain it was written with
+ *   refers(out): true when the child's foreign key still equals parent_key, or its latest version is ours
+ *
+ * The child was enumerated before its lock was granted; the writer the lock waited for may have moved it to another
+ * parent. A version of this transaction's own comes from a cascade of the same statement and is acted on as
+ * enumerated.
+ */
+static int
+locator_child_still_refers (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, BTID * fk_btid, OID * oid,
+			    RECDES * recdes, DB_VALUE * parent_key, bool * refers)
+{
+  OR_CLASSREP *rep = attr_info->last_classrepr;
+  MVCC_REC_HEADER mvcc_header;
+  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT];
+  DB_VALUE child_key_buf;
+  DB_VALUE *child_key;
+  TP_DOMAIN *key_domain = NULL;
+  DB_VALUE_COMPARE_RESULT c;
+  BTID btid;
+  int index_pos;
+  int error_code = NO_ERROR;
+
+  if (or_mvcc_get_header (recdes, &mvcc_header) == NO_ERROR && MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&mvcc_header)
+      && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&mvcc_header)))
+    {
+      *refers = true;
+      return NO_ERROR;
+    }
+
+  for (index_pos = 0; index_pos < rep->n_indexes; index_pos++)
+    {
+      if (BTID_IS_EQUAL (&rep->indexes[index_pos].btid, fk_btid))
+	{
+	  break;
+	}
+    }
+  assert (index_pos < rep->n_indexes);
+
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, recdes, attr_info);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  db_make_null (&child_key_buf);
+  child_key = heap_attrvalue_get_key (thread_p, index_pos, attr_info, recdes, &btid, &child_key_buf,
+				      PTR_ALIGN (buf, MAX_ALIGNMENT), NULL, &key_domain, oid, true);
+  if (child_key == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  *refers = false;
+  if (!DB_IS_NULL (child_key))
+    {
+      if (DB_VALUE_TYPE (child_key) == DB_TYPE_MIDXKEY)
+	{
+	  /* Read in the PK's domain, as the foreign key check reads it: the FK index orders every column ascending,
+	   * and pr_midxkey_compare () refuses columns whose directions differ. */
+	  key_domain = parent_key->data.midxkey.domain;
+	  child_key->data.midxkey.domain = key_domain;
+	}
+      c = btree_compare_key (parent_key, child_key, key_domain, 1, 1, NULL);
+      if (c == DB_UNK)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	}
+      *refers = (c == DB_EQ);
+    }
+
+  if (child_key == &child_key_buf)
+    {
+      pr_clear_value (&child_key_buf);
+    }
+  (void) heap_attrinfo_clear_dbvalues (attr_info);
+  return error_code;
+}
+
+/*
  * locator_check_primary_key_delete () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4233,7 +4348,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   int num_attrs = 0;
   int k;
   int *keys_prefix_length = NULL;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT child_snapshot;
+  DB_VALUE parent_key;
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
@@ -4241,12 +4357,15 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
   oid_list.oidp = NULL;
 
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
+  /* The child scan decides visibility without it, but building it holds vacuum back while that scan runs. */
+  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
     {
       error_code = er_errid ();
       return (error_code == NO_ERROR ? ER_FAILED : error_code);
     }
+  child_snapshot.snapshot_fnc = locator_satisfies_child_of_locked_parent;
+
+  parent_key = *key;
 
   db_make_null (&null_value);
   db_make_null (&key_val_range.key1);
@@ -4278,6 +4397,16 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	}
       else if (fkref->del_action == SM_FOREIGN_KEY_CASCADE || fkref->del_action == SM_FOREIGN_KEY_SET_NULL)
 	{
+	  /* A key built without its domain (DELETE, a partition move) gets the PK's, read once for the re-check below. */
+	  if (DB_VALUE_TYPE (&parent_key) == DB_TYPE_MIDXKEY && parent_key.data.midxkey.domain == NULL)
+	    {
+	      parent_key.data.midxkey.domain = btree_read_key_type (thread_p, &index->btid);
+	      if (parent_key.data.midxkey.domain == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto error3;
+		}
+	    }
 	  if (attr_ids)
 	    {
 	      db_private_free_and_init (thread_p, attr_ids);
@@ -4338,7 +4467,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      ASSERT_ERROR ();
 	      goto error3;
 	    }
-	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
+	  scan_init_index_scan (&isid, &oid_list, &child_snapshot);
 	  is_upd_scan_init = false;
 
 	  if (!is_newly)
@@ -4437,8 +4566,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  SCAN_CODE scan_code = S_SUCCESS;
+		  bool refers = false;
 		  recdes.data = NULL;
-		  /* TO DO - handle reevaluation */
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
@@ -4460,6 +4589,19 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      error_code = er_errid ();
 		      error_code = (error_code == NO_ERROR ? ER_FAILED : error_code);
 		      goto error1;
+		    }
+
+		  error_code =
+		    locator_child_still_refers (thread_p, &attr_info, &fkref->self_btid, oid_ptr, &recdes, &parent_key,
+						&refers);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
+		  if (!refers)
+		    {
+		      lock_unlock_object_donot_move_to_non2pl (thread_p, oid_ptr, &fkref->self_oid, X_LOCK);
+		      continue;
 		    }
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
@@ -4612,7 +4754,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   int num_attrs = 0;
   int k;
   int *keys_prefix_length = NULL;
-  MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT child_snapshot;
+  DB_VALUE parent_key;
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
@@ -4620,12 +4763,15 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
   oid_list.oidp = NULL;
 
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
+  /* The child scan decides visibility without it, but building it holds vacuum back while that scan runs. */
+  if (logtb_get_mvcc_snapshot (thread_p) == NULL)
     {
       error_code = er_errid ();
       return (error_code == NO_ERROR ? ER_FAILED : error_code);
     }
+  child_snapshot.snapshot_fnc = locator_satisfies_child_of_locked_parent;
+
+  parent_key = *key;
 
   db_make_null (&key_val_range.key1);
   db_make_null (&key_val_range.key2);
@@ -4656,6 +4802,16 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	}
       else if (fkref->upd_action == SM_FOREIGN_KEY_CASCADE || fkref->upd_action == SM_FOREIGN_KEY_SET_NULL)
 	{
+	  /* A key built without its domain (DELETE, a partition move) gets the PK's, read once for the re-check below. */
+	  if (DB_VALUE_TYPE (&parent_key) == DB_TYPE_MIDXKEY && parent_key.data.midxkey.domain == NULL)
+	    {
+	      parent_key.data.midxkey.domain = btree_read_key_type (thread_p, &index->btid);
+	      if (parent_key.data.midxkey.domain == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto error3;
+		}
+	    }
 	  if (attr_ids)
 	    {
 	      db_private_free_and_init (thread_p, attr_ids);
@@ -4717,7 +4873,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
+	  scan_init_index_scan (&isid, &oid_list, &child_snapshot);
 
 	  is_upd_scan_init = false;
 	  if (!is_newly)
@@ -4792,8 +4948,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  SCAN_CODE scan_code = S_SUCCESS;
+		  bool refers = false;
 		  recdes.data = NULL;
-		  /* TO DO - handle reevaluation */
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
@@ -4814,6 +4970,19 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      error_code = er_errid ();
 		      error_code = (error_code == NO_ERROR ? ER_FAILED : error_code);
 		      goto error1;
+		    }
+
+		  error_code =
+		    locator_child_still_refers (thread_p, &attr_info, &fkref->self_btid, oid_ptr, &recdes, &parent_key,
+						&refers);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
+		  if (!refers)
+		    {
+		      lock_unlock_object_donot_move_to_non2pl (thread_p, oid_ptr, &fkref->self_oid, X_LOCK);
+		      continue;
 		    }
 
 		  if ((error_code = heap_attrinfo_clear_dbvalues (&attr_info)) != NO_ERROR)
