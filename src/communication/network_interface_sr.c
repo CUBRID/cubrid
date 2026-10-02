@@ -11024,23 +11024,6 @@ error:
   return;
 }
 
-/*
- * cdc_is_session_owner () - is the calling connection the one that opened the
- *                           CDC session now in place?
- *
- * The CDC session is server-global, and only the connection recorded by
- * scdc_start_session () may drive or end it. client_id is compared along with
- * fd because an fd can be reused by an unrelated connection.
- * scdc_start_session () itself is not gated: its takeover branch is how a
- * client recovers after the previous one terminated abnormally.
- */
-static bool
-cdc_is_session_owner (THREAD_ENTRY * thread_p)
-{
-  return (cdc_Gl.conn.fd != -1 && cdc_Gl.conn.fd == thread_p->conn_entry->fd
-	  && cdc_Gl.conn.client_id == thread_p->conn_entry->client_id);
-}
-
 void
 scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -11050,13 +11033,6 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
   LOG_LSA start_lsa;
   time_t input_time;
   int error_code;
-
-  if (!cdc_is_session_owner (thread_p))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE, 0);
-      error_code = ER_AU_AUTHORIZATION_FAILURE;
-      goto error;
-    }
 
   ptr = or_unpack_int64 (request, &input_time);
   //if scdc_find_lsa() is called more than once, it should pause running cdc_loginfo_producer_execute() thread 
@@ -11125,13 +11101,6 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   int num_log_info;
 
   int rc;
-
-  if (!cdc_is_session_owner (thread_p))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE, 0);
-      error_code = ER_AU_AUTHORIZATION_FAILURE;
-      goto error;
-    }
 
   or_unpack_log_lsa (request, &start_lsa);
 
@@ -11219,19 +11188,6 @@ error:
 void
 scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
-  if (!cdc_is_session_owner (thread_p))
-    {
-      /* The buffer below holds the owner's extracted log info; never hand it
-       * to another connection. */
-      OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-      char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_AUTHORIZATION_FAILURE, 0);
-      or_pack_int (reply, ER_AU_AUTHORIZATION_FAILURE);
-      (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-      return;
-    }
-
   cdc_log ("%s : size of log info is %d", __func__, cdc_Gl.consumer.log_info_size);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, cdc_Gl.consumer.log_info, cdc_Gl.consumer.log_info_size);
@@ -11244,26 +11200,15 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  int error_code = NO_ERROR;
+  int error_code;
 
-  if (cdc_is_session_owner (thread_p))
-    {
-      error_code = cdc_cleanup (thread_p);
+  error_code = cdc_cleanup (thread_p);
 
-      cdc_log ("%s : clean up for cdc thread has done.", __func__);
+  cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
-      cdc_Gl.conn.fd = -1;
-      cdc_Gl.conn.status = CONN_CLOSED;
-      cdc_Gl.conn.client_id = -1;
-    }
-  else
-    {
-      /* Not the owner: a session this connection doesn't hold (e.g. one already
-       * taken over by a newer client) is left alone. There is nothing of this
-       * connection's to end, so reply success and let its finalize complete. */
-      cdc_log ("%s : connection (fd %d, client_id %d) does not own the CDC session; nothing to clean up",
-	       __func__, thread_p->conn_entry->fd, thread_p->conn_entry->client_id);
-    }
+  cdc_Gl.conn.fd = -1;
+  cdc_Gl.conn.status = CONN_CLOSED;
+  cdc_Gl.conn.client_id = -1;
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
