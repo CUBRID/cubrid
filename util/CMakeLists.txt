@@ -116,7 +116,7 @@ endif(WIN32)
 if(NOT WIN32)
   list(APPEND CUBRID_SOURCES ${BASE_DIR}/background_process.cpp)
   add_executable(cub_console ${EXECUTABLES_DIR}/console_relay.cpp)
-  install(TARGETS cub_console RUNTIME DESTINATION bin)
+  install(TARGETS cub_console RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application)
 endif(NOT WIN32)
 add_executable(cubrid-bin ${CUBRID_SOURCES})
 
