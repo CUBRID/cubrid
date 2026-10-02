@@ -239,13 +239,97 @@ namespace cubmethod
   }
 
   int
-  query_handler::prepare_compile (const std::string &sql)
+  query_handler::compile_static_sql (STATIC_SQL_COMPILE_PASS pass)
+  {
+    assert (m_prepare_flag == 0);
+
+    db_init_lexer_lineno();
+    m_session = db_open_buffer_for_static_sql (m_sql_stmt.c_str(), pass);
+
+    if (!m_session)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
+      }
+
+    if (db_check_single_query (m_session) == ER_IT_MULTIPLE_STATEMENT)
+      {
+	assert (false);
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_MULTIPLE_STATEMENT, 0);
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
+      }
+
+    m_stmt_type = CUBRID_STMT_NONE;
+    int stmt_id = db_compile_statement (m_session);
+    if (stmt_id < 0)
+      {
+	m_stmt_type = get_stmt_type (m_sql_stmt);
+	m_error_ctx.set_error (stmt_id, db_error_string (1), __FILE__, __LINE__);
+	m_is_prepared = false;
+	return ER_FAILED;
+      }
+    else
+      {
+	m_stmt_type = db_get_statement_type (m_session, stmt_id);
+	m_is_prepared = true;
+      }
+
+    /* prepare result set */
+    m_num_markers = get_num_markers ();
+
+    query_result &q_result = m_query_result;
+    q_result.stmt_type = m_stmt_type;
+    q_result.stmt_id = stmt_id;
+
+    return NO_ERROR;
+  }
+
+  int
+  query_handler::check_and_rewrite_static_sql_inner (const std::string &sql)
+  {
+    int error;
+
+    m_sql_stmt.assign (sql);
+
+    // semantic check pass
+    error = compile_static_sql (SSCP_SEMANTIC_CHECK);
+    if (error == NO_ERROR)
+      {
+	close_and_free_session ();
+	er_clear ();
+
+	// rewrite pass
+	error = compile_static_sql (SSCP_REWRITE);
+      }
+
+    if (error == NO_ERROR)
+      {
+	m_user = au_get_current_user_name ();
+	m_prepare_info.handle_id = get_id ();
+	m_prepare_info.stmt_type = m_query_result.stmt_type;
+	m_prepare_info.num_markers = get_num_markers ();
+	set_prepare_column_list_info (m_prepare_info.column_infos);
+
+	m_is_occupied = true;
+      }
+    else
+      {
+	// error handling
+	close_and_free_session ();
+      }
+
+    return error;
+  }
+
+  int
+  query_handler::check_and_rewrite_static_sql (const std::string &sql)
   {
     int level;
     qo_get_optimization_param (&level, QO_PARAM_LEVEL);
     qo_set_optimization_param (NULL, QO_PARAM_LEVEL, 2);
 
-    int error = prepare (sql, PREPARE_STATIC_SQL);
+    int error = check_and_rewrite_static_sql_inner (sql);
 
     // restore
     qo_set_optimization_param (NULL, QO_PARAM_LEVEL, level);
@@ -793,14 +877,8 @@ namespace cubmethod
   {
     int &flag = m_prepare_flag;
 
-    if (flag & PREPARE_STATIC_SQL)
-      {
-	g_open_buffer_control_flags |= PARSER_FOR_PLCSQL_STATIC_SQL;
-      }
-
     db_init_lexer_lineno();
     m_session = db_open_buffer (m_sql_stmt.c_str());
-    g_open_buffer_control_flags = 0;
 
     if (!m_session)
       {

@@ -11067,7 +11067,7 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
   col_cnt = pt_length_of_select_list (pt_get_select_list (parser, qry), EXCLUDE_HIDDEN_COLUMNS);
   if (tgt_cnt != col_cnt)
     {
-      if (parser->flag.is_parsing_static_sql == 1 && tgt_cnt == 1)
+      if (parser->flag.static_sql_compile_pass && tgt_cnt == 1)
 	{
 	  // OK. the single target can be a record
 	}
@@ -11077,7 +11077,7 @@ pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry)
 	}
     }
 
-  if (parser->flag.is_parsing_static_sql == 1)
+  if (parser->flag.static_sql_compile_pass)
     {
       pt_check_into_clause_for_static_sql (parser, qry, tgt_cnt);
     }
@@ -15443,7 +15443,7 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  /* test assignment compatibility. This sets parser->error_msgs */
 	  PT_NODE *new_node;
 
-	  if (parser->flag.is_parsing_static_sql == 1 && a->node_type != PT_NAME)
+	  if (parser->flag.static_sql_compile_pass && a->node_type != PT_NAME)
 	    {
 	      assert (a->node_type == PT_HOST_VAR);
 	      PT_ERRORmf2 (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_HAS_NO_ATTR,

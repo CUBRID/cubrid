@@ -56,10 +56,12 @@ extern "C"
   enum
   { DB_NO_OIDS, DB_ROW_OIDS, DB_COLUMN_OIDS };
 
-  enum OPEN_BUFFER_FLAGS
-  { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
-
-  extern int g_open_buffer_control_flags;
+  typedef enum
+  {
+    SSCP_NONE = 0,
+    SSCP_SEMANTIC_CHECK = 0x01,
+    SSCP_REWRITE = 0x02
+  } STATIC_SQL_COMPILE_PASS;
 
 /* Memory reclamation functions */
   extern void db_objlist_free (DB_OBJLIST * list);
@@ -597,6 +599,7 @@ extern "C"
   extern char *db_query_get_plan_dump_file ();
 
 /* sql query routines */
+  extern DB_SESSION *db_open_buffer_for_static_sql (const char *buffer, STATIC_SQL_COMPILE_PASS pass);
   extern DB_SESSION *db_open_buffer (const char *buffer);
   extern DB_SESSION *db_open_file (FILE * file);
   extern DB_SESSION *db_open_file_name (const char *name);

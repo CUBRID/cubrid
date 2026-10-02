@@ -554,7 +554,7 @@ namespace cubmethod
 	er_clear ();
 	m_error_ctx.clear ();
 
-	error = handler->prepare_compile (s);
+	error = handler->check_and_rewrite_static_sql (s);
 	if (error == NO_ERROR && m_error_ctx.has_error () == false)
 	  {
 	    bool has_table_access;

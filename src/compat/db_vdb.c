@@ -182,8 +182,6 @@ db_stmt_bind_fp_ptr (PT_NODE * statement)
   return NULL;
 }
 
-int g_open_buffer_control_flags = 0;
-
 /* Per-session registry of the compiled subsessions of SQL-level prepared statements
  * (PREPARE name FROM '...'). Keeping the post-transform tree between EXECUTE requests
  * lets the bind-sensitivity check regenerate only the plan and the XASL when the USING
@@ -469,11 +467,6 @@ db_open_buffer_local (const char *buffer)
 
   if (session)
     {
-      if (g_open_buffer_control_flags & PARSER_FOR_PLCSQL_STATIC_SQL)
-	{
-	  session->parser->flag.is_parsing_static_sql = 1;
-	}
-
       session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
       if (session->statements)
 	{
@@ -503,6 +496,33 @@ db_open_buffer (const char *buffer)
   return session;
 }
 
+/*
+ * db_open_buffer_for_static_sql()
+ */
+
+DB_SESSION *
+db_open_buffer_for_static_sql (const char *buffer, STATIC_SQL_COMPILE_PASS pass)
+{
+  DB_SESSION *session;
+
+  CHECK_1ARG_NULL (buffer);
+  CHECK_CONNECT_NULL ();
+
+  session = db_open_local ();
+
+  if (session)
+    {
+      session->parser->flag.static_sql_compile_pass = pass;
+
+      session->statements = parser_parse_string_with_escapes (session->parser, buffer, false);
+      if (session->statements)
+	{
+	  return initialize_session (session);
+	}
+    }
+
+  return session;
+}
 
 /*
  * db_open_file() - Starts a new SQL compile session on a query file
@@ -1012,8 +1032,8 @@ db_compile_statement_local (DB_SESSION * session)
 	}
     }
 
-  /* for Static SQLs of PL/CSQL SP skip the remaining steps */
-  if (parser->flag.is_parsing_static_sql)
+  /* for rewrite pass of Static SQLs of PL/CSQL SP, skip the remaining steps */
+  if (parser->flag.static_sql_compile_pass == SSCP_REWRITE)
     {
       session->statements[stmt_ndx] = statement;
       goto target_for_static_sql;
@@ -1071,6 +1091,11 @@ db_compile_statement_local (DB_SESSION * session)
 
   /* so now, the statement is compiled */
   session->statements[stmt_ndx] = statement;
+  /* for semantic check pass of Static SQLs of PL/CSQL SP, skip the remaining steps */
+  if (parser->flag.static_sql_compile_pass == SSCP_SEMANTIC_CHECK)
+    {
+      goto target_for_static_sql;
+    }
   session->stage[stmt_ndx] = StatementCompiledStage;
 
 

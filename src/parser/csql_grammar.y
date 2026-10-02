@@ -13693,7 +13693,7 @@ to_param
 		{{
 			PT_NODE *val = $1;
                         
-                         if (this_parser->flag.is_parsing_static_sql)
+                         if (this_parser->flag.static_sql_compile_pass)
                           {
                              if (val && $3)
                               {
@@ -14716,7 +14716,7 @@ limit_factor
                 }}
         | identifier_without_dot    /* for PL/CSQL Static SQL only */
                 {{
-                        if (this_parser->flag.is_parsing_static_sql) {
+                        if (this_parser->flag.static_sql_compile_pass) {
 
                             // interpret the identifier only as a PL/CSQL host variable
                             PT_NODE *node = parser_new_node (this_parser, PT_HOST_VAR);
@@ -23867,7 +23867,7 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	{
 	  date_lang = arg3;
 	} 
-      else if (this_parser->flag.is_parsing_static_sql)
+      else if (this_parser->flag.static_sql_compile_pass)
         {
            if (arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST)
              {

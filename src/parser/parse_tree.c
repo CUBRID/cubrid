@@ -1214,7 +1214,7 @@ parser_create_parser (void)
   parser->flag.has_internal_error = 0;
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;
-  parser->flag.is_parsing_static_sql = 0;
+  parser->flag.static_sql_compile_pass = SSCP_NONE;
   parser->flag.is_unloading_plcsql_def = 0;
   parser->flag.is_parsing_trigger = 0;
 
