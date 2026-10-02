@@ -779,7 +779,7 @@ exit:
     if (cursor == nullptr)
       {
 	cubmem::block b = pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_INVALID_CURSOR,
-			  std::string ("cursor closed"), ARG_FILE_LINE);
+					   std::string ("cursor closed"), ARG_FILE_LINE);
 	error = m_stack->send_data_to_java (b);
 	return error;
       }

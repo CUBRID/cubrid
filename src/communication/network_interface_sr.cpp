@@ -11967,8 +11967,8 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   int threshold_to_remove_archive = 0;
 
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER,
-    {}, {},
-  };
+					{}, {},
+				      };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
