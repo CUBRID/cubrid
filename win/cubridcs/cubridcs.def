@@ -306,6 +306,8 @@ EXPORTS
     db_set_connect_status
     db_set_server_session_key
     db_get_server_session_key
+    db_set_session_secret
+    db_get_session_secret
     db_get_row_count_cache
     db_update_row_count_cache
     db_get_row_count
