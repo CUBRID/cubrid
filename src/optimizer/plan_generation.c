@@ -2235,6 +2235,31 @@ make_outer_instnum (QO_ENV * env, QO_PLAN * outer, QO_PLAN * plan)
 }
 
 /*
+ * mark_following_joins () - tag the scan procs after a NL semi/anti inner as following joins
+ *   return: void
+ *   sa_scan(in): the semi/anti inner scan proc; the scans of the joins above it in the plan already hang
+ *		  off its scan_ptr (gen_inner () attaches them)
+ *
+ * Note: the scan block iterator stops above the first semi/anti inner of a scan chain, so every scan
+ *	 after it is driven per outer row like the inner itself: rewound for each row that reaches it and
+ *	 walking its own partitions within that row (CBRD-27493). A semi/anti inner further down keeps its
+ *	 own flag and its own partition walk.
+ */
+static void
+mark_following_joins (XASL_NODE * sa_scan)
+{
+  XASL_NODE *xp;
+
+  for (xp = sa_scan->scan_ptr; xp != NULL; xp = xp->scan_ptr)
+    {
+      if (!XASL_IS_NL_SEMI_OR_ANTI (xp))
+	{
+	  XASL_SET_FLAG (xp, XASL_NL_FOLLOWING_JOIN);
+	}
+    }
+}
+
+/*
  * gen_outer () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -2505,6 +2530,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
 		    {
 		      mark_access_as_semi_anti_join (parser, scan, sa_type);
+		      mark_following_joins (scan);
 		    }
 		}
 	    }
