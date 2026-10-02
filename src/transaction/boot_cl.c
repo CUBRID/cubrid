@@ -1366,7 +1366,6 @@ error:
 
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-pthread_mutex_t g_db_restart_client_sub_mutex = PTHREAD_MUTEX_INITIALIZER;
 int
 boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
@@ -1518,14 +1517,11 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
     }
   //error_code = boot_client_find_and_cache_class_oids ();
 
-  // need session? 
-  /* FIX-ME) Locks are used to prevent concurrency until thread-safe handling 
-   * for system parameter global variables is fully implemented."
+  /*
+   * The session is created with cached_session_parameters loaded by the main client. They are only read here,
+   * and the parameter values (prm_Def) are not rewritten for a sub-client (see csession_find_or_create_session ()).
    */
-  pthread_mutex_lock (&g_db_restart_client_sub_mutex);
-  sysprm_load_session_parameters ();
   (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
-  pthread_mutex_unlock (&g_db_restart_client_sub_mutex);
 #if 0
   //error_code = boot_check_locales (&client_credential);
   //if (error_code != NO_ERROR)
@@ -1685,7 +1681,6 @@ boot_finalize_client_sub (void)
   /* boot_Is_client_all_final is for the process-wide modules, so it is not touched by a sub-client */
   boot_Is_sub_client = false;
 
-  sysprm_free_session_parameters (&cached_session_parameters);
 
   if (boot_Server_credential.db_full_name)
     {

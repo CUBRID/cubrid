@@ -4646,12 +4646,29 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	      free_and_init (request);
 	      return error;
 	    }
-	  sysprm_update_client_session_parameters (session_params);
+	}
+
+#if defined(MULTI_CONN_TO_A_SERVER)
+      if (boot_is_sub_client ())
+	{
+	  /*
+	   * The parameter values on the client (prm_Def) are process-wide and shared with the main client and
+	   * the other sub-clients, so a sub-client must not rewrite them. The session of a sub-client is created
+	   * with cached_session_parameters loaded by the main client.
+	   */
 	}
       else
+#endif
 	{
-	  /* use the values stored in cached_session_parameters */
-	  sysprm_update_client_session_parameters (cached_session_parameters);
+	  if (update_parameter_values)
+	    {
+	      sysprm_update_client_session_parameters (session_params);
+	    }
+	  else
+	    {
+	      /* use the values stored in cached_session_parameters */
+	      sysprm_update_client_session_parameters (cached_session_parameters);
+	    }
 	}
       sysprm_free_session_parameters (&session_params);
     }

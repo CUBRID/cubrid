@@ -747,7 +747,7 @@ extern "C"
 /* when system parameters are loaded, session parameters need to be cached for
  * future clients that connect to broker
  */
-  extern CUB_THREAD_LOCAL SESSION_PARAM *cached_session_parameters;
+  extern SESSION_PARAM *cached_session_parameters;
   extern void sysprm_load_session_parameters ();
 #endif				/* CS_MODE */
 
