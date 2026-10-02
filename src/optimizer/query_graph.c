@@ -246,6 +246,7 @@ static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs
 					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
+static void qo_classify_antijoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
 static void qo_seg_clear (QO_ENV *, int);
 static void qo_node_clear (QO_ENV *, int);
@@ -584,6 +585,9 @@ qo_optimize_helper (QO_ENV * env)
 
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
+
+  /* classify ON-clause terms for anti join */
+  qo_classify_antijoin_terms (env);
 
   bitset_delset (&nodeset);
 
@@ -2778,7 +2782,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
       on_node = QO_ENV_NODE (env, location);
       QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
 
-      if (QO_NODE_IS_OUTER_JOIN (on_node))
+      if (QO_NODE_IS_OUTER_JOIN (on_node) || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	{
 	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
 	    {
@@ -6730,6 +6734,53 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
   bitset_delset (&prev_dep_set);
   bitset_delset (&dep_set);
+}
+
+/*
+ * qo_classify_antijoin_terms () - classify the ON-clause terms of anti joins
+ *   return:
+ *   env(in):
+ *
+ * Note: qo_classify_outerjoin_terms () skips the ON-clause terms of semi/anti joins.
+ *   An anti join emits an outer row only when no inner row satisfies its whole ON clause,
+ *   so an ON-clause term that does not read the anti node must not become a sarg of an outer node.
+ *
+ * Term Classify Matrix (same notation as qo_classify_outerjoin_terms ())
+ * --+-----+---------------------+----------+---------------+------------------
+ * NO|Major|Minor                |nidx_self |dep_set        | Classify
+ * --+-----+---------------------+----------+---------------+------------------
+ * A1|ON   |TC_sarg(anti on)     |on_node   |-              |TC_sarg(ow TC_dj)
+ * A2|ON   |TC_other(anti on)    |-         |-              |TC_dj
+ * --+-----+---------------------+----------+---------------+------------------
+ */
+static void
+qo_classify_antijoin_terms (QO_ENV * env)
+{
+  QO_TERM *term;
+  QO_NODE *node;
+  int i;
+
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+
+      if (!QO_ON_COND_TERM (term))
+	{
+	  continue;
+	}
+
+      node = QO_ENV_NODE (env, QO_TERM_LOCATION (term));
+      if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_ANTI)
+	{
+	  continue;
+	}
+
+      if ((QO_TERM_CLASS (term) == QO_TC_SARG && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node)))
+	  || QO_TERM_CLASS (term) == QO_TC_OTHER)
+	{
+	  QO_TERM_CLASS (term) = QO_TC_DURING_JOIN;
+	}
+    }
 }
 
 /*

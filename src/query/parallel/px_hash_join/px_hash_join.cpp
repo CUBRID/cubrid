@@ -297,11 +297,13 @@ error_exit:
       switch (manager->join_type)
 	{
 	case JOIN_INNER:
+	case JOIN_SEMI:
 	  context->outer.fill_record = nullptr;
 	  context->inner.fill_record = nullptr;
 	  break;
 
 	case JOIN_LEFT:
+	case JOIN_ANTI:
 	  context->outer.fill_record = &context->outer.tuple_record;
 	  context->inner.fill_record = nullptr;
 	  break;

@@ -2298,8 +2298,10 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
        */
       bitset_union (&predset, &(plan->plan_un.join.join_terms));
 
-      /* outer join could have terms classed as AFTER JOIN TERM; setting after join terms to merged list scan */
-      if (IS_OUTER_JOIN_TYPE (join_type))
+      /* outer and anti joins could have terms classed as AFTER JOIN TERM;
+       * setting after join terms to merged list scan
+       */
+      if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (plan->plan_un.join.inner) == PT_JOIN_ANTI)
 	{
 	  bitset_union (&predset, &(plan->plan_un.join.during_join_terms));
 	  bitset_union (&predset, &(plan->plan_un.join.after_join_terms));
@@ -6307,7 +6309,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
    * The terms remaining in pred_set are evaluated by the parent list scan.
    * Each removed term is evaluated exactly once in the probe, and never by the parent. */
   bitset_difference (pred_set, &plan->plan_un.join.join_terms);
-  if (IS_OUTER_JOIN_TYPE (join_type))
+  if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (inner_plan) == PT_JOIN_ANTI)
     {
       bitset_difference (pred_set, &plan->plan_un.join.during_join_terms);
     }
@@ -6494,7 +6496,20 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
   final_info = &projection_info->final;
 
   /* join_type */
-  merge_info->join_type = plan->plan_un.join.join_type;
+  switch (qo_plan_semi_anti_join_type (inner_plan))
+    {
+    case PT_JOIN_SEMI:
+      merge_info->join_type = JOIN_SEMI;
+      break;
+
+    case PT_JOIN_ANTI:
+      merge_info->join_type = JOIN_ANTI;
+      break;
+
+    default:
+      merge_info->join_type = plan->plan_un.join.join_type;
+      break;
+    }
 
   /* ls_column_cnt */
   merge_info->ls_column_cnt = bitset_cardinality (&plan->plan_un.join.join_terms);
