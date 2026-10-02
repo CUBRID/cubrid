@@ -160,6 +160,9 @@ static int boot_Process_id = -1;
 static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation);
 static int install_system_metadata (void);
 static void boot_shutdown_client_at_exit (void);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+static void boot_finalize_client_sub (void);
+#endif
 #if defined(CS_MODE)
 static int boot_client_initialize_css (DB_INFO * db, int client_type, bool check_capabilities, int opt_cap,
 				       bool discriminative, int connect_order, bool is_preferred_host);
@@ -1384,7 +1387,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
    */
   if (boot_Is_sub_client)
     {
-      boot_finalize_client_sub ();
+      (void) boot_shutdown_client_sub ();
     }
   else if (BOOT_IS_CLIENT_RESTARTED ())
     {
@@ -1575,15 +1578,77 @@ error:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
     }
 
-  boot_finalize_client_sub ();
+  (void) boot_shutdown_client_sub ();
   return error_code;
 }
 
-void
-boot_finalize_client_sub ()
+/*
+ * boot_shutdown_client_sub () - shutdown the sub-client of the current thread
+ *
+ * returns : NO_ERROR
+ *
+ * Note: This is the counterpart of boot_shutdown_client () for a sub-client.
+ *       If the sub-client is registered to the server, the current transaction is
+ *       either committed or aborted according to the commit_on_shutdown system parameter,
+ *       and the client is unregistered from the server. Then the resources of the
+ *       sub-client are released by boot_finalize_client_sub ().
+ *       The process-wide client modules shared with the main client are not finalized.
+ */
+int
+boot_shutdown_client_sub (void)
 {
+  if (BOOT_IS_CLIENT_RESTARTED ())
+    {
+      /* wait for other server request of this sub-client to finish. */
+      tran_wait_server_active_trans ();
+
+      /*
+       * Either Abort or commit the current transaction depending upon the value
+       * of the commit_on_shutdown system parameter.
+       */
+      if (tran_is_active_and_has_updated ())
+	{
+	  if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
+	    {
+	      (void) tran_commit (false);
+	    }
+	  else
+	    {
+	      (void) tran_abort ();
+	    }
+	}
+
+      /* Make sure that we are still up. For example, the server may die during commit or abort. */
+      if (BOOT_IS_CLIENT_RESTARTED ())
+	{
+	  (void) boot_unregister_client (tm_Tran_index);
+	}
+    }
+
+  /*
+   * Close the connection after unregistering the client, as boot_shutdown_client () does.
+   * The connection is closed even if the client is not registered (e.g., boot_restart_client_sub () failed
+   * before the registration). It does nothing if the connection is already closed by boot_server_die_or_changed ().
+   */
   net_client_sub_final (false);
 
+  boot_finalize_client_sub ();
+
+  return NO_ERROR;
+}
+
+/*
+ * boot_finalize_client_sub () - release the resources of the sub-client of the current thread
+ *
+ * return : nothing
+ *
+ * Note: Only the client-side resources of the current thread are released. The connection must be closed
+ *       before calling this function. Use boot_shutdown_client_sub () to finish the transaction, to unregister
+ *       the client from the server and to close the connection.
+ */
+static void
+boot_finalize_client_sub (void)
+{
   //showstmt_metadata_final ();
   tran_free_savepoint_list ();
 
@@ -1768,7 +1833,7 @@ boot_server_die_or_changed (void)
 	  /*
 	   * Close only the connection of this sub-client. The process-wide modules are still used by
 	   * the main client and the other sub-clients, so boot_Is_client_all_final must not be changed.
-	   * The remaining resources of this sub-client are released by boot_finalize_client_sub ().
+	   * The remaining resources of this sub-client are released by boot_shutdown_client_sub ().
 	   */
 	  net_client_sub_final (true);
 	}

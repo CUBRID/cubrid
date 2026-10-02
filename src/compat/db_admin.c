@@ -990,6 +990,10 @@ db_restart (const char *program, int print_version, const char *volume)
  * db_restart_sub() - restart a sub-client
  * return : error code
  * sub_index(in) : the index of the sub-client
+ *
+ * Note: The sub-client is bound to the calling thread. db_shutdown_sub () must be called
+ *       by the same thread before the thread exits. Otherwise, the transaction and the locks
+ *       of the sub-client remain in the server until the process exits.
  */
 int
 db_restart_sub (int sub_index)
@@ -1116,6 +1120,12 @@ db_shutdown_without_request_to_server (void)
 }
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * db_shutdown_sub() - shutdown the sub-client of the calling thread
+ * return : error code
+ *
+ * Note: It must be called by the thread which called db_restart_sub (), before the thread exits.
+ */
 int
 db_shutdown_sub ()
 {
@@ -1124,7 +1134,7 @@ db_shutdown_sub ()
 
   // db_free_execution_plan ();
 
-  boot_finalize_client_sub ();
+  (void) boot_shutdown_client_sub ();
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 
   extern void au_ctx_destructor (void);
