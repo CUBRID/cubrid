@@ -35,6 +35,7 @@
 #include "object_primitive.h"
 #include "authenticate.h"
 #include "db.h"
+#include "db_session.h"
 #include "parser.h"
 #include "system_parameter.h"
 #include "locator_cl.h"
@@ -2839,6 +2840,12 @@ tr_find_trigger_objects (const char *query, DB_OBJLIST ** objects)
   if (error != NO_ERROR)
     {
       goto end;
+    }
+
+  /* Rarely run and never issued by the user, so keep it out of the XASL cache. */
+  if (session->statements != NULL && session->statements[0] != NULL)
+    {
+      session->statements[0]->flag.cannot_prepare = 1;
     }
 
   stmt_id = db_compile_statement_local (session);
