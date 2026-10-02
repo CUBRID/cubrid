@@ -176,6 +176,7 @@ background_process_start (const char *path, const char *const args[], const char
   char marker[1024];
   char database[513];
   int marker_size;
+  bool marker_truncated = false;
 
   fds[0] = owned_fd (open ("/dev/null", O_RDWR | O_CLOEXEC));
   fds[1] = owned_fd (open (log_path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0600));
@@ -198,16 +199,17 @@ background_process_start (const char *path, const char *const args[], const char
       size_t length = strlen (args[1]);
       if (length > (sizeof (database) - 1) / 2)
 	{
-	  errno = ENAMETOOLONG;
-	  goto cleanup;
+	  length = (sizeof (database) - 1) / 2;
+	  marker_truncated = true;
 	}
       for (size_t i = 0; i < length; ++i)
 	{
 	  snprintf (database + 2 * i, 3, "%02x", static_cast<unsigned char> (args[1][i]));
 	}
     }
-  marker_size = snprintf (marker, sizeof (marker), "\n[console start time=%lld launcher=%ld database-hex=%s]\n",
-			  static_cast<long long> (time (nullptr)), static_cast<long> (getpid ()), database);
+  marker_size = snprintf (marker, sizeof (marker), "\n[console start time=%lld launcher=%ld database-hex=%s%s]\n",
+			  static_cast<long long> (time (nullptr)), static_cast<long> (getpid ()), database,
+			  marker_truncated ? " (truncated)" : "");
   if (marker_size < 0 || marker_size >= static_cast<int> (sizeof (marker)))
     {
       errno = ENAMETOOLONG;
@@ -318,13 +320,22 @@ background_process_finish_start (background_process &process)
       count = read (process.acknowledgement, &status, 1);
     }
   while (count < 0 && errno == EINTR);
+  int saved_error = count < 0 ? errno : EIO;
   close (process.acknowledgement);
   process.acknowledgement = -1;
   int result = count == 1 && status == 0 ? 0 : -1;
+  if (result == 0)
+    {
+      saved_error = 0;
+    }
   for (int stream = 0; stream < 2; ++stream)
     {
       if (lseek (process.output[stream], 0, SEEK_SET) < 0)
 	{
+	  if (saved_error == 0)
+	    {
+	      saved_error = errno;
+	    }
 	  result = -1;
 	  close (process.output[stream]);
 	  process.output[stream] = -1;
@@ -342,6 +353,10 @@ background_process_finish_start (background_process &process)
 	    {
 	      if (count < 0)
 		{
+		  if (saved_error == 0)
+		    {
+		      saved_error = errno;
+		    }
 		  result = -1;
 		}
 	      break;
@@ -356,6 +371,10 @@ background_process_finish_start (background_process &process)
 		}
 	      if (written <= 0)
 		{
+		  if (saved_error == 0)
+		    {
+		      saved_error = written < 0 ? errno : EIO;
+		    }
 		  result = -1;
 		  break;
 		}
@@ -368,6 +387,10 @@ background_process_finish_start (background_process &process)
 	}
       close (process.output[stream]);
       process.output[stream] = -1;
+    }
+  if (saved_error != 0)
+    {
+      errno = saved_error;
     }
   return result;
 }
