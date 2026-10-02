@@ -735,11 +735,13 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_CDC_END_SESSION];
   req_p->processing_function = scdc_end_session;
 
-  /* flashback */
+  /* flashback : DBA-only, enforced server-side before the handler is ever entered */
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_SUMMARY];
+  req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = sflashback_get_summary;
 
   req_p = &net_Requests[NET_SERVER_FLASHBACK_GET_LOGINFO];
+  req_p->action_attribute = CHECK_AUTHORIZATION;
   req_p->processing_function = sflashback_get_loginfo;
 
   /* PL/CSQL */
