@@ -10834,10 +10834,20 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
       has_instances = 0;
       for (i = 0; i < n_classes; i++)
 	{
-	  if (!HFID_IS_NULL (&hfids[i]) && heap_has_instance (&hfids[i], &oids[i], false))
+	  if (HFID_IS_NULL (&hfids[i]))
 	    {
-	      /* in case of error and instances exist */
-	      has_instances = 1;
+	      continue;
+	    }
+
+	  has_instances = heap_has_instance (&hfids[i], &oids[i], false);
+	  if (has_instances < 0)
+	    {
+	      /* e.g. the server went down and the client workspace was cleared, so class_ and con may be freed */
+	      ASSERT_ERROR_AND_SET (error);
+	      goto gen_error;
+	    }
+	  else if (has_instances > 0)
+	    {
 	      break;
 	    }
 	}
@@ -10974,11 +10984,25 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
   TP_DOMAIN *domain = NULL;
   OID *cls_oid;
   HFID *hfid;
+  int has_instances;
 
   cls_oid = ws_oid (classop);
   hfid = sm_ch_heap ((MOBJ) class_);
 
-  if (!HFID_IS_NULL (hfid) && heap_has_instance (hfid, cls_oid, 0))
+  if (HFID_IS_NULL (hfid))
+    {
+      return NO_ERROR;
+    }
+
+  has_instances = heap_has_instance (hfid, cls_oid, 0);
+  if (has_instances < 0)
+    {
+      /* e.g. the server went down and the client workspace was cleared, so class_ and key_attrs may be freed */
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  if (has_instances > 0)
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
 
@@ -13231,9 +13255,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   error = flatten_template (template_, NULL, &flat, auto_res);
   if (error != NO_ERROR)
     {
-      /* If we aborted the operation (error == ER_LK_UNILATERALLY_ABORTED) then the class may no longer be in the
-       * workspace.  So make sure that the class exists before using it.  */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      /* If we aborted the operation (error == ER_LK_UNILATERALLY_ABORTED or ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
+       * then the class may no longer be in the workspace.  So make sure that the class exists before using it.  */
+      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	{
 	  class_->new_ = NULL;
 	}
@@ -13254,7 +13278,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	{
 	  classobj_free_template (flat);
 	  /* don't touch this class if we aborted ! */
-	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+	  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	    {
 	      class_->new_ = NULL;
 	    }
@@ -13277,7 +13301,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       classobj_free_template (flat);
 
       /* don't touch this class if we aborted ! */
-      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+      if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
 	{
 	  class_->new_ = NULL;
 	}
@@ -13420,7 +13444,7 @@ error_return:
   classobj_free_template (flat);
 
   /* don't touch this class if we aborted ! */
-  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED)
+  if (class_ != NULL && error != ER_LK_UNILATERALLY_ABORTED && error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED)
     {
       class_->new_ = NULL;
     }
@@ -15606,6 +15630,24 @@ sm_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool wit
   set_savepoint = true;
 
   error = smt_add_histogram (classop, attr_name, bucket_count, with_fullscan);
+  if (error == ER_BTREE_UNIQUE_FAILED)
+    {
+      /* Another session inserted this column's row while we were inserting ours.  The existence
+       * check above reads the latest committed version and takes no lock (CBRD-27369), so it
+       * cannot see a concurrent uncommitted insert -- this unique violation is the only place
+       * that race shows, and any two sessions first-collecting the same column reach it.  The
+       * unique insert waits for the other transaction, so by the time this error comes back that
+       * row is committed: the entry does exist, which is what the caller asked.  Undo our own
+       * attempt and report it as existing, so the caller stores its histogram into the row that
+       * is there instead of failing (before this, the caller printed the error, rolled the
+       * statement's histograms and statistics back to its own savepoint, and still reported
+       * success).  _db_histogram carries exactly one constraint -- UNIQUE (class_of, key_attr),
+       * see system_catalog_initializer::get_histogram () -- so this error cannot mean any other
+       * key. */
+      (void) tran_abort_upto_system_savepoint (SM_ADD_HISTOGRAM_SAVEPOINT_NAME);
+      er_clear ();
+      return ER_LC_CLASSNAME_EXIST;
+    }
   if (error != NO_ERROR)
     {
       goto error_exit;
