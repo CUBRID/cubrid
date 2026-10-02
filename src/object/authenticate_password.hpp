@@ -29,23 +29,30 @@
 #define AU_MAX_PASSWORD_CHARS   31
 #define AU_MAX_PASSWORD_BUF     2048
 #define AU_MAX_COMMENT_CHARS    SM_MAX_COMMENT_LENGTH
+#define ENCRYPT_SALT_SIZE       (32)
+#define ENCRYPT_SALT_SIZE_HEX   (ENCRYPT_SALT_SIZE * 2)
+#define ENCRYPT_SHA2_512_HEX_SIZE (128)
 
 #define PASSWORD_ENCRYPTION_SEED        "U9a$y1@zw~a0%"
 #define ENCODE_PREFIX_DEFAULT           (char)0
 #define ENCODE_PREFIX_DES               (char)1
 #define ENCODE_PREFIX_SHA1              (char)2
 #define ENCODE_PREFIX_SHA2_512          (char)3
+#define ENCODE_PREFIX_SHA2_512_SALT     (char)4
 #define IS_ENCODED_DES(string)          (string[0] == ENCODE_PREFIX_DES)
 #define IS_ENCODED_SHA1(string)         (string[0] == ENCODE_PREFIX_SHA1)
 #define IS_ENCODED_SHA2_512(string)     (string[0] == ENCODE_PREFIX_SHA2_512)
+#define IS_ENCODED_SHA2_512_SALT(string) (string[0] == ENCODE_PREFIX_SHA2_512_SALT)
 #define IS_ENCODED_ANY(string) \
-  (IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
+  (IS_ENCODED_SHA2_512_SALT(string) || IS_ENCODED_SHA2_512 (string) || IS_ENCODED_SHA1 (string) || IS_ENCODED_DES (string))
 
 void encrypt_password (const char *pass, int add_prefix, char *dest);
 void encrypt_password_sha1 (const char *pass, int add_prefix, char *dest);
 void encrypt_password_sha2_512 (const char *pass, char *dest);
+void encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *pass, char *dest);
+char *encrypt_salt_extract (const char *name, const char *salted_sha2_512, char *salt);
 
-bool match_password (const char *user, const char *database);
+bool match_password (const char *name, const char *user, const char *database);
 int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
 
 #endif
