@@ -2564,6 +2564,14 @@ respond:
 		return false;
 	      }
 	  }
+
+	/* A connection closed on the socket is otherwise released only on the next message queue pass, which may
+	 * never come while the worker is idle; until then the entry stays in the active conn list with its session id
+	 * and the session never expires. Release it here, after this round no longer refers to the context. */
+	if (!m_removed_context.empty ())
+	  {
+	    this->purge_stale_contexts ();
+	  }
       }
 
     return true;
