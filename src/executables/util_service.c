@@ -304,8 +304,10 @@ static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status, int command_type);
 static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
 static const char *command_string (int command_type);
+/* *INDENT-OFF* */
 static bool is_server_running (const char *type, const char *server_name, int pid,
 			       void (*wait_output) (void *) = NULL, void *context = NULL);
+/* *INDENT-ON* */
 static int shutdown_reviving_server (const char *server_name);
 static int is_broker_running (void);
 static int is_gateway_running (void);

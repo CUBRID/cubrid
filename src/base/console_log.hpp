@@ -28,6 +28,7 @@
 #include <ctime>
 #include <fcntl.h>
 #include <sys/socket.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -82,13 +83,10 @@ namespace console_log
 
   inline bool lock (int fd)
   {
-    struct flock request = {};
-    request.l_type = F_WRLCK;
-    request.l_whence = SEEK_SET;
     // A stopped/crashed writer must not create a new indefinite service hang.
     for (int attempt = 0; attempt < 100; ++attempt)
       {
-	if (fcntl (fd, F_SETLK, &request) == 0)
+	if (flock (fd, LOCK_EX | LOCK_NB) == 0)
 	  {
 	    return true;
 	  }
@@ -105,10 +103,7 @@ namespace console_log
 
   inline void unlock (int fd)
   {
-    struct flock request = {};
-    request.l_type = F_UNLCK;
-    request.l_whence = SEEK_SET;
-    fcntl (fd, F_SETLK, &request);
+    flock (fd, LOCK_UN);
   }
 
   inline bool write_all (int fd, const char *buffer, size_t size)
@@ -169,6 +164,87 @@ namespace console_log
 	  }
 	close (socket_fd);
       }
+  }
+
+  inline bool retain_tail (int fd)
+  {
+    struct stat st;
+    if (fstat (fd, &st) != 0)
+      {
+	return false;
+      }
+    if (st.st_size <= size_limit)
+      {
+	return true;
+      }
+    if (fcntl (fd, F_SETFL, O_NONBLOCK) < 0)
+      {
+	return false;
+      }
+    // Upgrade from the previous unbounded logger: keep the newest 1 MiB.
+    // Bounded stack copying avoids another temporary file or an oversized archive.
+    char buffer[8192];
+    off_t offset = 0;
+    while (offset < size_limit)
+      {
+	ssize_t count = pread (fd, buffer, sizeof (buffer), st.st_size - size_limit + offset);
+	if (count < 0 && errno == EINTR)
+	  {
+	    continue;
+	  }
+	if (count <= 0)
+	  {
+	    errno = EIO;
+	    return false;
+	  }
+	ssize_t written = 0;
+	while (written < count)
+	  {
+	    ssize_t part = pwrite (fd, buffer + written, count - written, offset + written);
+	    if (part < 0 && errno == EINTR)
+	      {
+		continue;
+	      }
+	    if (part <= 0)
+	      {
+		return false;
+	      }
+	    written += part;
+	  }
+	offset += count;
+      }
+    return ftruncate (fd, size_limit) == 0 && fcntl (fd, F_SETFL, O_APPEND | O_NONBLOCK) == 0;
+  }
+
+  inline bool initialize (int lock_fd, const char *path)
+  {
+    if (!lock (lock_fd))
+      {
+	return false;
+      }
+    bool success = ftruncate (lock_fd, 256) == 0;
+    for (int i = 0; success && i <= archive_count; ++i)
+      {
+	char name[PATH_MAX];
+	snprintf (name, sizeof (name), i == 0 ? "%s" : "%s.%d", path, i);
+	struct stat st;
+	if (lstat (name, &st) != 0 && errno == ENOENT)
+	  {
+	    continue;
+	  }
+	int fd = open_owned (name);
+	success = fd >= 0 && retain_tail (fd);
+	int saved = errno;
+	if (fd >= 0)
+	  {
+	    close (fd);
+	  }
+	errno = saved;
+      }
+    int saved = errno;
+    unlock (lock_fd);
+    errno = saved;
+    return success;
   }
 
   inline bool append (int lock_fd, const char *path, const char *buffer, size_t size, int &last_error)

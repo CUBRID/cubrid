@@ -60,6 +60,7 @@ main (int argc, char **argv)
       return 1;
     }
   signal (SIGPIPE, SIG_IGN);
+  signal (SIGXFSZ, SIG_IGN);
   int log_error = 0;
   bool startup = true;
   unsigned char status = 0;

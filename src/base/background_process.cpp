@@ -281,6 +281,7 @@ int
 background_process_start (const char *path, const char *const args[], const char *relay_path,
 			  const char *log_path, background_process &process)
 {
+  process.output_error = 0;
   int fds[14];
   for (int &fd : fds)
     {
@@ -325,7 +326,8 @@ background_process_start (const char *path, const char *const args[], const char
       errno = ENAMETOOLONG;
       goto cleanup;
     }
-  if (!console_log::append (fds[1], log_path, marker, marker_size, log_error))
+  if (!console_log::initialize (fds[1], log_path)
+      || !console_log::append (fds[1], log_path, marker, marker_size, log_error))
     {
       goto cleanup;
     }
