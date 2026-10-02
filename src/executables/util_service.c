@@ -53,6 +53,7 @@
 #include "dynamic_array.h"
 #include "heartbeat.h"
 #include "process_util.h"
+#include "background_process.hpp"
 #include "pl_file.h"
 
 #include <string>
@@ -1775,12 +1776,44 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		{
 		  int pid;
 		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
+#if !defined(WINDOWS)
+                  /* *INDENT-OFF* */
+                  background_process process;
+                  char executable[PATH_MAX], relay[PATH_MAX], console[PATH_MAX];
+                  envvar_bindir_file (executable, sizeof (executable), UTIL_CUBRID_NAME);
+                  envvar_bindir_file (relay, sizeof (relay), "cub_console");
+                  envvar_logdir_file (console, sizeof (console), "server-console.log");
+                  fflush (stdout);
+                  fflush (stderr);
+                  /* Match proc_execute's automatic reaping for asynchronous service children. */
+                  signal (SIGCHLD, SIG_IGN);
+                  status = background_process_start (executable, args, relay, console, process);
+                  if (status != NO_ERROR)
+                    {
+                      perror ("server background start");
+                      status = ER_GENERIC_ERROR;
+                    }
+                  else
+                    {
+                      pid = process.pid;
+                      if (!is_server_running (CHECK_SERVER, token, pid))
+                        {
+                          status = ER_GENERIC_ERROR;
+                        }
+                      if (background_process_finish_start (process) != 0)
+                        {
+                          fprintf (stderr, "Failed to collect server startup output\n");
+                          status = ER_GENERIC_ERROR;
+                        }
+                    }
+                  /* *INDENT-ON* */
+#else
 		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
-
 		  if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
 		    {
 		      status = ER_GENERIC_ERROR;
 		    }
+#endif
 		  print_result (PRINT_SERVER_NAME, status, command_type);
 		}
 	    }
