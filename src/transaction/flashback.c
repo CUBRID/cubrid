@@ -800,6 +800,35 @@ flashback_pack_loginfo (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CO
   return ptr;
 }
 
+/*
+ * flashback_free_loginfo_queue - release log info entries that were generated but never packed
+ *
+ * flashback_pack_loginfo () normally frees each entry as it copies it into the
+ * reply. A caller that gives up before packing (e.g. the reply area can't be
+ * allocated) releases them here instead. Must not be used after packing: the
+ * packer works on a copy of the queue, so the caller's queue still holds the
+ * entries it already freed.
+ */
+void
+flashback_free_loginfo_queue (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
+{
+  CDC_LOGINFO_ENTRY *entry;
+
+  while (!context->loginfo_queue.empty ())
+    {
+      // *INDENT-OFF*
+      entry = context->loginfo_queue.front ();
+      context->loginfo_queue.pop ();
+      // *INDENT-ON*
+
+      free_and_init (entry->log_info);
+      db_private_free_and_init (thread_p, entry);
+    }
+
+  context->queue_size = 0;
+  context->num_loginfo = 0;
+}
+
 static int
 flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
 {

@@ -111,7 +111,7 @@ typedef struct flashback_loginfo_context
   int num_class;
   int forward;
   int num_loginfo;
-  int queue_size;
+  INT64 queue_size;		/* total length of the queued entries; can exceed INT_MAX for a huge transaction */
   OID invalid_class;
   // *INDENT-OFF*
   std::unordered_set<OID> classoid_set;
@@ -126,6 +126,7 @@ extern char *flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT 
 extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 
 extern char *flashback_pack_loginfo (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CONTEXT context);
+extern void flashback_free_loginfo_queue (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context);
 extern int flashback_initialize (THREAD_ENTRY * thread_p);
 
 extern int flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context);

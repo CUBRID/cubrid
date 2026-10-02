@@ -11278,6 +11278,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area = NULL;
   int area_size = 0;
+  UINT64 area_size64 = 0;
 
   int error_code = NO_ERROR;
   char *ptr;
@@ -11386,13 +11387,21 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
    * summary entry : | trid | user | start/end time | num insert/update/delete | num class | class oid list |
    * OR_OID_SIZE * context.num_class means maximum class oid list size per summary entry */
 
-  area_size = OR_OID_SIZE * context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
-    + (OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + OR_OID_SIZE * context.num_class) * context.num_summary;
+  /* Computed in UINT64: num_class is bounded only by the request length and
+   * num_summary by flashback_max_transaction (INT_MAX by default), so the
+   * product overflows an int -- and would under-allocate the area the summary
+   * entries are packed into -- long before it can overflow 64 bits. */
+  area_size64 = (UINT64) OR_OID_SIZE * context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
+    + ((UINT64) OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + (UINT64) OR_OID_SIZE * context.num_class) * context.num_summary;
 
-  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area_size64 <= INT_MAX)
+    {
+      area_size = (int) area_size64;
+      area = (char *) db_private_alloc (thread_p, area_size);
+    }
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) area_size64);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -11488,6 +11497,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *area = NULL;
   int area_size = 0;
+  UINT64 area_size64 = 0;
 
   int error_code = NO_ERROR;
   char *ptr;
@@ -11579,19 +11589,26 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto error;
     }
 
-  area_size = OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE;
-
-  /* log info entries are chunks of memory that already packed together, and they need to be aligned  
+  /* log info entries are chunks of memory that already packed together, and they need to be aligned
    * | lsa | lsa | num item | align | log info 1 | align | log info 2 | align | log info 3 | ..
-   * */
+   *
+   * Computed in UINT64: queue_size is the total length actually generated, which
+   * the requested batch size does not bound, so a huge transaction can push it
+   * past INT_MAX. */
+  area_size64 = (UINT64) OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE
+    + (UINT64) context.queue_size + (UINT64) context.num_loginfo * MAX_ALIGNMENT;
 
-  area_size += context.queue_size + context.num_loginfo * MAX_ALIGNMENT;
-
-  area = (char *) db_private_alloc (thread_p, area_size);
+  if (area_size64 <= INT_MAX)
+    {
+      area_size = (int) area_size64;
+      area = (char *) db_private_alloc (thread_p, area_size);
+    }
   if (area == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, area_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) area_size64);
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      /* nothing has been packed yet, so the generated entries are still only in the queue */
+      flashback_free_loginfo_queue (thread_p, &context);
       goto error;
     }
 
