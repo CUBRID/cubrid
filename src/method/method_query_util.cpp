@@ -25,6 +25,7 @@
 #include "dbtype.h"
 
 #if !defined(SERVER_MODE)
+#include "chartype.h"
 #include "dbi.h"
 #include "object_domain.h"
 #include "object_primitive.h"
@@ -571,7 +572,7 @@ namespace cubmethod
   }
 
   int
-  consume_tokens (std::string sql, int index, STATEMENT_STATUS stmt_status)
+  consume_tokens (const std::string &sql, int index, STATEMENT_STATUS stmt_status)
   {
     int sql_len = sql.size ();
     if (stmt_status == SQL_STYLE_COMMENT || stmt_status == CPP_STYLE_COMMENT)
@@ -629,6 +630,49 @@ namespace cubmethod
 	      {
 		break;
 	      }
+	  }
+      }
+
+    return index;
+  }
+
+  /*
+   * skip_leading_whitespace_and_comment () - non-destructively skip leading
+   *   whitespace and comments starting at index and return the position of the
+   *   first meaningful character. The input string is not modified.
+   */
+  std::size_t
+  skip_leading_whitespace_and_comment (const std::string &sql, std::size_t index)
+  {
+    std::size_t len = sql.size ();
+
+    while (index < len)
+      {
+	char c = sql[index];
+	if (char_isspace ((int) c))
+	  {
+	    index++;
+	  }
+	else if (c == '-' && index + 1 < len && sql[index + 1] == '-')
+	  {
+	    index = (std::size_t) consume_tokens (sql, (int) (index + 2), SQL_STYLE_COMMENT);
+	  }
+	else if (c == '/' && index + 1 < len && sql[index + 1] == '/')
+	  {
+	    index = (std::size_t) consume_tokens (sql, (int) (index + 2), CPP_STYLE_COMMENT);
+	  }
+	else if (c == '/' && index + 1 < len && sql[index + 1] == '*')
+	  {
+	    /* consume_tokens stops at the closing slash of the block comment (or at the end when unterminated) */
+	    index = (std::size_t) consume_tokens (sql, (int) (index + 2), C_STYLE_COMMENT);
+	    if (index < len && sql[index] == '/')
+	      {
+		index++;
+	      }
+	  }
+	else
+	  {
+	    break;
 	  }
       }
 
