@@ -3845,7 +3845,8 @@ qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double
  *   of the NDV of the whole key, so the other key columns (and their statistics) cannot make it skip.
  * - Its NDV in the outer rows is estimated from the rows of its table the outer holds
  *   (qo_node_rows_in_join ()) with qo_estimate_ndv ().
- * - An outer with an outer join, or without the statistics the estimate needs, is not decided.
+ * - An outer with an outer join, a partitioned table or class hierarchy on either side, or missing
+ *   statistics the estimate needs, is not decided.
  */
 bool
 qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms)
@@ -3867,6 +3868,17 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
   if (calls < 1.0)
     {
       return false;
+    }
+
+  /* the executor scans a partitioned table or a class hierarchy one scan block (class) at a time, and
+   * the scans before it run again for every block, so the inner sees the outer rows again (CBRD-25519) */
+  for (i = 0; i < env->nnodes; i++)
+    {
+      if ((BITSET_MEMBER (outer->info->nodes, i) || BITSET_MEMBER (inner->info->nodes, i))
+	  && QO_NODE_IS_CLASS_HIERARCHY (QO_ENV_NODE (env, i)))
+	{
+	  return false;
+	}
     }
 
   /* an outer join inside the outer keeps or adds rows that the estimate does not model; the join of
