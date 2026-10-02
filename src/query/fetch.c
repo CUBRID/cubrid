@@ -5857,8 +5857,10 @@ fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
  *   is_null(out)  : set to true when a NULL takes part in the expression
  *
  * Note: Key limits are built from T_SUB (rownum < N is N - 1, a range is upper - lower), T_LEAST and
- *       T_GREATEST (merge with a user KEYLIMIT). Those nodes are computed here in BIGINT, so a bound beyond
- *       the BIGINT range never reaches the generic arithmetic. Any other node is fetched as a whole.
+ *       T_GREATEST (merge with a user KEYLIMIT). The optimizer marks those nodes with
+ *       REGU_VARIABLE_KEY_LIMIT_ARITH and they are computed here in BIGINT, so a bound beyond the BIGINT
+ *       range never reaches the generic arithmetic. Any other node, including arithmetic written by the
+ *       user such as rownum <= ? - ?, is fetched as a whole and only its value is looked at.
  *       A negative bound only means "nothing to skip" or "nothing to read", so it becomes -1 whatever its
  *       magnitude. The sign is kept for the KEYLIMIT check and the upper += lower adjustment in
  *       scan_init_index_key_limit (). A positive bound beyond the BIGINT range becomes DB_BIGINT_MAX.
@@ -5875,7 +5877,8 @@ key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * v
 
   assert (regu_var != NULL);
 
-  if (regu_var->type == TYPE_INARITH && regu_var->value.arithptr != NULL)
+  if (regu_var->type == TYPE_INARITH && regu_var->value.arithptr != NULL
+      && REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_KEY_LIMIT_ARITH))
     {
       ARITH_TYPE *arithptr = regu_var->value.arithptr;
 
