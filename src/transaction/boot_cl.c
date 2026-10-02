@@ -1655,6 +1655,8 @@ boot_finalize_client_sub (void)
   //tr_final ();
   au_final ();
   sm_final ();
+  /* must run before ws_final (); query handlers of this thread refer to the workspace */
+  method_callback_final ();
   ws_final (true);
   //es_final ();
   //tp_final ();

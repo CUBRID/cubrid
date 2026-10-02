@@ -1215,7 +1215,8 @@ exit:
   //////////////////////////////////////////////////////////////////////////
   // Global method callback handler interface
   //////////////////////////////////////////////////////////////////////////
-  static callback_handler handler (100);
+  /* per-thread handler for multiple connections: the query handlers belong to the workspace of each thread */
+  static CUB_THREAD_LOCAL callback_handler handler (100);
 
   callback_handler *
   get_callback_handler (void)
