@@ -49,8 +49,6 @@ EXPORTS
     db_end_session
     db_set_server_session_key
     db_get_server_session_key
-    db_set_session_secret
-    db_get_session_secret
     db_get_variable
     db_set_get
     db_set_size
