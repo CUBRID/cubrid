@@ -463,6 +463,10 @@ static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE *
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 
+static bool pt_query_has_orderby_or_limit (PT_NODE * p);
+static bool pt_query_prints_paren (PT_NODE * p);
+static PARSER_VARCHAR *pt_print_set_operand (PARSER_CONTEXT * parser, PT_NODE * operand);
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -9582,6 +9586,12 @@ static PARSER_VARCHAR *
 pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1;
+  bool set_paren = pt_query_prints_paren (p);
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
 
   if (p->info.query.with != NULL)
     {
@@ -9589,8 +9599,11 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
-  q = pt_append_nulstring (parser, q, "(");
+  r1 = pt_print_set_operand (parser, p->info.query.q.union_.arg1);
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " except ");
 
@@ -9599,9 +9612,12 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "all ");
     }
 
-  r1 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
+  r1 = pt_print_set_operand (parser, p->info.query.q.union_.arg2);
   q = pt_append_varchar (parser, q, r1);
-  q = pt_append_nulstring (parser, q, ")");
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
 
   if (p->info.query.order_by)
     {
@@ -9623,6 +9639,12 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " limit ");
       q = pt_append_varchar (parser, q, r1);
     }
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
   return q;
 }
 
@@ -13870,6 +13892,12 @@ static PARSER_VARCHAR *
 pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
+  bool set_paren = pt_query_prints_paren (p);
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
 
   if (p->info.query.with != NULL)
     {
@@ -13877,9 +13905,12 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
-  r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
-  q = pt_append_nulstring (parser, q, "(");
+  r1 = pt_print_set_operand (parser, p->info.query.q.union_.arg1);
+  r2 = pt_print_set_operand (parser, p->info.query.q.union_.arg2);
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
   q = pt_append_varchar (parser, q, r1);
   if (p->info.query.all_distinct == PT_ALL)
     {
@@ -13890,7 +13921,10 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " intersect ");
     }
   q = pt_append_varchar (parser, q, r2);
-  q = pt_append_nulstring (parser, q, ")");
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
 
   if (p->info.query.order_by)
     {
@@ -13901,7 +13935,7 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.query.orderby_for)
     {
       r1 = pt_print_bytes_l (parser, p->info.query.orderby_for);
-      q = pt_append_nulstring (parser, q, " for");
+      q = pt_append_nulstring (parser, q, " for ");
       q = pt_append_varchar (parser, q, r1);
     }
   if (p->info.query.limit && p->info.query.flag.rewrite_limit)
@@ -13910,6 +13944,11 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " limit ");
       q = pt_append_varchar (parser, q, r1);
     }
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
+
   return q;
 }
 
@@ -14975,16 +15014,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       return q;
     }
 
-  if (p->info.query.is_subquery == PT_IS_SUBQUERY
-      || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY && p->info.query.order_by)
-      || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by))
-    {
-      if (!p->info.query.flag.subquery_cached)
-	{
-	  set_paren = true;
-	}
-    }
-
+  set_paren = pt_query_prints_paren (p);
   if (set_paren)
     {
       q = pt_append_nulstring (parser, q, "(");
@@ -15693,6 +15723,83 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
+/*
+ * pt_query_has_orderby_or_limit () - check whether a query has its own ORDER BY, FOR or LIMIT clause to print
+ *   return:
+ *   p(in): query node
+ */
+static bool
+pt_query_has_orderby_or_limit (PT_NODE * p)
+{
+  assert (p != NULL && PT_IS_QUERY_NODE_TYPE (p->node_type));
+
+  return (p->info.query.order_by != NULL || p->info.query.orderby_for != NULL
+	  || (p->info.query.limit != NULL && p->info.query.flag.rewrite_limit));
+}
+
+/*
+ * pt_query_prints_paren () - check whether a query wraps its printed text in parentheses by itself
+ *   return:
+ *   p(in): query node
+ *
+ * Note: A set operation (UNION, DIFFERENCE, INTERSECTION) prints its ORDER BY, FOR and LIMIT clauses after
+ *       "(arg1 op arg2)", so a sub-query of a set operation has to be wrapped as a whole like a sub-query of
+ *       a select, or those clauses are taken as clauses of the enclosing query when the printed text is
+ *       parsed again (e.g. "where c = (a union b) order by 1 limit 1"). Such a set operation is printed as
+ *       "(a union b order by ...)", not "((a union b) order by ...)" that is not accepted in an expression.
+ */
+static bool
+pt_query_prints_paren (PT_NODE * p)
+{
+  assert (p != NULL && PT_IS_QUERY_NODE_TYPE (p->node_type));
+
+  if (p->node_type != PT_SELECT)
+    {
+      return (p->info.query.is_subquery == PT_IS_SUBQUERY && pt_query_has_orderby_or_limit (p));
+    }
+
+  if (p->info.query.flag.subquery_cached)
+    {
+      return false;
+    }
+
+  return (p->info.query.is_subquery == PT_IS_SUBQUERY
+	  || (p->info.query.is_subquery == PT_IS_UNION_SUBQUERY && p->info.query.order_by)
+	  || (p->info.query.is_subquery == PT_IS_UNION_QUERY && p->info.query.order_by));
+}
+
+/*
+ * pt_print_set_operand () - print an operand of a set operation (UNION, DIFFERENCE, INTERSECTION and
+ *                           the non-recursive/recursive parts of a recursive CTE)
+ *   return:
+ *   parser(in):
+ *   operand(in):
+ *
+ * Note: ORDER BY, FOR and LIMIT clauses of an operand bind to the whole set operation when the printed text is
+ *       parsed again (e.g. "a order by 1 union b" is a syntax error, "a union (b union c) order by 1" orders
+ *       the outer union). The printed text must be valid and keep the meaning, since it is re-parsed for
+ *       PL/CSQL static SQL and view specs, so wrap such an operand in parentheses if it is not wrapped yet.
+ */
+static PARSER_VARCHAR *
+pt_print_set_operand (PARSER_CONTEXT * parser, PT_NODE * operand)
+{
+  PARSER_VARCHAR *q = NULL, *r1;
+
+  r1 = pt_print_bytes (parser, operand);
+
+  if (operand == NULL || !PT_IS_QUERY_NODE_TYPE (operand->node_type) || !pt_query_has_orderby_or_limit (operand)
+      || pt_query_prints_paren (operand))
+    {
+      return r1;
+    }
+
+  q = pt_append_nulstring (parser, q, "(");
+  q = pt_append_varchar (parser, q, r1);
+  q = pt_append_nulstring (parser, q, ")");
+
+  return q;
+}
+
 /* SET_NAMES */
 /*
  * pt_apply_set_names () -
@@ -16251,6 +16358,12 @@ static PARSER_VARCHAR *
 pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2;
+  bool set_paren = pt_query_prints_paren (p);
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
 
   if (p->info.query.with != NULL)
     {
@@ -16258,9 +16371,12 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  r1 = pt_print_bytes (parser, p->info.query.q.union_.arg1);
-  r2 = pt_print_bytes (parser, p->info.query.q.union_.arg2);
-  q = pt_append_nulstring (parser, q, "(");
+  r1 = pt_print_set_operand (parser, p->info.query.q.union_.arg1);
+  r2 = pt_print_set_operand (parser, p->info.query.q.union_.arg2);
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, "(");
+    }
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " union ");
   if (p->info.query.all_distinct == PT_ALL)
@@ -16268,7 +16384,10 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, "all ");
     }
   q = pt_append_varchar (parser, q, r2);
-  q = pt_append_nulstring (parser, q, ")");
+  if (!set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
+    }
 
   if (p->info.query.order_by)
     {
@@ -16287,6 +16406,11 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
       q = pt_append_varchar (parser, q, r1);
+    }
+
+  if (set_paren)
+    {
+      q = pt_append_nulstring (parser, q, ")");
     }
 
   return q;
@@ -18288,18 +18412,24 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   /* cte definition */
   q = pt_append_nulstring (parser, q, "(");
 
-  r1 = pt_print_bytes_l (parser, p->info.cte.non_recursive_part);
-  q = pt_append_varchar (parser, q, r1);
-
   if (p->info.cte.recursive_part)
     {
+      /* both parts are operands of a union */
+      r1 = pt_print_set_operand (parser, p->info.cte.non_recursive_part);
+      q = pt_append_varchar (parser, q, r1);
+
       q = pt_append_nulstring (parser, q, " union ");
       if (p->info.cte.only_all == PT_ALL)
 	{
 	  q = pt_append_nulstring (parser, q, "all ");
 	}
 
-      r1 = pt_print_bytes_l (parser, p->info.cte.recursive_part);
+      r1 = pt_print_set_operand (parser, p->info.cte.recursive_part);
+      q = pt_append_varchar (parser, q, r1);
+    }
+  else
+    {
+      r1 = pt_print_bytes_l (parser, p->info.cte.non_recursive_part);
       q = pt_append_varchar (parser, q, r1);
     }
 
