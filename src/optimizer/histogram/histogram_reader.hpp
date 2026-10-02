@@ -81,7 +81,9 @@ namespace hist
     HV2_STR_SIZE   = 16,
     HV2_TYPE       = 20,
     HV2_TOTAL_SIZE = 24,
-    HV2_RESERVED   = 28,
+    /* declared CHAR precision in characters; 0 = unknown (blobs collected before CBRD-27251
+     * wrote this field, or a column whose type carries no padding) */
+    HV2_PRECISION  = 28,
     HV2_TOTAL_ROWS = 32,
     HV2_NULL_FREQ  = 40,
     HEADER_V2_SIZE = 48
@@ -101,6 +103,13 @@ namespace hist
       DB_TYPE value_type () const
       {
 	return static_cast<DB_TYPE> (type_);
+      }
+      /* declared precision of that column, in characters (HST2 header 'precision').
+       * 0 when the blob predates CBRD-27251 or the column needs no padding: callers that
+       * re-pad CHAR values must treat 0 as "do not pad", never as a width. */
+      int value_precision () const
+      {
+	return precision_;
       }
 
       std::uint64_t bucket_count() const noexcept
@@ -239,6 +248,8 @@ namespace hist
 
       std::uint32_t type_ = DB_TYPE_UNKNOWN;
 
+      std::int32_t precision_ = 0;
+
       std::int64_t total_rows_hdr_   = 0;
       double       null_freq_        = 0.0;
       std::int64_t nonmcv_distinct_  = 0;   /* cached Σ bucket approx_ndv */
@@ -246,6 +257,35 @@ namespace hist
 
   };
 
+  /*
+   * string_key_size_for_column () - trailing-space normalization contract for string histogram keys
+   *   column_type(in) : DB_TYPE of the COLUMN the histogram describes (not the value's own type)
+   *   s(in)           : value bytes (may be NULL)
+   *   size(in)        : byte size of s
+   *   return          : byte size to key on
+   *
+   * Shared by the sampler (server side: stored MCV/bucket values and HLL hashes) and the planner
+   * probe (client side: constant keys), so both sides can only ever agree. Keyed on the column
+   * type because heap CHAR values are padded to the column precision and SQL CHAR comparison
+   * ignores trailing spaces -- the padding carries no information and is dropped. VARCHAR bytes
+   * are kept verbatim: under the default ignore_trailing_space=no the executor compares them
+   * exactly, so 'a' and 'a ' are distinct values and must stay distinct MCVs. The value's own
+   * type must NOT decide this: the type checker leaves a CHAR literal compared to a VARCHAR
+   * column as CHAR, so a probe keyed on the literal's type would strip what the sampler kept
+   * (CBRD-27251).
+   */
+  inline int
+  string_key_size_for_column (DB_TYPE column_type, const char *s, int size)
+  {
+    if (column_type == DB_TYPE_CHAR && s != NULL)
+      {
+	while (size > 0 && s[size - 1] == ' ')
+	  {
+	    size--;
+	  }
+      }
+    return size;
+  }
 
 } // namespace hist
 

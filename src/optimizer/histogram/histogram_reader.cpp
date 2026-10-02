@@ -93,6 +93,14 @@ namespace hist
     str_size_   = get_value<std::uint32_t> (base + HV2_STR_SIZE);
     type_       = static_cast<std::uint32_t> (get_value<std::int32_t> (base + HV2_TYPE));
     total_size_ = get_value<std::uint32_t> (base + HV2_TOTAL_SIZE);
+    /* 0 on blobs collected before CBRD-27251 wrote this field; CHAR re-padding treats that as
+     * "width unknown" and skips padding. Clamp a corrupt negative so it can never become a
+     * pad length. */
+    precision_  = get_value<std::int32_t> (base + HV2_PRECISION);
+    if (precision_ < 0)
+      {
+	precision_ = 0;
+      }
     total_rows_hdr_ = get_value<std::int64_t> (base + HV2_TOTAL_ROWS);
     null_freq_      = get_value<double> (base + HV2_NULL_FREQ);
     /* invalidation fallback: a blob whose declared total size disagrees with the actual buffer is an
