@@ -59,6 +59,7 @@ static XASL_NODE *init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE
 
 static XASL_NODE *add_access_spec (QO_ENV *, XASL_NODE *, QO_PLAN *);
 static XASL_NODE *add_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * scan);
+static bool scan_chain_has_scan_blocks (XASL_NODE * xasl);
 static XASL_NODE *add_fetch_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * proc);
 static XASL_NODE *add_uncorrelated (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * sub);
 static XASL_NODE *add_subqueries (QO_ENV * env, XASL_NODE * xasl, BITSET *);
@@ -967,6 +968,42 @@ add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * scan_chain_has_scan_blocks () - whether a scan of the chain reads a partitioned table or a class hierarchy
+ *   return:
+ *   xasl(in): the scans that follow an NL inner in its scan chain
+ *
+ * The executor scans such a table one scan block (partition or class) at a time and, for every block,
+ * runs the scans before it again from the outer (qexec_next_scan_block_iterations ()). An inner before
+ * it then sees each outer row once per block, so its key repeats even when unique, and memoize must be
+ * left to the run-time check. A SEMI / ANTI inner sweeps its partitions within one probe and is not
+ * split into blocks. A partitioned outer or inner does not repeat the rows: the outer's blocks hold
+ * different rows, and a partitioned inner renews its memo for every block of its own.
+ */
+static bool
+scan_chain_has_scan_blocks (XASL_NODE * xasl)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  for (; xasl != NULL; xasl = xasl->scan_ptr)
+    {
+      if (XASL_IS_NL_SEMI_OR_ANTI (xasl))
+	{
+	  continue;
+	}
+
+      for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->next != NULL || spec->pruning_type == DB_PARTITIONED_CLASS)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -2509,7 +2546,8 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		}
 
 	      /* the outer columns of the terms the inner scan evaluates are its memoize key */
-	      if (qo_nl_inner_memoize_is_useless (outer, inner, &predset))
+	      if (!scan_chain_has_scan_blocks (scan->scan_ptr)
+		  && qo_nl_inner_memoize_is_useless (outer, inner, &predset))
 		{
 		  XASL_SET_FLAG (scan, XASL_NO_MEMOIZE);
 		}
