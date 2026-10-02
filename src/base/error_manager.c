@@ -2114,7 +2114,7 @@ er_get_area_error (char *buffer, int *length)
 
   len = (OR_INT_SIZE * 3) + strlen (msg) + 1;
   /* *length is the caller's buffer size and is always positive (see the assert above), so the cast is safe. */
-  len = MIN (len, (std::size_t) *length);
+  len = MIN (len, (std::size_t) * length);
   *length = (int) len;
   max_msglen = len - (OR_INT_SIZE * 3) - 1;
 

@@ -259,7 +259,7 @@ main (int argc, char *argv[])
 static int
 cgw_cas_main (void)
 {
-  CGW_CONTEXT cgw_ctx = {};
+  CGW_CONTEXT cgw_ctx = { };
   CAS_MAIN_OPS ops = {
     .init_specific = cgw_init,	/* CGW specific initialization */
     .pre_db_connect = cgw_pre_db_connect,
