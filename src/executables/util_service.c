@@ -3334,6 +3334,11 @@ us_hb_output_pump (dynamic_array *processes)
       background_process process;
       da_get (processes, i, &process);
       background_process_wait (process, 0);
+      /* Synchronous registration queries can restore SIGCHLD to SIG_DFL.
+       * Reap only this batch's exited children, never a management command. */
+      int child_status;
+      while (waitpid (process.pid, &child_status, WNOHANG) < 0 && errno == EINTR) {}
+      while (waitpid (process.relay_pid, &child_status, WNOHANG) < 0 && errno == EINTR) {}
       pending |= process.output[0] >= 0 || process.output[1] >= 0;
       da_put (processes, i, &process);
     }
@@ -3397,7 +3402,7 @@ us_hb_start_local (dynamic_array *processes, const char *args[])
   if (signal (SIGCHLD, SIG_IGN) == SIG_ERR
       || background_process_start (executable, args, relay, console, process) != 0)
     {
-      perror ("HA utility background start");
+      perror (errno == ENOENT || errno == ENOEXEC || errno == EACCES ? "execv" : "HA utility background start");
       /* No child/channel ownership was transferred on a failed start. */
       --processes->max;
       return ER_GENERIC_ERROR;
