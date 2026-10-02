@@ -254,8 +254,8 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    set_hang_check_time ();
 
-	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s " "session id %s", conn_info.db_name,
-			   conn_info.db_user, conn_info.url, conn_info.db_sessionid);
+	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s", conn_info.db_name, conn_info.db_user,
+			   conn_info.url);
 	    if (as_info->reset_flag == TRUE)
 	      {
 		cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
@@ -1069,8 +1069,8 @@ cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_C
   if (req_info->client_version >= CAS_MAKE_VER (8, 4, 0))
     {
       assert (url != NULL);
+      /* not NUL-terminated: the last byte is part of the session secret */
       db_sessionid = url + SRV_CON_URL_SIZE;
-      db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
     }
   else
     {
