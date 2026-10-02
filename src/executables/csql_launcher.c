@@ -22,6 +22,7 @@
 
 #ident "$Id$"
 
+#include "config.h"
 #include "background_process.hpp"
 #include <stdio.h>
 #include <stdarg.h>
