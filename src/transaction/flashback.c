@@ -65,6 +65,11 @@ static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry fo
 
 static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* Buffer size for a "%d-%m-%Y:%H:%M:%S" time string. A four-digit year needs
+ * 20 bytes including the NUL; sized larger here so a year of more than four
+ * digits still formats instead of overflowing the buffer. */
+#define FLASHBACK_TIME_STR_SIZE 32
+
 /*
  * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
  *
@@ -585,13 +590,17 @@ exit:
 static void
 flashback_format_time (char *buf, size_t size, time_t * time_p)
 {
-  struct tm *tm_p = localtime (time_p);
+  struct tm tm_buf;
+  struct tm *tm_p = localtime_r (time_p, &tm_buf);
 
-  if (tm_p != NULL)
-    {
-      strftime (buf, size, "%d-%m-%Y:%H:%M:%S", tm_p);
-    }
-  else
+  /* strftime() returns 0 when the formatted value (with its terminating NUL)
+   * does not fit buf, and then leaves buf's contents unspecified -- a year
+   * outside four digits (e.g. a client-side typo) overflows the usual width.
+   * Fall back to the raw value in that case rather than handing a possibly
+   * unterminated buffer to the %s that formats the error message, which would
+   * otherwise leak uninitialized stack. localtime_r() is used because the
+   * non-reentrant localtime() shares one static tm across server threads. */
+  if (tm_p == NULL || strftime (buf, size, "%d-%m-%Y:%H:%M:%S", tm_p) == 0)
     {
       snprintf (buf, size, "%lld", (long long) *time_p);
     }
@@ -621,13 +630,13 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
   if (*start_time > current_time || *end_time <= log_Gl.hdr.db_creation)
     {
-      char start_date[20];
-      char db_creation_date[20];
-      char cur_date[20];
+      char start_date[FLASHBACK_TIME_STR_SIZE];
+      char db_creation_date[FLASHBACK_TIME_STR_SIZE];
+      char cur_date[FLASHBACK_TIME_STR_SIZE];
 
-      flashback_format_time (start_date, 20, start_time);
-      flashback_format_time (db_creation_date, 20, &log_Gl.hdr.db_creation);
-      flashback_format_time (cur_date, 20, &current_time);
+      flashback_format_time (start_date, FLASHBACK_TIME_STR_SIZE, start_time);
+      flashback_format_time (db_creation_date, FLASHBACK_TIME_STR_SIZE, &log_Gl.hdr.db_creation);
+      flashback_format_time (cur_date, FLASHBACK_TIME_STR_SIZE, &current_time);
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date, db_creation_date,
 	      cur_date);
@@ -658,11 +667,11 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
       if (ret_time >= *end_time)
 	{
-	  char start_date[20];
-	  char db_creation_date[20];
+	  char start_date[FLASHBACK_TIME_STR_SIZE];
+	  char db_creation_date[FLASHBACK_TIME_STR_SIZE];
 
-	  flashback_format_time (start_date, 20, start_time);
-	  flashback_format_time (db_creation_date, 20, &log_Gl.hdr.db_creation);
+	  flashback_format_time (start_date, FLASHBACK_TIME_STR_SIZE, start_time);
+	  flashback_format_time (db_creation_date, FLASHBACK_TIME_STR_SIZE, &log_Gl.hdr.db_creation);
 
 	  /* out of range : start_time (ret_time) can not be greater than end_time */
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
