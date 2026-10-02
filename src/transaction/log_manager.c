@@ -15373,6 +15373,14 @@ cdc_free_extraction_filter ()
     {
       free_and_init (cdc_Gl.producer.extraction_classoids);
     }
+
+  /* The counts pair with the arrays just freed. cdc_is_filtered_user() and
+   * cdc_is_filtered_class() decide by count, not by a NULL array, so leaving a
+   * stale non-zero count here makes the producer dereference the freed (NULL)
+   * array when it next wakes. Reset both so the pair stays consistent. */
+  cdc_Gl.producer.num_extraction_user = 0;
+  cdc_Gl.producer.num_extraction_class = 0;
+
   return NO_ERROR;
 }
 

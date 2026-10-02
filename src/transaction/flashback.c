@@ -65,6 +65,13 @@ static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry fo
 
 static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* Buffer size for a "%d-%m-%Y:%H:%M:%S" time string. A four-digit year needs
+ * 20 bytes including the NUL; sized larger here so a year of more than four
+ * digits still formats instead of overflowing the buffer. */
+#define FLASHBACK_TIME_STR_SIZE 32
+
+static void flashback_reset (void);
+
 /*
  * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
  *
@@ -139,14 +146,28 @@ flashback_initialize (THREAD_ENTRY * thread_p)
 
 /*
  * flashback_set_min_log_pageid_to_keep - set flashback_Min_log_pageid
+ *
+ * Only the connection that owns the in-progress session may move the
+ * archive-retention floor. A second request on the same connection can still
+ * be here after the owner finished and was replaced by another connection's
+ * session (requests are served by independent worker tasks); without the owner
+ * check it would overwrite the new session's floor and let archive logs the new
+ * session still needs be removed.
  */
 
 void
-flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa)
+flashback_set_min_log_pageid_to_keep (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   assert (lsa != NULL);
 
-  flashback_Min_log_pageid = lsa->pageid;
+  pthread_mutex_lock (&flashback_Conn_lock);
+
+  if (flashback_Current_conn == thread_p->conn_entry)
+    {
+      flashback_Min_log_pageid = lsa->pageid;
+    }
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
 }
 
 /*
@@ -187,15 +208,76 @@ flashback_is_needed_to_keep_archive ()
 /*
  * flashback_reset - reset flashback global variables
  *
+ * NOTE: the caller must hold flashback_Conn_lock; the only callers are
+ *       flashback_initialize() and flashback_reset_if_owner(), both of which
+ *       already do. Kept file-local so no caller can reach it without the lock.
  */
 
-void
-flashback_reset ()
+static void
+flashback_reset (void)
 {
   flashback_Min_log_pageid = NULL_LOG_PAGEID;
 
-  flashback_Current_conn->in_flashback = false;
-  flashback_Current_conn = NULL;
+  /* flashback_Current_conn is only set once flashback_initialize() has run;
+   * a request that fails before that (e.g. GET_LOGINFO with no preceding
+   * GET_SUMMARY) still routes through this shared reset, so guard against
+   * NULL here rather than crashing. */
+  if (flashback_Current_conn != NULL)
+    {
+      flashback_Current_conn->in_flashback = false;
+      flashback_Current_conn = NULL;
+    }
+}
+
+/*
+ * flashback_is_owner - is the calling connection the one that opened the
+ *                      flashback session now in progress?
+ *
+ * return: true only if a session is in progress and this connection opened it
+ *
+ * NOTE: GET_SUMMARY opens the session (flashback_initialize); every GET_LOGINFO
+ *       that follows reads under it and moves flashback_Min_log_pageid, which
+ *       keeps the archives that session still needs. A connection that did not
+ *       open the session must not do either.
+ */
+bool
+flashback_is_owner (THREAD_ENTRY * thread_p)
+{
+  bool is_owner;
+
+  pthread_mutex_lock (&flashback_Conn_lock);
+
+  is_owner = (flashback_Current_conn != NULL && flashback_Current_conn == thread_p->conn_entry
+	      && flashback_Current_conn->in_flashback);
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
+
+  return is_owner;
+}
+
+/*
+ * flashback_reset_if_owner - reset flashback global state, but only if the
+ *                            calling connection is the current owner
+ *
+ * A handler error path can reach the shared cleanup without this connection
+ * ever having become the owner (e.g. GET_LOGINFO with no preceding
+ * GET_SUMMARY) -- flashback_reset() itself doesn't check, so calling it
+ * unconditionally there would tear down an unrelated connection's live
+ * session. Handler error paths use this instead; flashback_initialize()'s
+ * own stale-entry takeover still calls flashback_reset() directly, since it
+ * already confirmed (via flashback_is_in_progress()) the entry is abandoned.
+ */
+void
+flashback_reset_if_owner (THREAD_ENTRY * thread_p)
+{
+  pthread_mutex_lock (&flashback_Conn_lock);
+
+  if (flashback_Current_conn == thread_p->conn_entry)
+    {
+      flashback_reset ();
+    }
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
 }
 
 /*
@@ -514,6 +596,36 @@ exit:
 }
 
 /*
+ * flashback_format_time () - format a time value for an error message
+ *
+ * buf (out)  : output buffer
+ * size (in)  : size of buf
+ * time_p (in): the time to format
+ *
+ * CBRD-27437: localtime() returns NULL for a value it cannot represent, and the
+ * times formatted here arrive from the client, so print the raw value in that
+ * case rather than handing NULL to strftime().
+ */
+static void
+flashback_format_time (char *buf, size_t size, time_t * time_p)
+{
+  struct tm tm_buf;
+  struct tm *tm_p = localtime_r (time_p, &tm_buf);
+
+  /* strftime() returns 0 when the formatted value (with its terminating NUL)
+   * does not fit buf, and then leaves buf's contents unspecified -- a year
+   * outside four digits (e.g. a client-side typo) overflows the usual width.
+   * Fall back to the raw value in that case rather than handing a possibly
+   * unterminated buffer to the %s that formats the error message, which would
+   * otherwise leak uninitialized stack. localtime_r() is used because the
+   * non-reentrant localtime() shares one static tm across server threads. */
+  if (tm_p == NULL || strftime (buf, size, "%d-%m-%Y:%H:%M:%S", tm_p) == 0)
+    {
+      snprintf (buf, size, "%lld", (long long) *time_p);
+    }
+}
+
+/*
  * flashback_verify_time () - verify the availablity of log records around the 'start_time' and 'end_time'
  *
  * return           : error_code
@@ -537,13 +649,13 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
   if (*start_time > current_time || *end_time <= log_Gl.hdr.db_creation)
     {
-      char start_date[20];
-      char db_creation_date[20];
-      char cur_date[20];
+      char start_date[FLASHBACK_TIME_STR_SIZE];
+      char db_creation_date[FLASHBACK_TIME_STR_SIZE];
+      char cur_date[FLASHBACK_TIME_STR_SIZE];
 
-      strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-      strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
-      strftime (cur_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&current_time));
+      flashback_format_time (start_date, FLASHBACK_TIME_STR_SIZE, start_time);
+      flashback_format_time (db_creation_date, FLASHBACK_TIME_STR_SIZE, &log_Gl.hdr.db_creation);
+      flashback_format_time (cur_date, FLASHBACK_TIME_STR_SIZE, &current_time);
 
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date, db_creation_date,
 	      cur_date);
@@ -574,11 +686,11 @@ flashback_verify_time (THREAD_ENTRY * thread_p, time_t * start_time, time_t * en
 
       if (ret_time >= *end_time)
 	{
-	  char start_date[20];
-	  char db_creation_date[20];
+	  char start_date[FLASHBACK_TIME_STR_SIZE];
+	  char db_creation_date[FLASHBACK_TIME_STR_SIZE];
 
-	  strftime (start_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (start_time));
-	  strftime (db_creation_date, 20, "%d-%m-%Y:%H:%M:%S", localtime (&log_Gl.hdr.db_creation));
+	  flashback_format_time (start_date, FLASHBACK_TIME_STR_SIZE, start_time);
+	  flashback_format_time (db_creation_date, FLASHBACK_TIME_STR_SIZE, &log_Gl.hdr.db_creation);
 
 	  /* out of range : start_time (ret_time) can not be greater than end_time */
 	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_INVALID_TIME, 3, start_date,
@@ -688,6 +800,35 @@ flashback_pack_loginfo (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CO
   return ptr;
 }
 
+/*
+ * flashback_free_loginfo_queue - release log info entries that were generated but never packed
+ *
+ * flashback_pack_loginfo () normally frees each entry as it copies it into the
+ * reply. A caller that gives up before packing (e.g. the reply area can't be
+ * allocated) releases them here instead. Must not be used after packing: the
+ * packer works on a copy of the queue, so the caller's queue still holds the
+ * entries it already freed.
+ */
+void
+flashback_free_loginfo_queue (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
+{
+  CDC_LOGINFO_ENTRY *entry;
+
+  while (!context->loginfo_queue.empty ())
+    {
+      // *INDENT-OFF*
+      entry = context->loginfo_queue.front ();
+      context->loginfo_queue.pop ();
+      // *INDENT-ON*
+
+      free_and_init (entry->log_info);
+      db_private_free_and_init (thread_p, entry);
+    }
+
+  context->queue_size = 0;
+  context->num_loginfo = 0;
+}
+
 static int
 flashback_find_start_lsa (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
 {
@@ -754,6 +895,27 @@ error:
   return error;
 }
 
+/*
+ * flashback_is_valid_request_lsa - could the server have issued this LSA?
+ *
+ * GET_LOGINFO carries back the start/end LSA from the server's previous reply
+ * (or a NULL LSA for the first round), and the offset is then used to locate a
+ * log record header inside the fetched log page. The server only issues a
+ * record start, or NULL_OFFSET meaning "the first record of the page", and log
+ * append moves to the next page whenever a record header would not fit, so any
+ * other offset is rejected before it addresses the page buffer.
+ */
+static bool
+flashback_is_valid_request_lsa (const LOG_LSA * lsa)
+{
+  if (LSA_ISNULL (lsa) || lsa->offset == NULL_OFFSET)
+    {
+      return true;
+    }
+
+  return (lsa->offset >= 0 && lsa->offset <= LOGAREA_SIZE - (int) sizeof (LOG_RECORD_HEADER));
+}
+
 int
 flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
 {
@@ -786,6 +948,16 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
+  if (!flashback_is_valid_request_lsa (&context->start_lsa) || !flashback_is_valid_request_lsa (&context->end_lsa))
+    {
+      const LOG_LSA *bad_lsa =
+	flashback_is_valid_request_lsa (&context->start_lsa) ? &context->end_lsa : &context->start_lsa;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, 2, LSA_AS_ARGS (bad_lsa));
+      error = ER_CDC_INVALID_LOG_LSA;
+      goto error;
+    }
+
   if (LSA_ISNULL (&context->start_lsa))
     {
       error = flashback_find_start_lsa (thread_p, context);
@@ -795,7 +967,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 	}
 
       /* if start_lsa was NULL at the caller, flashback_min_log_pageid was not set at the caller */
-      flashback_set_min_log_pageid_to_keep (&context->start_lsa);
+      flashback_set_min_log_pageid_to_keep (thread_p, &context->start_lsa);
     }
 
   if (context->forward)
