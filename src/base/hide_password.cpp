@@ -75,7 +75,7 @@ class hide_password
 				  bool *is_pwd_keyword_found);
     char *skip_one_query (char *query);
     bool check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server);
-    void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
+    void fprintf_replace_newline (void *fp, char *query, int (*cas_fprintf) (void *, const char *, ...));
     bool check_capitalized_keyword_create (char *query);
     const char *get_password_string (char *qryptr, int *pwd_info_ptr);
 
@@ -92,8 +92,8 @@ class hide_password
 
     void find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr);
     int snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr);
-    void fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
-			   int (*cas_fprintf) (FILE *, const char *, ...));
+    void fprintf_password (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
+			   int (*cas_fprintf) (void *, const char *, ...));
 };
 
 char *
@@ -650,7 +650,7 @@ hide_password::snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO
 }
 
 void
-hide_password::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...))
+hide_password::fprintf_replace_newline (void *fp, char *query, int (*cas_fprintf) (void *, const char *, ...))
 {
   int offset;
   char chbk;
@@ -677,8 +677,8 @@ hide_password::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf
 }
 
 void
-hide_password::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
-				 int (*cas_fprintf) (FILE *, const char *, ...))
+hide_password::fprintf_password (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
+				 int (*cas_fprintf) (void *, const char *, ...))
 {
   char *qryptr = query;
   char chbk;
@@ -709,8 +709,8 @@ hide_password::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_p
 }
 
 void
-password_fprintf (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
-		  int (*cas_fprintf) (FILE *, const char *, ...))
+password_fprintf (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
+		  int (*cas_fprintf) (void *, const char *, ...))
 {
   hide_password chp;
 

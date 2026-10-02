@@ -519,6 +519,39 @@ cas_get_graceful_down_timeout (void)
   return 1 * 60;		/* 1 min */
 }
 
+/*
+ * cas_sig_init () - every signal disposition of a CAS process, in one place.
+ *   Called first thing from main () of cub_cas (cas.c) and cub_cas_cgw (cas_cgw.c).
+ */
+void
+cas_sig_init (void)
+{
+#if !defined(WINDOWS)
+  struct sigaction sa;
+
+  signal (SIGTERM, cas_sig_handler);
+  signal (SIGINT, cas_sig_handler);
+  signal (SIGSEGV, cas_sig_handler);
+  signal (SIGABRT, cas_sig_handler);
+  signal (SIGFPE, cas_sig_handler);
+  signal (SIGILL, cas_sig_handler);
+  signal (SIGBUS, cas_sig_handler);
+  signal (SIGSYS, cas_sig_handler);
+  signal (SIGUSR1, SIG_IGN);
+  signal (SIGPIPE, SIG_IGN);
+  signal (SIGXFSZ, SIG_IGN);
+
+  /* SIGUSR2: SQL log flush timer
+   * SA_SIGINFO distinguishes our timer signal from other SIGUSR2 signals (si_code / si_value).
+   * SA_RESTART prevents EINTR from interrupting idle CAS waits in accept () / recvmsg (). */
+  memset (&sa, 0, sizeof (sa));
+  sa.sa_sigaction = cas_log_sigusr2_handler;
+  sigemptyset (&sa.sa_mask);
+  sa.sa_flags = SA_SIGINFO | SA_RESTART;
+  sigaction (SIGUSR2, &sa, NULL);
+#endif /* !WINDOWS */
+}
+
 void
 cas_sig_handler (int signo)
 {
@@ -531,6 +564,8 @@ cas_sig_handler (int signo)
   is_doing_signal_handler = 1;
 
   signal (signo, SIG_IGN);
+
+  cas_log_flush_on_exit ();
 
   er_print_crash_callstack (signo);
 

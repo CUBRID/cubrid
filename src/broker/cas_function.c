@@ -235,6 +235,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *effective_sql;		/* query actually prepared (original or replacement) */
   int effective_size;
   int replace_rule_idx = -1;
+  int replace_failed_err = 0;
   char *log_sql;		/* writable alias of effective_sql for the compile-end log */
 
   if (argc < 2)
@@ -361,8 +362,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  snprintf (qr_reason, sizeof (qr_reason), "replacement prepare failed (err:%d)", err_info.err_number);
 	}
 
-      cas_log_write (query_seq_num_current_value (), false,
-		     "[REPLACE-FAILED] prepare err:%d, disabled, fallback to orig", err_info.err_number);
+      replace_failed_err = err_info.err_number;	/* logged after the statement is masked */
 #if !defined(NDEBUG)
       _er_log_debug (ARG_FILE_LINE, "query replace [debug] prepare rejected: %s reason=%s (err:%d)\n",
 		     qr_get_rulepath (replace_rule_idx), qr_reason, err_info.err_number);
@@ -433,6 +433,12 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   else
     {
       cas_log_compile_end_write_query_string (log_sql, effective_size - 1, NULL);
+    }
+
+  if (replace_failed_err != 0)
+    {
+      cas_log_write (query_seq_num_current_value (), false,
+		     "[REPLACE-FAILED] prepare err:%d, disabled, fallback to orig", replace_failed_err);
     }
 
   cas_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",
