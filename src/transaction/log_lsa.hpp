@@ -67,17 +67,19 @@ using LOG_LSA = log_lsa;	/* Log address identifier */
 /*
  * An LSA that one thread advances under its own lock while other threads read it without that lock.
  * Every access moves the whole 64-bit word at once, so a reader never composes pageid and offset from two moments,
- * and a two-field update never exposes an intermediate value. The bit-fields are reachable only through load ()/store ().
+ * and a two-field update never exposes an intermediate value. The bit-fields are private and whole-value assignment
+ * is deleted, so the value moves only through load () and store (). A writer advances a local log_lsa under its own
+ * lock and stores it when a reader may look.
  * The layout is that of log_lsa: a struct holding it keeps its disk image and stays trivially copyable.
  */
 struct log_lsa_atomic
 {
     inline log_lsa_atomic () = default;
-    inline log_lsa_atomic (const log_lsa &lsa);
+    inline explicit log_lsa_atomic (const log_lsa &lsa);
+    log_lsa_atomic &operator= (const log_lsa_atomic &) = delete;
 
     inline log_lsa load () const;
     inline void store (const log_lsa &lsa);
-    inline void advance (int add);	/* offset += add, published as one store */
     inline operator log_lsa () const;
 
   private:
@@ -194,14 +196,6 @@ void
 log_lsa_atomic::store (const log_lsa &lsa)
 {
   ATOMIC_STORE_64_RELEASE (&m_lsa, lsa);
-}
-
-void
-log_lsa_atomic::advance (int add)
-{
-  log_lsa lsa = load ();
-  lsa.offset += add;
-  store (lsa);
 }
 
 log_lsa_atomic::operator log_lsa () const
