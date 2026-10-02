@@ -70,9 +70,6 @@ static void cas_log_backup (T_CUBRID_FILE_ID fid);
 static void cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...);
 
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-static void cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index);
-#endif
 static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, bool do_flush,
 				    const char *fmt, va_list ap);
 static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap);
@@ -306,24 +303,6 @@ cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
 
   return;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-static void
-cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
-{
-  char new_filepath[BROKER_PATH_MAX];
-  struct tm tmp_tm;
-
-  assert (log_filepath[0] != '\0');
-
-  localtime_r (&cur_time, &tmp_tm);
-  tmp_tm.tm_year += 1900;
-
-  snprintf (new_filepath, BROKER_PATH_MAX, "%s.%02d%02d%02d%02d%02d.%d", log_filepath, tmp_tm.tm_mon + 1,
-	    tmp_tm.tm_mday, tmp_tm.tm_hour, tmp_tm.tm_min, tmp_tm.tm_sec, run_time);
-  cas_rename (log_filepath, new_filepath);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 cas_log_end (int mode, int run_time_sec, int run_time_msec)
