@@ -29,6 +29,8 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/file.h>
+#include <pthread.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -149,7 +151,17 @@ namespace console_log
 	  }
       }
     // Best effort syslog datagram: do not block on an unavailable/full logger.
+#if defined(LINUX)
     int socket_fd = socket (AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+#else
+    int socket_fd = socket (AF_UNIX, SOCK_DGRAM, 0);
+    if (socket_fd >= 0 && (fcntl (socket_fd, F_SETFL, O_NONBLOCK) < 0
+			   || fcntl (socket_fd, F_SETFD, FD_CLOEXEC) < 0))
+      {
+	close (socket_fd);
+	socket_fd = -1;
+      }
+#endif
     if (socket_fd >= 0)
       {
 	struct sockaddr_un address = {};
@@ -320,5 +332,34 @@ namespace console_log
     errno = saved;
     return success;
   }
+  inline bool start (int lock_fd, const char *path, const char *marker, size_t size)
+  {
+    // Logging may exceed an inherited RLIMIT_FSIZE. Block only this thread's
+    // synchronous SIGXFSZ while checking write/ftruncate errors; preserve the
+    // caller's disposition, mask and any signal already pending on entry.
+    sigset_t blocked, original, pending;
+    sigemptyset (&blocked);
+    sigaddset (&blocked, SIGXFSZ);
+    int error = pthread_sigmask (SIG_BLOCK, &blocked, &original);
+    if (error != 0)
+      {
+	errno = error;
+	return false;
+      }
+    sigpending (&pending);
+    bool was_pending = sigismember (&pending, SIGXFSZ) == 1;
+    int last_error = 0;
+    bool success = initialize (lock_fd, path) && append (lock_fd, path, marker, size, last_error);
+    int saved = errno;
+    if (!was_pending)
+      {
+	struct timespec immediately = {0, 0};
+	while (sigtimedwait (&blocked, nullptr, &immediately) < 0 && errno == EINTR) {}
+      }
+    pthread_sigmask (SIG_SETMASK, &original, nullptr);
+    errno = saved;
+    return success;
+  }
+
 }
 #endif

@@ -295,7 +295,6 @@ background_process_start (const char *path, const char *const args[], const char
   char marker[1024];
   char database[513];
   int marker_size;
-  int log_error = 0;
   bool marker_truncated = false;
 
   fds[0] = owned_fd (open ("/dev/null", O_RDWR | O_CLOEXEC));
@@ -326,8 +325,7 @@ background_process_start (const char *path, const char *const args[], const char
       errno = ENAMETOOLONG;
       goto cleanup;
     }
-  if (!console_log::initialize (fds[1], log_path)
-      || !console_log::append (fds[1], log_path, marker, marker_size, log_error))
+  if (!console_log::start (fds[1], log_path, marker, marker_size))
     {
       goto cleanup;
     }
