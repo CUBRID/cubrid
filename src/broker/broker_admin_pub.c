@@ -256,6 +256,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
   /* *INDENT-ON* */
   int i;
   int res = 0;
+  bool startup_complete = false;
   char path[BROKER_PATH_MAX];
   char upper_broker_name[BROKER_NAME_LEN];
   char hostname[CUB_MAXHOSTNAMELEN];
@@ -446,15 +447,18 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  if (shm_as_p)
 	    {
 	      uw_shm_detach (shm_as_p);
+	      shm_as_p = NULL;
 	    }
 	  if (shm_proxy_p)
 	    {
 	      uw_shm_detach (shm_proxy_p);
+	      shm_proxy_p = NULL;
 	    }
 
 	}
     }
 
+  startup_complete = (i == br_num);
   res = group.finish (res);
   if (res < 0)
     {
@@ -462,7 +466,11 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
       memcpy (err_msg_backup, admin_err_msg, ADMIN_ERR_MSG_SIZE);
 
       /* if shm_as_p == NULL then, it is expected that failed creating shared memory */
-      if (shm_as_p == NULL)
+      if (startup_complete)
+	{
+	  i = br_num - 1;
+	}
+      else if (shm_as_p == NULL)
 	{
 	  if (shm_br->br_info[i].shard_flag == ON && shm_proxy_p)
 	    {
