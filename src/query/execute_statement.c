@@ -3415,12 +3415,13 @@ end:
 #define ER_PT_UNKNOWN_STATEMENT ER_GENERIC_ERROR
 #define UNIQUE_SAVEPOINT_EXTERNAL_STATEMENT "eXTERNALsTATEMENT"
 
-bool do_Trigger_involved;
+/* statement execution state; per connection (thread-local for multiple connections) */
+CUB_THREAD_LOCAL bool do_Trigger_involved;
 
 /* do_Trigger_involved does not accurately distinguish
  * whether the corresponding query is a trigger syntax.
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
-bool cdc_Trigger_involved = false;
+CUB_THREAD_LOCAL bool cdc_Trigger_involved = false;
 
 /*
  * do_statement() -

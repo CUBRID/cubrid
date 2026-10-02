@@ -90,7 +90,7 @@ bool obt_Enable_autoincrement = true;
  * to set the first generated AUTO_INCREMENT value as LAST_INSERT_ID.
  * It is only for client-side insertion.
  */
-CUB_THREAD_LOCAL_PSR bool obt_Last_insert_id_generated = false;
+CUB_THREAD_LOCAL bool obt_Last_insert_id_generated = false;
 
 /*
  *                            OBJECT MANAGER AREAS

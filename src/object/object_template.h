@@ -33,6 +33,7 @@
 
 #include "area_alloc.h"
 #include "class_object.h"
+#include "db_multi_threads_connections.h"
 
 #define OBT_BASE_OBJECT(template_ptr) \
   (((template_ptr)->base_object != NULL) ? \
@@ -200,7 +201,7 @@ extern bool obt_Enable_autoincrement;
  * to set the first generated AUTO_INCREMENT value as LAST_INSERT_ID.
  * It is only for client-side insertion.
  */
-extern bool obt_Last_insert_id_generated;
+extern CUB_THREAD_LOCAL bool obt_Last_insert_id_generated;
 
 
 /* OBJECT TEMPLATE FUNCTIONS */
