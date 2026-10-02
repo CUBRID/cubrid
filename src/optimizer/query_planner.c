@@ -11594,6 +11594,83 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
     }
 }
 
+static UINT64
+qo_plan_sig_mix (UINT64 sig, UINT64 v)
+{
+  sig ^= v + 0x9e3779b97f4a7c15ULL + (sig << 6) + (sig >> 2);
+  return sig;
+}
+
+/*
+ * qo_plan_signature () - fold the shape of a plan into a running signature
+ *   return   : the new signature
+ *   plan (in): plan to sign (NULL signs as "no plan")
+ *   sig (in) : signature so far (the plans of one compile are folded into one)
+ *
+ * The shape is what the plan does: plan types, the join order, join and scan methods and the
+ * index each scan uses, plus the plan-level optimizations. Costs and row estimates are left out,
+ * so two compiles of one query that chose the same plan under different values sign alike.
+ */
+UINT64
+qo_plan_signature (QO_PLAN * plan, UINT64 sig)
+{
+  if (plan == NULL)
+    {
+      return qo_plan_sig_mix (sig, 0x6e6f706cULL);
+    }
+
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_type + 1);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->parallel_opt_use);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->multi_range_opt_use);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->skip_orderby_opt);
+  sig = qo_plan_sig_mix (sig, (UINT64) ((plan->use_iscan_descending ? 1 : 0) | (plan->has_sort_limit ? 2 : 0)));
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.scan.scan_method);
+      sig = qo_plan_sig_mix (sig, (UINT64) (plan->plan_un.scan.node ? QO_NODE_IDX (plan->plan_un.scan.node) : -1));
+      sig = qo_plan_sig_mix (sig, (UINT64) ((plan->plan_un.scan.index_equi ? 1 : 0)
+					    | (plan->plan_un.scan.index_cover ? 2 : 0)
+					    | (plan->plan_un.scan.index_iss ? 4 : 0)
+					    | (plan->plan_un.scan.index_loose ? 8 : 0)));
+      if (plan->plan_un.scan.index != NULL && plan->plan_un.scan.index->head != NULL
+	  && plan->plan_un.scan.index->head->constraints != NULL
+	  && plan->plan_un.scan.index->head->constraints->name != NULL)
+	{
+	  const char *c;
+
+	  for (c = plan->plan_un.scan.index->head->constraints->name; *c != '\0'; c++)
+	    {
+	      sig = qo_plan_sig_mix (sig, (UINT64) (unsigned char) *c);
+	    }
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.sort.sort_type);
+      sig = qo_plan_signature (plan->plan_un.sort.subplan, sig);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.join.join_type);
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.join.join_method);
+      sig = qo_plan_signature (plan->plan_un.join.outer, sig);
+      sig = qo_plan_signature (plan->plan_un.join.inner, sig);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      sig = qo_plan_signature (plan->plan_un.follow.head, sig);
+      sig = qo_plan_sig_mix (sig, (UINT64) (plan->plan_un.follow.path ? QO_TERM_IDX (plan->plan_un.follow.path) : -1));
+      break;
+
+    default:
+      break;
+    }
+
+  return sig;
+}
+
 /*
  * qo_between_range_histogram_selectivity () - selectivity of one between-range operator from
  *   the column histogram. Shared by the RANGE path (attr RANGE {...}) and the BETWEEN path
@@ -11614,7 +11691,7 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
  * arg2_val (in)   : upper bound value, NULL for one-sided operators
  * out_sel (out)   : selectivity in [0,1]
  */
-static bool
+bool
 qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
 					DB_VALUE * arg2_val, double *out_sel)
 {

@@ -15269,6 +15269,23 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
+  if (PT_IS_QUERY (statement) && statement->info.query.bind_variant_key != NULL && contextp->sql_hash_text != NULL)
+    {
+      /* a plan variant of this query is a cache entry of its own, named by its key after the
+       * query text (bind_variant.h) */
+      size_t text_len = strlen (contextp->sql_hash_text);
+      size_t key_len = strlen (statement->info.query.bind_variant_key);
+      char *variant_text = (char *) parser_alloc (parser, (int) (text_len + key_len + 1));
+
+      if (variant_text == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  return err;
+	}
+      memcpy (variant_text, contextp->sql_hash_text, text_len);
+      memcpy (variant_text + text_len, statement->info.query.bind_variant_key, key_len + 1);
+      contextp->sql_hash_text = variant_text;
+    }
   err =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 		 &contextp->sha1);
@@ -15331,6 +15348,12 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	       * CCI/JDBC prepared statements, which arrive through this driver-neutral path. */
 	      statement->flag.hv_pred_plan_unpeeked = 1;
 	    }
+	  if (stream.xasl_header->xasl_flag & BIND_WATCH_CANDIDATE)
+	    {
+	      /* the cached plan passed target selection for bind-value plan variants; record it so
+	       * the driver-neutral path chooses among the variants too */
+	      statement->flag.bind_watch_candidate = 1;
+	    }
 	}
     }
 
@@ -15352,6 +15375,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  /* freshly compiled with unbound host-variable markers (see the cache-hit branch above) */
 	  statement->flag.hv_pred_plan_unpeeked = 1;
+	}
+      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+	{
+	  statement->flag.bind_watch_candidate = 1;
 	}
       AU_RESTORE (au_save);
 

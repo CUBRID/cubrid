@@ -95,6 +95,23 @@ static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
 static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
+static int do_replan_statement_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool force_compile);
+
+/* what one bind-value check of the hint (or the first peek) says about the cached plan */
+typedef enum
+{
+  BIND_WATCH_OFF,		/* not checked */
+  BIND_WATCH_KEEP,		/* checked, and every predicate is inside the band */
+  BIND_WATCH_REPLAN,		/* checked, and one is not: regenerate the plan */
+  BIND_WATCH_STOP		/* checked, but nothing here can be priced */
+} BIND_WATCH_VERDICT;
+
+static BIND_WATCH_STATE **db_stmt_bind_watch_ptr (PT_NODE * statement);
+static BIND_WATCH_STATE *db_stmt_bind_watch_state (PARSER_CONTEXT * parser, PT_NODE * statement);
+static bool db_bind_watch_is_open (PT_NODE * statement);
+static BIND_WATCH_VERDICT db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement);
+static bool db_bind_variant_mode (PT_NODE * statement);
+static int db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
 							   PT_NODE * statement, DB_QUERY_RESULT ** result,
 							   bool force_replan);
@@ -155,13 +172,13 @@ db_is_bind_sensitive (PT_NODE * statement)
 }
 
 /*
- * db_stmt_bind_fp_ptr () - the statement's bind-value fingerprint slot, when the statement
- *   type takes part in bind-value plan fixing (queries, UPDATE, DELETE)
- * return         : pointer to the fingerprint or NULL
+ * db_stmt_bind_watch_ptr () - the statement's bind-value watch slot, when the statement type
+ *   takes part in bind-value plan fixing (queries, UPDATE, DELETE)
+ * return         : pointer to the watch-state pointer, or NULL
  * statement (in) : statement being executed
  */
-static UINT64 *
-db_stmt_bind_fp_ptr (PT_NODE * statement)
+static BIND_WATCH_STATE **
+db_stmt_bind_watch_ptr (PT_NODE * statement)
 {
   if (statement == NULL)
     {
@@ -169,17 +186,476 @@ db_stmt_bind_fp_ptr (PT_NODE * statement)
     }
   if (PT_IS_QUERY (statement))
     {
-      return &statement->info.query.bind_fp;
+      return &statement->info.query.bind_watch;
     }
   if (statement->node_type == PT_UPDATE)
     {
-      return &statement->info.update.bind_fp;
+      return &statement->info.update.bind_watch;
     }
   if (statement->node_type == PT_DELETE)
     {
-      return &statement->info.delete_.bind_fp;
+      return &statement->info.delete_.bind_watch;
     }
   return NULL;
+}
+
+/*
+ * db_stmt_bind_watch_state () - the statement's bind-value state, allocated on first use
+ * return         : the state, NULL for a statement type that has none (or out of memory)
+ */
+static BIND_WATCH_STATE *
+db_stmt_bind_watch_state (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  BIND_WATCH_STATE **ws_p = db_stmt_bind_watch_ptr (statement);
+  BIND_WATCH_STATE *ws;
+
+  if (ws_p == NULL)
+    {
+      return NULL;
+    }
+  if (*ws_p != NULL)
+    {
+      return *ws_p;
+    }
+  ws = (BIND_WATCH_STATE *) parser_alloc (parser, sizeof (BIND_WATCH_STATE));
+  if (ws == NULL)
+    {
+      er_clear ();
+      return NULL;
+    }
+  memset (ws, 0, sizeof (BIND_WATCH_STATE));
+  ws->terms = -1;
+  ws->base_known = false;
+  ws->state = BIND_VARIANT_STATE_WATCH;
+  ws->cur_variant = -1;
+  *ws_p = ws;
+  return ws;
+}
+
+/*
+ * db_bind_watch_is_open () - does this execution owe a check of the hint path?
+ * return         : true when the fingerprint must be compared on this execution
+ * statement (in) : statement being executed
+ *
+ * Two reasons:
+ *   - the hint (BIND_SENSITIVE / plan_cache_bind_sensitivity): every execution, no limit --
+ *     the user asked for it;
+ *   - the driver-neutral first peek: the plan was chosen with unbound markers, so the first
+ *     execution prices it once (what develop does with the feature off).
+ * Statements in plan-variant mode never get here (db_bind_variant_mode ()).
+ */
+static bool
+db_bind_watch_is_open (PT_NODE * statement)
+{
+  if (db_stmt_bind_watch_ptr (statement) == NULL)
+    {
+      return false;
+    }
+  return db_is_bind_sensitive (statement) || statement->flag.hv_pred_plan_unpeeked;
+}
+
+/*
+ * db_bind_watch_verdict () - one check of the hint path (or the first peek)
+ * return         : what the caller should do with the plan
+ * parser (in)    : parser holding the statement and the bound values
+ * statement (in) : statement being executed
+ */
+static BIND_WATCH_VERDICT
+db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  BIND_WATCH_STATE *ws;
+  UINT64 value_hash;
+  bool usable = false;
+  bool replan, hinted;
+
+  if (!db_bind_watch_is_open (statement))
+    {
+      return BIND_WATCH_OFF;
+    }
+  ws = db_stmt_bind_watch_state (parser, statement);
+  if (ws == NULL)
+    {
+      return BIND_WATCH_OFF;
+    }
+
+  value_hash = histogram_bind_value_hash (parser);
+  if (value_hash != 0 && value_hash == ws->value_hash)
+    {
+      /* the same values as the last check: no estimate can have moved */
+      return BIND_WATCH_KEEP;
+    }
+  ws->value_hash = value_hash;
+  hinted = db_is_bind_sensitive (statement);
+
+  replan = histogram_bind_watch_check (parser, statement, ws, hinted ? BIND_WATCH_HINT_BAND : BIND_WATCH_BAND, &usable);
+  if (!usable)
+    {
+      /* nothing in this statement is priced by a histogram, and that cannot change while this
+       * plan lives -- the plan is invalidated together with the statistics */
+      return BIND_WATCH_STOP;
+    }
+  if (!replan)
+    {
+      return BIND_WATCH_KEEP;
+    }
+  ws->replans++;
+  return BIND_WATCH_REPLAN;
+}
+
+/*
+ * db_bind_variant_mode () - does this statement choose among plan variants (bind_variant.h)?
+ * return         : true for a SELECT picked by target selection while the feature is on, unless
+ *                  the hint asks for the every-execution path instead
+ */
+static bool
+db_bind_variant_mode (PT_NODE * statement)
+{
+  return (statement != NULL && PT_IS_QUERY (statement) && statement->flag.bind_watch_candidate
+	  && prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS) > 0
+	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0
+	  && !db_is_bind_sensitive (statement));
+}
+
+/*
+ * db_bind_variant_key () - the hash-text key of one variant of the base entry's generation
+ */
+static const char *
+db_bind_variant_key (PARSER_CONTEXT * parser, const BIND_WATCH_STATE * ws, int variant)
+{
+  char buf[96];
+
+  snprintf (buf, sizeof (buf), " /* bind variant %d.%06d #%d */", ws->base_time.sec, ws->base_time.usec, variant);
+  return pt_append_string (parser, NULL, buf);
+}
+
+/*
+ * db_bind_variant_remember () - keep the statement's XASL_ID as its current variant's
+ */
+static void
+db_bind_variant_remember (PT_NODE * statement)
+{
+  BIND_WATCH_STATE **ws_p = db_stmt_bind_watch_ptr (statement);
+  BIND_WATCH_STATE *ws = (ws_p != NULL) ? *ws_p : NULL;
+
+  if (ws == NULL || ws->cur_variant < 0 || ws->cur_variant >= BIND_VARIANT_MAX_COMPILES || statement->xasl_id == NULL)
+    {
+      return;
+    }
+  XASL_ID_COPY (&ws->variant_id[ws->cur_variant], statement->xasl_id);
+  ws->id_known[ws->cur_variant] = true;
+}
+
+/*
+ * db_bind_variant_switch () - make the statement's XASL_ID the plan of a variant
+ * return         : error code
+ * variant (in)   : the variant; -1 = the base entry
+ * compile (in)   : compile it under the current values even when it is cached (a new variant)
+ *
+ * A variant this statement ran before is reached by its remembered XASL_ID, without a round
+ * trip. Otherwise this is a cache lookup; when the variant's entry was evicted it is compiled
+ * again under the current values, which are the nearest to it anyway -- that decides nothing
+ * about which plans the query has.
+ */
+static int
+db_bind_variant_switch (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws, int variant, bool compile)
+{
+  int err;
+
+  if (!compile && variant == ws->cur_variant && statement->xasl_id != NULL)
+    {
+      return NO_ERROR;
+    }
+  statement->info.query.bind_variant_key = (variant >= 0) ? db_bind_variant_key (parser, ws, variant) : NULL;
+
+  if (!compile && variant >= 0 && variant < BIND_VARIANT_MAX_COMPILES && ws->id_known[variant])
+    {
+      XASL_ID *xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID));
+
+      if (xasl_id != NULL)
+	{
+	  XASL_ID_COPY (xasl_id, &ws->variant_id[variant]);
+	  pt_free_statement_xasl_id (statement);
+	  statement->xasl_id = xasl_id;
+	  ws->cur_variant = variant;
+	  return NO_ERROR;
+	}
+    }
+
+  err = do_replan_statement_internal (parser, statement, compile);
+  if (err == NO_ERROR)
+    {
+      ws->cur_variant = variant;
+      db_bind_variant_remember (statement);
+    }
+  return err;
+}
+
+/*
+ * db_bind_variant_learn () - keep what the server said about the query's variants
+ */
+static void
+db_bind_variant_learn (BIND_WATCH_STATE * ws, const BIND_VARIANT_REPLY * reply)
+{
+  int i;
+
+  if (reply->state != BIND_VARIANT_STATE_WATCH && ws->state == BIND_VARIANT_STATE_WATCH)
+    {
+      _er_log_debug (ARG_FILE_LINE, "bind variant learning done: %d plan(s) from %d compile(s) -- %s\n",
+		     reply->plans, reply->compiles, (reply->state == BIND_VARIANT_STATE_DONE)
+		     ? "the plan is final, values are no longer checked" : "each execution runs the nearest plan");
+    }
+  ws->state = reply->state;
+  ws->n_records = reply->n_records;
+  for (i = 0; i < reply->n_records && i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ws->records[i] = reply->records[i];
+    }
+}
+
+/*
+ * db_bind_variant_nearest () - run the variant nearest to the values
+ */
+static int
+db_bind_variant_nearest (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws,
+			 const BIND_FINGERPRINT * fp)
+{
+  double dist = DBL_MAX;
+  int i = bind_variant_nearest (ws->records, ws->n_records, fp, BIND_WATCH_ROW_FLOOR, &dist);
+
+  if (i < 0)
+    {
+      return NO_ERROR;
+    }
+  return db_bind_variant_switch (parser, statement, ws, ws->records[i].variant, false);
+}
+
+/*
+ * db_bind_variant_rebase () - attach the statement to the query's current base entry: its
+ *   generation is gone (DDL, eviction, cache drop), so the variants start over
+ */
+static int
+db_bind_variant_rebase (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws)
+{
+  int err, i;
+
+  ws->base_known = false;
+  ws->state = BIND_VARIANT_STATE_WATCH;
+  ws->n_records = 0;
+  ws->cur_variant = -1;
+  ws->polls = 0;
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ws->id_known[i] = false;
+    }
+  statement->info.query.bind_variant_key = NULL;
+
+  err = do_replan_statement_internal (parser, statement, false);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (statement->xasl_id != NULL)
+    {
+      ws->base_sha1 = statement->xasl_id->sha1;
+      ws->base_time = statement->xasl_id->time_stored;
+      ws->base_known = true;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * db_bind_variant_step () - choose the plan variant this execution runs (bind_variant.h)
+ * return         : error code; on success statement->xasl_id is the plan to run
+ * parser (in)    : parser holding the statement and the bound values
+ * statement (in) : SELECT in plan-variant mode, prepared
+ *
+ * The same values as the previous execution run the same plan, unchecked. New values are
+ * fingerprinted and matched against the directory this client already has; only when nothing
+ * there suits does the client ask the server, which answers with a variant another client added
+ * since, or reserves one to compile while the query is still learning. A compile that produced
+ * a plan the query already has is folded into that variant. Once the query is done learning:
+ * one plan means the values are not looked at again, several mean each new set of values runs
+ * the nearest plan, without asking the server and without compiling.
+ */
+static int
+db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  BIND_WATCH_STATE *ws;
+  BIND_FINGERPRINT fp;
+  BIND_VARIANT_REQUEST req;
+  BIND_VARIANT_REPLY reply;
+  UINT64 value_hash;
+  int err, attempt, k, i;
+  double dist;
+
+  ws = db_stmt_bind_watch_state (parser, statement);
+  if (ws == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  value_hash = histogram_bind_value_hash (parser);
+  if (ws->cur_variant >= 0 && value_hash != 0 && value_hash == ws->value_hash)
+    {
+      return NO_ERROR;
+    }
+  ws->value_hash = value_hash;
+  if (ws->state == BIND_VARIANT_STATE_DONE)
+    {
+      /* one plan, or nothing to choose by: the values are not looked at again */
+      return NO_ERROR;
+    }
+
+  if (!histogram_bind_fingerprint (parser, statement, &fp, NULL))
+    {
+      /* nothing in the statement is priced by a histogram: the plan cannot depend on the
+       * values, and that cannot change while the plan lives */
+      ws->state = BIND_VARIANT_STATE_DONE;
+      return NO_ERROR;
+    }
+
+  if (!ws->base_known)
+    {
+      if (statement->xasl_id == NULL)
+	{
+	  return NO_ERROR;
+	}
+      ws->base_sha1 = statement->xasl_id->sha1;
+      ws->base_time = statement->xasl_id->time_stored;
+      ws->base_known = true;
+      ws->cur_variant = -1;
+    }
+
+  /* the directory this client already holds first: a variant that suits costs no round trip.
+   * Once the query is done learning the nearest one is taken whatever the distance. */
+  i = bind_variant_nearest (ws->records, ws->n_records, &fp, BIND_WATCH_ROW_FLOOR, &dist);
+  if (i >= 0 && (dist < BIND_WATCH_BAND || ws->state == BIND_VARIANT_STATE_SELECT))
+    {
+      return db_bind_variant_switch (parser, statement, ws, ws->records[i].variant, false);
+    }
+  if (ws->state == BIND_VARIANT_STATE_SELECT)
+    {
+      return NO_ERROR;
+    }
+
+  memset (&req, 0, sizeof (req));
+  req.op = BIND_VARIANT_OP_CHECK;
+  req.limit = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS);
+  req.band = BIND_WATCH_BAND;
+  req.floor = BIND_WATCH_ROW_FLOOR;
+  req.fp = fp;
+
+  for (attempt = 0; attempt < 2; attempt++)
+    {
+      req.sha1 = ws->base_sha1;
+      req.time_stored = ws->base_time;
+      err = qmgr_bind_variant (&req, &reply);
+      if (err != NO_ERROR)
+	{
+	  /* the plan in hand still answers the query; never fail it over the variants */
+	  er_clear ();
+	  ws->state = BIND_VARIANT_STATE_DONE;
+	  return NO_ERROR;
+	}
+      if (reply.result != BIND_VARIANT_NOT_FOUND)
+	{
+	  break;
+	}
+      err = db_bind_variant_rebase (parser, statement, ws);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      if (!ws->base_known)
+	{
+	  return NO_ERROR;
+	}
+    }
+  if (reply.result == BIND_VARIANT_NOT_FOUND)
+    {
+      ws->state = BIND_VARIANT_STATE_DONE;
+      return NO_ERROR;
+    }
+
+  /* the record nearest to these values before this request, to tell the log what moved */
+  i = bind_variant_nearest (reply.records, reply.n_records, &fp, BIND_WATCH_ROW_FLOOR, &dist);
+  db_bind_variant_learn (ws, &reply);
+
+  switch (reply.result)
+    {
+    case BIND_VARIANT_MATCH:
+      return db_bind_variant_switch (parser, statement, ws, reply.variant, false);
+
+    case BIND_VARIANT_FROZEN:
+      if (ws->state == BIND_VARIANT_STATE_WATCH && ++ws->polls >= BIND_VARIANT_MAX_POLLS)
+	{
+	  /* done learning but a variant is still being compiled, and it may never come back
+	   * (its client died): settle on the plans there are */
+	  ws->state = (reply.plans <= 1) ? BIND_VARIANT_STATE_DONE : BIND_VARIANT_STATE_SELECT;
+	  _er_log_debug (ARG_FILE_LINE, "bind variant learning done: %d plan(s), a compile never came back\n",
+			 reply.plans);
+	}
+      if (ws->state == BIND_VARIANT_STATE_DONE)
+	{
+	  /* one plan: every record reaches it */
+	  return (ws->n_records > 0) ? db_bind_variant_switch (parser, statement, ws, ws->records[0].variant,
+							       false) : NO_ERROR;
+	}
+      /* several plans, or a compile still in flight (asked again next time): the nearest */
+      return db_bind_variant_nearest (parser, statement, ws, &fp);
+
+    case BIND_VARIANT_COMPILE:
+      k = reply.variant;
+      parser->bind_plan_sig = 0;
+      err = db_bind_variant_switch (parser, statement, ws, k, true);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+
+      memset (&req, 0, sizeof (req));
+      req.op = BIND_VARIANT_OP_REGISTER;
+      req.sha1 = ws->base_sha1;
+      req.time_stored = ws->base_time;
+      req.limit = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS);
+      req.variant = k;
+      req.plan_sig = parser->bind_plan_sig;
+      req.fp = fp;
+      err = qmgr_bind_variant (&req, &reply);
+      if (err != NO_ERROR || reply.result == BIND_VARIANT_NOT_FOUND)
+	{
+	  /* the compiled plan suits these values; run it and let the next request sort it out */
+	  er_clear ();
+	  return NO_ERROR;
+	}
+
+      {
+	/* the labels are built only here, for the log: a compile is rare, a fingerprint is not */
+	char names[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
+	char buf[BIND_WATCH_MAX_TERMS * (BIND_WATCH_NAME_LEN + 32)];
+	BIND_FINGERPRINT named;
+
+	buf[0] = '\0';
+	if (histogram_bind_fingerprint (parser, statement, &named, names))
+	  {
+	    histogram_bind_describe (buf, sizeof (buf), &named, names, (i >= 0) ? &ws->records[i].fp : NULL);
+	  }
+	if (reply.result == BIND_VARIANT_SAME_PLAN && reply.variant != k)
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "bind variant compile: same plan as #%d (%d compile(s), %d plan(s)); %s\n",
+			   reply.variant, reply.compiles, reply.plans, buf);
+	    db_bind_variant_learn (ws, &reply);
+	    return db_bind_variant_switch (parser, statement, ws, reply.variant, false);
+	  }
+	_er_log_debug (ARG_FILE_LINE, "bind variant compile: new plan #%d (%d compile(s), %d plan(s)); %s\n", k,
+		       reply.compiles, reply.plans, buf);
+	db_bind_variant_learn (ws, &reply);
+      }
+      return NO_ERROR;
+
+    default:
+      return NO_ERROR;
+    }
 }
 
 int g_open_buffer_control_flags = 0;
@@ -2000,7 +2476,6 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   PT_NODE *statement;
   DB_QUERY_RESULT *qres;
   DB_VALUE *val;
-  UINT64 *bind_fp_p;
   int err = NO_ERROR;
   int server_info_bits;
 
@@ -2235,29 +2710,33 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
        * this, CCI/JDBC prepared statements -- which never build a PT_EXECUTE_PREPARE node and so never
        * reach the header-flag consumer in do_get_prepared_statement_info () -- would never price a
        * `?` predicate with real values. */
-      bind_fp_p = db_stmt_bind_fp_ptr (statement);
-      if ((statement->flag.hv_pred_plan_unpeeked || db_is_bind_sensitive (statement)) && bind_fp_p != NULL
-	  && parser->flag.set_host_var && parser->host_var_count > 0 && statement->xasl_id != NULL)
+      if (db_bind_variant_mode (statement) && parser->flag.set_host_var && parser->host_var_count > 0
+	  && statement->xasl_id != NULL)
 	{
-	  UINT64 bind_fp = 0;
-
-	  if (!histogram_bind_fingerprint (parser, statement, &bind_fp))
+	  /* a SELECT picked by target selection runs the plan variant its values call for
+	   * (bind_variant.h); that also settles the first peek, since no variant is chosen under
+	   * unbound markers */
+	  err = db_bind_variant_step (parser, statement);
+	  if (err != NO_ERROR)
 	    {
-	      /* nothing in this statement is priced by a histogram (e.g. its tables have no
-	       * collected statistics), and that cannot change while this plan lives -- the plan
-	       * is invalidated with the statistics. Clear the unpeeked flag so later executions
-	       * stop re-walking the tree for an answer that cannot change. */
-	      statement->flag.hv_pred_plan_unpeeked = 0;
+	      update_execution_values (parser, -1, CUBRID_MAX_STMT_TYPE);
+	      assert (result == NULL || *result == NULL);
+	      return err;
 	    }
-	  else if (*bind_fp_p != bind_fp)
+	  statement->flag.hv_pred_plan_unpeeked = 0;
+	}
+      else if (db_bind_watch_is_open (statement) && parser->flag.set_host_var && parser->host_var_count > 0
+	       && statement->xasl_id != NULL)
+	{
+	  BIND_WATCH_VERDICT watch = db_bind_watch_verdict (parser, statement);
+
+	  if (watch == BIND_WATCH_REPLAN)
 	    {
-	      /* The bound values land in different histogram territory (a different MCV/bucket,
-	       * hence a different selectivity) than the values the cached plan was chosen under --
-	       * or this is the first execution and the plan was compiled with unbound markers.
-	       * Regenerate the plan FROM THE KEPT POST-TRANSFORM TREE: do_prepare_statement ()
-	       * redoes only plan selection and XASL generation; parsing, semantic checks and
-	       * rewrites are NOT repeated. With the values now bound, the histogram probes price
-	       * the predicates with their real selectivities. */
+	      /* The values price at least one predicate out of band against the plan -- or this
+	       * is the first execution and the plan was compiled with unbound markers. Regenerate
+	       * the plan FROM THE KEPT POST-TRANSFORM TREE: do_prepare_statement () redoes only
+	       * plan selection and XASL generation; parsing, semantic checks and rewrites are NOT
+	       * repeated. */
 	      err = do_replan_statement_with_bind_peek (parser, statement);
 	      if (err != NO_ERROR)
 		{
@@ -2265,11 +2744,10 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		  assert (result == NULL || *result == NULL);
 		  return err;
 		}
-	      *bind_fp_p = bind_fp;
-	      /* the regenerated plan was chosen under real values, so the unpeeked contract is
-	       * satisfied; any further replan is up to the parameter / hint */
-	      statement->flag.hv_pred_plan_unpeeked = 0;
 	    }
+	  /* the plan has now been priced under real values (or nothing in it can be priced, which
+	   * cannot change while it lives), so the unpeeked contract is satisfied either way */
+	  statement->flag.hv_pred_plan_unpeeked = 0;
 	}
 
       /* now, execute the statement by calling do_execute_statement() */
@@ -2306,6 +2784,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      /* retry the statement by calling do_prepare/execute_statement() */
 	      if (do_prepare_statement (parser, statement) == NO_ERROR)
 		{
+		  if (db_bind_variant_mode (statement))
+		    {
+		      /* the variant's remembered XASL_ID was stale; keep the fresh one */
+		      db_bind_variant_remember (statement);
+		    }
 		  err = do_execute_statement (parser, statement);
 		}
 	    }
@@ -3522,6 +4005,19 @@ db_reset_cte_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 static int
 do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
+  return do_replan_statement_internal (parser, statement, true);
+}
+
+/*
+ * do_replan_statement_internal () - regenerate plan selection and XASL from the kept tree
+ * return : error code
+ * force_compile (in) : true = compile and replace the cache entry (a replan); false = take the
+ *                      statement's cache entry when it is there, compile only when it is not
+ *                      (switching to a plan variant)
+ */
+static int
+do_replan_statement_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool force_compile)
+{
   int err;
   unsigned int save_recompile = statement->flag.recompile;
   int save_level;
@@ -3531,7 +4027,7 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
       pt_free_statement_xasl_id (statement);
     }
   (void) parser_walk_tree (parser, statement, db_reset_cte_xasl_pre, NULL, NULL, NULL);
-  statement->flag.recompile = 1;
+  statement->flag.recompile = force_compile ? 1 : 0;
   er_clear ();
   pt_reset_error (parser);
   parser->query_id = NULL_QUERY_ID;
@@ -3623,43 +4119,41 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
 
   {
     PT_NODE *stmt0 = kept->statements[0];
-    UINT64 fp = 0;
-    UINT64 *fp_p = db_stmt_bind_fp_ptr (stmt0);
     bool replan = force_replan;
-    bool have_fp = false;
 
-    if (fp_p != NULL && (replan || db_is_bind_sensitive (stmt0)))
+    if (db_bind_variant_mode (stmt0) && stmt0->xasl_id != NULL)
       {
-	/* walk for the fingerprint only when something consumes it: the bucket comparison
-	 * below (parameter / hint on) or the baseline recorded after a forced replan. With
-	 * the parameter off and no replan signal the value would go unread, so the kept
-	 * re-execution skips the tree walk entirely. */
-	have_fp = histogram_bind_fingerprint (kept->parser, stmt0, &fp);
+	/* see the equivalent step in db_execute_and_keep_statement_local (), gated there on
+	 * parser->flag.set_host_var, which this path clears before execution */
+	err = db_bind_variant_step (kept->parser, stmt0);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+	stmt0->flag.hv_pred_plan_unpeeked = 0;
       }
-
-    if (!replan && have_fp && *fp_p != fp)
+    else if (db_bind_watch_is_open (stmt0))
       {
-	/* plan_cache_bind_sensitivity: this execution's values land in different histogram
-	 * territory (a different MCV / bucket, hence a different selectivity) than the values
-	 * the kept plan was fixed under, so the plan is regenerated for them. The check has to
-	 * happen here: the equivalent check in db_execute_and_keep_statement_local () is gated
-	 * on parser->flag.set_host_var, which this path (like the recompile path) clears before
-	 * execution, so on the kept tree it never fires. */
-	replan = true;
+	/* the check runs even when something else already forced a replan: it records the rows
+	 * the next check compares against, and without it the baseline would be the one the
+	 * forced plan replaced. It has to happen here: the equivalent check in
+	 * db_execute_and_keep_statement_local () is gated on parser->flag.set_host_var, which
+	 * this path clears before execution, so on the kept tree it never fires. */
+	if (db_bind_watch_verdict (kept->parser, stmt0) == BIND_WATCH_REPLAN)
+	  {
+	    replan = true;
+	  }
+	stmt0->flag.hv_pred_plan_unpeeked = 0;
       }
 
     if (replan)
       {
 	/* regenerate plan + XASL from the kept post-transform tree (no parse / semantic /
-	 * rewrite pass) and record the fingerprint of the values it was fixed under */
+	 * rewrite pass) */
 	err = do_replan_statement_with_bind_peek (kept->parser, stmt0);
 	if (err != NO_ERROR)
 	  {
 	    return err;
-	  }
-	if (have_fp)
-	  {
-	    *fp_p = fp;
 	  }
       }
   }
@@ -3788,28 +4282,40 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
        || statement->info.execute.stmt_type == CUBRID_STMT_UPDATE
        || statement->info.execute.stmt_type == CUBRID_STMT_DELETE)
       && statement->info.execute.using_list != NULL && new_session->statements[0] != NULL
-      && db_stmt_bind_fp_ptr (new_session->statements[0]) != NULL)
+      && db_stmt_bind_watch_ptr (new_session->statements[0]) != NULL)
     {
-      UINT64 fp = 0;
-
       /* first execution: if the statement has a host-variable PREDICATE the histogram can
-       * price (histogram_bind_fingerprint returns true), fix the plan under the actual
-       * bind values instead of the unbound markers the PREPARE-time plan was chosen under.
-       * Gating on a real predicate candidate keeps the value-typed regeneration off
-       * statements whose only host variables are select-list arguments (e.g. analytic
-       * min(?) over ()), which must stay generically typed for per-execution typing.
-       * This runs regardless of plan_cache_bind_sensitivity -- with the parameter off the
-       * fixed plan simply stays for every later execution; with it on, later bucket
-       * changes replan again. */
-      if (histogram_bind_fingerprint (new_session->parser, new_session->statements[0], &fp))
+       * price, fix the plan under the actual bind values instead of the unbound markers the
+       * PREPARE-time plan was chosen under, and record the rows those values price so the
+       * next EXECUTE compares against them -- otherwise it would find nothing recorded and
+       * replan a plan that is already right for its values. Gating on a real predicate
+       * candidate keeps the value-typed regeneration off statements whose only host variables
+       * are select-list arguments (e.g. analytic min(?) over ()), which must stay generically
+       * typed for per-execution typing. */
+      if (db_bind_variant_mode (new_session->statements[0]) && new_session->statements[0]->xasl_id != NULL)
 	{
-	  err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
+	  err = db_bind_variant_step (new_session->parser, new_session->statements[0]);
 	  if (err != NO_ERROR)
 	    {
 	      return err;
 	    }
-	  *db_stmt_bind_fp_ptr (new_session->statements[0]) = fp;
+	  new_session->statements[0]->flag.hv_pred_plan_unpeeked = 0;
 	  is_bind_candidate = true;
+	}
+      else if (db_bind_watch_is_open (new_session->statements[0]))
+	{
+	  BIND_WATCH_VERDICT watch = db_bind_watch_verdict (new_session->parser, new_session->statements[0]);
+
+	  if (watch == BIND_WATCH_REPLAN)
+	    {
+	      err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
+	      if (err != NO_ERROR)
+		{
+		  return err;
+		}
+	    }
+	  new_session->statements[0]->flag.hv_pred_plan_unpeeked = 0;
+	  is_bind_candidate = (watch != BIND_WATCH_OFF && watch != BIND_WATCH_STOP);
 	}
     }
 
