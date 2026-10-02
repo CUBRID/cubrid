@@ -241,6 +241,11 @@ static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
 static void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
+static double qo_seg_ndv (QO_SEGMENT * seg);
+static double qo_node_filtered_rows (QO_NODE * node);
+static QO_SEGMENT *qo_term_seg_of_node (QO_TERM * term, QO_NODE * node, QO_SEGMENT ** other);
+static bool qo_node_matches_at_most_once (QO_ENV * env, QO_NODE * node, BITSET * from);
+static double qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double calls);
 static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
 static INT64 qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
 static double qo_estimate_ndv (double N, double p, double n);
@@ -730,13 +735,22 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
  * N: total_nrows
  * p: expected_nrows
  * n: NDV of group columns
+ *
+ * It is the expected number of distinct values among p rows drawn from N rows that hold n values
+ * N / n times each, the same estimate PostgreSQL estimate_num_groups () applies per base relation.
  */
 double
 qo_estimate_ndv (double N, double p, double n)
 {
-  if (N <= 0.0 || n <= 0.0)
+  if (N <= 0.0 || n <= 0.0 || p <= 0.0)
     {
       return 0.0;
+    }
+
+  if (p >= N)
+    {
+      /* all rows are drawn; (N - p) / N would go negative and pow () return NaN */
+      return n;
     }
 
   double ratio = (N - p) / N;
@@ -3546,6 +3560,239 @@ qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms)
 }
 
 /*
+ * qo_seg_ndv () - NDV of a column from statistics
+ *   return: the NDV, 0 if unknown
+ *   seg(in):
+ */
+static double
+qo_seg_ndv (QO_SEGMENT * seg)
+{
+  QO_ATTR_INFO *info = QO_SEG_INFO (seg);
+  double ndv;
+
+  if (info == NULL || info->ndv <= 0)
+    {
+      return 0.0;
+    }
+
+  ndv = (double) info->ndv;
+  if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys_size > 0
+      && info->cum_stats.pkeys[0] > 0)
+    {
+      ndv = MIN (ndv, (double) info->cum_stats.pkeys[0]);
+    }
+
+  return ndv;
+}
+
+/*
+ * qo_node_filtered_rows () - rows of a table after its own search conditions
+ *   return:
+ *   node(in):
+ */
+static double
+qo_node_filtered_rows (QO_NODE * node)
+{
+  return MAX (1.0, QO_NODE_SELECTIVITY (node) * (double) QO_NODE_NCARD (node));
+}
+
+/*
+ * qo_term_seg_of_node () - the segment of an equi join term that belongs to node
+ *   return: the segment, NULL if the term is not an equi inner join term on node
+ *   term(in):
+ *   node(in):
+ *   other(out): the segment on the other side
+ */
+static QO_SEGMENT *
+qo_term_seg_of_node (QO_TERM * term, QO_NODE * node, QO_SEGMENT ** other)
+{
+  QO_ENV *env = QO_TERM_ENV (term);
+  QO_SEGMENT *mine = NULL, *seg;
+  BITSET_ITERATOR bi;
+  int i;
+
+  *other = NULL;
+  if (!QO_INNER_JOIN_TERM (term) || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
+      || bitset_cardinality (&QO_TERM_SEGS (term)) != 2 || bitset_cardinality (&QO_TERM_NODES (term)) != 2)
+    {
+      return NULL;
+    }
+
+  for (i = bitset_iterate (&QO_TERM_SEGS (term), &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      seg = QO_ENV_SEG (env, i);
+      if (QO_SEG_HEAD (seg) == node)
+	{
+	  mine = seg;
+	}
+      else
+	{
+	  *other = seg;
+	}
+    }
+
+  if (mine == NULL || *other == NULL)
+    {
+      *other = NULL;
+      return NULL;
+    }
+
+  return mine;
+}
+
+/*
+ * qo_node_matches_at_most_once () - whether every row of the nodes in from matches at most one row of node
+ *   return:
+ *   env(in):
+ *   node(in):
+ *   from(in): the nodes already joined
+ *
+ * True when every column of a primary key or unique index of node is equated by an inner join term
+ * to a column of from, as a foreign key joins its primary key. Whether the constraint is declared as
+ * a foreign key does not matter: the unique key alone makes node add no duplicate.
+ */
+static bool
+qo_node_matches_at_most_once (QO_ENV * env, QO_NODE * node, BITSET * from)
+{
+  QO_NODE_INDEX *node_indexp = QO_NODE_INDEXES (node);
+  QO_INDEX_ENTRY *index_entryp;
+  QO_SEGMENT *mine, *other;
+  int i, j, t;
+  bool covered;
+
+  if (node_indexp == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < QO_NI_N (node_indexp); i++)
+    {
+      index_entryp = QO_NI_ENTRY (node_indexp, i)->head;
+      if (index_entryp == NULL || index_entryp->constraints == NULL
+	  || !SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->constraints->type) || index_entryp->nsegs <= 0
+	  || index_entryp->constraints->filter_predicate != NULL || index_entryp->constraints->func_index_info != NULL)
+	{
+	  /* a filtered or function unique index does not make the columns unique over the table */
+	  continue;
+	}
+
+      covered = true;
+      for (j = 0; j < index_entryp->nsegs && covered; j++)
+	{
+	  covered = false;
+	  if (index_entryp->seg_idxs[j] == -1)
+	    {
+	      break;
+	    }
+
+	  for (t = 0; t < env->nterms && !covered; t++)
+	    {
+	      mine = qo_term_seg_of_node (QO_ENV_TERM (env, t), node, &other);
+	      if (mine != NULL && QO_SEG_IDX (mine) == index_entryp->seg_idxs[j]
+		  && BITSET_MEMBER (*from, QO_NODE_IDX (QO_SEG_HEAD (other))))
+		{
+		  covered = true;
+		}
+	    }
+	}
+
+      if (covered)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_node_rows_in_join () - how many distinct rows of node an inner join outer holds
+ *   return: the rows, or -1 if they cannot be estimated
+ *   env(in):
+ *   node(in): a table of the outer
+ *   outer_nodes(in): the tables of the outer
+ *   calls(in): the outer cardinality
+ *
+ * A row of node is repeated in the outer only by the tables it joins. When the other tables are
+ * joined to node through their primary or unique keys (fact to dimension), a row of node appears at
+ * most once and the outer holds calls distinct rows of node.
+ *
+ * Otherwise this follows PostgreSQL estimate_num_groups (), which reduces a column's NDV by its base
+ * relation's own search conditions only, and also counts what the joins on node remove: under the
+ * containment assumption of eqjoinsel_inner (), an equi join node.a = other.b keeps
+ * min (1, ndv (other.b) / ndv (node.a)) of the rows of node, where ndv (other.b) is reduced by
+ * other's search conditions. A table that duplicates rows of node raises calls, not this count. The
+ * search conditions of tables that do not join node itself are not counted.
+ */
+static double
+qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double calls)
+{
+  BITSET reached;
+  BITSET_ITERATOR bi;
+  QO_TERM *term;
+  QO_SEGMENT *mine, *other;
+  QO_NODE *other_node;
+  double rows, mine_ndv, other_ndv;
+  bool added, all_reached;
+  int i;
+
+  /* all the other tables are joined through their unique keys: no row of node is repeated */
+  bitset_init (&reached, env);
+  bitset_add (&reached, QO_NODE_IDX (node));
+  do
+    {
+      added = false;
+      for (i = bitset_iterate (outer_nodes, &bi); i != -1; i = bitset_next_member (&bi))
+	{
+	  if (!BITSET_MEMBER (reached, i) && qo_node_matches_at_most_once (env, QO_ENV_NODE (env, i), &reached))
+	    {
+	      bitset_add (&reached, i);
+	      added = true;
+	    }
+	}
+    }
+  while (added);
+  all_reached = bitset_subset (&reached, outer_nodes);
+  bitset_delset (&reached);
+
+  if (all_reached)
+    {
+      return MIN (calls, (double) QO_NODE_NCARD (node));
+    }
+
+  rows = qo_node_filtered_rows (node);
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (bitset_cardinality (&QO_TERM_NODES (term)) < 2 || !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node))
+	  || !bitset_subset (outer_nodes, &QO_TERM_NODES (term)) || QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+	{
+	  continue;
+	}
+
+      mine = qo_term_seg_of_node (term, node, &other);
+      if (mine == NULL)
+	{
+	  /* a join term on node that is not a simple equi join: what it removes is unknown */
+	  return -1.0;
+	}
+
+      mine_ndv = qo_seg_ndv (mine);
+      other_ndv = qo_seg_ndv (other);
+      if (mine_ndv <= 0.0 || other_ndv <= 0.0)
+	{
+	  return -1.0;
+	}
+
+      other_node = QO_SEG_HEAD (other);
+      other_ndv = qo_estimate_ndv ((double) QO_NODE_NCARD (other_node), qo_node_filtered_rows (other_node), other_ndv);
+      rows *= MIN (1.0, other_ndv / mine_ndv);
+    }
+
+  return MIN (rows, calls);
+}
+
+/*
  * qo_nl_inner_memoize_is_useless () - whether statistics show that memoizing the inner of an NL join
  *      cannot pay off because the outer key hardly repeats.
  *   return: true if the inner scan should not memoize
@@ -3560,17 +3807,17 @@ qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms)
  * The expected hit ratio is (calls - ndv) / calls, as in PostgreSQL cost_memoize_rescan () without its
  * cache capacity factor, where calls is the outer cardinality and ndv the number of distinct keys in
  * the outer rows. The decision is conservative and leaves the rest to the run-time check:
- * - Only a single table outer is decided. In a join outer a near-unique column repeats through join
- *   fan-out, and how many of its rows survive the join is not estimated.
  * - Only an outer key column that is near-unique in its own table counts. Its NDV is a lower bound
  *   of the NDV of the whole key, so the other key columns (and their statistics) cannot make it skip.
- *   qo_estimate_ndv () reduces it by the outer's search conditions.
- * - Without statistics (ndv 0) nothing is decided.
+ * - Its NDV in the outer rows is estimated from the rows of its table the outer holds
+ *   (qo_node_rows_in_join ()) with qo_estimate_ndv ().
+ * - An outer with an outer join, or without the statistics the estimate needs, is not decided.
  */
 bool
 qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms)
 {
   QO_ENV *env;
+  QO_TERM *term;
   BITSET scan_terms, key_segs;
   BITSET_ITERATOR bi;
   int i;
@@ -3583,9 +3830,21 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
 
   env = outer->info->env;
   calls = outer->info->cardinality;
-  if (calls < 1.0 || bitset_cardinality (&(outer->info->nodes)) != 1)
+  if (calls < 1.0)
     {
       return false;
+    }
+
+  /* an outer join inside the outer keeps or adds rows that the estimate does not model; the join of
+   * this inner may be an outer join, it does not change the outer rows */
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (QO_OUTER_JOIN_TERM (term) && bitset_cardinality (&QO_TERM_NODES (term)) >= 2
+	  && bitset_subset (&(outer->info->nodes), &QO_TERM_NODES (term)))
+	{
+	  return false;
+	}
     }
 
   /* the outer columns referenced by the terms the inner scan evaluates are its memoize key */
@@ -3602,8 +3861,7 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
     {
       QO_SEGMENT *seg = QO_ENV_SEG (env, i);
       QO_NODE *node = QO_SEG_HEAD (seg);
-      QO_ATTR_INFO *info = QO_SEG_INFO (seg);
-      double seg_ndv;
+      double seg_ndv, node_rows;
 
       if (!BITSET_MEMBER (outer->info->nodes, QO_NODE_IDX (node))
 	  || BITSET_MEMBER (inner->info->nodes, QO_NODE_IDX (node)))
@@ -3612,30 +3870,21 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
 	  continue;
 	}
 
-      if (info == NULL || info->ndv <= 0 || QO_NODE_NCARD (node) <= 0)
+      seg_ndv = qo_seg_ndv (seg);
+      if (seg_ndv <= 0.0 || QO_NODE_NCARD (node) <= 0
+	  || seg_ndv < MEMOIZE_UNIQUE_KEY_RATIO * (double) QO_NODE_NCARD (node))
 	{
 	  continue;
 	}
 
-      seg_ndv = (double) info->ndv;
-      if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys_size > 0
-	  && info->cum_stats.pkeys[0] > 0)
-	{
-	  seg_ndv = MIN (seg_ndv, (double) info->cum_stats.pkeys[0]);
-	}
-
-      if (seg_ndv < MEMOIZE_UNIQUE_KEY_RATIO * (double) QO_NODE_NCARD (node))
+      node_rows = qo_node_rows_in_join (env, node, &(outer->info->nodes), calls);
+      if (node_rows <= 0.0)
 	{
 	  continue;
 	}
 
-      /* distinct values left in the outer rows after the outer's search conditions */
-      if (calls < outer->info->total_rows)
-	{
-	  seg_ndv = qo_estimate_ndv (outer->info->total_rows, calls, seg_ndv);
-	}
-
-      key_ndv = MAX (key_ndv, seg_ndv);
+      /* distinct values left in the rows of its table the outer holds */
+      key_ndv = MAX (key_ndv, qo_estimate_ndv ((double) QO_NODE_NCARD (node), node_rows, seg_ndv));
     }
 
   bitset_delset (&scan_terms);
