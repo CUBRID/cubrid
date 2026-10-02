@@ -32,6 +32,7 @@ namespace parallel_query
     HASH_JOIN = 1,
     SORT      = 2,
     SUBQUERY  = 3,
+    MERGE_JOIN = 4,	/* range-partitioned merge of a sort-merge join's input lists */
   };
 
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,

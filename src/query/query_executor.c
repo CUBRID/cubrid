@@ -93,6 +93,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_scan_trace_handler.hpp"
 #include "px_scan.hpp"
+#include "px_merge_join.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
 #include <vector>
@@ -524,9 +525,6 @@ static int qexec_analytic_value_lookup (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTI
 static int qexec_analytic_group_header_next (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state);
 static int qexec_analytic_update_group_result (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state);
 static int qexec_collection_has_null (DB_VALUE * colval);
-static DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (QFILE_TUPLE_RECORD * left, int *left_ind,
-							 TP_DOMAIN ** left_dom, QFILE_TUPLE_RECORD * rght,
-							 int *rght_ind, TP_DOMAIN ** rght_dom, int tval_cnt);
 static QFILE_LIST_ID *qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
 					QFILE_LIST_ID * inner_list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
 					int ls_flag);
@@ -5964,7 +5962,7 @@ qexec_collection_has_null (DB_VALUE * colval)
  * as the lessor side, that tuple will be discarded,
  * then the next comparison will discard the other side.
  */
-static DB_VALUE_COMPARE_RESULT
+DB_VALUE_COMPARE_RESULT
 qexec_cmp_tpl_vals_merge (QFILE_TUPLE_RECORD * left, int *left_ind, TP_DOMAIN ** left_dom, QFILE_TUPLE_RECORD * rght,
 			  int *rght_ind, TP_DOMAIN ** rght_dom, int tval_cnt)
 {
@@ -7343,8 +7341,27 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
   if (merge_infop->join_type == JOIN_INNER)
     {
-      /* call list file merge routine */
-      list_id = qexec_merge_list (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag);
+      bool px_merge_executed = false;
+
+#if SERVER_MODE && !WINDOWS
+      int px_merge_parallelism = 0;
+      if (parallel_query::merge_join::try_parallel_merge (thread_p, outer_xasl->list_id, inner_xasl->list_id,
+							  merge_infop, ls_flag, &list_id,
+							  px_merge_executed, px_merge_parallelism) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      if (px_merge_executed)
+	{
+	  xasl->executed_parallelism = px_merge_parallelism;
+	}
+#endif /* SERVER_MODE && !WINDOWS */
+
+      if (!px_merge_executed)
+	{
+	  /* call list file merge routine */
+	  list_id = qexec_merge_list (thread_p, outer_xasl->list_id, inner_xasl->list_id, merge_infop, ls_flag);
+	}
     }
   else
     {
@@ -7383,8 +7400,9 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* make this the resultant list file */
-  qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_PROHIBIT_DEPENDENT);
+  /* MOVE_DEPENDENT: the parallel merge gathers ranges with qfile_connect_list, so list_id may carry a dependent
+   * chain whose ownership transfers here; serial paths have none, so MOVE == PROHIBIT for them */
+  qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_MOVE_DEPENDENT);
   QFILE_FREE_AND_INIT_LIST_ID (list_id);
 
   return NO_ERROR;
