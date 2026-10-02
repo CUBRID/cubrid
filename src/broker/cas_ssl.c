@@ -71,6 +71,10 @@
 #define SOCKET_NONBLOCK		1
 #define SOCKET_BLOCK		0
 
+/* TLS 1.2: ephemeral key exchange only. !kRSA excludes static RSA, which gives no forward secrecy */
+#define CAS_SSL_CIPHER_LIST	"ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:!aNULL:!kRSA"
+#define CAS_SSL_CIPHERSUITES	"TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256"
+
 static SSL *ssl = NULL;
 bool ssl_client = false;
 
@@ -136,6 +140,16 @@ cas_init_ssl (int sd)
   if ((ctx = SSL_CTX_new (TLS_server_method ())) == NULL)
     {
       cas_log_write_and_end (0, true, "SSL: Initialize failed.");
+      return ER_SSL_GENERAL;
+    }
+
+  if (SSL_CTX_set_min_proto_version (ctx, TLS1_2_VERSION) == 0
+      || SSL_CTX_set_cipher_list (ctx, CAS_SSL_CIPHER_LIST) == 0
+      || SSL_CTX_set_ciphersuites (ctx, CAS_SSL_CIPHERSUITES) == 0)
+    {
+      cas_log_write_and_end (0, true, "SSL: Setting the protocol version or cipher suites failed - '%s'",
+			     ERR_error_string (ERR_get_error (), NULL));
+      SSL_CTX_free (ctx);
       return ER_SSL_GENERAL;
     }
 
