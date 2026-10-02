@@ -808,6 +808,18 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       srv_handle->is_prepared = TRUE;
     }
 
+  /* A shard CAS serves one shard, and a COPY stream carries no shard key --
+   * the rows have nowhere to be routed. The proxy refuses only the chunks
+   * (fn_stream_send_data), by which time the statement has opened a session
+   * and a transaction on one backend and the client has begun sending.
+   * Refuse it here, where the statement type is already known. */
+  if (cas_shard_flag == ON && stmt_type == CUBRID_STMT_COPY)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1, "a SHARD broker");
+      err_code = ERROR_INFO_SET (ER_COPY_NOT_SUPPORTED, DBMS_ERROR_INDICATOR);
+      goto prepare_error;
+    }
+
 prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;

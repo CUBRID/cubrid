@@ -606,6 +606,9 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_object_table.c
   ${LOADDB_DIR}/load_sa_loader.cpp
   ${LOADDB_DIR}/load_semantic_helper.cpp
+  ${LOADDB_DIR}/copy_binary_decoder.cpp
+  ${LOADDB_DIR}/copy_csv_decoder.cpp
+  ${LOADDB_DIR}/copy_session.cpp
   )
 
 set(LOADDB_HEADERS
@@ -617,6 +620,11 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_object_table.h
   ${LOADDB_DIR}/load_sa_loader.hpp
   ${LOADDB_DIR}/load_semantic_helper.hpp
+  ${LOADDB_DIR}/copy_stream_kind.h
+  ${LOADDB_DIR}/copy_column_types.h
+  ${LOADDB_DIR}/copy_binary_format.hpp
+  ${LOADDB_DIR}/copy_binary_decoder.hpp
+  ${LOADDB_DIR}/copy_session.hpp
   )
 
 if(UNIX)
