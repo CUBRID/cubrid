@@ -106,10 +106,9 @@ extern void fetch_init_val_list (regu_variable_list_node * regu_list);
 
 extern void fetch_force_not_const_recursive (regu_variable_node & reguvar);
 
-extern DB_VALUE *fetch_peek_leftmost_numeric_regu (THREAD_ENTRY * thread_p, regu_variable_node * regu_var,
-						   val_descr * vd);
-extern int fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, regu_variable_node * key_limit_l, val_descr * vd,
-					     DB_VALUE * out_val);
+extern int fetch_key_limits (THREAD_ENTRY * thread_p, regu_variable_node * key_limit_l,
+			     regu_variable_node * key_limit_u, val_descr * vd, DB_BIGINT * lower, DB_BIGINT * upper,
+			     bool * is_null);
 
 extern bool fetch_is_agg_expr_shape (const regu_variable_node * regu_var, int budget);
 
