@@ -4785,6 +4785,10 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
+  /* the B-tree's key domain: the server derives the key plan from it at load and matches it with the root
+   * header's, which keeps an OBJECT key as OBJECT (its key values are OIDs) - so no OBJECT-to-OID packing here */
+  ptr = or_pack_domain (ptr, indx_info->key_type, 0, 0);
+
   if (indx_info->cov_list_id == NULL)
     {
       ptr = or_pack_int (ptr, 0);
@@ -5383,8 +5387,6 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 
   ptr = or_pack_int (ptr, regu_var->type);
 
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
   ptr = or_pack_int (ptr, regu_var->flags);
 
   offset = xts_save_db_value (regu_var->vfetch_to);
@@ -7049,6 +7051,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + OR_INT_SIZE	/* func_idx_col_id (int) */
 	   + OR_INT_SIZE	/* iss_range's range */
 	   + PTR_SIZE);		/* iss_range's key1 */
+
+  size += or_packed_domain_size (indx_info->key_type, 0);	/* key_type */
 
   return size;
 }

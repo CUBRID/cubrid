@@ -23,6 +23,9 @@
 #ifndef _REGU_VAR_HPP_
 #define _REGU_VAR_HPP_
 
+struct domain_plan_item;
+struct DOMAIN_COMPARE_PLAN;
+
 #include "heap_attrinfo.h"
 #include "object_domain.h"
 #include "query_list.h"
@@ -128,7 +131,7 @@ typedef struct arith_list_node ARITH_TYPE;
 struct arith_list_node
 {
   TP_DOMAIN *domain;		/* resultant domain */
-  TP_DOMAIN *original_domain;	/* original resultant domain, used at execution in case of XASL clones  */
+  domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
@@ -165,14 +168,17 @@ const int REGU_VARIABLE_APPLY_COLLATION = 0x08;	/* Apply collation from domain; 
 						 * modifier */
 const int REGU_VARIABLE_ANALYTIC_WINDOW = 0x10;	/* for analytic window func */
 const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* infer collation for default parameter */
-const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant */
-const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
 const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
-const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
+const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly: set
+						 * at load for a stable regu */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
+
+const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's compiled domain is variable, so the
+					 * inline fetch_peek_dbval () peeks it only once it took its domain in this
+					 * execution (qexec_node_domain_is_set) */
 
 class regu_variable_node
 {
@@ -181,7 +187,7 @@ class regu_variable_node
 
     int flags;			/* flags */
     TP_DOMAIN *domain;		/* domain of the value in this regu variable */
-    TP_DOMAIN *original_domain;	/* original domain, used at execution in case of XASL clones */
+    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */
     union regu_data_value
@@ -253,6 +259,7 @@ inline bool REGU_VARIABLE_IS_FLAGED (const regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
+inline bool regu_is_variable_pos (const regu_variable_node *regu);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -284,5 +291,13 @@ REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
       return TP_DOMAIN_TYPE (regu->domain);
     }
   return DB_TYPE_UNKNOWN;
+}
+
+/* A variable POS: a host variable position whose domain the compiler left VARIABLE. The execution takes its domain
+ * from the bound value before its first row. */
+bool
+regu_is_variable_pos (const regu_variable_node *regu)
+{
+  return regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE;
 }
 #endif /* _REGU_VAR_HPP_ */

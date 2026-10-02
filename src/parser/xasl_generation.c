@@ -556,6 +556,7 @@ static ACCESS_SPEC_TYPE *pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METH
 						   REGU_VARIABLE_LIST attr_list_rest,
 						   REGU_VARIABLE_LIST attr_list_build,
 						   REGU_VARIABLE_LIST attr_list_probe);
+static void pt_set_hq_probe_numeric_domain (ACCESS_SPEC_TYPE * spec);
 
 static ACCESS_SPEC_TYPE *pt_make_showstmt_access_spec (PRED_EXPR * where_pred, SHOWSTMT_TYPE show_type,
 						       REGU_VARIABLE_LIST arg_list);
@@ -941,6 +942,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	{
 	  xasl->spec_list->s.list_node.hash_list_scan_yn = 0;
 	}
+      pt_set_hq_probe_numeric_domain (xasl->spec_list);
     }
 
   /* sepparate after CONNECT BY predicate regu list */
@@ -1352,6 +1354,7 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 	  et_comp->rhs = (REGU_VARIABLE *) arg2;
 	  et_comp->rel_op = rop;
 	  et_comp->type = data_type;
+	  et_comp->domain_compare = NULL;	/* the server's load derives it */
 	}
     }
 
@@ -1389,6 +1392,7 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * ar
 	  et_alsm->rel_op = rop;
 	  et_alsm->item_type = data_type;
 	  et_alsm->eq_flag = some_all;
+	  et_alsm->domain_compare = NULL;	/* the server's load derives it */
 	}
     }
 
@@ -5440,6 +5444,42 @@ pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METHOD access, INDX_INFO * in
 }
 
 /*
+ * pt_set_hq_probe_numeric_domain () - give the hash probe key of a hierarchical join the precision and scale of the
+ *                                     first fixed NUMERIC list column
+ *   spec(in/out): the CONNECT BY list scan spec
+ *
+ * The key is typed float NUMERIC when a join or an expression widened it. Its values are cast to the key domain
+ * before hashing, so a float NUMERIC key would hash integer values unscaled, unlike the fixed NUMERIC build column.
+ * qexec_execute_connect_by copies the list column's precision and scale into a float NUMERIC key domain at every
+ * execution; the compiled key domain carries them instead, so that condition no longer holds.
+ */
+static void
+pt_set_hq_probe_numeric_domain (ACCESS_SPEC_TYPE * spec)
+{
+  REGU_VARIABLE *probe = spec->s.list_node.list_regu_list_probe == NULL ? NULL
+    : &spec->s.list_node.list_regu_list_probe->value;
+  if (probe == NULL || probe->domain == NULL || TP_DOMAIN_TYPE (probe->domain) != DB_TYPE_NUMERIC
+      || probe->domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      return;
+    }
+  for (REGU_VARIABLE_LIST rest = spec->s.list_node.list_regu_list_rest; rest != NULL; rest = rest->next)
+    {
+      const TP_DOMAIN *column = rest->value.domain;
+      if (column != NULL && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
+	  && column->precision != DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  TP_DOMAIN *domain = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, column->precision, column->scale, NULL, 0);
+	  if (domain != NULL)
+	    {
+	      probe->domain = domain;
+	    }
+	  return;
+	}
+    }
+}
+
+/*
  * pt_make_showstmt_access_spec () - Create an initialized
  *                               ACCESS_SPEC_TYPE TARGET_SHOWSTMT structure
  *   return:
@@ -6411,15 +6451,42 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
       /* determine the domain of this host var */
       regu->domain = NULL;
 
-      if (node->data_type)
+      if (node->info.host_var.index < parser->host_var_count)
 	{
-	  /* try to get domain info from its data_type */
+	  /* A user host variable: the plan states the domain the client casts the bound value into
+	   * (host_var_expected_domains), so value type == plan domain holds by construction. It
+	   * is left to resolve_domains when the client does not cast: no expected domain, an ENUM domain (never cast,
+	   * CUBRIDSUS-9007; `enum_col op ?` compares the bound value), or an untyped copy (the LIMIT
+	   * operand). A compile-only expected domain the client does not apply -- the collation axis's ENFORCE
+	   * on `str_col + ?` / `enum_col + ?` -- is not a plan domain. */
+	  TP_DOMAIN *cast_domain = NULL;
+	  if (parser->host_var_expected_domains != NULL)
+	    {
+	      cast_domain = parser->host_var_expected_domains[node->info.host_var.index];
+	    }
+	  if (cast_domain != NULL && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_UNKNOWN
+	      && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_ENUMERATION
+	      && cast_domain->collation_flag != TP_DOMAIN_COLL_ENFORCE)
+	    {
+	      /* an ENFORCE domain (the collation axis's sibling collation) casts nothing: the client gives a
+	       * string value the sibling's collation and passes any other value through (tp_value_cast_internal),
+	       * so the variable POS's type is the value's -- a variable POS whose value already carries the enforced
+	       * collation */
+	      regu->domain = cast_domain;
+	    }
+	}
+      else if (node->data_type)
+	{
+	  /* an auto-parameter: try to get domain info from its data_type */
 	  regu->domain = pt_xasl_node_to_domain (parser, node);
 	}
 
-      if (regu->domain == NULL && (parser->flag.set_host_var == 1 || typ != DB_TYPE_NULL))
+      /* A user host variable never takes its domain from the bound value, so the plan does
+       * not depend on the values; the client casts the value to its expected
+       * domain. An auto-parameter's value is its literal, so it keeps the literal
+       * domain. */
+      if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && typ != DB_TYPE_NULL)
 	{
-	  /* if the host var DB_VALUE was initialized before, use its domain for regu variable */
 	  TP_DOMAIN *domain;
 	  if (TP_IS_CHAR_TYPE (typ))
 	    {
@@ -6448,47 +6515,51 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    }
 	}
 
-      if (regu->domain == NULL && node->expected_domain)
+      if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && node->expected_domain)
 	{
-	  /* try to get domain infor from its expected_domain */
+	  /* an auto-parameter: try to get domain infor from its expected_domain */
 	  regu->domain = node->expected_domain;
 	}
 
-      if (regu->domain == NULL)
+      if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count)
 	{
-	  /* try to get domain info from its type_enum */
+	  /* an auto-parameter: try to get domain info from its type_enum */
 	  regu->domain = pt_xasl_type_enum_to_domain (node->type_enum);
 	}
 
-      if (regu->domain == NULL)
+      if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
 	{
-	  PT_INTERNAL_ERROR (parser, "unresolved data type of host var");
-	  regu = NULL;
+	  /* no sibling fixes this variable POS; resolve_domains takes the
+	   * bound value's own domain, once per execution. */
+	  regu->domain = &tp_Variable_domain;
 	}
-      else
+
+      exptyp = TP_DOMAIN_TYPE (regu->domain);
+      if (parser->flag.set_host_var == 0 && typ == DB_TYPE_NULL)
 	{
-	  exptyp = TP_DOMAIN_TYPE (regu->domain);
-	  if (parser->flag.set_host_var == 0 && typ == DB_TYPE_NULL)
+	  /* If the host variable was not given before by the user, preset it by the expected domain. When the user
+	   * set the host variable, its value will be casted to this domain if necessary. */
+	  (void) db_value_domain_init (val, exptyp, regu->domain->precision, regu->domain->scale);
+	  if (TP_IS_CHAR_TYPE (exptyp))
 	    {
-	      /* If the host variable was not given before by the user, preset it by the expected domain. When the user
-	       * set the host variable, its value will be casted to this domain if necessary. */
-	      (void) db_value_domain_init (val, exptyp, regu->domain->precision, regu->domain->scale);
-	      if (TP_IS_CHAR_TYPE (exptyp))
-		{
-		  db_string_put_cs_and_collation (val, TP_DOMAIN_CODESET (regu->domain),
-						  TP_DOMAIN_COLLATION (regu->domain));
-		}
+	      db_string_put_cs_and_collation (val, TP_DOMAIN_CODESET (regu->domain),
+					      TP_DOMAIN_COLLATION (regu->domain));
 	    }
-	  else if (typ != exptyp
+	}
+      else if (typ != DB_TYPE_NULL && !regu_is_variable_pos (regu)
+	       && (node->info.host_var.index >= parser->host_var_count || node->data_type != NULL)
+	       && (typ != exptyp
 		   || (TP_TYPE_HAS_COLLATION (typ) && TP_TYPE_HAS_COLLATION (exptyp)
-		       && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain))))
+		       && (db_get_string_collation (val) != TP_DOMAIN_COLLATION (regu->domain)))))
+	{
+	  /* a value given before compilation is cast here -- an
+	   * auto-parameter, or a host variable with its own data type; any other host variable's
+	   * value is cast by the client to its expected domain. */
+	  if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)
 	    {
-	      if (tp_value_cast (val, val, regu->domain, false) != DOMAIN_COMPATIBLE)
-		{
-		  PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR, -(ER_TP_CANT_COERCE),
-			       pr_type_name (DB_VALUE_DOMAIN_TYPE (val)), pr_type_name (TP_DOMAIN_TYPE (regu->domain)));
-		  regu = NULL;
-		}
+	      PT_ERRORmf2 (parser, node, MSGCAT_SET_ERROR, -(ER_TP_CANT_COERCE),
+			   pr_type_name (DB_VALUE_DOMAIN_TYPE (val)), pr_type_name (TP_DOMAIN_TYPE (regu->domain)));
+	      regu = NULL;
 	    }
 	}
     }
@@ -6501,6 +6572,22 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 
 error_exit:
   return NULL;
+}
+
+/*
+ * pt_late_bind_limit_regu () - a LIMIT / KEYLIMIT operand that is a host variable (a variable POS) leaves its domain to
+ *   resolve_domains: auto-parameterized limits of different literal types (`limit 4`, `limit 2147483648`, `limit 3/2`)
+ *   share one plan, and execution reads the bound value (qexec_check_limit_clause: tp_value_compare against 0), so no
+ *   compiled domain describes every execution.
+ */
+static REGU_VARIABLE *
+pt_late_bind_limit_regu (REGU_VARIABLE * regu)
+{
+  if (regu != NULL && regu->type == TYPE_POS_VALUE)
+    {
+      regu->domain = &tp_Variable_domain;
+    }
+  return regu;
 }
 
 /*
@@ -12266,6 +12353,19 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       return NULL;
     }
 
+  /* the B-tree's key domain, from which the server derives its key plan: the bytes of its root header
+   * the index statistics carry, or else the domain the index was allocated with */
+  indx_infop->key_type = index_entryp->key_type;
+  if (indx_infop->key_type == NULL || TP_DOMAIN_TYPE (indx_infop->key_type) == DB_TYPE_NULL)
+    {
+      indx_infop->key_type = sm_constraint_key_domain (index_entryp->constraints);
+    }
+  if (indx_infop->key_type == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - index key domain");
+      return NULL;
+    }
+
   /* key limits */
   key_infop = &indx_infop->key_info;
   if (pt_to_key_limit (parser, index_entryp->key_limit, NULL, key_infop, false) != NO_ERROR)
@@ -16556,10 +16656,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     {
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
@@ -17898,10 +17998,10 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  limit = node->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	      xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	}
     }				/* end xasl */
   else
@@ -18002,10 +18102,10 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	      xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	}
     }
 
@@ -22331,10 +22431,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
   if (aptr_statement)
     {
@@ -23258,10 +23358,10 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
+      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
     }
 
 cleanup:
@@ -23772,6 +23872,10 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
+      /* the tree reads only positions the client sends (host variables, then
+       * auto-parameters). A nested parser_generate_xasl () or a statement the client
+       * compiles in parts references a subset, so the count may be smaller. */
+      assert (parser->dbval_cnt <= parser->host_var_count + parser->auto_param_count);
       xasl->dbval_cnt = parser->dbval_cnt;
     }
 

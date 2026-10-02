@@ -42,6 +42,7 @@
 #include "log_append.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "perf_monitor.h"
 #include "query_manager.h"
 #include "query_opfunc.h"
 #include "stream_to_xasl.h"
@@ -867,17 +868,22 @@ qfile_compare_tuple_values (QFILE_TUPLE_RECORD * lhs, QFILE_TUPLE_RECORD * rhs, 
  *   return:
  *   list_id1(in/out): Destination list identifier
  *   list_id2(in): Source list identifier
+ *   list1_empty(in): the rows list_id1 stands for are none (a destination opened with a branch's types: that branch's)
  *
  * Note: For every destination type which is DB_TYPE_NULL,
  *       set it to the source type.
  *       This should probably set an error for non-null mismatches.
+ *
+ * A list opens with the plan's domains: an empty side contributes no values, so its domain does not
+ * constrain the other side's, as a column no tuple typed (DB_TYPE_VARIABLE) did not.
  */
 int
-qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
+qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p, bool list1_empty)
 {
   int i;
   int max_count = list_id1_p->type_list.type_cnt;
   DB_TYPE type1, type2;
+  const bool list2_empty = list_id2_p->tuple_cnt == 0;
 
   if (max_count != list_id2_p->type_list.type_cnt)
     {
@@ -893,15 +899,16 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
       type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
       type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
 
-      if (type1 == DB_TYPE_VARIABLE)
+      if (type1 == DB_TYPE_VARIABLE || (list1_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
 	{
-	  /* list1's column is unresolved: its tuples hold only NULL (0 bytes) there, so adopting list2's domain is safe */
+	  /* list1 holds no value of this column: its tuples store only NULL (0 bytes) there, so list2's domain reads them */
 	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
 	  continue;
 	}
-      else if (type2 == DB_TYPE_VARIABLE)
+      else if (type2 == DB_TYPE_VARIABLE
+	       || (list2_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
 	{
-	  /* list2's column is unresolved (NULL-only so far); list1's domain stands. */
+	  /* list2 holds no value of this column (NULL only); list1's domain stands */
 	  continue;
 	}
 
@@ -2504,7 +2511,7 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       goto error;
     }
 
-  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p) != NO_ERROR)
+  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p, lhs_file_p->tuple_cnt == 0) != NO_ERROR)
     {
       goto error;
     }
@@ -3139,7 +3146,7 @@ qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1_p, QFILE_LIS
 	  goto error;
 	}
 
-      if (qfile_unify_types (result_list_id_p, tail) != NO_ERROR)
+      if (qfile_unify_types (result_list_id_p, tail, false) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -4310,15 +4317,10 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
+	  subkey->cmp_dom_session_read = false;
 
-	  if (p->pos_descr.dom->type->id == DB_TYPE_VARIABLE)
-	    {
-	      subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
-	    }
-	  else
-	    {
-	      subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
-	    }
+	  /* the key's domain is the plan's */
+	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;
 	  subkey->is_nulls_first = (p->s_nulls == S_NULLS_LAST) ? 0 : 1;
@@ -4344,6 +4346,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
+	  subkey->cmp_dom_session_read = false;
 	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
@@ -6919,101 +6922,6 @@ qfile_has_next_page (PAGE_PTR page_p)
 }
 
 /*
- * qfile_update_domains_on_type_list() - Update domain pointers belongs to
- *   type list of a given list file
- *  return: error code
- *
- */
-int
-qfile_update_domains_on_type_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, valptr_list_node * valptr_list_p)
-{
-  REGU_VARIABLE_LIST reg_var_p;
-  int i, count = 0;
-  bool changed = false;
-
-  assert (list_id_p != NULL);
-
-  list_id_p->is_domain_resolved = true;
-
-  reg_var_p = valptr_list_p->valptrp;
-
-  for (i = 0; i < valptr_list_p->valptr_cnt; i++, reg_var_p = reg_var_p->next)
-    {
-      if (REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
-	{
-	  continue;
-	}
-
-      if (count >= list_id_p->type_list.type_cnt)
-	{
-	  assert (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  goto exit_on_error;
-	}
-
-      if (TP_DOMAIN_TYPE (list_id_p->type_list.domp[count]) == DB_TYPE_VARIABLE)
-	{
-	  if (TP_DOMAIN_TYPE (reg_var_p->value.domain) == DB_TYPE_VARIABLE)
-	    {
-	      /* In this case, we cannot resolve the value's domain. We will try to do for the next tuple. */
-	      if (list_id_p->is_domain_resolved)
-		{
-		  list_id_p->is_domain_resolved = false;
-		}
-	    }
-	  else
-	    {
-	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
-	      changed = true;
-	    }
-	}
-
-      if (list_id_p->type_list.domp[count]->collation_flag != TP_DOMAIN_COLL_NORMAL)
-	{
-	  if (reg_var_p->value.domain->collation_flag != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      /* In this case, we cannot resolve the value's domain. We will try to do for the next tuple. */
-	      if (list_id_p->is_domain_resolved)
-		{
-		  list_id_p->is_domain_resolved = false;
-		}
-	    }
-	  else
-	    {
-	      list_id_p->type_list.domp[count] = reg_var_p->value.domain;
-	      changed = true;
-	    }
-	}
-
-      count++;
-    }
-
-  /* The number of columns should be same. */
-  if (count != list_id_p->type_list.type_cnt)
-    {
-      assert (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      goto exit_on_error;
-    }
-
-  if (changed)
-    {
-      qfile_set_layout (&list_id_p->type_list);	/* late domain resolution: recompute layout */
-    }
-
-  return NO_ERROR;
-
-exit_on_error:
-
-  if (changed)
-    {
-      qfile_set_layout (&list_id_p->type_list);
-    }
-  list_id_p->is_domain_resolved = false;
-  return ER_FAILED;
-}
-
-/*
  * qfile_set_tuple_column_value() - Set column value for a fixed size column
  *				    of a tuple inside a list file (in-place)
  *  return: error code
@@ -7197,6 +7105,43 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
   return NO_ERROR;
 }
 
+#if !defined (NDEBUG)
+/*
+ * qfile_check_interpolation_type () - debug cross-check (optdebug): the type the analytic setup gave the key before
+ *   the sort is the one the first value gives it (qdata_update_interpolation_func_value_and_domain), unless that
+ *   type rejects the value (a string column or expression is DOUBLE, the function's evaluation rejects the value
+ *   too); a key without a type holds values that function cannot type either
+ */
+static void
+qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
+{
+  DB_VALUE converted;
+  TP_DOMAIN *expected = NULL;
+  bool resolved_rejects = true;
+
+  db_make_null (&converted);
+  er_stack_push ();
+  const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &expected);
+  pr_clear_value (&converted);
+  if (resolved != NULL)
+    {
+      resolved_rejects = tp_value_cast (value, &converted, (TP_DOMAIN *) resolved, false) != DOMAIN_COMPATIBLE;
+      pr_clear_value (&converted);
+    }
+  er_stack_pop ();
+
+  const bool same = resolved == NULL ? error != NO_ERROR
+    : resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (expected) == TP_DOMAIN_TYPE (resolved));
+  if (!same)
+    {
+      fprintf (stderr, "interpolation sort key class: value type %d planned %d expected %d error %d\n",
+	       (int) DB_VALUE_DOMAIN_TYPE (value), resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
+	       expected != NULL ? (int) TP_DOMAIN_TYPE (expected) : -1, error);
+    }
+  assert (same);
+}
+#endif
+
 /*
  * qfile_compare_with_interpolation_domain () -
  *  return: compare result
@@ -7206,6 +7151,9 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
  *  subkey(in):
  *
  *  NOTE: median analytic function sort string in different domain
+ *
+ *  The analytic setup gives the key its type before the sort (qexec_plan_interpolation_sort_key), so the workers
+ *  of a parallel sort, which share the key, only read it - a type over a session variable read too.
  */
 static int
 qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char *d0, int l0, const char *d1, int l1,
@@ -7226,7 +7174,7 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
 
   if (subkey->cmp_dom == NULL)
     {
-      /* get the proper domain NOTE: col_dom is string type.  See qexec_initialize_analytic_state */
+      /* NOTE: col_dom is string type.  See qexec_plan_interpolation_sort_key */
       pr_clear_value (&val0);
 
       error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
@@ -7235,16 +7183,16 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
 	  goto end;
 	}
 
-      error = qdata_update_interpolation_func_value_and_domain (&val0, &val0, &cast_domain);
-      if (error != NO_ERROR)
+      /* a value argument resolve_domains could not type: every value is that one, whose typing
+       * fails for the first value too; a session variable read keeps that for the statement */
+#if !defined (NDEBUG)
+      if (!subkey->cmp_dom_session_read)
 	{
-	  subkey->cmp_dom = NULL;
-	  goto end;
+	  qfile_check_interpolation_type (&val0, NULL);
 	}
-      else
-	{
-	  subkey->cmp_dom = cast_domain;
-	}
+#endif
+      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+      goto end;
     }
 
   /* cast to proper domain, then compare */
@@ -7262,6 +7210,14 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
     {
       goto end;
     }
+
+#if !defined (NDEBUG)
+  if (!subkey->cmp_dom_session_read)
+    {
+      qfile_check_interpolation_type (&val0, subkey->cmp_dom);
+      qfile_check_interpolation_type (&val1, subkey->cmp_dom);
+    }
+#endif
 
   cast_domain = subkey->cmp_dom;
   status = tp_value_cast (&val0, &val0, cast_domain, false);

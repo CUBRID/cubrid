@@ -23,9 +23,14 @@
 #ifndef _XASL_AGGREGATE_HPP_
 #define _XASL_AGGREGATE_HPP_
 
+struct domain_plan_item;
+
 #include "dbtype_def.h"
 #include "query_sum_accumulator.h"
 #include "storage_common.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "domain_rules.h"
+#endif
 
 // forward definitions
 struct qfile_list_id;
@@ -78,6 +83,11 @@ namespace cubxasl
   {
     tp_domain *value_dom;		/* domain of value */
     tp_domain *value2_dom;	/* domain of value2 */
+    DOMAIN_OPERAND_COERCION operand_coercion;	/* SUM / AVG: the operand coercion of value + a value, set with
+						 * value_dom */
+    int temporary;			/* SUM / AVG: 1 + the domain_execution.temporaries index of a value added after
+				 * the first that a scope fixes and operand_coercion converts; 0 none. Set with
+				 * operand_coercion */
   };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -85,11 +95,10 @@ namespace cubxasl
   {
     aggregate_list_node *next;		/* next aggregate node */
     tp_domain *domain;		/* domain of the result */
-    tp_domain *original_domain;	/* original domain of the result */
+    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     FUNC_CODE function;		/* aggregate function name */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     DB_TYPE opr_dbtype;		/* Operand values data type */
-    DB_TYPE original_opr_dbtype;	/* Original operand values data type */
     regu_variable_list_node *operands;	/* list of operands (one operand per function argument) */
     qfile_list_id *list_id;	/* used for distinct handling */
     BTID btid;

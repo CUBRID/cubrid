@@ -23,11 +23,16 @@
 #ifndef _XASL_ANALYTIC_HPP_
 #define _XASL_ANALYTIC_HPP_
 
+struct domain_plan_item;
+
 #include "dbtype_def.h"
 #include "db_function.hpp"          // FUNC_CODE
 #include "query_sum_accumulator.h"  // SUM_ACC
 #include "regu_var.hpp"             // regu_variable_node
 #include "storage_common.h"         // QUERY_OPTIONS
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "domain_rules.h"           // DOMAIN_OPERAND_COERCION
+#endif
 
 // forward definitions
 struct qfile_list_id;
@@ -56,11 +61,22 @@ namespace cubxasl
                                                  * cur_gourp_percentile, an error is raised. */
   };
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  struct analytic_sum_avg_function_info
+  {
+    DOMAIN_OPERAND_COERCION operand_coercion;	/* the operand coercion of value + a value, set per partition
+						 * (qdata_initialize_analytic_func) */
+  };
+#endif
+
   union analytic_function_info
   {
     analytic_ntile_function_info ntile;
     analytic_percentile_function_info percentile;
     analytic_cume_percent_function_info cume_percent;
+#if defined (SERVER_MODE) || defined (SA_MODE)
+    analytic_sum_avg_function_info sum_avg;	/* SUM and AVG; the stream writes none of it */
+#endif
   };
 
   struct analytic_list_node
@@ -71,10 +87,9 @@ namespace cubxasl
     FUNC_CODE function;		/* analytic function type */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     tp_domain *domain;		/* domain of the result */
-    tp_domain *original_domain;	/* domain of the result */
+    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
 
     DB_TYPE opr_dbtype;		/* operand data type */
-    DB_TYPE original_opr_dbtype;	/* original operand data type */
     regu_variable_node operand;	/* operand */
 
     int flag;			/* flags */

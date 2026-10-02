@@ -23,6 +23,10 @@
 #ident "$Id$"
 
 #include "config.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "domain_plan.h"
+#include "object_domain_convert.h"
+#endif
 #include <stdio.h>
 
 #include "json_builder.h"
@@ -1245,6 +1249,15 @@ qdump_print_value (REGU_VARIABLE * value_p)
       return true;
     }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  if (value_p->plan_item != NULL)
+    {
+      const DOMAIN_PLAN_ITEM *item = value_p->plan_item;
+      const char *classes[] = { "?", "CONST", "ROW", "CORR", "VOLATILE" };
+      fprintf (foutput, "{plan class=%s slot=%d ref=%d flags=0x%03x}", classes[item->operand_class],
+	       item->resolved_index, item->ref, item->flags);
+    }
+#endif
   if (REGU_VARIABLE_IS_FLAGED (value_p, REGU_VARIABLE_HIDDEN_COLUMN))
     {
       fprintf (foutput, "[HIDDEN_COLUMN]");
@@ -2375,6 +2388,14 @@ qdump_print_xasl (xasl_node * xasl_p)
     }
 
   fprintf (foutput, "\n<start of xasl structure %p>\n", xasl_p);
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  if (xasl_p->domain_plan != NULL)
+    {
+      const DOMAIN_PLAN *plan = xasl_p->domain_plan;
+      fprintf (foutput, "domain plan: items=%d slots=%d refs=%d(+%d) late_bind_nodes=%d\n",
+	       plan->n_items, plan->n_resolved, plan->n_refs, plan->n_refs - plan->dbval_cnt, plan->n_late_bind_nodes);
+    }
+#endif
   qdump_print_xasl_type (xasl_p);
 
   if (xasl_p->flag)

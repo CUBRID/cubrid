@@ -1552,9 +1552,17 @@ extern "C"
 	}
     }
 
-    /* Free scan-specific resources (bt_attr_ids, oid_list, copy_buf, etc.). */
+    /* Free scan-specific resources (bt_attr_ids, oid_list, copy_buf, etc.). The key plan storage stays with the scan:
+     * the key ranges init_on_main built read it, and the parallel scan's close releases it after its workers. */
+    const domain_plan_index *key_plan = scan_id->s.isid.key_plan;
+    const RESOLVED_INDEX_KEYS *resolved_keys = scan_id->s.isid.resolved_keys;
+    scan_key_state *key_state = scan_id->s.isid.key_state;
+    scan_id->s.isid.key_state = nullptr;
     scan_close_scan (thread_p, scan_id);
     scan_id->status = S_OPENED;	/* reset status; scan_close_scan sets it to S_CLOSED */
+    scan_id->s.pisid.key_plan = key_plan;
+    scan_id->s.pisid.resolved_keys = resolved_keys;
+    scan_id->s.pisid.key_state = key_state;
 
     if (scan_id->s.isid.indx_cov.list_id != NULL)
       {
@@ -1616,15 +1624,7 @@ namespace parallel_scan
       }
     if (m_vd != nullptr)
       {
-	if (m_vd->dbval_cnt > 0)
-	  {
-	    for (int i = 0; i < m_vd->dbval_cnt; i++)
-	      {
-		pr_clear_value (&m_vd->dbval_ptr[i]);
-	      }
-	    db_private_free (m_thread_p, m_vd->dbval_ptr);
-	  }
-	db_private_free (m_thread_p, m_vd);
+	qexec_free_xasl_state (m_thread_p, m_vd->xasl_state);
 	m_vd = nullptr;
       }
   }
@@ -1659,28 +1659,15 @@ namespace parallel_scan
       {
 	m_uses_xasl_clone = true;
       }
-    new_vd = (VAL_DESCR *) db_private_alloc (m_thread_p, sizeof (VAL_DESCR));
-    if (new_vd == nullptr)
+    /* m_vd is the vd of this thread's copy, so m_vd->xasl_state is what close frees. */
+    assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
+    xasl_state *new_xasl_state = qexec_deep_copy_xasl_state (m_thread_p, m_orig_vd->xasl_state, false);
+    if (new_xasl_state == nullptr)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (VAL_DESCR));
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
 	return ER_FAILED;
       }
-    memcpy (new_vd, m_orig_vd, sizeof (VAL_DESCR));
-    if (m_orig_vd->dbval_cnt > 0)
-      {
-	new_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (m_thread_p, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	if (new_vd->dbval_ptr == nullptr)
-	  {
-	    db_private_free (m_thread_p, new_vd);
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		    sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	    return ER_FAILED;
-	  }
-	for (int i = 0; i < m_orig_vd->dbval_cnt; i++)
-	  {
-	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &new_vd->dbval_ptr[i]);
-	  }
-      }
+    new_vd = &new_xasl_state->vd;
     m_vd = new_vd;
     m_input_handler = (input_handler_t *) db_private_alloc (m_thread_p, sizeof (input_handler_t));
     if (m_input_handler == nullptr)
@@ -1972,16 +1959,18 @@ namespace parallel_scan
 	  }
 
 	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
-	if (m_g_agg_domain_resolve_need)
+	if (m_g_agg_domain_resolve_need && scan_code == S_SUCCESS)
 	  {
-	    qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (m_thread_p, m_xasl, m_vd,
-		&m_xasl->proc.buildlist.g_agg_domains_resolved);
-
-	    if (m_xasl->proc.buildlist.g_agg_domains_resolved)
+	    /* what the leader's aggregates still take from their first values (its setup ran before the scan) */
+	    if (qexec_parallel_aggregate_first_values (m_thread_p, m_xasl, m_vd,
+		&m_xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
 	      {
-		/* Sharing needs the resolved accumulator domains, so it is linked here,
-		 * at the parallel BUILDLIST's resolve point. The sort-based group-by
-		 * after the gather reads the links. */
+		scan_code = S_ERROR;
+	      }
+	    else if (m_xasl->proc.buildlist.g_agg_domains_resolved)
+	      {
+		/* Sharing needs the accumulator domains, so it is linked once they are set.
+		 * The sort-based group-by after the gather reads the links. */
 		qdata_link_shared_accumulators (m_xasl->proc.buildlist.g_agg_list);
 		m_g_agg_domain_resolve_need = false;
 	      }
@@ -2105,15 +2094,7 @@ namespace parallel_scan
     /* Clean up previous value descriptor */
     if (m_vd != nullptr)
       {
-	if (m_vd->dbval_cnt > 0)
-	  {
-	    for (int i = 0; i < m_vd->dbval_cnt; i++)
-	      {
-		pr_clear_value (&m_vd->dbval_ptr[i]);
-	      }
-	    db_private_free (m_thread_p, m_vd->dbval_ptr);
-	  }
-	db_private_free (m_thread_p, m_vd);
+	qexec_free_xasl_state (m_thread_p, m_vd->xasl_state);
 	m_vd = nullptr;
       }
 

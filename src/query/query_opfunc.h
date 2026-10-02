@@ -37,6 +37,7 @@
 // forward definitions
 struct function_node;
 class regu_variable_node;
+struct RESOLVED_DOMAIN;
 struct tp_domain;
 struct val_descr;
 struct val_list_node;
@@ -74,11 +75,19 @@ extern int qdata_divide_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * 
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
+/* T_ADD, T_SUB, T_MUL or T_DIV over its operands' operand coercion, resolved before any row
+ * (domain_resolve_operand_coercion): conv[i] converts operand i into operand_domain[i] - a RESOLVED_DOMAIN's arrays
+ * or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing; temporaries[i]: operand i converted once for its scope
+ * already */
+extern int qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
+					const TP_DOMAIN * const *operand_domain, DB_VALUE * dbval1, DB_VALUE * dbval2,
+					DB_VALUE * res, tp_domain * domain_p, const DB_VALUE * const *temporaries =
+					NULL);
 
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
-				       qfile_tuple_value_type_list * type_list);
+				       qfile_tuple_value_type_list * type_list, const val_descr * vd);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
 				    QFILE_TUPLE_RECORD * tplrec);
 extern int qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list,

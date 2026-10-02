@@ -24,6 +24,8 @@
 #ifndef _QUERY_LIST_H_
 #define _QUERY_LIST_H_
 
+struct domain_plan_item;
+
 #ident "$Id$"
 
 #ifdef __cplusplus
@@ -372,7 +374,7 @@ typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
 struct qfile_tuple_value_position
 {
   TP_DOMAIN *dom;		/* value domain */
-  TP_DOMAIN *original_domain;	/* original domain */
+  struct domain_plan_item *plan_item;	/* load-derived, not serialized */
   int pos_no;			/* value position number */
 };
 
@@ -507,7 +509,6 @@ struct qfile_list_id
   VFID temp_vfid;		/* temp file id; duplicated from tfile_vfid */
   struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
-  bool is_domain_resolved;	/* domains for host var is resolved or not */
   bool is_result_cached;	/* for subquery result cache */
   QFILE_LIST_ID *dependent_list_id;	/* Linked as dependent by qfile_connect_list; cleared together. */
 };
@@ -546,7 +547,6 @@ struct qfile_list_id
       (list_id)->tpl_descr.col_src = NULL; \
       (list_id)->tpl_descr.col_src_cap = 0; \
       (list_id)->tpl_descr.col_src_cnt = 0; \
-      (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
       (list_id)->dependent_list_id = NULL; \
     } \
