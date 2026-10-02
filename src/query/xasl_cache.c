@@ -71,14 +71,14 @@
 /* the plan variants of one query, kept on its base entry (see bind_variant.h) */
 struct xcache_bind_dir
 {
-  int checks;			/* checks the query has spent */
+  int checks;			/* times a client found nothing suitable in its directory (statistics) */
   int plans;			/* registered variants: distinct plans */
-  int next_variant;		/* variants reserved so far */
+  int next_variant;		/* variants reserved so far: the compiles the query has made */
   int n_records;
-  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_CHECKS];
-  bool registered[BIND_VARIANT_MAX_CHECKS];	/* the variant is a plan of the query */
-  bool resolved[BIND_VARIANT_MAX_CHECKS];	/* its compile came back, as a new plan or a known one */
-  UINT64 plan_sig[BIND_VARIANT_MAX_CHECKS];
+  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_COMPILES];
+  bool registered[BIND_VARIANT_MAX_COMPILES];	/* the variant is a plan of the query */
+  bool resolved[BIND_VARIANT_MAX_COMPILES];	/* its compile came back, as a new plan or a known one */
+  UINT64 plan_sig[BIND_VARIANT_MAX_COMPILES];
 };
 
 /* xcache statistics. */
@@ -2298,9 +2298,9 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 	  pthread_mutex_lock (&xcache_entry->bind_dir_mutex);
 	  if (xcache_entry->bind_dir != NULL)
 	    {
-	      fprintf (fp, "  bind variants: checks = %d, plans = %d, fingerprints = %d \n",
-		       xcache_entry->bind_dir->checks, xcache_entry->bind_dir->plans,
-		       xcache_entry->bind_dir->n_records);
+	      fprintf (fp, "  bind variants: plans = %d, compiles = %d, fingerprints = %d, server checks = %d \n",
+		       xcache_entry->bind_dir->plans, xcache_entry->bind_dir->next_variant,
+		       xcache_entry->bind_dir->n_records, xcache_entry->bind_dir->checks);
 	    }
 	  pthread_mutex_unlock (&xcache_entry->bind_dir_mutex);
 	}
@@ -2828,13 +2828,13 @@ xcache_uses_clones (void)
 }
 
 /*
- * xcache_bind_variant () - spend a check of a query's plan-variant budget, or register the plan
- *   a reserved variant compiled to (see bind_variant.h)
+ * xcache_bind_variant () - find or reserve the plan variant of a query that suits a fingerprint
+ *   nothing in the client's directory suited, or register the plan a reserved variant compiled
+ *   to (see bind_variant.h)
  * return	: error code
  * thread_p (in): thread entry
  * req (in)	: the request; req->sha1 and req->time_stored name the query's base entry
- * reply (out)	: the outcome, the budget and the whole directory, which the client keeps once
- *		  the budget is spent
+ * reply (out)	: the outcome, how far the query has learned, and the whole directory
  *
  * A base entry of another generation (recompiled, or dropped and inserted again) is not the
  * one the client's variants belong to: NOT_FOUND, and the client starts over.
@@ -2845,14 +2845,14 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
   XASL_CACHE_ENTRY *xcache_entry = NULL;
   struct xcache_bind_dir *dir;
   int error_code = NO_ERROR;
-  int limit, i;
+  int limit, pending, i;
 
   assert (req != NULL && reply != NULL);
 
   reply->result = BIND_VARIANT_NOT_FOUND;
   reply->variant = -1;
   reply->state = BIND_VARIANT_STATE_WATCH;
-  reply->checks = 0;
+  reply->compiles = 0;
   reply->plans = 0;
   reply->n_records = 0;
 
@@ -2878,9 +2878,9 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
     }
 
   limit = req->limit;
-  if (limit > BIND_VARIANT_MAX_CHECKS)
+  if (limit > BIND_VARIANT_MAX_COMPILES)
     {
-      limit = BIND_VARIANT_MAX_CHECKS;
+      limit = BIND_VARIANT_MAX_COMPILES;
     }
   if (limit < 1)
     {
@@ -2904,35 +2904,39 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
       xcache_entry->bind_dir = dir;
     }
 
+  pending = 0;
+  for (i = 0; i < dir->next_variant; i++)
+    {
+      if (!dir->resolved[i])
+	{
+	  pending++;
+	}
+    }
+
   if (req->op == BIND_VARIANT_OP_CHECK)
     {
-      if (dir->checks >= limit)
+      double dist = DBL_MAX;
+      int nearest;
+
+      dir->checks++;
+      nearest = bind_variant_nearest (dir->records, dir->n_records, &req->fp, req->floor, &dist);
+      if (nearest >= 0 && dist < req->band)
 	{
-	  reply->result = BIND_VARIANT_FROZEN;
+	  /* another client added the variant these values call for */
+	  reply->result = BIND_VARIANT_MATCH;
+	  reply->variant = dir->records[nearest].variant;
+	}
+      else if (dir->plans + pending < limit && dir->next_variant < BIND_VARIANT_MAX_COMPILES)
+	{
+	  /* still learning: compile. Compiles still in flight count as plans, so concurrent
+	   * clients cannot overshoot the limit together. */
+	  reply->result = BIND_VARIANT_COMPILE;
+	  reply->variant = dir->next_variant++;
+	  pending++;
 	}
       else
 	{
-	  double dist = DBL_MAX;
-	  int nearest;
-
-	  dir->checks++;
-	  nearest = bind_variant_nearest (dir->records, dir->n_records, &req->fp, req->floor, &dist);
-	  if (nearest >= 0 && dist < req->band)
-	    {
-	      reply->result = BIND_VARIANT_MATCH;
-	      reply->variant = dir->records[nearest].variant;
-	    }
-	  else if (dir->next_variant < BIND_VARIANT_MAX_CHECKS)
-	    {
-	      reply->result = BIND_VARIANT_COMPILE;
-	      reply->variant = dir->next_variant++;
-	    }
-	  else
-	    {
-	      /* cannot happen while every check reserves at most one variant; stay safe */
-	      reply->result = (nearest >= 0) ? BIND_VARIANT_MATCH : BIND_VARIANT_FROZEN;
-	      reply->variant = (nearest >= 0) ? dir->records[nearest].variant : -1;
-	    }
+	  reply->result = BIND_VARIANT_FROZEN;
 	}
     }
   else if (req->op == BIND_VARIANT_OP_REGISTER && req->variant >= 0 && req->variant < dir->next_variant)
@@ -2964,7 +2968,7 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
 	  reply->result = BIND_VARIANT_NEW;
 	  reply->variant = req->variant;
 	}
-      if (dir->n_records < BIND_VARIANT_MAX_CHECKS)
+      if (dir->n_records < BIND_VARIANT_MAX_COMPILES)
 	{
 	  dir->records[dir->n_records].variant = reply->variant;
 	  dir->records[dir->n_records].fp = req->fp;
@@ -2972,7 +2976,7 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
 	}
     }
 
-  reply->checks = dir->checks;
+  reply->compiles = dir->next_variant;
   reply->plans = dir->plans;
   reply->pending = 0;
   for (i = 0; i < dir->next_variant; i++)
@@ -2982,10 +2986,10 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
 	  reply->pending++;
 	}
     }
-  if (dir->checks >= limit && reply->pending == 0)
+  if ((dir->plans >= limit || dir->next_variant >= BIND_VARIANT_MAX_COMPILES) && reply->pending == 0)
     {
-      /* final only once every reserved variant came back: a client that settled while the last
-       * compile was in flight would never see that plan */
+      /* done learning -- final only once every reserved variant came back: a client that
+       * settled while the last compile was in flight would never see that plan */
       reply->state = (dir->plans <= 1) ? BIND_VARIANT_STATE_DONE : BIND_VARIANT_STATE_SELECT;
     }
   reply->n_records = dir->n_records;

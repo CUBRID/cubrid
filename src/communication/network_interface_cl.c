@@ -7862,8 +7862,9 @@ qmgr_drop_all_query_plans (void)
 }
 
 /*
- * qmgr_bind_variant - Send a NET_SERVER_QM_BIND_VARIANT request: spend a check of a cached
- *   query's plan-variant budget, or register the plan a reserved variant compiled to
+ * qmgr_bind_variant - Send a NET_SERVER_QM_BIND_VARIANT request: find or reserve the plan
+ *   variant of a cached query that suits a fingerprint, or register the plan a reserved variant
+ *   compiled to
  *   (bind_variant.h). This function is a counter part to sqmgr_bind_variant().
  *
  * return     : error code
@@ -7911,20 +7912,20 @@ qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply)
   ptr = or_unpack_int (ptr, &reply->result);
   ptr = or_unpack_int (ptr, &reply->variant);
   ptr = or_unpack_int (ptr, &reply->state);
-  ptr = or_unpack_int (ptr, &reply->checks);
+  ptr = or_unpack_int (ptr, &reply->compiles);
   ptr = or_unpack_int (ptr, &reply->plans);
   ptr = or_unpack_int (ptr, &reply->pending);
   ptr = or_unpack_int (ptr, &reply->n_records);
-  if (reply->n_records < 0 || reply->n_records > BIND_VARIANT_MAX_CHECKS)
+  if (reply->n_records < 0 || reply->n_records > BIND_VARIANT_MAX_COMPILES)
     {
       reply->n_records = 0;
     }
-  for (i = 0; i < BIND_VARIANT_MAX_CHECKS; i++)
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
     {
       ptr = or_unpack_int (ptr, &reply->records[i].variant);
       ptr = or_unpack_int (ptr, &reply->records[i].fp.terms);
     }
-  for (i = 0; i < BIND_VARIANT_MAX_CHECKS; i++)
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
     {
       for (j = 0; j < BIND_WATCH_MAX_TERMS; j++)
 	{

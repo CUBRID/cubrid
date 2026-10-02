@@ -6633,8 +6633,9 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 }
 
 /*
- * sqmgr_bind_variant - Process a NET_SERVER_QM_BIND_VARIANT request: spend a check of a cached
- *   query's plan-variant budget, or register the plan a reserved variant compiled to.
+ * sqmgr_bind_variant - Process a NET_SERVER_QM_BIND_VARIANT request: find or reserve the plan
+ *   variant of a cached query that suits a fingerprint, or register the plan a reserved variant
+ *   compiled to.
  *   This function is a counter part to qmgr_bind_variant().
  *
  * return:
@@ -6686,16 +6687,16 @@ sqmgr_bind_variant (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   ptr = or_pack_int (ptr, reply.result);
   ptr = or_pack_int (ptr, reply.variant);
   ptr = or_pack_int (ptr, reply.state);
-  ptr = or_pack_int (ptr, reply.checks);
+  ptr = or_pack_int (ptr, reply.compiles);
   ptr = or_pack_int (ptr, reply.plans);
   ptr = or_pack_int (ptr, reply.pending);
   ptr = or_pack_int (ptr, reply.n_records);
-  for (i = 0; i < BIND_VARIANT_MAX_CHECKS; i++)
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
     {
       ptr = or_pack_int (ptr, (i < reply.n_records) ? reply.records[i].variant : -1);
       ptr = or_pack_int (ptr, (i < reply.n_records) ? reply.records[i].fp.terms : 0);
     }
-  for (i = 0; i < BIND_VARIANT_MAX_CHECKS; i++)
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
     {
       for (j = 0; j < BIND_WATCH_MAX_TERMS; j++)
 	{

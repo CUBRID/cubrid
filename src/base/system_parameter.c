@@ -821,7 +821,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
-#define PRM_NAME_PLAN_CACHE_BIND_WATCH_CHECKS "plan_cache_bind_watch_checks"
+#define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 
 // #endregion
 
@@ -5584,14 +5584,14 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS,
-   PRM_NAME_PLAN_CACHE_BIND_WATCH_CHECKS,
+  {PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+   PRM_NAME_PLAN_CACHE_BIND_VARIANTS,
    (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 0}},
    {false, {.i = 0}},
-   {false, {.i = 32}},		/* BIND_VARIANT_MAX_CHECKS */
+   {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

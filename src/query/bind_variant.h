@@ -25,20 +25,23 @@
  *
  *   - the fingerprint each variant was planned under: the rows every histogram-priced
  *     host-variable predicate was expected to scan, in tree order;
- *   - how many checks the query has spent. A check is one execution with values different
- *     from the previous one; it is spent whether or not it compiles, and whatever plan the
- *     compile produces. The budget is per query, not per client: a client cannot reopen it.
+ *   - how many plans the query has and how many compiles produced them.
  *
- * While checks remain, an execution uses the variant whose fingerprint is within the band of
- * its own, or compiles one. A compile that produces a plan some variant already has does not
- * add a variant; its fingerprint becomes another way to reach that variant. When the budget
- * is spent the directory is frozen: with one plan nothing is ever checked again, with more an
- * execution runs the variant nearest to its values and never compiles. No variant is ever
- * replaced, so a plan another client is running never changes under it.
+ * An execution with new values runs the variant whose fingerprint is within the band of its
+ * own. A client looks in the directory it last received first and asks the server only when
+ * nothing there suits; the server then answers with a variant another client added since, or
+ * reserves a new one to compile. A compile that produces a plan some variant already has does
+ * not add a variant; its fingerprint becomes another way to reach that variant.
  *
- * Everything is dropped with the base entry (statistics update, DDL, eviction, restart), and
- * the next execution starts over. Variant entries carry the base entry's creation time in
- * their key, so a new generation never reuses an old generation's plans.
+ * The query learns until it has plan_cache_bind_variants distinct plans or BIND_VARIANT_MAX_COMPILES
+ * compiles, whichever comes first. Then the directory is final: with one plan the values are not
+ * looked at again, with more an execution runs the variant nearest to its values and never
+ * compiles. No variant is ever replaced, so a plan another client is running never changes under
+ * it.
+ *
+ * Everything is dropped with the base entry (DDL, eviction, cache drop, restart), and the next
+ * execution starts over. Variant entries carry the base entry's creation time in their key, so
+ * a new generation never reuses an old generation's plans.
  */
 
 #ifndef _BIND_VARIANT_H_
@@ -55,9 +58,10 @@
  * ones: the order is the same on every execution, so the comparison stays consistent */
 #define BIND_WATCH_MAX_TERMS 32
 
-/* the most checks a query can spend, whatever plan_cache_bind_watch_checks says: every check
- * adds at most one fingerprint to the directory, so this also bounds the directory */
-#define BIND_VARIANT_MAX_CHECKS 32
+/* the most compiles a query learns from, however many plans it is allowed: a compile that keeps
+ * producing a plan the query already has (a range bound drifting outside every band) would
+ * otherwise never stop. Every compile adds one fingerprint, so this also bounds the directory. */
+#define BIND_VARIANT_MAX_COMPILES 32
 
 /* the rows each priced predicate is expected to scan under one set of bind values */
 typedef struct bind_fingerprint BIND_FINGERPRINT;
@@ -78,29 +82,30 @@ struct bind_variant_record
 
 typedef enum
 {
-  BIND_VARIANT_OP_CHECK = 1,	/* spend a check: which variant suits this fingerprint? */
+  BIND_VARIANT_OP_CHECK = 1,	/* nothing in the client's directory suits this fingerprint */
   BIND_VARIANT_OP_REGISTER = 2	/* the reserved variant was compiled to this plan */
 } BIND_VARIANT_OP;
 
 typedef enum
 {
   BIND_VARIANT_NOT_FOUND = 0,	/* no base entry of that generation: start over */
-  BIND_VARIANT_MATCH,		/* CHECK: run variant `variant` */
+  BIND_VARIANT_MATCH,		/* CHECK: run variant `variant` (another client added it) */
   BIND_VARIANT_COMPILE,		/* CHECK: nothing suits; compile into the reserved `variant` */
-  BIND_VARIANT_FROZEN,		/* CHECK: the budget is spent; choose from the directory */
+  BIND_VARIANT_FROZEN,		/* CHECK: the query has learned all it may; choose from the directory */
   BIND_VARIANT_NEW,		/* REGISTER: the plan is new, `variant` is now part of the query */
   BIND_VARIANT_SAME_PLAN	/* REGISTER: an existing variant has that plan; run `variant` */
 } BIND_VARIANT_RESULT;
 
-/* a client that found the budget spent while a variant was still being compiled asks again this
- * many times at most before it settles on what it has (the compiling client may have died) */
+/* a client that found the query done learning while a variant was still being compiled asks
+ * again this many times at most before it settles on what it has (the compiling client may
+ * have died) */
 #define BIND_VARIANT_MAX_POLLS 4
 
 typedef enum
 {
-  BIND_VARIANT_STATE_WATCH = 0,	/* checks remain, or a variant is still being compiled */
-  BIND_VARIANT_STATE_DONE,	/* budget spent, one plan: never check again */
-  BIND_VARIANT_STATE_SELECT	/* budget spent, several plans: pick the nearest, never compile */
+  BIND_VARIANT_STATE_WATCH = 0,	/* still learning, or a variant is still being compiled */
+  BIND_VARIANT_STATE_DONE,	/* done learning, one plan: the values are not looked at again */
+  BIND_VARIANT_STATE_SELECT	/* done learning, several plans: pick the nearest, never compile */
 } BIND_VARIANT_STATE;
 
 typedef struct bind_variant_request BIND_VARIANT_REQUEST;
@@ -109,7 +114,7 @@ struct bind_variant_request
   SHA1Hash sha1;		/* the base entry */
   CACHE_TIME time_stored;	/* ... and its generation */
   int op;			/* BIND_VARIANT_OP */
-  int limit;			/* checks the query may spend */
+  int limit;			/* distinct plans the query may have */
   int variant;			/* REGISTER: the reserved variant */
   double band;			/* CHECK: a variant within this factor suits */
   double floor;			/* predicates below this many rows on both sides are not compared */
@@ -123,18 +128,18 @@ struct bind_variant_reply
   int result;			/* BIND_VARIANT_RESULT */
   int variant;
   int state;			/* BIND_VARIANT_STATE after this request */
-  int checks;			/* checks spent */
+  int compiles;			/* compiles reserved so far */
   int plans;			/* distinct plans */
   int pending;			/* variants reserved but not registered yet */
   int n_records;
-  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_CHECKS];
+  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_COMPILES];
 };
 
 #define OR_BIND_VARIANT_REQUEST_SIZE \
   (OR_SHA1_SIZE + OR_INT_SIZE * 6 + MAX_ALIGNMENT + OR_INT64_SIZE + OR_DOUBLE_SIZE * (2 + BIND_WATCH_MAX_TERMS))
 #define OR_BIND_VARIANT_REPLY_SIZE \
-  (OR_INT_SIZE * (7 + 2 * BIND_VARIANT_MAX_CHECKS) + MAX_ALIGNMENT \
-   + OR_DOUBLE_SIZE * BIND_VARIANT_MAX_CHECKS * BIND_WATCH_MAX_TERMS)
+  (OR_INT_SIZE * (7 + 2 * BIND_VARIANT_MAX_COMPILES) + MAX_ALIGNMENT \
+   + OR_DOUBLE_SIZE * BIND_VARIANT_MAX_COMPILES * BIND_WATCH_MAX_TERMS)
 
 /*
  * bind_fingerprint_distance () - how far apart two fingerprints are: the largest factor by

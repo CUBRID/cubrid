@@ -3823,9 +3823,8 @@ struct parser_node
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
     unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
-					 * bind-value watch target selection, so its first
-					 * plan_cache_bind_watch_checks executions compare the node
-					 * cardinalities the bound values imply against the recorded ones */
+					 * target selection for bind-value plan variants, so its
+					 * executions choose among the query's plans by fingerprint */
     unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
 					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
 					 * header), so the first execution must replan under the real values.

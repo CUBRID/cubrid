@@ -615,6 +615,50 @@ histogram_spec_class_name (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE *
   return ctx.class_name;
 }
 
+/* parser-arena copy of a cached histogram blob (same as qo_copy_histogram_value ()) */
+static DB_VALUE *
+bind_copy_histogram_value (PARSER_CONTEXT *parser, DB_VALUE *src)
+{
+  DB_VALUE *copy;
+  const char *src_buf;
+  char *buf;
+  int bit_len = 0, size;
+  DB_TYPE src_type;
+
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return NULL;
+    }
+  src_type = DB_VALUE_DOMAIN_TYPE (src);
+  if (src_type != DB_TYPE_BIT && src_type != DB_TYPE_VARBIT)
+    {
+      return NULL;
+    }
+  src_buf = db_get_bit (src, &bit_len);
+  if (src_buf == NULL || bit_len <= 0)
+    {
+      return NULL;
+    }
+  size = (bit_len + 7) / 8;
+
+  copy = (DB_VALUE *) parser_alloc (parser, (int) sizeof (DB_VALUE));
+  buf = (char *) parser_alloc (parser, size);
+  if (copy == NULL || buf == NULL)
+    {
+      return NULL;
+    }
+  memcpy (buf, src_buf, size);
+  if (src_type == DB_TYPE_BIT)
+    {
+      db_make_bit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+  else
+    {
+      db_make_varbit (copy, DB_VALUE_PRECISION (src), buf, bit_len);
+    }
+  return copy;
+}
+
 static DB_VALUE *
 histogram_blob_from_class_cache (PARSER_CONTEXT *parser, PT_NODE *statement, PT_NODE *name)
 {
@@ -691,6 +735,19 @@ histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
   if (histogram_value == NULL && bind_fp_active_statement != NULL)
     {
       histogram_value = histogram_blob_from_class_cache (bind_fp_active_parser, bind_fp_active_statement, lhs);
+      if (histogram_value != NULL && bind_fp_active_parser != NULL)
+	{
+	  /* annotate the name the way the optimizer does, with a parser-arena copy (the class
+	   * cache may free its blob): the next fingerprint of this statement finds it here
+	   * instead of searching the tree and the class cache again for every predicate */
+	  DB_VALUE *copy = bind_copy_histogram_value (bind_fp_active_parser, histogram_value);
+
+	  if (copy != NULL)
+	    {
+	      lhs->info.name.histogram = copy;
+	      histogram_value = copy;
+	    }
+	}
     }
   if (histogram_value == NULL)
     {
@@ -2813,13 +2870,14 @@ histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
 /* bind-value plans: per-predicate fingerprint, the hint check, target selection */
 
 /* The band and the floor are constants (histogram_cl.hpp), deliberately not system parameters:
- * the one thing a DBA decides is how many checks a query may spend (plan_cache_bind_watch_checks);
+ * the one thing a DBA decides is how many plans a query may keep (plan_cache_bind_variants);
  * nobody has a basis to pick a band or a floor per installation. */
 
 /* the predicates of one fingerprint walk, in tree order */
 struct bind_term_ctx
 {
   PARSER_CONTEXT *parser;
+  bool want_names;		/* build the log labels (only when something will be logged) */
   int count;
   double rows[BIND_WATCH_MAX_TERMS];
   char name[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
@@ -2845,9 +2903,16 @@ bind_term_add (bind_term_ctx *ctx, PT_NODE *name, const char *opstr, double sel)
   /* a predicate the current value rules out entirely still costs one row's worth of work, and
    * a ratio needs a non-zero base */
   ctx->rows[i] = MAX (1.0, sel * total_rows);
-  snprintf (ctx->name[i], BIND_WATCH_NAME_LEN, "%s.%s%s",
-	    (name->info.name.resolved != NULL) ? name->info.name.resolved : "?",
-	    (name->info.name.original != NULL) ? name->info.name.original : "?", opstr);
+  if (ctx->want_names)
+    {
+      snprintf (ctx->name[i], BIND_WATCH_NAME_LEN, "%s.%s%s",
+		(name->info.name.resolved != NULL) ? name->info.name.resolved : "?",
+		(name->info.name.original != NULL) ? name->info.name.original : "?", opstr);
+    }
+  else
+    {
+      ctx->name[i][0] = '\0';
+    }
 }
 
 /* value behind a comparison operand: a bound host variable, or a constant the rewriter left in
@@ -3023,9 +3088,10 @@ bind_term_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_
 /* price every predicate under the current values, in tree order. false = nothing priceable,
  * which the caller reads as "stop watching". */
 static bool
-bind_term_vector (PARSER_CONTEXT *parser, PT_NODE *statement, bind_term_ctx *ctx)
+bind_term_vector (PARSER_CONTEXT *parser, PT_NODE *statement, bind_term_ctx *ctx, bool want_names)
 {
   ctx->parser = parser;
+  ctx->want_names = want_names;
   ctx->count = 0;
 
   bind_fp_active_parser = parser;
@@ -3048,7 +3114,7 @@ histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_FIN
 
   assert (fp != NULL);
   fp->terms = 0;
-  if (!bind_term_vector (parser, statement, &cur))
+  if (!bind_term_vector (parser, statement, &cur, names != NULL))
     {
       return false;
     }
@@ -3146,7 +3212,7 @@ histogram_bind_watch_check (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_WAT
   assert (ws != NULL && out_usable != NULL);
   *out_usable = false;
 
-  if (!bind_term_vector (parser, statement, &cur))
+  if (!bind_term_vector (parser, statement, &cur, true))
     {
       return false;
     }
@@ -3425,7 +3491,7 @@ histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement)
   int i;
 
   /* the feature is off: a statement that is not watched must not pay a single walk for it */
-  if (prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS) <= 0)
+  if (prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS) <= 0)
     {
       return false;
     }

@@ -117,10 +117,10 @@ bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement
  *
  * Two users of the fingerprint:
  *   - plan variants (bind_variant.h): SELECT statements picked by target selection, while
- *     plan_cache_bind_watch_checks > 0. A query keeps several plans, chosen by fingerprint
- *     with BIND_WATCH_BAND, under a check budget the query's clients share.
+ *     plan_cache_bind_variants > 0. A query keeps several plans, chosen by fingerprint
+ *     with BIND_WATCH_BAND; it learns up to that many distinct plans, shared by its clients.
  *   - the hint (BIND_SENSITIVE / plan_cache_bind_sensitivity): SELECT, UPDATE and DELETE, every
- *     execution, no budget, with the narrower BIND_WATCH_HINT_BAND -- the user said the
+ *     execution, no limit, with the narrower BIND_WATCH_HINT_BAND -- the user said the
  *     statement is value-sensitive. The statement replans in place.
  */
 
@@ -142,9 +142,14 @@ struct bind_watch_state
   CACHE_TIME base_time;
   int state;			/* BIND_VARIANT_STATE */
   int cur_variant;		/* the variant the statement's XASL_ID belongs to; -1 = the base entry */
-  int polls;			/* times the budget was found spent with a compile still in flight */
+  int polls;			/* times the query was found done learning with a compile still in flight */
   int n_records;
-  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_CHECKS];
+  BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_COMPILES];
+  /* the XASL_ID each variant was last prepared to, so moving between variants needs no prepare
+   * round trip; a stale one fails the execution with ER_QPROC_INVALID_XASLNODE, whose retry
+   * prepares the variant again and refreshes the slot */
+  bool id_known[BIND_VARIANT_MAX_COMPILES];
+  XASL_ID variant_id[BIND_VARIANT_MAX_COMPILES];
 };
 typedef struct bind_watch_state BIND_WATCH_STATE;
 

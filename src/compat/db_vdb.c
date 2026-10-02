@@ -238,7 +238,7 @@ db_stmt_bind_watch_state (PARSER_CONTEXT * parser, PT_NODE * statement)
  * statement (in) : statement being executed
  *
  * Two reasons:
- *   - the hint (BIND_SENSITIVE / plan_cache_bind_sensitivity): every execution, no budget --
+ *   - the hint (BIND_SENSITIVE / plan_cache_bind_sensitivity): every execution, no limit --
  *     the user asked for it;
  *   - the driver-neutral first peek: the plan was chosen with unbound markers, so the first
  *     execution prices it once (what develop does with the feature off).
@@ -311,7 +311,7 @@ static bool
 db_bind_variant_mode (PT_NODE * statement)
 {
   return (statement != NULL && PT_IS_QUERY (statement) && statement->flag.bind_watch_candidate
-	  && prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS) > 0
+	  && prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS) > 0
 	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0
 	  && !db_is_bind_sensitive (statement));
 }
@@ -329,14 +329,32 @@ db_bind_variant_key (PARSER_CONTEXT * parser, const BIND_WATCH_STATE * ws, int v
 }
 
 /*
+ * db_bind_variant_remember () - keep the statement's XASL_ID as its current variant's
+ */
+static void
+db_bind_variant_remember (PT_NODE * statement)
+{
+  BIND_WATCH_STATE **ws_p = db_stmt_bind_watch_ptr (statement);
+  BIND_WATCH_STATE *ws = (ws_p != NULL) ? *ws_p : NULL;
+
+  if (ws == NULL || ws->cur_variant < 0 || ws->cur_variant >= BIND_VARIANT_MAX_COMPILES || statement->xasl_id == NULL)
+    {
+      return;
+    }
+  XASL_ID_COPY (&ws->variant_id[ws->cur_variant], statement->xasl_id);
+  ws->id_known[ws->cur_variant] = true;
+}
+
+/*
  * db_bind_variant_switch () - make the statement's XASL_ID the plan of a variant
  * return         : error code
  * variant (in)   : the variant; -1 = the base entry
  * compile (in)   : compile it under the current values even when it is cached (a new variant)
  *
- * Without compile this is a cache lookup; when the variant's entry was evicted it is compiled
- * again under the current values, which are the nearest to it anyway. That is not a check:
- * it decides nothing about which plans the query has.
+ * A variant this statement ran before is reached by its remembered XASL_ID, without a round
+ * trip. Otherwise this is a cache lookup; when the variant's entry was evicted it is compiled
+ * again under the current values, which are the nearest to it anyway -- that decides nothing
+ * about which plans the query has.
  */
 static int
 db_bind_variant_switch (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws, int variant, bool compile)
@@ -348,10 +366,26 @@ db_bind_variant_switch (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH
       return NO_ERROR;
     }
   statement->info.query.bind_variant_key = (variant >= 0) ? db_bind_variant_key (parser, ws, variant) : NULL;
+
+  if (!compile && variant >= 0 && variant < BIND_VARIANT_MAX_COMPILES && ws->id_known[variant])
+    {
+      XASL_ID *xasl_id = (XASL_ID *) malloc (sizeof (XASL_ID));
+
+      if (xasl_id != NULL)
+	{
+	  XASL_ID_COPY (xasl_id, &ws->variant_id[variant]);
+	  pt_free_statement_xasl_id (statement);
+	  statement->xasl_id = xasl_id;
+	  ws->cur_variant = variant;
+	  return NO_ERROR;
+	}
+    }
+
   err = do_replan_statement_internal (parser, statement, compile);
   if (err == NO_ERROR)
     {
       ws->cur_variant = variant;
+      db_bind_variant_remember (statement);
     }
   return err;
 }
@@ -366,20 +400,20 @@ db_bind_variant_learn (BIND_WATCH_STATE * ws, const BIND_VARIANT_REPLY * reply)
 
   if (reply->state != BIND_VARIANT_STATE_WATCH && ws->state == BIND_VARIANT_STATE_WATCH)
     {
-      _er_log_debug (ARG_FILE_LINE, "bind variant budget spent: %d checks, %d plan(s) -- %s\n", reply->checks,
-		     reply->plans, (reply->state == BIND_VARIANT_STATE_DONE)
+      _er_log_debug (ARG_FILE_LINE, "bind variant learning done: %d plan(s) from %d compile(s) -- %s\n",
+		     reply->plans, reply->compiles, (reply->state == BIND_VARIANT_STATE_DONE)
 		     ? "the plan is final, values are no longer checked" : "each execution runs the nearest plan");
     }
   ws->state = reply->state;
   ws->n_records = reply->n_records;
-  for (i = 0; i < reply->n_records && i < BIND_VARIANT_MAX_CHECKS; i++)
+  for (i = 0; i < reply->n_records && i < BIND_VARIANT_MAX_COMPILES; i++)
     {
       ws->records[i] = reply->records[i];
     }
 }
 
 /*
- * db_bind_variant_nearest () - run the variant nearest to the values (the budget is spent)
+ * db_bind_variant_nearest () - run the variant nearest to the values
  */
 static int
 db_bind_variant_nearest (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws,
@@ -397,17 +431,22 @@ db_bind_variant_nearest (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATC
 
 /*
  * db_bind_variant_rebase () - attach the statement to the query's current base entry: its
- *   generation is gone (statistics, DDL, eviction), so the variants start over
+ *   generation is gone (DDL, eviction, cache drop), so the variants start over
  */
 static int
 db_bind_variant_rebase (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws)
 {
-  int err;
+  int err, i;
 
   ws->base_known = false;
   ws->state = BIND_VARIANT_STATE_WATCH;
   ws->n_records = 0;
   ws->cur_variant = -1;
+  ws->polls = 0;
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ws->id_known[i] = false;
+    }
   statement->info.query.bind_variant_key = NULL;
 
   err = do_replan_statement_internal (parser, statement, false);
@@ -430,26 +469,24 @@ db_bind_variant_rebase (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH
  * parser (in)    : parser holding the statement and the bound values
  * statement (in) : SELECT in plan-variant mode, prepared
  *
- * An execution with the same values as the previous one runs the same plan without a check.
- * Otherwise, while the query has checks left, the server spends one and answers with the
- * variant that suits the fingerprint, or reserves one to compile; a compile that produced a
- * plan the query already has is folded into that variant. Once the budget is spent the
- * directory the server returned is kept: one plan means nothing is checked again, several
- * mean each new set of values runs the nearest plan, without asking the server and without
- * compiling.
+ * The same values as the previous execution run the same plan, unchecked. New values are
+ * fingerprinted and matched against the directory this client already has; only when nothing
+ * there suits does the client ask the server, which answers with a variant another client added
+ * since, or reserves one to compile while the query is still learning. A compile that produced
+ * a plan the query already has is folded into that variant. Once the query is done learning:
+ * one plan means the values are not looked at again, several mean each new set of values runs
+ * the nearest plan, without asking the server and without compiling.
  */
 static int
 db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   BIND_WATCH_STATE *ws;
   BIND_FINGERPRINT fp;
-  char names[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
   BIND_VARIANT_REQUEST req;
   BIND_VARIANT_REPLY reply;
   UINT64 value_hash;
   int err, attempt, k, i;
   double dist;
-  char buf[BIND_WATCH_MAX_TERMS * (BIND_WATCH_NAME_LEN + 32)];
 
   ws = db_stmt_bind_watch_state (parser, statement);
   if (ws == NULL)
@@ -469,7 +506,7 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  if (!histogram_bind_fingerprint (parser, statement, &fp, names))
+  if (!histogram_bind_fingerprint (parser, statement, &fp, NULL))
     {
       /* nothing in the statement is priced by a histogram: the plan cannot depend on the
        * values, and that cannot change while the plan lives */
@@ -489,14 +526,21 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       ws->cur_variant = -1;
     }
 
+  /* the directory this client already holds first: a variant that suits costs no round trip.
+   * Once the query is done learning the nearest one is taken whatever the distance. */
+  i = bind_variant_nearest (ws->records, ws->n_records, &fp, BIND_WATCH_ROW_FLOOR, &dist);
+  if (i >= 0 && (dist < BIND_WATCH_BAND || ws->state == BIND_VARIANT_STATE_SELECT))
+    {
+      return db_bind_variant_switch (parser, statement, ws, ws->records[i].variant, false);
+    }
   if (ws->state == BIND_VARIANT_STATE_SELECT)
     {
-      return db_bind_variant_nearest (parser, statement, ws, &fp);
+      return NO_ERROR;
     }
 
   memset (&req, 0, sizeof (req));
   req.op = BIND_VARIANT_OP_CHECK;
-  req.limit = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS);
+  req.limit = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS);
   req.band = BIND_WATCH_BAND;
   req.floor = BIND_WATCH_ROW_FLOOR;
   req.fp = fp;
@@ -533,7 +577,7 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  /* the record nearest to these values before this check, to tell the log what moved */
+  /* the record nearest to these values before this request, to tell the log what moved */
   i = bind_variant_nearest (reply.records, reply.n_records, &fp, BIND_WATCH_ROW_FLOOR, &dist);
   db_bind_variant_learn (ws, &reply);
 
@@ -545,11 +589,11 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
     case BIND_VARIANT_FROZEN:
       if (ws->state == BIND_VARIANT_STATE_WATCH && ++ws->polls >= BIND_VARIANT_MAX_POLLS)
 	{
-	  /* the budget is spent but a variant is still being compiled, and it may never come
-	   * back (its client died): settle on the plans there are */
+	  /* done learning but a variant is still being compiled, and it may never come back
+	   * (its client died): settle on the plans there are */
 	  ws->state = (reply.plans <= 1) ? BIND_VARIANT_STATE_DONE : BIND_VARIANT_STATE_SELECT;
-	  _er_log_debug (ARG_FILE_LINE, "bind variant budget spent: %d checks, %d plan(s), a compile never came back\n",
-			 reply.checks, reply.plans);
+	  _er_log_debug (ARG_FILE_LINE, "bind variant learning done: %d plan(s), a compile never came back\n",
+			 reply.plans);
 	}
       if (ws->state == BIND_VARIANT_STATE_DONE)
 	{
@@ -573,29 +617,40 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       req.op = BIND_VARIANT_OP_REGISTER;
       req.sha1 = ws->base_sha1;
       req.time_stored = ws->base_time;
-      req.limit = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_WATCH_CHECKS);
+      req.limit = prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS);
       req.variant = k;
       req.plan_sig = parser->bind_plan_sig;
       req.fp = fp;
       err = qmgr_bind_variant (&req, &reply);
       if (err != NO_ERROR || reply.result == BIND_VARIANT_NOT_FOUND)
 	{
-	  /* the compiled plan suits these values; run it and let the next check sort it out */
+	  /* the compiled plan suits these values; run it and let the next request sort it out */
 	  er_clear ();
 	  return NO_ERROR;
 	}
 
-      histogram_bind_describe (buf, sizeof (buf), &fp, names, (i >= 0) ? &ws->records[i].fp : NULL);
-      if (reply.result == BIND_VARIANT_SAME_PLAN && reply.variant != k)
-	{
-	  _er_log_debug (ARG_FILE_LINE, "bind variant compile: same plan as #%d (check %d, %d plan(s)); %s\n",
-			 reply.variant, reply.checks, reply.plans, buf);
-	  db_bind_variant_learn (ws, &reply);
-	  return db_bind_variant_switch (parser, statement, ws, reply.variant, false);
-	}
-      _er_log_debug (ARG_FILE_LINE, "bind variant compile: new plan #%d (check %d, %d plan(s)); %s\n", k, reply.checks,
-		     reply.plans, buf);
-      db_bind_variant_learn (ws, &reply);
+      {
+	/* the labels are built only here, for the log: a compile is rare, a fingerprint is not */
+	char names[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
+	char buf[BIND_WATCH_MAX_TERMS * (BIND_WATCH_NAME_LEN + 32)];
+	BIND_FINGERPRINT named;
+
+	buf[0] = '\0';
+	if (histogram_bind_fingerprint (parser, statement, &named, names))
+	  {
+	    histogram_bind_describe (buf, sizeof (buf), &named, names, (i >= 0) ? &ws->records[i].fp : NULL);
+	  }
+	if (reply.result == BIND_VARIANT_SAME_PLAN && reply.variant != k)
+	  {
+	    _er_log_debug (ARG_FILE_LINE, "bind variant compile: same plan as #%d (%d compile(s), %d plan(s)); %s\n",
+			   reply.variant, reply.compiles, reply.plans, buf);
+	    db_bind_variant_learn (ws, &reply);
+	    return db_bind_variant_switch (parser, statement, ws, reply.variant, false);
+	  }
+	_er_log_debug (ARG_FILE_LINE, "bind variant compile: new plan #%d (%d compile(s), %d plan(s)); %s\n", k,
+		       reply.compiles, reply.plans, buf);
+	db_bind_variant_learn (ws, &reply);
+      }
       return NO_ERROR;
 
     default:
@@ -2729,6 +2784,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      /* retry the statement by calling do_prepare/execute_statement() */
 	      if (do_prepare_statement (parser, statement) == NO_ERROR)
 		{
+		  if (db_bind_variant_mode (statement))
+		    {
+		      /* the variant's remembered XASL_ID was stale; keep the fresh one */
+		      db_bind_variant_remember (statement);
+		    }
 		  err = do_execute_statement (parser, statement);
 		}
 	    }
