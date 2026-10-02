@@ -329,12 +329,12 @@ static bool ha_is_registered (const char *args, const char *hostname);
 
 #if !defined(WINDOWS)
 static int us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				  const char *remote_host);
+				  const char *remote_host, bool * exec_failed = NULL);
 static int us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				 const char *remote_host);
 
 static int us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name,
-				   const char *node_name, const char *remote_host);
+				   const char *node_name, const char *remote_host, bool * exec_failed = NULL);
 static int us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				  const char *remote_host);
 
@@ -350,9 +350,9 @@ static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool che
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
 
 static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				    const char *remote_host);
+				    const char *remote_host, bool * exec_failed = NULL);
 static int us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				     const char *remote_host);
+				     const char *remote_host, bool * exec_failed = NULL);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -3397,7 +3397,7 @@ us_hb_output_finish (dynamic_array *processes)
 }
 
 static int
-us_hb_start_local (dynamic_array *processes, const char *args[])
+us_hb_start_local (dynamic_array *processes, const char *args[], bool *exec_failed)
 {
   us_hb_background_process item;
   background_process &process = item.process;
@@ -3412,9 +3412,17 @@ us_hb_start_local (dynamic_array *processes, const char *args[])
   if (signal (SIGCHLD, SIG_IGN) == SIG_ERR
       || background_process_start (executable, args, relay, console, process) != 0)
     {
-      perror (errno == ENOENT || errno == ENOEXEC || errno == EACCES ? "execv" : "HA utility background start");
+      perror (process.exec_failed ? "execv" : "HA utility background start");
       /* No child/channel ownership was transferred on a failed start. */
       --processes->max;
+      /* Legacy utility/replication commands returned success when producer exec
+       * failed. Preserve that public result in the parent, never by returning
+       * the failed child into the launcher. Setup failures remain checked. */
+      if (process.exec_failed && exec_failed != NULL)
+        {
+          *exec_failed = true;
+          return NO_ERROR;
+        }
       return ER_GENERIC_ERROR;
     }
   da_put (processes, da_size (processes) - 1, &item);
@@ -3434,7 +3442,7 @@ us_hb_process_pid (dynamic_array *processes, int index)
 
 static int
 us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-		       const char *remote_host)
+		       const char *remote_host, bool * exec_failed)
 {
   int status = NO_ERROR;
   int pid;
@@ -3521,7 +3529,7 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db
 
 		  if (ha_mkdir (log_path, 0755))
 		    {
-		      status = us_hb_start_local (out_ap, lw_argv);
+		      status = us_hb_start_local (out_ap, lw_argv, exec_failed);
 
 		      if (status != NO_ERROR)
 			{
@@ -3575,6 +3583,10 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db
 
 ret:
   print_result (UTIL_COPYLOGDB, status, START);
+  if (status == NO_ERROR && exec_failed != NULL && *exec_failed)
+    {
+      print_result (UTIL_COPYLOGDB, ER_GENERIC_ERROR, START);
+    }
   return status;
 }
 
@@ -3710,7 +3722,7 @@ ret:
 
 static int
 us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-			const char *remote_host)
+			const char *remote_host, bool * exec_failed)
 {
   int status = NO_ERROR;
   int pid;
@@ -3796,7 +3808,7 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *d
 		      continue;
 		    }
 
-		  status = us_hb_start_local (out_ap, la_argv);
+		  status = us_hb_start_local (out_ap, la_argv, exec_failed);
 		  if (status != NO_ERROR)
 		    {
 		      goto ret;
@@ -3848,6 +3860,10 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *d
 
 ret:
   print_result (UTIL_APPLYLOGDB, status, START);
+  if (status == NO_ERROR && exec_failed != NULL && *exec_failed)
+    {
+      print_result (UTIL_APPLYLOGDB, ER_GENERIC_ERROR, START);
+    }
   return status;
 }
 
@@ -4273,7 +4289,7 @@ ret:
 
 static int
 us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-			 const char *remote_host)
+			 const char *remote_host, bool * exec_failed)
 {
   int status = NO_ERROR;
   int i;
@@ -4294,7 +4310,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_nam
 	      goto ret;
 	    }
 
-	  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, remote_host);
+	  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, remote_host, exec_failed);
 
 	  us_hb_output_wait (pids);
 	  for (i = 0; i < da_size (pids); i++)
@@ -4363,7 +4379,7 @@ ret:
 
 static int
 us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-			  const char *remote_host)
+			  const char *remote_host, bool * exec_failed)
 {
   int status = NO_ERROR;
   int i, pid;
@@ -4383,7 +4399,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_na
 	      goto ret;
 	    }
 
-	  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, remote_host);
+	  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, remote_host, exec_failed);
 
 	  us_hb_output_wait (pids);
 	  for (i = 0; i < da_size (pids); i++)
@@ -5168,6 +5184,7 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
 {
   int status = NO_ERROR;
   int sub_command_type;
+  bool exec_failed = false;
 
   char db_name[64];
   char node_name[CUB_MAXHOSTNAMELEN];
@@ -5209,15 +5226,19 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
   switch (command_type)
     {
     case SC_COPYLOGDB:
-      status = us_hb_process_copylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
+      status = us_hb_process_copylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p, &exec_failed);
       break;
     case SC_APPLYLOGDB:
-      status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
+      status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p, &exec_failed);
       break;
     }
 
 ret:
   print_result (PRINT_HEARTBEAT_NAME, status, command_type);
+  if (status == NO_ERROR && exec_failed)
+    {
+      print_result (PRINT_HEARTBEAT_NAME, ER_GENERIC_ERROR, command_type);
+    }
   return status;
 }
 
@@ -5237,6 +5258,7 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
   int status = NO_ERROR;
   int sub_command_type;
   int master_port;
+  bool copy_exec_failed = false, apply_exec_failed = false;
   const char *node_name = NULL;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_REPLICATION);
@@ -5271,10 +5293,10 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
 	{
 	  if (sub_command_type == START)
 	    {
-	      status = us_hb_process_copylogdb (START, ha_conf, NULL, node_name, NULL);
+	      status = us_hb_process_copylogdb (START, ha_conf, NULL, node_name, NULL, &copy_exec_failed);
 	      if (status == NO_ERROR)
 		{
-		  status = us_hb_process_applylogdb (START, ha_conf, NULL, node_name, NULL);
+		  status = us_hb_process_applylogdb (START, ha_conf, NULL, node_name, NULL, &apply_exec_failed);
 		  if (status != NO_ERROR)
 		    {
 		      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
@@ -5297,6 +5319,12 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
     }
 
 ret:
+  /* The old failed children each printed a replication failure result. Keep
+   * those diagnostics without repeating their stop/shutdown control flow. */
+  if (copy_exec_failed)
+    print_result (PRINT_HEARTBEAT_NAME, ER_GENERIC_ERROR, REPLICATION);
+  if (apply_exec_failed)
+    print_result (PRINT_HEARTBEAT_NAME, ER_GENERIC_ERROR, REPLICATION);
   print_result (PRINT_HEARTBEAT_NAME, status, REPLICATION);
   return status;
 }
