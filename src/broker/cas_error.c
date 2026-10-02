@@ -49,7 +49,7 @@
 static bool server_aborted = false;
 
 void
-err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
+err_msg_set (T_NET_BUF * net_buf)
 {
   if ((err_info.err_indicator != CAS_ERROR_INDICATOR) && (err_info.err_indicator != DBMS_ERROR_INDICATOR))
     {
