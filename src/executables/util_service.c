@@ -4004,13 +4004,13 @@ us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf, const char *db_name,
 {
   int status = NO_ERROR;
 
-  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, NULL);
+  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, NULL, NULL);
   if (status != NO_ERROR)
     {
       return status;
     }
 
-  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, NULL);
+  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, NULL, NULL);
   return status;
 }
 
@@ -4152,13 +4152,13 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
       goto ret;
     }
 
-  status = us_hb_copylogdb_start (pids, ha_conf, db_name, NULL, NULL);
+  status = us_hb_copylogdb_start (pids, ha_conf, db_name, NULL, NULL, NULL);
   if (status != NO_ERROR)
     {
       goto ret;
     }
 
-  status = us_hb_applylogdb_start (pids, ha_conf, db_name, NULL, NULL);
+  status = us_hb_applylogdb_start (pids, ha_conf, db_name, NULL, NULL, NULL);
   if (status != NO_ERROR)
     {
       goto ret;
@@ -4333,7 +4333,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_nam
 	      goto ret;
 	    }
 
-	  status = us_hb_copylogdb_start (args, ha_conf, db_name, node_name, remote_host);
+	  status = us_hb_copylogdb_start (args, ha_conf, db_name, node_name, remote_host, NULL);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (args); i++)
@@ -4422,7 +4422,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_na
 	      goto ret;
 	    }
 
-	  status = us_hb_applylogdb_start (args, ha_conf, db_name, node_name, remote_host);
+	  status = us_hb_applylogdb_start (args, ha_conf, db_name, node_name, remote_host, NULL);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (args); i++)
@@ -5299,14 +5299,14 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
 		  status = us_hb_process_applylogdb (START, ha_conf, NULL, node_name, NULL, &apply_exec_failed);
 		  if (status != NO_ERROR)
 		    {
-		      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
+		      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL, NULL);
 		    }
 		}
 	    }
 	  else
 	    {
-	      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
-	      (void) us_hb_process_applylogdb (STOP, ha_conf, NULL, node_name, NULL);
+	      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL, NULL);
+	      (void) us_hb_process_applylogdb (STOP, ha_conf, NULL, node_name, NULL, NULL);
 	      status = NO_ERROR;
 	    }
 	}
