@@ -994,6 +994,8 @@ db_restart (const char *program, int print_version, const char *volume)
  * Note: The sub-client is bound to the calling thread. db_shutdown_sub () must be called
  *       by the same thread before the thread exits. Otherwise, the transaction and the locks
  *       of the sub-client remain in the server until the process exits.
+ *       db_shutdown () of the main client must be called after all sub-clients are shut down,
+ *       because it finalizes the client modules shared with the sub-clients.
  */
 int
 db_restart_sub (int sub_index)

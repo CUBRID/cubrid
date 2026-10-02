@@ -2499,6 +2499,15 @@ ws_final (bool is_sub)
     {
       db_destroy_workspace_heap ();
     }
+  else
+    {
+      /* a sub-client does not reach area_final (); destroy the areas of this thread created by ws_init () */
+      ws_area_final ();
+      pr_area_final ();
+      set_area_final ();
+      obt_area_final ();
+      classobj_area_final ();
+    }
 
   /* clean up misc globals */
   ws_Mop_table = NULL;
