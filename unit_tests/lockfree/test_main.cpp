@@ -19,6 +19,8 @@
 #include "test_cqueue_functional.hpp"
 #include "test_freelist_functional.hpp"
 #include "test_hashmap.hpp"
+#include "test_adversarial_functional.hpp"
+#include "test_adversarial_performance.hpp"
 
 #include <string>
 #include <vector>
@@ -32,7 +34,10 @@ main (int argc, char **argv)
     "all",
     "cqueue",
     "freelist",
-    "hashmap"
+    "hashmap",
+    // opt-in only: deliberately absent from "all" so the existing suite is unchanged
+    "adv_func",
+    "adv_perf"
   };
   if (argc >= 2)
     {
@@ -88,6 +93,15 @@ main (int argc, char **argv)
 	{
 	  err = err | test_lockfree::test_hashmap_performance ();
 	}
+    }
+
+  if (opt == 4)
+    {
+      err = err | test_lockfree::test_adversarial_functional ();
+    }
+  if (opt == 5)
+    {
+      err = err | test_lockfree::test_adversarial_performance ();
     }
 
   return err;
