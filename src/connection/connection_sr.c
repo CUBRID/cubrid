@@ -152,6 +152,9 @@ static int css_get_next_client_id (void);
 static CSS_CONN_ENTRY *css_common_connect (CSS_CONN_ENTRY * conn, unsigned short *rid, const char *host_name,
 					   int connect_type, const char *server_name, int server_name_length, int port);
 static void css_dealloc_conn (CSS_CONN_ENTRY * conn);
+#if defined(SERVER_MODE)
+static void css_release_conn_session (CSS_CONN_ENTRY * conn);
+#endif
 
 static unsigned int css_make_eid (unsigned short entry_id, unsigned short rid);
 
@@ -349,6 +352,55 @@ css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn)
   END_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 }
 
+#if defined(SERVER_MODE)
+/*
+ * css_release_conn_session() - drop the session reference held by a connection entry
+ *   return: void
+ *   conn(in):
+ *
+ * Note: the caller must hold conn->rmutex. ref_count and session_id are changed together so that
+ *       session_state_verify_ref_count () sees a consistent pair under the active conn anchor.
+ */
+static void
+css_release_conn_session (CSS_CONN_ENTRY * conn)
+{
+  if (conn->session_p)
+    {
+      session_state_decrease_ref_count (NULL, conn->session_p);
+      conn->session_p = NULL;
+      conn->session_id = DB_EMPTY_SESSION;
+    }
+}
+
+/*
+ * css_detach_session_from_conn() - detach the session from a connection entry that is being closed
+ *   return: void
+ *   conn(in):
+ *
+ * Note: the connection worker releases a closed entry lazily (css_free_conn () runs on a later message queue pass),
+ *       and the entry stays in the active conn list until then. The session daemon treats every session id in that
+ *       list as alive, so the session must be detached here or it never expires while the worker is idle.
+ *       Must not be called while the caller holds the active conn anchor.
+ */
+void
+css_detach_session_from_conn (CSS_CONN_ENTRY * conn)
+{
+  int r, rv;
+
+  START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (rv);
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  css_release_conn_session (conn);
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (rv);
+}
+#endif /* SERVER_MODE */
+
 /*
  * css_shutdown_conn() - close connection entry
  *   return: void
@@ -401,12 +453,7 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     }
 
 #if defined(SERVER_MODE)
-  if (conn->session_p)
-    {
-      session_state_decrease_ref_count (NULL, conn->session_p);
-      conn->session_p = NULL;
-      conn->session_id = DB_EMPTY_SESSION;
-    }
+  css_release_conn_session (conn);
 #endif
 
   r = rmutex_unlock (NULL, &conn->rmutex);

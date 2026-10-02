@@ -921,6 +921,11 @@ namespace cubconn::connection
     /* any sessions that are nat cleared (e.g. cdc, flashback) should be handled here */
     css_prepare_shutdown_conn (ctx->m_conn);
 
+    /* The context is released lazily, so drop the session now; otherwise the session daemon keeps seeing it through
+     * the active conn list and never expires it. This must follow the waiter wakeups above, because
+     * css_shutdown_conn_by_tran_index () waits for this close while holding the active conn anchor. */
+    css_detach_session_from_conn (ctx->m_conn);
+
     /* mark deleted and lazily release this */
     ctx->m_removed = true;
     m_removed_context.push_back (ctx);
