@@ -66,5 +66,6 @@ int admin_acl_reload_cmd (int master_shm_id, const char *broker_name);
 void admin_init_env (void);
 
 extern char admin_err_msg[];
+extern char admin_warn_msg[];
 
 #endif /* _BROKER_ADMIN_PUB_H_ */
