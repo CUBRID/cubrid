@@ -375,6 +375,8 @@ struct qo_node
   PT_HINT_ENUM hint;		/* hint comment contained in given */
   bool sargable;		/* whether sargs are applicable to this node */
   bool sort_limit_candidate;	/* whether this node is a candidate for a SORT_LIMIT plan */
+  int snapshot_card;		/* rows of this node that survived its constant sargs when the row snapshot pass
+				 * (qo_snapshot_apply ()) evaluated them; -1 when it did not (CBRD-27478) */
 };
 
 #define QO_NODE_ENV(node)		(node)->env
@@ -403,6 +405,7 @@ struct qo_node
 #define QO_NODE_INFO_N(node)            (node)->info->n
 #define QO_NODE_NCARD(node)		(node)->ncard
 #define QO_NODE_TCARD(node)		(node)->tcard
+#define QO_NODE_SNAPSHOT_CARD(node)	(node)->snapshot_card
 #define QO_NODE_HINT(node)		(node)->hint
 #define QO_NODE_INFO_SMCLASS(node)	(node)->info[0].info->smclass
 #define QO_NODE_SORT_LIMIT_CANDIDATE(node)	(node)->sort_limit_candidate
@@ -764,6 +767,7 @@ struct qo_term
 #define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
 #define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
 #define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
+#define QO_TERM_SEL_FROM_SNAPSHOT   32768	/* join selectivity re-derived from the small side's surviving rows (CBRD-27478) */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
