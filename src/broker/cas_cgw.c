@@ -826,8 +826,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
       prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
-      prev_cas_info[CAS_INFO_RESERVED_1] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
-      prev_cas_info[CAS_INFO_RESERVED_2] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
 #endif /* end for debug */
 
 
