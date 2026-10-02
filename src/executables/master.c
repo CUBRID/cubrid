@@ -87,6 +87,8 @@ static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, c
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_client);
+static bool css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int buffer_length);
+static char *css_extract_packed_string (const char **pp, const char *limit);
 #if defined(WINDOWS)
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
 #endif /* WINDOWS */
@@ -343,6 +345,92 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
 }
 
 /*
+ * css_validate_proc_register () - validate an off-the-wire process-register image
+ *   return: true if the buffer is a well-formed CSS_SERVER_PROC_REGISTER whose
+ *           exec_path is a trusted server binary path; false otherwise.
+ *   proc_register(in): the received buffer, reinterpreted as the struct
+ *   buffer_length(in): number of bytes actually received
+ *
+ * Note: cub_master authenticates nothing on this port, so a server-registration
+ *   buffer must be treated as hostile. Every field later dereferenced
+ *   (server_name and the version/env/pid strings packed inside it, exec_path,
+ *   args) is bounded here before use, and exec_path is confined to the trusted
+ *   bin directory so that a REGISTER_SERVER job cannot turn later process
+ *   revival into arbitrary command execution.
+ */
+static bool
+css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int buffer_length)
+{
+  if (proc_register == NULL || buffer_length < (int) sizeof (CSS_SERVER_PROC_REGISTER))
+    {
+      return false;
+    }
+
+  /* server_name, and the strings packed within it, must be terminated inside
+   * the field so every strlen()/strdup() on it below stays in bounds */
+  if (proc_register->server_name[proc_register->CSS_SERVER_MAX_SZ_SERVER_NAME - 1] != '\0')
+    {
+      return false;
+    }
+  if (proc_register->server_name_length <= 0
+      || proc_register->server_name_length > proc_register->CSS_SERVER_MAX_SZ_SERVER_NAME)
+    {
+      return false;
+    }
+
+  /* the packed name (name\0[version\0env\0pid\0]) must end within its declared
+   * length so the packed-string parser cannot read past it */
+  if (proc_register->server_name[proc_register->server_name_length - 1] != '\0')
+    {
+      return false;
+    }
+
+  /* exec_path and args must be terminated within their own fields */
+  if (proc_register->exec_path[proc_register->CSS_SERVER_MAX_SZ_PROC_EXEC_PATH - 1] != '\0')
+    {
+      return false;
+    }
+  if (proc_register->args[proc_register->CSS_SERVER_MAX_SZ_PROC_ARGS - 1] != '\0')
+    {
+      return false;
+    }
+
+  if (!master_util_exec_path_is_trusted (proc_register->exec_path))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * css_extract_packed_string () - strdup a NUL-terminated string that must be
+ *   terminated before limit, advancing *pp past its terminator.
+ *   return: a newly allocated copy, or NULL if no string is terminated within
+ *           [*pp, limit); on failure *pp is advanced to limit.
+ *   pp(in/out): in - start of the string; out - just past its terminator
+ *   limit(in): exclusive upper bound the string must end before
+ */
+static char *
+css_extract_packed_string (const char **pp, const char *limit)
+{
+  const char *start = *pp;
+  const char *q;
+
+  for (q = start; q < limit; q++)
+    {
+      if (*q == '\0')
+	{
+	  *pp = q + 1;
+	  return strdup (start);
+	}
+    }
+
+  *pp = limit;
+  return NULL;
+}
+
+/*
  * css_accept_new_request() - Accepts a connect request from a new server
  *   return: none
  *   conn(in)
@@ -408,17 +496,14 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
 	      entry = css_return_entry_of_server (server_name, css_Master_socket_anchor);
 	      if (entry != NULL)
 		{
-		  server_name += length;
-		  entry->version_string = strdup (server_name);
+		  const char *pack = server_name + length;
+		  const char *pack_end = server_name + server_name_length;
+
+		  entry->version_string = css_extract_packed_string (&pack, pack_end);
 		  if (entry->version_string != NULL)
 		    {
-		      server_name += strlen (entry->version_string) + 1;
-
-		      entry->env_var = strdup (server_name);
-
-		      server_name += strlen (server_name) + 1;
-
-		      entry->pid = atoi (server_name);
+		      entry->env_var = css_extract_packed_string (&pack, pack_end);
+		      entry->pid = (pack < pack_end) ? atoi (pack) : 0;
 		    }
 		  else
 		    {
@@ -508,6 +593,21 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_clie
   char *data = NULL;
   SOCKET_QUEUE_ENTRY *entry;
 
+#if !defined(WINDOWS)
+  /* CBRD-27511: server self-registration (SERVER_REQUEST_FROM_SERVER) ultimately
+   * leads to process registration and, on connection loss, execv() of the
+   * registered exec_path. A legitimate cub_server always registers with its
+   * co-located cub_master from the same host, so a peer that is not on this
+   * path is the unauthenticated remote registration/execv vector and is rejected
+   * here. is_client (SERVER_REQUEST_FROM_CLIENT) is the remote client-redirect
+   * path and must stay reachable from remote peers. */
+  if (!is_client && !css_peer_is_local_host (conn->fd))
+    {
+      __gv_cvar.css_free_conn (conn);
+      return;
+    }
+#endif /* ! WINDOWS */
+
   //  Note: css_register_new_server() is used in two situations:
   //  1. When a client requests to connect a cub_server to cub_master, which is already registered.
   //  2. When a new cub_server requests to register itself to cub_master.
@@ -516,6 +616,24 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_clie
 
   if (__gv_cvar.css_receive_data (conn, rid, &data, &data_length, -1) == NO_ERRORS)
     {
+#if !defined(WINDOWS)
+      /* CBRD-27511: the received buffer is used as a NUL-terminated server name
+       * by css_return_entry_of_server () below and, for a server self-registration,
+       * its exec_path/args later reach execv (); validate it before any use. */
+      if (data == NULL || data_length <= 0 || memchr (data, '\0', (size_t) data_length) == NULL)
+	{
+	  free_and_init (data);
+	  __gv_cvar.css_free_conn (conn);
+	  return;
+	}
+      if (!is_client && !css_validate_proc_register ((const CSS_SERVER_PROC_REGISTER *) data, data_length))
+	{
+	  free_and_init (data);
+	  __gv_cvar.css_free_conn (conn);
+	  return;
+	}
+#endif /* ! WINDOWS */
+
       entry = css_return_entry_of_server (data, css_Master_socket_anchor);
       if (entry != NULL)
 	{
