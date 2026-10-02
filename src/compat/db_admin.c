@@ -1019,6 +1019,15 @@ db_restart_sub (int sub_index)
       return ER_FAILED;
     }
 
+  if (boot_is_sub_client ())
+    {
+      /*
+       * This thread still holds a sub-client (e.g., left by a server failure). Shut it down before the login below,
+       * otherwise au_final () during the cleanup resets the auth context and enables the password check again.
+       */
+      (void) db_shutdown_sub ();
+    }
+
   error =
     snprintf (program_name, sizeof (program_name), "%s(%d)", gv_client_credential.get_program_name (), sub_index + 1);
   if (error < 0 || error >= (int) sizeof (program_name))
