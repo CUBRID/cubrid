@@ -382,7 +382,7 @@ cleanup:
 }
 
 void
-background_process_wait (background_process &process, int milliseconds)
+background_process_wait (background_process &process, int milliseconds, background_process_output *output)
 {
   struct timespec start;
   clock_gettime (CLOCK_MONOTONIC, &start);
@@ -405,12 +405,43 @@ background_process_wait (background_process &process, int milliseconds)
 	      continue;
 	    }
 	  char buffer[8192];
-	  ssize_t count = read (inputs[stream].fd, buffer, sizeof (buffer));
+	  char *bytes = output == nullptr ? buffer : output->bytes[stream];
+	  int used = output == nullptr ? 0 : output->used[stream];
+	  ssize_t count = read (inputs[stream].fd, bytes + used, sizeof (buffer) - used);
 	  if (count > 0)
 	    {
-	      if (!console_log::write_all (stream + 1, buffer, count))
+	      used += count;
+	      int emit = used;
+	      if (output != nullptr && used < static_cast<int> (sizeof (buffer)))
+		{
+		  // Keep a partial short line for this producer's next turn.
+		  // This preserves diagnostics without an unbounded line buffer.
+		  while (emit > 0 && bytes[emit - 1] != '\n')
+		    {
+		      --emit;
+		    }
+		}
+	      else if (output != nullptr)
+		{
+		  // Prefer a complete line even at capacity, if one is present.
+		  int newline = used;
+		  while (newline > 0 && bytes[newline - 1] != '\n')
+		    {
+		      --newline;
+		    }
+		  if (newline > 0)
+		    {
+		      emit = newline;
+		    }
+		}
+	      if (emit > 0 && !console_log::write_all (stream + 1, bytes, emit))
 		{
 		  process.output_error = errno;
+		}
+	      if (output != nullptr)
+		{
+		  memmove (bytes, bytes + emit, used - emit);
+		  output->used[stream] = used - emit;
 		}
 	    }
 	  else if (count == 0 || errno != EINTR)
@@ -418,6 +449,14 @@ background_process_wait (background_process &process, int milliseconds)
 	      if (count < 0)
 		{
 		  process.output_error = errno;
+		}
+	      if (output != nullptr && used > 0)
+		{
+		  if (!console_log::write_all (stream + 1, bytes, used))
+		    {
+		      process.output_error = errno;
+		    }
+		  output->used[stream] = 0;
 		}
 	      close (process.output[stream]);
 	      process.output[stream] = -1;

@@ -3323,6 +3323,12 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 
 #if !defined(WINDOWS)
 /* *INDENT-OFF* */
+struct us_hb_background_process
+{
+  background_process process;
+  background_process_output output;
+};
+
 /* Local HA batches own their startup channels until the existing liveness check.
  * Pump every producer fairly; one noisy DB must not starve another DB's errors. */
 static bool
@@ -3331,16 +3337,17 @@ us_hb_output_pump (dynamic_array *processes)
   bool pending = false;
   for (int i = 0; i < da_size (processes); ++i)
     {
-      background_process process;
-      da_get (processes, i, &process);
-      background_process_wait (process, 0);
+      us_hb_background_process item;
+  background_process &process = item.process;
+      da_get (processes, i, &item);
+      background_process_wait (process, 0, &item.output);
       /* Synchronous registration queries can restore SIGCHLD to SIG_DFL.
        * Reap only this batch's exited children, never a management command. */
       int child_status;
       while (waitpid (process.pid, &child_status, WNOHANG) < 0 && errno == EINTR) {}
       while (waitpid (process.relay_pid, &child_status, WNOHANG) < 0 && errno == EINTR) {}
       pending |= process.output[0] >= 0 || process.output[1] >= 0;
-      da_put (processes, i, &process);
+      da_put (processes, i, &item);
     }
   return pending;
 }
@@ -3367,17 +3374,19 @@ us_hb_output_finish (dynamic_array *processes)
   /* Trigger all finite relay barriers before draining any one of them. */
   for (int i = 0; i < da_size (processes); ++i)
     {
-      background_process process;
-      da_get (processes, i, &process);
+      us_hb_background_process item;
+  background_process &process = item.process;
+      da_get (processes, i, &item);
       if (process.control >= 0) close (process.control);
       process.control = -1;
-      da_put (processes, i, &process);
+      da_put (processes, i, &item);
     }
   while (us_hb_output_pump (processes)) poll (NULL, 0, 10);
   for (int i = 0; i < da_size (processes); ++i)
     {
-      background_process process;
-      da_get (processes, i, &process);
+      us_hb_background_process item;
+  background_process &process = item.process;
+      da_get (processes, i, &item);
       if (background_process_finish_start (process) != 0)
         {
           fprintf (stderr, "Failed to collect HA utility startup output\n");
@@ -3390,13 +3399,14 @@ us_hb_output_finish (dynamic_array *processes)
 static int
 us_hb_start_local (dynamic_array *processes, const char *args[])
 {
-  background_process process;
+  us_hb_background_process item;
+  background_process &process = item.process;
   char executable[PATH_MAX], relay[PATH_MAX], console[PATH_MAX];
   envvar_bindir_file (executable, sizeof (executable), UTIL_ADMIN_NAME);
   envvar_bindir_file (relay, sizeof (relay), "cub_console");
   envvar_logdir_file (console, sizeof (console), "server-console.log");
   /* Reserve ownership before creating a child, including allocation failure. */
-  if (processes == NULL || da_add (processes, &process) != NO_ERROR) return ER_GENERIC_ERROR;
+  if (processes == NULL || da_add (processes, &item) != NO_ERROR) return ER_GENERIC_ERROR;
   fflush (stdout);
   fflush (stderr);
   if (signal (SIGCHLD, SIG_IGN) == SIG_ERR
@@ -3407,7 +3417,7 @@ us_hb_start_local (dynamic_array *processes, const char *args[])
       --processes->max;
       return ER_GENERIC_ERROR;
     }
-  da_put (processes, da_size (processes) - 1, &process);
+  da_put (processes, da_size (processes) - 1, &item);
   us_hb_output_pump (processes);
   return NO_ERROR;
 }
@@ -3415,8 +3425,9 @@ us_hb_start_local (dynamic_array *processes, const char *args[])
 static int
 us_hb_process_pid (dynamic_array *processes, int index)
 {
-  background_process process;
-  da_get (processes, index, &process);
+  us_hb_background_process item;
+  background_process &process = item.process;
+  da_get (processes, index, &item);
   return process.pid;
 }
 /* *INDENT-ON* */
@@ -4112,7 +4123,7 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_START);
 
-  pids = da_create (100, sizeof (background_process));
+  pids = da_create (100, sizeof (us_hb_background_process));
   if (pids == NULL)
     {
       status = ER_GENERIC_ERROR;
@@ -4276,7 +4287,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_nam
     case START:
       if (remote_host == NULL)
 	{
-	  pids = da_create (100, sizeof (background_process));
+	  pids = da_create (100, sizeof (us_hb_background_process));
 	  if (pids == NULL)
 	    {
 	      status = ER_GENERIC_ERROR;
@@ -4365,7 +4376,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_na
     case START:
       if (remote_host == NULL)
 	{
-	  pids = da_create (100, sizeof (background_process));
+	  pids = da_create (100, sizeof (us_hb_background_process));
 	  if (pids == NULL)
 	    {
 	      status = ER_GENERIC_ERROR;

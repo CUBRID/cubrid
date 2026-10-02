@@ -39,8 +39,16 @@ struct background_process
 };
 int background_process_start (const char *path, const char *const args[], const char *relay_path,
 			      const char *log_path, background_process &process);
+// Optional bounded framing for multiple producers sharing the caller streams.
+// Short diagnostic lines stay intact; longer lines flush at the fixed bound.
+struct background_process_output
+{
+  char bytes[2][8192];
+  int used[2] = {0, 0};
+};
 // Drain bounded startup channels during existing readiness waits.
-void background_process_wait (background_process &process, int milliseconds);
+void background_process_wait (background_process &process, int milliseconds,
+			      background_process_output *output = nullptr);
 int background_process_finish_start (background_process &process);
 #endif
 #endif
