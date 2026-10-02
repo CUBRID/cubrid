@@ -553,8 +553,7 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
   if (result->data_type == NULL)
     {
       /* the value carries no domain (enumeration, default expression, empty collection): take the attribute's */
-      data_type = pt_domain_to_data_type (parser, sm_attr->domain);
-      if (data_type == NULL && PT_IS_COLLECTION_TYPE (result->type_enum))
+      if (PT_IS_COLLECTION_TYPE (result->type_enum) && db_domain_set (sm_attr->domain) == NULL)
 	{
 	  /* a collection declared without element types has no domain to take */
 	  data_type = parser_new_node (parser, PT_DATA_TYPE);
@@ -562,6 +561,10 @@ pt_sm_attribute_default_value_to_node (PARSER_CONTEXT * parser, const SM_ATTRIBU
 	    {
 	      data_type->type_enum = result->type_enum;
 	    }
+	}
+      else
+	{
+	  data_type = pt_domain_to_data_type (parser, sm_attr->domain);
 	}
       if (data_type == NULL)
 	{
