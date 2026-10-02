@@ -476,6 +476,8 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_system_tran.cpp
   ${TRANSACTION_DIR}/log_tran_table.c
   ${TRANSACTION_DIR}/log_writer.c
+  ${TRANSACTION_DIR}/writeset.cpp
+  ${TRANSACTION_DIR}/writeset_history_map.cpp
   ${TRANSACTION_DIR}/mvcc.c
   ${TRANSACTION_DIR}/mvcc_active_tran.cpp
   ${TRANSACTION_DIR}/mvcc_table.cpp
@@ -506,6 +508,9 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_storage.hpp
   ${TRANSACTION_DIR}/log_system_tran.hpp
   ${TRANSACTION_DIR}/log_volids.hpp
+  ${TRANSACTION_DIR}/writeset.hpp
+  ${TRANSACTION_DIR}/writeset_history_map.hpp
+  ${TRANSACTION_DIR}/writeset_types.hpp
   ${TRANSACTION_DIR}/mvcc.h
   ${TRANSACTION_DIR}/mvcc_active_tran.hpp
   ${TRANSACTION_DIR}/mvcc_table.hpp

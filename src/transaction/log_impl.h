@@ -60,10 +60,12 @@
 #include "thread_manager.hpp"
 #include "transaction_transient.hpp"
 #include "lockfree_circular_queue.hpp"
+#include "writeset_types.hpp"
 
 #include <unordered_set>
 #include <unordered_map>
 #include <queue>
+#include <vector>
 #include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -529,6 +531,16 @@ struct log_tdes
   void *first_save_entry;	/* first save entry for the transaction */
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */
+
+    std::vector < LOG_WSET_ENTRY > wset_hashes;	/* writeset keys collected this transaction */
+  /* This transaction's writeset was dropped and is no longer used. Set when the per-transaction
+   * key limit is exceeded or when the change is replicated as a statement. Keeping only part of
+   * the keys is not safe, so probe/flush use commit-order replication instead. Technical key
+   * collection failures are returned to the DML path and do not set this flag. */
+  bool wset_overflow;
+  bool wset_dependency_is_ref;	/* probe result: final dependency came from history ref_seq */
+  LOG_LSA wset_dependency_seq;	/* dependency selected from writeset history, carried by the WSET_LABEL
+				 * record just before this transaction's commit record */
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
 

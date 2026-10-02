@@ -137,6 +137,10 @@ enum log_rectype
 				 * it contains transaction user info, DDL statement, undo lsa, redo lsa for DML,
 				 * or undo images that never retrieved from the log. */
 
+  LOG_DUMMY_WSET_LABEL = 53,	/* carries a transaction's writeset dependency label, appended just before its
+				 * commit record. No-op for crash recovery; read by the replication applier to
+				 * gate parallel apply. */
+
   LOG_LARGER_LOGREC_TYPE	/* A higher bound for checks */
 };
 typedef enum log_rectype LOG_RECTYPE;
@@ -247,6 +251,16 @@ struct log_rec_ha_server_state
   int dummy;			/* dummy for alignment */
 
   INT64 at_time;		/* time recorded by active server */
+};
+
+/* writeset dependency label carried just before a transaction's commit record */
+typedef struct log_rec_wset_label LOG_REC_WSET_LABEL;
+struct log_rec_wset_label
+{
+  LOG_LSA dependency_seq;	/* dependency LSA selected from the writeset history at commit time */
+  bool dependency_is_ref;	/* dependency came from ref_seq (the newest referencer): the
+				 * applier gate must wait for the gap-free frontier to reach dependency_seq,
+				 * not for that one transaction's completion (siblings may still be running) */
 };
 
 /* Information of database external redo log records */

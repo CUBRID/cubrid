@@ -434,6 +434,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HA_CHECK_DISK_FAILURE_INTERVAL_IN_SECS "ha_check_disk_failure_interval"
 
+#define PRM_NAME_HA_WRITESET_HISTORY_SIZE "ha_writeset_history_size"
+#define PRM_NAME_HA_WRITESET_TRACE_LEVEL "ha_writeset_trace_level"
+
 #define PRM_NAME_JAVA_STORED_PROCEDURE "java_stored_procedure"
 #define PRM_NAME_STORED_PROCEDURE "stored_procedure"
 
@@ -5579,6 +5582,28 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_WRITESET_HISTORY_SIZE,
+   PRM_NAME_HA_WRITESET_HISTORY_SIZE,
+   (PRM_FOR_SERVER | PRM_FOR_HA),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 1000000}},
+   {false, {.i = 1000000}},
+   {false, {.i = 10000000}}, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_WRITESET_TRACE_LEVEL,
+   PRM_NAME_HA_WRITESET_TRACE_LEVEL,
+   (PRM_FOR_SERVER | PRM_FOR_HA),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0}},
+   {false, {.i = 0}},
+   {false, {.i = 3}}, {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
