@@ -866,6 +866,27 @@ error:
   return error;
 }
 
+/*
+ * flashback_is_valid_request_lsa - could the server have issued this LSA?
+ *
+ * GET_LOGINFO carries back the start/end LSA from the server's previous reply
+ * (or a NULL LSA for the first round), and the offset is then used to locate a
+ * log record header inside the fetched log page. The server only issues a
+ * record start, or NULL_OFFSET meaning "the first record of the page", and log
+ * append moves to the next page whenever a record header would not fit, so any
+ * other offset is rejected before it addresses the page buffer.
+ */
+static bool
+flashback_is_valid_request_lsa (const LOG_LSA * lsa)
+{
+  if (LSA_ISNULL (lsa) || lsa->offset == NULL_OFFSET)
+    {
+      return true;
+    }
+
+  return (lsa->offset >= 0 && lsa->offset <= LOGAREA_SIZE - (int) sizeof (LOG_RECORD_HEADER));
+}
+
 int
 flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context)
 {
@@ -897,6 +918,16 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
   OID classoid;
 
   LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+  if (!flashback_is_valid_request_lsa (&context->start_lsa) || !flashback_is_valid_request_lsa (&context->end_lsa))
+    {
+      const LOG_LSA *bad_lsa =
+	flashback_is_valid_request_lsa (&context->start_lsa) ? &context->end_lsa : &context->start_lsa;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, 2, LSA_AS_ARGS (bad_lsa));
+      error = ER_CDC_INVALID_LOG_LSA;
+      goto error;
+    }
 
   if (LSA_ISNULL (&context->start_lsa))
     {
