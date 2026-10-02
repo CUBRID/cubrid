@@ -2700,7 +2700,9 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry
 
       if (ht->table[idx].hash == hash)
 	{
-	  /* same hash: prepend to the chain so duplicates take no extra slot (a collision, as in mht_put_internal) */
+	  /* same hash: prepend to the chain so duplicates take no extra slot (a collision, as in mht_put_internal).
+	   * Probes therefore return same-hash duplicates in reverse insertion order; a caller that needs list
+	   * order reorders on its side (e.g. the CONNECT BY DFS reverses a node's children). */
 	  entry->next = ht->table[idx].entry;
 	  ht->table[idx].entry = entry;
 	  ht->nentries++;
