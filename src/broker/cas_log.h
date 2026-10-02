@@ -71,8 +71,6 @@ extern void cas_log_compile_end_write_query_string (char *query, int size, HIDE_
 extern void cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 extern void cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 
-#define ARG_FILE_LINE   __FILE__, __LINE__
-
 extern char *cas_log_query_plan_file (int id);
 extern void cas_log_query_info_init (int id, char is_only_query_plan);
 
