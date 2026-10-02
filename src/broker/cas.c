@@ -305,7 +305,7 @@ cas_make_session_for_driver (char *out)
   session = htonl (session);
   memcpy (out + size, &session, sizeof (SESSION_ID));
   size += sizeof (SESSION_ID);
-  memset (out + size, 0, DRIVER_SESSION_SIZE - size);
+  memcpy (out + size, db_get_session_secret (), SESSION_SECRET_SIZE);
 }
 
 static void
@@ -318,6 +318,7 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
       id = *(SESSION_ID *) (session + 8);
       id = ntohl (id);
       db_set_server_session_key (session);
+      db_set_session_secret (session + SERVER_SESSION_KEY_SIZE + sizeof (SESSION_ID));
       db_set_session_id (id);
       cas_log_write_and_end (0, false, "session id for connection %u", id);
     }

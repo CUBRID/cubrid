@@ -4563,10 +4563,11 @@ boot_shutdown_server (ER_FINAL_CODE iserfinal)
  * session_id (in/out) : the id of the session to end
  * row_count (out)     : the value of row count for this session
  * server_session_key (in/out) :
+ * session_secret (in/out) :
  */
 int
-csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key, const char *db_user,
-				 const char *host, const char *program_name)
+csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *server_session_key,
+				 char *session_secret, const char *db_user, const char *host, const char *program_name)
 {
 #if defined (CS_MODE)
   int req_error;
@@ -4586,6 +4587,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   request_size += length_const_string (db_user, &db_user_len);
   request_size += length_const_string (host, &host_len);
   request_size += length_const_string (program_name, &program_name_len);
+  request_size += or_packed_stream_length (SESSION_SECRET_SIZE);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -4602,6 +4604,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
   ptr = pack_const_string_with_length (ptr, db_user, db_user_len);
   ptr = pack_const_string_with_length (ptr, host, host_len);
   ptr = pack_const_string_with_length (ptr, program_name, program_name_len);
+  ptr = or_pack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 
   req_error =
     net_client_request2 (NET_SERVER_SES_CHECK_SESSION, request, request_size, reply,
@@ -4626,6 +4629,10 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	  if (update_parameter_values)
 	    {
 	      ptr = sysprm_unpack_session_parameters (ptr, &session_params);
+	    }
+	  if (ptr != NULL)
+	    {
+	      ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 	    }
 
 	  free_and_init (area);
@@ -4665,15 +4672,15 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 
   if (db_Session_id == DB_EMPTY_SESSION)
     {
-      result = xsession_create_new (thread_p, &id);
+      result = xsession_create_new (thread_p, &id, session_secret);
     }
   else
     {
       id = db_Session_id;
-      if (xsession_check_session (thread_p, id) != NO_ERROR)
+      if (xsession_check_session (thread_p, id, session_secret) != NO_ERROR)
 	{
 	  /* create new session */
-	  if (xsession_create_new (thread_p, &id) != NO_ERROR)
+	  if (xsession_create_new (thread_p, &id, session_secret) != NO_ERROR)
 	    {
 	      result = ER_FAILED;
 	    }

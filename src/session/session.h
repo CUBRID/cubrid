@@ -40,9 +40,9 @@ struct xasl_cache_ent;
 
 extern void session_states_init (THREAD_ENTRY * thread_p);
 extern void session_states_finalize (THREAD_ENTRY * thread_p);
-extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id);
+extern int session_state_create (THREAD_ENTRY * thread_p, SESSION_ID * id, char *secret);
 extern int session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_keep_session);
-extern int session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id);
+extern int session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id, const char *secret);
 extern int session_get_session_id (THREAD_ENTRY * thread_p, SESSION_ID * id);
 extern int session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool update_last_insert_id);
 extern int session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool force);
