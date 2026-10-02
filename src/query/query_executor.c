@@ -15275,7 +15275,8 @@ static int
 qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
   REGU_VARIABLE *key_limit_l;
-  DB_VALUE dbval;
+  DB_BIGINT lower = 0;
+  bool is_null = false;
   int error = NO_ERROR;
 
   assert (xasl && xasl->instnum_val);
@@ -15293,20 +15294,23 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
 
-      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
+      error = fetch_key_limits (thread_p, key_limit_l, NULL, &xasl_state->vd, &lower, NULL, &is_null);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (pr_clone_value (&dbval, xasl->instnum_val) != NO_ERROR)
+      /* a negative or NULL lower bound skips no keys, so start the counter at 0 */
+      if (is_null || lower < 0)
 	{
-	  goto exit_on_error;
+	  lower = 0;
 	}
 
-      if (xasl->save_instnum_val && pr_clone_value (&dbval, xasl->save_instnum_val) != NO_ERROR)
+      db_make_bigint (xasl->instnum_val, lower);
+
+      if (xasl->save_instnum_val)
 	{
-	  goto exit_on_error;
+	  db_make_bigint (xasl->save_instnum_val, lower);
 	}
     }
 
