@@ -66,6 +66,9 @@
 #include "broker_process_size.h"
 #include "cas_ssl.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 static char cas_db_name[MAX_HA_DBINFO_LENGTH];
 static char cas_db_user[SRV_CON_DBUSER_SIZE];
 static char cas_db_passwd[SRV_CON_DBPASSWD_SIZE];
@@ -117,7 +120,11 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_prepare_and_execute,	/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_set_cas_change_mode	/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_set_cas_change_mode,	/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_stream_send_data,		/* CAS_FC_STREAM_SEND_DATA */
+  fn_stream_end,		/* CAS_FC_STREAM_END */
+  fn_stream_init,		/* CAS_FC_STREAM_INIT */
+  fn_stream_abort		/* CAS_FC_STREAM_ABORT */
 };
 
 static const char *server_func_name[] = {
@@ -164,7 +171,11 @@ static const char *server_func_name[] = {
   "fn_prepare_and_execute",
   "fn_cursor_close",
   "fn_get_shard_info",
-  "fn_set_cas_change_mode"
+  "fn_set_cas_change_mode",
+  "fn_stream_send_data",
+  "fn_stream_end",
+  "fn_stream_init",
+  "fn_stream_abort"
 };
 
 
@@ -468,6 +479,8 @@ cas_cleanup_session (void)
   if (cas_main_fn_ret != FN_KEEP_SESS)
     {
       ux_end_session ();
+      /* the server session, and with it any stream session it held, is gone */
+      ux_stream_reset ();
     }
 
   if (is_xa_prepared ())
@@ -1108,6 +1121,10 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
   strcpy (as_info->log_msg, server_func_name[func_code - 1]);
 
   server_fn = server_fn_table[func_code - 1];
+  if (!ux_stream_admits_request (func_code))
+    {
+      server_fn = fn_stream_refused;
+    }
 
   if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
     {
@@ -1287,6 +1304,13 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_AUTOCOMMIT;
       cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |=
 	(as_info->cci_default_autocommit & CAS_INFO_FLAG_MASK_AUTOCOMMIT);
+
+      /* Cleared as well as set: init_msg_header () leaves this bit at 1. */
+      cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_STREAM_OPEN;
+      if (ux_stream_is_open ())
+	{
+	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] |= CAS_INFO_FLAG_MASK_STREAM_OPEN;
+	}
 
       if (cas_shard_flag == ON)
 	{
