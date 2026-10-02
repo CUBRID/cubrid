@@ -329,12 +329,12 @@ static bool ha_is_registered (const char *args, const char *hostname);
 
 #if !defined(WINDOWS)
 static int us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				  const char *remote_host, bool * exec_failed = NULL);
+				  const char *remote_host, bool * exec_failed);
 static int us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				 const char *remote_host);
 
 static int us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name,
-				   const char *node_name, const char *remote_host, bool * exec_failed = NULL);
+				   const char *node_name, const char *remote_host, bool * exec_failed);
 static int us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				  const char *remote_host);
 
@@ -350,9 +350,9 @@ static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool che
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
 
 static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				    const char *remote_host, bool * exec_failed = NULL);
+				    const char *remote_host, bool * exec_failed);
 static int us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				     const char *remote_host, bool * exec_failed = NULL);
+				     const char *remote_host, bool * exec_failed);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
