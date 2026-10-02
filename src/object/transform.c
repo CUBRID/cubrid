@@ -573,6 +573,7 @@ tf_is_catalog_class (OID * class_oid)
 void
 tf_compile_meta_classes ()
 {
+  /* *INDENT-OFF* */        
   static bool is_initialized =[](){
     META_CLASS * class_;
     META_ATTRIBUTE *att;
@@ -616,8 +617,8 @@ tf_compile_meta_classes ()
       }
 
     return true;
-  }
-  ();
+  } ();
+  /* *INDENT-ON* */
 
 /* Notice:
    * This ensures the variable is not optimized away, even though it does not change the functional logic of the code
