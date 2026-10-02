@@ -1019,6 +1019,13 @@ db_restart_sub (int sub_index)
       return ER_FAILED;
     }
 
+  /*
+   * A sub-client does not create its own workspace heap (ws_init (true)) and the lea heap of the main client is
+   * not thread-safe. Let the threads other than the heap owner use malloc/free instead (see db_ws_alloc ()).
+   * It must be set before any workspace allocation in this thread.
+   */
+  db_set_use_utility_thread (true);
+
   if (boot_is_sub_client ())
     {
       /*
