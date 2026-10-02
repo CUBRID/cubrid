@@ -610,6 +610,8 @@ namespace parallel_query
 	  context->after_join_pred = spawn_manager->get_after_join_pred (m_manager->after_join_pred);
 	  context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
 	  context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred (m_manager->inner->regu_list_pred);
+	  context->layout_regu_list = spawn_manager->get_layout_regu_list (m_manager->single_context.layout_regu_list);
+	  context->layout_regu_count = m_manager->single_context.layout_regu_count;
 
 	  if (er_errid () != NO_ERROR)
 	    {
@@ -631,6 +633,7 @@ namespace parallel_query
 	  context->after_join_pred = nullptr;
 	  context->outer.regu_list_pred = nullptr;
 	  context->inner.regu_list_pred = nullptr;
+	  context->layout_regu_list = nullptr;
 
 	  if (error != NO_ERROR)
 	    {
@@ -774,6 +777,8 @@ namespace parallel_query
       m_context->after_join_pred = spawn_manager->get_after_join_pred (m_manager->after_join_pred);
       m_context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
       m_context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred (m_manager->inner->regu_list_pred);
+      m_context->layout_regu_list = spawn_manager->get_layout_regu_list (m_manager->single_context.layout_regu_list);
+      m_context->layout_regu_count = m_manager->single_context.layout_regu_count;
 
       if (er_errid () != NO_ERROR)
 	{
@@ -895,6 +900,7 @@ cleanup:
       m_context->after_join_pred = nullptr;
       m_context->outer.regu_list_pred = nullptr;
       m_context->inner.regu_list_pred = nullptr;
+      m_context->layout_regu_list = nullptr;
 
       thread_ref.m_px_stats = nullptr;
       thread_ref.m_uses_px_stats = false;
@@ -1139,7 +1145,7 @@ cleanup:
 		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
+		  error = hjoin_merge_tuple_to_list_id (&thread_ref, m_context, list_id,
 							&outer->tuple_record, &inner->tuple_record,
 							m_manager->merge_info, &overflow_record);
 		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
@@ -1401,7 +1407,7 @@ cleanup:
 
 		  /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
+		  error = hjoin_merge_tuple_to_list_id (&thread_ref, m_context, list_id,
 							outer->fill_record, inner->fill_record,
 							m_manager->merge_info, &overflow_record);
 		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
@@ -1522,7 +1528,7 @@ cleanup:
 		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
+		  error = hjoin_merge_tuple_to_list_id (&thread_ref, m_context, list_id,
 							&outer->tuple_record, &inner->tuple_record,
 							m_manager->merge_info, &overflow_record);
 		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
@@ -1585,7 +1591,7 @@ cleanup:
 
 		  /* no match — emit fill_record (null on null-supplying side) */
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
-		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
+		  error = hjoin_merge_tuple_to_list_id (&thread_ref, m_context, list_id,
 							outer->fill_record, inner->fill_record,
 							m_manager->merge_info, &overflow_record);
 		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);

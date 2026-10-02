@@ -388,6 +388,11 @@ typedef enum
   QPROC_NO_SINGLE_OUTER		/* 1 NULL row or n qualified rows */
 } QPROC_SINGLE_FETCH;
 
+/* A ls_pos_list[] entry that names no input column: the merge writes the -1 INT placeholder that a
+ * consuming hash join overwrites with the tuple's hash key, so a hash join result can feed another
+ * hash join without a BUILDLIST_PROC in between. */
+#define QFILE_MERGE_HASH_KEY_COLUMN (-1)
+
 /* List File Merge Information */
 typedef struct qfile_list_merge_info QFILE_LIST_MERGE_INFO;
 struct qfile_list_merge_info

@@ -53,6 +53,7 @@ namespace parallel_query
 	PRED_EXPR *get_after_join_pred (PRED_EXPR *src);
 	REGU_VARIABLE_LIST get_outer_regu_list_pred (REGU_VARIABLE_LIST src);
 	REGU_VARIABLE_LIST get_inner_regu_list_pred (REGU_VARIABLE_LIST src);
+	REGU_VARIABLE_LIST get_layout_regu_list (REGU_VARIABLE_LIST src);
 
       private:
 	cubthread::entry &m_thread_ref;
@@ -63,6 +64,7 @@ namespace parallel_query
 	PRED_EXPR *m_after_join_pred;
 	REGU_VARIABLE_LIST m_outer_regu_list_pred;
 	REGU_VARIABLE_LIST m_inner_regu_list_pred;
+	REGU_VARIABLE_LIST m_layout_regu_list;
 
 	inline static thread_local spawn_manager *tls_spawn_manager = nullptr;
 

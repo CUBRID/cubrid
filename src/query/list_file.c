@@ -1868,6 +1868,7 @@ qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, 
   int n = merge_info_p->ls_pos_cnt;
   int i, len, size;
   bool is_null;
+  DB_VALUE hash_key_placeholder;
 
   src = qfile_tpl_descr_col_src (tuple_descr_p, n);
   if (src == NULL)
@@ -1877,6 +1878,14 @@ qfile_merge_tuple_add_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, 
 
   for (i = 0; i < n; i++)
     {
+      if (merge_info_p->ls_pos_list[i] == QFILE_MERGE_HASH_KEY_COLUMN)
+	{
+	  /* not copied from an input: the placeholder a consuming hash join overwrites */
+	  db_make_int (&hash_key_placeholder, -1);
+	  qfile_col_src_set_value (&src[i], &hash_key_placeholder);
+	  continue;
+	}
+
       rec = (merge_info_p->ls_outer_inner_list[i] == QFILE_OUTER_LIST) ? outer_rec : inner_rec;
       if (rec != NULL)
 	{

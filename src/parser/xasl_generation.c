@@ -429,8 +429,6 @@ static PT_NODE *pt_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 static XASL_NODE *pt_to_corr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR id);
 static SELUPD_LIST *pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulist,
 						 SELUPD_LIST * selupd_list, DB_OBJECT * target_class);
-static OUTPTR_LIST *pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr,
-				   UNBOX unbox);
 static void pt_to_fetch_proc_list_recurse (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static void pt_to_fetch_proc_list (PARSER_CONTEXT * parser, PT_NODE * spec, XASL_NODE * root);
 static XASL_NODE *pt_to_scan_proc_list (PARSER_CONTEXT * parser, PT_NODE * node, XASL_NODE * root);
@@ -14183,7 +14181,7 @@ pt_link_regu_to_selupd_list (PARSER_CONTEXT * parser, REGU_VARIABLE_LIST regulis
  *   selupd_list_ptr(in):
  *   unbox(in):
  */
-static OUTPTR_LIST *
+OUTPTR_LIST *
 pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selupd_list_ptr, UNBOX unbox)
 {
   OUTPTR_LIST *outlist;
@@ -14899,6 +14897,102 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
   return xasl;
 }
 
+/*
+ * ptqo_to_list_scan_proc_pass_through () - a list scan that hands the list file's columns straight out
+ *   return: xasl, or NULL on error
+ *   parser(in): parser context
+ *   xasl(in/out): the node that reads listfile; its val_list, spec_list and outptr_list are replaced
+ *   listfile(in): the XASL node holding the list file to read
+ *   namelist(in): this node's result columns in list file order, one entry per column
+ *
+ * ptqo_to_list_scan_proc () binds each scanned column to the DB_VALUE the node's outptr_list already
+ * reads, which pt_attribute_to_regu () can do for a column name and nothing else. Use this one when
+ * an entry of namelist is an expression the producer already evaluated: it gives every entry its own
+ * DB_VALUE, fills that value from the matching list file column, and rebuilds outptr_list to hand
+ * the value straight out. The node then copies the list file column for column, whatever the entries
+ * are, which is what a node does once its producer has built its result columns.
+ */
+XASL_NODE *
+ptqo_to_list_scan_proc_pass_through (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * listfile,
+				     PT_NODE * namelist)
+{
+  REGU_VARIABLE_LIST scan_regu_list, old_regu;
+  REGU_VARIABLE_LIST out_regu_list = NULL;
+  REGU_VARIABLE_LIST *out_tail = &out_regu_list;
+  OUTPTR_LIST *outptr_list;
+  QPROC_DB_VALUE_LIST dbval_list;
+  PT_NODE *node;
+  int count = 0;
+
+  assert (parser != NULL);
+
+  if (xasl == NULL || listfile == NULL || namelist == NULL)
+    {
+      return NULL;
+    }
+
+  xasl->val_list = pt_make_val_list (parser, namelist);
+  if (xasl->val_list == NULL)
+    {
+      PT_ERRORm (parser, namelist, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  /* no offsets: column i of the list file goes to value i */
+  scan_regu_list = pt_to_position_regu_variable_list (parser, namelist, xasl->val_list, NULL);
+  if (scan_regu_list == NULL)
+    {
+      return NULL;
+    }
+
+  xasl->spec_list =
+    pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, scan_regu_list, NULL, NULL, NULL);
+  if (xasl->spec_list == NULL)
+    {
+      return NULL;
+    }
+
+  regu_alloc (outptr_list);
+  if (outptr_list == NULL)
+    {
+      PT_ERRORm (parser, namelist, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  /* the outlist this replaces holds one regu per entry in the same order, so its flags carry over
+   * by position; REGU_VARIABLE_HIDDEN_COLUMN is the one that matters to the client */
+  old_regu = (xasl->outptr_list != NULL) ? xasl->outptr_list->valptrp : NULL;
+  dbval_list = xasl->val_list->valp;
+
+  for (node = namelist; node != NULL && dbval_list != NULL; node = node->next, dbval_list = dbval_list->next)
+    {
+      regu_alloc (*out_tail);
+      if (*out_tail == NULL)
+	{
+	  PT_ERRORm (parser, namelist, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
+
+      (*out_tail)->value.type = TYPE_CONSTANT;
+      (*out_tail)->value.domain = pt_xasl_node_to_domain (parser, node);
+      (*out_tail)->value.value.dbvalptr = dbval_list->val;
+
+      if (old_regu != NULL)
+	{
+	  (*out_tail)->value.flags = old_regu->value.flags;
+	  old_regu = old_regu->next;
+	}
+
+      out_tail = &(*out_tail)->next;
+      count++;
+    }
+
+  outptr_list->valptrp = out_regu_list;
+  outptr_list->valptr_cnt = count;
+  xasl->outptr_list = outptr_list;
+
+  return xasl;
+}
 
 /*
  * ptqo_to_merge_list_proc () - Make a MERGELIST_PROC to merge an inner

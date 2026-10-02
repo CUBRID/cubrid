@@ -378,6 +378,13 @@ typedef struct hashjoin_proc_node
   HASHJOIN_INPUT outer;
   HASHJOIN_INPUT inner;
   QFILE_LIST_MERGE_INFO merge_info;
+
+  /* The result columns this join builds when the node above it asked for a layout holding an
+   * expression. The probe loop evaluates these regu variables over both input tuples and writes the
+   * result tuple itself. NULL leaves merge_info in charge, which copies input columns and evaluates
+   * nothing. The two never share the work: with this list set, merge_info->ls_pos_cnt is 0. */
+  REGU_VARIABLE_LIST layout_regu_list;
+  int layout_regu_count;
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
@@ -544,6 +551,7 @@ struct cte_proc_node
 #define XASL_NL_SEMIJOIN		(0x1 << 24)	/* this scan proc is the inner of a NL semi join (first-match) */
 #define XASL_NL_ANTIJOIN		(0x1 << 25)	/* this scan proc is the inner of a NL anti join (zero-match) */
 #define XASL_LIST_BACKWARD		(0x1 << 26)	/* this proc's list file is scanned backward by its MERGELIST_PROC parent or cloned as-is into a top-most UNION_PROC's result */
+#define XASL_ADOPT_APTR_LIST		(0x1 << 27)	/* this proc's single aptr already built this proc's result column for column: take that list file over instead of reading it through spec_list and writing the same tuples again */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define XASL_IS_NL_SEMI_OR_ANTI(x)  (((x)->flag & (int) (XASL_NL_SEMIJOIN | XASL_NL_ANTIJOIN)) != 0)
