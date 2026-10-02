@@ -26898,7 +26898,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 
       if (str_size >= 0)
 	{
-	  str_size = MIN (str_size, sizeof (num_str) - 1);
+	  str_size = MIN (str_size, (int) (sizeof (num_str) - 1));
 	  strncpy (num_str, db_get_string (num), str_size);
 	  str_start = num_str;
 	  str_end = num_str + str_size;

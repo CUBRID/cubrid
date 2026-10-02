@@ -2668,6 +2668,10 @@ extern PT_RESERVED_NAME pt_Reserved_name_table[];
       break;						      \
     default:						      \
       assert (0);					      \
+      /* leave an empty range so that a caller iterating from (first) to   \
+       * (last) does nothing instead of walking off the name table. */     \
+      (first) = 0;					      \
+      (last) = -1;					      \
       break;						      \
     }
 

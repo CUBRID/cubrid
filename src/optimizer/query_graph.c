@@ -275,7 +275,7 @@ static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p
  *   ...(in): parameter-specific parameters
  */
 void
-qo_get_optimization_param (void *retval, QO_PARAM param, ...)
+qo_get_optimization_param (void *retval, int param, ...)
 {
   char *buf;
   va_list args;
@@ -322,7 +322,7 @@ qo_need_skip_execution (void)
  *   ...(in): parameter-specific parameters
  */
 void
-qo_set_optimization_param (void *retval, QO_PARAM param, ...)
+qo_set_optimization_param (void *retval, int param, ...)
 {
   va_list args;
   va_start (args, param);
@@ -1729,7 +1729,7 @@ qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       (void) set_seg_node (tree, env, &env->final_segs);
       *continue_walk = PT_LIST_WALK;
     }
-  else if ((tree->node_type == PT_DOT_))
+  else if (tree->node_type == PT_DOT_)
     {
       (void) set_seg_node (tree->info.dot.arg2, env, &env->final_segs);
       *continue_walk = PT_LIST_WALK;

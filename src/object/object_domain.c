@@ -5936,7 +5936,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  {
 	    float i = 0;
 	    const float val = db_get_float (src);
-	    if (OR_CHECK_INT_OVERFLOW (val))
+	    if (OR_CHECK_INT_OVERFLOW_FROM_FP (val))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6011,7 +6011,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  {
 	    double i = 0;
 	    const double val = db_get_monetary (src)->amount;
-	    if (OR_CHECK_BIGINT_OVERFLOW (val))
+	    if (OR_CHECK_BIGINT_OVERFLOW_FROM_FP (val))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6029,7 +6029,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  {
 	    float i = 0;
 	    const float val = db_get_float (src);
-	    if (OR_CHECK_BIGINT_OVERFLOW (val))
+	    if (OR_CHECK_BIGINT_OVERFLOW_FROM_FP (val))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6046,7 +6046,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	  {
 	    double i = 0;
 	    const double val = db_get_double (src);
-	    if (OR_CHECK_BIGINT_OVERFLOW (val))
+	    if (OR_CHECK_BIGINT_OVERFLOW_FROM_FP (val))
 	      {
 		err = ER_FAILED;
 		break;
@@ -6072,7 +6072,7 @@ tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		err = ER_FAILED;
 		break;
 	      }
-	    if (data_stat != DATA_STATUS_OK || OR_CHECK_BIGINT_OVERFLOW (num_value))
+	    if (data_stat != DATA_STATUS_OK || OR_CHECK_BIGINT_OVERFLOW_FROM_FP (num_value))
 	      {
 		err = ER_FAILED;
 		break;
@@ -7444,7 +7444,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    int tmp_int;
 	    float tmp_float;
 
-	    if (OR_CHECK_INT_OVERFLOW (db_get_float (src)))
+	    if (OR_CHECK_INT_OVERFLOW_FROM_FP (db_get_float (src)))
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }
@@ -7540,7 +7540,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    DB_BIGINT tmp_bi;
 
 	    v_money = db_get_monetary (src);
-	    if (OR_CHECK_BIGINT_OVERFLOW (v_money->amount))
+	    if (OR_CHECK_BIGINT_OVERFLOW_FROM_FP (v_money->amount))
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }
@@ -7563,7 +7563,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    float tmp_float;
 	    DB_BIGINT tmp_bi;
 
-	    if (OR_CHECK_BIGINT_OVERFLOW (db_get_float (src)))
+	    if (OR_CHECK_BIGINT_OVERFLOW_FROM_FP (db_get_float (src)))
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }
@@ -7595,7 +7595,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    double tmp_double;
 	    DB_BIGINT tmp_bi;
 
-	    if (OR_CHECK_BIGINT_OVERFLOW (db_get_double (src)))
+	    if (OR_CHECK_BIGINT_OVERFLOW_FROM_FP (db_get_double (src)))
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }
@@ -8741,7 +8741,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	case DB_TYPE_FLOAT:
 	  {
 	    float ftmp = db_get_float (src);
-	    if (OR_CHECK_INT_OVERFLOW (ftmp))
+	    if (OR_CHECK_INT_OVERFLOW_FROM_FP (ftmp))
 	      {
 		status = DOMAIN_OVERFLOW;
 	      }

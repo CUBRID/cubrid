@@ -213,6 +213,16 @@ jobs:
           msg: |
             **cppcheck**
             ${{ steps.get-comment-body.outputs.body }}
+  clang-build-guard:
+    name: clang-build-guard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Check the Clang build fixes are still in place
+        run: ./.github/workflows/clang_build_guard.sh
+
   memory-monitor-check:
     name: memory-monitor-check
     runs-on: ubuntu-24.04

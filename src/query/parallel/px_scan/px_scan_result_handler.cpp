@@ -2787,5 +2787,6 @@ namespace parallel_scan
   /* Explicit template instantiations */
   template class result_handler<RESULT_TYPE::MERGEABLE_LIST>;
   template class result_handler<RESULT_TYPE::XASL_SNAPSHOT>;
-  template class result_handler<RESULT_TYPE::BUILDVALUE_OPT>;
+  /* result_handler<RESULT_TYPE::BUILDVALUE_OPT> is an explicit specialization (see the header), so an explicit
+   * instantiation of it would have no effect; its members are defined above as ordinary member functions. */
 }

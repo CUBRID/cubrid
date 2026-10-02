@@ -937,51 +937,31 @@ jsp_default_value_string (PARSER_CONTEXT *parser, PT_NODE *node, bool &is_null, 
   out.clear ();
   if (default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
-      if (default_expr.default_expr_type == NULL_DEFAULT_EXPRESSION_OPERATOR)
+      if (default_expr.default_expr_op == T_TO_CHAR)
 	{
-	  DB_VALUE *value = pt_value_to_db (parser, node->info.data_default.default_value);
-	  if (!DB_IS_NULL (value))
-	    {
-	      string_buffer sb;
-	      sb.clear ();
-	      db_sprint_value (value, sb);
+	  out.append ("TO_CHAR(");
+	}
 
-	      out.append (sb.get_buffer ());
-	    }
-	  else
-	    {
-	      // empty out consider as NULL
-	      is_null = true;
-	    }
+      const char *default_value_expr_type_string = db_default_expression_string (default_expr.default_expr_type);
+      if (default_value_expr_type_string != NULL)
+	{
+	  out.append (default_value_expr_type_string);
 	}
       else
 	{
-	  if (default_expr.default_expr_op == T_TO_CHAR)
+	  out.append (parser_print_tree (parser, node));
+	}
+
+      if (default_expr.default_expr_op == T_TO_CHAR)
+	{
+	  if (default_expr.default_expr_format != NULL)
 	    {
-	      out.append ("TO_CHAR(");
+	      out.append (", \'");
+	      out.append (default_expr.default_expr_format);
+	      out.append ("\'");
 	    }
 
-	  const char *default_value_expr_type_string = db_default_expression_string (default_expr.default_expr_type);
-	  if (default_value_expr_type_string != NULL)
-	    {
-	      out.append (default_value_expr_type_string);
-	    }
-	  else
-	    {
-	      out.append (parser_print_tree (parser, node));
-	    }
-
-	  if (default_expr.default_expr_op == T_TO_CHAR)
-	    {
-	      if (default_expr.default_expr_format != NULL)
-		{
-		  out.append (", \'");
-		  out.append (default_expr.default_expr_format);
-		  out.append ("\'");
-		}
-
-	      out.append (")");
-	    }
+	  out.append (")");
 	}
     }
   else

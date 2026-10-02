@@ -64,26 +64,16 @@ inline void *operator new[] (size_t size, const char *file, const int line) noex
 /* Mainly delete (void *ptr, size_t sz) / delete [] (void *ptr, size_t sz) is called,
  * but when deleting arrays of destructible class types, including incomplete types,
  * either delete (void *ptr) / delete [] (void *ptr) or delete (void *ptr, size_t sz) /
- * delete [] (void *ptr, size_t sz) can be called. */
-inline void operator delete (void *ptr) noexcept
-{
-  cub_free (ptr);
-}
-
-inline void operator delete (void *ptr, size_t sz) noexcept
-{
-  cub_free (ptr);
-}
-
-inline void operator delete [] (void *ptr) noexcept
-{
-  cub_free (ptr);
-}
-
-inline void operator delete [] (void *ptr, size_t sz) noexcept
-{
-  cub_free (ptr);
-}
+ * delete [] (void *ptr, size_t sz) can be called.
+ *
+ * These four are *replacement* functions: [basic.stc.dynamic]/3 forbids declaring
+ * them inline, and an inline definition is only picked up by the translation units
+ * that happen to include this header, so the replacement silently disappears
+ * whenever the compiler decides not to emit a weak definition (this is exactly what
+ * happened in a release build, where operator delete stayed unresolved). They are
+ * therefore defined once, in memory_wrapper.cpp, and are not redeclared here: the
+ * compiler already declares them implicitly and GCC rejects a redeclaration under
+ * -Wredundant-decls. */
 
 #define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE

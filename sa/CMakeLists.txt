@@ -825,3 +825,21 @@ if(WIN32)
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)
+
+# lea_heap.c includes the unmodified 3rd party dlmalloc (malloc_2_8_3.c), which uses
+# the GNU null pointer arithmetic extension. Do not edit that file; silence the
+# diagnostic for this one translation unit instead.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(${HEAPLAYERS_DIR}/lea_heap.c PROPERTIES COMPILE_OPTIONS "-Wno-gnu-null-pointer-arithmetic")
+endif()
+
+# The Bison generated load_grammar.hpp declares a copy assignment operator for
+# stack_symbol_type without the matching copy constructor. Generated file, so
+# suppress the diagnostic for the units that include it rather than patching it.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(
+    ${LOADER_GRAMMAR_OUTPUT}
+    ${LOADER_LEXER_OUTPUT}
+    PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-copy-with-user-provided-copy"
+  )
+endif()
