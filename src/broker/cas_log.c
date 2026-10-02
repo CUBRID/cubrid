@@ -860,45 +860,6 @@ cas_log_write_client_ip (const unsigned char *ip_addr)
     }
 }
 
-#if !defined (NDEBUG)
-void
-cas_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
-{
-#if 0
-
-  if (log_fp != NULL)
-    {
-      char buf[LINE_MAX], *p;
-      int len, n;
-      va_list ap;
-
-      va_start (ap, fmt);
-      p = buf;
-      len = LINE_MAX;
-      n = ut_time_string (p);
-      len -= n;
-      p += n;
-      if (len > 0)
-	{
-	  n = snprintf (p, len, " (debug) file %s line %d ", file_name, line_no);
-	  len -= n;
-	  p += n;
-	  if (len > 0)
-	    {
-	      n = vsnprintf (p, len, fmt, ap);
-	      len -= n;
-	      p += n;
-	    }
-	}
-      cas_fwrite (buf, (p - buf), 1, log_fp);
-      cas_fputc ('\n', log_fp);
-      va_end (ap);
-    }
-
-#endif
-}
-#endif
-
 #ifdef CAS_ERROR_LOG
 
 #if defined (ENABLE_UNUSED_FUNCTION)
