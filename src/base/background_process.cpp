@@ -19,6 +19,8 @@
 
 #include "config.h"
 #include "background_process.hpp"
+#include "console_log.hpp"
+#include <poll.h>
 
 #include <cerrno>
 #include <climits>
@@ -279,35 +281,26 @@ int
 background_process_start (const char *path, const char *const args[], const char *relay_path,
 			  const char *log_path, background_process &process)
 {
-  int fds[12];
+  int fds[14];
   for (int &fd : fds)
     {
       fd = -1;
     }
   int result = -1;
   int saved = 0;
-  const char *relay_args[] = {relay_path, nullptr};
+  const char *relay_args[] = {relay_path, log_path, nullptr};
   int relay_sources[10];
   int server_sources[3];
-  struct stat log_stat;
   char marker[1024];
   char database[513];
   int marker_size;
+  int log_error = 0;
   bool marker_truncated = false;
 
   fds[0] = owned_fd (open ("/dev/null", O_RDWR | O_CLOEXEC));
-  fds[1] = owned_fd (open (log_path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0600));
+  fds[1] = owned_fd (console_log::open_lock (log_path));
   if (fds[0] < 0 || fds[1] < 0)
     {
-      goto cleanup;
-    }
-  if (fstat (fds[1], &log_stat) != 0)
-    {
-      goto cleanup;
-    }
-  if (!S_ISREG (log_stat.st_mode))
-    {
-      errno = EINVAL;
       goto cleanup;
     }
   database[0] = '\0';
@@ -332,60 +325,25 @@ background_process_start (const char *path, const char *const args[], const char
       errno = ENAMETOOLONG;
       goto cleanup;
     }
-  {
-    ssize_t count;
-    do
-      {
-	count = write (fds[1], marker, marker_size);
-      }
-    while (count < 0 && errno == EINTR);
-    if (count != marker_size)
-      {
-	if (count >= 0)
-	  {
-	    errno = EIO;
-	  }
-	goto cleanup;
-      }
-  }
-  for (int i = 2; i < 6; i += 2)
+  if (!console_log::append (fds[1], log_path, marker, marker_size, log_error))
+    {
+      goto cleanup;
+    }
+  for (int i = 2; i < 14; i += 2)
     {
       if (owned_pipe (&fds[i]) != 0)
 	{
 	  goto cleanup;
 	}
     }
-  for (int i = 6; i < 8; ++i)
-    {
-      char name[] = "/tmp/cubrid-console-XXXXXX";
-#if defined(LINUX)
-      int fd = mkostemp (name, O_CLOEXEC);
-#else
-      int fd = mkstemp (name);
-#endif
-      if (fd < 0)
-	{
-	  goto cleanup;
-	}
-      unlink (name);
-      fds[i] = owned_fd (fd);
-      if (fds[i] < 0)
-	{
-	  goto cleanup;
-	}
-    }
-  if (owned_pipe (&fds[8]) != 0 || owned_pipe (&fds[10]) != 0)
-    {
-      goto cleanup;
-    }
   relay_sources[0] = relay_sources[1] = relay_sources[2] = fds[0];
   relay_sources[3] = fds[1];
   relay_sources[4] = fds[2];
   relay_sources[5] = fds[4];
-  relay_sources[6] = fds[6];
-  relay_sources[7] = fds[7];
-  relay_sources[8] = fds[8];
-  relay_sources[9] = fds[11];
+  relay_sources[6] = fds[7];
+  relay_sources[7] = fds[9];
+  relay_sources[8] = fds[10];
+  relay_sources[9] = fds[13];
   process.relay_pid = spawn (relay_path, relay_args, relay_sources, 10, true);
   if (process.relay_pid < 0)
     {
@@ -401,12 +359,12 @@ background_process_start (const char *path, const char *const args[], const char
     }
   process.output[0] = fds[6];
   fds[6] = -1;
-  process.output[1] = fds[7];
-  fds[7] = -1;
-  process.control = fds[9];
-  fds[9] = -1;
-  process.acknowledgement = fds[10];
-  fds[10] = -1;
+  process.output[1] = fds[8];
+  fds[8] = -1;
+  process.control = fds[11];
+  fds[11] = -1;
+  process.acknowledgement = fds[12];
+  fds[12] = -1;
   result = 0;
 cleanup:
   saved = errno;
@@ -423,13 +381,70 @@ cleanup:
   return result;
 }
 
+void
+background_process_wait (background_process &process, int milliseconds)
+{
+  struct timespec start;
+  clock_gettime (CLOCK_MONOTONIC, &start);
+  int remaining = milliseconds;
+  do
+    {
+      pollfd inputs[2] = {{process.output[0], POLLIN, 0}, {process.output[1], POLLIN, 0}};
+      int result = poll (inputs, 2, remaining);
+      if (result < 0 && errno != EINTR)
+	{
+	  process.output_error = errno;
+	  return;
+	}
+      // One bounded read per stream per turn: continuous stdout cannot starve
+      // stderr or the caller's original registration/termination observation.
+      for (int stream = 0; stream < 2; ++stream)
+	{
+	  if (inputs[stream].revents == 0)
+	    {
+	      continue;
+	    }
+	  char buffer[8192];
+	  ssize_t count = read (inputs[stream].fd, buffer, sizeof (buffer));
+	  if (count > 0)
+	    {
+	      if (!console_log::write_all (stream + 1, buffer, count))
+		{
+		  process.output_error = errno;
+		}
+	    }
+	  else if (count == 0 || errno != EINTR)
+	    {
+	      if (count < 0)
+		{
+		  process.output_error = errno;
+		}
+	      close (process.output[stream]);
+	      process.output[stream] = -1;
+	    }
+	}
+      if (process.output[0] < 0 && process.output[1] < 0)
+	{
+	  return;
+	}
+      struct timespec now;
+      clock_gettime (CLOCK_MONOTONIC, &now);
+      remaining = milliseconds - ((now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000);
+    }
+  while (remaining > 0);
+}
+
 int
 background_process_finish_start (background_process &process)
 {
-  // Closing the control pipe requests a finite snapshot and also handles a
-  // caller dying without an explicit completion request.
+  // The relay snapshots producer queues once. Drain BOTH attempt pipes while
+  // it completes that finite barrier, before reading its acknowledgement.
   close (process.control);
   process.control = -1;
+  while (process.output[0] >= 0 || process.output[1] >= 0)
+    {
+      background_process_wait (process, 100);
+    }
   unsigned char status = 1;
   ssize_t count;
   do
@@ -437,77 +452,13 @@ background_process_finish_start (background_process &process)
       count = read (process.acknowledgement, &status, 1);
     }
   while (count < 0 && errno == EINTR);
-  int saved_error = count < 0 ? errno : EIO;
+  int saved = process.output_error != 0 ? process.output_error : EIO;
   close (process.acknowledgement);
   process.acknowledgement = -1;
-  int result = count == 1 && status == 0 ? 0 : -1;
-  if (result == 0)
+  if (count != 1 || status != 0 || process.output_error != 0)
     {
-      saved_error = 0;
+      errno = saved;
+      return -1;
     }
-  for (int stream = 0; stream < 2; ++stream)
-    {
-      if (lseek (process.output[stream], 0, SEEK_SET) < 0)
-	{
-	  if (saved_error == 0)
-	    {
-	      saved_error = errno;
-	    }
-	  result = -1;
-	  close (process.output[stream]);
-	  process.output[stream] = -1;
-	  continue;
-	}
-      char buffer[8192];
-      while (true)
-	{
-	  do
-	    {
-	      count = read (process.output[stream], buffer, sizeof (buffer));
-	    }
-	  while (count < 0 && errno == EINTR);
-	  if (count <= 0)
-	    {
-	      if (count < 0)
-		{
-		  if (saved_error == 0)
-		    {
-		      saved_error = errno;
-		    }
-		  result = -1;
-		}
-	      break;
-	    }
-	  size_t offset = 0;
-	  while (offset < static_cast<size_t> (count))
-	    {
-	      ssize_t written = write (stream + 1, buffer + offset, count - offset);
-	      if (written < 0 && errno == EINTR)
-		{
-		  continue;
-		}
-	      if (written <= 0)
-		{
-		  if (saved_error == 0)
-		    {
-		      saved_error = written < 0 ? errno : EIO;
-		    }
-		  result = -1;
-		  break;
-		}
-	      offset += written;
-	    }
-	  if (offset != static_cast<size_t> (count))
-	    {
-	      break;
-	    }
-	}
-      close (process.output[stream]);
-      process.output[stream] = -1;
-    }
-  if (saved_error != 0)
-    {
-      errno = saved_error;
-    }
-  return result;
+  return 0;
 }

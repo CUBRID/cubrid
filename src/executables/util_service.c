@@ -304,7 +304,8 @@ static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status, int command_type);
 static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
 static const char *command_string (int command_type);
-static bool is_server_running (const char *type, const char *server_name, int pid);
+static bool is_server_running (const char *type, const char *server_name, int pid,
+			       void (*wait_output) (void *) = NULL, void *context = NULL);
 static int shutdown_reviving_server (const char *server_name);
 static int is_broker_running (void);
 static int is_gateway_running (void);
@@ -1062,7 +1063,13 @@ process_master (int command_type)
 		  }
 
 		/* The master process needs a few seconds to bind port */
+#if !defined(WINDOWS)
+                /* *INDENT-OFF* */
+                background_process_wait (process, 1000);
+                /* *INDENT-ON* */
+#else
 		sleep (1);
+#endif
 		waited_seconds++;
 
 		status = __gv_cvar.css_does_master_exist (master_port) ? NO_ERROR : ER_GENERIC_ERROR;
@@ -1613,7 +1620,7 @@ check_server (const char *type, const char *server_name)
  *      pid(in):
  */
 static bool
-is_server_running (const char *type, const char *server_name, int pid)
+is_server_running (const char *type, const char *server_name, int pid, void (*wait_output) (void *), void *context)
 {
   if (!__gv_cvar.css_does_master_exist (prm_get_master_port_id ()))
     {
@@ -1633,7 +1640,14 @@ is_server_running (const char *type, const char *server_name, int pid)
 	    {
 	      return true;
 	    }
-	  sleep (1);
+	  if (wait_output != NULL)
+	    {
+	      wait_output (context);
+	    }
+	  else
+	    {
+	      sleep (1);
+	    }
 
 	  /* A child process is defunct because the SIGCHLD signal ignores. */
 	  /*
@@ -1841,7 +1855,9 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
                   else
                     {
                       pid = process.pid;
-                      if (!is_server_running (CHECK_SERVER, token, pid))
+                      if (!is_server_running (CHECK_SERVER, token, pid,
+                          [] (void *context) { background_process_wait (*static_cast<background_process *> (context), 1000); },
+                          &process))
                         {
                           status = ER_GENERIC_ERROR;
                         }

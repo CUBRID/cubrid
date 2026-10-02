@@ -1847,7 +1847,7 @@ css_launch_daemon (int argc, char **argv, int port_id)
         {
           break;
         }
-      usleep (100000);
+      background_process_wait (process, 100);
     }
   if (background_process_finish_start (process) != 0)
     {

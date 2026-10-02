@@ -20,6 +20,7 @@
 // Private executable for background stdout/stderr. Descriptor assignments are
 // an internal spawn contract, not a user-facing command line interface.
 #include "config.h"
+#include "console_log.hpp"
 
 #include <cerrno>
 #include <cstddef>
@@ -52,9 +53,14 @@ write_all (int fd, const char *buffer, size_t size)
 }
 
 int
-main ()
+main (int argc, char **argv)
 {
+  if (argc != 2)
+    {
+      return 1;
+    }
   signal (SIGPIPE, SIG_IGN);
+  int log_error = 0;
   bool startup = true;
   unsigned char status = 0;
   pollfd inputs[3] = {{4, POLLIN, 0}, {5, POLLIN, 0}, {8, POLLIN, 0}};
@@ -121,7 +127,7 @@ main ()
 		    }
 		  break;
 		}
-	      if (!write_all (3, buffer, count))
+	      if (!console_log::append (3, argv[1], buffer, count, log_error))
 		{
 		  status = 1;
 		}

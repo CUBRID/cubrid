@@ -34,10 +34,13 @@ struct background_process
   int relay_pid = 0;
   int control = -1;
   int acknowledgement = -1;
+  int output_error = 0;
   int output[2] = {-1, -1};
 };
 int background_process_start (const char *path, const char *const args[], const char *relay_path,
 			      const char *log_path, background_process &process);
+// Drain bounded startup channels during existing readiness waits.
+void background_process_wait (background_process &process, int milliseconds);
 int background_process_finish_start (background_process &process);
 #endif
 #endif
