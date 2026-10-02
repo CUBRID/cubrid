@@ -1388,16 +1388,6 @@ vacuum_stop_workers (THREAD_ENTRY * thread_p)
 
   delete vacuum_Worker_entry_manager;
   vacuum_Worker_entry_manager = NULL;
-
-#if !defined (NDEBUG)
-  // clear 
-  while (vacuum_Track_dropped_files)
-    {
-      VACUUM_TRACK_DROPPED_FILES *t = vacuum_Track_dropped_files;
-      vacuum_Track_dropped_files = t->next_tracked_page;
-      free (t);
-    }
-#endif
 }
 
 void
@@ -1416,6 +1406,17 @@ vacuum_stop_master (THREAD_ENTRY * thread_p)
     }
   delete vacuum_Master_entry_manager;
   vacuum_Master_entry_manager = NULL;
+
+#if !defined (NDEBUG)
+  /* free the tracked dropped files only after the master is stopped; the master still uses it while running
+   * (e.g., vacuum_cleanup_dropped_files ()). */
+  while (vacuum_Track_dropped_files)
+    {
+      VACUUM_TRACK_DROPPED_FILES *t = vacuum_Track_dropped_files;
+      vacuum_Track_dropped_files = t->next_tracked_page;
+      free (t);
+    }
+#endif
 
   vacuum_Is_booted = false;
 }
