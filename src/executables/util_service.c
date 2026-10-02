@@ -3338,7 +3338,7 @@ us_hb_output_pump (dynamic_array *processes)
   for (int i = 0; i < da_size (processes); ++i)
     {
       us_hb_background_process item;
-  background_process &process = item.process;
+      background_process &process = item.process;
       da_get (processes, i, &item);
       background_process_wait (process, 0, &item.output);
       /* Synchronous registration queries can restore SIGCHLD to SIG_DFL.
@@ -3375,7 +3375,7 @@ us_hb_output_finish (dynamic_array *processes)
   for (int i = 0; i < da_size (processes); ++i)
     {
       us_hb_background_process item;
-  background_process &process = item.process;
+      background_process &process = item.process;
       da_get (processes, i, &item);
       if (process.control >= 0) close (process.control);
       process.control = -1;
@@ -3385,7 +3385,7 @@ us_hb_output_finish (dynamic_array *processes)
   for (int i = 0; i < da_size (processes); ++i)
     {
       us_hb_background_process item;
-  background_process &process = item.process;
+      background_process &process = item.process;
       da_get (processes, i, &item);
       if (background_process_finish_start (process) != 0)
         {
