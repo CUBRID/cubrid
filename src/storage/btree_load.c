@@ -6509,6 +6509,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   HFID pk_dummy_hfid;
   BTREE_SCAN_PART *partitions = NULL;
   bool has_nulls = false;
+  bool is_lookup_each_key = false;
 
   bool has_deduplicate_key_col = false;
   DB_VALUE new_fk_key[2];
@@ -6562,6 +6563,23 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 
   /* Set the order. */
   is_fk_scan_desc = (sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc);
+
+  /* Walking both leaf levels together needs one key order. When a column's direction differs from the PK's, each
+   * key is looked up from the root instead. */
+  if (TP_DOMAIN_TYPE (sort_args->key_type) == DB_TYPE_MIDXKEY)
+    {
+      TP_DOMAIN *fk_dom = sort_args->key_type->setdomain;
+      TP_DOMAIN *pk_dom = pk_bt_scan.btid_int.key_type->setdomain;
+
+      for (; fk_dom != NULL && pk_dom != NULL; fk_dom = fk_dom->next, pk_dom = pk_dom->next)
+	{
+	  if (fk_dom->is_desc != pk_dom->is_desc)
+	    {
+	      is_lookup_each_key = true;
+	      break;
+	    }
+	}
+    }
 
   /* Get the corresponding leaf of the foreign key. */
   if (!is_fk_scan_desc)
@@ -6710,6 +6728,12 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       /* We got the value from the foreign key, now search through the primary key index. */
       found = false;
 
+      if (!has_deduplicate_key_col && DB_VALUE_TYPE (fk_key_ptr) == DB_TYPE_MIDXKEY)
+	{
+	  /* The key was read with the FK's domain; the PK is searched and compared with its own. */
+	  fk_key_ptr->data.midxkey.domain = pk_bt_scan.btid_int.key_type;
+	}
+
       if (partitions)
 	{
 	  COPY_OID (&pk_clsoid, sort_args->fk_refcls_oid);
@@ -6853,6 +6877,11 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      old_page = pk_bt_scan.C_page;
 	      pk_bt_scan.C_page = NULL;
 	    }
+	}
+
+      if (is_lookup_each_key)
+	{
+	  pgbuf_unfix_and_init_after_check (thread_p, pk_bt_scan.C_page);
 	}
 
       if (partitions)
