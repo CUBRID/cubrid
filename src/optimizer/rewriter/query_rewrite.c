@@ -288,10 +288,13 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  int continue_walk;
 	  int idx = 0;
 
+	  /* the SEMI/ANTI JOIN form goes first: it lifts the subquery's own table into the FROM and leaves
+	   * the optimizer to decide whether to materialize it, where the derived table below decides that
+	   * here and always materializes.  What it declines still reaches qo_rewrite_subqueries (). */
+	  qo_rewrite_exists_semi_anti (parser, node);
+
 	  /* rewrite uncorrelated subquery to join query */
 	  qo_rewrite_subqueries (parser, node, &idx, &continue_walk);
-
-	  qo_rewrite_exists_semi_anti (parser, node);
 	}
 
       /* rewrite optimization on WHERE, HAVING clause */
