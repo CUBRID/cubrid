@@ -144,14 +144,28 @@ flashback_initialize (THREAD_ENTRY * thread_p)
 
 /*
  * flashback_set_min_log_pageid_to_keep - set flashback_Min_log_pageid
+ *
+ * Only the connection that owns the in-progress session may move the
+ * archive-retention floor. A second request on the same connection can still
+ * be here after the owner finished and was replaced by another connection's
+ * session (requests are served by independent worker tasks); without the owner
+ * check it would overwrite the new session's floor and let archive logs the new
+ * session still needs be removed.
  */
 
 void
-flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa)
+flashback_set_min_log_pageid_to_keep (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   assert (lsa != NULL);
 
-  flashback_Min_log_pageid = lsa->pageid;
+  pthread_mutex_lock (&flashback_Conn_lock);
+
+  if (flashback_Current_conn == thread_p->conn_entry)
+    {
+      flashback_Min_log_pageid = lsa->pageid;
+    }
+
+  pthread_mutex_unlock (&flashback_Conn_lock);
 }
 
 /*
@@ -888,7 +902,7 @@ flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * con
 	}
 
       /* if start_lsa was NULL at the caller, flashback_min_log_pageid was not set at the caller */
-      flashback_set_min_log_pageid_to_keep (&context->start_lsa);
+      flashback_set_min_log_pageid_to_keep (thread_p, &context->start_lsa);
     }
 
   if (context->forward)

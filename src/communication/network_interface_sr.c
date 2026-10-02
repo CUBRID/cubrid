@@ -11318,7 +11318,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   assert (!LSA_ISNULL (&context.start_lsa));
 
-  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+  flashback_set_min_log_pageid_to_keep (thread_p, &context.start_lsa);
 
   /* get summary list */
   error_code = flashback_make_summary_list (thread_p, &context);
@@ -11571,7 +11571,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       if (context.forward)
 	{
 	  /* start_lsa is increased only if direction is forward */
-	  flashback_set_min_log_pageid_to_keep (&context.start_lsa);
+	  flashback_set_min_log_pageid_to_keep (thread_p, &context.start_lsa);
 	}
     }
 
