@@ -153,8 +153,9 @@ cas_init_ssl (int sd)
       return ER_SSL_GENERAL;
     }
 
-  if (SSL_CTX_use_certificate_file (ctx, cert, SSL_FILETYPE_PEM) <= 0
-      || SSL_CTX_use_PrivateKey_file (ctx, key, SSL_FILETYPE_PEM) <= 0)
+  /* SSL_CTX_use_certificate_file () would load only the first certificate and drop the intermediate CAs */
+  if (SSL_CTX_use_certificate_chain_file (ctx, cert) <= 0
+      || SSL_CTX_use_PrivateKey_file (ctx, key, SSL_FILETYPE_PEM) <= 0 || SSL_CTX_check_private_key (ctx) <= 0)
     {
       cas_log_write_and_end (0, true, "SSL: Certificate or Key is coppupted.");
       return ER_CERT_COPPUPTED;
