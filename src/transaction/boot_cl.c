@@ -1540,7 +1540,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
   //  }
 #endif
 
-  //tr_init ();
+  tr_init ();			/* initialize trigger manager of this sub-client */
 
   /* TODO: how about to call es_init() only for normal client? */
   //if (boot_Server_credential.lob_path[0] != '\0')
@@ -1663,7 +1663,7 @@ boot_finalize_client_sub (void)
   //showstmt_metadata_final ();
   tran_free_savepoint_list ();
 
-  //tr_final ();
+  tr_final ();
   au_final ();
   sm_final ();
   /* must run before ws_final (); query handlers of this thread refer to the workspace */
