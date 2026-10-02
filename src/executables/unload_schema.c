@@ -6313,7 +6313,7 @@ filter_user_classes (DB_OBJLIST ** class_list, const char *user)
       name = db_get_class_name (cl->op);
       sm_qualifier_name (name, owner_name, DB_MAX_IDENTIFIER_LENGTH);
 
-      if (owner_name != NULL && strcmp (owner_name, user) == 0)
+      if (strcmp (owner_name, user) == 0)
 	{
 	  prev = cl;
 	}
@@ -6445,7 +6445,7 @@ do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char 
 {
   PT_NODE **stmt;
   PT_NODE *expr;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PARSER_VARCHAR *res = NULL;
   char qry_buf[4096];
   char *query_str = qry_buf;

@@ -58,14 +58,8 @@ struct setobj;
 
 #define OR_CHECK_ASSIGN_OVERFLOW(dest, src) \
   (((src) > 0 && (dest) < 0) || ((src) < 0 && (dest) > 0))
-#define OR_CHECK_ADD_OVERFLOW(a, b, c) \
-  (((a) > 0 && (b) > 0 && (c) < 0) \
-   || ((a) < 0 && (b) < 0 && (c) >= 0))
 #define OR_CHECK_UNS_ADD_OVERFLOW(a, b, c) \
   (c) < (a) || (c) < (b)
-#define OR_CHECK_SUB_UNDERFLOW(a, b, c) \
-  (((a) < (b) && (c) > 0) \
-   || ((a) > (b) && (c) < 0))
 #define OR_CHECK_UNS_SUB_UNDERFLOW(a, b, c) \
   (b) > (a)
 #define OR_CHECK_MULT_OVERFLOW(a, b, c) \
@@ -76,6 +70,33 @@ struct setobj;
 #else
 #define OR_MULT_OVERFLOW(a, b, r) \
   (*(r) = (a) * (b), OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
+#endif
+
+/* Signed integer addition and subtraction with overflow detection.
+ *
+ * These replace a pair of macros, OR_CHECK_ADD_OVERFLOW and OR_CHECK_SUB_UNDERFLOW, that
+ * inspected the sign of a sum or a difference the caller had already computed with a plain
+ * + or -. Computing it is itself signed overflow, which is undefined behaviour, so a
+ * compiler may assume it never happened and delete the check. Clang does exactly that: an
+ * overflowing addition returned a wrapped result instead of raising
+ * ER_QPROC_OVERFLOW_ADDITION. The old macros have been deleted rather than left unused, so
+ * that writing one again is a compile error instead of a silent return of the same bug.
+ *
+ * The builtins also store the wrapped result through r, so the value seen on the error path
+ * is the same one the old code left behind. This mirrors OR_MULT_OVERFLOW above.
+ *
+ * On a compiler with neither builtin the fallback computes a wider difference instead, which
+ * is well defined; it requires that the operands are narrower than long long. */
+#if defined (__GNUC__) || defined (__clang__)
+#define OR_ADD_OVERFLOW(a, b, r) __builtin_add_overflow ((a), (b), (r))
+#define OR_SUB_OVERFLOW(a, b, r) __builtin_sub_overflow ((a), (b), (r))
+#else
+#define OR_ADD_OVERFLOW(a, b, r) \
+  (*(r) = (__typeof__ (*(r))) ((long long) (a) + (long long) (b)), \
+   (long long) *(r) != (long long) (a) + (long long) (b))
+#define OR_SUB_OVERFLOW(a, b, r) \
+  (*(r) = (__typeof__ (*(r))) ((long long) (a) - (long long) (b)), \
+   (long long) *(r) != (long long) (a) - (long long) (b))
 #endif
 #define OR_CHECK_SHORT_DIV_OVERFLOW(a, b) \
   ((a) == DB_INT16_MIN && (b) == -1)
@@ -89,6 +110,24 @@ struct setobj;
 #define OR_CHECK_BIGINT_OVERFLOW(i) ((i) > DB_BIGINT_MAX || (i) < DB_BIGINT_MIN)
 #define OR_CHECK_USHRT_OVERFLOW(i)  ((i) > (int) DB_UINT16_MAX || (i) < 0)
 #define OR_CHECK_UINT_OVERFLOW(i)   ((i) > DB_UINT32_MAX || (i) < 0)
+
+/* Exact bounds of the integer domains, as powers of two. Unlike DB_INT32_MAX
+ * and DB_BIGINT_MAX these are representable in float and double without any
+ * rounding, so they are the operands to use when the value being range checked
+ * is a floating point number. */
+#define OR_INT32_BOUND_D  2147483648.0	/* 2^31, that is DB_INT32_MAX + 1 */
+#define OR_BIGINT_BOUND_D 9223372036854775808.0	/* 2^63, that is DB_BIGINT_MAX + 1 */
+
+/* Overflow checks for a floating point value about to be narrowed to an integer
+ * domain. OR_CHECK_INT_OVERFLOW (2147483648.0f) answers false, because
+ * DB_INT32_MAX rounds *up* to 2^31 when it is converted to float, so the naive
+ * check lets the out of range value through and the narrowing cast is undefined.
+ * These macros compare against the exact bound instead. A NaN fails both
+ * comparisons and is therefore reported as an overflow. */
+#define OR_CHECK_INT_OVERFLOW_FROM_FP(v) \
+  (!((double) (v) >= -OR_INT32_BOUND_D && (double) (v) < OR_INT32_BOUND_D))
+#define OR_CHECK_BIGINT_OVERFLOW_FROM_FP(v) \
+  (!((double) (v) >= -OR_BIGINT_BOUND_D && (double) (v) < OR_BIGINT_BOUND_D))
 
 #define OR_CHECK_FLOAT_OVERFLOW(i)         ((i) > FLT_MAX || (-(i)) > FLT_MAX)
 #define OR_CHECK_DOUBLE_OVERFLOW(i)        ((i) > DBL_MAX || (-(i)) > DBL_MAX)

@@ -213,6 +213,16 @@ jobs:
           msg: |
             **cppcheck**
             ${{ steps.get-comment-body.outputs.body }}
+  clang-build-guard:
+    name: clang-build-guard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Check the Clang build fixes are still in place
+        run: ./.github/workflows/clang_build_guard.sh
+
   memory-monitor-check:
     name: memory-monitor-check
     runs-on: ubuntu-24.04
@@ -269,7 +279,10 @@ jobs:
             fi
 
             # [exception case] memory_monitor_sr.cpp / memory_monitor_api.cpp is base file of memory monitoring module
-            if [ "$f" == "src/base/memory_monitor_sr.cpp" ] || [ "$f" == "src/base/memory_monitor_api.cpp" ]; then
+            # [exception case] memory_wrapper.cpp defines the replaced operator delete itself, so it cannot
+            # include memory_wrapper.hpp: the header redefines the very operators this file provides.
+            if [ "$f" == "src/base/memory_monitor_sr.cpp" ] || [ "$f" == "src/base/memory_monitor_api.cpp" ] \
+               || [ "$f" == "src/base/memory_wrapper.cpp" ]; then
               result_for_f="PASS"
             fi
 

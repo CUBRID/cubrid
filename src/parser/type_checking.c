@@ -13950,8 +13950,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		i1 = db_get_int (arg1);
 		i2 = db_get_int (arg2);
-		itmp = i1 + i2;
-		if (OR_CHECK_ADD_OVERFLOW (i1, i2, itmp))
+		if (OR_ADD_OVERFLOW (i1, i2, &itmp))
 		  goto overflow;
 		else
 		  db_make_int (result, itmp);
@@ -13964,8 +13963,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		bi1 = db_get_bigint (arg1);
 		bi2 = db_get_bigint (arg2);
-		bitmp = bi1 + bi2;
-		if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, bitmp))
+		if (OR_ADD_OVERFLOW (bi1, bi2, &bitmp))
 		  goto overflow;
 		else
 		  db_make_bigint (result, bitmp);
@@ -13978,8 +13976,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		s1 = db_get_short (arg1);
 		s2 = db_get_short (arg2);
-		stmp = s1 + s2;
-		if (OR_CHECK_ADD_OVERFLOW (s1, s2, stmp))
+		if (OR_ADD_OVERFLOW (s1, s2, &stmp))
 		  goto overflow;
 		else
 		  db_make_short (result, stmp);
@@ -14313,25 +14310,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		bi1 = ((DB_BIGINT) datetime->date) * MILLISECONDS_OF_ONE_DAY + datetime->time;
 
-		if (bi2 < 0)
+		/* bi2 == DB_BIGINT_MIN is rejected separately: bi1 is non negative, so
+		 * bi1 + DB_BIGINT_MIN still fits in a DB_BIGINT and the builtin would not
+		 * report it, while the code this replaced treated it as an overflow. */
+		if (bi2 == DB_BIGINT_MIN || OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
 		  {
-		    if (bi2 == DB_BIGINT_MIN)
-		      {
-			goto overflow;
-		      }
-		    result_bi = bi1 + bi2;
-		    if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
-		      {
-			goto overflow;
-		      }
-		  }
-		else
-		  {
-		    result_bi = bi1 + bi2;
-		    if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result_bi))
-		      {
-			goto overflow;
-		      }
+		    goto overflow;
 		  }
 
 		tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
@@ -14400,25 +14384,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		bi1 = ((DB_BIGINT) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
 
-		if (bi2 < 0)
+		/* bi2 == DB_BIGINT_MIN is rejected separately: bi1 is non negative, so
+		 * bi1 + DB_BIGINT_MIN still fits in a DB_BIGINT and the builtin would not
+		 * report it, while the code this replaced treated it as an overflow. */
+		if (bi2 == DB_BIGINT_MIN || OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
 		  {
-		    if (bi2 == DB_BIGINT_MIN)
-		      {
-			goto overflow;
-		      }
-		    result_bi = bi1 + bi2;
-		    if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
-		      {
-			goto overflow;
-		      }
-		  }
-		else
-		  {
-		    result_bi = bi1 + bi2;
-		    if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result_bi))
-		      {
-			goto overflow;
-		      }
+		    goto overflow;
 		  }
 
 		tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
@@ -14533,8 +14504,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		i1 = db_get_int (arg1);
 		i2 = db_get_int (arg2);
-		itmp = i1 - i2;
-		if (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp))
+		if (OR_SUB_OVERFLOW (i1, i2, &itmp))
 		  goto overflow;
 		else
 		  db_make_int (result, itmp);
@@ -14639,8 +14609,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		    break;
 		  }
 
-		result_bi = bi1 - bi2;
-		if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
+		if (OR_SUB_OVERFLOW (bi1, bi2, &result_bi))
 		  {
 		    goto overflow;
 		  }
@@ -14657,8 +14626,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		s1 = db_get_short (arg1);
 		s2 = db_get_short (arg2);
-		stmp = s1 - s2;
-		if (OR_CHECK_SUB_UNDERFLOW (s1, s2, stmp))
+		if (OR_SUB_OVERFLOW (s1, s2, &stmp))
 		  goto overflow;
 		else
 		  db_make_short (result, stmp);
@@ -20052,7 +20020,14 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_FLOAT:
-	  if (db_get_float (rhs_val) > DB_INT32_MAX)
+	  /* OR_INT32_BOUND_D is 2^31. The comparison used to read "> DB_INT32_MAX", where
+	   * the int operand was converted to float and so already rounded up to 2^31: this
+	   * spells out the bound that was actually being used, without changing it. Note
+	   * that the PT_TYPE_DOUBLE / NUMERIC / MONETARY arms below keep comparing against
+	   * DB_INT32_MAX itself, which double represents exactly, so they and this arm
+	   * disagree for a right hand side of exactly 2^31. That predates this change and
+	   * is left alone; making the arms agree is a behaviour change of its own. */
+	  if (db_get_float (rhs_val) > OR_INT32_BOUND_D)
 	    lhs_less = true;
 	  else if (db_get_float (rhs_val) < DB_INT32_MIN)
 	    lhs_greater = true;
@@ -20089,27 +20064,27 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
       switch (rhs_type)
 	{
 	case PT_TYPE_FLOAT:
-	  if (db_get_float (rhs_val) > DB_BIGINT_MAX)
+	  if (db_get_float (rhs_val) > OR_BIGINT_BOUND_D)
 	    lhs_less = true;
 	  else if (db_get_float (rhs_val) < DB_BIGINT_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_DOUBLE:
-	  if (db_get_double (rhs_val) > DB_BIGINT_MAX)
+	  if (db_get_double (rhs_val) > OR_BIGINT_BOUND_D)
 	    lhs_less = true;
 	  else if (db_get_double (rhs_val) < DB_BIGINT_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_NUMERIC:
 	  numeric_coerce_num_to_double (rhs_val, db_get_numeric_scale (rhs_val, NULL), &dtmp);
-	  if (dtmp > DB_BIGINT_MAX)
+	  if (dtmp > OR_BIGINT_BOUND_D)
 	    lhs_less = true;
 	  else if (dtmp < DB_BIGINT_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_MONETARY:
 	  dtmp = (db_get_monetary (rhs_val))->amount;
-	  if (dtmp > DB_BIGINT_MAX)
+	  if (dtmp > OR_BIGINT_BOUND_D)
 	    lhs_less = true;
 	  else if (dtmp < DB_BIGINT_MIN)
 	    lhs_greater = true;

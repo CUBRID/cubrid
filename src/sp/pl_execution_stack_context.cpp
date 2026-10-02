@@ -63,10 +63,10 @@ namespace cubpl
     /* Answer the callback ourselves with METHOD_RESPONSE_ERROR instead of going out to CAS. Java
      * is waiting for a reply to this very request, so replying keeps the protocol in sync and the
      * SP sees a plain SQLException; what it does with that exception is its own business. */
-    cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_PARALLEL_ENABLE_NO_SQL,
-				   std::string ("cannot execute SQL on the server-side connection: the stored procedure is"
-				       " declared PARALLEL_ENABLE"),
-				   ARG_FILE_LINE));
+    cubmem::block blk = pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_PARALLEL_ENABLE_NO_SQL,
+					 std::string ("cannot execute SQL on the server-side connection: the stored procedure is"
+					     " declared PARALLEL_ENABLE"),
+					 ARG_FILE_LINE);
     int error = send_data_to_java (blk);
     blk.freemem ();
 
