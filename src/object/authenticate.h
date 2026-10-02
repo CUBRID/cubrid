@@ -128,6 +128,9 @@ class print_output;
   while (0)
 
 extern EXPORT_IMPORT authenticate_context *au_ctx (void);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+extern void au_ctx_destructor (void);
+#endif
 
 extern int au_login (const char *name, const char *password, bool ignore_dba_privilege);
 

@@ -996,6 +996,8 @@ db_restart (const char *program, int print_version, const char *volume)
  *       of the sub-client remain in the server until the process exits.
  *       db_shutdown () of the main client must be called after all sub-clients are shut down,
  *       because it finalizes the client modules shared with the sub-clients.
+ *       If it fails, the resources of the sub-client are released by itself, so db_shutdown_sub ()
+ *       does not need to be called (calling it is harmless).
  */
 int
 db_restart_sub (int sub_index)
@@ -1007,6 +1009,13 @@ db_restart_sub (int sub_index)
   if (g_ready_to_sub.load (std::memory_order_acquire) == false)
     {
       // TODO: Assign independent error codes.
+      return ER_FAILED;
+    }
+
+  if (BOOT_IS_CLIENT_RESTARTED () && !boot_is_sub_client ())
+    {
+      /* the main client thread cannot be restarted as a sub-client */
+      assert (false);
       return ER_FAILED;
     }
 
@@ -1029,7 +1038,7 @@ db_restart_sub (int sub_index)
   error = au_login (client_credential.get_db_user (), "", false);
   if (error != NO_ERROR)
     {
-      return error;
+      goto error;
     }
 
   db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
@@ -1037,14 +1046,19 @@ db_restart_sub (int sub_index)
   error = boot_restart_client_sub (&client_credential);
   if (error != NO_ERROR)
     {
-      db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
-    }
-  else
-    {
-      db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+      /* the boot level resources of this thread are already released by boot_restart_client_sub () */
+      goto error;
     }
 
-  return (error);
+  return NO_ERROR;
+
+error:
+  /* release the resources of this thread, so that db_shutdown_sub () is not required after a failure */
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+  db_Disable_modifications = 0;
+  au_ctx_destructor ();
+
+  return error;
 }
 #endif
 
@@ -1139,7 +1153,6 @@ db_shutdown_sub ()
   (void) boot_shutdown_client_sub ();
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 
-  extern void au_ctx_destructor (void);
   au_ctx_destructor ();
   return NO_ERROR;
 }

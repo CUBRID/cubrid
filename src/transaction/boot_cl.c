@@ -1583,6 +1583,17 @@ error:
 }
 
 /*
+ * boot_is_sub_client () - whether the current thread holds a sub-client
+ *
+ * return : true if the current thread holds a sub-client started by boot_restart_client_sub ()
+ */
+bool
+boot_is_sub_client (void)
+{
+  return boot_Is_sub_client;
+}
+
+/*
  * boot_shutdown_client_sub () - shutdown the sub-client of the current thread
  *
  * returns : NO_ERROR
