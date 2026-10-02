@@ -2792,7 +2792,7 @@ revoke_all_from_user (DB_OBJECT * user)
     {
       db_seq_get (col, i, &v);
       obj = db_get_object (&v);
-      if (db_is_system_class (obj))
+      if (obj->class_mop == NULL || db_is_system_class (obj))
 	{
 	  continue;
 	}
