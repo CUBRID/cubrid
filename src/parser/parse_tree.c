@@ -1214,12 +1214,16 @@ parser_create_parser (void)
   parser->flag.has_internal_error = 0;
   parser->max_print_len = 0;
   parser->flag.is_auto_commit = 0;
-  parser->flag.is_parsing_static_sql = 0;
+  parser->flag.static_sql_compile_pass = SSCP_NONE;
   parser->flag.is_unloading_plcsql_def = 0;
   parser->flag.is_parsing_trigger = 0;
 
   parser->external_into_label = NULL;
   parser->external_into_label_cnt = 0;
+
+  parser->static_sql_rewritten_query = NULL;
+  parser->static_sql_hv_labels = NULL;
+  parser->static_sql_hv_count = 0;
 
   return parser;
 }
@@ -1268,6 +1272,17 @@ parser_free_parser (PARSER_CONTEXT * parser)
   if (parser->host_var_expected_domains)
     {
       free_and_init (parser->host_var_expected_domains);
+    }
+
+  /* INTO labels of a static SQL which have not been taken by the caller (e.g. in the semantic check pass) */
+  if (parser->external_into_label)
+    {
+      for (i = 0; i < parser->external_into_label_cnt; i++)
+	{
+	  free_and_init (parser->external_into_label[i]);
+	}
+      free_and_init (parser->external_into_label);
+      parser->external_into_label_cnt = 0;
     }
 
   parser_free_lcks_classes (parser);

@@ -12929,7 +12929,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
       // due to the lack of schema information of the remote tables.
       // Therefore, DBLink in Static SQL DML is prohibited for now.
       // Note that this is not the case for Static SQL SELECT statements.
-      if (parser->flag.is_parsing_static_sql)
+      if (parser->flag.static_sql_compile_pass)
 	{
 	  if (snl.has_dblink_query || snl.distinct_cnt > 0)
 	    {

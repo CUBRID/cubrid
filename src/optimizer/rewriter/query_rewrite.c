@@ -24,6 +24,7 @@
 
 #include <assert.h>
 
+#include "dbi.h"
 #include "query_rewrite.h"
 
 
@@ -500,7 +501,7 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       /* auto-parameterization is safe when it is done as the last step of rewrite optimization */
       if (!prm_get_bool_value (PRM_ID_HOSTVAR_LATE_BINDING)
 	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && node->flag.cannot_prepare == 0
-	  && parser->flag.is_parsing_static_sql == 0 && parser->flag.is_skip_auto_parameterize == 0)
+	  && parser->flag.static_sql_compile_pass == SSCP_NONE && parser->flag.is_skip_auto_parameterize == 0)
 	{
 	  call_auto_parameterize = true;
 	}

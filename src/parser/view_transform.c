@@ -1725,7 +1725,7 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* copy select_list to as_attr_list before mq_lambda() */
   as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
-  if (parser->flag.is_parsing_static_sql)
+  if (parser->flag.static_sql_compile_pass)
     {
       /* as_attr_list entries are bare column-name declarations for the derived table's exposed
        * interface (printed as "spec (col1, col2)"); an "AS alias" is never valid there, but
@@ -5550,7 +5550,7 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       /* check for dblink's function term */
       if (in_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
-	  if (parser->flag.is_parsing_static_sql)
+	  if (parser->flag.static_sql_compile_pass)
 	    {
 	      continue;
 	    }
@@ -5824,7 +5824,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   else
     {
       spec->info.spec.as_attr_list = parser_copy_tree_list (parser, new_query->info.query.q.select.list);
-      if (parser->flag.is_parsing_static_sql)
+      if (parser->flag.static_sql_compile_pass)
 	{
 	  /* as_attr_list entries are bare column-name declarations for the derived table's exposed
 	   * interface (printed as "spec (col1, col2)"); an "AS alias" is never valid there, but
@@ -13050,7 +13050,7 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
-		  if (parser->flag.is_parsing_static_sql)
+		  if (parser->flag.static_sql_compile_pass)
 		    {
 		      /* discard tree's own alias: result may end up nested inside another expr
 		       * (e.g. a function arg), where re-printing tree's alias breaks the SQL text.

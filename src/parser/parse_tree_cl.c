@@ -11129,7 +11129,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 		  }
 	      }
 	  }
-	else if (parser->flag.is_parsing_static_sql)
+	else if (parser->flag.static_sql_compile_pass)
 	  {
 	    assert (p->info.expr.arg3->node_type == PT_EXPR && p->info.expr.arg3->info.expr.op == PT_CAST);
 	    assert (p->info.expr.arg3->info.expr.cast_type->node_type == PT_DATA_TYPE);
@@ -11736,7 +11736,7 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       break;
 
     case PT_DEFAULTF:
-      if (parser->flag.is_parsing_static_sql && !p->flag.for_default_func)
+      if (parser->flag.static_sql_compile_pass && !p->flag.for_default_func)
 	{
 	  q = pt_append_nulstring (parser, q, " default");
 	}
@@ -13009,7 +13009,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
    * alias_print may be set for unrelated bookkeeping (e.g. carried over from view/subquery
    * merging), so it must not leak into the printed text here -- restored below, right before
    * this call's own alias (if any) is appended. */
-  if (parser->flag.is_parsing_static_sql)
+  if (parser->flag.static_sql_compile_pass)
     {
       parser->custom_print &= ~PT_PRINT_ALIAS;
     }
@@ -13248,7 +13248,7 @@ pt_print_function (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
     }
 
-  if (parser->flag.is_parsing_static_sql)
+  if (parser->flag.static_sql_compile_pass)
     {
       parser->custom_print = save_custom;
     }
@@ -13529,7 +13529,7 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 
   q = pt_append_nulstring (parser, q, " ");
 
-  if (parser->flag.is_parsing_static_sql == 1 && pt_has_error (parser))
+  if (parser->flag.static_sql_compile_pass && pt_has_error (parser))
     {
       /*
        * To avoid the following error message:
@@ -13635,7 +13635,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
-  if (parser->flag.is_parsing_static_sql || parser->flag.is_parsing_trigger)
+  if (parser->flag.static_sql_compile_pass || parser->flag.is_parsing_trigger)
     {
       parser->custom_print |= PT_SUPPRESS_RESOLVED;
       parser->custom_print & ~PT_PRINT_ALIAS;
@@ -18233,14 +18233,14 @@ pt_print_cte (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = NULL, *r1;
   PT_NODE *as_attr_list = p->info.cte.as_attr_list;
 
-  /* rewritten_query (is_parsing_static_sql) is embedded verbatim in the compiled PL/CSQL class and re-parsed
+  /* rewritten_query (static_sql_compile_pass) is embedded verbatim in the compiled PL/CSQL class and re-parsed
    * from scratch at runtime; that re-parse derives the CTE's exposed column count directly from how many
    * items the header below prints. A rewrite/optimization applied to non_recursive_part after as_attr_list
    * was computed (e.g. adding a hidden order-by carry column while merging a ROWNUM-filtered outer query
    * with an ORDER BY inner subquery) can grow the actual select list past as_attr_list's cached length, so
    * pad a local copy of the header here instead of printing a header/body pair that a fresh parse would
    * reject as mismatched. */
-  if (parser->flag.is_parsing_static_sql)
+  if (parser->flag.static_sql_compile_pass)
     {
       PT_NODE *select_list = pt_get_select_list (parser, p->info.cte.non_recursive_part);
       int actual_cnt = pt_length_of_select_list (select_list, INCLUDE_HIDDEN_COLUMNS);

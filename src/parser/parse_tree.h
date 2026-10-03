@@ -117,7 +117,7 @@ struct trace_json_t;
 
 // macros for PARSER_CONTEXT
 #define PT_IS_FOR_PL_COMPILE(parser) \
-        ((parser)->flag.is_parsing_static_sql == 1)
+        ((parser)->flag.static_sql_compile_pass != SSCP_NONE)
 
 // macros for PT_NODE */
 #define PT_IS_QUERY_NODE_TYPE(x) \
@@ -3958,6 +3958,10 @@ struct parser_context
 
   char **external_into_label;
   int external_into_label_cnt;
+  /* for the rewrite pass of PL/CSQL's static SQL: results taken right after name resolution */
+  const char *static_sql_rewritten_query;
+  const char **static_sql_hv_labels;	/* indexed by host variable index */
+  int static_sql_hv_count;
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;
@@ -3988,7 +3992,7 @@ struct parser_context
     unsigned return_generated_keys:1;
     unsigned is_system_generated_stmt:1;
     unsigned is_auto_commit:1;	/* set to true, if auto commit. */
-    unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
+    unsigned static_sql_compile_pass:2;	/* two passes For PL/CSQL's static SQL: (1) semantic check pass (2) rewrite pass */
     unsigned is_unloading_plcsql_def:1;
     unsigned is_parsing_trigger:1;
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */

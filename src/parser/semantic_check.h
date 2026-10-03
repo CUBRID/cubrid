@@ -48,6 +48,8 @@ extern PT_NODE *pt_semantic_quick_check_node (PARSER_CONTEXT * parser, PT_NODE *
 
 extern PT_NODE *pt_semantic_check (PARSER_CONTEXT * parser, PT_NODE * statement);
 
+extern PT_NODE *pt_check_static_sql_and_rewrite (PARSER_CONTEXT * parser, PT_NODE * statement);
+
 extern PT_NODE *pt_invert (PARSER_CONTEXT * parser, PT_NODE * name_expr, PT_NODE * result);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern PT_NODE *pt_find_attr_def (const PT_NODE * attr_def_list, const PT_NODE * name);

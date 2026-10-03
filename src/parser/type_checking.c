@@ -9196,13 +9196,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	  assert (arg3 != NULL);
 	  assert ((arg3->node_type == PT_HOST_VAR) ||
 		  (arg3->node_type == PT_VALUE && arg3_type == PT_TYPE_INTEGER) ||
-		  (parser->flag.is_parsing_static_sql && arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST));
+		  (parser->flag.static_sql_compile_pass && arg3->node_type == PT_EXPR
+		   && arg3->info.expr.op == PT_CAST));
 
 	  if (arg3->node_type != PT_HOST_VAR)
 	    {
 	      if (arg3_type != PT_TYPE_INTEGER)
 		{
-		  assert (parser->flag.is_parsing_static_sql &&
+		  assert (parser->flag.static_sql_compile_pass &&
 			  arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST);
 		  /* This part is not supported normally.
 		   * This is a problem that has persisted since the previous version.
@@ -19382,7 +19383,7 @@ pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * s
     }
 
   /* Parsing static sql is only for semantic check. Any kind of execution should be avoided */
-  if (!parser->flag.is_parsing_static_sql)
+  if (!parser->flag.static_sql_compile_pass)
     {
       PT_NODE *spec_list = NULL;
       /* do constant folding */
