@@ -36,7 +36,6 @@
 #if !defined(WINDOWS)
 #include <unistd.h>
 #include <signal.h>
-#include <fcntl.h>
 #include <time.h>
 #else
 #include <signal.h>
@@ -561,9 +560,6 @@ cas_final (void)
 void
 cas_free (bool from_sighandler)
 {
-#ifdef MEM_DEBUG
-  int fd;
-#endif
   int max_process_size;
 
   if (as_info->cur_statement_pooling && !from_sighandler)
@@ -667,15 +663,6 @@ cas_free (bool from_sighandler)
   cas_log_close (true);
   cas_slow_log_close ();
   logddl_destroy ();
-
-#ifdef MEM_DEBUG
-  fd = open ("mem_debug.log", O_CREAT | O_TRUNC | O_WRONLY, 0666);
-  if (fd > 0)
-    {
-      malloc_dump (fd);
-      close (fd);
-    }
-#endif
 
   if (cleanup_callback != NULL)
     {
