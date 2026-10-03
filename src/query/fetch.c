@@ -801,7 +801,13 @@ static inline const DOMAIN_COMPARE_PLAN *
 fetch_arith_compare (const ARITH_TYPE * arithptr, int k)
 {
   const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  return item != NULL && item->compares != NULL ? item->compares[k] : NULL;
+  if (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES))
+    {
+      return NULL;
+    }
+  assert (arithptr->opcode == T_FIELD || arithptr->opcode == T_NULLIF || arithptr->opcode == T_LEAST
+	  || arithptr->opcode == T_GREATEST);
+  return item->compares[k];
 }
 
 /* Whether resolve_domains already evaluated this constant expression: its value is in resolve_domains' array.
@@ -892,6 +898,7 @@ fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * 
        * whose type it resolves before the main block: the unresolved-domain check (execution) */
       return qexec_domain_unresolved (vd, item, arithptr->domain);
     }
+  assert (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
   if (plan != NULL && (item->temporaries[0] != 0 || item->temporaries[1] != 0) && left != NULL && right != NULL
       && !DB_IS_NULL (left) && !DB_IS_NULL (right))
     {

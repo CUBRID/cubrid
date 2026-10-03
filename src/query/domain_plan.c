@@ -1131,7 +1131,11 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
     }
   if (item != NULL)
     {
-      item->compares = compares;
+      if (compares != NULL)
+	{
+	  item->compares = compares;
+	  item->flags |= DOMAIN_PLAN_ITEM_COMPARES;
+	}
       ctx->tail->output[0] = arith->value;
       if (domain_is_variable (arith->domain))
 	{
@@ -3664,6 +3668,7 @@ domain_plan_add_temporaries (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx,
 	  continue;
 	}
       DOMAIN_PLAN_ITEM *item = &plan->items[r->index];
+      assert (!(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
       /* an aggregate plans its operand coercion at its setup, from its value's domain in the execution */
       const bool aggregate = r->cold.ctx == DOMAIN_CTX_AGG;
       for (int i = 0; i < 2; i++)
@@ -4195,7 +4200,8 @@ domain_stream_arith_compares (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
 {
   if (arith->plan_item != NULL)
     {
-      return arith->plan_item->compares;
+      assert ((arith->plan_item->flags & DOMAIN_PLAN_ITEM_COMPARES) != 0);
+      return (arith->plan_item->flags & DOMAIN_PLAN_ITEM_COMPARES) ? arith->plan_item->compares : NULL;
     }
   const DOMAIN_COMPARE_PLAN **compares = domain_arith_compares (ctx->thread_p, arith->opcode, &ctx->failed);
   if (compares == NULL)
@@ -4208,6 +4214,7 @@ domain_stream_arith_compares (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
       return NULL;
     }
   item->compares = compares;
+  item->flags |= DOMAIN_PLAN_ITEM_COMPARES;
   return compares;
 }
 
@@ -4799,6 +4806,10 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	      *item = r->item;
 	      item->flags |=
 		(r->variable ? DOMAIN_PLAN_VARIABLE : 0) | (r->variable_position ? DOMAIN_PLAN_VARIABLE_POSITION : 0);
+	      /* the regu's load flag and its item's variable flags say one thing (REGU_VARIABLE_VARIABLE_DOMAIN) */
+	      assert (r->regu == NULL
+		      || REGU_VARIABLE_IS_FLAGED (r->regu, REGU_VARIABLE_VARIABLE_DOMAIN)
+		      == ((item->flags & (DOMAIN_PLAN_VARIABLE | DOMAIN_PLAN_VARIABLE_POSITION)) != 0));
 	      plan->items_cold[r->index] = r->cold;
 	      if (item->operand_class == OPERAND_CONST)
 		{

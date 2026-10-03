@@ -81,7 +81,7 @@ inline bool
 qexec_owns_resolved_index (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_PLAN_ITEM * item)
 {
   const DOMAIN_PLAN *plan = resolved.plan;
-  if (!resolved.frozen || plan == NULL || item->resolved_index < 0 || item->resolved_index >= resolved.n_resolved
+  if (!resolved.readable || plan == NULL || item->resolved_index < 0 || item->resolved_index >= resolved.n_resolved
       || item->resolved_index >= plan->n_resolved)
     {
       return false;
@@ -113,8 +113,9 @@ qexec_late_bind_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     {
       return NULL;
     }
-  /* every read comes after resolve_domains frozen its resolutions, with the descriptor of the execution that loaded the
-   * node or a PX worker's copy of its state: what an execution never changes is asserted, not tested at every row */
+  /* every read comes after resolve_domains made its resolutions readable, with the descriptor of the execution that
+   * loaded the node or a PX worker's copy of its state: what an execution never changes is asserted, not tested at
+   * every row */
   assert (vd->xasl_state != NULL && qexec_owns_resolved_index (vd->xasl_state->resolved_domain, item));
   const RESOLVED_DOMAIN *resolved_domain = &vd->xasl_state->resolved_domain.domains[item->resolved_index];
   return resolved_domain->domain != NULL ? resolved_domain : NULL;
@@ -328,7 +329,7 @@ inline const DB_VALUE *REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VAR
 inline const DB_VALUE *
 REGU_RESOLVED_VALUE (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
 {
-  assert (vd->xasl_state->resolved_domain.frozen);
+  assert (vd->xasl_state->resolved_domain.readable);
   assert (regu->plan_item != NULL && regu->plan_item->ref >= 0);
   assert (regu->plan_item->ref < vd->xasl_state->resolved_domain.n_vals);
   return vd->dbval_ptr + regu->plan_item->ref;

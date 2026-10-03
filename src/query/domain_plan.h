@@ -77,6 +77,8 @@ enum DOMAIN_PLAN_FLAGS
 					 * need not have the plan's type. Such a reference shares no value slot and no
 					 * producer with one that reads its value in the plan's type: resolve_domains casts
 					 * a DOMAIN_PLAN_LIST_BIND reference's value in place */
+  DOMAIN_PLAN_ITEM_COMPARES = 0x04,	/* the item's union holds compares (FIELD, NULLIF, LEAST, GREATEST); else
+					 * temporaries[] */
   DOMAIN_PLAN_ALIAS = 0x10,
   DOMAIN_PLAN_ACCUMULATOR = 0x40,	/* a compiled aggregate: fixed.operand_domain[0] is its accumulator domain,
 					 * derived at load from the operand's */
@@ -114,9 +116,9 @@ struct domain_plan_item
   RESOLVED_DOMAIN fixed;
   union
   {
-    /* FIELD, NULLIF, LEAST, GREATEST: the comparisons the node makes, as the load or resolve_domains resolved them -
-     * [0] the left operand (FIELD: the third against the left), [1] FIELD's third against the right; NULL otherwise.
-     * The node carries only its item, so ARITH_TYPE keeps its size. */
+    /* FIELD, NULLIF, LEAST, GREATEST (DOMAIN_PLAN_ITEM_COMPARES): the comparisons the node makes, as the load or
+     * resolve_domains resolved them - [0] the left operand (FIELD: the third against the left), [1] FIELD's third
+     * against the right. The node carries only its item, so ARITH_TYPE keeps its size. */
     const DOMAIN_COMPARE_PLAN **compares;
     /* T_ADD, T_SUB, T_MUL, T_DIV, and a SUM or AVG ([1]: the value it adds): 1 + the domain_execution.temporaries
      * index of an operand fixed for a scope - a constant for the execution, a correlated value for its block's scan -

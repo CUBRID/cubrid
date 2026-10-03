@@ -3595,7 +3595,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, 
     {
       return NULL;
     }
-  assert (xasl_state_p->resolved_domain.frozen);
+  assert (xasl_state_p->resolved_domain.readable);
   xasl_state *new_xasl_state = (xasl_state *) db_private_alloc (thread_p, sizeof (xasl_state));
   if (new_xasl_state == NULL)
     {
