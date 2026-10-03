@@ -16,6 +16,39 @@
  *
  */
 
+/*
+ * domain_plan.h - the domain plan: what an execution resolves of its variable domains, and where
+ *
+ * The compiler fills the XASL domain fields as develop does and leaves a variable POS as tp_Variable_domain. The load
+ * (stx_build_domain_plan, once per load path: an xcache clone, a non-cached stream, a PX worker's unpack) walks the
+ * tree once and derives the immutable DOMAIN_PLAN in the unpack arena: every item whose domain, comparison, index key
+ * or converted value the compiler could not fix. qexec_resolve_domains resolves every variable domain once per
+ * execution, before qexec_execute_mainblock, into XASL_STATE (resolved_domain, domain_execution). The rows only read
+ * the plan and the resolutions; what they change is domain_execution.
+ *
+ * Index spaces, as they are at this commit:
+ *   item.resolved_index         -> resolved_domain.domains[]       0-based, -1 none
+ *   item.ref                    -> resolved_domain.vals[]          0-based, -1 none; a bind's value slot, which is not
+ *                                  always its val_pos (DOMAIN_PLAN_ITEM_COLD.val_pos), or a constant expression's or
+ *                                  a converted constant's
+ *   item.node_domain_index      -> domain_execution.node_domains[] 1-based, 0 none; the first n_operand_types entries
+ *                                  are also operand_types[], and the first n_interpolation_list_domains of those
+ *                                  interpolation_list_domains[]
+ *   DOMAIN_COMPARE.compare_index -> resolved_domain.compares[]     0-based, -1 none
+ *   item.temporaries[] and a comparison term's temporaries[] (a SUM or AVG's accumulator temporary is its
+ *   item.temporaries[1])        -> domain_execution.temporaries[]  1-based, 0 none
+ *   items_cold[]                   parallel to items[]: the cold part of the item with the same index
+ *
+ * Ownership: resolve_domains allocates vals and every array of resolved_domain and of domain_execution's node state as
+ * one db_private_alloc block whose address is resolved_domain.vals; the resolving thread (resolved_domain.owner) alone
+ * writes it and qexec_clear_resolved_domains frees it. A PX worker gets a deep copy through qexec_deep_copy_xasl_state
+ * and qexec_copy_resolved_domains and owns its copy. The plan (resolved_domain.plan, the arena's) and the execution's
+ * input values (resolved_domain.in, qmgr's copies) are borrowed and never written.
+ *
+ * Where to read next: domain_rules.h for the type rules and the converters, domain_resolve.h for the accessors the row
+ * path reads, domain_resolve.c for the resolve steps in the order they run.
+ */
+
 #ifndef _DOMAIN_PLAN_H_
 #define _DOMAIN_PLAN_H_
 
