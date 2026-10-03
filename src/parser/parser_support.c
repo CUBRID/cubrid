@@ -11108,6 +11108,53 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_set_owner_to_table_column_type () - qualify the table name of <table>.<column>%TYPE with the owner
+ *   return: none
+ *   data_type(in/out): data type node
+ *   owner(in): owner name
+ */
+static void
+pt_set_owner_to_table_column_type (PT_NODE * data_type, const char *owner)
+{
+  if (data_type == NULL || data_type->type_enum != PT_TYPE_TABLE_COLUMN)
+    {
+      return;
+    }
+
+  PT_NODE *table_name = data_type->info.data_type.table_column->info.dot.arg1;
+  if (table_name->info.name.resolved == NULL && !sm_check_system_class_by_name (table_name->info.name.original))
+    {
+      table_name->info.name.resolved = owner;
+    }
+}
+
+/*
+ * pt_set_sp_owner_to_table_column_types () - qualify the table names of <table>.<column>%TYPE
+ *   in the parameter and return types with the owner of the stored procedure
+ *   return: none
+ *   sp_node(in/out): create procedure/function statement
+ *
+ * Without this, the unqualified table names are qualified with the current user later
+ * in pt_set_user_specified_name (), which is wrong when the SP owner is not the current user.
+ */
+void
+pt_set_sp_owner_to_table_column_types (PT_NODE * sp_node)
+{
+  const char *sp_owner = sp_node->info.sp.name->info.name.resolved;
+  if (sp_owner == NULL)
+    {
+      /* the SP owner is the current user, which is the same as the default qualification */
+      return;
+    }
+
+  for (PT_NODE * param = sp_node->info.sp.param_list; param; param = param->next)
+    {
+      pt_set_owner_to_table_column_type (param->data_type, sp_owner);
+    }
+  pt_set_owner_to_table_column_type (sp_node->info.sp.ret_data_type, sp_owner);
+}
+
+/*
  * pt_get_name_with_qualifier_removed() - If the name has a qualifier name, remove it.
  * return	: name with qualifier name removed
  * name (in)	: user-specified name or object name

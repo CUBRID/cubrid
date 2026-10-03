@@ -721,6 +721,7 @@ extern "C"
 
   extern PT_NODE *pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern const char *pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * name);
+  extern void pt_set_sp_owner_to_table_column_types (PT_NODE * sp_node);
   extern const char *pt_get_name_with_qualifier_removed (const char *name);
   extern const char *pt_get_name_without_current_user_name (const char *name);
 
