@@ -558,7 +558,6 @@ conn_retry:
 
   if (as_info->reset_flag == TRUE)
     {
-      cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
       cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
       as_info->reset_flag = FALSE;
     }
@@ -1112,18 +1111,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
   if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
     {
       assert (prev_cas_info[CAS_INFO_STATUS] == client_msg_header.info_ptr[CAS_INFO_STATUS]);
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas <-> JDBC info */
-      if (prev_cas_info[CAS_INFO_STATUS] != client_msg_header.info_ptr[CAS_INFO_STATUS])
-	{
-	  cas_log_debug (ARG_FILE_LINE,
-			 "[%d][PREV : %d, RECV : %d], " "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
-			 "[JID : %d] \n", func_code - 1, prev_cas_info[CAS_INFO_STATUS],
-			 client_msg_header.info_ptr[CAS_INFO_STATUS], prev_cas_info[CAS_INFO_RESERVED_1],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_1], prev_cas_info[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_3]);
-	}
-#endif /* end for debug */
     }
 
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
@@ -1178,9 +1165,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
     {
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
-
-  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d", server_func_name[func_code - 1],
-		 err_info.err_number);
 
   if (con_status_to_restore != -1)
     {
@@ -1296,8 +1280,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
       cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
       prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
-      prev_cas_info[CAS_INFO_RESERVED_1] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
-      prev_cas_info[CAS_INFO_RESERVED_2] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
 #endif /* end for debug */
 
 
@@ -1334,7 +1316,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       ((as_info->con_status != CON_STATUS_IN_TRAN && as_info->num_holdable_results < 1
 	&& as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO) || (cas_get_db_connect_status () == -1)))
     {
-      cas_log_debug (ARG_FILE_LINE, "process_request: reset_flag && !CON_STATUS_IN_TRAN");
       fn_ret = FN_KEEP_SESS;
       db_set_keep_session (true);
       goto exit_on_end;
@@ -1420,7 +1401,6 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
 
 	      if (restart_is_needed ())
 		{
-		  cas_log_debug (ARG_FILE_LINE, "net_read_process: " "restart_is_needed()");
 		  ret_value = -1;
 		  break;
 		}
@@ -1579,8 +1559,6 @@ set_db_connection_info (void)
 
   strncpy (cas_db_passwd, as_info->database_passwd, SRV_CON_DBPASSWD_SIZE - 1);
   cas_db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
-
-  cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s", cas_db_name, cas_db_user);
 }
 
 static void
