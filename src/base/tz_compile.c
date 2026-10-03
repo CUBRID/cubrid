@@ -293,7 +293,7 @@ static const char *tzc_Err_messages[] = {
   /* TZC_ERR_INVALID_PACKAGE */
   "Invalid timezone package! File %s not found in folder %s.",
   /* TZC_ERR_BAD_TZ_LINK */
-  "Invalid link definition (s1: %s, s2: %s). " "Format error or invalid data encountered.",
+  "Invalid link definition (s1: %s, s2: %s). Format error or invalid data encountered.",
   /* TZC_ERR_OUT_OF_MEMORY */
   "Memory exhausted when allocating %d items of type '%s'.",
   /* TZC_ERR_INVALID_VALUE */
@@ -4904,7 +4904,7 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	{
 	  max_len = temp_len;
 	}
-      if (tzd_raw->zones[i].comments != NULL)
+      if (tzd_raw->zones[i].comments[0] != '\0')
 	{
 	  temp_len = strlen (tzd_raw->zones[i].comments);
 	  if (temp_len > max_len2)
@@ -4912,7 +4912,7 @@ tzc_summary (TZ_RAW_DATA * tzd_raw, TZ_DATA * tzd)
 	      max_len2 = temp_len;
 	    }
 	}
-      if (tzd_raw->zones[i].coordinates != NULL)
+      if (tzd_raw->zones[i].coordinates[0] != '\0')
 	{
 	  temp_len = strlen (tzd_raw->zones[i].coordinates);
 	  if (temp_len > max_len3)
