@@ -383,6 +383,39 @@ if(CMAKE_BUILD_TYPE MATCHES "Profile")
   mark_as_advanced(CMAKE_CXX_FLAGS_PROFILE CMAKE_C_FLAGS_PROFILE)
 endif(CMAKE_BUILD_TYPE MATCHES "Profile")
 
+# Profile-guided optimization (CBRD-27335).
+# Two-phase build: configure with -DPGO=generate, run a representative training
+# workload against that build (processes must exit cleanly so the .gcda counter
+# files get written), then reconfigure the SAME binary directory with -DPGO=use.
+# GCC locates .gcda files by a name mangled from each object file's absolute
+# path, so the generate and use phases must share one binary directory.
+set(PGO "OFF" CACHE STRING "Profile-guided optimization phase (OFF, generate, use)")
+set_property(CACHE PGO PROPERTY STRINGS OFF generate use)
+set(PGO_PROFILE_DIR "${CMAKE_BINARY_DIR}/pgo-profile-data"
+  CACHE PATH "Directory where PGO profile data (.gcda) is written and read")
+if(PGO STREQUAL "generate" OR PGO STREQUAL "use")
+  if(NOT CMAKE_COMPILER_IS_GNUCC)
+    message(FATAL_ERROR "PGO=${PGO} is currently supported only with GCC")
+  endif()
+  if(PGO STREQUAL "generate")
+    # -fprofile-update=atomic: cub_server is heavily multi-threaded and racy
+    # counter updates corrupt the profile without it.
+    set(PGO_FLAGS "-fprofile-generate=${PGO_PROFILE_DIR} -fprofile-update=atomic")
+  else()
+    # -fprofile-correction repairs residual counter inconsistencies.
+    # -Wno-missing-profile: objects never executed during training are expected.
+    # -Wno-error=coverage-mismatch tolerates a slightly stale profile.
+    # -Wno-error=stringop-overflow=: profile-driven inlining currently trips this
+    # warning in src/broker/cas_cgw_odbc.c; demoted until that code is fixed.
+    set(PGO_FLAGS "-fprofile-use=${PGO_PROFILE_DIR} -fprofile-correction -Wno-missing-profile -Wno-error=coverage-mismatch -Wno-error=stringop-overflow=")
+  endif()
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${PGO_FLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${PGO_FLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${PGO_FLAGS}")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${PGO_FLAGS}")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${PGO_FLAGS}")
+  message(STATUS "PGO phase: ${PGO} (profile dir: ${PGO_PROFILE_DIR})")
+endif()
 
 # source directories
 set(API_DIR                  ${CMAKE_SOURCE_DIR}/src/api)
