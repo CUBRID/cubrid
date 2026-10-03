@@ -216,6 +216,8 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static PT_NODE *pt_check_into_clause_in_set_operand (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						     int *continue_walk);
 static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
@@ -11035,6 +11037,41 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 }
 
 /*
+ * pt_check_into_clause_in_set_operand () - parser_walk_tree function to reject INTO clause
+ *                                          in an operand of a set operation of a static SQL
+ *   return:  node
+ *   parser(in): the parser context
+ *   node(in): a node of the statement
+ *
+ * Note: INTO variables of PL/CSQL can receive only the final result of the query
+ */
+static PT_NODE *
+pt_check_into_clause_in_set_operand (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *operands[2];
+  int i;
+
+  if (!PT_IS_UNION (node) && !PT_IS_INTERSECTION (node) && !PT_IS_DIFFERENCE (node))
+    {
+      return node;
+    }
+
+  operands[0] = node->info.query.q.union_.arg1;
+  operands[1] = node->info.query.q.union_.arg2;
+  for (i = 0; i < 2; i++)
+    {
+      if (operands[i] != NULL && operands[i]->node_type == PT_SELECT && operands[i]->info.query.into_list != NULL)
+	{
+	  PT_ERRORm (parser, operands[i], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SELECT_INTO_IN_SET_OPERAND);
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_check_into_clause () - check arity of any into_clause
  *                           equals arity of query
  *   return:  none
@@ -12787,6 +12824,16 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	    }
 	}
 
+      if (parser->flag.static_sql_compile_pass == SSCP_SEMANTIC_CHECK)
+	{
+	  /* must be done before pt_semantic_check_local () which takes INTO clauses out of the operands */
+	  (void) parser_walk_tree (parser, node, pt_check_into_clause_in_set_operand, NULL, NULL, NULL);
+	  if (pt_has_error (parser))
+	    {
+	      break;
+	    }
+	}
+
       node = pt_resolve_names (parser, node, sc_info_ptr);
 
       if (!pt_has_error (parser))
@@ -13159,6 +13206,198 @@ PT_NODE *
 pt_semantic_check (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   return pt_check_with_info (parser, node, NULL);
+}
+
+/*
+ * pt_take_into_clause_for_static_sql () - take the INTO variables out of a static SQL query
+ *   return:  none
+ *   parser(in): the parser context
+ *   qry(in): a SELECT/UNION/INTERSECTION/DIFFERENCE statement
+ *
+ * Note: INTO clause can be only in the top SELECT, which was checked in the semantic check pass
+ *       (see pt_check_into_clause_in_set_operand ()) together with the number of INTO variables
+ */
+static void
+pt_take_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry)
+{
+  if (qry->node_type == PT_SELECT && qry->info.query.into_list != NULL)
+    {
+      pt_check_into_clause_for_static_sql (parser, qry, pt_length_of_list (qry->info.query.into_list));
+    }
+}
+
+/*
+ * pt_collect_static_sql_hv_label () - parser_walk_tree function to collect the labels of host variables
+ */
+static PT_NODE *
+pt_collect_static_sql_hv_label (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_HOST_VAR)
+    {
+      int idx = node->info.host_var.index;
+
+      if (idx >= 0 && idx < parser->static_sql_hv_count)
+	{
+	  parser->static_sql_hv_labels[idx] = node->info.host_var.label;
+	}
+      else
+	{
+	  assert (false);
+	  PT_INTERNAL_ERROR (parser, "host variable index out of range in static SQL");
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_save_static_sql_rewrite_result () - save the rewritten query text and the labels of host variables
+ *   return:  none
+ *   parser(in): the parser context
+ *   node(in): a static SQL statement
+ *
+ * Note: The text is embedded in the compiled PL/CSQL class and re-parsed at runtime.
+ *       It must be taken before type checking which can transform the tree into a shape that can not be re-parsed.
+ *       The labels are taken from the same tree so that they match the host variables in the text.
+ */
+static void
+pt_save_static_sql_rewrite_result (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  unsigned int save_custom = parser->custom_print;
+  int i;
+
+  /* select-list aliases (e.g. "AS col1") must survive into the text so that a client reading column labels off the
+   * cursor at runtime can still see them */
+  parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_ALIAS;
+  parser->static_sql_rewritten_query = parser_print_tree (parser, node);
+  parser->custom_print = save_custom;
+
+  if (parser->static_sql_rewritten_query == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return;
+    }
+
+  parser->static_sql_hv_count = parser->host_var_count;
+  if (parser->static_sql_hv_count == 0)
+    {
+      return;
+    }
+
+  parser->static_sql_hv_labels =
+    (const char **) parser_alloc (parser, parser->static_sql_hv_count * sizeof (const char *));
+  if (parser->static_sql_hv_labels == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return;
+    }
+
+  (void) parser_walk_tree (parser, node, pt_collect_static_sql_hv_label, NULL, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
+  for (i = 0; i < parser->static_sql_hv_count; i++)
+    {
+      if (parser->static_sql_hv_labels[i] == NULL)
+	{
+	  assert (false);
+	  PT_INTERNAL_ERROR (parser, "missing host variable in static SQL");
+	  return;
+	}
+    }
+}
+
+/*
+ * pt_check_static_sql_and_rewrite () - abridged semantic check for the rewrite pass of PL/CSQL's static SQL
+ *   return: PT_NODE *(modified) if no errors, else NULL if errors
+ *   parser(in): the parser context
+ *   node(in): a static SQL statement
+ *
+ * Note: The statement has already passed the full semantic check in the semantic check pass.
+ *       This does only what is needed to answer the SQL semantics request of PL/CSQL compiler:
+ *       (1) rewritten query text where undefined names are replaced with host variables and INTO clause is removed
+ *       (2) labels of the host variables
+ *       (3) INTO variables
+ *       (4) types of the select list (by the remaining steps of the semantic check)
+ */
+PT_NODE *
+pt_check_static_sql_and_rewrite (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+
+  assert (parser->flag.static_sql_compile_pass == SSCP_REWRITE);
+
+  if (node == NULL)
+    {
+      return NULL;
+    }
+
+  sc_info.top_node = node;
+
+  switch (node->node_type)
+    {
+    case PT_TRUNCATE:
+      break;
+
+    case PT_INSERT:
+    case PT_UPDATE:
+    case PT_DELETE:
+    case PT_MERGE:
+      node = pt_resolve_names (parser, node, &sc_info);
+      break;
+
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_INTERSECTION:
+    case PT_DIFFERENCE:
+      node = pt_resolve_names (parser, node, &sc_info);
+      if (node != NULL && !pt_has_error (parser))
+	{
+	  pt_take_into_clause_for_static_sql (parser, node);
+	}
+      break;
+
+    default:
+      assert (false);
+      PT_INTERNAL_ERROR (parser, "unexpected statement type for static SQL");
+      return NULL;
+    }
+
+  if (node == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  pt_save_static_sql_rewrite_result (parser, node);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (PT_IS_QUERY (node))
+    {
+      /* the types of the select list are needed for the column information.
+       * the tree may be transformed from now on, but the text has already been taken */
+      node = pt_check_where (parser, node);
+      if (!pt_has_error (parser))
+	{
+	  node = parser_walk_tree (parser, node, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
+	}
+      if (!pt_has_error (parser))
+	{
+	  node = parser_walk_tree (parser, node, NULL, NULL, pt_semantic_check_local, &sc_info);
+	}
+    }
+
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  return node;
 }
 
 /*

@@ -390,7 +390,14 @@ pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement)
       next = statement->next;
       statement->next = NULL;
 
-      statement = pt_semantic_check (parser, statement);
+      if (parser->flag.static_sql_compile_pass == SSCP_REWRITE)
+	{
+	  statement = pt_check_static_sql_and_rewrite (parser, statement);
+	}
+      else
+	{
+	  statement = pt_semantic_check (parser, statement);
+	}
 
       /* restore link */
       if (statement)
@@ -403,7 +410,6 @@ pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement)
 
   return statement;
 }
-
 
 /*
  * pt_class_pre_fetch () - minimize potential deadlocks by prefetching

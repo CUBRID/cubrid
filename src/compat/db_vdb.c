@@ -990,9 +990,8 @@ db_compile_statement_local (DB_SESSION * session)
       srand48 (seed = (long) time (NULL));
     }
 
-  /* do semantic check for the statement */
+  /* do some of semantic checks and transformations for the statement */
   statement_result = pt_compile (parser, statement);
-
   if (statement_result == NULL || pt_has_error (parser))
     {
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);

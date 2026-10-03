@@ -3958,6 +3958,10 @@ struct parser_context
 
   char **external_into_label;
   int external_into_label_cnt;
+  /* for the rewrite pass of PL/CSQL's static SQL: results taken right after name resolution */
+  const char *static_sql_rewritten_query;
+  const char **static_sql_hv_labels;	/* indexed by host variable index */
+  int static_sql_hv_count;
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;

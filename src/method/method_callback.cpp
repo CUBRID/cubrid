@@ -471,65 +471,6 @@ namespace cubmethod
 // Compile
 //////////////////////////////////////////////////////////////////////////
 
-  static bool
-  is_supported_dbtype (const DB_TYPE type)
-  {
-    bool res = false;
-    switch (type)
-      {
-      case DB_TYPE_INTEGER:
-      case DB_TYPE_SHORT:
-      case DB_TYPE_BIGINT:
-      case DB_TYPE_FLOAT:
-      case DB_TYPE_DOUBLE:
-      case DB_TYPE_MONETARY:
-      case DB_TYPE_NUMERIC:
-      case DB_TYPE_CHAR:
-      case DB_TYPE_STRING:
-      case DB_TYPE_DATE:
-      case DB_TYPE_TIME:
-      case DB_TYPE_TIMESTAMP:
-      case DB_TYPE_DATETIME:
-      case DB_TYPE_SET:
-      case DB_TYPE_MULTISET:
-      case DB_TYPE_SEQUENCE:
-      case DB_TYPE_OID:
-      case DB_TYPE_OBJECT:
-      case DB_TYPE_RESULTSET:
-      case DB_TYPE_NULL:
-	res = true;
-	break;
-      // unsupported types
-      case DB_TYPE_BIT:
-      case DB_TYPE_VARBIT:
-      case DB_TYPE_TABLE:
-      case DB_TYPE_BLOB:
-      case DB_TYPE_CLOB:
-      case DB_TYPE_TIMESTAMPTZ:
-      case DB_TYPE_TIMESTAMPLTZ:
-      case DB_TYPE_DATETIMETZ:
-      case DB_TYPE_DATETIMELTZ:
-      case DB_TYPE_JSON:
-      case DB_TYPE_ENUMERATION:
-	res = false;
-	break;
-
-      // obsolete, internal, unused type
-      case DB_TYPE_ELO:
-      case DB_TYPE_VARIABLE:
-      case DB_TYPE_SUB:
-      case DB_TYPE_POINTER:
-      case DB_TYPE_ERROR:
-      case DB_TYPE_VOBJ:
-      case DB_TYPE_DB_VALUE:
-      case DB_TYPE_MIDXKEY:
-      default:
-	assert (false);
-	break;
-      }
-    return res;
-  }
-
   int
   callback_handler::get_sql_semantics (packing_unpacker &unpacker)
   {
@@ -566,12 +507,9 @@ namespace cubmethod
 	    PARSER_CONTEXT *parser = db_get_parser (db_session);
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
-	    parser->custom_print |= PT_CONVERT_RANGE;
-	    /* select-list aliases (e.g. "AS col1") must survive into rewritten_query: this text is
-	     * embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime by Query.open(),
-	     * so a client reading column labels off that cursor needs them to still be there */
-	    parser->custom_print |= PT_PRINT_ALIAS;
-	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+	    /* the text is taken right after name resolution in the rewrite pass (see pt_check_static_sql_and_rewrite ()) */
+	    assert (parser->static_sql_rewritten_query != NULL);
+	    semantics.rewritten_query = parser->static_sql_rewritten_query;
 
 	    has_table_access = false;
 	    (void) parser_walk_tree (parser, stmt, pt_find_table_access, &has_table_access, NULL, NULL);
@@ -597,89 +535,12 @@ namespace cubmethod
 	    db_session->parser->external_into_label = NULL;
 	    db_session->parser->external_into_label_cnt = 0;
 
-	    // host/automatic variables
-	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
-	    if (marker)
+	    // host variables: only their labels are needed by PL/CSQL compiler
+	    semantics.hvs.resize (parser->static_sql_hv_count);
+	    for (int i = 0; i < parser->static_sql_hv_count; i++)
 	      {
-		/* The following way of getting markers_cnt is unreliable:
-		 *      it does not match the actual number of markers sometimes (CBRD-25606)
-		 * TODO: figure out why.
-
-		int markers_cnt = parser->host_var_count + parser->auto_param_count;
-
-		 * Instead, we count the actual number of markers as follows.
-		*/
-		int markers_cnt = 0;
-		DB_MARKER *marker_save = marker;
-		do
-		  {
-		    markers_cnt++;
-		    marker = db_marker_next (marker);
-		  }
-		while (marker);
-		marker = marker_save;
-
-		semantics.hvs.resize (markers_cnt);
-
-		do
-		  {
-		    int idx = marker->info.host_var.index;
-		    if (idx >= markers_cnt)
-		      {
-			error = ER_FAILED;
-			semantics.sql_type = error;
-			semantics.rewritten_query = "internal error: a host variable marker index is out of valid range";
-			break;
-		      }
-
-		    if (semantics.hvs[idx].mode != 0)
-		      {
-			error = ER_FAILED;
-			semantics.sql_type = error;
-			semantics.rewritten_query = "internal error: two different host variable markers have the same index";
-			break;
-		      }
-		    semantics.hvs[idx].mode = 1;
-
-		    if (marker->info.host_var.label)
-		      {
-			semantics.hvs[idx].name.assign ((char *) marker->info.host_var.label);
-		      }
-
-		    TP_DOMAIN *hv_expected_domain = NULL;
-		    if (idx >= parser->host_var_count)
-		      {
-			// auto parameterized
-			hv_expected_domain = marker->expected_domain;
-		      }
-		    else
-		      {
-			hv_expected_domain = db_session->parser->host_var_expected_domains[idx];
-		      }
-
-		    // safe guard
-		    if (hv_expected_domain == NULL)
-		      {
-			hv_expected_domain = pt_node_to_db_domain (parser, marker, NULL);
-		      }
-
-		    semantics.hvs[idx].type = TP_DOMAIN_TYPE (hv_expected_domain);
-		    semantics.hvs[idx].precision = db_domain_precision (hv_expected_domain);
-		    semantics.hvs[idx].scale = (short) db_domain_scale (hv_expected_domain);
-		    semantics.hvs[idx].charset = db_domain_codeset (hv_expected_domain);
-
-		    if (semantics.hvs[idx].type != DB_TYPE_NULL)
-		      {
-			db_value_clone (& (db_session->parser->host_variables[idx]), & (semantics.hvs[idx].value));
-		      }
-		    else
-		      {
-			db_make_null (& (semantics.hvs[idx].value));
-		      }
-
-		    marker = db_marker_next (marker);
-		  }
-		while (marker);
+		semantics.hvs[i].mode = 1;
+		semantics.hvs[i].name.assign (parser->static_sql_hv_labels[i]);
 	      }
 	  }
 	else
@@ -700,14 +561,6 @@ namespace cubmethod
 
     for (sql_semantics &s : semantics_vec)
       {
-	for (const cubpl::pl_parameter_info &hv : s.hvs)
-	  {
-	    if (is_supported_dbtype ((DB_TYPE) hv.type) == false)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name ((DB_TYPE) hv.type));
-	      }
-	  }
-
 	if (er_errid () != NO_ERROR)
 	  {
 	    s.columns.clear ();
