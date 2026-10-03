@@ -511,6 +511,7 @@ extern void pgbuf_mark_page_for_lru_bottom (THREAD_ENTRY * thread_p, PAGE_PTR pa
 extern bool pgbuf_is_io_stressful (void);
 
 #if defined (SERVER_MODE)
+extern void pgbuf_get_lru_counts (int *shared, int *private_count);
 extern void pgbuf_daemons_init ();
 extern void pgbuf_daemons_destroy ();
 #endif /* SERVER_MODE */

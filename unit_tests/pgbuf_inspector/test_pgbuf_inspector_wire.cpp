@@ -1,0 +1,791 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
+
+#define CATCH_CONFIG_MAIN
+#define CATCH_CONFIG_NO_POSIX_SIGNALS
+#include "catch2/catch.hpp"
+
+#include "pgbuf_inspector_wire.hpp"
+#include "corpus_support.hpp"
+#include "sha256.hpp"
+
+#include "db_rapidjson.hpp"
+
+#include <algorithm>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+using namespace cubpgbuf::inspector;
+
+/* The expected bytes below are the contract's own examples, typed as literals
+ * so that the test can disagree with the encoder. */
+
+TEST_CASE ("A refusal without details encodes as the canonical error frame", "[pgbuf_inspector][wire]")
+{
+  error_frame frame;
+  frame.code = refusal_code::BUSY;
+
+  std::string out;
+  REQUIRE (encode_error_frame (frame, out) == encode_status::OK);
+  REQUIRE (out == "{\"type\":\"error\",\"code\":\"busy\"}\n");
+}
+
+TEST_CASE ("Every stable refusal code encodes with exactly its own details", "[pgbuf_inspector][wire]")
+{
+  std::string out;
+
+  SECTION ("version-unsupported carries the producer's majors")
+  {
+    error_frame frame;
+    frame.code = refusal_code::VERSION_UNSUPPORTED;
+    frame.supported_majors = { 1 };
+    REQUIRE (encode_error_frame (frame, out) == encode_status::OK);
+    REQUIRE (out == "{\"type\":\"error\",\"code\":\"version-unsupported\",\"supported_majors\":[1]}\n");
+  }
+  SECTION ("rate-limited carries the wait in milliseconds")
+  {
+    error_frame frame;
+    frame.code = refusal_code::RATE_LIMITED;
+    frame.retry_after_ms = 60;
+    REQUIRE (encode_error_frame (frame, out) == encode_status::OK);
+    REQUIRE (out == "{\"type\":\"error\",\"code\":\"rate-limited\",\"retry_after_ms\":60}\n");
+  }
+  SECTION ("incarnation-changed and identity-oversized carry nothing else")
+  {
+    error_frame frame;
+    frame.code = refusal_code::INCARNATION_CHANGED;
+    REQUIRE (encode_error_frame (frame, out) == encode_status::OK);
+    REQUIRE (out == "{\"type\":\"error\",\"code\":\"incarnation-changed\"}\n");
+
+    out.clear ();
+    frame.code = refusal_code::IDENTITY_OVERSIZED;
+    REQUIRE (encode_error_frame (frame, out) == encode_status::OK);
+    REQUIRE (out == "{\"type\":\"error\",\"code\":\"identity-oversized\"}\n");
+  }
+}
+
+TEST_CASE ("A detail that belongs to another code, or is missing for its own, is not encodable",
+	   "[pgbuf_inspector][wire]")
+{
+  std::string out = "kept";
+
+  SECTION ("version-unsupported must list at least one positive major")
+  {
+    error_frame frame;
+    frame.code = refusal_code::VERSION_UNSUPPORTED;
+    REQUIRE (encode_error_frame (frame, out) == encode_status::INVALID_VALUE);
+    frame.supported_majors = { 1, 0 };
+    REQUIRE (encode_error_frame (frame, out) == encode_status::INVALID_VALUE);
+  }
+  SECTION ("rate-limited must carry a positive wait")
+  {
+    error_frame frame;
+    frame.code = refusal_code::RATE_LIMITED;
+    REQUIRE (encode_error_frame (frame, out) == encode_status::INVALID_VALUE);
+    frame.retry_after_ms = 0;
+    REQUIRE (encode_error_frame (frame, out) == encode_status::INVALID_VALUE);
+  }
+  SECTION ("details never travel with a code they do not belong to")
+  {
+    error_frame frame;
+    frame.code = refusal_code::BUSY;
+    frame.supported_majors = { 1 };
+    REQUIRE (encode_error_frame (frame, out) == encode_status::INVALID_VALUE);
+
+    frame.supported_majors.clear ();
+    frame.retry_after_ms = 60;
+    REQUIRE (encode_error_frame (frame, out) == encode_status::INVALID_VALUE);
+  }
+
+  /* Nothing is appended when encoding is refused. */
+  REQUIRE (out == "kept");
+}
+
+namespace
+{
+  /* Majors whose canonical version-unsupported frame is exactly target bytes long: one-digit majors
+   * add two bytes each (",1"), and a two-digit first major adds one more, so both parities are reachable. */
+  std::vector<int>
+  majors_for_exact_frame_size (std::size_t target)
+  {
+    error_frame probe;
+    probe.code = refusal_code::VERSION_UNSUPPORTED;
+    probe.supported_majors = { 1 };
+    std::string one;
+    REQUIRE (encode_error_frame (probe, one) == encode_status::OK);
+    REQUIRE (target >= one.size ());
+
+    std::size_t extra = target - one.size ();
+    std::vector<int> majors = { 1 };
+    if (extra % 2 == 1)
+      {
+	majors[0] = 10;
+	extra -= 1;
+      }
+    for (; extra > 0; extra -= 2)
+      {
+	majors.push_back (1);
+      }
+    return majors;
+  }
+}
+
+TEST_CASE ("A control frame may fill its 4,096-byte limit exactly but not exceed it", "[pgbuf_inspector][wire]")
+{
+  error_frame frame;
+  frame.code = refusal_code::VERSION_UNSUPPORTED;
+  std::string out;
+
+  SECTION ("4,095 bytes are accepted")
+  {
+    frame.supported_majors = majors_for_exact_frame_size (4095);
+    REQUIRE (encode_error_frame (frame, out) == encode_status::OK);
+    REQUIRE (out.size () == 4095);
+  }
+  SECTION ("4,096 bytes are accepted")
+  {
+    frame.supported_majors = majors_for_exact_frame_size (4096);
+    REQUIRE (encode_error_frame (frame, out) == encode_status::OK);
+    REQUIRE (out.size () == 4096);
+    REQUIRE (out.back () == '\n');
+  }
+  SECTION ("4,097 bytes are refused and nothing is appended")
+  {
+    frame.supported_majors = majors_for_exact_frame_size (4097);
+    REQUIRE (encode_error_frame (frame, out) == encode_status::FRAME_TOO_LARGE);
+    REQUIRE (out.empty ());
+  }
+}
+
+TEST_CASE ("The canonical writer follows the contract's canonical form", "[pgbuf_inspector][wire]")
+{
+  std::string out;
+
+  SECTION ("keys keep call order after type, with no whitespace anywhere")
+  {
+    canonical_frame_writer writer ("probe");
+    writer.add_int ("b", 2);
+    writer.add_int ("a", 1);
+    REQUIRE (writer.finish (WIRE_CONTROL_FRAME_MAX_BYTES, out) == encode_status::OK);
+    REQUIRE (out == "{\"type\":\"probe\",\"b\":2,\"a\":1}\n");
+  }
+  SECTION ("integers are base 10 with a sign only when negative, across the 64-bit range")
+  {
+    canonical_frame_writer writer ("probe");
+    writer.add_int ("zero", 0);
+    writer.add_int ("negative", -1);
+    writer.add_int ("min", INT64_MIN);
+    writer.add_int ("max", INT64_MAX);
+    writer.add_uint ("umax", UINT64_MAX);
+    REQUIRE (writer.finish (WIRE_CONTROL_FRAME_MAX_BYTES, out) == encode_status::OK);
+    REQUIRE (out == "{\"type\":\"probe\",\"zero\":0,\"negative\":-1,\"min\":-9223372036854775808,"
+	     "\"max\":9223372036854775807,\"umax\":18446744073709551615}\n");
+  }
+  SECTION ("booleans, null and an empty array are the bare literals")
+  {
+    canonical_frame_writer writer ("probe");
+    writer.add_bool ("yes", true);
+    writer.add_bool ("no", false);
+    writer.add_null ("none");
+    writer.add_int_array ("empty", {});
+    writer.add_int_array ("some", { 3, 1, 2 });
+    REQUIRE (writer.finish (WIRE_CONTROL_FRAME_MAX_BYTES, out) == encode_status::OK);
+    REQUIRE (out == "{\"type\":\"probe\",\"yes\":true,\"no\":false,\"none\":null,\"empty\":[],\"some\":[3,1,2]}\n");
+  }
+  SECTION ("strings escape only the quote and the backslash")
+  {
+    canonical_frame_writer writer ("probe");
+    writer.add_string ("s", "a\"b\\c/d");
+    REQUIRE (writer.finish (WIRE_CONTROL_FRAME_MAX_BYTES, out) == encode_status::OK);
+    REQUIRE (out == "{\"type\":\"probe\",\"s\":\"a\\\"b\\\\c/d\"}\n");
+  }
+  SECTION ("a string outside printable ASCII makes the frame unencodable and appends nothing")
+  {
+    canonical_frame_writer control ("probe");
+    control.add_string ("s", "tab\there");
+    REQUIRE (control.finish (WIRE_CONTROL_FRAME_MAX_BYTES, out) == encode_status::INVALID_VALUE);
+
+    canonical_frame_writer high ("probe");
+    high.add_string ("s", "caf\xC3\xA9");
+    REQUIRE (high.finish (WIRE_CONTROL_FRAME_MAX_BYTES, out) == encode_status::INVALID_VALUE);
+
+    REQUIRE (out.empty ());
+  }
+  SECTION ("a frame over the requested limit appends nothing")
+  {
+    canonical_frame_writer writer ("probe");
+    REQUIRE (writer.finish (10, out) == encode_status::FRAME_TOO_LARGE);
+    REQUIRE (out.empty ());
+  }
+}
+
+TEST_CASE ("SHA-256 matches the FIPS 180 known answers", "[pgbuf_inspector][corpus]")
+{
+  REQUIRE (corpus::sha256_hex ("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  REQUIRE (corpus::sha256_hex ("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  REQUIRE (corpus::sha256_hex ("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")
+	   == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+  /* Exactly one block of padding boundary: 56 bytes forces a second block. */
+  REQUIRE (corpus::sha256_hex (std::string (56,
+			       'a')) == "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a");
+}
+
+namespace
+{
+  const std::string CONTRACT_DIR = PGBUF_INSPECTOR_CONTRACT_DIR;
+  const std::string CORPUS_DIR = CONTRACT_DIR + "/corpus";
+}
+
+TEST_CASE ("Every generated corpus stream is exactly what the serializer produces from its semantic input",
+	   "[pgbuf_inspector][corpus]")
+{
+  const std::vector<std::string> case_dirs = corpus::semantic_case_directories (CORPUS_DIR);
+  REQUIRE (!case_dirs.empty ());
+
+  for (const std::string &dir : case_dirs)
+    {
+      INFO ("case directory " << dir);
+
+      std::string semantic_text;
+      REQUIRE (corpus::read_file (dir + "/semantic.json", semantic_text));
+      std::string checked_in_stream;
+      REQUIRE (corpus::read_file (dir + "/stream.jsonl", checked_in_stream));
+
+      corpus::semantic_case sc;
+      std::string why;
+      REQUIRE (corpus::parse_semantic_case (semantic_text, sc, why));
+      REQUIRE (dir.size () > sc.case_id.size ());
+      REQUIRE (dir.compare (dir.size () - sc.case_id.size (), sc.case_id.size (), sc.case_id) == 0);
+
+      std::string produced;
+      REQUIRE (corpus::encode_semantic_case (sc, produced) == encode_status::OK);
+      REQUIRE (produced == checked_in_stream);
+    }
+}
+
+TEST_CASE ("The checksum file lists every corpus file with its digest, and the manifest pins the checksum file",
+	   "[pgbuf_inspector][corpus]")
+{
+  std::string checksum_text;
+  REQUIRE (corpus::read_file (CORPUS_DIR + "/SHA256SUMS", checksum_text));
+
+  SECTION ("every listed digest matches the file, in the format sha256sum reads")
+  {
+    std::vector<std::string> listed_paths;
+    std::size_t line_start = 0;
+    while (line_start < checksum_text.size ())
+      {
+	const std::size_t line_end = checksum_text.find ('\n', line_start);
+	REQUIRE (line_end != std::string::npos);
+	const std::string line = checksum_text.substr (line_start, line_end - line_start);
+	line_start = line_end + 1;
+
+	INFO ("checksum line " << line);
+	REQUIRE (line.size () > 66);
+	REQUIRE (line.compare (64, 2, "  ") == 0);
+	const std::string digest = line.substr (0, 64);
+	const std::string relative = line.substr (66);
+
+	std::string contents;
+	REQUIRE (corpus::read_file (CORPUS_DIR + "/" + relative, contents));
+	REQUIRE (corpus::sha256_hex (contents) == digest);
+	listed_paths.push_back (relative);
+      }
+
+    /* Sorted by path, no duplicates, and nothing under the corpus is missing or extra. */
+    REQUIRE (listed_paths == corpus::corpus_file_paths (CORPUS_DIR));
+    for (std::size_t i = 1; i < listed_paths.size (); ++i)
+      {
+	REQUIRE (listed_paths[i - 1] < listed_paths[i]);
+      }
+    REQUIRE (std::find (listed_paths.begin (), listed_paths.end (), "SHA256SUMS") == listed_paths.end ());
+  }
+
+  SECTION ("the manifest carries the contract version, a positive revision and the aggregate hash")
+  {
+    std::string manifest_text;
+    REQUIRE (corpus::read_file (CONTRACT_DIR + "/manifest.json", manifest_text));
+
+    rapidjson::Document manifest;
+    manifest.Parse (manifest_text.c_str ());
+    REQUIRE (!manifest.HasParseError ());
+    REQUIRE (manifest.IsObject ());
+
+    REQUIRE (manifest["contract_version"].IsString ());
+    REQUIRE (std::string (manifest["contract_version"].GetString ())
+	     == std::to_string (WIRE_PROTOCOL_MAJOR) + "." + std::to_string (WIRE_PROTOCOL_MINOR));
+
+    REQUIRE (manifest["corpus_revision"].IsInt64 ());
+    REQUIRE (manifest["corpus_revision"].GetInt64 () >= 1);
+
+    REQUIRE (manifest["corpus_sha256"].IsString ());
+    REQUIRE (std::string (manifest["corpus_sha256"].GetString ()) == corpus::sha256_hex (checksum_text));
+  }
+}
+
+TEST_CASE ("Refusal codes round-trip through their wire names", "[pgbuf_inspector][wire]")
+{
+  const refusal_code all[] =
+  {
+    refusal_code::VERSION_UNSUPPORTED, refusal_code::BUSY, refusal_code::INCARNATION_CHANGED,
+    refusal_code::IDENTITY_OVERSIZED, refusal_code::RATE_LIMITED
+  };
+  for (refusal_code code : all)
+    {
+      refusal_code parsed = refusal_code::BUSY;
+      REQUIRE (refusal_code_from_wire_name (refusal_code_wire_name (code), parsed));
+      REQUIRE (parsed == code);
+    }
+
+  refusal_code parsed = refusal_code::BUSY;
+  REQUIRE_FALSE (refusal_code_from_wire_name ("parameter-off", parsed));
+  REQUIRE_FALSE (refusal_code_from_wire_name ("", parsed));
+}
+
+namespace
+{
+  /* Contract section 9, typed from its table rather than read from the corpus, so the expected outcomes
+   * are checked against an independent statement of which refusals end the connection. */
+  bool
+  refusal_closes_connection (refusal_code code)
+  {
+    return code != refusal_code::RATE_LIMITED;
+  }
+}
+
+TEST_CASE ("Every expected outcome agrees with the stream it describes", "[pgbuf_inspector][corpus]")
+{
+  const std::vector<std::string> case_dirs = corpus::semantic_case_directories (CORPUS_DIR);
+  REQUIRE (!case_dirs.empty ());
+
+  for (const std::string &dir : case_dirs)
+    {
+      INFO ("case directory " << dir);
+
+      std::string semantic_text, stream, expected_text;
+      REQUIRE (corpus::read_file (dir + "/semantic.json", semantic_text));
+      REQUIRE (corpus::read_file (dir + "/stream.jsonl", stream));
+      REQUIRE (corpus::read_file (dir + "/expected.json", expected_text));
+
+      corpus::semantic_case sc;
+      std::string why;
+      REQUIRE (corpus::parse_semantic_case (semantic_text, sc, why));
+
+      rapidjson::Document expected;
+      expected.Parse (expected_text.c_str ());
+      REQUIRE (!expected.HasParseError ());
+      REQUIRE (expected.IsObject ());
+
+      REQUIRE (std::string (expected["case"].GetString ()) == sc.case_id);
+      REQUIRE (expected["frame_count"].GetInt () == std::count (stream.begin (), stream.end (), '\n'));
+      const std::string reply_to = expected["reply_to"].GetString ();
+      REQUIRE ((reply_to == "client_hello" || reply_to == "scan_request"));
+
+      if (std::string (expected["category"].GetString ()) == "refusal")
+	{
+	  REQUIRE (sc.frames.size () == 1);
+	  REQUIRE (sc.frames[0].kind == corpus::frame_kind::ERROR_FRAME);
+	  const error_frame &frame = sc.frames[0].error;
+
+	  REQUIRE (std::string (expected["outcome"].GetString ()) == "refused");
+	  REQUIRE (std::string (expected["refusal_code"].GetString ()) == refusal_code_wire_name (frame.code));
+	  REQUIRE (std::string (expected["connection"].GetString ())
+		   == (refusal_closes_connection (frame.code) ? "closed" : "open"));
+
+	  REQUIRE (expected.HasMember ("retry_after_ms") == frame.retry_after_ms.has_value ());
+	  if (frame.retry_after_ms.has_value ())
+	    {
+	      REQUIRE (expected["retry_after_ms"].GetUint () == *frame.retry_after_ms);
+	    }
+
+	  REQUIRE (expected.HasMember ("supported_majors") == !frame.supported_majors.empty ());
+	  if (!frame.supported_majors.empty ())
+	    {
+	      std::vector<int> listed;
+	      for (const auto &major : expected["supported_majors"].GetArray ())
+		{
+		  listed.push_back (major.GetInt ());
+		}
+	      REQUIRE (listed == frame.supported_majors);
+	    }
+	}
+    }
+}
+
+TEST_CASE ("A client hello has a bounded canonical encoding", "[pgbuf_inspector][session]")
+{
+  std::string out;
+  REQUIRE (encode_frame (R"({"supported_majors":[1],"type":"client_hello"})", out) == encode_status::OK);
+  REQUIRE (out == "{\"type\":\"client_hello\",\"supported_majors\":[1]}\n");
+  REQUIRE (encode_frame (R"({"type":"client_hello"})", out) == encode_status::INVALID_VALUE);
+}
+
+namespace
+{
+  const std::string HELLO =
+	  R"({"type":"server_hello","protocol_major":1,"protocol_minor":0,"incarnation":"0123456789abcdef0123456789abcdef","database_creation":"1","volumes":[{"volid":0,"volume_creation":"2","device":"3","inode":"18446744073709551615"}],"shared_lru_count":2,"private_lru_count":3})";
+  const std::string REQUEST = R"({"type":"scan_request","incarnation":"0123456789abcdef0123456789abcdef"})";
+  const std::string HEADER =
+	  R"({"type":"scan_header","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","start_time_us":"1000"})";
+  const std::string PAGE =
+	  R"({"type":"page","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","volid":0,"pageid":7,"latch_mode":"read","waiter_present":true,"fix_count":2,"dirty":true,"flushing":false,"async_flush_requested":false,"to_vacuum":true,"lru_zone":"lru2","lru_list_kind":"private","lru_list_index":1,"page_lsa":{"pageid":"9223372036854775807","offset":12},"oldest_unflush_lsa":null,"page_kind":"oos"})";
+  const std::string FOOTER =
+	  R"({"type":"scan_footer","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","end_time_us":"900","record_count":1,"visited_slots":2,"truncated":false})";
+}
+
+TEST_CASE ("Every v1 data frame preserves canonical semantic values", "[pgbuf_inspector][session]")
+{
+  for (const auto &frame :
+       {
+	       HELLO, REQUEST, HEADER, PAGE, FOOTER
+       })
+    {
+      INFO (frame);
+      std::string out;
+      REQUIRE (encode_frame (frame, out) == encode_status::OK);
+      REQUIRE (out == frame + "\n");
+    }
+}
+
+TEST_CASE ("Only a validated footer publishes resident and absent observations", "[pgbuf_inspector][session]")
+{
+  exchange_validator session;
+  REQUIRE (session.feed ("{\"type\":\"client_hello\",\"supported_majors\":[1]}\n"));
+  REQUIRE (session.feed (HELLO + "\n" + REQUEST + "\n" + HEADER + "\n" + PAGE + "\n"));
+  REQUIRE (session.lookup (0, 7) == observation::UNKNOWN);
+  REQUIRE_FALSE (session.finish ());
+  exchange_validator complete;
+  REQUIRE (complete.feed ("{\"type\":\"client_hello\",\"supported_majors\":[1]}\n"));
+  for (const auto &f :
+       {
+	       HELLO, REQUEST, HEADER, PAGE, FOOTER
+       }) REQUIRE (complete.feed (f + "\n"));
+  REQUIRE (complete.finish ());
+  REQUIRE (complete.lookup (0, 7) == observation::RESIDENT);
+  REQUIRE (complete.lookup (0, 8) == observation::NOT_RESIDENT);
+  REQUIRE (complete.lookup (0, 8, false) == observation::UNKNOWN);
+}
+
+TEST_CASE ("An unterminated control frame is rejected before buffering beyond its bound", "[pgbuf_inspector][session]")
+{
+  exchange_validator session;
+  REQUIRE_FALSE (session.feed (std::string (4097, ' ')));
+}
+
+TEST_CASE ("Invalid internal refusal values cannot emit an empty code", "[pgbuf_inspector][wire]")
+{
+  error_frame error;
+  error.code = static_cast<refusal_code> (999);
+  std::string out = "kept";
+  REQUIRE (encode_error_frame (error, out) == encode_status::INVALID_VALUE);
+  REQUIRE (out == "kept");
+}
+
+TEST_CASE ("Independent exchange corpus agrees with canonical encoding and incremental validation",
+	   "[pgbuf_inspector][corpus][session]")
+{
+  unsigned cases = 0;
+  for (const auto &entry : std::filesystem::directory_iterator (CORPUS_DIR + "/exchanges"))
+    {
+      if (!entry.is_directory ())
+	{
+	  continue;
+	}
+      ++cases;
+      INFO (entry.path ().string ());
+      std::string stream, expected_text;
+      REQUIRE (corpus::read_file ((entry.path () / "stream.jsonl").string (), stream));
+      REQUIRE (corpus::read_file ((entry.path () / "expected.json").string (), expected_text));
+      rapidjson::Document expected;
+      expected.Parse (expected_text.c_str ());
+      REQUIRE_FALSE (expected.HasParseError ());
+      for (std::size_t chunk :
+	   {
+		   std::size_t (1), std::size_t (17), stream.size () + 1
+	   })
+	{
+	  exchange_validator validator;
+	  bool accepted = true;
+	  for (std::size_t pos = 0; accepted && pos < stream.size (); pos += chunk)
+	    {
+	      accepted = validator.feed (std::string_view (stream).substr (pos, chunk));
+	    }
+	  accepted = accepted && validator.finish ();
+	  REQUIRE (accepted == expected["valid"].GetBool ());
+	  REQUIRE (validator.published () == expected["published"].GetBool ());
+	  for (const auto &query : expected["lookups"].GetArray ())
+	    {
+	      const std::string name = query["result"].GetString ();
+	      observation want = observation::UNKNOWN;
+	      if (name == "resident")
+		{
+		  want = observation::RESIDENT;
+		}
+	      else if (name == "not-resident")
+		{
+		  want = observation::NOT_RESIDENT;
+		}
+	      else if (name == "ambiguous")
+		{
+		  want = observation::AMBIGUOUS;
+		}
+	      REQUIRE (validator.lookup (query["volid"].GetInt (), query["pageid"].GetInt (),
+					 query["evaluated"].GetBool ()) == want);
+	    }
+	}
+      if (expected["canonical"].GetBool ())
+	{
+	  std::string input;
+	  REQUIRE (corpus::read_file ((entry.path () / "input.json").string (), input));
+	  rapidjson::Document frames;
+	  frames.Parse (input.c_str ());
+	  REQUIRE_FALSE (frames.HasParseError ());
+	  std::string encoded;
+	  for (const auto &frame : frames.GetArray ())
+	    {
+	      rapidjson::StringBuffer b;
+	      rapidjson::Writer<rapidjson::StringBuffer> w (b);
+	      frame.Accept (w);
+	      REQUIRE (encode_frame (std::string_view (b.GetString (), b.GetSize ()), encoded) == encode_status::OK);
+	    }
+	  REQUIRE (encoded == stream);
+	}
+    }
+  REQUIRE (cases >= 30);
+}
+
+TEST_CASE ("Native page kinds have one semantic vocabulary across the two source layouts",
+	   "[pgbuf_inspector][wire]")
+{
+  REQUIRE (std::string (page_kind_name (8, page_type_layout::OOS)) == "oos");
+  REQUIRE (std::string (page_kind_name (8, page_type_layout::DEVELOP)) == "area");
+  REQUIRE (std::string (page_kind_name (10, page_type_layout::DEVELOP)) == "btree");
+  REQUIRE (std::string (page_kind_name (11, page_type_layout::OOS)) == "btree");
+  REQUIRE (std::string (page_kind_name (-1, page_type_layout::DEVELOP)) == "unknown");
+  REQUIRE (std::string (page_kind_name (14, page_type_layout::DEVELOP)) == "unknown");
+  REQUIRE (std::string (page_kind_name (14, page_type_layout::OOS)) == "vacuum_data");
+  REQUIRE (std::string (page_kind_name (1000, page_type_layout::OOS)) == "unknown");
+}
+
+namespace
+{
+  const std::string CLIENT_HELLO = "{\"type\":\"client_hello\",\"supported_majors\":[1]}\n";
+
+  std::string
+  padded_frame (const std::string &json, std::size_t bytes)
+  {
+    REQUIRE (bytes >= json.size () + 1);
+    return json + std::string (bytes - json.size () - 1, ' ') + "\n";
+  }
+
+  std::string
+  counted_footer (unsigned records, unsigned slots)
+  {
+    return R"({"type":"scan_footer","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","end_time_us":"0","record_count":)"
+	   + std::to_string (records) + ",\"visited_slots\":" + std::to_string (slots) + ",\"truncated\":false}";
+  }
+}
+
+TEST_CASE ("Frame and depth limits hold below at and above their boundaries", "[pgbuf_inspector][limits]")
+{
+  for (std::size_t bytes :
+       {
+	       4095, 4096, 4097
+       })
+    {
+      exchange_validator client;
+      REQUIRE (client.feed (padded_frame (CLIENT_HELLO.substr (0, CLIENT_HELLO.size () - 1), bytes)) == (bytes <= 4096));
+      exchange_validator page;
+      REQUIRE (page.feed (CLIENT_HELLO + HELLO + "\n" + REQUEST + "\n" + HEADER + "\n"));
+      REQUIRE (page.feed (padded_frame (PAGE, bytes)) == (bytes <= 4096));
+    }
+  for (std::size_t bytes :
+       {
+	       65535, 65536, 65537
+       })
+    {
+      exchange_validator hello;
+      REQUIRE (hello.feed (CLIENT_HELLO));
+      REQUIRE (hello.feed (padded_frame (HELLO, bytes)) == (bytes <= 65536));
+    }
+  for (unsigned depth :
+       {
+	       15, 16, 17
+       })
+    {
+      std::string frame = "{\"type\":\"client_hello\",\"supported_majors\":[1],\"future\":";
+      frame += std::string (depth - 1, '[') + "0" + std::string (depth - 1, ']') + "}\n";
+      exchange_validator validator;
+      REQUIRE (validator.feed (frame) == (depth <= 16));
+    }
+}
+
+TEST_CASE ("Scan record and declared visited-slot limits are independently bounded", "[pgbuf_inspector][limits]")
+{
+  for (unsigned count :
+       {
+	       65535, 65536, 65537
+       })
+    {
+      exchange_validator records;
+      REQUIRE (records.feed (CLIENT_HELLO + HELLO + "\n" + REQUEST + "\n" + HEADER + "\n"));
+      bool ok = true;
+      for (unsigned n = 0; ok && n < count; ++n)
+	{
+	  ok = records.feed (PAGE + "\n");
+	}
+      REQUIRE (ok == (count <= 65536));
+      if (ok)
+	{
+	  REQUIRE (records.feed (counted_footer (count, count) + "\n"));
+	  REQUIRE (records.finish ());
+	  REQUIRE (records.record_count () == count);
+	  REQUIRE (records.lookup (0, 7) == observation::AMBIGUOUS);
+	}
+      exchange_validator slots;
+      REQUIRE (slots.feed (CLIENT_HELLO + HELLO + "\n" + REQUEST + "\n" + HEADER + "\n"));
+      REQUIRE (slots.feed (counted_footer (0, count) + "\n") == (count <= 65536));
+    }
+}
+
+TEST_CASE ("Whole-scan accounting includes unknown frames and the footer", "[pgbuf_inspector][limits]")
+{
+  const std::string footer = counted_footer (0, 0) + "\n";
+  for (std::size_t total :
+       {
+	       1073741823, 1073741824, 1073741825
+       })
+    {
+      INFO (total);
+      exchange_validator scan;
+      REQUIRE (scan.feed (CLIENT_HELLO + HELLO + "\n" + REQUEST + "\n" + HEADER + "\n"));
+      std::size_t remaining = total - HEADER.size () - 1 - footer.size ();
+      const std::string filler = R"({"type":"future"})";
+      bool ok = true;
+      while (remaining > 0 && ok)
+	{
+	  std::size_t size = std::min (remaining, std::size_t (4096));
+	  if (remaining > size && remaining - size < filler.size () + 1)
+	    {
+	      size -= filler.size () + 1;
+	    }
+	  ok = scan.feed (padded_frame (filler, size));
+	  remaining -= size;
+	}
+      REQUIRE (ok);
+      REQUIRE (scan.feed (footer) == (total <= 1073741824));
+      REQUIRE (scan.published () == (total <= 1073741824));
+    }
+}
+
+TEST_CASE ("Invalid JSON and state values cannot enter a published capture", "[pgbuf_inspector][session]")
+{
+  for (const std::string &json :
+       {
+	       std::string ("{\"type\":\"client_hello\",\"supported_majors\":[1],\"x\":\"\xff\"}\n"),
+	       std::string ("{\"type\":\"client_hello\",\"supported_majors\":[1],\"x\":{\"a\":1,\"a\":2}}\n")
+       })
+    {
+      exchange_validator validator;
+      REQUIRE_FALSE (validator.feed (json));
+    }
+  for (const auto &json :
+       {
+	       R"({"type":"scan_header","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"0","start_time_us":"0"})",
+	       R"({"type":"scan_header","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"18446744073709551616","start_time_us":"0"})",
+	       R"({"type":"page","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","volid":0,"pageid":0,"page_kind":"future"})"
+       })
+    {
+      std::string out = "kept";
+      REQUIRE (encode_frame (json, out) == encode_status::INVALID_VALUE);
+      REQUIRE (out == "kept");
+    }
+}
+
+TEST_CASE ("Both refusal encoders and the verifier preserve uint32 retry delays", "[pgbuf_inspector][session]")
+{
+  for (std::uint32_t delay :
+       {
+	       std::uint32_t (INT32_MAX), std::uint32_t (INT32_MAX) + 1, UINT32_MAX
+       })
+    {
+      error_frame error;
+      error.code = refusal_code::RATE_LIMITED;
+      error.retry_after_ms = delay;
+      std::string typed, generic;
+      REQUIRE (encode_error_frame (error, typed) == encode_status::OK);
+      REQUIRE (encode_frame (typed, generic) == encode_status::OK);
+      REQUIRE (generic == typed);
+      exchange_validator validator;
+      REQUIRE (validator.feed (CLIENT_HELLO + HELLO + "\n" + REQUEST + "\n" + typed));
+      REQUIRE (validator.finish ());
+    }
+}
+
+TEST_CASE ("Known LRU tuple consistency does not reject future enum evidence", "[pgbuf_inspector][session]")
+{
+  const std::string prefix =
+	  R"({"type":"page","incarnation":"0123456789abcdef0123456789abcdef","scan_seq":"1","volid":0,"pageid":7,)";
+  const std::string impossible = prefix + R"("lru_zone":"lru1","lru_list_kind":"none","lru_list_index":null})";
+  std::string encoded;
+  REQUIRE (encode_frame (impossible, encoded) == encode_status::INVALID_VALUE);
+  exchange_validator known;
+  REQUIRE (known.feed (CLIENT_HELLO + HELLO + "\n" + REQUEST + "\n" + HEADER + "\n"));
+  REQUIRE_FALSE (known.feed (impossible + "\n"));
+  const std::string future = prefix + R"("lru_zone":"void","lru_list_kind":"future_kind","lru_list_index":null})";
+  exchange_validator unknown;
+  REQUIRE (unknown.feed (CLIENT_HELLO + HELLO + "\n" + REQUEST + "\n" + HEADER + "\n" + future + "\n" + FOOTER + "\n"));
+  REQUIRE (unknown.finish ());
+  REQUIRE (unknown.lookup (0, 7) == observation::RESIDENT);
+  REQUIRE (encode_frame (future, encoded) == encode_status::INVALID_VALUE);
+}
+
+TEST_CASE ("An embedded NUL cannot alias a producer refusal code", "[pgbuf_inspector][session]")
+{
+  std::string out = "kept";
+  REQUIRE (encode_frame (R"({"type":"error","code":"busy\u0000suffix"})", out) == encode_status::INVALID_VALUE);
+  REQUIRE (out == "kept");
+}
+
+TEST_CASE ("Both refusal encoders report the same frame-size boundary", "[pgbuf_inspector][wire]")
+{
+  for (std::size_t bytes :
+       {
+	       4095, 4096, 4097
+       })
+    {
+      error_frame typed;
+      typed.code = refusal_code::VERSION_UNSUPPORTED;
+      typed.supported_majors = majors_for_exact_frame_size (bytes);
+      std::string json = "{\"type\":\"error\",\"code\":\"version-unsupported\",\"supported_majors\":[";
+      for (std::size_t i = 0; i < typed.supported_majors.size (); ++i)
+	{
+	  if (i)
+	    {
+	      json += ',';
+	    }
+	  json += std::to_string (typed.supported_majors[i]);
+	}
+      json += "]}";
+      std::string first, second;
+      auto status = encode_error_frame (typed, first);
+      REQUIRE (encode_frame (json, second) == status);
+      REQUIRE (first == second);
+    }
+}

@@ -803,6 +803,7 @@ add_subdirectory(contrib)
 add_subdirectory(locales)
 add_subdirectory(timezones)
 if(AT_LEAST_ONE_UNIT_TEST)
+  enable_testing()
   add_subdirectory(unit_tests)
 endif()
 

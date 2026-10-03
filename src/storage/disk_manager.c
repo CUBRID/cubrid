@@ -155,6 +155,8 @@ typedef struct disk_cache_volinfo DISK_CACHE_VOLINFO;
 struct disk_cache_volinfo
 {
   DB_VOLPURPOSE purpose;
+  INT64 db_creation;
+  INT64 vol_creation;
   DKNSECTS nsect_free;		/* Hint of free sectors on volume */
 };
 
@@ -629,6 +631,8 @@ disk_format (THREAD_ENTRY * thread_p, const char *dbname, VOLID volid, DBDEF_VOL
     }
 
   vhdr->vol_creation = time (NULL);
+  disk_Cache->vols[volid].db_creation = vhdr->db_creation;
+  disk_Cache->vols[volid].vol_creation = vhdr->vol_creation;
 
   /* Initialize the system heap file for booting purposes. This field is reseted after the heap file is created by the
    * boot manager */
@@ -922,6 +926,13 @@ disk_set_creation (THREAD_ENTRY * thread_p, INT16 volid, const char *new_vol_ful
     {
       memcpy (&vhdr->db_creation, new_dbcreation, sizeof (*new_dbcreation));
       vhdr->vol_creation = time (NULL);
+    }
+
+  /* Copy utilities also mount destination files under negative system volume ids. */
+  if (disk_Cache != NULL && volid >= LOG_DBFIRST_VOLID && volid <= LOG_MAX_DBVOLID)
+    {
+      disk_Cache->vols[volid].db_creation = vhdr->db_creation;
+      disk_Cache->vols[volid].vol_creation = vhdr->vol_creation;
     }
 
   if (!LSA_EQ (&vhdr->chkpt_lsa, new_chkptlsa))
@@ -1386,6 +1397,9 @@ disk_rv_redo_format (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       disk_Cache->perm_purpose_info.extend_info.nsect_max += volheader->nsect_max;
     }
 
+  disk_Cache->vols[volheader->volid].db_creation = volheader->db_creation;
+  disk_Cache->vols[volheader->volid].vol_creation = volheader->vol_creation;
+
   /* fix cache... */
   error_code = disk_stab_iterate_units_all (thread_p, volheader, PGBUF_LATCH_READ, disk_stab_count_free, &nsect_free);
   if (error_code != NO_ERROR)
@@ -1488,6 +1502,11 @@ disk_rv_undoredo_set_creation_time (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   memcpy (&vhdr->db_creation, &change->db_creation, sizeof (change->db_creation));
   memcpy (&vhdr->chkpt_lsa, &change->chkpt_lsa, sizeof (change->chkpt_lsa));
   ret = disk_vhdr_set_vol_fullname (vhdr, change->vol_fullname);
+  if (disk_Cache != NULL)
+    {
+      disk_Cache->vols[vhdr->volid].db_creation = vhdr->db_creation;
+      disk_Cache->vols[vhdr->volid].vol_creation = vhdr->vol_creation;
+    }
 
   pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
 
@@ -2456,6 +2475,9 @@ disk_volume_boot (THREAD_ENTRY * thread_p, VOLID volid, DB_VOLPURPOSE * purpose_
       return error_code;
     }
 
+  disk_Cache->vols[volid].db_creation = volheader->db_creation;
+  disk_Cache->vols[volid].vol_creation = volheader->vol_creation;
+
   *purpose_out = volheader->purpose;
   *voltype_out = volheader->type;
 
@@ -2675,6 +2697,8 @@ disk_cache_init (void)
 
   for (i = 0; i <= LOG_MAX_DBVOLID; i++)
     {
+      disk_Cache->vols[i].db_creation = 0;
+      disk_Cache->vols[i].vol_creation = 0;
       disk_Cache->vols[i].purpose = DISK_UNKNOWN_PURPOSE;
       disk_Cache->vols[i].nsect_free = 0;
     }
@@ -6862,6 +6886,27 @@ int
 disk_sectors_to_extend_npages (const int num_pages)
 {
   return DISK_SECTS_ROUND_UP (DISK_PAGES_TO_SECTS (num_pages));
+}
+
+
+/* Snapshot immutable creation metadata without fixing volume header pages.
+ * A concurrent extension makes this optional observation unavailable, never blocks it.
+ * Permanent-type temporary-purpose volumes persist too and belong to the proof. */
+bool
+disk_map_cached_persistent_volumes (bool (*visit) (VOLID, INT64, INT64, void *), void *context)
+{
+  if (disk_Cache == NULL || pthread_mutex_trylock (&disk_Cache->mutex_extend) != 0)
+    {
+      return false;
+    }
+  bool success = disk_Cache->nvols_perm > 0;
+  for (int i = 0; success && i < disk_Cache->nvols_perm; i++)
+    {
+      success = disk_Cache->vols[i].db_creation > 0 && disk_Cache->vols[i].vol_creation > 0
+	&& visit ((VOLID) i, disk_Cache->vols[i].db_creation, disk_Cache->vols[i].vol_creation, context);
+    }
+  pthread_mutex_unlock (&disk_Cache->mutex_extend);
+  return success;
 }
 
 /************************************************************************/
