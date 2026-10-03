@@ -34,7 +34,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
-#include "domain_plan.h"
+#include "domain_state.h"
 #include "query_list.h"
 #include "system.h"
 #include "thread_compat.hpp"
