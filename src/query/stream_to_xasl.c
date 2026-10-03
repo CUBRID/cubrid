@@ -6254,6 +6254,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   /* accumulator_domain */
   aggregate->accumulator_domain.value_dom = NULL;
   aggregate->accumulator_domain.value2_dom = NULL;
+  aggregate->accumulator_domain.temporary = -1;
 
   return ptr;
 

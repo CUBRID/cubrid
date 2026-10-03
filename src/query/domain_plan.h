@@ -31,12 +31,12 @@
  *   item.ref                    -> resolved_domain.vals[]          0-based, -1 none; a bind's value slot, which is not
  *                                  always its val_pos (DOMAIN_PLAN_ITEM_COLD.val_pos), or a constant expression's or
  *                                  a converted constant's
- *   item.node_domain_index      -> domain_execution.node_domains[] 1-based, 0 none; the first n_operand_types entries
- *                                  are also operand_types[], and the first n_interpolation_list_domains of those
- *                                  interpolation_list_domains[]
+ *   item.node_domain_index      -> domain_execution.node_domains[] 0-based, -1 none; the first n_operand_types
+ *                                  entries are also operand_types[], and the first n_interpolation_list_domains of
+ *                                  those interpolation_list_domains[]
  *   DOMAIN_COMPARE.compare_index -> resolved_domain.compares[]     0-based, -1 none
  *   item.temporaries[] and a comparison term's temporaries[] (a SUM or AVG's accumulator temporary is its
- *   item.temporaries[1])        -> domain_execution.temporaries[]  1-based, 0 none
+ *   item.temporaries[1])        -> domain_execution.temporaries[]  0-based, -1 none
  *   items_cold[]                   parallel to items[]: the cold part of the item with the same index
  *
  * Ownership: resolve_domains allocates vals and every array of resolved_domain and of domain_execution's node state as
@@ -111,8 +111,8 @@ struct domain_plan_item
   int ref;
   unsigned short flags;
   unsigned char operand_class;
-  int node_domain_index;	/* 1 + the index of the node's execution domain (domain_execution.node_domains): the
-				 * domain the execution gives the node, which the node itself never holds; 0: none */
+  int node_domain_index;	/* the index of the node's execution domain (domain_execution.node_domains): the domain
+				 * the execution gives the node, which the node itself never holds; -1: none */
   RESOLVED_DOMAIN fixed;
   union
   {
@@ -120,9 +120,9 @@ struct domain_plan_item
      * resolve_domains resolved them - [0] the left operand (FIELD: the third against the left), [1] FIELD's third
      * against the right. The node carries only its item, so ARITH_TYPE keeps its size. */
     const DOMAIN_COMPARE_PLAN **compares;
-    /* T_ADD, T_SUB, T_MUL, T_DIV, and a SUM or AVG ([1]: the value it adds): 1 + the domain_execution.temporaries
-     * index of an operand fixed for a scope - a constant for the execution, a correlated value for its block's scan -
-     * whose operand coercion the execution converts once per scope; 0 none */
+    /* T_ADD, T_SUB, T_MUL, T_DIV, and a SUM or AVG ([1]: the value it adds): the domain_execution.temporaries index
+     * of an operand fixed for a scope - a constant for the execution, a correlated value for its block's scan - whose
+     * operand coercion the execution converts once per scope; -1 none */
     int temporaries[2];
   };
 };
@@ -193,8 +193,8 @@ struct DOMAIN_COMPARE_PLAN
 				 * expression the constant expression step evaluates */
   int constant_branch;		/* a term's: the innermost constant branch around it (DOMAIN_PLAN_CONSTANT_BRANCH); -1
 				 * none */
-  int temporaries[2];		/* a term's side that is a correlated value, fixed while its block's scan runs: 1 + the
-				 * domain_execution.temporaries index of its conversion, made once per scope; 0 none */
+  int temporaries[2];		/* a term's side that is a correlated value, fixed while its block's scan runs: the
+				 * domain_execution.temporaries index of its conversion, made once per scope; -1 none */
 };
 
 /*
@@ -421,7 +421,7 @@ struct domain_plan
   DOMAIN_ELEMENT_COMPARE_PLAN **element_comparisons;	/* the ALL/SOME terms resolve_domains resolves, in
 							 * resolved_domain.elements order */
   int n_node_domains;		/* the items with an execution domain */
-  int n_operand_types;		/* the first of them, node_domain_index 1..n: the aggregates and analytic functions,
+  int n_operand_types;		/* the first of them, node_domain_index 0..n-1: the aggregates and analytic functions,
 				 * whose executions also record an operand type */
   int n_interpolation_list_domains;	/* the first of those: the MEDIAN / PERCENTILE aggregates, whose executions
 					 * also record the domain their list holds */

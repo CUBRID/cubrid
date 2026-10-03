@@ -362,7 +362,7 @@ eval_compare_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, 
 	for (int side = 0; comparison != NULL && side < 2; side++)
 	  {
 	    /* a correlated side is converted once per scope (its outer row), not at every inner row */
-	    const DB_VALUE *temporary = comparison->temporaries[side] != 0 && compare->conv[side] != NULL
+	    const DB_VALUE *temporary = comparison->temporaries[side] >= 0 && compare->conv[side] != NULL
 	      ? qexec_execution_temporary (thread_p, vd, comparison->temporaries[side], compare->conv[side],
 					   compare->target[side],
 					   value[side]) : NULL;

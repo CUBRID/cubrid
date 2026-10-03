@@ -899,7 +899,7 @@ fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * 
       return qexec_domain_unresolved (vd, item, arithptr->domain);
     }
   assert (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
-  if (plan != NULL && (item->temporaries[0] != 0 || item->temporaries[1] != 0) && left != NULL && right != NULL
+  if (plan != NULL && (item->temporaries[0] >= 0 || item->temporaries[1] >= 0) && left != NULL && right != NULL
       && !DB_IS_NULL (left) && !DB_IS_NULL (right))
     {
       /* an operand a scope fixes - a constant for the execution, a correlated value for its
@@ -908,7 +908,7 @@ fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * 
       const DB_VALUE *temporaries[2] = { NULL, NULL };
       for (int i = 0; i < 2; i++)
 	{
-	  if (item->temporaries[i] != 0 && plan->conv[i] != NULL)
+	  if (item->temporaries[i] >= 0 && plan->conv[i] != NULL)
 	    {
 	      temporaries[i] =
 		qexec_execution_temporary (thread_p, vd, item->temporaries[i], plan->conv[i], plan->operand_domain[i],

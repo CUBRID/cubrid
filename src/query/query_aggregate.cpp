@@ -1077,7 +1077,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	   * the first value is the accumulator's as it is. The setup fixed whether it is one. */
 	  const cubxasl::aggregate_accumulator_domain *acc_dom = &agg_p->accumulator_domain;
 	  const DOMAIN_OPERAND_COERCION *coercion = &acc_dom->operand_coercion;
-	  const DB_VALUE *temporary = acc_dom->temporary != 0 && accumulator->curr_cnt >= 1
+	  const DB_VALUE *temporary = acc_dom->temporary >= 0 && accumulator->curr_cnt >= 1
 				      ? qexec_execution_temporary (thread_p, val_desc_p, acc_dom->temporary,
 					  coercion->conv[1], coercion->operand_domain[1], peek_val) : NULL;
 	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,

@@ -364,6 +364,8 @@ domain_add_item (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN_ITEM ** owner, const TP_
   load_entry->index = ctx->plan->n_items++;
   load_entry->item.resolved_index = -1;
   load_entry->item.ref = -1;
+  load_entry->item.node_domain_index = -1;
+  load_entry->item.temporaries[0] = load_entry->item.temporaries[1] = -1;
   load_entry->item.operand_class = operand_class;
   load_entry->row_invariant = operand_class == OPERAND_CONST;
   load_entry->item.fixed.domain = domain;
@@ -3300,6 +3302,7 @@ domain_plan_add_elements (THREAD_ENTRY * thread_p, DOMAIN_PLAN * plan, DOMAIN_LO
   comparison->row = -1;
   comparison->resolved_elements_index = -1;
   DOMAIN_COMPARE_PLAN *pair = &comparison->pair;
+  pair->temporaries[0] = pair->temporaries[1] = -1;
   pair->predicate = true;
   pair->key_range = entry->key_range;
   pair->constant_branch = entry->constant_branch;
@@ -3397,7 +3400,7 @@ domain_block_scope (DOMAIN_PLAN * plan, XASL_NODE * block)
 /*
  * domain_add_temporary () - a value the execution converts once per scope: a constant's scope is the execution's, a
  *   correlated value's its block's
- *   return: 1 + its domain_execution.temporaries index; 0 when there is none (the block's scans do not start a scope;
+ *   return: its domain_execution.temporaries index; -1 when there is none (the block's scans do not start a scope;
  *	     no memory: ctx->failed)
  */
 static int
@@ -3406,7 +3409,7 @@ domain_add_temporary (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, XASL_NODE *
   const int scope = block == NULL ? DOMAIN_SCOPE_EXECUTION : domain_block_scope (plan, block);
   if (scope < 0)
     {
-      return 0;
+      return -1;
     }
   if (plan->n_temporaries == ctx->max_temporaries)
     {
@@ -3415,7 +3418,7 @@ domain_add_temporary (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, XASL_NODE *
       if (scopes == NULL)
 	{
 	  ctx->failed = true;
-	  return 0;
+	  return -1;
 	}
       ctx->temporary_scopes = scopes;
       XASL_NODE **blocks =
@@ -3423,14 +3426,14 @@ domain_add_temporary (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan, XASL_NODE *
       if (blocks == NULL)
 	{
 	  ctx->failed = true;
-	  return 0;
+	  return -1;
 	}
       ctx->temporary_blocks = blocks;
       ctx->max_temporaries = max;
     }
   ctx->temporary_scopes[plan->n_temporaries] = scope;
   ctx->temporary_blocks[plan->n_temporaries] = block;
-  return ++plan->n_temporaries;
+  return plan->n_temporaries++;
 }
 
 /* Whether a node's operand coercion may convert operand i at the row: resolve_domains resolves the operand coercion (a
@@ -3525,10 +3528,10 @@ domain_plan_add_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
 	  DOMAIN_COMPARE_PLAN *met = const_cast < DOMAIN_COMPARE_PLAN * >(term->domain_compare);
 	  for (int side = 0; side < 2; side++)
 	    {
-	      if (met->temporaries[side] != 0
-		  && ctx->temporary_blocks[met->temporaries[side] - 1] != ctx->compare_term_scopes[2 * t + side])
+	      if (met->temporaries[side] >= 0
+		  && ctx->temporary_blocks[met->temporaries[side]] != ctx->compare_term_scopes[2 * t + side])
 		{
-		  met->temporaries[side] = 0;
+		  met->temporaries[side] = -1;
 		}
 	    }
 	  met->key_range = met->key_range || ctx->compare_term_ranges[t];
@@ -3541,6 +3544,7 @@ domain_plan_add_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
 	  break;
 	}
       memset (comparison, 0, sizeof (*comparison));
+      comparison->temporaries[0] = comparison->temporaries[1] = -1;
       comparison->predicate = true;
       comparison->key_range = ctx->compare_term_ranges[t];
       comparison->constant_branch = ctx->compare_term_constant_branches[t];
@@ -3600,6 +3604,7 @@ domain_plan_add_compares (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DO
 	}
       memset (comparison, 0, sizeof (*comparison));
       comparison->constant_branch = -1;
+      comparison->temporaries[0] = comparison->temporaries[1] = -1;
       DOMAIN_COMPARE_KEY key[2];
       bool session_dependent = false;
       const DOMAIN_COMPARE_SIDE lhs =
@@ -4130,6 +4135,7 @@ domain_stream_compare (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * lhs, c
     }
   memset (comparison, 0, sizeof (*comparison));
   comparison->constant_branch = -1;
+  comparison->temporaries[0] = comparison->temporaries[1] = -1;
   DOMAIN_COMPARE_KEY key[2];
   const bool lhs_literal = domain_stream_literal_key (lhs, comparison, 0, &key[0]);
   const bool rhs_literal = domain_stream_literal_key (rhs, comparison, 1, &key[1]);
@@ -4162,6 +4168,7 @@ domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
   comparison->row = -1;
   comparison->resolved_elements_index = -1;
   comparison->pair.constant_branch = -1;
+  comparison->pair.temporaries[0] = comparison->pair.temporaries[1] = -1;
   DOMAIN_COMPARE_KEY item;
   if (!domain_stream_literal_key (elem, &comparison->pair, 0, &item))
     {
@@ -4187,6 +4194,8 @@ domain_stream_item (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
   memset (item, 0, sizeof (*item));
   item->resolved_index = -1;
   item->ref = -1;
+  item->node_domain_index = -1;
+  item->temporaries[0] = item->temporaries[1] = -1;
   item->operand_class = OPERAND_ROW;
   item->fixed.domain = arith->domain;
   arith->plan_item = item;
@@ -4749,7 +4758,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	{
 	  if (r->needs_node_domain && group == (r->needs_list_domain ? 0 : r->needs_operand_type ? 1 : 2))
 	    {
-	      r->item.node_domain_index = ++plan->n_node_domains;
+	      r->item.node_domain_index = plan->n_node_domains++;
 	    }
 	}
       if (group == 0)

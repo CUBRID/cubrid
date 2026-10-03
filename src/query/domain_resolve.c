@@ -3512,7 +3512,7 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 {
   TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
   memset (&agg_p->accumulator_domain.operand_coercion, 0, sizeof (agg_p->accumulator_domain.operand_coercion));
-  agg_p->accumulator_domain.temporary = 0;
+  agg_p->accumulator_domain.temporary = -1;
   switch (agg_p->function)
     {
     case PT_AGG_BIT_AND:
@@ -3556,7 +3556,7 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 	 * (qexec_execution_temporary): the rows read the index set here, not the plan item and the operand coercion */
 	const DOMAIN_PLAN_ITEM *item = agg_p->plan_item;
 	assert (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
-	if (item != NULL && item->temporaries[1] != 0 && agg_p->accumulator_domain.operand_coercion.conv[1] != NULL)
+	if (item != NULL && item->temporaries[1] >= 0 && agg_p->accumulator_domain.operand_coercion.conv[1] != NULL)
 	  {
 	    agg_p->accumulator_domain.temporary = item->temporaries[1];
 	  }

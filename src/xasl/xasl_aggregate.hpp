@@ -85,9 +85,9 @@ namespace cubxasl
     tp_domain *value2_dom;	/* domain of value2 */
     DOMAIN_OPERAND_COERCION operand_coercion;	/* SUM / AVG: the operand coercion of value + a value, set with
 						 * value_dom */
-    int temporary;			/* SUM / AVG: 1 + the domain_execution.temporaries index of a value added after
-				 * the first that a scope fixes and operand_coercion converts; 0 none. Set with
-				 * operand_coercion */
+    int temporary;			/* SUM / AVG: the domain_execution.temporaries index of a value added after the
+				 * first that a scope fixes and operand_coercion converts; -1 none. Set with
+				 * operand_coercion (qexec_setup_aggregate_accumulators) */
   };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

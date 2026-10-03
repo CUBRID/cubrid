@@ -97,8 +97,8 @@ qexec_owns_node_domain (const XASL_STATE & xasl_state, const DOMAIN_PLAN_ITEM * 
 {
   const RESOLVED_DOMAIN_TABLE & resolved = xasl_state.resolved_domain;
   const DOMAIN_PLAN *plan = resolved.plan;
-  return plan != NULL && item->node_domain_index > 0
-    && item->node_domain_index <= xasl_state.domain_execution.n_node_domains
+  return plan != NULL && item->node_domain_index >= 0
+    && item->node_domain_index < xasl_state.domain_execution.n_node_domains
     && (resolved.copied_from_leader || (item >= plan->items && item < plan->items + plan->n_items));
 }
 
@@ -130,12 +130,12 @@ qexec_late_bind_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 inline int
 qexec_node_domain_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  if (vd == NULL || item == NULL || item->node_domain_index <= 0)
+  if (vd == NULL || item == NULL || item->node_domain_index < 0)
     {
       return -1;
     }
   assert (vd->xasl_state != NULL && qexec_owns_node_domain (*vd->xasl_state, item));
-  return item->node_domain_index - 1;
+  return item->node_domain_index;
 }
 
 /*
@@ -293,8 +293,8 @@ extern const DB_VALUE *qexec_convert_execution_temporary (THREAD_ENTRY * thread_
  *   correlated value (its block's scope)
  *   return: the converted value; NULL when the row converts it - the scope was not entered, or the conversion failed
  *	     (the outcome follows from the row's own conversion)
- *   temporary(in): 1 + its domain_execution.temporaries index (a plan item's, a resolved comparison's or an accumulator
- *	     domain's), not 0
+ *   temporary(in): its domain_execution.temporaries index (a plan item's, a resolved comparison's or an accumulator
+ *	     domain's), not -1
  *   conv(in), target(in): the converter the row would run, and its target: the execution's, the same at every read
  *   value(in): the value, not NULL
  *
@@ -306,10 +306,10 @@ inline const DB_VALUE *
 qexec_execution_temporary (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int temporary, TP_VALUE_CONVERTER conv,
 			   const TP_DOMAIN * target, const DB_VALUE * value)
 {
-  assert (vd != NULL && vd->xasl_state != NULL && temporary > 0);
+  assert (vd != NULL && vd->xasl_state != NULL && temporary >= 0);
   DOMAIN_EXECUTION_STATE & execution = vd->xasl_state->domain_execution;
-  assert (temporary <= execution.n_temporaries && vd->xasl_state->resolved_domain.owner == thread_p);
-  DOMAIN_EXECUTION_TEMPORARY *entry = &execution.temporaries[temporary - 1];
+  assert (temporary < execution.n_temporaries && vd->xasl_state->resolved_domain.owner == thread_p);
+  DOMAIN_EXECUTION_TEMPORARY *entry = &execution.temporaries[temporary];
   if (entry->generation == execution.scope_generations[entry->scope])
     {
       assert (entry->generation == 0 || (entry->conv == conv && entry->target == target));

@@ -1848,7 +1848,7 @@ namespace parallel_scan
 	    const DOMAIN_OPERAND_COERCION *operand_coercion = &acc_dom->operand_coercion;
 	    const DB_VALUE *const temporaries[2] =
 	    {
-	      NULL, acc_dom->temporary != 0 ? qexec_execution_temporary (thread_p, tl_vd, acc_dom->temporary,
+	      NULL, acc_dom->temporary >= 0 ? qexec_execution_temporary (thread_p, tl_vd, acc_dom->temporary,
 		  operand_coercion->conv[1], operand_coercion->operand_domain[1], db_value_p) : NULL
 	    };
 	    if (qdata_coerce_arith_operands (T_ADD, operand_coercion->conv, operand_coercion->operand_domain,
