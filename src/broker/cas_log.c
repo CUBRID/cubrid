@@ -40,6 +40,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <sys/sendfile.h>
+#include <sys/syscall.h>
 #endif
 #include <assert.h>
 
@@ -177,6 +178,7 @@ static FILE *cas_fopen_and_lock (const char *path, const char *mode);
 #endif
 static int cas_fclose (CAS_LOG_FD * lfd);
 static inline int cas_fflush (CAS_LOG_FD * lfd);
+static inline int cas_fflush_partial (CAS_LOG_FD * lfd, int end);
 static int cas_fprintf (void *stream, const char *format, ...);
 static inline int cas_fputc (int c, CAS_LOG_FD * lfd);
 static int cas_unlink (const char *pathname);
@@ -407,9 +409,19 @@ void
 cas_log_flush_on_exit (void)
 {
   CAS_LOG_WRITING_BEGIN ();
-  if (sql_log_fd.fd >= 0 && !sql_log_unmasked)
+  if (sql_log_fd.fd >= 0)
     {
-      (void) cas_fflush (&sql_log_fd);
+      if (!sql_log_unmasked)	/* SQL_LOG_UNMASKED_NONE */
+	{
+	  (void) cas_fflush (&sql_log_fd);
+	}
+      else if (log_fp == &sql_log_fd)
+	{
+	  /* keep the lines before the statement being compiled, which may still hold a password */
+	  INT64 end = saved_temp_stmt_fpos - sql_log_fd.file_buf_base;
+
+	  (void) cas_fflush_partial (&sql_log_fd, (int) MIN (end, (INT64) sql_log_fd.buf_used));
+	}
     }
   if (slow_log_fd.fd >= 0)
     {
@@ -1532,6 +1544,11 @@ cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_p
 
 }
 
+/* glibc headers may define only the internal name of this field */
+#ifndef sigev_notify_thread_id
+#define sigev_notify_thread_id _sigev_un._tid
+#endif
+
 /*
  * cas_log_timer_init () - create the one-shot timer that delivers SIGUSR2 for log flushing.
  *   Called from cas_fopen () on the first SQL / slow log open.  The SIGUSR2 handler is registered
@@ -1543,7 +1560,9 @@ cas_log_timer_init (void)
   struct sigevent sev;
 
   memset (&sev, 0, sizeof (sev));
-  sev.sigev_notify = SIGEV_SIGNAL;
+  /* deliver only to this thread so that the handler never runs on a thread of a loaded driver */
+  sev.sigev_notify = SIGEV_THREAD_ID;
+  sev.sigev_notify_thread_id = (pid_t) syscall (SYS_gettid);
   sev.sigev_signo = SIGUSR2;
   sev.sigev_value.sival_ptr = &sql_log_fd;	/* tag: the handler ignores other SIGUSR2 signals */
   sql_log_timer_created = (timer_create (CLOCK_MONOTONIC, &sev, &sql_log_timer) == 0);
@@ -1678,15 +1697,22 @@ ftruncate_all (int fd, INT64 len)
 static inline int
 cas_fflush (CAS_LOG_FD * lfd)
 {
+  return cas_fflush_partial (lfd, lfd->buf_used);
+}
+
+/*
+ * cas_fflush_partial () - pwrite [buf_flushed, end) and advance buf_flushed to end.
+ */
+static inline int
+cas_fflush_partial (CAS_LOG_FD * lfd, int end)
+{
   int flushed;
-  int end;
 
   if (lfd->fd < 0)
     {
       return 0;
     }
   flushed = lfd->buf_flushed;
-  end = lfd->buf_used;
   if (end <= flushed)
     {
       return 0;
