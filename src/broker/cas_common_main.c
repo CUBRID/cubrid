@@ -93,7 +93,6 @@ cas_main_loop (CAS_MAIN_OPS * ops)
   char client_ip_str[16];
   bool is_new_connection = true;
   DB_CONN_INFO conn_info;
-  prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
   /* Initialize */
   if (cas_main_init (&net_buf, &srv_sock_fd) < 0)
@@ -337,8 +336,6 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 #endif /* !WINDOWS */
 		as_info->last_access_time = time (NULL);
 	      }
-
-	    prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 	    if (as_info->cur_statement_pooling)
 	      {

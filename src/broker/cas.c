@@ -499,8 +499,6 @@ shard_cas_main (void)
 
   bool is_first = true;
 
-  prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
-
   net_buf_init (&net_buf, cas_get_client_version ());
   net_buf.data = (char *) MALLOC (SHARD_NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
@@ -679,8 +677,6 @@ conn_retry:
 	  }
 	/* This is a only use in proxy-cas internal message */
 	req_info.client_version = CAS_PROTO_CURRENT_VER;
-
-	prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 	if (as_info->cur_statement_pooling)
 	  {
@@ -1108,11 +1104,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   server_fn = server_fn_table[func_code - 1];
 
-  if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
-    {
-      assert (prev_cas_info[CAS_INFO_STATUS] == client_msg_header.info_ptr[CAS_INFO_STATUS]);
-    }
-
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 
   cas_send_result_flag = TRUE;
@@ -1276,13 +1267,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 	{
 	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
 	}
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
-      prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
-#endif /* end for debug */
-
-
 
       *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
       memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr, NET_BUF_HEADER_MSG_SIZE);
