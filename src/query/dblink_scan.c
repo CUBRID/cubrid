@@ -1573,19 +1573,25 @@ sql_build_error:
  *
  *   marker resolved, differs from the source type          | CAST(? AS <source>) + re-prepare
  *   marker resolved, agrees                                | bare "?"
- *   marker unresolved (numeric target), date/time or JSON  | CAST(? AS <source>) + re-prepare
+ *   marker unresolved, date/time                           | CAST(? AS <source>) + re-prepare
+ *   marker unresolved, JSON                                | refuse the statement
  *   marker unresolved, any other source                    | bare "?"
  *   marker unreadable                                      | refuse the statement
  *
- * Rows three and four are the fallback: unresolved means CCI_U_TYPE_NULL, so there is no target type to
- * compare. Only date/time and JSON sources were measured to differ there; casting the rest would
- * rewrite every numeric-key statement for no change in result.
+ * The unresolved rows are the fallback. The marker comes back unresolved for two kinds of target -- a numeric
+ * column, and an ENUM column compared with = or <> (the remote wraps "?" in an enumeration conversion) --
+ * and cannot tell them apart, so the source type alone decides:
  *
- * The last row refuses because the marker is this rule's only input: without it the bare "?" goes out, the
- * remote resolves the comparison against the target's declared type as it did before this policy existed,
- * and nothing downstream reports it. A CUBRID shard proxy is where that happens -- it answers
- * CAS_FC_PARAMETER_INFO with fn_proxy_client_not_supported -- though only with SHARD_IGNORE_HINT=ON: the
- * default rejects every statement carrying no shard hint, and DBLink emits none, so its prepare fails first.
+ *   date/time | cast: on a numeric target a bare "?" deletes rows the all-local form keeps; on an ENUM
+ *             | target the cast fails with the same error as the all-local "="
+ *   JSON      | refuse: the cast deletes an extra row on an ENUM target under IN (sent as "="), and a bare
+ *             | "?" misses a row on an ENUM target under =. The cast is right on a numeric target, and the
+ *             | refusal gives that up too
+ *   the rest  | bare "?": the result does not change, and a cast would rewrite every numeric-key statement
+ *
+ * The unreadable row refuses because the marker is the rule's only input. Without it the sink would send a bare
+ * "?" and silently get the old, unrestored comparison. A CUBRID shard proxy is such a remote: it does not
+ * support CAS_FC_PARAMETER_INFO.
  *
  * CUBRID remotes only -- the cast text is CUBRID syntax. Asking the marker costs one CAS round trip per
  * statement; a DML prepare does not name the target type.
@@ -1610,19 +1616,18 @@ dblink_dml_remote_is_cubrid (int conn_handle)
 /*
  * dblink_dml_unresolved_fallback_casts () - Is this source type one of those the unresolved-marker
  *   fallback casts?
- *   return: true for the four date/time types and JSON
+ *   return: true for the four date/time types
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
- * Two kinds of source were measured to differ from the all-local form on a numeric target:
- *   date/time -- the remote deletes a row that the all-local form keeps
- *   JSON      -- the remote refuses a comparison that the all-local form answers false
- * Zone-qualified types are out -- cci_bind_param rejects them before a comparison happens.
+ * On a numeric target the remote deletes a row that the all-local form keeps when the source is date/time.
+ * Zone-qualified types are out -- cci_bind_param rejects them before a comparison happens. JSON is refused
+ * instead of cast; see the policy comment above.
  */
 static bool
 dblink_dml_unresolved_fallback_casts (DB_TYPE src_type)
 {
   return (src_type == DB_TYPE_DATE || src_type == DB_TYPE_TIME || src_type == DB_TYPE_DATETIME
-	  || src_type == DB_TYPE_TIMESTAMP || src_type == DB_TYPE_JSON);
+	  || src_type == DB_TYPE_TIMESTAMP);
 }
 
 /*
@@ -1640,16 +1645,13 @@ dblink_dml_unresolved_fallback_casts (DB_TYPE src_type)
  *                               | but the parser takes none of the three
  *
  * Every other source the sink can bind keeps its value under the name alone, measured with a bound
- * parameter: character varying, bit varying, and numeric -- CAST(? AS numeric) is still 7.406. The
+ * parameter: character varying, bit varying, and numeric -- CAST(? AS numeric) does not drop scale. The
  * sources it cannot bind -- object, monetary, the LOBs, the collections, the zone types -- all spell
  * names the remote does parse, so the cast rides along and they still fail where they failed before,
  * at the bind.
  *
- * Adding a source type usually touches nothing here. What it does touch:
- *   dblink_bind_dbval_to_param ()           can the value be sent at all -- without it no comparison happens
- *   dblink_dml_src_utype ()                 the CCI type its marker carries, the comparison's other side
- *   dblink_dml_unresolved_fallback_casts () whether it diverges where no marker domain comes back
- * and this function only when the name needs a precision, or is not one the parser takes.
+ * Adding a source type touches this function only when the name needs a precision, or is not one the
+ * parser takes; whether a type is cast is decided in dblink_dml_delete_cast_type_needed ().
  */
 static const char *
 dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
@@ -1693,7 +1695,8 @@ dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
 /*
  * dblink_dml_delete_cast_type_needed () - Ask the remote what it expects in the marker, and answer with the
  *   cast text when that disagrees with what the sink is about to bind.
- *   return: NO_ERROR, or ER_DBLINK when the remote did not report the marker's type
+ *   return: NO_ERROR, or ER_DBLINK when the remote did not report the marker's type, or left it unresolved
+ *           for a JSON source
  *   stmt_handle(in)   : prepared DELETE whose single marker is asked about
  *   src_dom(in)       : domain of the local subquery's source column
  *   buf(out)          : caller-provided buffer for the type text
@@ -1735,8 +1738,16 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
 
   if (marker_type == (int) CCI_U_TYPE_NULL)
     {
-      /* Fallback: a numeric target leaves the domain unresolved. Which source types cast here, and why
-       * only those, is in the policy comment above. */
+      /* Fallback: a numeric or ENUM target leaves the domain unresolved. Which source types cast or refuse
+       * here, and why, is in the policy comment above. */
+      if (src_type == DB_TYPE_JSON)
+	{
+	  cci_param_info_free (param_info);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		  "remote DELETE: the remote did not report the type of the WHERE column, "
+		  "so a JSON value cannot be compared safely");
+	  return ER_DBLINK;
+	}
       if (dblink_dml_unresolved_fallback_casts (src_type))
 	{
 	  cast_type = dblink_dml_cast_type (src_dom, buf, buflen);
